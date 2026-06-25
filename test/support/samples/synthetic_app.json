@@ -1,0 +1,51 @@
+{
+  "_id": "synthapp",
+  "title": "Synthetic App",
+  "user_types": {
+    "onboarding_answer": {
+      "%d": "Onboarding Answer",
+      "%f3": {
+        "field_label": {
+          "%d": "label",
+          "%v": "text"
+        },
+        "field_score": {
+          "%d": "score",
+          "%v": "number"
+        }
+      }
+    },
+    "survey_response": {
+      "%d": "Survey Response",
+      "%f3": {
+        "field_answer": {
+          "%d": "answer",
+          "%v": "text"
+        },
+        "field_rating": {
+          "%d": "rating",
+          "%v": "number"
+        },
+        "field_onboarding_answer_ref": {
+          "%d": "onboarding answer",
+          "%v": "custom.onboarding_answer"
+        },
+        "field_status": {
+          "%d": "status",
+          "%v": "option.status_type"
+        }
+      }
+    }
+  },
+  "option_sets": {
+    "status_type": {
+      "%d": "Status Type",
+      "attributes": {
+        "field_color": {
+          "%d": "Color",
+          "%v": "text"
+        }
+      }
+    }
+  }
+}
