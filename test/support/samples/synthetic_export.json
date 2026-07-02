@@ -1,0 +1,172 @@
+{
+  "_id": "synthexport",
+  "app_version": "live",
+  "uid_counter": 99,
+  "pages": {
+    "pgA": {
+      "id": "pgroot",
+      "name": "index",
+      "type": "Page",
+      "properties": { "title": "Home" },
+      "elements": {
+        "elGrp": {
+          "id": "elGrp",
+          "type": "Group",
+          "default_name": "Group A",
+          "properties": { "original_name": "grp-main", "order": 1 },
+          "elements": {
+            "elTxt": {
+              "id": "elTxt",
+              "type": "Text",
+              "default_name": "Text A",
+              "style": "Text__headline_",
+              "properties": {
+                "order": 1,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Hello ",
+                    "1": { "type": "PageData", "properties": { "name": "Current User's name" } }
+                  }
+                }
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "PageData",
+                    "properties": { "name": "Current Page Width" },
+                    "next": {
+                      "type": "Message",
+                      "name": "less_than",
+                      "args": { "type": "Breakpoint", "properties": { "breakpoint_id": "built-in-mobile-landing" } }
+                    }
+                  },
+                  "properties": { "font_size": 24 }
+                }
+              }
+            },
+            "elBtn": {
+              "id": "elBtn",
+              "type": "Button",
+              "default_name": "Button A",
+              "properties": {
+                "original_name": "BTN: Go",
+                "order": 2,
+                "text": { "type": "TextExpression", "entries": { "0": "Go" } }
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wfReset": {
+          "id": "wfResetInner",
+          "type": "CustomEvent",
+          "properties": { "event_name": "Reset Form" },
+          "actions": {
+            "0": { "id": "actA", "type": "HideElement", "properties": { "element_id": "elGrp" } },
+            "1": { "id": "actB", "type": "ResetInputs" }
+          }
+        },
+        "wfClick": {
+          "id": "wfClickInner",
+          "type": "ButtonClicked",
+          "properties": { "element_id": "elBtn" },
+          "actions": {
+            "0": { "id": "actC", "type": "OpenURL", "properties": { "url": "https://example.com" } },
+            "1": { "id": "actD", "type": "123x456-AAA", "properties": {} },
+            "2": { "id": "actE", "type": "MysteryAction", "properties": {} }
+          }
+        }
+      }
+    }
+  },
+  "element_definitions": {
+    "cmpNav": {
+      "id": "cmpNavInner",
+      "name": "🏠 Left Nav",
+      "type": "CustomDefinition",
+      "properties": {},
+      "elements": {
+        "elNavTxt": {
+          "id": "elNavTxt",
+          "type": "Text",
+          "default_name": "Text N",
+          "properties": {
+            "order": 1,
+            "text": { "type": "TextExpression", "entries": { "0": "Nav" } }
+          }
+        }
+      },
+      "workflows": {
+        "wfNav": {
+          "id": "wfNavInner",
+          "type": "CustomEvent",
+          "properties": { "event_name": "Nav Reset" },
+          "actions": {
+            "0": { "id": "actF", "type": "ShowElement", "properties": { "element_id": "elNavTxt" } }
+          }
+        }
+      }
+    },
+    "weird": 42
+  },
+  "api": {
+    "apiAvatar": {
+      "id": "apiAvatarInner",
+      "type": "APIEvent",
+      "properties": { "wf_name": "update-avatar" },
+      "actions": {
+        "0": { "id": "actG", "type": "ChangeThing", "properties": { "to_change": {}, "changes": {} } }
+      }
+    }
+  },
+  "user_types": {
+    "task": {
+      "display": "Task",
+      "fields": {
+        "title_text": { "display": "Title", "value": "text" },
+        "done_boolean": { "display": "Done?", "value": "boolean" },
+        "project_ref": { "display": "Project", "value": "custom.project" },
+        "status_os": { "display": "Status", "value": "option.status" }
+      }
+    },
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": { "display": "Name", "value": "text" }
+      }
+    }
+  },
+  "option_sets": {
+    "status": {
+      "display": "Status",
+      "values": {
+        "v1": { "display": "Open", "db_value": "open", "sort_factor": 1 },
+        "v2": { "display": "Closed", "db_value": "closed", "sort_factor": 2 }
+      }
+    }
+  },
+  "styles": {
+    "Text__headline_": {
+      "id": "Text__headline_",
+      "display": ".headline",
+      "type": "Text",
+      "properties": {
+        "font_face": "Poppins:::500",
+        "font_size": 32,
+        "font_color": "rgba(32, 32, 32, 1)"
+      }
+    }
+  },
+  "settings": {
+    "client_safe": {
+      "app_topdomain": "example.com",
+      "exposes_get_api": true,
+      "exposes_wf_api": false,
+      "plugins": { "123x456": true }
+    },
+    "secure": {}
+  }
+}

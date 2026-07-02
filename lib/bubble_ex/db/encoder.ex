@@ -19,6 +19,7 @@ defmodule BubbleEx.Db.Encoder do
     sqlite: BubbleEx.Db.Sql.Sqlite,
     tsql: BubbleEx.Db.Sql.Tsql,
     ecto: BubbleEx.Db.Ecto,
+    ash: BubbleEx.Db.Ash,
     zod: BubbleEx.Db.Zod,
     xano: BubbleEx.Db.Xano,
     convex: BubbleEx.Db.Convex

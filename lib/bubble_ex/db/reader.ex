@@ -48,6 +48,7 @@ defmodule BubbleEx.Db.Reader do
 
   @spec parse(map()) :: {:ok, db_map()}
   def parse(attrs) do
+    attrs = normalize_export_shape(attrs)
     bubble_id = attrs["_id"]
 
     user_types = generate_tables(attrs, :custom)
@@ -312,4 +313,74 @@ defmodule BubbleEx.Db.Reader do
     |> Enum.map(& &1.columns)
     |> List.flatten()
   end
+
+  # --- .bubble.json export-shape support -------------------------------------
+  #
+  # Exports downloaded from Bubble use readable keys (display/fields/value,
+  # display/values) where the live-scraped app JSON uses %d/%f3/%v and
+  # "attributes". Normalize the export shape into the scraped shape so the
+  # rest of the pipeline (and every Db.Encoder) is unaffected.
+
+  defp normalize_export_shape(attrs) do
+    attrs
+    |> Map.replace_lazy("user_types", fn entries ->
+      normalize_entries(entries, &normalize_user_type/1)
+    end)
+    |> Map.replace_lazy("option_sets", fn entries ->
+      normalize_entries(entries, &normalize_option_set/1)
+    end)
+  end
+
+  defp normalize_entries(entries, fun) when is_map(entries) do
+    Map.new(entries, fn
+      {key, value} when is_map(value) -> {key, fun.(value)}
+      other -> other
+    end)
+  end
+
+  defp normalize_entries(entries, _fun), do: entries
+
+  defp normalize_user_type(%{"fields" => fields} = value) when not is_map_key(value, "%f3") do
+    %{"%d" => value["display"], "%f3" => normalized_fields(fields)}
+  end
+
+  # A custom data type with zero custom fields has only a "display" key in the
+  # export shape (no "fields" key at all, since there's nothing to list).
+  defp normalize_user_type(%{"display" => d} = value)
+       when not is_map_key(value, "fields") and not is_map_key(value, "%f3") and
+              not is_map_key(value, "%d") do
+    %{"%d" => d, "%f3" => %{}}
+  end
+
+  defp normalize_user_type(value), do: value
+
+  defp normalized_fields(fields) when is_map(fields) do
+    Map.new(fields, fn {field_id, field} ->
+      {field_id, %{"%d" => field["display"], "%v" => field["value"]}}
+    end)
+  end
+
+  defp normalized_fields(_fields), do: %{}
+
+  defp normalize_option_set(%{"values" => values} = value) when not is_map_key(value, "%d") do
+    %{"%d" => value["display"], "attributes" => derive_attributes(values)}
+  end
+
+  defp normalize_option_set(value), do: value
+
+  defp derive_attributes(values) when is_map(values) do
+    entries = values |> Map.values() |> Enum.filter(&is_map/1)
+
+    entries
+    |> Enum.flat_map(&Map.keys/1)
+    |> Enum.uniq()
+    |> Enum.reject(&(&1 == "display"))
+    |> Map.new(fn attr ->
+      samples = entries |> Enum.map(&Map.get(&1, attr)) |> Enum.reject(&is_nil/1)
+      type = if samples != [] and Enum.all?(samples, &is_number/1), do: "number", else: "text"
+      {attr, %{"%d" => attr, "%v" => type}}
+    end)
+  end
+
+  defp derive_attributes(_), do: %{}
 end

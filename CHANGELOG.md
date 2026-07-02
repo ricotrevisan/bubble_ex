@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- `BubbleEx.AppTree.generate/3` and `mix bubble.app_tree`: explode a
+  `.bubble.json` export into a two-layer, agent-readable source tree
+  (lossless split with round-trip guarantee + generated OUTLINE/WORKFLOWS/
+  API/STYLES/SETTINGS/DBML views with honest coverage reporting).
+- `BubbleEx.Db.Reader.parse/1` now also accepts the readable `.bubble.json`
+  export shape (`display`/`fields`/`values`) in addition to the scraped
+  `%d`/`%f3` shape.
 - Added `BubbleEx.Secrets.Native`, a pure-Elixir offline secret-scanning adapter
   (regex + base64 + opt-in entropy, no live verification).
 

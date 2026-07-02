@@ -237,4 +237,28 @@ defmodule BubbleEx.Db.EctoTest do
     assert code =~ "add :_id, :string, primary_key: true"
     assert code =~ "add :name, :string"
   end
+
+  test "digit-leading field names emit legal atoms" do
+    db = thing_db([col("f1", "1st choice", %{type: :string})])
+    assert {:ok, code} = Ecto.encode(db)
+    assert code =~ "field :n1st_choice, :string"
+  end
+
+  test "digit-leading table names emit legal module segments" do
+    db = %{
+      bubble_id: "app",
+      tables: [
+        %{
+          id: "t9",
+          name: "3D Models",
+          group: :custom,
+          columns: [col("a", "a", %{type: :string}, table_id: "t9", table_name: "3D Models")]
+        }
+      ],
+      relationships: []
+    }
+
+    assert {:ok, code} = Ecto.encode(db)
+    assert code =~ "defmodule MyApp.N3DModels do"
+  end
 end

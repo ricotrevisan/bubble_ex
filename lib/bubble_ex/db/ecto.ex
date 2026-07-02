@@ -41,6 +41,8 @@ defmodule BubbleEx.Db.Ecto do
 
   @behaviour BubbleEx.Db.Encoder
 
+  alias BubbleEx.Db.Naming
+
   @type opts :: [naming: :proper | :id, namespace: String.t()]
 
   @default_namespace "MyApp"
@@ -224,24 +226,16 @@ defmodule BubbleEx.Db.Ecto do
   defp namespace(opts), do: Keyword.get(opts, :namespace, @default_namespace)
 
   # :proper (default) derives from display names; :id uses the Bubble ids.
-  defp module_name(table, opts), do: pascal_case(by_naming(opts, table.name, table.id))
+  defp module_name(table, opts), do: Naming.pascal_case(by_naming(opts, table.name, table.id))
 
   defp ref_module_name(column, opts),
-    do: pascal_case(by_naming(opts, column.table_name, column.table_id))
+    do: Naming.pascal_case(by_naming(opts, column.table_name, column.table_id))
 
-  defp table_name(table, opts), do: snake_case(by_naming(opts, table.name, table.id))
+  defp table_name(table, opts), do: Naming.snake_case(by_naming(opts, table.name, table.id))
 
-  # Field names preserve a single leading underscore so Bubble's `_id` primary
-  # key keeps its conventional name (`snake_case/1` alone would drop it).
-  defp field_name(column, opts) do
-    value = to_string(by_naming(opts, column.name, column.id))
-
-    if String.starts_with?(value, "_") do
-      "_" <> snake_case(value)
-    else
-      snake_case(value)
-    end
-  end
+  # Naming.snake_case/2 preserves the single leading underscore, keeping
+  # Bubble's `_id` primary key its conventional name.
+  defp field_name(column, opts), do: Naming.snake_case(by_naming(opts, column.name, column.id))
 
   defp by_naming(opts, proper, id) do
     case Keyword.get(opts, :naming, :proper) do
@@ -249,33 +243,6 @@ defmodule BubbleEx.Db.Ecto do
       _ -> proper
     end
   end
-
-  # Splits a free-form Bubble label/id into lowercase word tokens. Non-alphanumeric
-  # runs are separators, and case boundaries (camelCase) start new words.
-  defp tokens(value) do
-    value
-    |> to_string()
-    |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1 \\2")
-    |> String.split(~r/[^A-Za-z0-9]+/, trim: true)
-    |> Enum.map(&String.downcase/1)
-  end
-
-  defp pascal_case(value) do
-    value
-    |> tokens()
-    |> Enum.map_join("", &String.capitalize/1)
-    |> fallback("Table")
-  end
-
-  defp snake_case(value) do
-    value
-    |> tokens()
-    |> Enum.join("_")
-    |> fallback("field")
-  end
-
-  defp fallback("", default), do: default
-  defp fallback(value, _default), do: value
 
   # Renders a string as an Elixir double-quoted literal. Plain quotes are used
   # (never the ~s sigil) so that any parentheses in the value compile cleanly.

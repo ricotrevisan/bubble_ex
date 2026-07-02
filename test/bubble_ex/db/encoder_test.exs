@@ -18,5 +18,9 @@ defmodule BubbleEx.Db.EncoderTest do
 
       assert error.context == %{format: :mongodb}
     end
+
+    test "resolves :ash" do
+      assert BubbleEx.Db.Encoder.module_for(:ash) == {:ok, BubbleEx.Db.Ash}
+    end
   end
 end

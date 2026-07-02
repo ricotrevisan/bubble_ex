@@ -220,4 +220,99 @@ defmodule BubbleEx.Db.ReaderTest do
       assert ref_lines == []
     end
   end
+
+  describe "parse/1 with export-shaped input (.bubble.json)" do
+    test "normalizes user_types with display/fields keys" do
+      attrs = %{
+        "_id" => "synthexport",
+        "user_types" => %{
+          "task" => %{
+            "display" => "Task",
+            "fields" => %{
+              "title_text" => %{"display" => "Title", "value" => "text"},
+              "project_ref" => %{"display" => "Project", "value" => "custom.project"}
+            }
+          },
+          "project" => %{
+            "display" => "Project",
+            "fields" => %{"name_text" => %{"display" => "Name", "value" => "text"}}
+          }
+        }
+      }
+
+      {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
+
+      task = Enum.find(db_map.tables, &(&1.id == "task"))
+      assert task.name == "Task"
+      title = Enum.find(task.columns, &(&1.id == "title_text"))
+      assert title.name == "Title"
+      assert title.type.type == :string
+
+      # the custom.project reference resolves to a relationship
+      assert [{from, to, :one_to_one}] = db_map.relationships
+      assert from.table_id == "task"
+      assert to.table_id == "project"
+    end
+
+    test "normalizes option_sets with display/values keys and derives attributes" do
+      attrs = %{
+        "_id" => "synthexport",
+        "option_sets" => %{
+          "status" => %{
+            "display" => "Status",
+            "values" => %{
+              "v1" => %{"display" => "Open", "db_value" => "open", "sort_factor" => 1},
+              "v2" => %{"display" => "Closed", "db_value" => "closed", "sort_factor" => 2}
+            }
+          }
+        }
+      }
+
+      {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
+
+      status = Enum.find(db_map.tables, &(&1.id == "status"))
+      assert status.name == "Status"
+      assert status.group == :option
+
+      db_value = Enum.find(status.columns, &(&1.id == "db_value"))
+      assert db_value.type.type == :string
+
+      sort_factor = Enum.find(status.columns, &(&1.id == "sort_factor"))
+      assert sort_factor.type.type == :float
+
+      # injected PK still present
+      assert Enum.find(status.columns, & &1.primary_key).id == "display"
+    end
+
+    test "scraped shape still parses identically" do
+      attrs = %{
+        "_id" => "synthapp",
+        "user_types" => %{
+          "onboarding_answer" => %{
+            "%d" => "Onboarding Answer",
+            "%f3" => %{"label_text" => %{"%d" => "label", "%v" => "text"}}
+          }
+        }
+      }
+
+      {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
+      table = Enum.find(db_map.tables, &(&1.id == "onboarding_answer"))
+      assert table.name == "Onboarding Answer"
+    end
+
+    test "user_type without a fields key parses to a table with only the injected PK" do
+      attrs = %{"_id" => "x", "user_types" => %{"ghost" => %{"display" => "Ghost"}}}
+      {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
+      table = Enum.find(db_map.tables, &(&1.id == "ghost"))
+      assert table.name == "Ghost"
+      assert [pk] = table.columns
+      assert pk.primary_key
+    end
+
+    test "user_type with a non-map fields value does not crash" do
+      attrs = %{"_id" => "x", "user_types" => %{"odd" => %{"display" => "Odd", "fields" => nil}}}
+      {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
+      assert Enum.find(db_map.tables, &(&1.id == "odd"))
+    end
+  end
 end
