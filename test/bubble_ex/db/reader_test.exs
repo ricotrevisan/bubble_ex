@@ -112,9 +112,11 @@ defmodule BubbleEx.Db.ReaderTest do
         end)
 
       assert rel, "expected a relationship from source.field_ref to target"
-      {_from, to, _dir} = rel
+      {_from, to, dir} = rel
       assert to.table_id == "target"
       assert to.id == "_id"
+      # Many source rows can point at the same target row.
+      assert dir == :many_to_one
     end
 
     test "an option-set reference targets the option set's display PK, not an arbitrary attribute" do
@@ -186,7 +188,8 @@ defmodule BubbleEx.Db.ReaderTest do
       {_from, to, dir} = rel
       assert to.table_id == "target"
       assert to.id == "_id"
-      assert dir == :one_to_many
+      # Each row holds many targets and each target can appear in many rows.
+      assert dir == :many_to_many
     end
 
     test "a reference to a missing table resolves to a nil target and is dropped from the DBML" do
@@ -248,8 +251,9 @@ defmodule BubbleEx.Db.ReaderTest do
       assert title.name == "Title"
       assert title.type.type == :string
 
-      # the custom.project reference resolves to a relationship
-      assert [{from, to, :one_to_one}] = db_map.relationships
+      # the custom.project reference resolves to a relationship (a single
+      # reference column is many-to-one: many tasks point at one project)
+      assert [{from, to, :many_to_one}] = db_map.relationships
       assert from.table_id == "task"
       assert to.table_id == "project"
     end

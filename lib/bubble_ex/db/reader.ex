@@ -203,10 +203,13 @@ defmodule BubbleEx.Db.Reader do
     Enum.find(columns, fn column -> column.table_id == table_id and column.id == pk_id end)
   end
 
+  # A single reference column means many rows can point at one target
+  # (many-to-one); a list-of-references column means many rows each point at
+  # many targets (many-to-many).
   @spec which_direction(column_type()) :: relationship_direction()
   defp which_direction(column)
-  defp which_direction(%{is_array: true}), do: :one_to_many
-  defp which_direction(_), do: :one_to_one
+  defp which_direction(%{is_array: true}), do: :many_to_many
+  defp which_direction(_), do: :many_to_one
 
   @spec which_type(String.t()) :: column_type()
   defp which_type("list.custom." <> type = _value) do

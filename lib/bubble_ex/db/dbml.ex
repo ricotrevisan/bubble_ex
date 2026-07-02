@@ -69,7 +69,7 @@ defmodule BubbleEx.Db.Dbml do
     naming = Keyword.get(opts, :naming, :proper)
 
     type = which_type(column.type)
-    settings = if column.id == "id", do: " [pk, unique]", else: nil
+    settings = if column.primary_key, do: " [pk]", else: nil
 
     column_name =
       case naming do
@@ -128,12 +128,14 @@ defmodule BubbleEx.Db.Dbml do
       ~s(#{to_string(to.table_group)}.#{to_table}.#{to_column})
   end
 
+  # Arrays render as their scalar type plus "[]", so the two stay consistent.
+  defp which_type(%{is_array: true} = type),
+    do: which_type(Map.delete(type, :is_array)) <> "[]"
+
   defp which_type(%{type: :enum} = type), do: type.custom_type <> ".id"
   defp which_type(%{type: :api} = type), do: "api." <> ~s("#{type.custom_type}")
   defp which_type(%{type: :reference} = type), do: type.custom_type <> ".id"
   defp which_type(%{type: :custom, custom_type: custom_type}), do: custom_type
-  defp which_type(%{is_array: true, custom_type: custom_type}), do: custom_type <> "[]"
-  defp which_type(%{is_array: true} = type), do: to_string(type.type) <> "[]"
   defp which_type(%{type: :utc_datetime_usec}), do: "datetime"
   defp which_type(%{type: :boolean}), do: "bool"
   defp which_type(%{type: :string}), do: "varchar"

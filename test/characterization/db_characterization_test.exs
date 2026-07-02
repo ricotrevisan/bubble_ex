@@ -70,9 +70,10 @@ defmodule BubbleEx.Characterization.DbTest do
     test "emits the option-set relationship Ref line", %{dbml: dbml} do
       # Pin the concrete Ref: line, not just "status_type" (which also appears in
       # the enum column type `"status" status_type.id` and would pass even if
-      # encode_relationships/2 stopped emitting the option-set ref).
+      # encode_relationships/2 stopped emitting the option-set ref). A single
+      # reference column is many-to-one (`>`).
       assert dbml =~
-               ~s(Ref: custom."Survey Response"."status" - option."Status Type"."Display")
+               ~s(Ref: custom."Survey Response"."status" > option."Status Type"."Display")
     end
   end
 end
