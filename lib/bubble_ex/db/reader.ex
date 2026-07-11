@@ -270,8 +270,8 @@ defmodule BubbleEx.Db.Reader do
   end
 
   defp which_type("user"), do: %{type: :reference, custom_type: "user"}
-  defp which_type("image"), do: %{type: :string}
-  defp which_type("file"), do: %{type: :string}
+  defp which_type("image"), do: %{type: :custom, custom_type: "bubble_image"}
+  defp which_type("file"), do: %{type: :custom, custom_type: "bubble_file"}
 
   defp which_type("geographic_address"),
     do: %{type: :custom, custom_type: "bubble_geo_address"}
