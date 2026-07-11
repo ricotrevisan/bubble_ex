@@ -7,9 +7,18 @@ defmodule BubbleEx.Db.Reader do
 
   @type column_type() :: %{
           type:
-            :string | :float | :boolean | :utc_datetime_usec | :custom | :reference | :enum | :api,
+            :string
+            | :float
+            | :boolean
+            | :utc_datetime_usec
+            | :custom
+            | :reference
+            | :enum
+            | :api
+            | :unsupported,
           custom_type: String.t() | nil,
-          is_array: boolean() | nil
+          is_array: boolean() | nil,
+          raw: String.t()
         }
 
   @type column() :: %{
@@ -20,7 +29,8 @@ defmodule BubbleEx.Db.Reader do
           name: String.t(),
           type: column_type(),
           primary_key: boolean(),
-          deleted: boolean()
+          deleted: boolean(),
+          default: term()
         }
 
   @type relationship_direction() :: :one_to_one | :one_to_many | :many_to_many | :many_to_one
@@ -29,7 +39,8 @@ defmodule BubbleEx.Db.Reader do
           id: String.t(),
           name: String.t(),
           group: table_group(),
-          columns: [column()]
+          columns: [column()],
+          values: [map()]
         }
 
   @type db_map() :: %{
@@ -53,7 +64,7 @@ defmodule BubbleEx.Db.Reader do
 
     user_types = generate_tables(attrs, :custom)
     option_sets = generate_tables(attrs, :option)
-    tables = user_types ++ option_sets
+    tables = Enum.sort_by(user_types ++ option_sets, &{&1.name, &1.id})
     columns = flatten_columns(tables)
 
     api = generate_tables(columns, :api)
@@ -66,7 +77,8 @@ defmodule BubbleEx.Db.Reader do
       tables: tables,
       # option_sets: option_sets,
       # user_types: user_types,
-      relationships: relationships
+      relationships:
+        Enum.sort_by(relationships, fn {from, _, _} -> {from.table_name, from.name, from.id} end)
     }
 
     {:ok, db_map}
@@ -147,9 +159,12 @@ defmodule BubbleEx.Db.Reader do
       data
       |> which_column(table_group)
       |> Enum.map(&generate_column(&1, table))
+      |> Enum.reject(& &1.deleted)
+      |> Enum.sort_by(&{&1.name, &1.id})
 
     table
     |> Map.put(:columns, columns)
+    |> Map.put(:values, option_values(data, table_group))
   end
 
   defp which_column(data, table_group) do
@@ -172,7 +187,8 @@ defmodule BubbleEx.Db.Reader do
       name: column_name,
       type: type,
       primary_key: primary_key?(table.group, column_id),
-      deleted: Map.get(data, "%del", false)
+      deleted: Map.get(data, "%del", false),
+      default: Map.get(data, "default_val")
     }
   end
 
@@ -254,8 +270,8 @@ defmodule BubbleEx.Db.Reader do
   end
 
   defp which_type("user"), do: %{type: :reference, custom_type: "user"}
-  defp which_type("image"), do: %{type: :custom, custom_type: "bubble_image"}
-  defp which_type("file"), do: %{type: :custom, custom_type: "bubble_file"}
+  defp which_type("image"), do: %{type: :string}
+  defp which_type("file"), do: %{type: :string}
 
   defp which_type("geographic_address"),
     do: %{type: :custom, custom_type: "bubble_geo_address"}
@@ -271,7 +287,19 @@ defmodule BubbleEx.Db.Reader do
   defp which_type("boolean"), do: %{type: :boolean}
   defp which_type("number"), do: %{type: :float}
   defp which_type("text"), do: %{type: :string}
-  defp which_type(_), do: %{type: :string}
+  defp which_type(raw), do: %{type: :unsupported, raw: raw}
+
+  defp option_values(_data, :custom), do: []
+
+  defp option_values(data, :option) do
+    data
+    |> Map.get("values", %{})
+    |> Enum.reject(fn {_id, value} -> Map.get(value, "%del", false) end)
+    |> Enum.map(fn {id, value} ->
+      %{id: id, name: value["%d"] || value["display"], db_value: value["db_value"]}
+    end)
+    |> Enum.sort_by(&{&1.name, &1.id})
+  end
 
   defp ensure_primary_key(tables, :custom) do
     id = %{
