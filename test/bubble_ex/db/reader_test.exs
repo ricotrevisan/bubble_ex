@@ -78,6 +78,39 @@ defmodule BubbleEx.Db.ReaderTest do
       pk = Enum.find(table.columns, & &1.primary_key)
       assert pk.id == "display"
     end
+
+    test "retains normalization inputs without guessing unsupported types" do
+      attrs = %{
+        "_id" => "x",
+        "user_types" => %{
+          "thing" => %{
+            "%d" => "Thing",
+            "%f3" => %{
+              "gone" => %{"%d" => "Gone", "%v" => "text", "%del" => true},
+              "odd" => %{"%d" => "Odd", "%v" => "mystery", "default_val" => "x"}
+            }
+          }
+        },
+        "option_sets" => %{
+          "status" => %{
+            "%d" => "Status",
+            "values" => %{
+              "open" => %{"%d" => "Open", "db_value" => "open"},
+              "gone" => %{"%d" => "Gone", "%del" => true}
+            }
+          }
+        }
+      }
+
+      assert {:ok, db} = Reader.parse(attrs)
+      thing = Enum.find(db.tables, &(&1.id == "thing"))
+      refute Enum.any?(thing.columns, &(&1.id == "gone"))
+      odd = Enum.find(thing.columns, &(&1.id == "odd"))
+      assert odd.type == %{type: :unsupported, raw: "mystery"}
+      assert odd.default == "x"
+      status = Enum.find(db.tables, &(&1.id == "status"))
+      assert status.values == [%{id: "open", name: "Open", db_value: "open"}]
+    end
   end
 
   describe "parse/1 relationship targets" do
