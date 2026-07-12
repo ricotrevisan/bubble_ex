@@ -75,8 +75,11 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
 
   defp ensure_node(id, occurrence, %{nodes: nodes} = state) when is_map_key(nodes, id) do
     case state.failures[id] do
-      nil -> state
-      category -> warn(state, category, external_target(id), occurrence)
+      nil ->
+        state
+
+      category ->
+        warn(state, category, external_target(id), occurrence)
     end
   end
 

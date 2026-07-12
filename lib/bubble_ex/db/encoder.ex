@@ -48,12 +48,20 @@ defmodule BubbleEx.Db.Encoder do
   @doc "Renders a registered schema format and returns artifact-scoped warnings."
   @spec render(atom(), map(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
   def render(format, db_map, opts \\ []) do
+    plan = BubbleEx.Db.Encoder.Plan.build(db_map, opts)
+
     with {:ok, module} <- module_for(format),
          {:ok, mode} <- external_type_mode(db_map, opts),
          :ok <- validate_capabilities(format, opts),
-         {:ok, content} <- module.encode(db_map, Keyword.put(opts, :external_types, mode)) do
+         {:ok, content} <-
+           module.encode(
+             db_map,
+             opts |> Keyword.put(:external_types, mode) |> Keyword.put(:_external_plan, plan)
+           ) do
       warnings =
-        (Map.get(db_map, :warnings, []) ++ renderer_warnings(db_map, format, mode))
+        (Map.get(db_map, :warnings, []) ++
+           renderer_warnings(db_map, format, mode, plan) ++
+           graph_warnings(plan, format, mode, opts))
         |> Enum.sort_by(&inspect/1)
 
       {:ok, %Result{format: format, content: content, warnings: warnings}}
@@ -76,7 +84,7 @@ defmodule BubbleEx.Db.Encoder do
     valid? =
       is_map(capabilities) and
         Enum.all?(capabilities, fn {target, values} ->
-          target in Map.keys(allowed) and is_list(values) and
+          target == format and target in Map.keys(allowed) and is_list(values) and
             Enum.all?(values, &(&1 in Map.fetch!(allowed, target)))
         end)
 
@@ -86,25 +94,113 @@ defmodule BubbleEx.Db.Encoder do
         {:error, Error.new(:invalid_input, "invalid external type capability", %{format: format})}
   end
 
-  defp renderer_warnings(db_map, _format, :preserve) when map_size(db_map) == 0, do: []
-
-  defp renderer_warnings(db_map, format, mode) do
+  defp renderer_warnings(db_map, format, mode, plan) do
     db_map
     |> Map.get(:tables, [])
     |> Enum.flat_map(& &1.columns)
-    |> Enum.filter(&(&1.type.type in [:external, :opaque_external]))
+    |> Enum.filter(
+      &(&1.type.type in [:external, :opaque_external] and root_loss?(&1, format, mode, plan))
+    )
     |> Enum.map(fn column ->
       %{
         kind: :external_type_rendering,
         target: format,
         source: column.type[:target],
         field: %{table_group: column.table_group, table_id: column.table_id, field_id: column.id},
+        occurrences: [
+          %{
+            root: %{
+              table_group: column.table_group,
+              table_id: column.table_id,
+              field_id: column.id
+            },
+            path: []
+          }
+        ],
         cardinality: column.type.cardinality,
-        reason: if(mode == :preserve, do: :target_opaque, else: :selected_mode),
-        fallback: :json,
+        reason: root_reason(column, format, mode, plan),
+        fallback: if(mode == :legacy, do: :legacy, else: :json),
         mode: mode
       }
     end)
     |> Enum.sort_by(&{&1.source || "", &1.field.table_id, &1.field.field_id})
+  end
+
+  defp root_loss?(_column, _format, mode, _plan) when mode in [:opaque, :legacy], do: true
+  defp root_loss?(%{type: %{type: :opaque_external}}, _format, :preserve, _plan), do: true
+
+  defp root_loss?(_column, format, :preserve, _plan) when format in [:dbml, :sqlite, :tsql],
+    do: true
+
+  defp root_loss?(column, _format, :preserve, plan),
+    do: not BubbleEx.Db.Encoder.Plan.resolved?(plan, column.type.target)
+
+  defp root_reason(_column, _format, :opaque, _plan), do: :selected_opaque_mode
+  defp root_reason(_column, _format, :legacy, _plan), do: :selected_legacy_mode
+
+  defp root_reason(%{type: %{type: :opaque_external}}, _format, :preserve, _plan),
+    do: :unresolved_root
+
+  defp root_reason(_column, format, :preserve, _plan) when format in [:dbml, :sqlite, :tsql],
+    do: :target_opaque
+
+  defp root_reason(_column, _format, :preserve, _plan), do: :unresolved_root
+
+  defp graph_warnings(_plan, _format, mode, _opts) when mode != :preserve, do: []
+
+  defp graph_warnings(plan, format, :preserve, opts) do
+    shape_formats = [:postgres, :ecto, :ash, :zod, :xano, :convex]
+
+    if format in shape_formats do
+      plan.nodes
+      |> Map.values()
+      |> Enum.flat_map(fn node ->
+        node.fields
+        |> Enum.filter(&(&1.type.type == :external))
+        |> Enum.flat_map(fn field ->
+          cond do
+            not BubbleEx.Db.Encoder.Plan.resolved?(plan, field.type.target) ->
+              [graph_warning(plan, format, node.id, field, :unresolved_nested_target)]
+
+            format != :zod and not recursive_capability?(format, opts) and
+                BubbleEx.Db.Encoder.Plan.cycle_edge?(plan, node.id, field.id) ->
+              [graph_warning(plan, format, node.id, field, :cycle_edge)]
+
+            true ->
+              []
+          end
+        end)
+      end)
+    else
+      []
+    end
+  end
+
+  defp recursive_capability?(:ecto, opts),
+    do:
+      :recursive_embeds in (opts
+                            |> Keyword.get(:external_type_capabilities, %{})
+                            |> Map.get(:ecto, []))
+
+  defp recursive_capability?(:ash, opts),
+    do:
+      :recursive_new_type in (opts
+                              |> Keyword.get(:external_type_capabilities, %{})
+                              |> Map.get(:ash, []))
+
+  defp recursive_capability?(_format, _opts), do: false
+
+  defp graph_warning(plan, format, source, field, reason) do
+    %{
+      kind: :external_type_rendering,
+      target: format,
+      source: source,
+      field: %{external_type_id: source, field_id: field.id},
+      occurrences: BubbleEx.Db.Encoder.Plan.occurrences(plan, source, field.id),
+      cardinality: field.type.cardinality,
+      reason: reason,
+      fallback: :json,
+      mode: :preserve
+    }
   end
 end

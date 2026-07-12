@@ -41,6 +41,13 @@ defmodule BubbleEx.Db.Convex do
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
   def encode(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    opts = Keyword.put(opts, :_external_plan, plan)
+
     tables =
       parsed_map
       |> Map.get(:tables, [])
@@ -72,7 +79,7 @@ defmodule BubbleEx.Db.Convex do
 
   defp encode_field(column, opts) do
     name = identifier(field_name(column, opts))
-    base = "    #{name}: #{convex_type(column.type)},"
+    base = "    #{name}: #{convex_type(column.type, opts)},"
 
     case field_comment(column.type, column.primary_key) do
       nil -> base
@@ -89,22 +96,22 @@ defmodule BubbleEx.Db.Convex do
 
   # Type mapping (IR -> Convex `v` validator) -----------------------------------
 
-  defp convex_type(%{is_array: true} = type), do: "v.array(" <> base_type(type) <> ")"
-  defp convex_type(type), do: base_type(type)
+  defp convex_type(%{is_array: true} = type, opts), do: "v.array(" <> base_type(type, opts) <> ")"
+  defp convex_type(type, opts), do: base_type(type, opts)
 
-  defp base_type(%{type: :reference}), do: "v.string()"
-  defp base_type(%{type: :enum}), do: "v.string()"
-  defp base_type(%{type: :api}), do: "v.string()"
-  defp base_type(%{type: :external, target: target}), do: external_validator(target)
-  defp base_type(%{type: :opaque_external}), do: "v.any()"
-  defp base_type(%{type: :custom, custom_type: "bubble_image"}), do: "v.string()"
-  defp base_type(%{type: :custom, custom_type: "bubble_file"}), do: "v.string()"
-  defp base_type(%{type: :custom}), do: "v.any()"
-  defp base_type(%{type: :utc_datetime_usec}), do: "v.float64()"
-  defp base_type(%{type: :boolean}), do: "v.boolean()"
-  defp base_type(%{type: :float}), do: "v.float64()"
-  defp base_type(%{type: :string}), do: "v.string()"
-  defp base_type(_type), do: "v.string()"
+  defp base_type(%{type: :reference}, _opts), do: "v.string()"
+  defp base_type(%{type: :enum}, _opts), do: "v.string()"
+  defp base_type(%{type: :api}, _opts), do: "v.string()"
+  defp base_type(%{type: :external, target: target}, opts), do: external_validator(target, opts)
+  defp base_type(%{type: :opaque_external}, _opts), do: "v.any()"
+  defp base_type(%{type: :custom, custom_type: "bubble_image"}, _opts), do: "v.string()"
+  defp base_type(%{type: :custom, custom_type: "bubble_file"}, _opts), do: "v.string()"
+  defp base_type(%{type: :custom}, _opts), do: "v.any()"
+  defp base_type(%{type: :utc_datetime_usec}, _opts), do: "v.float64()"
+  defp base_type(%{type: :boolean}, _opts), do: "v.boolean()"
+  defp base_type(%{type: :float}, _opts), do: "v.float64()"
+  defp base_type(%{type: :string}, _opts), do: "v.string()"
+  defp base_type(_type, _opts), do: "v.string()"
 
   # Naming + identifier sanitization --------------------------------------------
 
@@ -148,28 +155,34 @@ defmodule BubbleEx.Db.Convex do
     String.upcase(head) <> tail
   end
 
-  defp encode_external_types(parsed_map, opts) do
+  defp encode_external_types(_parsed_map, opts) do
     if Keyword.get(opts, :external_types, :legacy) == :preserve do
-      parsed_map
-      |> Map.get(:external_types, [])
-      |> Enum.filter(&(&1.resolution == :resolved))
-      |> Enum.sort_by(& &1.id)
-      |> Enum.map_join("\n", &external_definition/1)
+      plan = plan(opts)
+
+      plan.order
+      |> Enum.map(&Map.fetch!(plan.nodes, &1))
+      |> Enum.map_join("\n", &external_definition(&1, opts))
     else
       ""
     end
   end
 
-  defp external_definition(external) do
+  defp external_definition(external, opts) do
     fields =
       Enum.map_join(external.fields, "\n", fn field ->
-        "  #{identifier(field.caption || field.id)}: v.optional(v.union(#{external_expr(field.type, external.id)}, v.null())),"
+        name = BubbleEx.Db.Encoder.Plan.field_name(plan(opts), external.id, field)
+
+        "  #{identifier(name)}: v.optional(v.union(#{external_expr(field, external.id, opts)}, v.null())),"
       end)
 
-    "const #{external_validator(external.id)} = v.object({\n#{fields}\n});"
+    "const #{external_validator(external.id, opts)} = v.object({\n#{fields}\n});"
   end
 
-  defp external_expr(%{type: :scalar, scalar: scalar, cardinality: cardinality}, _parent) do
+  defp external_expr(
+         %{type: %{type: :scalar, scalar: scalar, cardinality: cardinality}},
+         _parent,
+         _opts
+       ) do
     base =
       %{
         text: "v.string()",
@@ -182,17 +195,30 @@ defmodule BubbleEx.Db.Convex do
     if cardinality == :many, do: "v.array(#{base})", else: base
   end
 
-  defp external_expr(%{type: :external, target: target}, parent) when target == parent,
-    do: "v.any()"
+  defp external_expr(
+         %{id: field_id, type: %{type: :external, target: target, cardinality: cardinality}},
+         parent,
+         opts
+       ) do
+    fallback? =
+      BubbleEx.Db.Encoder.Plan.cycle_edge?(plan(opts), parent, field_id) or
+        not BubbleEx.Db.Encoder.Plan.resolved?(plan(opts), target)
 
-  defp external_expr(%{type: :external, target: target, cardinality: :many}, _),
-    do: "v.array(#{external_validator(target)})"
+    if fallback?,
+      do: if(cardinality == :many, do: "v.array(v.any())", else: "v.any()"),
+      else:
+        if(cardinality == :many,
+          do: "v.array(#{external_validator(target, opts)})",
+          else: external_validator(target, opts)
+        )
+  end
 
-  defp external_expr(%{type: :external, target: target}, _), do: external_validator(target)
-  defp external_expr(_, _), do: "v.any()"
+  defp external_expr(_, _, _), do: "v.any()"
 
-  defp external_validator(id),
-    do: id |> String.split(".") |> List.last() |> identifier() |> Kernel.<>("Validator")
+  defp external_validator(id, opts),
+    do: identifier(BubbleEx.Db.Encoder.Plan.name(plan(opts), id)) <> "Validator"
+
+  defp plan(opts), do: Keyword.fetch!(opts, :_external_plan)
 
   defp prepare_tables(tables, parsed_map, opts) do
     mode = Keyword.get(opts, :external_types, :legacy)

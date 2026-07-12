@@ -23,6 +23,13 @@ defmodule BubbleEx.Db.Zod do
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
   def encode(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    opts = Keyword.put(opts, :_external_plan, plan)
+
     tables =
       parsed_map
       |> Map.get(:tables, [])
@@ -55,14 +62,14 @@ defmodule BubbleEx.Db.Zod do
 
   defp encode_field(column, opts) do
     key = field_key(field_name(column, opts))
-    value = field_value(column)
+    value = field_value(column, opts)
     "  #{key}: #{value},#{field_comment(column.type)}"
   end
 
   # Schema expression for one field, including nullability and array wrapping.
-  defp field_value(column) do
+  defp field_value(column, opts) do
     column.type
-    |> base_expr()
+    |> base_expr(opts)
     |> wrap_array(column.type)
     |> apply_nullability(column.primary_key)
   end
@@ -75,25 +82,25 @@ defmodule BubbleEx.Db.Zod do
 
   # Type mapping (IR -> Zod base expression) -------------------------------------
 
-  defp base_expr(%{type: :reference}), do: "z.string()"
-  defp base_expr(%{type: :enum}), do: "z.string()"
-  defp base_expr(%{type: :api}), do: "z.string()"
+  defp base_expr(%{type: :reference}, _opts), do: "z.string()"
+  defp base_expr(%{type: :enum}, _opts), do: "z.string()"
+  defp base_expr(%{type: :api}, _opts), do: "z.string()"
 
-  defp base_expr(%{type: :external, target: target, cardinality: cardinality}) do
-    expr = external_schema_name(target)
+  defp base_expr(%{type: :external, target: target, cardinality: cardinality}, opts) do
+    expr = external_schema_name(target, opts)
     if cardinality == :many, do: "z.array(#{expr})", else: expr
   end
 
-  defp base_expr(%{type: :opaque_external, cardinality: :many}), do: "z.array(z.json())"
-  defp base_expr(%{type: :opaque_external}), do: "z.json()"
-  defp base_expr(%{type: :custom, custom_type: "bubble_image"}), do: "z.string()"
-  defp base_expr(%{type: :custom, custom_type: "bubble_file"}), do: "z.string()"
-  defp base_expr(%{type: :custom}), do: "z.object({}).passthrough()"
-  defp base_expr(%{type: :utc_datetime_usec}), do: "z.string().datetime()"
-  defp base_expr(%{type: :boolean}), do: "z.boolean()"
-  defp base_expr(%{type: :float}), do: "z.number()"
-  defp base_expr(%{type: :string}), do: "z.string()"
-  defp base_expr(_type), do: "z.string()"
+  defp base_expr(%{type: :opaque_external, cardinality: :many}, _opts), do: "z.array(z.json())"
+  defp base_expr(%{type: :opaque_external}, _opts), do: "z.json()"
+  defp base_expr(%{type: :custom, custom_type: "bubble_image"}, _opts), do: "z.string()"
+  defp base_expr(%{type: :custom, custom_type: "bubble_file"}, _opts), do: "z.string()"
+  defp base_expr(%{type: :custom}, _opts), do: "z.object({}).passthrough()"
+  defp base_expr(%{type: :utc_datetime_usec}, _opts), do: "z.string().datetime()"
+  defp base_expr(%{type: :boolean}, _opts), do: "z.boolean()"
+  defp base_expr(%{type: :float}, _opts), do: "z.number()"
+  defp base_expr(%{type: :string}, _opts), do: "z.string()"
+  defp base_expr(_type, _opts), do: "z.string()"
 
   # Trailing comment naming a reference/enum target or a structured custom type.
 
@@ -169,38 +176,40 @@ defmodule BubbleEx.Db.Zod do
     |> String.replace("'", "\\'")
   end
 
-  defp encode_external_types(parsed_map, opts) do
+  defp encode_external_types(_parsed_map, opts) do
     if Keyword.get(opts, :external_types, :legacy) == :preserve do
-      parsed_map
-      |> Map.get(:external_types, [])
-      |> Enum.filter(&(&1.resolution == :resolved))
-      |> Enum.sort_by(& &1.id)
-      |> Enum.map_join("\n\n", &external_schema/1)
+      plan = plan(opts)
+
+      plan.order
+      |> Enum.map(&Map.fetch!(plan.nodes, &1))
+      |> Enum.map_join("\n\n", &external_schema(&1, opts))
     else
       ""
     end
   end
 
-  defp external_schema(external) do
-    fields = Enum.map_join(external.fields, "\n", &external_field(&1, external.id))
-    "export const #{external_schema_name(external.id)} = z.looseObject({\n#{fields}\n});"
+  defp external_schema(external, opts) do
+    fields = Enum.map_join(external.fields, "\n", &external_field(&1, external.id, opts))
+    "export const #{external_schema_name(external.id, opts)} = z.looseObject({\n#{fields}\n});"
   end
 
-  defp external_field(%{type: %{type: :external, target: target} = type} = field, parent)
-       when target == parent do
+  defp external_field(%{type: %{type: :external, target: target} = type} = field, parent, opts) do
     expr =
-      if type.cardinality == :many,
-        do: "z.array(#{external_schema_name(target)})",
-        else: external_schema_name(target)
+      if BubbleEx.Db.Encoder.Plan.resolved?(plan(opts), target) do
+        target_expr = external_schema_name(target, opts)
+        if type.cardinality == :many, do: "z.array(#{target_expr})", else: target_expr
+      else
+        if type.cardinality == :many, do: "z.array(z.json())", else: "z.json()"
+      end
 
-    "  get #{field_key(field.caption || field.id)}() { return #{expr}.nullish(); },"
+    "  get #{field_key(external_field_name(parent, field, opts))}() { return #{expr}.nullish(); },"
   end
 
-  defp external_field(field, _parent) do
-    "  #{field_key(field.caption || field.id)}: #{external_expr(field.type)}.nullish(),"
+  defp external_field(field, parent, opts) do
+    "  #{field_key(external_field_name(parent, field, opts))}: #{external_expr(field.type, opts)}.nullish(),"
   end
 
-  defp external_expr(%{type: :scalar, scalar: scalar, cardinality: cardinality}) do
+  defp external_expr(%{type: :scalar, scalar: scalar, cardinality: cardinality}, _opts) do
     base =
       %{
         text: "z.string()",
@@ -213,14 +222,15 @@ defmodule BubbleEx.Db.Zod do
     if cardinality == :many, do: "z.array(#{base})", else: base
   end
 
-  defp external_expr(%{type: :external, target: target, cardinality: :many}),
-    do: "z.array(#{external_schema_name(target)})"
+  defp external_expr(_, _opts), do: "z.json()"
 
-  defp external_expr(%{type: :external, target: target}), do: external_schema_name(target)
-  defp external_expr(_), do: "z.json()"
+  defp external_schema_name(id, opts),
+    do: BubbleEx.Db.Encoder.Plan.name(plan(opts), id) <> "Schema"
 
-  defp external_schema_name(id),
-    do: id |> String.split(".") |> List.last() |> pascal_case() |> Kernel.<>("Schema")
+  defp plan(opts), do: Keyword.fetch!(opts, :_external_plan)
+
+  defp external_field_name(parent, field, opts),
+    do: BubbleEx.Db.Encoder.Plan.field_name(plan(opts), parent, field)
 
   defp prepare_tables(tables, parsed_map, opts) do
     mode = Keyword.get(opts, :external_types, :legacy)

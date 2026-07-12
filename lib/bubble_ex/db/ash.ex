@@ -24,12 +24,19 @@ defmodule BubbleEx.Db.Ash do
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
   def encode(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    opts = Keyword.put(opts, :_external_plan, plan)
     namespace = namespace(opts)
 
     tables =
       parsed_map
       |> Map.get(:tables, [])
       |> Enum.reject(&(&1.group == :api))
+      |> prepare_tables(opts)
 
     relationships = scalar_relationships(parsed_map)
 
@@ -91,7 +98,7 @@ defmodule BubbleEx.Db.Ash do
 
     attribute_lines =
       Enum.map(pk_cols, &pk_attribute(&1, names)) ++
-        Enum.map(plain_cols, &attribute_line(&1, names))
+        Enum.map(plain_cols, &attribute_line(&1, names, opts))
 
     relationship_block =
       case ref_cols do
@@ -151,8 +158,8 @@ defmodule BubbleEx.Db.Ash do
     "    attribute :#{Map.fetch!(names, col.id).name}, :string, primary_key?: true, allow_nil?: false, public?: true"
   end
 
-  defp attribute_line(col, names) do
-    "    attribute :#{Map.fetch!(names, col.id).name}, #{ash_type(col.type)}, public?: true" <>
+  defp attribute_line(col, names, opts) do
+    "    attribute :#{Map.fetch!(names, col.id).name}, #{ash_type(col.type, opts)}, public?: true" <>
       lossy_comment(col.type)
   end
 
@@ -193,29 +200,35 @@ defmodule BubbleEx.Db.Ash do
 
   # Type mapping (IR -> Ash) ------------------------------------------------
 
-  defp ash_type(%{is_array: true} = type), do: "{:array, #{base_type(type)}}"
-  defp ash_type(type), do: base_type(type)
+  defp ash_type(%{is_array: true} = type, opts), do: "{:array, #{base_type(type, opts)}}"
+  defp ash_type(type, opts), do: base_type(type, opts)
 
-  defp base_type(%{type: :reference}), do: ":string"
-  defp base_type(%{type: :enum}), do: ":string"
-  defp base_type(%{type: :api}), do: ":string"
-  defp base_type(%{type: :external, target: target}), do: external_module(target)
-  defp base_type(%{type: :opaque_external}), do: ":map"
-  defp base_type(%{type: :custom, custom_type: "bubble_image"}), do: ":string"
-  defp base_type(%{type: :custom, custom_type: "bubble_file"}), do: ":string"
-  defp base_type(%{type: :custom}), do: ":map"
-  defp base_type(%{type: :utc_datetime_usec}), do: ":utc_datetime_usec"
-  defp base_type(%{type: :boolean}), do: ":boolean"
-  defp base_type(%{type: :float}), do: ":float"
-  defp base_type(%{type: :string}), do: ":string"
-  defp base_type(_type), do: ":string"
+  defp base_type(%{type: :reference}, _opts), do: ":string"
+  defp base_type(%{type: :enum}, _opts), do: ":string"
+  defp base_type(%{type: :api}, _opts), do: ":string"
 
-  defp encode_external_types(parsed_map, opts) do
+  defp base_type(%{type: :external, target: target}, opts) do
+    if BubbleEx.Db.Encoder.Plan.resolved?(plan(opts), target),
+      do: external_module(target, opts),
+      else: ":map"
+  end
+
+  defp base_type(%{type: :opaque_external}, _opts), do: ":map"
+  defp base_type(%{type: :custom, custom_type: "bubble_image"}, _opts), do: ":string"
+  defp base_type(%{type: :custom, custom_type: "bubble_file"}, _opts), do: ":string"
+  defp base_type(%{type: :custom}, _opts), do: ":map"
+  defp base_type(%{type: :utc_datetime_usec}, _opts), do: ":utc_datetime_usec"
+  defp base_type(%{type: :boolean}, _opts), do: ":boolean"
+  defp base_type(%{type: :float}, _opts), do: ":float"
+  defp base_type(%{type: :string}, _opts), do: ":string"
+  defp base_type(_type, _opts), do: ":string"
+
+  defp encode_external_types(_parsed_map, opts) do
     if Keyword.get(opts, :external_types, :legacy) == :preserve do
-      parsed_map
-      |> Map.get(:external_types, [])
-      |> Enum.filter(&(&1.resolution == :resolved))
-      |> Enum.sort_by(& &1.id)
+      plan = plan(opts)
+
+      plan.order
+      |> Enum.map(&Map.fetch!(plan.nodes, &1))
       |> Enum.map_join("\n\n", &external_resource(&1, opts))
     else
       ""
@@ -231,18 +244,27 @@ defmodule BubbleEx.Db.Ash do
       "end"
   end
 
-  defp external_attribute(%{type: %{type: :scalar} = type} = field, _parent, _opts),
+  defp external_attribute(%{type: %{type: :scalar} = type} = field, parent, opts),
     do:
-      "    attribute :#{Naming.snake_case(field.caption || field.id)}, #{external_scalar(type)}, allow_nil?: true, public?: true"
+      "    attribute :#{external_field_name(parent, field, opts)}, #{external_scalar(type)}, allow_nil?: true, public?: true"
 
-  defp external_attribute(%{type: %{type: :external, target: target}} = field, parent, opts)
-       when target != parent,
-       do:
-         "    attribute :#{Naming.snake_case(field.caption || field.id)}, #{external_edge_type(field.type, opts)}, allow_nil?: true, public?: true"
+  defp external_attribute(%{type: %{type: :external, target: target}} = field, parent, opts) do
+    fallback? =
+      (BubbleEx.Db.Encoder.Plan.cycle_edge?(plan(opts), parent, field.id) and
+         not recursive_capability?(opts)) or
+        not BubbleEx.Db.Encoder.Plan.resolved?(plan(opts), target)
 
-  defp external_attribute(field, _parent, _opts),
+    type =
+      if fallback?,
+        do: if(field.type.cardinality == :many, do: "{:array, :map}", else: ":map"),
+        else: external_edge_type(field.type, opts)
+
+    "    attribute :#{external_field_name(parent, field, opts)}, #{type}, allow_nil?: true, public?: true"
+  end
+
+  defp external_attribute(field, parent, opts),
     do:
-      "    attribute :#{Naming.snake_case(field.caption || field.id)}, :map, allow_nil?: true, public?: true"
+      "    attribute :#{external_field_name(parent, field, opts)}, :map, allow_nil?: true, public?: true"
 
   defp external_edge_type(%{target: target, cardinality: :many}, opts),
     do: "{:array, #{external_module(target, opts)}}"
@@ -263,10 +285,42 @@ defmodule BubbleEx.Db.Ash do
   end
 
   defp external_module(id, opts),
-    do:
-      "#{namespace(opts)}.External.#{id |> String.split(".") |> List.last() |> Naming.pascal_case()}"
+    do: "#{namespace(opts)}.External.#{BubbleEx.Db.Encoder.Plan.name(plan(opts), id)}"
 
-  defp external_module(id), do: external_module(id, [])
+  defp plan(opts), do: Keyword.fetch!(opts, :_external_plan)
+
+  defp recursive_capability?(opts),
+    do:
+      :recursive_new_type in (opts
+                              |> Keyword.get(:external_type_capabilities, %{})
+                              |> Map.get(:ash, []))
+
+  defp external_field_name(parent, field, opts),
+    do: plan(opts) |> BubbleEx.Db.Encoder.Plan.field_name(parent, field) |> Naming.snake_case()
+
+  defp prepare_tables(tables, opts) do
+    mode = Keyword.get(opts, :external_types, :legacy)
+    plan = plan(opts)
+
+    Enum.map(tables, fn table ->
+      %{table | columns: Enum.map(table.columns, &prepare_column(&1, mode, plan))}
+    end)
+  end
+
+  defp prepare_column(%{type: %{type: :external, target: target}} = column, :preserve, plan),
+    do:
+      if(BubbleEx.Db.Encoder.Plan.resolved?(plan, target),
+        do: column,
+        else: %{column | type: %{type: :opaque_external}}
+      )
+
+  defp prepare_column(%{type: %{type: :external}} = column, :opaque, _plan),
+    do: %{column | type: %{type: :opaque_external}}
+
+  defp prepare_column(%{type: %{type: :external}} = column, :legacy, _plan),
+    do: %{column | type: %{type: :api}}
+
+  defp prepare_column(column, _mode, _plan), do: column
 
   # Naming --------------------------------------------------------------------
 

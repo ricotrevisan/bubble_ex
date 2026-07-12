@@ -15,6 +15,13 @@ defmodule BubbleEx.Db.Sql.Postgres do
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
   def encode(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    opts = Keyword.put(opts, :_external_plan, plan)
+
     tables =
       parsed_map
       |> Map.get(:tables, [])
@@ -81,9 +88,17 @@ defmodule BubbleEx.Db.Sql.Postgres do
   defp which_type(%{type: :external, target: target, cardinality: cardinality}, opts) do
     base =
       case Keyword.get(opts, :external_types, :legacy) do
-        :preserve -> quote_ident(external_name(target))
-        :opaque -> "jsonb"
-        :legacy -> "text"
+        :preserve ->
+          if(BubbleEx.Db.Encoder.Plan.resolved?(plan(opts), target),
+            do: quote_ident(external_name(target, opts)),
+            else: "jsonb"
+          )
+
+        :opaque ->
+          "jsonb"
+
+        :legacy ->
+          "text"
       end
 
     if cardinality == :many and base != "jsonb", do: base <> "[]", else: base
@@ -93,27 +108,32 @@ defmodule BubbleEx.Db.Sql.Postgres do
   defp which_type(%{is_array: true} = type, _opts), do: base_type(type) <> "[]"
   defp which_type(type, _opts), do: base_type(type)
 
-  defp encode_external_types(parsed_map, opts) do
+  defp encode_external_types(_parsed_map, opts) do
     if Keyword.get(opts, :external_types, :legacy) == :preserve do
-      parsed_map
-      |> Map.get(:external_types, [])
-      |> Enum.filter(&(&1.resolution == :resolved))
+      plan = plan(opts)
+
+      plan.order
+      |> Enum.map(&Map.fetch!(plan.nodes, &1))
       |> Enum.map_join("\n", fn external ->
         fields =
           Enum.map_join(
             external.fields,
             ",\n",
-            &"  #{quote_ident(&1.caption || &1.id)} #{external_field_type(&1.type, external.id)}"
+            &"  #{quote_ident(BubbleEx.Db.Encoder.Plan.field_name(plan, external.id, &1))} #{external_field_type(&1, external.id, opts)}"
           )
 
-        "CREATE TYPE #{quote_ident(external_name(external.id))} AS (\n#{fields}\n);"
+        "CREATE TYPE #{quote_ident(external_name(external.id, opts))} AS (\n#{fields}\n);"
       end)
     else
       ""
     end
   end
 
-  defp external_field_type(%{type: :scalar, scalar: scalar, cardinality: cardinality}, _parent) do
+  defp external_field_type(
+         %{type: %{type: :scalar, scalar: scalar, cardinality: cardinality}},
+         _parent,
+         _opts
+       ) do
     base =
       %{
         text: "text",
@@ -126,18 +146,26 @@ defmodule BubbleEx.Db.Sql.Postgres do
     if cardinality == :many, do: base <> "[]", else: base
   end
 
-  defp external_field_type(%{type: :external, target: target}, parent) when target == parent,
-    do: "jsonb"
+  defp external_field_type(
+         %{id: field_id, type: %{type: :external, target: target, cardinality: cardinality}},
+         parent,
+         opts
+       ) do
+    plan = plan(opts)
 
-  defp external_field_type(%{type: :external, target: target, cardinality: :many}, _),
-    do: quote_ident(external_name(target)) <> "[]"
+    if BubbleEx.Db.Encoder.Plan.cycle_edge?(plan, parent, field_id) or
+         not BubbleEx.Db.Encoder.Plan.resolved?(plan, target) do
+      "jsonb"
+    else
+      base = quote_ident(external_name(target, opts))
+      if cardinality == :many, do: base <> "[]", else: base
+    end
+  end
 
-  defp external_field_type(%{type: :external, target: target}, _),
-    do: quote_ident(external_name(target))
+  defp external_field_type(_, _, _), do: "jsonb"
 
-  defp external_field_type(_, _), do: "jsonb"
-
-  defp external_name(id), do: id |> String.split(".") |> List.last()
+  defp external_name(id, opts), do: BubbleEx.Db.Encoder.Plan.name(plan(opts), id)
+  defp plan(opts), do: Keyword.fetch!(opts, :_external_plan)
 
   defp base_type(%{type: :reference}), do: "text"
   defp base_type(%{type: :enum}), do: "text"

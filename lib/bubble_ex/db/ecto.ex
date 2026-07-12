@@ -50,10 +50,18 @@ defmodule BubbleEx.Db.Ecto do
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
   def encode(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    opts = Keyword.put(opts, :_external_plan, plan)
+
     tables =
       parsed_map
       |> Map.get(:tables, [])
       |> Enum.reject(&(&1.group == :api))
+      |> prepare_tables(opts)
 
     relationships = scalar_relationships(parsed_map)
 
@@ -243,12 +251,12 @@ defmodule BubbleEx.Db.Ecto do
   defp base_type(%{type: :string}), do: ":string"
   defp base_type(_type), do: ":string"
 
-  defp encode_external_types(parsed_map, opts) do
+  defp encode_external_types(_parsed_map, opts) do
     if Keyword.get(opts, :external_types, :legacy) == :preserve do
-      parsed_map
-      |> Map.get(:external_types, [])
-      |> Enum.filter(&(&1.resolution == :resolved))
-      |> Enum.sort_by(& &1.id)
+      plan = plan(opts)
+
+      plan.order
+      |> Enum.map(&Map.fetch!(plan.nodes, &1))
       |> Enum.map_join("\n\n", &external_schema(&1, opts))
     else
       ""
@@ -260,13 +268,13 @@ defmodule BubbleEx.Db.Ecto do
 
     scalar_fields =
       external.fields
-      |> Enum.reject(&(&1.type.type == :external))
-      |> Enum.map_join(", ", &(":" <> Naming.snake_case(&1.caption || &1.id)))
+      |> Enum.reject(&typed_embed?(&1, external.id, opts))
+      |> Enum.map_join(", ", &(":" <> external_field_name(external.id, &1, opts)))
 
     embeds =
       external.fields
-      |> Enum.filter(&(&1.type.type == :external and &1.type.target != external.id))
-      |> Enum.map_join("", &" |> cast_embed(:#{Naming.snake_case(&1.caption || &1.id)})")
+      |> Enum.filter(&typed_embed?(&1, external.id, opts))
+      |> Enum.map_join("", &" |> cast_embed(:#{external_field_name(external.id, &1, opts)})")
 
     "defmodule #{external_module(external.id, opts)} do\n" <>
       "  use Ecto.Schema\n" <>
@@ -277,18 +285,29 @@ defmodule BubbleEx.Db.Ecto do
       "end"
   end
 
-  defp external_field(%{type: %{type: :scalar} = type} = field, _parent, _opts),
-    do: "    field :#{Naming.snake_case(field.caption || field.id)}, #{external_scalar(type)}"
+  defp external_field(%{type: %{type: :scalar} = type} = field, parent, opts),
+    do: "    field :#{external_field_name(parent, field, opts)}, #{external_scalar(type)}"
 
-  defp external_field(%{type: %{type: :external, target: target}} = field, parent, opts)
-       when target != parent do
-    macro = if field.type.cardinality == :many, do: "embeds_many", else: "embeds_one"
+  defp external_field(%{type: %{type: :external, target: target}} = field, parent, opts) do
+    if typed_embed?(field, parent, opts) do
+      macro = if field.type.cardinality == :many, do: "embeds_many", else: "embeds_one"
 
-    "    #{macro} :#{Naming.snake_case(field.caption || field.id)}, #{external_module(target, opts)}"
+      "    #{macro} :#{external_field_name(parent, field, opts)}, #{external_module(target, opts)}"
+    else
+      "    field :#{external_field_name(parent, field, opts)}, #{if(field.type.cardinality == :many, do: "{:array, :map}", else: ":map")}"
+    end
   end
 
-  defp external_field(field, _parent, _opts),
-    do: "    field :#{Naming.snake_case(field.caption || field.id)}, :map"
+  defp external_field(field, parent, opts),
+    do: "    field :#{external_field_name(parent, field, opts)}, :map"
+
+  defp typed_embed?(%{type: %{type: :external, target: target}} = field, parent, opts) do
+    BubbleEx.Db.Encoder.Plan.resolved?(plan(opts), target) and
+      (recursive_capability?(opts) or
+         not BubbleEx.Db.Encoder.Plan.cycle_edge?(plan(opts), parent, field.id))
+  end
+
+  defp typed_embed?(_field, _parent, _opts), do: false
 
   defp external_scalar(%{scalar: scalar, cardinality: cardinality}) do
     base =
@@ -304,8 +323,42 @@ defmodule BubbleEx.Db.Ecto do
   end
 
   defp external_module(id, opts),
+    do: "#{namespace(opts)}.External.#{BubbleEx.Db.Encoder.Plan.name(plan(opts), id)}"
+
+  defp plan(opts), do: Keyword.fetch!(opts, :_external_plan)
+
+  defp recursive_capability?(opts),
     do:
-      "#{namespace(opts)}.External.#{id |> String.split(".") |> List.last() |> Naming.pascal_case()}"
+      :recursive_embeds in (opts
+                            |> Keyword.get(:external_type_capabilities, %{})
+                            |> Map.get(:ecto, []))
+
+  defp external_field_name(parent, field, opts),
+    do: plan(opts) |> BubbleEx.Db.Encoder.Plan.field_name(parent, field) |> Naming.snake_case()
+
+  defp prepare_tables(tables, opts) do
+    mode = Keyword.get(opts, :external_types, :legacy)
+    plan = plan(opts)
+
+    Enum.map(tables, fn table ->
+      %{table | columns: Enum.map(table.columns, &prepare_column(&1, mode, plan))}
+    end)
+  end
+
+  defp prepare_column(%{type: %{type: :external, target: target}} = column, :preserve, plan),
+    do:
+      if(BubbleEx.Db.Encoder.Plan.resolved?(plan, target),
+        do: column,
+        else: %{column | type: %{type: :opaque_external}}
+      )
+
+  defp prepare_column(%{type: %{type: :external}} = column, :opaque, _plan),
+    do: %{column | type: %{type: :opaque_external}}
+
+  defp prepare_column(%{type: %{type: :external}} = column, :legacy, _plan),
+    do: %{column | type: %{type: :api}}
+
+  defp prepare_column(column, _mode, _plan), do: column
 
   # Naming ----------------------------------------------------------------------
 

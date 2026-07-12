@@ -44,11 +44,17 @@ defmodule BubbleEx.Db.Xano do
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
   def encode(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    opts = Keyword.put(opts, :_external_plan, plan)
     rel_index = relationship_index(parsed_map)
 
     external_index =
       if Keyword.get(opts, :external_types, :legacy) == :preserve,
-        do: Map.new(Map.get(parsed_map, :external_types, []), &{&1.id, &1}),
+        do: plan,
         else: %{}
 
     tables =
@@ -85,9 +91,14 @@ defmodule BubbleEx.Db.Xano do
   defp external_style(type), do: style(type)
 
   defp maybe_external_children(field, %{type: :external, target: target}, index, seen) do
-    case {Map.get(index, target), MapSet.member?(seen, target)} do
+    case {Map.get(index.nodes, target), MapSet.member?(seen, target)} do
       {%{resolution: :resolved} = external, false} ->
-        children = Enum.map(external.fields, &external_child(&1, index, MapSet.put(seen, target)))
+        children =
+          Enum.map(
+            external.fields,
+            &external_child(&1, external.id, index, MapSet.put(seen, target))
+          )
+
         field |> Map.put(:type, "object") |> Map.put(:children, children)
 
       _ ->
@@ -97,13 +108,20 @@ defmodule BubbleEx.Db.Xano do
 
   defp maybe_external_children(field, _type, _index, _seen), do: field
 
-  defp external_child(external_field, index, seen) do
-    %{
-      name: snake(external_field.caption || external_field.id),
+  defp external_child(external_field, parent, index, seen) do
+    name = BubbleEx.Db.Encoder.Plan.field_name(index, parent, external_field)
+
+    child = %{
+      name: snake(name),
       type: xano_external_type(external_field.type),
       style: external_style(external_field.type)
     }
-    |> maybe_external_children(external_field.type, index, seen)
+
+    if BubbleEx.Db.Encoder.Plan.cycle_edge?(index, parent, external_field.id) do
+      %{child | type: "json"}
+    else
+      maybe_external_children(child, external_field.type, index, seen)
+    end
   end
 
   defp xano_external_type(%{type: :scalar, scalar: scalar}),
