@@ -130,4 +130,50 @@ defmodule BubbleEx.Db.ConvexTest do
     # the import line always names defineTable; only an actual table opens "defineTable({"
     refute ts =~ "defineTable({"
   end
+
+  test "renders reusable validators with recursive fallbacks" do
+    id = "api.apiconnector2.a.call.Node"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+      |> Map.put(:external_types, [
+        %{
+          id: id,
+          resolution: :resolved,
+          fields: [
+            %{
+              id: "name",
+              caption: "Name",
+              type: %{type: :scalar, scalar: :text, cardinality: :one}
+            },
+            %{
+              id: "child",
+              caption: "Child",
+              type: %{type: :external, target: id, cardinality: :one}
+            }
+          ]
+        }
+      ])
+
+    assert {:ok, ts} = Convex.encode(db, external_types: :preserve)
+    assert ts =~ "const nodeValidator = v.object({"
+    assert ts =~ "child: v.optional(v.union(v.any(), v.null()))"
+    assert ts =~ "payload: nodeValidator"
+  end
+
+  test "uses v.any fallback in opaque mode without undeclared validators" do
+    id = "api.apiconnector2.a.call.Node"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+      |> Map.put(:external_types, [])
+
+    assert {:ok, ts} = Convex.encode(db, external_types: :opaque)
+    assert ts =~ "payload: v.any()"
+    refute ts =~ "nodeValidator"
+  end
 end

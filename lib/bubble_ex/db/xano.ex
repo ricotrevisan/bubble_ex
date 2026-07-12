@@ -32,7 +32,7 @@ defmodule BubbleEx.Db.Xano do
 
   @behaviour BubbleEx.Db.Encoder
 
-  @type opts :: [naming: :proper | :id]
+  @type opts :: [naming: :proper | :id, external_types: :preserve | :opaque | :legacy]
 
   @note %{
     _note:
@@ -46,33 +46,74 @@ defmodule BubbleEx.Db.Xano do
   def encode(parsed_map, opts \\ []) do
     rel_index = relationship_index(parsed_map)
 
+    external_index =
+      if Keyword.get(opts, :external_types, :legacy) == :preserve,
+        do: Map.new(Map.get(parsed_map, :external_types, []), &{&1.id, &1}),
+        else: %{}
+
     tables =
       parsed_map
       |> Map.get(:tables, [])
       |> Enum.reject(&(&1.group == :api))
-      |> Enum.map(&encode_table(&1, rel_index, opts))
+      |> prepare_tables(opts)
+      |> Enum.map(&encode_table(&1, rel_index, external_index, opts))
 
     {:ok, Jason.encode!([@note | tables], pretty: true) <> "\n"}
   end
 
-  defp encode_table(table, rel_index, opts) do
+  defp encode_table(table, rel_index, external_index, opts) do
     fields =
       table.columns
       |> Enum.reject(& &1.deleted)
-      |> Enum.map(&encode_field(&1, rel_index, opts))
+      |> Enum.map(&encode_field(&1, rel_index, external_index, opts))
 
     %{name: snake(table_name(table, opts)), fields: fields}
   end
 
-  defp encode_field(column, rel_index, opts) do
+  defp encode_field(column, rel_index, external_index, opts) do
     %{
       name: snake(column_name(column, opts)),
       type: xano_type(column.type),
-      style: style(column.type)
+      style: external_style(column.type)
     }
+    |> maybe_external_children(column.type, external_index, MapSet.new())
     |> maybe_enum_values(column.type)
     |> maybe_description(column, rel_index, opts)
   end
+
+  defp external_style(%{type: :external, cardinality: :many}), do: "list"
+  defp external_style(type), do: style(type)
+
+  defp maybe_external_children(field, %{type: :external, target: target}, index, seen) do
+    case {Map.get(index, target), MapSet.member?(seen, target)} do
+      {%{resolution: :resolved} = external, false} ->
+        children = Enum.map(external.fields, &external_child(&1, index, MapSet.put(seen, target)))
+        field |> Map.put(:type, "object") |> Map.put(:children, children)
+
+      _ ->
+        Map.put(field, :type, "json")
+    end
+  end
+
+  defp maybe_external_children(field, _type, _index, _seen), do: field
+
+  defp external_child(external_field, index, seen) do
+    %{
+      name: snake(external_field.caption || external_field.id),
+      type: xano_external_type(external_field.type),
+      style: external_style(external_field.type)
+    }
+    |> maybe_external_children(external_field.type, index, seen)
+  end
+
+  defp xano_external_type(%{type: :scalar, scalar: scalar}),
+    do:
+      %{text: "text", number: "decimal", boolean: "bool", date: "timestamp", date_unix: "int"}[
+        scalar
+      ]
+
+  defp xano_external_type(%{type: :external}), do: "object"
+  defp xano_external_type(_), do: "json"
 
   # Lists are a base type with `style: "list"`; everything else is `single`.
   defp style(%{is_array: true}), do: "list"
@@ -138,6 +179,8 @@ defmodule BubbleEx.Db.Xano do
   defp xano_type(%{type: :reference}), do: "text"
   defp xano_type(%{type: :enum}), do: "enum"
   defp xano_type(%{type: :api}), do: "text"
+  defp xano_type(%{type: :external}), do: "object"
+  defp xano_type(%{type: :opaque_external}), do: "json"
   defp xano_type(%{type: :custom, custom_type: "bubble_image"}), do: "text"
   defp xano_type(%{type: :custom, custom_type: "bubble_file"}), do: "text"
   defp xano_type(%{type: :custom}), do: "json"
@@ -174,4 +217,20 @@ defmodule BubbleEx.Db.Xano do
 
     if cleaned == "", do: "_", else: cleaned
   end
+
+  defp prepare_tables(tables, opts) do
+    mode = Keyword.get(opts, :external_types, :legacy)
+
+    Enum.map(tables, fn table ->
+      %{table | columns: Enum.map(table.columns, &prepare_column(&1, mode))}
+    end)
+  end
+
+  defp prepare_column(%{type: %{type: :external}} = column, :opaque),
+    do: %{column | type: %{type: :opaque_external}}
+
+  defp prepare_column(%{type: %{type: :external}} = column, :legacy),
+    do: %{column | type: %{type: :api}}
+
+  defp prepare_column(column, _), do: column
 end

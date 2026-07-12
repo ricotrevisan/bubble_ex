@@ -166,4 +166,50 @@ defmodule BubbleEx.Db.ZodTest do
     assert schema =~ "export const SurveyResponseSchema = z.object({"
     assert schema =~ "export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;"
   end
+
+  test "renders reusable loose External API schemas with getter recursion" do
+    id = "api.apiconnector2.a.call.Node"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+      |> Map.put(:external_types, [
+        %{
+          id: id,
+          resolution: :resolved,
+          fields: [
+            %{
+              id: "name",
+              caption: "Name",
+              type: %{type: :scalar, scalar: :text, cardinality: :one}
+            },
+            %{
+              id: "children",
+              caption: "Children",
+              type: %{type: :external, target: id, cardinality: :many}
+            }
+          ]
+        }
+      ])
+
+    assert {:ok, schema} = Zod.encode(db, external_types: :preserve)
+    assert schema =~ "export const NodeSchema = z.looseObject({"
+    assert schema =~ "get Children() { return z.array(NodeSchema).nullish(); }"
+    assert schema =~ "payload: NodeSchema.nullish()"
+  end
+
+  test "uses JSON fallback in opaque mode without undeclared schemas" do
+    id = "api.apiconnector2.a.call.Node"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+      |> Map.put(:external_types, [])
+
+    assert {:ok, schema} = Zod.encode(db, external_types: :opaque)
+    assert schema =~ "payload: z.json().nullish()"
+    refute schema =~ "NodeSchema"
+  end
 end

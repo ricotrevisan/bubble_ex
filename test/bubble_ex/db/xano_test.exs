@@ -228,4 +228,51 @@ defmodule BubbleEx.Db.XanoTest do
     assert table(decoded, "thing")
     refute table(decoded, "x.y")
   end
+
+  test "inlines resolved External API shapes and degrades recursion to json" do
+    id = "api.apiconnector2.a.call.Node"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+      |> Map.put(:external_types, [
+        %{
+          id: id,
+          resolution: :resolved,
+          fields: [
+            %{
+              id: "name",
+              caption: "Name",
+              type: %{type: :scalar, scalar: :text, cardinality: :one}
+            },
+            %{
+              id: "child",
+              caption: "Child",
+              type: %{type: :external, target: id, cardinality: :one}
+            }
+          ]
+        }
+      ])
+
+    [thing] = encode(db, external_types: :preserve) |> tables()
+    payload = field(thing, "payload")
+    assert payload["type"] == "object"
+    assert Enum.find(payload["children"], &(&1["name"] == "name"))["type"] == "text"
+    assert Enum.find(payload["children"], &(&1["name"] == "child"))["type"] == "json"
+  end
+
+  test "suppresses inline shapes in opaque mode" do
+    id = "api.apiconnector2.a.call.Node"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+      |> Map.put(:external_types, [])
+
+    [thing] = encode(db, external_types: :opaque) |> tables()
+    assert field(thing, "payload")["type"] == "json"
+    refute Map.has_key?(field(thing, "payload"), "children")
+  end
 end

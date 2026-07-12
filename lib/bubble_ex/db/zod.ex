@@ -18,7 +18,7 @@ defmodule BubbleEx.Db.Zod do
 
   @behaviour BubbleEx.Db.Encoder
 
-  @type opts :: [naming: :proper | :id | nil]
+  @type opts :: [naming: :proper | :id | nil, external_types: :preserve | :opaque | :legacy]
 
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
@@ -27,10 +27,13 @@ defmodule BubbleEx.Db.Zod do
       parsed_map
       |> Map.get(:tables, [])
       |> Enum.reject(&(&1.group == :api))
+      |> prepare_tables(parsed_map, opts)
 
+    external = encode_external_types(parsed_map, opts)
     blocks = Enum.map_join(tables, "\n\n", &encode_table(&1, opts))
 
-    {:ok, header() <> blocks <> "\n"}
+    body = Enum.reject([external, blocks], &(&1 == "")) |> Enum.join("\n\n")
+    {:ok, header() <> body <> "\n"}
   end
 
   defp header, do: "import { z } from 'zod';\n\n"
@@ -75,6 +78,14 @@ defmodule BubbleEx.Db.Zod do
   defp base_expr(%{type: :reference}), do: "z.string()"
   defp base_expr(%{type: :enum}), do: "z.string()"
   defp base_expr(%{type: :api}), do: "z.string()"
+
+  defp base_expr(%{type: :external, target: target, cardinality: cardinality}) do
+    expr = external_schema_name(target)
+    if cardinality == :many, do: "z.array(#{expr})", else: expr
+  end
+
+  defp base_expr(%{type: :opaque_external, cardinality: :many}), do: "z.array(z.json())"
+  defp base_expr(%{type: :opaque_external}), do: "z.json()"
   defp base_expr(%{type: :custom, custom_type: "bubble_image"}), do: "z.string()"
   defp base_expr(%{type: :custom, custom_type: "bubble_file"}), do: "z.string()"
   defp base_expr(%{type: :custom}), do: "z.object({}).passthrough()"
@@ -157,4 +168,86 @@ defmodule BubbleEx.Db.Zod do
     |> String.replace("\\", "\\\\")
     |> String.replace("'", "\\'")
   end
+
+  defp encode_external_types(parsed_map, opts) do
+    if Keyword.get(opts, :external_types, :legacy) == :preserve do
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map_join("\n\n", &external_schema/1)
+    else
+      ""
+    end
+  end
+
+  defp external_schema(external) do
+    fields = Enum.map_join(external.fields, "\n", &external_field(&1, external.id))
+    "export const #{external_schema_name(external.id)} = z.looseObject({\n#{fields}\n});"
+  end
+
+  defp external_field(%{type: %{type: :external, target: target} = type} = field, parent)
+       when target == parent do
+    expr =
+      if type.cardinality == :many,
+        do: "z.array(#{external_schema_name(target)})",
+        else: external_schema_name(target)
+
+    "  get #{field_key(field.caption || field.id)}() { return #{expr}.nullish(); },"
+  end
+
+  defp external_field(field, _parent) do
+    "  #{field_key(field.caption || field.id)}: #{external_expr(field.type)}.nullish(),"
+  end
+
+  defp external_expr(%{type: :scalar, scalar: scalar, cardinality: cardinality}) do
+    base =
+      %{
+        text: "z.string()",
+        number: "z.number()",
+        boolean: "z.boolean()",
+        date: "z.string().datetime()",
+        date_unix: "z.number().int()"
+      }[scalar]
+
+    if cardinality == :many, do: "z.array(#{base})", else: base
+  end
+
+  defp external_expr(%{type: :external, target: target, cardinality: :many}),
+    do: "z.array(#{external_schema_name(target)})"
+
+  defp external_expr(%{type: :external, target: target}), do: external_schema_name(target)
+  defp external_expr(_), do: "z.json()"
+
+  defp external_schema_name(id),
+    do: id |> String.split(".") |> List.last() |> pascal_case() |> Kernel.<>("Schema")
+
+  defp prepare_tables(tables, parsed_map, opts) do
+    mode = Keyword.get(opts, :external_types, :legacy)
+
+    resolved =
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> MapSet.new(& &1.id)
+
+    Enum.map(tables, fn table ->
+      %{table | columns: Enum.map(table.columns, &prepare_column(&1, mode, resolved))}
+    end)
+  end
+
+  defp prepare_column(%{type: %{type: :external, target: target}} = column, :preserve, resolved),
+    do:
+      if(MapSet.member?(resolved, target),
+        do: column,
+        else: %{column | type: %{type: :opaque_external, cardinality: column.type.cardinality}}
+      )
+
+  defp prepare_column(%{type: %{type: :external}} = column, :opaque, _),
+    do: %{column | type: %{type: :opaque_external, cardinality: column.type.cardinality}}
+
+  defp prepare_column(%{type: %{type: :external}} = column, :legacy, _),
+    do: %{column | type: %{type: :api, custom_type: column.type.target}}
+
+  defp prepare_column(column, _, _), do: column
 end

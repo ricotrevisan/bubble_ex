@@ -26,7 +26,7 @@ defmodule BubbleEx.Db.Convex do
 
   @behaviour BubbleEx.Db.Encoder
 
-  @type opts :: [naming: :proper | :id]
+  @type opts :: [naming: :proper | :id, external_types: :preserve | :opaque | :legacy]
 
   @header """
   // convex/schema.ts
@@ -45,10 +45,18 @@ defmodule BubbleEx.Db.Convex do
       parsed_map
       |> Map.get(:tables, [])
       |> Enum.reject(&(&1.group == :api))
+      |> prepare_tables(parsed_map, opts)
 
     table_blocks = Enum.map_join(tables, "\n", &encode_table(&1, opts))
 
-    schema = @header <> "\nexport default defineSchema({\n" <> table_blocks <> "});\n"
+    external = encode_external_types(parsed_map, opts)
+
+    schema =
+      @header <>
+        "\n" <>
+        external <>
+        if(external == "", do: "", else: "\n\n") <>
+        "export default defineSchema({\n" <> table_blocks <> "});\n"
 
     {:ok, schema}
   end
@@ -87,6 +95,8 @@ defmodule BubbleEx.Db.Convex do
   defp base_type(%{type: :reference}), do: "v.string()"
   defp base_type(%{type: :enum}), do: "v.string()"
   defp base_type(%{type: :api}), do: "v.string()"
+  defp base_type(%{type: :external, target: target}), do: external_validator(target)
+  defp base_type(%{type: :opaque_external}), do: "v.any()"
   defp base_type(%{type: :custom, custom_type: "bubble_image"}), do: "v.string()"
   defp base_type(%{type: :custom, custom_type: "bubble_file"}), do: "v.string()"
   defp base_type(%{type: :custom}), do: "v.any()"
@@ -137,4 +147,79 @@ defmodule BubbleEx.Db.Convex do
     {head, tail} = String.split_at(word, 1)
     String.upcase(head) <> tail
   end
+
+  defp encode_external_types(parsed_map, opts) do
+    if Keyword.get(opts, :external_types, :legacy) == :preserve do
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map_join("\n", &external_definition/1)
+    else
+      ""
+    end
+  end
+
+  defp external_definition(external) do
+    fields =
+      Enum.map_join(external.fields, "\n", fn field ->
+        "  #{identifier(field.caption || field.id)}: v.optional(v.union(#{external_expr(field.type, external.id)}, v.null())),"
+      end)
+
+    "const #{external_validator(external.id)} = v.object({\n#{fields}\n});"
+  end
+
+  defp external_expr(%{type: :scalar, scalar: scalar, cardinality: cardinality}, _parent) do
+    base =
+      %{
+        text: "v.string()",
+        number: "v.float64()",
+        boolean: "v.boolean()",
+        date: "v.string()",
+        date_unix: "v.float64()"
+      }[scalar]
+
+    if cardinality == :many, do: "v.array(#{base})", else: base
+  end
+
+  defp external_expr(%{type: :external, target: target}, parent) when target == parent,
+    do: "v.any()"
+
+  defp external_expr(%{type: :external, target: target, cardinality: :many}, _),
+    do: "v.array(#{external_validator(target)})"
+
+  defp external_expr(%{type: :external, target: target}, _), do: external_validator(target)
+  defp external_expr(_, _), do: "v.any()"
+
+  defp external_validator(id),
+    do: id |> String.split(".") |> List.last() |> identifier() |> Kernel.<>("Validator")
+
+  defp prepare_tables(tables, parsed_map, opts) do
+    mode = Keyword.get(opts, :external_types, :legacy)
+
+    resolved =
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> MapSet.new(& &1.id)
+
+    Enum.map(tables, fn table ->
+      %{table | columns: Enum.map(table.columns, &prepare_column(&1, mode, resolved))}
+    end)
+  end
+
+  defp prepare_column(%{type: %{type: :external, target: target}} = column, :preserve, resolved),
+    do:
+      if(MapSet.member?(resolved, target),
+        do: column,
+        else: %{column | type: %{type: :opaque_external}}
+      )
+
+  defp prepare_column(%{type: %{type: :external}} = column, :opaque, _),
+    do: %{column | type: %{type: :opaque_external}}
+
+  defp prepare_column(%{type: %{type: :external}} = column, :legacy, _),
+    do: %{column | type: %{type: :api}}
+
+  defp prepare_column(column, _, _), do: column
 end
