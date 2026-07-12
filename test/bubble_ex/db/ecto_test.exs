@@ -32,7 +32,7 @@ defmodule BubbleEx.Db.EctoTest do
         col("_id", "_id", %{type: :string}, primary_key: true)
       ])
 
-    assert {:ok, code} = Ecto.encode(db)
+    assert {:ok, code} = Ecto.encode(db, external_types: :preserve)
     assert code =~ "defmodule MyApp.Thing do"
     assert code =~ "use Ecto.Schema"
     assert code =~ "import Ecto.Changeset"
@@ -260,5 +260,37 @@ defmodule BubbleEx.Db.EctoTest do
 
     assert {:ok, code} = Ecto.encode(db)
     assert code =~ "defmodule MyApp.N3DModels do"
+  end
+
+  test "renders resolved External API types as identity-free embeds with map storage" do
+    id = "api.apiconnector2.a.call.Shape"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+
+    db =
+      Map.put(db, :external_types, [
+        %{
+          id: id,
+          resolution: :resolved,
+          fields: [
+            %{
+              id: "value",
+              caption: "Value",
+              type: %{type: :scalar, scalar: :text, cardinality: :one}
+            }
+          ]
+        }
+      ])
+
+    assert {:ok, code} = Ecto.encode(db, external_types: :preserve)
+    assert code =~ "defmodule MyApp.External.Shape do"
+    assert code =~ "@primary_key false"
+    assert code =~ "embedded_schema do"
+    assert code =~ "embeds_one :payload, MyApp.External.Shape"
+    assert code =~ "cast_embed(:payload)"
+    assert code =~ "add :payload, :map"
   end
 end

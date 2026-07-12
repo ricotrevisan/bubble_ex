@@ -31,7 +31,7 @@ defmodule BubbleEx.Db.AshTest do
         col("name_field", "name", %{type: :string})
       ])
 
-    assert {:ok, code} = Ash.encode(db)
+    assert {:ok, code} = Ash.encode(db, external_types: :preserve)
     assert code =~ "defmodule MyApp.Thing do"
     assert code =~ "use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer"
     assert code =~ ~s[    table "thing"]
@@ -240,5 +240,35 @@ defmodule BubbleEx.Db.AshTest do
     assert code =~ "re-key after"
     assert code =~ "mix igniter.new"
     assert code =~ "mix ash.codegen --dev"
+  end
+
+  test "renders resolved External API types as identity-free embedded resources" do
+    id = "api.apiconnector2.a.call.Shape"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+
+    db =
+      Map.put(db, :external_types, [
+        %{
+          id: id,
+          resolution: :resolved,
+          fields: [
+            %{
+              id: "value",
+              caption: "Value",
+              type: %{type: :scalar, scalar: :text, cardinality: :one}
+            }
+          ]
+        }
+      ])
+
+    assert {:ok, code} = Ash.encode(db, external_types: :preserve)
+    assert code =~ "defmodule MyApp.External.Shape do"
+    assert code =~ "use Ash.Resource, data_layer: :embedded"
+    refute code =~ "primary_key?: true, allow_nil?: false"
+    assert code =~ "attribute :payload, MyApp.External.Shape"
   end
 end

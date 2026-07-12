@@ -57,12 +57,14 @@ defmodule BubbleEx.Db.Ecto do
 
     relationships = scalar_relationships(parsed_map)
 
+    external = encode_external_types(parsed_map, opts)
+
     body =
       Enum.map_join(tables, "\n\n", fn table ->
         encode_table(table, relationships, opts)
       end)
 
-    {:ok, body <> "\n"}
+    {:ok, Enum.reject([external, body], &(&1 == "")) |> Enum.join("\n\n") |> Kernel.<>("\n")}
   end
 
   # Only scalar references become associations/indexes; list references have no
@@ -96,6 +98,7 @@ defmodule BubbleEx.Db.Ecto do
 
     cast_fields =
       value_cols
+      |> Enum.reject(&(&1.type.type == :external))
       |> Enum.map_join(", ", fn column -> ":" <> cast_name(column, table_refs, opts) end)
 
     "# schema module\n" <>
@@ -107,7 +110,7 @@ defmodule BubbleEx.Db.Ecto do
       fields <>
       "\n  end\n\n" <>
       "  def changeset(rec, attrs) do\n" <>
-      "    rec |> cast(attrs, [#{cast_fields}]) |> validate_required([#{required(pk_cols, opts)}])\n" <>
+      "    rec |> cast(attrs, [#{cast_fields}])#{embed_casts(value_cols, opts)} |> validate_required([#{required(pk_cols, opts)}])\n" <>
       "  end\n" <>
       "end"
   end
@@ -124,9 +127,24 @@ defmodule BubbleEx.Db.Ecto do
 
   defp field_line(column, table_refs, opts) do
     case Enum.find(table_refs, fn {from, _to, _dir} -> from.id == column.id end) do
-      nil -> "    field :#{field_name(column, opts)}, #{ecto_type(column.type)}"
+      nil -> ecto_field_line(column, opts)
       {from, to, _dir} -> belongs_to_line(from, to, opts)
     end
+  end
+
+  defp ecto_field_line(%{type: %{type: :external} = type} = column, opts) do
+    macro = if type.cardinality == :many, do: "embeds_many", else: "embeds_one"
+
+    "    #{macro} :#{field_name(column, opts)}, #{external_module(type.target, opts)}, on_replace: :delete"
+  end
+
+  defp ecto_field_line(column, opts),
+    do: "    field :#{field_name(column, opts)}, #{ecto_type(column.type)}"
+
+  defp embed_casts(columns, opts) do
+    columns
+    |> Enum.filter(&(&1.type.type == :external))
+    |> Enum.map_join("", &" |> cast_embed(:#{field_name(&1, opts)})")
   end
 
   # The association name is the Bubble field name, but Ecto requires a distinct
@@ -195,10 +213,13 @@ defmodule BubbleEx.Db.Ecto do
   # add their own field with the mapped Ecto type.
   defp add_line(column, table_refs, opts) do
     case Enum.find(table_refs, fn {from, _to, _dir} -> from.id == column.id end) do
-      nil -> "      add :#{field_name(column, opts)}, #{ecto_type(column.type)}"
+      nil -> "      add :#{field_name(column, opts)}, #{migration_type(column.type)}"
       {from, _to, _dir} -> "      add :#{fk_column(from, opts)}, :string"
     end
   end
+
+  defp migration_type(%{type: type}) when type in [:external, :opaque_external], do: ":map"
+  defp migration_type(type), do: ecto_type(type)
 
   defp index_line({from, _to, _dir}, table_str, opts) do
     "    create index(#{quoted(table_str)}, [:#{fk_column(from, opts)}])"
@@ -212,6 +233,7 @@ defmodule BubbleEx.Db.Ecto do
   defp base_type(%{type: :reference}), do: ":string"
   defp base_type(%{type: :enum}), do: ":string"
   defp base_type(%{type: :api}), do: ":string"
+  defp base_type(%{type: type}) when type in [:external, :opaque_external], do: ":map"
   defp base_type(%{type: :custom, custom_type: "bubble_image"}), do: ":string"
   defp base_type(%{type: :custom, custom_type: "bubble_file"}), do: ":string"
   defp base_type(%{type: :custom}), do: ":map"
@@ -220,6 +242,70 @@ defmodule BubbleEx.Db.Ecto do
   defp base_type(%{type: :float}), do: ":float"
   defp base_type(%{type: :string}), do: ":string"
   defp base_type(_type), do: ":string"
+
+  defp encode_external_types(parsed_map, opts) do
+    if Keyword.get(opts, :external_types, :legacy) == :preserve do
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map_join("\n\n", &external_schema(&1, opts))
+    else
+      ""
+    end
+  end
+
+  defp external_schema(external, opts) do
+    fields = Enum.map_join(external.fields, "\n", &external_field(&1, external.id, opts))
+
+    scalar_fields =
+      external.fields
+      |> Enum.reject(&(&1.type.type == :external))
+      |> Enum.map_join(", ", &(":" <> Naming.snake_case(&1.caption || &1.id)))
+
+    embeds =
+      external.fields
+      |> Enum.filter(&(&1.type.type == :external and &1.type.target != external.id))
+      |> Enum.map_join("", &" |> cast_embed(:#{Naming.snake_case(&1.caption || &1.id)})")
+
+    "defmodule #{external_module(external.id, opts)} do\n" <>
+      "  use Ecto.Schema\n" <>
+      "  import Ecto.Changeset\n" <>
+      "  @primary_key false\n\n" <>
+      "  embedded_schema do\n#{fields}\n  end\n" <>
+      "\n  def changeset(value, attrs), do: value |> cast(attrs, [#{scalar_fields}])#{embeds}\n" <>
+      "end"
+  end
+
+  defp external_field(%{type: %{type: :scalar} = type} = field, _parent, _opts),
+    do: "    field :#{Naming.snake_case(field.caption || field.id)}, #{external_scalar(type)}"
+
+  defp external_field(%{type: %{type: :external, target: target}} = field, parent, opts)
+       when target != parent do
+    macro = if field.type.cardinality == :many, do: "embeds_many", else: "embeds_one"
+
+    "    #{macro} :#{Naming.snake_case(field.caption || field.id)}, #{external_module(target, opts)}"
+  end
+
+  defp external_field(field, _parent, _opts),
+    do: "    field :#{Naming.snake_case(field.caption || field.id)}, :map"
+
+  defp external_scalar(%{scalar: scalar, cardinality: cardinality}) do
+    base =
+      %{
+        text: ":string",
+        number: ":float",
+        boolean: ":boolean",
+        date: ":utc_datetime_usec",
+        date_unix: ":integer"
+      }[scalar]
+
+    if cardinality == :many, do: "{:array, #{base}}", else: base
+  end
+
+  defp external_module(id, opts),
+    do:
+      "#{namespace(opts)}.External.#{id |> String.split(".") |> List.last() |> Naming.pascal_case()}"
 
   # Naming ----------------------------------------------------------------------
 

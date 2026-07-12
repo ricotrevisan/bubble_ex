@@ -47,7 +47,15 @@ defmodule BubbleEx.Db.Ash do
     resources =
       Enum.map_join(tables, "\n\n", &encode_table(&1, relationships, module_names, opts))
 
-    body = resources <> "\n\n" <> domain_module(tables, module_names, namespace)
+    external = encode_external_types(parsed_map, opts)
+
+    body =
+      Enum.reject(
+        [external, resources, domain_module(tables, module_names, namespace)],
+        &(&1 == "")
+      )
+      |> Enum.join("\n\n")
+
     {:ok, header(namespace) <> body <> "\n"}
   end
 
@@ -191,6 +199,8 @@ defmodule BubbleEx.Db.Ash do
   defp base_type(%{type: :reference}), do: ":string"
   defp base_type(%{type: :enum}), do: ":string"
   defp base_type(%{type: :api}), do: ":string"
+  defp base_type(%{type: :external, target: target}), do: external_module(target)
+  defp base_type(%{type: :opaque_external}), do: ":map"
   defp base_type(%{type: :custom, custom_type: "bubble_image"}), do: ":string"
   defp base_type(%{type: :custom, custom_type: "bubble_file"}), do: ":string"
   defp base_type(%{type: :custom}), do: ":map"
@@ -199,6 +209,64 @@ defmodule BubbleEx.Db.Ash do
   defp base_type(%{type: :float}), do: ":float"
   defp base_type(%{type: :string}), do: ":string"
   defp base_type(_type), do: ":string"
+
+  defp encode_external_types(parsed_map, opts) do
+    if Keyword.get(opts, :external_types, :legacy) == :preserve do
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map_join("\n\n", &external_resource(&1, opts))
+    else
+      ""
+    end
+  end
+
+  defp external_resource(external, opts) do
+    attributes = Enum.map_join(external.fields, "\n", &external_attribute(&1, external.id, opts))
+
+    "defmodule #{external_module(external.id, opts)} do\n" <>
+      "  use Ash.Resource, data_layer: :embedded\n\n" <>
+      "  attributes do\n#{attributes}\n  end\n" <>
+      "end"
+  end
+
+  defp external_attribute(%{type: %{type: :scalar} = type} = field, _parent, _opts),
+    do:
+      "    attribute :#{Naming.snake_case(field.caption || field.id)}, #{external_scalar(type)}, allow_nil?: true, public?: true"
+
+  defp external_attribute(%{type: %{type: :external, target: target}} = field, parent, opts)
+       when target != parent,
+       do:
+         "    attribute :#{Naming.snake_case(field.caption || field.id)}, #{external_edge_type(field.type, opts)}, allow_nil?: true, public?: true"
+
+  defp external_attribute(field, _parent, _opts),
+    do:
+      "    attribute :#{Naming.snake_case(field.caption || field.id)}, :map, allow_nil?: true, public?: true"
+
+  defp external_edge_type(%{target: target, cardinality: :many}, opts),
+    do: "{:array, #{external_module(target, opts)}}"
+
+  defp external_edge_type(%{target: target}, opts), do: external_module(target, opts)
+
+  defp external_scalar(%{scalar: scalar, cardinality: cardinality}) do
+    base =
+      %{
+        text: ":string",
+        number: ":float",
+        boolean: ":boolean",
+        date: ":utc_datetime_usec",
+        date_unix: ":integer"
+      }[scalar]
+
+    if cardinality == :many, do: "{:array, #{base}}", else: base
+  end
+
+  defp external_module(id, opts),
+    do:
+      "#{namespace(opts)}.External.#{id |> String.split(".") |> List.last() |> Naming.pascal_case()}"
+
+  defp external_module(id), do: external_module(id, [])
 
   # Naming --------------------------------------------------------------------
 
