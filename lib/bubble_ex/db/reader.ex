@@ -3,23 +3,39 @@ defmodule BubbleEx.Db.Reader do
   Module that reads a Bubble's app's payload and converts to an universal db format
   """
 
-  @type table_group() :: :api | :custom | :option
+  @type table_group() :: :custom | :option
 
-  @type column_type() :: %{
-          type:
-            :string
-            | :float
-            | :boolean
-            | :utc_datetime_usec
-            | :custom
-            | :reference
-            | :enum
-            | :api
-            | :unsupported,
-          custom_type: String.t() | nil,
-          is_array: boolean() | nil,
-          raw: String.t()
-        }
+  @type external_value() ::
+          %{type: :scalar, scalar: atom(), cardinality: :one | :many, raw: String.t()}
+          | %{
+              type: :external,
+              target: String.t(),
+              cardinality: :one | :many,
+              raw: String.t()
+            }
+          | %{
+              type: :opaque_external,
+              target: nil,
+              cardinality: :one | :many | :unknown,
+              raw: term()
+            }
+
+  @type column_type() ::
+          %{
+            type:
+              :string
+              | :float
+              | :boolean
+              | :utc_datetime_usec
+              | :custom
+              | :reference
+              | :enum
+              | :unsupported,
+            custom_type: String.t() | nil,
+            is_array: boolean() | nil,
+            raw: String.t()
+          }
+          | external_value()
 
   @type column() :: %{
           table_id: String.t(),
@@ -46,7 +62,9 @@ defmodule BubbleEx.Db.Reader do
   @type db_map() :: %{
           bubble_id: String.t(),
           tables: [table()],
-          relationships: [relationship()]
+          relationships: [relationship()],
+          external_types: [map()],
+          warnings: [map()]
         }
 
   # @table_types [:custom, :option, :api]
@@ -59,18 +77,18 @@ defmodule BubbleEx.Db.Reader do
 
   @spec parse(map()) :: {:ok, db_map()}
   def parse(attrs) do
-    attrs = normalize_export_shape(attrs)
-    bubble_id = attrs["_id"]
+    raw_attrs = attrs
+    normalized_attrs = normalize_export_shape(attrs)
+    bubble_id = normalized_attrs["_id"]
 
-    user_types = generate_tables(attrs, :custom)
-    option_sets = generate_tables(attrs, :option)
+    user_types = generate_tables(normalized_attrs, :custom)
+    option_sets = generate_tables(normalized_attrs, :option)
     tables = Enum.sort_by(user_types ++ option_sets, &{&1.name, &1.id})
     columns = flatten_columns(tables)
-
-    api = generate_tables(columns, :api)
-
-    columns = flatten_columns(tables ++ api)
     relationships = generate_relationships(columns)
+
+    {tables, external_types, warnings} =
+      BubbleEx.Db.Reader.ExternalTypes.resolve(tables, raw_attrs)
 
     db_map = %{
       bubble_id: bubble_id,
@@ -78,7 +96,9 @@ defmodule BubbleEx.Db.Reader do
       # option_sets: option_sets,
       # user_types: user_types,
       relationships:
-        Enum.sort_by(relationships, fn {from, _, _} -> {from.table_name, from.name, from.id} end)
+        Enum.sort_by(relationships, fn {from, _, _} -> {from.table_name, from.name, from.id} end),
+      external_types: external_types,
+      warnings: warnings
     }
 
     {:ok, db_map}
@@ -107,43 +127,6 @@ defmodule BubbleEx.Db.Reader do
         |> Enum.map(&generate_table(&1, :option))
     end
   end
-
-  defp generate_tables(columns, :api) do
-    columns
-    |> Enum.filter(&(&1.type.type == :api))
-    |> Enum.group_by(& &1.type.custom_type)
-    |> Enum.map(fn {table, _columns} ->
-      [table_id | [column_id | _]] = String.split(table, ".")
-
-      columns = [
-        %{
-          table_id: table_id,
-          table_name: table_id,
-          table_group: :api,
-          id: column_id,
-          name: column_id,
-          type: %{type: :string},
-          primary_key: false,
-          deleted: true
-        }
-      ]
-
-      %{
-        id: table_id,
-        name: table_id,
-        group: :api,
-        columns: columns
-      }
-    end)
-
-    # |> Enum.map(&generate_table(&1, :api))
-  end
-
-  # def generate_table(column, :api) do
-  #   %{
-
-  #   }
-  # end
 
   defp generate_table(table_data, table_group) do
     {table_id, data} = table_data

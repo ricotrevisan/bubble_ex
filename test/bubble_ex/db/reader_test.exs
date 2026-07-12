@@ -113,6 +113,189 @@ defmodule BubbleEx.Db.ReaderTest do
     end
   end
 
+  describe "parse/1 External API types" do
+    test "resolves the deterministic database-reachable API Connector v2 graph fail-soft" do
+      event = "api.apiconnector2.alpha.events.Event"
+      address = "api.apiconnector2.alpha.addresses.Address"
+      geo = "api.apiconnector2.beta.geo.Geo"
+      missing = "api.apiconnector2.alpha.addresses.Missing"
+
+      attrs = %{
+        "_id" => "synthetic-external-types",
+        "user_types" => %{
+          "order" => %{
+            "%d" => "Order",
+            "%f3" => %{
+              "shipping" => %{"%d" => "Shipping", "%v" => address},
+              "events" => %{"%d" => "Events", "%v" => "list." <> event},
+              "missing_a" => %{"%d" => "Missing A", "%v" => missing},
+              "missing_b" => %{"%d" => "Missing B", "%v" => missing},
+              "broken" => %{"%d" => "Broken", "%v" => "api."},
+              "deleted" => %{"%d" => "Deleted", "%v" => event, "%del" => true}
+            }
+          }
+        },
+        "settings" => %{
+          "client_safe" => %{
+            "apiconnector2" => %{
+              "alpha" => %{
+                "addresses" => %{
+                  "ret_value" => address,
+                  "types" =>
+                    Jason.encode!(%{
+                      address => %{
+                        "caption" => "Address",
+                        "fields" => %{
+                          "street" => %{
+                            "caption" => "Street",
+                            "path" => ["street"],
+                            "ret_btype" => "text"
+                          },
+                          "tags" => %{
+                            "caption" => "Tags",
+                            "path" => ["tags"],
+                            "ret_value" => "list.text"
+                          },
+                          "geo" => %{"path" => ["geo"], "ret_btype" => geo},
+                          "events" => %{
+                            "caption" => "Events",
+                            "path" => ["events"],
+                            "ret_btype" => "list." <> event
+                          }
+                        }
+                      }
+                    })
+                },
+                "events" => %{
+                  "ret_value" => event,
+                  "types" =>
+                    Jason.encode!(%{
+                      event => %{
+                        "caption" => "Event",
+                        "fields" => %{
+                          "at" => %{
+                            "caption" => "At",
+                            "path" => ["at"],
+                            "ret_btype" => "date_unix"
+                          },
+                          "children" => %{
+                            "caption" => "Children",
+                            "path" => ["children"],
+                            "ret_btype" => "list." <> event
+                          }
+                        }
+                      }
+                    })
+                }
+              },
+              "beta" => %{
+                "geo" => %{
+                  "ret_value" => geo,
+                  "types" =>
+                    Jason.encode!(%{
+                      geo => %{
+                        "caption" => "Geo",
+                        "fields" => %{"lat" => %{"path" => ["lat"], "ret_btype" => "number"}}
+                      }
+                    })
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, db} = Reader.parse(attrs)
+      order = Enum.find(db.tables, &(&1.id == "order"))
+
+      assert Enum.find(order.columns, &(&1.id == "shipping")).type == %{
+               type: :external,
+               target: address,
+               cardinality: :one,
+               raw: address
+             }
+
+      assert Enum.find(order.columns, &(&1.id == "events")).type == %{
+               type: :external,
+               target: event,
+               cardinality: :many,
+               raw: "list." <> event
+             }
+
+      assert Enum.find(order.columns, &(&1.id == "broken")).type == %{
+               type: :opaque_external,
+               target: nil,
+               cardinality: :unknown,
+               raw: "api."
+             }
+
+      assert Enum.map(db.external_types, & &1.id) == Enum.sort([address, event, geo, missing])
+      assert Enum.find(db.external_types, &(&1.id == event)).resolution == :resolved
+      assert Enum.find(db.external_types, &(&1.id == missing)).resolution == :opaque
+
+      event_type = Enum.find(db.external_types, &(&1.id == event))
+      assert Enum.find(event_type.fields, &(&1.id == "children")).type.target == event
+
+      missing_warning = Enum.find(db.warnings, &(&1.category == :exact_type_definition_missing))
+
+      assert Enum.map(missing_warning.occurrences, & &1.root.field_id) == [
+               "missing_a",
+               "missing_b"
+             ]
+
+      assert Enum.any?(db.warnings, &(&1.category == :invalid_descriptor))
+
+      reordered =
+        put_in(
+          attrs,
+          ["user_types", "order", "%f3"],
+          attrs["user_types"]["order"]["%f3"] |> Enum.reverse() |> Map.new()
+        )
+
+      assert Reader.parse(reordered) == {:ok, db}
+    end
+
+    test "keeps missing and contradictory registry metadata addressable" do
+      missing_connector = "api.apiconnector2.ghost.call.Shape"
+      conflict = "api.apiconnector2.alpha.call.Shape"
+      definition = fn scalar -> %{"fields" => %{"value" => %{"ret_btype" => scalar}}} end
+
+      attrs = %{
+        "_id" => "synthetic-failures",
+        "user_types" => %{
+          "item" => %{
+            "%d" => "Item",
+            "%f3" => %{
+              "ghost" => %{"%d" => "Ghost", "%v" => missing_connector},
+              "conflict" => %{"%d" => "Conflict", "%v" => conflict}
+            }
+          }
+        },
+        "settings" => %{
+          "client_safe" => %{
+            "apiconnector2" => %{
+              "alpha" => %{
+                "call" => %{
+                  "ret_value" => conflict,
+                  "types" => Jason.encode!(%{conflict => definition.("text")})
+                }
+              },
+              "copy" => %{
+                "other" => %{"types" => Jason.encode!(%{conflict => definition.("number")})}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, db} = Reader.parse(attrs)
+      assert Enum.find(db.external_types, &(&1.id == conflict)).resolution == :conflicted
+      assert Enum.find(db.external_types, &(&1.id == missing_connector)).resolution == :opaque
+      assert Enum.any?(db.warnings, &(&1.category == :conflicting_duplicate_definition))
+      assert Enum.any?(db.warnings, &(&1.category == :connector_missing))
+    end
+  end
+
   describe "parse/1 relationship targets" do
     test "a custom-type reference targets the referenced table's _id, not an arbitrary column" do
       # The target table's only declared field, "_archived", sorts *before* the
