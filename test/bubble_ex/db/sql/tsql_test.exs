@@ -146,4 +146,28 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
     assert {:ok, sql} = Tsql.encode(db)
     refute sql =~ "x.y"
   end
+
+  test "uses nullable-safe JSON checks, naming policy, and attested native JSON" do
+    id = "api.apiconnector2.a.call.Shape"
+
+    db =
+      thing_db([
+        col("payload_id", "Payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+
+    assert {:ok, sql} = Tsql.encode(db, external_types: :preserve, naming: :id)
+
+    assert sql =~
+             "[payload_id] NVARCHAR(MAX) CHECK ([payload_id] IS NULL OR ISJSON([payload_id]) = 1)"
+
+    assert {:ok, native} =
+             Tsql.encode(db,
+               external_types: :preserve,
+               external_type_capabilities: %{tsql: [:native_json]}
+             )
+
+    assert native =~ "[Payload] JSON"
+    assert {:ok, legacy} = Tsql.encode(db, external_types: :legacy)
+    refute legacy =~ "ISJSON"
+  end
 end

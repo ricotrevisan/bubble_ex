@@ -54,7 +54,7 @@ defmodule BubbleEx.Db.Sql.Tsql do
 
     column_lines =
       Enum.map_join(columns, ",\n", fn column ->
-        "  #{quote_ident(column_name(column, opts))} #{which_type(column)}"
+        "  #{quote_ident(column_name(column, opts))} #{which_type(column, opts)}"
       end)
 
     pk_line =
@@ -92,14 +92,31 @@ defmodule BubbleEx.Db.Sql.Tsql do
   # Type mapping (IR -> T-SQL) ---------------------------------------------------
 
   # List fields collapse to a single text column with a junction-table hint.
-  defp which_type(%{type: %{is_array: true} = type}),
+  defp which_type(%{type: %{is_array: true} = type}, _opts),
     do: "NVARCHAR(MAX)  -- list<#{base_type_name(type)}>: consider a junction table"
 
   # Key-bearing columns stay indexable at NVARCHAR(450); everything else NVARCHAR(MAX).
-  defp which_type(%{type: %{type: :reference}}), do: "NVARCHAR(450)"
-  defp which_type(%{type: %{type: :enum}}), do: "NVARCHAR(450)"
-  defp which_type(%{primary_key: true, type: %{type: :string}}), do: "NVARCHAR(450)"
-  defp which_type(%{type: type}), do: base_type(type)
+  defp which_type(%{type: %{type: :reference}}, _opts), do: "NVARCHAR(450)"
+  defp which_type(%{type: %{type: :enum}}, _opts), do: "NVARCHAR(450)"
+  defp which_type(%{primary_key: true, type: %{type: :string}}, _opts), do: "NVARCHAR(450)"
+
+  defp which_type(%{type: %{type: type}} = column, opts)
+       when type in [:external, :opaque_external] do
+    mode = Keyword.get(opts, :external_types, :legacy)
+    name = quote_ident(column_name(column, opts))
+    native? = :native_json in capability(opts, :tsql)
+
+    cond do
+      mode == :legacy -> "NVARCHAR(MAX)"
+      native? -> "JSON"
+      true -> "NVARCHAR(MAX) CHECK (#{name} IS NULL OR ISJSON(#{name}) = 1)"
+    end
+  end
+
+  defp which_type(%{type: type}, _opts), do: base_type(type)
+
+  defp capability(opts, target),
+    do: opts |> Keyword.get(:external_type_capabilities, %{}) |> Map.get(target, [])
 
   defp base_type(%{type: :api}), do: "NVARCHAR(MAX)"
   defp base_type(%{type: :custom}), do: "NVARCHAR(MAX)"

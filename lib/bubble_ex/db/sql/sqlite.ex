@@ -83,7 +83,15 @@ defmodule BubbleEx.Db.Sql.Sqlite do
 
   defp column_cell(column, opts) do
     {type, comment} = which_type(column.type)
-    {"  #{quote_ident(column_name(column, opts))} #{type}#{null_clause(column)}", comment}
+    name = quote_ident(column_name(column, opts))
+
+    check =
+      if column.type.type in [:external, :opaque_external] and
+           Keyword.get(opts, :external_types, :legacy) != :legacy,
+         do: " CHECK (#{name} IS NULL OR json_valid(#{name}))",
+         else: ""
+
+    {"  #{name} #{type}#{null_clause(column)}#{check}", comment}
   end
 
   # A table-level PRIMARY KEY on a non-INTEGER column does not imply NOT NULL in
@@ -126,6 +134,7 @@ defmodule BubbleEx.Db.Sql.Sqlite do
   defp base_type(%{type: :reference}), do: "TEXT"
   defp base_type(%{type: :enum}), do: "TEXT"
   defp base_type(%{type: :api}), do: "TEXT"
+  defp base_type(%{type: type}) when type in [:external, :opaque_external], do: "TEXT"
   defp base_type(%{type: :custom}), do: "TEXT"
   defp base_type(%{type: :utc_datetime_usec}), do: "TEXT"
   defp base_type(%{type: :boolean}), do: "INTEGER"

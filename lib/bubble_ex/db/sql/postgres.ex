@@ -23,6 +23,7 @@ defmodule BubbleEx.Db.Sql.Postgres do
     sections =
       [
         encode_schemas(tables),
+        encode_external_types(parsed_map, opts),
         Enum.map_join(tables, "\n\n", &encode_table(&1, opts)),
         encode_foreign_keys(parsed_map, opts)
       ]
@@ -45,7 +46,7 @@ defmodule BubbleEx.Db.Sql.Postgres do
 
     column_lines =
       Enum.map_join(columns, ",\n", fn column ->
-        ~s(  #{quote_ident(column_name(column, opts))} #{which_type(column.type)})
+        ~s(  #{quote_ident(column_name(column, opts))} #{which_type(column.type, opts)})
       end)
 
     pk_line =
@@ -77,8 +78,66 @@ defmodule BubbleEx.Db.Sql.Postgres do
 
   # Type mapping (IR -> Postgres) ------------------------------------------------
 
-  defp which_type(%{is_array: true} = type), do: base_type(type) <> "[]"
-  defp which_type(type), do: base_type(type)
+  defp which_type(%{type: :external, target: target, cardinality: cardinality}, opts) do
+    base =
+      case Keyword.get(opts, :external_types, :legacy) do
+        :preserve -> quote_ident(external_name(target))
+        :opaque -> "jsonb"
+        :legacy -> "text"
+      end
+
+    if cardinality == :many and base != "jsonb", do: base <> "[]", else: base
+  end
+
+  defp which_type(%{type: :opaque_external}, _opts), do: "jsonb"
+  defp which_type(%{is_array: true} = type, _opts), do: base_type(type) <> "[]"
+  defp which_type(type, _opts), do: base_type(type)
+
+  defp encode_external_types(parsed_map, opts) do
+    if Keyword.get(opts, :external_types, :legacy) == :preserve do
+      parsed_map
+      |> Map.get(:external_types, [])
+      |> Enum.filter(&(&1.resolution == :resolved))
+      |> Enum.map_join("\n", fn external ->
+        fields =
+          Enum.map_join(
+            external.fields,
+            ",\n",
+            &"  #{quote_ident(&1.caption || &1.id)} #{external_field_type(&1.type, external.id)}"
+          )
+
+        "CREATE TYPE #{quote_ident(external_name(external.id))} AS (\n#{fields}\n);"
+      end)
+    else
+      ""
+    end
+  end
+
+  defp external_field_type(%{type: :scalar, scalar: scalar, cardinality: cardinality}, _parent) do
+    base =
+      %{
+        text: "text",
+        number: "double precision",
+        boolean: "boolean",
+        date: "timestamptz",
+        date_unix: "bigint"
+      }[scalar]
+
+    if cardinality == :many, do: base <> "[]", else: base
+  end
+
+  defp external_field_type(%{type: :external, target: target}, parent) when target == parent,
+    do: "jsonb"
+
+  defp external_field_type(%{type: :external, target: target, cardinality: :many}, _),
+    do: quote_ident(external_name(target)) <> "[]"
+
+  defp external_field_type(%{type: :external, target: target}, _),
+    do: quote_ident(external_name(target))
+
+  defp external_field_type(_, _), do: "jsonb"
+
+  defp external_name(id), do: id |> String.split(".") |> List.last()
 
   defp base_type(%{type: :reference}), do: "text"
   defp base_type(%{type: :enum}), do: "text"

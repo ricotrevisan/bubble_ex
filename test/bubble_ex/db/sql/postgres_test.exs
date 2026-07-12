@@ -124,4 +124,32 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     assert {:ok, sql} = Postgres.encode(db)
     refute sql =~ "x.y"
   end
+
+  test "preserves resolved external shapes and keeps legacy output compatible" do
+    id = "api.apiconnector2.a.call.Shape"
+    column = col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+
+    db =
+      thing_db([column])
+      |> Map.put(:external_types, [
+        %{
+          id: id,
+          caption: "Shape",
+          resolution: :resolved,
+          fields: [
+            %{
+              id: "value",
+              caption: "Value",
+              type: %{type: :scalar, scalar: :text, cardinality: :one}
+            }
+          ]
+        }
+      ])
+
+    assert {:ok, sql} = Postgres.encode(db, external_types: :preserve)
+    assert sql =~ ~s(CREATE TYPE "Shape" AS)
+    assert sql =~ ~s("payload" "Shape")
+    assert {:ok, legacy} = Postgres.encode(db, external_types: :legacy)
+    assert legacy =~ ~s("payload" text)
+  end
 end

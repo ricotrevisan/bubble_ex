@@ -178,4 +178,18 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
     assert sql =~ ~s("keep" TEXT)
     refute sql =~ ~s("gone")
   end
+
+  test "uses nullable-safe JSON validation outside legacy mode" do
+    id = "api.apiconnector2.a.call.Shape"
+
+    db =
+      thing_db([
+        col("payload", "payload", %{type: :external, target: id, cardinality: :one, raw: id})
+      ])
+
+    assert {:ok, sql} = Sqlite.encode(db, external_types: :preserve)
+    assert sql =~ "\"payload\" TEXT CHECK (\"payload\" IS NULL OR json_valid(\"payload\"))"
+    assert {:ok, legacy} = Sqlite.encode(db, external_types: :legacy)
+    refute legacy =~ "json_valid"
+  end
 end
