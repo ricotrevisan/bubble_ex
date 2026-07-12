@@ -8,7 +8,7 @@ defmodule BubbleEx.Apps.Enricher do
 
   require Logger
   alias BubbleEx.Apps.Parser
-  alias BubbleEx.Db.{Dbml, Encoder, Reader}
+  alias BubbleEx.Db.{Encoder, Reader}
   alias BubbleEx.HTTP
 
   @doc """
@@ -177,21 +177,19 @@ defmodule BubbleEx.Apps.Enricher do
   # Private functions
 
   defp add_schemas(attrs, app_data, opts, legacy?, format) do
-    case Reader.parse(app_data) do
-      {:ok, parsed_map} ->
-        attrs
-        |> maybe_put_dbml(parsed_map, opts, legacy?)
-        |> maybe_put_schema(parsed_map, opts, format)
+    {:ok, parsed_map} = Reader.parse(app_data)
 
-      error ->
-        message = "Error parsing database diagram: #{inspect(error)}"
-        Logger.warning(message)
-        # Preserve the legacy contract: parse failures surface as the message in
-        # the DBML keys. :schema is simply left unset on error.
-        if legacy?,
-          do: attrs |> Map.put(:dbdiagram, message) |> Map.put(:dbml, message),
-          else: attrs
-    end
+    attrs
+    |> maybe_put_dbml(parsed_map, opts, legacy?)
+    |> maybe_put_schema(parsed_map, opts, format)
+  rescue
+    error ->
+      message = "Error parsing database diagram: #{Exception.message(error)}"
+      Logger.warning(message)
+
+      if legacy?,
+        do: attrs |> Map.put(:dbdiagram, message) |> Map.put(:dbml, message),
+        else: attrs
   end
 
   defp maybe_put_dbml(attrs, _parsed_map, _opts, false), do: attrs
@@ -200,36 +198,54 @@ defmodule BubbleEx.Apps.Enricher do
     naming = Keyword.get(opts, :naming, :proper)
     dbml_opts = [dbml: Keyword.get(opts, :dbml, false), naming: naming]
 
-    content =
-      case Dbml.encode(parsed_map, dbml_opts) do
-        {:ok, dbml} ->
-          dbml
+    case Encoder.render(:dbml, parsed_map, render_opts(opts, dbml_opts, :dbml)) do
+      {:ok, result} ->
+        attrs
+        |> Map.put(:dbdiagram, result.content)
+        |> Map.put(:dbml, result.content)
+        |> maybe_put_warnings(:dbml_warnings, result.warnings)
 
-        error ->
-          message = "Error generating DBML: #{inspect(error)}"
-          Logger.warning(message)
-          message
-      end
-
-    attrs
-    |> Map.put(:dbdiagram, content)
-    |> Map.put(:dbml, content)
+      {:error, error} ->
+        message = "Error generating DBML: #{inspect(error)}"
+        Logger.warning(message)
+        attrs |> Map.put(:dbdiagram, message) |> Map.put(:dbml, message)
+    end
   end
 
   defp maybe_put_schema(attrs, _parsed_map, _opts, nil), do: attrs
 
   defp maybe_put_schema(attrs, parsed_map, opts, format) do
-    naming = Keyword.get(opts, :naming, :proper)
+    case Encoder.render(
+           format,
+           parsed_map,
+           render_opts(opts, [naming: Keyword.get(opts, :naming, :proper)], format)
+         ) do
+      {:ok, result} ->
+        attrs
+        |> Map.put(:schema, result.content)
+        |> maybe_put_warnings(:schema_warnings, result.warnings)
 
-    with {:ok, module} <- Encoder.module_for(format),
-         {:ok, schema} <- module.encode(parsed_map, naming: naming) do
-      Map.put(attrs, :schema, schema)
-    else
       {:error, error} ->
         Logger.warning("Could not render #{inspect(format)} schema: #{inspect(error)}")
         attrs
     end
   end
+
+  defp render_opts(opts, base, target) do
+    capabilities = Keyword.get(opts, :external_type_capabilities, %{})
+
+    scoped_capabilities =
+      if is_map(capabilities) and Map.has_key?(capabilities, target),
+        do: %{target => capabilities[target]},
+        else: %{}
+
+    base
+    |> Keyword.put(:external_types, Keyword.get(opts, :external_types, :preserve))
+    |> Keyword.put(:external_type_capabilities, scoped_capabilities)
+  end
+
+  defp maybe_put_warnings(attrs, _key, []), do: attrs
+  defp maybe_put_warnings(attrs, key, warnings), do: Map.put(attrs, key, warnings)
 
   defp build_obj_url(bubble_id, obj, limit) when is_integer(limit) do
     "http://#{bubble_id}.bubbleapps.io/api/1.1/obj/#{obj}?limit=#{limit}"

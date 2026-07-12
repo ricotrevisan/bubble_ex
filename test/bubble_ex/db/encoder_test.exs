@@ -82,5 +82,37 @@ defmodule BubbleEx.Db.EncoderTest do
 
       assert content =~ ~s(Project "old")
     end
+
+    test "every registered format deliberately handles opaque External API fields" do
+      id = "api.apiconnector2.a.call.Shape"
+
+      column = %{
+        table_id: "item",
+        table_name: "Item",
+        table_group: :custom,
+        id: "payload",
+        name: "Payload",
+        type: %{type: :external, target: id, cardinality: :one, raw: id},
+        primary_key: false,
+        deleted: false
+      }
+
+      db = %{
+        bubble_id: "app",
+        external_types: [],
+        warnings: [],
+        relationships: [],
+        tables: [%{id: "item", name: "Item", group: :custom, columns: [column]}]
+      }
+
+      for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex],
+          mode <- [:preserve, :opaque, :legacy] do
+        assert {:ok, %Encoder.Result{format: ^format, content: content, warnings: warnings}} =
+                 Encoder.render(format, db, external_types: mode)
+
+        assert is_binary(content) and content != ""
+        assert Enum.any?(warnings, &(&1.kind == :external_type_rendering))
+      end
+    end
   end
 end

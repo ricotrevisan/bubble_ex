@@ -93,6 +93,7 @@ IO.puts(app.schema)
 | `:sqlite`   | SQLite DDL |
 | `:tsql`     | SQL Server / Azure SQL T-SQL DDL |
 | `:ecto`     | Ecto schema modules + migrations |
+| `:ash`      | Ash resources and embedded resources |
 | `:zod`      | Zod (TypeScript) validation schemas |
 | `:xano`     | Xano table-schema import JSON |
 | `:convex`   | Convex `schema.ts` |
@@ -113,8 +114,25 @@ references become real foreign keys (SQL/Ecto) or id fields; Bubble *list* field
 become native arrays where supported (`text[]` in Postgres) or a JSON/text column
 otherwise. Option sets (enums) are emitted as lookup tables or string fields —
 Bubble's payload does not carry option *member values*, so they cannot become
-native database enums. External (`:api`) data types are omitted. Each format's
-output documents its own degradations inline.
+native database enums.
+
+API Connector v2 External API types reachable from active database fields are
+kept as by-value shapes, separate from persisted tables and relationships.
+Rendering defaults to `external_types: :preserve`; use `:opaque` for JSON/map
+containers without expansion, or `:legacy` for pre-feature API-field output.
+
+```elixir
+{:ok, app} = BubbleEx.fetch_app("my-app", format: :zod, external_types: :preserve)
+app.schema_warnings # structured warnings, present only when non-empty
+```
+
+DBML diagnostics are returned separately in `:dbml_warnings`. BubbleEx never
+infers type members from response samples. Version-sensitive output is opt-in
+through `external_type_capabilities`, for example `%{tsql: [:native_json]}`.
+Target limitations are localized: PostgreSQL uses composites where possible;
+Ecto/Ash use identity-free embeds; Zod uses loose objects; Xano expands acyclic
+shapes inline; DBML, SQLite, T-SQL, and unsupported recursive edges use honest
+JSON fallbacks.
 
 ### DBML / database diagram (legacy options)
 
@@ -131,8 +149,9 @@ app.dbdiagram  # same content
 Formats are pluggable. Each is a module implementing the `BubbleEx.Db.Encoder`
 behaviour — `encode(db_map, opts) :: {:ok, String.t()} | {:error, %BubbleEx.Error{}}`
 over the universal map produced by `BubbleEx.Db.Reader.parse/1` — registered in
-`BubbleEx.Db.Encoder`. To add a target, implement the behaviour and register its
-`:format` atom.
+`BubbleEx.Db.Encoder`. `BubbleEx.Db.Encoder.render/3` additionally returns
+structured warnings with the generated content. To add a target, implement the
+behaviour and register its `:format` atom.
 
 ## Scanning for Secrets
 

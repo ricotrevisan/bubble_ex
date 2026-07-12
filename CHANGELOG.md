@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- API Connector v2 External API types are resolved into the universal database
+  map and rendered deliberately by every registered schema encoder. Detailed
+  rendering and app enrichment expose structured, artifact-scoped warnings.
+
 - `BubbleEx.AppTree.generate/3` and `mix bubble.app_tree`: explode a
   `.bubble.json` export into a two-layer, agent-readable source tree
   (lossless split with round-trip guarantee + generated OUTLINE/WORKFLOWS/
@@ -15,6 +19,13 @@ All notable changes to this project are documented here.
   `%d`/`%f3` shape.
 - Added `BubbleEx.Secrets.Native`, a pure-Elixir offline secret-scanning adapter
   (regex + base64 + opt-in entropy, no live verification).
+
+### Changed
+
+- New Reader output uses `external_types: :preserve`, which may add by-value
+  shapes to generated artifacts. Use `external_types: :legacy` during migration
+  for pre-feature output, or `:opaque` for JSON/map containers without shape
+  expansion. No schema is inferred from connector response samples.
 
 ## [0.3.0] - 2026-06-21
 

@@ -13,6 +13,9 @@ defmodule BubbleEx do
     * `:include_payload` - When true, includes the full app payload in the result. Defaults to `false`.
     * `:include_db_diagram` - When true, includes the database diagram in the result. Defaults to `false`.
     * `:try_test` - When true, attempts to fetch the test version if the live version is not accessible. Defaults to `true`.
+    * `:format` - Registered schema format returned in `:schema`.
+    * `:external_types` - `:preserve` (default), `:opaque`, or `:legacy`.
+    * `:external_type_capabilities` - Per-target capability attestations, such as `%{tsql: [:native_json]}`.
     * `:username` - Username for authentication, if required.
     * `:password` - Password for authentication, if required.
 

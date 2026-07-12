@@ -21,12 +21,16 @@ defmodule BubbleEx.Apps do
           | {:naming, :proper | :id}
           | {:dbml, boolean()}
           | {:format, atom()}
+          | {:external_types, :preserve | :opaque | :legacy}
+          | {:external_type_capabilities, %{optional(atom()) => [atom()]}}
           | {:max_retries, non_neg_integer()}
           | {:retry_base_delay, pos_integer()}
 
   @type app_plan :: :free | :paid | :agency | :template | nil
 
   @type app_attrs :: %{
+          optional(:schema_warnings) => [map()],
+          optional(:dbml_warnings) => [map()],
           app_plan: app_plan(),
           bubble_id: String.t(),
           url: String.t() | nil,

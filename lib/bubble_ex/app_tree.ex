@@ -176,16 +176,9 @@ defmodule BubbleEx.AppTree do
   # hostile export shapes; treat any failure to build the schema view as
   # "no schema" rather than letting it take generate/3 down.
   defp schema_view(app) do
-    case BubbleEx.Db.Reader.parse(app) do
-      {:ok, db_map} ->
-        case dbml(db_map) do
-          {:ok, dbml} -> [{"data/schema.dbml", {:text, dbml}}]
-          _ -> []
-        end
-
-      _ ->
-        []
-    end
+    {:ok, db_map} = BubbleEx.Db.Reader.parse(app)
+    {:ok, dbml} = dbml(db_map)
+    [{"data/schema.dbml", {:text, dbml}}]
   rescue
     _ -> []
   end

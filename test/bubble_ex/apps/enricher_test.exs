@@ -105,5 +105,51 @@ defmodule BubbleEx.Apps.EnricherTest do
     test "no db option leaves attrs untouched" do
       assert Enricher.maybe_add_db_diagram(%{a: 1}, @app_data, []) == %{a: 1}
     end
+
+    test "keeps selected-format and DBML warnings artifact-scoped" do
+      app = %{
+        "_id" => "warnings",
+        "user_types" => %{
+          "thing" => %{
+            "%d" => "Thing",
+            "%f3" => %{"payload" => %{"%d" => "Payload", "%v" => "api."}}
+          }
+        }
+      }
+
+      attrs =
+        Enricher.maybe_add_db_diagram(%{}, app,
+          format: :dbml,
+          dbml: true,
+          external_types: :preserve
+        )
+
+      assert is_binary(attrs.schema)
+      assert is_binary(attrs.dbml)
+      assert Enum.any?(attrs.schema_warnings, &(&1.category == :invalid_descriptor))
+      assert Enum.any?(attrs.dbml_warnings, &(&1.category == :invalid_descriptor))
+      refute attrs.schema_warnings === attrs.dbml_warnings and attrs.schema !== attrs.dbml
+    end
+
+    test "omits warning keys for clean artifacts" do
+      attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres)
+      refute Map.has_key?(attrs, :schema_warnings)
+      refute Map.has_key?(attrs, :dbml_warnings)
+    end
+
+    test "selected-format render errors leave schema and warnings absent" do
+      attrs =
+        Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres, external_types: :invalid)
+
+      refute Map.has_key?(attrs, :schema)
+      refute Map.has_key?(attrs, :schema_warnings)
+    end
+
+    test "legacy DBML render errors remain human-readable without warning keys" do
+      attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, dbml: true, external_types: :invalid)
+      assert attrs.dbml =~ "Error generating DBML"
+      assert attrs.dbdiagram == attrs.dbml
+      refute Map.has_key?(attrs, :dbml_warnings)
+    end
   end
 end
