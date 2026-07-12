@@ -68,8 +68,8 @@ defmodule BubbleEx.Db.Dbml do
   defp encode_column(column, opts) do
     naming = Keyword.get(opts, :naming, :proper)
 
-    type = which_type(column.type)
-    settings = if column.primary_key, do: " [pk]", else: nil
+    {type, note} = column_type(column.type, opts)
+    settings = render_settings(column.primary_key, note)
 
     column_name =
       case naming do
@@ -78,6 +78,41 @@ defmodule BubbleEx.Db.Dbml do
       end
 
     ~s(\t#{column_name} #{type}#{settings}\n)
+  end
+
+  defp column_type(%{type: type} = value, opts) when type in [:external, :opaque_external] do
+    case Keyword.get(opts, :external_types, :legacy) do
+      :legacy -> {legacy_external_type(value), nil}
+      _ -> {"json", external_note(value)}
+    end
+  end
+
+  defp column_type(type, _opts), do: {which_type(type), nil}
+
+  defp legacy_external_type(%{target: target, cardinality: cardinality}) when is_binary(target) do
+    custom_type = String.replace_prefix(target, "api.", "")
+    suffix = if cardinality == :many, do: "[]", else: ""
+    "api." <> ~s("#{custom_type}") <> suffix
+  end
+
+  defp legacy_external_type(_), do: "unsupported"
+
+  defp external_note(value) do
+    identity = value[:target] || value[:raw] || "unknown"
+    "External API type #{escape_note(to_string(identity))} (#{value.cardinality})"
+  end
+
+  defp render_settings(primary_key, note) do
+    entries = if primary_key, do: ["pk"], else: []
+    entries = if note, do: entries ++ ["note: '#{note}'"], else: entries
+    if entries == [], do: "", else: " [#{Enum.join(entries, ", ")}]"
+  end
+
+  defp escape_note(value) do
+    value
+    |> String.replace("\\", "\\\\")
+    |> String.replace("'", "\\'")
+    |> String.replace(~r/[\r\n]+/, " ")
   end
 
   defp encode_relationships(parsed_map, opts) do

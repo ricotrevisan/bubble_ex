@@ -105,4 +105,35 @@ defmodule BubbleEx.Db.DbmlTest do
       assert Dbml.quote_identifier("string has spaces") == ~s("string has spaces")
     end
   end
+
+  test "combines and escapes DBML settings for external fields" do
+    column = %{
+      table_id: "t",
+      table_name: "T",
+      table_group: :custom,
+      id: "p",
+      name: "Payload",
+      type: %{
+        type: :external,
+        target: "api.apiconnector2.a.call.O'Reilly\nShape",
+        cardinality: :one,
+        raw: "x"
+      },
+      primary_key: true,
+      deleted: false
+    }
+
+    db = %{
+      bubble_id: "app",
+      tables: [%{id: "t", name: "T", group: :custom, columns: [column]}],
+      relationships: [],
+      external_types: [],
+      warnings: []
+    }
+
+    assert {:ok, result} = BubbleEx.Db.Encoder.render(:dbml, db)
+
+    assert result.content =~
+             "[pk, note: 'External API type api.apiconnector2.a.call.O\\'Reilly Shape (one)']"
+  end
 end
