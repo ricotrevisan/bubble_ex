@@ -35,9 +35,31 @@ defmodule BubbleEx.ContributorsTest do
              Contributors.fetch_contributor("notitle")
   end
 
-  test "propagates an HTTP error" do
-    Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 404, "nope") end)
+  test "returns the upstream HTTP error instead of parsing its body" do
+    Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 429, "error code: 1015\n") end)
 
-    assert {:error, %BubbleEx.Error{}} = Contributors.fetch_contributor("missing")
+    assert {:error,
+            %BubbleEx.Error{
+              kind: :http_error,
+              message: "HTTP 429",
+              context: %{
+                status: 429,
+                body: "error code: 1015\n",
+                url: "https://bubble.io/contributor/rate-limited"
+              }
+            }} = Contributors.fetch_contributor("rate-limited")
+  end
+
+  test "returns transport failures as request errors" do
+    Req.Test.stub(__MODULE__, fn conn -> Req.Test.transport_error(conn, :timeout) end)
+
+    assert {:error,
+            %BubbleEx.Error{
+              kind: :request_failed,
+              context: %{
+                reason: :timeout,
+                url: "https://bubble.io/contributor/timeout"
+              }
+            }} = Contributors.fetch_contributor("timeout")
   end
 end

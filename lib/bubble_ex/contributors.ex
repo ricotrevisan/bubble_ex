@@ -19,10 +19,22 @@ defmodule BubbleEx.Contributors do
   def fetch_contributor(contributor_id) do
     url = @profile_url <> contributor_id
 
-    with {:ok, %HTTP.Response{body: body}} <- HTTP.get(url),
-         {:ok, html} <- parse_document(body, url),
-         {:ok, title} <- extract_title(html, url) do
-      {:ok, %{bubble_id: contributor_id, name: contributor_name(title, contributor_id)}}
+    case HTTP.get(url) do
+      {:ok, %HTTP.Response{status_code: 200, body: body}} ->
+        with {:ok, html} <- parse_document(body, url),
+             {:ok, title} <- extract_title(html, url) do
+          {:ok, %{bubble_id: contributor_id, name: contributor_name(title, contributor_id)}}
+        end
+
+      {:ok, %HTTP.Response{status_code: status, body: body}} ->
+        {:error, Error.from_http(status, body, %{url: url})}
+
+      {:error, %HTTP.Error{reason: reason}} ->
+        {:error,
+         Error.new(:request_failed, "contributor request failed: #{inspect(reason)}", %{
+           url: url,
+           reason: reason
+         })}
     end
   end
 
