@@ -291,10 +291,20 @@ defmodule BubbleEx.Apps.Parser do
     {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
   end
 
-  defp decode_js_string_content(<<"\\", rest::binary>>, acc), do: decode_js_escape(rest, acc)
+  # Scans for the next backslash in one pass and keeps unescaped runs as
+  # zero-copy sub-binaries. The previous per-character implementation built a
+  # list cell plus a heap binary for every byte, amplifying memory ~160x.
+  defp decode_js_string_content(binary, acc) do
+    case :binary.match(binary, "\\") do
+      :nomatch ->
+        {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary() |> Kernel.<>(binary)}
 
-  defp decode_js_string_content(<<char::utf8, rest::binary>>, acc) do
-    decode_js_string_content(rest, [<<char::utf8>> | acc])
+      {pos, _} ->
+        span = binary_part(binary, 0, pos)
+        rest_size = byte_size(binary) - pos - 1
+        rest = if rest_size > 0, do: binary_part(binary, pos + 1, rest_size), else: <<>>
+        decode_js_escape(rest, [span | acc])
+    end
   end
 
   defp decode_js_escape(<<"'", rest::binary>>, acc),

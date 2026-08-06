@@ -25,6 +25,44 @@ defmodule BubbleEx.Apps.ParserTest do
       assert {:ok, app_json} = Parser.parse_app_json(payload)
       assert app_json["_id"] == "synthapp"
     end
+
+    # Real Bubble payloads escape every single quote, so decode is escape-heavy.
+    # The legacy decoder built a per-character list of tiny binaries, amplifying
+    # memory ~160x (a 15MB dynamic.js peaked at 2.4GB and OOM-killed production).
+    # A 7MB escaped payload must decode under a 400MB heap cap.
+    test "decodes a large escape-heavy payload within a bounded heap" do
+      body =
+        ~S({"_id":"memtest","notes":") <>
+          String.duplicate(~S(it\'s ), 1_000_000) <>
+          ~S("})
+
+      js = "const app = JSON.parse('" <> body <> "');"
+      assert byte_size(js) > 5_000_000
+
+      parent = self()
+
+      {pid, ref} =
+        spawn_monitor(fn ->
+          Process.flag(:max_heap_size, %{size: 50_000_000, kill: true, error_logger: true})
+          send(parent, {:result, Parser.parse_app_json(js)})
+        end)
+
+      receive do
+        {:result, {:ok, app_json}} ->
+          assert app_json["_id"] == "memtest"
+          assert String.starts_with?(app_json["notes"], "it's it's ")
+
+        {:result, {:error, reason}} ->
+          flunk("decode failed: #{inspect(reason)}")
+
+        {:DOWN, ^ref, :process, ^pid, reason} ->
+          flunk("decoder process killed by heap cap: #{inspect(reason)}")
+      after
+        30_000 ->
+          Process.exit(pid, :kill)
+          flunk("decode did not finish within 30s")
+      end
+    end
   end
 
   describe "find_app_line/1" do
