@@ -1,310 +1,486 @@
 {
   "schema_version": "frontend-model-prototype-v0",
   "app_version": {
-    "bubble_id": "responsive-slice",
-    "name": "synthetic-contract",
-    "version": "frozen-v1"
+    "bubble_id": "tiptap-plugin",
+    "branch": "test",
+    "page_payload_sha256": "706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b",
+    "page_id": "bpmkbvvo"
   },
   "page": {
-    "id": "page-index",
+    "id": "bpmkbvvo",
     "kind": "page",
     "semantic": "main",
     "source": {
       "path": [
         "pages",
-        "index"
+        "bubbleex_i28_responsive_slice"
       ],
-      "map_key": "index",
-      "bubble_id": "page-index"
+      "bubble_id": "bpmkbvvo",
+      "bubble_name": "bubbleex-i28-responsive-slice"
     },
     "layout": {
-      "mode": "column",
-      "align": "stretch",
-      "gap": "0px"
+      "mode": "column"
     },
     "box": {
-      "min-height": "100vh",
-      "width": "100%"
+      "row-gap": "64px",
+      "min-height": "900px",
+      "width": "100%",
+      "padding": "20px 16px 56px"
     },
     "style": {
-      "background": "#f7f7fb",
+      "background": "#F4F7FB",
       "color": "#172033"
     },
     "children": [
       {
-        "id": "nav",
+        "id": "bpmkbvvp",
         "kind": "group",
         "semantic": "header",
         "source": {
           "path": [
             "pages",
-            "index",
+            "bubbleex_i28_responsive_slice",
             "elements",
-            "nav"
-          ]
+            "i28__headershell_row_max1120"
+          ],
+          "bubble_id": "bpmkbvvp",
+          "bubble_name": "I28__HeaderShell_Row_Max1120"
         },
         "layout": {
           "mode": "row",
-          "align": "center",
           "justify": "space-between",
-          "gap": "24px"
+          "wrap": "wrap"
         },
         "box": {
-          "width": "min(1120px, calc(100% - 32px))",
-          "margin": "0 auto",
-          "padding": "22px 0"
+          "row-gap": "16px",
+          "column-gap": "24px",
+          "min-height": "72px",
+          "padding": "12px 16px",
+          "width": "100%",
+          "max-width": "1120px",
+          "align-self": "center"
+        },
+        "style": {
+          "background": "#FFFFFF",
+          "border": "1px solid #D8E0EC",
+          "border-radius": "18px",
+          "box-shadow": "0 8px 24px rgba(23,32,51,0.08)"
         },
         "children": [
           {
-            "id": "brand",
-            "kind": "link",
-            "semantic": "a",
-            "content": "Northstar",
-            "attributes": {
-              "href": "#top",
-              "aria-label": "Northstar home"
+            "id": "bpmkbvvq",
+            "kind": "text",
+            "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__headerbrand_text"
+              ],
+              "bubble_id": "bpmkbvvq",
+              "bubble_name": "I28__HeaderBrand_Text"
+            },
+            "content": "I28 case 1 \u00b7 Luma",
+            "box": {
+              "margin": "0",
+              "min-width": "150px",
+              "min-height": "24px",
+              "width": "fit-content",
+              "align-self": "center"
             },
             "style": {
-              "font-size": "22px",
+              "font-family": "Inter",
+              "font-size": "18px",
               "font-weight": "800",
               "color": "#172033",
-              "text-decoration": "none"
+              "line-height": "1.2",
+              "letter-spacing": "-0.4px"
             }
           },
           {
-            "id": "nav-links",
+            "id": "bpmkbvvr",
             "kind": "group",
-            "semantic": "nav",
+            "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__headernestednav_row_hidecollapseat768"
+              ],
+              "bubble_id": "bpmkbvvr",
+              "bubble_name": "I28__HeaderNestedNav_Row_HideCollapseAt768"
+            },
             "layout": {
               "mode": "row",
-              "align": "center",
-              "gap": "28px"
+              "wrap": "wrap"
+            },
+            "box": {
+              "column-gap": "24px",
+              "min-height": "24px",
+              "width": "fit-content",
+              "align-self": "center",
+              "row-gap": "0px"
             },
             "children": [
               {
-                "id": "link-platform",
-                "kind": "link",
-                "semantic": "a",
-                "content": "Platform",
-                "attributes": {
-                  "href": "#platform"
+                "id": "bpmkbvvs",
+                "kind": "text",
+                "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__navcaselabel_text"
+                  ],
+                  "bubble_id": "bpmkbvvs",
+                  "bubble_name": "I28__NavCaseLabel_Text"
+                },
+                "content": "I28 case 2 \u00b7 Nested nav",
+                "box": {
+                  "margin": "0",
+                  "height": "20px"
                 },
                 "style": {
-                  "color": "#566078",
-                  "text-decoration": "none",
-                  "font-weight": "600"
+                  "font-family": "Inter",
+                  "font-size": "13px",
+                  "font-weight": "700",
+                  "color": "#5A657A",
+                  "line-height": "1.3"
                 }
               },
               {
-                "id": "link-stories",
-                "kind": "link",
-                "semantic": "a",
-                "content": "Stories",
-                "attributes": {
-                  "href": "#stories"
+                "id": "bpmkbvvt",
+                "kind": "text",
+                "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__navfeatures_text"
+                  ],
+                  "bubble_id": "bpmkbvvt",
+                  "bubble_name": "I28__NavFeatures_Text"
+                },
+                "content": "Features",
+                "box": {
+                  "margin": "0",
+                  "height": "20px"
                 },
                 "style": {
-                  "color": "#566078",
-                  "text-decoration": "none",
-                  "font-weight": "600"
+                  "font-family": "Inter",
+                  "font-size": "13px",
+                  "font-weight": "600",
+                  "color": "#5A657A",
+                  "line-height": "1.3"
                 }
               },
               {
-                "id": "link-pricing",
-                "kind": "link",
-                "semantic": "a",
-                "content": "Pricing",
-                "attributes": {
-                  "href": "#pricing"
+                "id": "bpmkbvvu",
+                "kind": "text",
+                "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__navcontact_text"
+                  ],
+                  "bubble_id": "bpmkbvvu",
+                  "bubble_name": "I28__NavContact_Text"
+                },
+                "content": "Contact",
+                "box": {
+                  "margin": "0",
+                  "height": "20px"
                 },
                 "style": {
-                  "color": "#566078",
-                  "text-decoration": "none",
-                  "font-weight": "600"
+                  "font-family": "Inter",
+                  "font-size": "13px",
+                  "font-weight": "600",
+                  "color": "#5A657A",
+                  "line-height": "1.3"
                 }
               }
             ],
             "responsive": [
               {
                 "when": {
-                  "max_viewport_width": 767
+                  "max_viewport_width": 768
                 },
                 "visibility": "collapsed"
               }
             ]
           },
           {
-            "id": "nav-cta",
-            "kind": "link",
-            "semantic": "a",
-            "content": "Start free",
-            "attributes": {
-              "href": "#signup"
+            "id": "bpmkbvvv",
+            "kind": "button",
+            "semantic": "button",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__headeraction_button_labelonly"
+              ],
+              "bubble_id": "bpmkbvvv",
+              "bubble_name": "I28__HeaderAction_Button_LabelOnly"
             },
+            "content": "View the slice",
             "box": {
-              "padding": "11px 17px"
+              "height": "44px",
+              "min-width": "126px",
+              "padding": "0 18px",
+              "align-self": "center"
             },
             "style": {
-              "background": "#5b4bdb",
-              "color": "white",
-              "border-radius": "10px",
-              "text-decoration": "none",
-              "font-weight": "700"
-            }
-          }
-        ],
-        "responsive": [
-          {
-            "when": {
-              "max_viewport_width": 767
+              "font-family": "Inter",
+              "font-size": "14px",
+              "font-weight": "700",
+              "color": "#FFFFFF",
+              "line-height": "1.2",
+              "border": "1px solid #5148E8",
+              "border-radius": "12px",
+              "background": "#635BFF"
             },
-            "box": {
-              "width": "min(100% - 32px, 1120px)",
-              "padding": "16px 0"
+            "attributes": {
+              "type": "button"
             }
           }
         ]
       },
       {
-        "id": "hero",
+        "id": "bpmkbvvw",
         "kind": "group",
         "semantic": "section",
-        "attributes": {
-          "id": "top",
-          "aria-labelledby": "hero-title"
-        },
         "source": {
           "path": [
             "pages",
-            "index",
+            "bubbleex_i28_responsive_slice",
             "elements",
-            "hero"
-          ]
+            "i28__heroshell_row_naturalwrap_max1120"
+          ],
+          "bubble_id": "bpmkbvvw",
+          "bubble_name": "I28__HeroShell_Row_NaturalWrap_Max1120"
         },
         "layout": {
           "mode": "row",
-          "align": "center",
-          "justify": "space-between",
-          "gap": "64px",
           "wrap": "wrap"
         },
         "box": {
-          "width": "min(1120px, calc(100% - 32px))",
-          "margin": "0 auto",
-          "padding": "70px 0 86px",
-          "min-height": "620px"
+          "row-gap": "48px",
+          "column-gap": "72px",
+          "width": "100%",
+          "max-width": "1120px",
+          "align-self": "center"
         },
         "children": [
           {
-            "id": "hero-copy",
+            "id": "bpmkbvvx",
             "kind": "group",
             "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__herocopy_column"
+              ],
+              "bubble_id": "bpmkbvvx",
+              "bubble_name": "I28__HeroCopy_Column"
+            },
             "layout": {
               "mode": "column",
-              "align": "flex-start",
-              "gap": "20px"
+              "justify": "center"
             },
             "box": {
-              "flex": "1 1 350px"
+              "row-gap": "20px",
+              "min-height": "420px",
+              "min-width": "336px",
+              "align-self": "flex-start",
+              "width": "336px",
+              "flex-grow": "1"
             },
             "children": [
               {
-                "id": "eyebrow",
+                "id": "bpmkbvvy",
                 "kind": "text",
-                "semantic": "p",
-                "content": "OPERATIONS, WITHOUT THE BUSYWORK",
-                "box": {
-                  "margin": "0"
+                "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__heroeyebrow_text"
+                  ],
+                  "bubble_id": "bpmkbvvy",
+                  "bubble_name": "I28__HeroEyebrow_Text"
                 },
-                "style": {
-                  "font-size": "13px",
-                  "letter-spacing": "0.14em",
-                  "font-weight": "800",
-                  "color": "#5b4bdb"
-                }
-              },
-              {
-                "id": "hero-title",
-                "kind": "text",
-                "semantic": "h1",
-                "content": "Move work forward with a calmer command center.",
-                "attributes": {
-                  "id": "hero-title"
-                },
-                "box": {
-                  "margin": "0"
-                },
-                "style": {
-                  "font-size": "clamp(42px, 5.4vw, 72px)",
-                  "line-height": "1.02",
-                  "letter-spacing": "-0.045em",
-                  "color": "#172033"
-                }
-              },
-              {
-                "id": "hero-body",
-                "kind": "text",
-                "semantic": "p",
-                "content": "Plan projects, unblock teams, and see the signal in one responsive workspace built for real decisions.",
+                "content": "I28 case 3 \u00b7 Natural Row wrap",
                 "box": {
                   "margin": "0",
-                  "max-width": "580px"
+                  "width": "fit-content",
+                  "min-height": "20px"
                 },
                 "style": {
-                  "font-size": "19px",
-                  "line-height": "1.65",
-                  "color": "#667087"
+                  "font-family": "Inter",
+                  "font-size": "13px",
+                  "font-weight": "800",
+                  "color": "#E04F86",
+                  "line-height": "1.3",
+                  "letter-spacing": "1px"
                 }
               },
               {
-                "id": "hero-actions",
+                "id": "bpmkbvvz",
+                "kind": "text",
+                "semantic": "h1",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__heroheading_text"
+                  ],
+                  "bubble_id": "bpmkbvvz",
+                  "bubble_name": "I28__HeroHeading_Text"
+                },
+                "content": "Responsive structure, composed like a product.",
+                "box": {
+                  "margin": "0",
+                  "width": "100%"
+                },
+                "style": {
+                  "font-family": "Inter",
+                  "font-size": "52px",
+                  "font-weight": "800",
+                  "color": "#172033",
+                  "line-height": "1.05",
+                  "letter-spacing": "-1.8px"
+                }
+              },
+              {
+                "id": "bpmkbvwa",
+                "kind": "text",
+                "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__herobody_text"
+                  ],
+                  "bubble_id": "bpmkbvwa",
+                  "bubble_name": "I28__HeroBody_Text"
+                },
+                "content": "A polished landing slice where every container earns its place: fluid shells, natural wrapping, deliberate overlap, and fixed local geometry stay readable at every width.",
+                "box": {
+                  "margin": "0",
+                  "width": "100%"
+                },
+                "style": {
+                  "font-family": "Inter",
+                  "font-size": "18px",
+                  "font-weight": "400",
+                  "color": "#5A657A",
+                  "line-height": "1.55"
+                }
+              },
+              {
+                "id": "bpmkbvwb",
                 "kind": "group",
                 "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__herobuttons_row_naturalwrap"
+                  ],
+                  "bubble_id": "bpmkbvwb",
+                  "bubble_name": "I28__HeroButtons_Row_NaturalWrap"
+                },
                 "layout": {
                   "mode": "row",
-                  "align": "center",
-                  "gap": "14px",
                   "wrap": "wrap"
                 },
                 "box": {
-                  "padding": "8px 0 0"
+                  "row-gap": "12px",
+                  "column-gap": "12px",
+                  "width": "100%"
                 },
                 "children": [
                   {
-                    "id": "primary-cta",
+                    "id": "bpmkbvwc",
                     "kind": "button",
                     "semantic": "button",
-                    "content": "Create workspace",
-                    "attributes": {
-                      "type": "button"
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__heroprimary_button_labelonly"
+                      ],
+                      "bubble_id": "bpmkbvwc",
+                      "bubble_name": "I28__HeroPrimary_Button_LabelOnly"
                     },
+                    "content": "Explore layouts",
                     "box": {
-                      "padding": "15px 22px"
+                      "height": "48px",
+                      "min-width": "144px",
+                      "padding": "0 22px",
+                      "align-self": "center"
                     },
                     "style": {
-                      "border": "0",
+                      "font-family": "Inter",
+                      "font-size": "14px",
+                      "font-weight": "700",
+                      "color": "#FFFFFF",
+                      "line-height": "1.2",
+                      "border": "1px solid #172033",
                       "border-radius": "12px",
-                      "background": "#5b4bdb",
-                      "color": "white",
-                      "font-weight": "800",
-                      "font-size": "16px"
+                      "background": "#172033"
+                    },
+                    "attributes": {
+                      "type": "button"
                     }
                   },
                   {
-                    "id": "secondary-cta",
-                    "kind": "link",
-                    "semantic": "a",
-                    "content": "See customer stories \u2192",
-                    "attributes": {
-                      "href": "#stories"
+                    "id": "bpmkbvwd",
+                    "kind": "button",
+                    "semantic": "button",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__herosecondary_button_labelonly"
+                      ],
+                      "bubble_id": "bpmkbvwd",
+                      "bubble_name": "I28__HeroSecondary_Button_LabelOnly"
                     },
+                    "content": "Read the story",
                     "box": {
-                      "padding": "14px 8px"
+                      "height": "48px",
+                      "min-width": "138px",
+                      "padding": "0 22px",
+                      "align-self": "center"
                     },
                     "style": {
-                      "color": "#29334a",
+                      "font-family": "Inter",
+                      "font-size": "14px",
                       "font-weight": "700",
-                      "text-decoration": "none"
+                      "color": "#172033",
+                      "line-height": "1.2",
+                      "border": "1px solid #BFC9D8",
+                      "border-radius": "12px",
+                      "background": "#FFFFFF"
+                    },
+                    "attributes": {
+                      "type": "button"
                     }
                   }
                 ]
@@ -312,605 +488,948 @@
             ]
           },
           {
-            "id": "hero-visual",
+            "id": "bpmkbvwe",
             "kind": "group",
             "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__heroartwork_aligntoparent"
+              ],
+              "bubble_id": "bpmkbvwe",
+              "bubble_name": "I28__HeroArtwork_AlignToParent"
+            },
             "layout": {
               "mode": "align_to_parent"
             },
             "box": {
-              "height": "430px",
-              "flex": "1 1 350px"
+              "height": "420px",
+              "min-width": "336px",
+              "align-self": "flex-start",
+              "width": "336px",
+              "flex-grow": "1"
             },
             "style": {
-              "background": "#e9e7ff",
-              "border-radius": "32px",
-              "overflow": "hidden"
+              "background": "linear-gradient(to top, #D8E7FF, #EFE5FF, #FFF0D8)",
+              "border": "1px solid #C9D6E8",
+              "border-radius": "28px"
             },
             "children": [
               {
-                "id": "visual-halo",
+                "id": "bpmkbvwf",
                 "kind": "shape",
                 "semantic": "div",
-                "placement": {
-                  "cell": "center",
-                  "width": "82%",
-                  "height": "82%"
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__artworktopright_shape"
+                  ],
+                  "bubble_id": "bpmkbvwf",
+                  "bubble_name": "I28__ArtworkTopRight_Shape"
                 },
                 "style": {
-                  "border-radius": "50%",
-                  "background": "linear-gradient(145deg, #c9c4ff, #f8f7ff)"
+                  "background": "#FF8B5D",
+                  "border": "10px solid rgba(255,255,255,0.5)",
+                  "border-radius": "36px",
+                  "transform": "rotate(12deg)",
+                  "z-index": "1"
+                },
+                "placement": {
+                  "cell": "top_end",
+                  "width": "132px",
+                  "height": "132px",
+                  "offset-x": "-18px",
+                  "offset-y": "18px"
                 }
               },
               {
-                "id": "dashboard-card",
+                "id": "bpmkbvwg",
                 "kind": "group",
                 "semantic": "article",
-                "placement": {
-                  "cell": "center",
-                  "width": "76%"
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__artworkcentercard_column"
+                  ],
+                  "bubble_id": "bpmkbvwg",
+                  "bubble_name": "I28__ArtworkCenterCard_Column"
                 },
                 "layout": {
                   "mode": "column",
-                  "gap": "18px"
+                  "justify": "center"
                 },
                 "box": {
+                  "row-gap": "14px",
+                  "height": "232px",
+                  "width": "304px",
                   "padding": "28px"
                 },
                 "style": {
-                  "background": "rgba(255,255,255,0.94)",
-                  "border": "1px solid rgba(45,54,88,0.08)",
+                  "background": "#FFFFFF",
+                  "border": "1px solid #D4DCE8",
                   "border-radius": "22px",
-                  "box-shadow": "0 24px 60px rgba(45,39,109,0.18)",
+                  "box-shadow": "0 18px 34px rgba(41,54,84,0.18)",
                   "z-index": "2"
+                },
+                "placement": {
+                  "cell": "center",
+                  "width": "304px",
+                  "height": "232px"
                 },
                 "children": [
                   {
-                    "id": "card-label",
-                    "kind": "text",
-                    "semantic": "p",
-                    "content": "Weekly momentum",
+                    "id": "bpmkbvwh",
+                    "kind": "shape",
+                    "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__centercardaccent_shape"
+                      ],
+                      "bubble_id": "bpmkbvwh",
+                      "bubble_name": "I28__CenterCardAccent_Shape"
+                    },
                     "box": {
-                      "margin": "0"
+                      "width": "46px",
+                      "height": "46px"
                     },
                     "style": {
+                      "background": "#635BFF",
+                      "border": "8px solid #E7E5FF",
+                      "border-radius": "16px"
+                    }
+                  },
+                  {
+                    "id": "bpmkbvwi",
+                    "kind": "text",
+                    "semantic": "h3",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__centercardheading_text"
+                      ],
+                      "bubble_id": "bpmkbvwi",
+                      "bubble_name": "I28__CenterCardHeading_Text"
+                    },
+                    "content": "Centered card",
+                    "box": {
+                      "margin": "0",
+                      "min-height": "24px",
+                      "width": "100%"
+                    },
+                    "style": {
+                      "font-family": "Inter",
+                      "font-size": "22px",
+                      "font-weight": "800",
+                      "color": "#172033",
+                      "line-height": "1.2"
+                    }
+                  },
+                  {
+                    "id": "bpmkbvwj",
+                    "kind": "text",
+                    "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__centercardbody_text"
+                      ],
+                      "bubble_id": "bpmkbvwj",
+                      "bubble_name": "I28__CenterCardBody_Text"
+                    },
+                    "content": "Anchored in the middle while the surrounding accents overlap on purpose.",
+                    "box": {
+                      "margin": "0",
+                      "width": "100%"
+                    },
+                    "style": {
+                      "font-family": "Inter",
                       "font-size": "14px",
-                      "font-weight": "700",
-                      "color": "#667087"
+                      "font-weight": "400",
+                      "color": "#667085",
+                      "line-height": "1.45"
                     }
-                  },
+                  }
+                ]
+              },
+              {
+                "id": "bpmkbvwk",
+                "kind": "group",
+                "semantic": "div",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__artworkbottomleft_group"
+                  ],
+                  "bubble_id": "bpmkbvwk",
+                  "bubble_name": "I28__ArtworkBottomLeft_Group"
+                },
+                "layout": {
+                  "mode": "column"
+                },
+                "box": {
+                  "row-gap": "8px",
+                  "width": "226px",
+                  "height": "152px",
+                  "padding": "14px"
+                },
+                "style": {
+                  "background": "#172033",
+                  "border": "1px solid #2F3A52",
+                  "border-radius": "18px",
+                  "z-index": "3"
+                },
+                "placement": {
+                  "cell": "bottom_start",
+                  "width": "226px",
+                  "height": "152px",
+                  "offset-x": "18px",
+                  "offset-y": "-18px"
+                },
+                "children": [
                   {
-                    "id": "card-score",
+                    "id": "bpmkbvwl",
                     "kind": "text",
-                    "semantic": "p",
-                    "content": "84%",
+                    "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__fixedcaselabel_text"
+                      ],
+                      "bubble_id": "bpmkbvwl",
+                      "bubble_name": "I28__FixedCaseLabel_Text"
+                    },
+                    "content": "I28 case 4 \u00b7 Fixed XY",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "min-height": "18px",
+                      "width": "fit-content"
                     },
                     "style": {
-                      "font-size": "54px",
-                      "font-weight": "850",
-                      "letter-spacing": "-0.04em",
-                      "color": "#172033"
+                      "font-family": "Inter",
+                      "font-size": "12px",
+                      "font-weight": "700",
+                      "color": "#FFFFFF",
+                      "line-height": "1.2",
+                      "letter-spacing": "0.4px"
                     }
                   },
                   {
-                    "id": "progress-track",
+                    "id": "bpmkbvwm",
                     "kind": "group",
                     "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__fixedcanvas_196x92"
+                      ],
+                      "bubble_id": "bpmkbvwm",
+                      "bubble_name": "I28__FixedCanvas_196x92"
+                    },
                     "layout": {
                       "mode": "fixed"
                     },
                     "box": {
-                      "height": "12px",
-                      "width": "100%"
+                      "width": "196px",
+                      "height": "92px"
                     },
                     "style": {
-                      "background": "#ececf3",
-                      "border-radius": "99px",
-                      "overflow": "hidden"
+                      "background": "#25314A",
+                      "border": "1px solid #3B4965",
+                      "border-radius": "12px"
                     },
                     "children": [
                       {
-                        "id": "progress-fill",
+                        "id": "bpmkbvwn",
                         "kind": "shape",
                         "semantic": "div",
-                        "placement": {
-                          "x": "0",
-                          "y": "0",
-                          "width": "84%",
-                          "height": "12px"
+                        "source": {
+                          "path": [
+                            "pages",
+                            "bubbleex_i28_responsive_slice",
+                            "elements",
+                            "i28__fixedshapea_x12_y12"
+                          ],
+                          "bubble_id": "bpmkbvwn",
+                          "bubble_name": "I28__FixedShapeA_X12_Y12"
                         },
                         "style": {
-                          "background": "#5b4bdb",
-                          "border-radius": "99px"
+                          "background": "#39D0B3",
+                          "border": "2px solid #83E8D4",
+                          "border-radius": "16px",
+                          "z-index": "1"
+                        },
+                        "placement": {
+                          "x": "12px",
+                          "y": "12px",
+                          "width": "72px",
+                          "height": "54px"
+                        }
+                      },
+                      {
+                        "id": "bpmkbvwo",
+                        "kind": "shape",
+                        "semantic": "div",
+                        "source": {
+                          "path": [
+                            "pages",
+                            "bubbleex_i28_responsive_slice",
+                            "elements",
+                            "i28__fixedshapeb_x76_y30"
+                          ],
+                          "bubble_id": "bpmkbvwo",
+                          "bubble_name": "I28__FixedShapeB_X76_Y30"
+                        },
+                        "style": {
+                          "background": "#FFD166",
+                          "border": "2px solid #FFE3A0",
+                          "border-radius": "23px",
+                          "z-index": "2"
+                        },
+                        "placement": {
+                          "x": "76px",
+                          "y": "30px",
+                          "width": "104px",
+                          "height": "46px"
                         }
                       }
                     ]
-                  },
-                  {
-                    "id": "card-caption",
-                    "kind": "text",
-                    "semantic": "p",
-                    "content": "12 priorities completed \u00b7 3 in review",
-                    "box": {
-                      "margin": "0"
-                    },
-                    "style": {
-                      "font-size": "14px",
-                      "color": "#667087"
-                    }
                   }
                 ]
-              },
-              {
-                "id": "accent-shape",
-                "kind": "shape",
-                "semantic": "div",
-                "placement": {
-                  "cell": "top_end",
-                  "width": "92px",
-                  "height": "92px",
-                  "offset-x": "-18px",
-                  "offset-y": "20px"
-                },
-                "style": {
-                  "background": "#ffba76",
-                  "border-radius": "28px",
-                  "transform": "rotate(14deg)"
-                }
-              },
-              {
-                "id": "fixed-cluster",
-                "kind": "group",
-                "semantic": "div",
-                "placement": {
-                  "cell": "bottom_start",
-                  "width": "140px",
-                  "height": "100px",
-                  "offset-x": "22px",
-                  "offset-y": "-16px"
-                },
-                "layout": {
-                  "mode": "fixed"
-                },
-                "style": {
-                  "z-index": "3"
-                },
-                "children": [
-                  {
-                    "id": "cluster-a",
-                    "kind": "shape",
-                    "semantic": "div",
-                    "placement": {
-                      "x": "0",
-                      "y": "24px",
-                      "width": "72px",
-                      "height": "72px"
-                    },
-                    "style": {
-                      "background": "#50c2a7",
-                      "border-radius": "50%"
-                    }
-                  },
-                  {
-                    "id": "cluster-b",
-                    "kind": "shape",
-                    "semantic": "div",
-                    "placement": {
-                      "x": "56px",
-                      "y": "0",
-                      "width": "84px",
-                      "height": "52px"
-                    },
-                    "style": {
-                      "background": "#172033",
-                      "border-radius": "18px",
-                      "transform": "rotate(-8deg)"
-                    }
-                  }
-                ]
-              }
-            ],
-            "responsive": [
-              {
-                "when": {
-                  "max_viewport_width": 767
-                },
-                "box": {
-                  "height": "360px"
-                }
               }
             ]
-          }
-        ],
-        "responsive": [
-          {
-            "when": {
-              "max_viewport_width": 767
-            },
-            "box": {
-              "width": "min(100% - 32px, 1120px)",
-              "padding": "44px 0 64px",
-              "min-height": "0"
-            }
           }
         ]
       },
       {
-        "id": "platform",
+        "id": "bpmkbvwp",
         "kind": "group",
         "semantic": "section",
-        "attributes": {
-          "id": "platform",
-          "aria-labelledby": "platform-title"
+        "source": {
+          "path": [
+            "pages",
+            "bubbleex_i28_responsive_slice",
+            "elements",
+            "i28__featuressection_column_max1120"
+          ],
+          "bubble_id": "bpmkbvwp",
+          "bubble_name": "I28__FeaturesSection_Column_Max1120"
         },
         "layout": {
-          "mode": "column",
-          "align": "stretch",
-          "gap": "28px"
+          "mode": "column"
         },
         "box": {
-          "width": "min(1120px, calc(100% - 32px))",
-          "margin": "0 auto",
-          "padding": "76px 0"
+          "row-gap": "18px",
+          "width": "100%",
+          "max-width": "1120px",
+          "align-self": "center"
         },
         "children": [
           {
-            "id": "platform-title",
+            "id": "bpmkbvwq",
             "kind": "text",
-            "semantic": "h2",
-            "content": "A shared rhythm for every team",
-            "attributes": {
-              "id": "platform-title"
+            "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__featurescaselabel_text"
+              ],
+              "bubble_id": "bpmkbvwq",
+              "bubble_name": "I28__FeaturesCaseLabel_Text"
             },
+            "content": "I28 case 5 \u00b7 Three wrapping cards",
             "box": {
               "margin": "0",
-              "max-width": "620px"
+              "min-height": "20px",
+              "width": "fit-content"
             },
             "style": {
-              "font-size": "38px",
-              "line-height": "1.12",
-              "letter-spacing": "-0.03em"
+              "font-family": "Inter",
+              "font-size": "13px",
+              "font-weight": "800",
+              "color": "#635BFF",
+              "line-height": "1.3",
+              "letter-spacing": "1px"
             }
           },
           {
-            "id": "feature-row",
+            "id": "bpmkbvwr",
+            "kind": "text",
+            "semantic": "h2",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__featuresheading_text"
+              ],
+              "bubble_id": "bpmkbvwr",
+              "bubble_name": "I28__FeaturesHeading_Text"
+            },
+            "content": "Built from the responsive primitives that matter.",
+            "box": {
+              "margin": "0",
+              "width": "100%",
+              "max-width": "720px"
+            },
+            "style": {
+              "font-family": "Inter",
+              "font-size": "34px",
+              "font-weight": "800",
+              "color": "#172033",
+              "line-height": "1.15",
+              "letter-spacing": "-0.8px"
+            }
+          },
+          {
+            "id": "bpmkbvws",
+            "kind": "text",
+            "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__featuresbody_text"
+              ],
+              "bubble_id": "bpmkbvws",
+              "bubble_name": "I28__FeaturesBody_Text"
+            },
+            "content": "Each card is literal, self-contained, and long enough to demonstrate predictable text wrapping without any backend data or runtime binding.",
+            "box": {
+              "margin": "0",
+              "width": "100%",
+              "max-width": "760px"
+            },
+            "style": {
+              "font-family": "Inter",
+              "font-size": "16px",
+              "font-weight": "400",
+              "color": "#5A657A",
+              "line-height": "1.55"
+            }
+          },
+          {
+            "id": "bpmkbvwt",
             "kind": "group",
             "semantic": "div",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__featurecards_row_naturalwrap"
+              ],
+              "bubble_id": "bpmkbvwt",
+              "bubble_name": "I28__FeatureCards_Row_NaturalWrap"
+            },
             "layout": {
               "mode": "row",
-              "align": "stretch",
-              "gap": "20px",
               "wrap": "wrap"
+            },
+            "box": {
+              "row-gap": "24px",
+              "column-gap": "24px",
+              "width": "100%"
             },
             "children": [
               {
-                "id": "feature-1",
+                "id": "bpmkbvwu",
                 "kind": "group",
                 "semantic": "article",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__featurecardfluid_column"
+                  ],
+                  "bubble_id": "bpmkbvwu",
+                  "bubble_name": "I28__FeatureCardFluid_Column"
+                },
                 "layout": {
-                  "mode": "column",
-                  "gap": "14px"
+                  "mode": "column"
                 },
                 "box": {
-                  "padding": "26px",
-                  "flex": "1 1 300px"
+                  "row-gap": "16px",
+                  "min-height": "258px",
+                  "padding": "24px",
+                  "min-width": "280px",
+                  "width": "280px",
+                  "flex-grow": "1",
+                  "align-self": "flex-start"
                 },
                 "style": {
-                  "background": "white",
-                  "border": "1px solid #e5e6ee",
-                  "border-radius": "18px"
+                  "background": "#FFFFFF",
+                  "border": "1px solid #D8E0EC",
+                  "border-radius": "20px"
                 },
                 "children": [
                   {
-                    "id": "feature-1-shape",
+                    "id": "bpmkbvwv",
                     "kind": "shape",
                     "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardfluid_shape"
+                      ],
+                      "bubble_id": "bpmkbvwv",
+                      "bubble_name": "I28__FeatureCardFluid_Shape"
+                    },
                     "box": {
-                      "width": "42px",
-                      "height": "42px"
+                      "height": "54px",
+                      "width": "54px"
                     },
                     "style": {
-                      "background": "#dcd8ff",
-                      "border-radius": "13px"
+                      "background": "#DCD9FF",
+                      "border": "2px solid #635BFF",
+                      "border-radius": "17px"
                     }
                   },
                   {
-                    "id": "feature-1-title",
+                    "id": "bpmkbvww",
                     "kind": "text",
                     "semantic": "h3",
-                    "content": "Plan with context",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardfluid_heading_text"
+                      ],
+                      "bubble_id": "bpmkbvww",
+                      "bubble_name": "I28__FeatureCardFluid_Heading_Text"
+                    },
+                    "content": "Fluid by default",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "min-height": "24px",
+                      "width": "100%"
                     },
                     "style": {
-                      "font-size": "20px"
+                      "font-family": "Inter",
+                      "font-size": "20px",
+                      "font-weight": "800",
+                      "color": "#172033",
+                      "line-height": "1.25"
                     }
                   },
                   {
-                    "id": "feature-1-body",
+                    "id": "bpmkbvwx",
                     "kind": "text",
-                    "semantic": "p",
-                    "content": "Connect milestones, owners, and tradeoffs in one view.",
+                    "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardfluid_body_text"
+                      ],
+                      "bubble_id": "bpmkbvwx",
+                      "bubble_name": "I28__FeatureCardFluid_Body_Text"
+                    },
+                    "content": "Fill sizing and an explicit maximum keep the page spacious on wide screens and calm when the viewport narrows.",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "width": "100%"
                     },
                     "style": {
-                      "line-height": "1.55",
-                      "color": "#667087"
+                      "font-family": "Inter",
+                      "font-size": "15px",
+                      "font-weight": "400",
+                      "color": "#667085",
+                      "line-height": "1.55"
                     }
                   }
                 ]
               },
               {
-                "id": "feature-2",
+                "id": "bpmkbvwy",
                 "kind": "group",
                 "semantic": "article",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__featurecardwrap_column"
+                  ],
+                  "bubble_id": "bpmkbvwy",
+                  "bubble_name": "I28__FeatureCardWrap_Column"
+                },
                 "layout": {
-                  "mode": "column",
-                  "gap": "14px"
+                  "mode": "column"
                 },
                 "box": {
-                  "padding": "26px",
-                  "flex": "1 1 300px"
+                  "row-gap": "16px",
+                  "min-height": "258px",
+                  "padding": "24px",
+                  "min-width": "280px",
+                  "width": "280px",
+                  "flex-grow": "1",
+                  "align-self": "flex-start"
                 },
                 "style": {
-                  "background": "white",
-                  "border": "1px solid #e5e6ee",
-                  "border-radius": "18px"
+                  "background": "#FFF8E8",
+                  "border": "1px solid #F2D68D",
+                  "border-radius": "20px"
                 },
                 "children": [
                   {
-                    "id": "feature-2-shape",
+                    "id": "bpmkbvwz",
                     "kind": "shape",
                     "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardwrap_shape"
+                      ],
+                      "bubble_id": "bpmkbvwz",
+                      "bubble_name": "I28__FeatureCardWrap_Shape"
+                    },
                     "box": {
-                      "width": "42px",
-                      "height": "42px"
+                      "height": "54px",
+                      "width": "82px"
                     },
                     "style": {
-                      "background": "#ffd9b3",
-                      "border-radius": "13px"
+                      "background": "#FFD166",
+                      "border": "2px solid #E4A928",
+                      "border-radius": "27px"
                     }
                   },
                   {
-                    "id": "feature-2-title",
+                    "id": "bpmkbvxa",
                     "kind": "text",
                     "semantic": "h3",
-                    "content": "Spot the signal",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardwrap_heading_text"
+                      ],
+                      "bubble_id": "bpmkbvxa",
+                      "bubble_name": "I28__FeatureCardWrap_Heading_Text"
+                    },
+                    "content": "Wrap without switches",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "min-height": "24px",
+                      "width": "100%"
                     },
                     "style": {
-                      "font-size": "20px"
+                      "font-family": "Inter",
+                      "font-size": "20px",
+                      "font-weight": "800",
+                      "color": "#172033",
+                      "line-height": "1.25"
                     }
                   },
                   {
-                    "id": "feature-2-body",
+                    "id": "bpmkbvxb",
                     "kind": "text",
-                    "semantic": "p",
-                    "content": "Responsive summaries keep the important work visible.",
+                    "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardwrap_body_text"
+                      ],
+                      "bubble_id": "bpmkbvxb",
+                      "bubble_name": "I28__FeatureCardWrap_Body_Text"
+                    },
+                    "content": "Rows respond to the space available because their children declare honest minimum widths and consistent gaps.",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "width": "100%"
                     },
                     "style": {
-                      "line-height": "1.55",
-                      "color": "#667087"
+                      "font-family": "Inter",
+                      "font-size": "15px",
+                      "font-weight": "400",
+                      "color": "#667085",
+                      "line-height": "1.55"
                     }
                   }
                 ]
               },
               {
-                "id": "feature-3",
+                "id": "bpmkbvxc",
                 "kind": "group",
                 "semantic": "article",
+                "source": {
+                  "path": [
+                    "pages",
+                    "bubbleex_i28_responsive_slice",
+                    "elements",
+                    "i28__featurecardlayer_column"
+                  ],
+                  "bubble_id": "bpmkbvxc",
+                  "bubble_name": "I28__FeatureCardLayer_Column"
+                },
                 "layout": {
-                  "mode": "column",
-                  "gap": "14px"
+                  "mode": "column"
                 },
                 "box": {
-                  "padding": "26px",
-                  "flex": "1 1 300px"
+                  "row-gap": "16px",
+                  "min-height": "258px",
+                  "padding": "24px",
+                  "min-width": "280px",
+                  "width": "280px",
+                  "flex-grow": "1",
+                  "align-self": "flex-start"
                 },
                 "style": {
-                  "background": "white",
-                  "border": "1px solid #e5e6ee",
-                  "border-radius": "18px"
+                  "background": "#ECFBF7",
+                  "border": "1px solid #9EDCCD",
+                  "border-radius": "20px"
                 },
                 "children": [
                   {
-                    "id": "feature-3-shape",
+                    "id": "bpmkbvxd",
                     "kind": "shape",
                     "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardlayer_shape"
+                      ],
+                      "bubble_id": "bpmkbvxd",
+                      "bubble_name": "I28__FeatureCardLayer_Shape"
+                    },
                     "box": {
-                      "width": "42px",
-                      "height": "42px"
+                      "height": "54px",
+                      "width": "54px"
                     },
                     "style": {
-                      "background": "#bcefe2",
-                      "border-radius": "13px"
+                      "background": "#39D0B3",
+                      "border": "8px solid #C6F3E8",
+                      "border-radius": "27px"
                     }
                   },
                   {
-                    "id": "feature-3-title",
+                    "id": "bpmkbvxe",
                     "kind": "text",
                     "semantic": "h3",
-                    "content": "Decide together",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardlayer_heading_text"
+                      ],
+                      "bubble_id": "bpmkbvxe",
+                      "bubble_name": "I28__FeatureCardLayer_Heading_Text"
+                    },
+                    "content": "Layer with intent",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "min-height": "24px",
+                      "width": "100%"
                     },
                     "style": {
-                      "font-size": "20px"
+                      "font-family": "Inter",
+                      "font-size": "20px",
+                      "font-weight": "800",
+                      "color": "#172033",
+                      "line-height": "1.25"
                     }
                   },
                   {
-                    "id": "feature-3-body",
+                    "id": "bpmkbvxf",
                     "kind": "text",
-                    "semantic": "p",
-                    "content": "Turn updates into clear next steps without another meeting.",
+                    "semantic": "div",
+                    "source": {
+                      "path": [
+                        "pages",
+                        "bubbleex_i28_responsive_slice",
+                        "elements",
+                        "i28__featurecardlayer_body_text"
+                      ],
+                      "bubble_id": "bpmkbvxf",
+                      "bubble_name": "I28__FeatureCardLayer_Body_Text"
+                    },
+                    "content": "Align to Parent makes the overlap deliberate, while the nested fixed canvas preserves precise local coordinates.",
                     "box": {
-                      "margin": "0"
+                      "margin": "0",
+                      "width": "100%"
                     },
                     "style": {
-                      "line-height": "1.55",
-                      "color": "#667087"
+                      "font-family": "Inter",
+                      "font-size": "15px",
+                      "font-weight": "400",
+                      "color": "#667085",
+                      "line-height": "1.55"
                     }
                   }
                 ]
               }
             ]
           }
-        ],
-        "responsive": [
-          {
-            "when": {
-              "max_viewport_width": 767
-            },
-            "box": {
-              "width": "min(100% - 32px, 1120px)",
-              "padding": "58px 0"
-            }
-          }
         ]
       },
       {
-        "id": "signup",
+        "id": "bpmkbvxg",
         "kind": "group",
         "semantic": "section",
-        "attributes": {
-          "id": "signup",
-          "aria-labelledby": "signup-title"
+        "source": {
+          "path": [
+            "pages",
+            "bubbleex_i28_responsive_slice",
+            "elements",
+            "i28__ctasection_row_naturalwrap_max1120"
+          ],
+          "bubble_id": "bpmkbvxg",
+          "bubble_name": "I28__CTASection_Row_NaturalWrap_Max1120"
         },
         "layout": {
           "mode": "row",
-          "align": "center",
           "justify": "space-between",
-          "gap": "36px",
           "wrap": "wrap"
         },
         "box": {
-          "width": "min(1120px, calc(100% - 32px))",
-          "margin": "0 auto 72px",
-          "padding": "40px"
+          "row-gap": "20px",
+          "column-gap": "20px",
+          "padding": "32px",
+          "width": "100%",
+          "max-width": "1120px",
+          "align-self": "center"
         },
         "style": {
           "background": "#172033",
-          "color": "white",
+          "border": "1px solid #2E3A55",
           "border-radius": "24px"
         },
         "children": [
           {
-            "id": "signup-copy",
-            "kind": "group",
+            "id": "bpmkbvxh",
+            "kind": "text",
             "semantic": "div",
-            "layout": {
-              "mode": "column",
-              "gap": "8px"
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__cta_copy_text"
+              ],
+              "bubble_id": "bpmkbvxh",
+              "bubble_name": "I28__CTA_Copy_Text"
             },
-            "children": [
-              {
-                "id": "signup-title",
-                "kind": "text",
-                "semantic": "h2",
-                "content": "Make room for focused work.",
-                "attributes": {
-                  "id": "signup-title"
-                },
-                "box": {
-                  "margin": "0"
-                },
-                "style": {
-                  "font-size": "30px"
-                }
-              },
-              {
-                "id": "signup-body",
-                "kind": "text",
-                "semantic": "p",
-                "content": "Get the monthly operations field note.",
-                "box": {
-                  "margin": "0"
-                },
-                "style": {
-                  "color": "#bfc6d6"
-                }
-              }
-            ],
+            "content": "I28 case 6 \u00b7 Dark CTA Row \u2014 Get the next responsive field note in your inbox.",
             "box": {
-              "flex": "1 1 320px"
+              "margin": "0",
+              "min-height": "48px",
+              "min-width": "280px",
+              "align-self": "center",
+              "width": "280px",
+              "flex-grow": "1"
+            },
+            "style": {
+              "font-family": "Inter",
+              "font-size": "20px",
+              "font-weight": "700",
+              "color": "#FFFFFF",
+              "line-height": "1.35"
             }
           },
           {
-            "id": "signup-form",
-            "kind": "group",
-            "semantic": "form",
+            "id": "bpmkbvxi",
+            "kind": "input",
+            "semantic": "input",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__cta_email_input"
+              ],
+              "bubble_id": "bpmkbvxi",
+              "bubble_name": "I28__CTA_Email_Input"
+            },
+            "box": {
+              "height": "48px",
+              "padding": "12px 16px",
+              "min-width": "240px",
+              "max-width": "340px",
+              "align-self": "center",
+              "width": "240px",
+              "flex-grow": "1"
+            },
+            "style": {
+              "font-family": "Inter",
+              "font-size": "15px",
+              "font-weight": "400",
+              "color": "#172033",
+              "border": "1px solid #8290A8",
+              "border-radius": "12px",
+              "background": "#FFFFFF"
+            },
             "attributes": {
-              "aria-label": "Newsletter signup"
-            },
-            "layout": {
-              "mode": "row",
-              "align": "center",
-              "gap": "10px",
-              "wrap": "wrap"
-            },
-            "children": [
-              {
-                "id": "email",
-                "kind": "input",
-                "semantic": "input",
-                "attributes": {
-                  "type": "email",
-                  "placeholder": "you@example.com",
-                  "aria-label": "Email address"
-                },
-                "box": {
-                  "padding": "13px 15px",
-                  "min-width": "240px"
-                },
-                "style": {
-                  "border": "1px solid #596177",
-                  "border-radius": "10px",
-                  "font-size": "16px",
-                  "background": "white",
-                  "color": "#172033"
-                }
-              },
-              {
-                "id": "subscribe",
-                "kind": "button",
-                "semantic": "button",
-                "content": "Subscribe",
-                "attributes": {
-                  "type": "button"
-                },
-                "box": {
-                  "padding": "13px 17px"
-                },
-                "style": {
-                  "border": "0",
-                  "border-radius": "10px",
-                  "background": "#ffba76",
-                  "color": "#172033",
-                  "font-weight": "800",
-                  "font-size": "16px"
-                }
-              }
-            ],
-            "box": {
-              "flex": "0 1 auto"
+              "type": "email",
+              "placeholder": "you@example.com"
             }
-          }
-        ],
-        "responsive": [
+          },
           {
-            "when": {
-              "max_viewport_width": 767
+            "id": "bpmkbvxj",
+            "kind": "button",
+            "semantic": "button",
+            "source": {
+              "path": [
+                "pages",
+                "bubbleex_i28_responsive_slice",
+                "elements",
+                "i28__cta_button_labelonly"
+              ],
+              "bubble_id": "bpmkbvxj",
+              "bubble_name": "I28__CTA_Button_LabelOnly"
             },
+            "content": "Join the list",
             "box": {
-              "width": "min(100% - 32px, 1120px)",
-              "margin": "0 auto 32px",
-              "padding": "28px"
+              "height": "48px",
+              "min-width": "126px",
+              "padding": "0 20px",
+              "align-self": "center"
+            },
+            "style": {
+              "font-family": "Inter",
+              "font-size": "14px",
+              "font-weight": "800",
+              "color": "#10251F",
+              "line-height": "1.2",
+              "border": "1px solid #6DE2CC",
+              "border-radius": "12px",
+              "background": "#39D0B3"
+            },
+            "attributes": {
+              "type": "button"
             }
           }
         ]

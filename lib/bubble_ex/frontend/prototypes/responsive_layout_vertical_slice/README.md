@@ -2,94 +2,106 @@
 
 > **Throwaway prototype for [BubbleEx issue #28](https://github.com/ricotrevisan/bubble_ex/issues/28).** This is not the production exporter or a proposed public schema.
 
-## Question
+## Verdict
 
-Can an exporter-owned normalized page model compile to readable semantic HTML and static Flexbox/Grid/media-query CSS across responsive transitions, without a generated JavaScript layout runtime?
+A controlled 48-node Bubble page was hand-normalized from authored source facts and rendered as semantic HTML plus static Flexbox/Grid/media-query CSS. Against the frozen Bubble reference, the candidate is **pixel-identical at all 26 declared viewport widths**. The generated page has no JavaScript runtime, script tag, or inline event handler.
 
-This branch answers the **CSS-expressiveness** part with one synthetic product page. It does **not** establish visual equivalence with Bubble: issue #24 defined a controlled-capture contract, but the repository contains no authorized frozen Bubble capture to use as an independent reference. Treat the result as a feasibility spike and the missing capture as a hard evidence gate.
+This settles the issue's vertical-slice question positively for the exercised subset. It does not claim that arbitrary Bubble pages are supported, and it does not turn the prototype model into a production contract.
+
+## Controlled reference
+
+- App/branch: `tiptap-plugin` / `test`
+- Page/path: `bpmkbvvo` / `/version-test/bubbleex-i28-responsive-slice`
+- Sanitized URL: `https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i28-responsive-slice`
+- Decoded page payload SHA-256: `706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b`
+- Chromium: 140.0.7339.16, DPR 1, locale `en-US`, reduced motion, 900 CSS-pixel viewport height
+- Font asset: Inter Latin WOFF2, SHA-256 `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62`
+
+The app and page use private HTTP basic auth. Credentials are not stored here. Captures contain only deterministic public fixture content.
 
 ## Run
 
-From this directory:
+Candidate render and structural audit:
 
 ```bash
 ./run.sh
 ```
 
-The command installs pinned Playwright Chromium if needed, then:
+The command renders `normalized-page.json`, installs pinned Playwright Chromium when needed, audits 26 viewports, and writes candidate screenshots plus `evidence/browser-audit.json`.
 
-1. renders `normalized-page.json` with the deliberately shallow `render.exs`;
-2. writes static `dist/index.html` and `dist/styles.css`;
-3. opens the result with JavaScript-free output at every declared viewport;
-4. performs DOM, semantics, geometry, overflow, and layout-mode assertions; and
-5. writes full-page screenshots plus `evidence/browser-audit.json`. `evidence/comparison-status.json` separately records why no Bubble-vs-candidate mismatch comparison is claimed and which architecture findings survive the spike.
-
-The browser script is measurement equipment for the question—responsive behavior cannot be judged from generated source alone—not a reusable test framework. It intentionally checks only the declared seams and writes the state needed to inspect the result.
-
-The generated page itself has no runtime dependency and can also be opened directly:
+Reference capture requires credentials supplied only through the environment:
 
 ```bash
-xdg-open dist/index.html
+BUBBLE_BASIC_USER=... BUBBLE_BASIC_PASSWORD=... \
+  npx --yes -p playwright@1.55.0 -c \
+  'PW_BIN=$(command -v playwright); NODE_PATH=$(dirname "$(dirname "$PW_BIN")") node capture-reference.cjs'
 ```
 
-## Slice
+Then capture the local candidate and compare:
 
-The 50-node fixture exercises:
+```bash
+npx --yes -p playwright@1.55.0 -c \
+  'PW_BIN=$(command -v playwright); NODE_PATH=$(dirname "$(dirname "$PW_BIN")") node capture-candidate.cjs'
+node compare.cjs
+```
 
-- Page and nested Group containers;
-- Column, Row, Align-to-Parent, and Fixed layout modes;
-- natural responsive Row wrapping plus base Column containers;
-- hidden-and-collapsed navigation;
-- a centered, max-width-clamped content shell;
-- overlapping decoration and locally positioned children;
-- explicit `h1`/`h2`/`h3`, links, buttons, and email input semantics; and
-- natural text wrapping and intrinsic page-height changes.
+`compare.cjs` checks source-correlated geometry, typography, collapse behavior, document height, and PNG byte identity.
 
-The renderer maps Row/Column to Flexbox, Align-to-Parent to a layered 3×3 CSS Grid alignment plane, Fixed to a local positioned containing block, and resolved visibility/box deltas to media queries. The hero keeps Row mode and wraps naturally from child sizing constraints; the fixture does not assume that Bubble container mode is conditionally mutable. It does not execute workflows, conditions, expressions, plugins, or layout JavaScript.
+## Source discipline
 
-The fixture is intentionally narrow. Its `source` fields are traceability examples, not claims that the synthetic page came from a Bubble payload. Box/style values remain prototype-level and are not a substitute for the layered/provenance-bearing normalized contract decided in issue #25.
+`normalized-page.json` is hand-normalized only from the decoded page payload and Buildprint source, including `__bp_layout__` sidecars for otherwise-lost fixed heights. It does not copy computed DOM bounds or CSS declarations into the model. Every normalized node retains its Bubble token and source name/path.
+
+The source includes:
+
+- Page and Group Column/Row layouts;
+- naturally wrapping Hero, feature-card, and CTA Rows;
+- an inclusive `Current Page Width <= 768` hidden-and-collapsed nav rule;
+- a 1120 px centered max-width clamp;
+- Align-to-Parent top-right/center/bottom-left overlap and stacking;
+- a nested 196×92 Fixed canvas with local XY children;
+- text, headings, label-only buttons, and an email input; and
+- deterministic paint, typography, gradient, border, shadow, rotation, and font facts.
+
+No workflow, dynamic data, custom state, plugin element, authenticated asset, or custom JavaScript exists on the fixture page.
 
 ## Predeclared viewport matrix
 
-Viewport height is 900 CSS px, DPR 1, pinned Chromium 140.0.7339.16. Full-page screenshots are captured at:
+The matrix samples representative narrow/wide states and every actual transition at `b-1`, `b`, and `b+1`:
 
-| Width | Reason |
+| Widths | Transition |
 |---:|---|
 | 390 | representative narrow page |
-| 767 / 768 / 769 | immediately below, at, and above the 768 px visibility/box-rule transition |
-| 795 / 796 / 797 | immediately below, at, and above the natural hero Row wrap transition |
-| 1151 / 1152 / 1153 | immediately below, at, and above the 1120 px shell + 32 px gutter clamp |
+| 483 / 484 / 485 | CTA input and button join one line |
+| 615 / 616 / 617 | feature cards move from one to two columns |
+| 637 / 638 / 639 | CTA copy and input share the first line |
+| 767 / 768 / 769 | inclusive nav collapse boundary |
+| 775 / 776 / 777 | hero children move from stacked to one line |
+| 783 / 784 / 785 | CTA becomes one flex line |
+| 919 / 920 / 921 | feature cards move from two to three columns |
+| 1151 / 1152 / 1153 | 1120 px shell clamp |
 | 1440 | representative wide page |
 
-All widths must satisfy:
+At all 26 widths:
 
-- exactly one expected semantic element at each checked seam;
-- no `<script>` or inline event handlers;
-- no horizontal page overflow;
-- source order remains `hero-copy`, then `hero-visual`;
-- Row remains Row while wrap line assignment changes at 796 px; collapse state changes at 768 px;
-- shell width within 1 CSS px of `min(1120px, viewport - 32px)`;
-- Align-to-Parent compiles to Grid; Fixed children are positioned inside a local containing block; and
-- narrow children stack while wide hero children remain center-aligned.
+- all 1,200 source-correlated geometry samples have 0 CSS-pixel error;
+- selected typography is exact;
+- document heights are exact;
+- hidden/collapsed state agrees at the inclusive boundary;
+- screenshots are byte-identical PNGs; and
+- the candidate has no horizontal overflow.
 
-## Result
+## Mismatches and architecture implications
 
-All eleven browser audits pass. The static output shows that this representative combination is expressible without a JavaScript layout runtime.
+The final mismatch list is empty. During comparison, five local renderer/model defects were exposed and corrected:
 
-That result is **not a Bubble parity score**. A yes/no visual-equivalence verdict requires the missing authorized capture bundle: frozen app/version identity, payload hash, source-to-element mapping, DOM, selected computed styles and bounds, fonts/assets, screenshots, browser/DPR, and captures at behavior-derived widths. The synthetic screenshots cannot serve as their own independent oracle.
+1. **Distinct Row gaps are required.** Collapsing Bubble `row_gap` and `column_gap` into one generic gap changed natural transitions.
+2. **Fill width is `width + flex-grow`, not zero-basis shorthand.** `flex: 1 1 0` redistributed CTA and hero space differently from Bubble's `width`, `flex-grow: 1`, `flex-basis: auto` behavior.
+3. **Row cross-axis defaults are not CSS stretch.** Bubble's default `align-items: normal` preserves independently sized cards; forcing stretch changed wrapped-line card heights.
+4. **Explicit single-default heights survive normalization.** The Buildprint layout sidecars were necessary for nav item and local Fixed heights.
+5. **The exact font bytes and placeholder color are geometry/paint inputs.** Freezing Inter removed text-wrap differences; normalizing placeholder color removed the final pixel mismatch.
 
-## Architecture observations to carry forward
-
-1. Layout compilation is parent-contextual: a child placement means different CSS under Row, Column, Align-to-Parent, and Fixed parents.
-2. Align-to-Parent needs a shared layering/alignment plane and an explicit stacking contract; a nine-cell enum alone does not explain collisions.
-3. Fixed children need a guaranteed local containing block and explicit parent height because absolute children do not contribute intrinsic size.
-4. Responsive conditions need ordered, inclusive boundary semantics. The 767/768/769 visibility discontinuity and the independent 795/796/797 natural-wrap transition are intentional and testable.
-5. Hidden-and-collapsed must remain distinct from visually hidden; `display: none` also changes parent gaps and intrinsic size.
-6. Semantic tag choice is independent of layout mode. Generic Groups remain neutral even when their CSS changes.
-7. Exact text wrapping and resulting document height depend on frozen font metrics; image crop parity likewise depends on frozen assets and focal-point metadata.
-8. The production model must preserve sizing intent, style layers/provenance, unresolved rules, source refs, and unsupported data rather than the prototype's final CSS-like box values.
-9. If an authorized reference exposes parent-size conditions, intrinsic-size feedback, or runtime measurement, first test container queries/static CSS; do not silently add a generated layout runtime.
+These are narrow, evidence-backed rules for future production modeling. They do not justify flattening source provenance or unknown values, and they do not justify adding a generated measurement runtime.
 
 ## Stop condition
 
-Do not close issue #28 with a claim of “acceptable visual equivalence” from this artifact alone. Resume at the independent-reference seam, then compare source-correlated DOM/geometry first and screenshots second. A local mapping defect can change this renderer; a repeated mismatch requiring a new sizing, anchoring, visibility, precedence, or asset distinction must change the normalized architecture or narrow support.
+The prototype answers issue #28. Production work must still define a durable normalized model and production renderer around the proved subset, preserve source provenance and explicit/unset state, and narrow unsupported cases rather than silently introducing runtime layout JavaScript.

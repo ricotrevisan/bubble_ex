@@ -1,43 +1,23 @@
 {
-  "comparison_status": "blocked_missing_authorized_reference",
-  "reference_capture": null,
-  "observed_bubble_to_candidate_mismatches": [],
-  "reason": "The repository contains no frozen authorized Bubble capture bundle, so a Bubble visual-equivalence comparison would have no independent oracle.",
+  "status": "pass",
+  "verdict": "pixel_identical",
+  "reference": {
+    "app": "tiptap-plugin",
+    "branch": "test",
+    "page_id": "bpmkbvvo",
+    "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i28-responsive-slice",
+    "page_payload_sha256": "706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b"
+  },
+  "viewport_count": 26,
+  "geometry_samples": 1200,
+  "max_geometry_error_css_px": 0,
+  "screenshots_byte_identical": true,
+  "mismatches": [],
   "architecture_findings": [
-    {
-      "id": "A-001",
-      "status": "required",
-      "finding": "Child placement must compile in parent layout context; Row, Column, Align-to-Parent, and Fixed cannot share a context-free placement mapping."
-    },
-    {
-      "id": "A-002",
-      "status": "required",
-      "finding": "Align-to-Parent needs an explicit overlap, pin, and stacking contract; a nine-cell value alone does not define collisions."
-    },
-    {
-      "id": "A-003",
-      "status": "required",
-      "finding": "Fixed containers need a local containing block and explicit intrinsic-size policy because positioned children do not size the parent."
-    },
-    {
-      "id": "A-004",
-      "status": "required",
-      "finding": "Viewport predicates must preserve ordered rules and inclusive boundaries independently from natural Row wrap transitions."
-    },
-    {
-      "id": "A-005",
-      "status": "required",
-      "finding": "Hidden-and-collapsed must remain distinct from hidden-with-space because it changes gaps and intrinsic sizing."
-    },
-    {
-      "id": "A-006",
-      "status": "evidence_gate",
-      "finding": "Font metrics, image crop/focal data, and authorized reference geometry must be frozen before visual parity can be scored."
-    },
-    {
-      "id": "A-007",
-      "status": "model_gap",
-      "finding": "Production normalization must preserve sizing intent, style layers/provenance, unresolved rules, source refs, and unsupported values rather than this prototype's CSS-ready box values."
-    }
+    "preserve row_gap and column_gap separately",
+    "lower fill width as width plus flex-grow with auto basis",
+    "preserve Bubble non-stretch cross-axis defaults",
+    "retain explicit single-default and sidecar raw sizes",
+    "freeze font bytes and input placeholder paint"
   ]
 }

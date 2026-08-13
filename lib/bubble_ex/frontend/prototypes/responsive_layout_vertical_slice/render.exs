@@ -22,6 +22,11 @@ css_declarations = fn values ->
   |> Enum.map_join("", fn {name, value} -> "  #{name}: #{value};\n" end)
 end
 
+put_optional_gap = fn
+  props, %{"gap" => gap} -> Map.put(props, "gap", gap)
+  props, _layout -> props
+end
+
 layout_properties = fn
   nil ->
     %{}
@@ -32,18 +37,18 @@ layout_properties = fn
       "flex-direction" => "row",
       "align-items" => Map.get(layout, "align", "stretch"),
       "justify-content" => Map.get(layout, "justify", "flex-start"),
-      "gap" => Map.get(layout, "gap", "0px"),
       "flex-wrap" => Map.get(layout, "wrap", "nowrap")
     }
+    |> put_optional_gap.(layout)
 
   %{"mode" => "column"} = layout ->
     %{
       "display" => "flex",
       "flex-direction" => "column",
       "align-items" => Map.get(layout, "align", "stretch"),
-      "justify-content" => Map.get(layout, "justify", "flex-start"),
-      "gap" => Map.get(layout, "gap", "0px")
+      "justify-content" => Map.get(layout, "justify", "flex-start")
     }
+    |> put_optional_gap.(layout)
 
   %{"mode" => "align_to_parent"} ->
     %{
@@ -91,12 +96,21 @@ placement_properties = fn
     |> Map.merge(Map.take(placement, ["width", "height"]))
 end
 
+put_group_cross_axis_default = fn
+  props, %{"kind" => "group", "layout" => %{"mode" => mode}} when mode in ["row", "column"] ->
+    Map.put_new(props, "align-items", "normal")
+
+  props, _node ->
+    props
+end
+
 node_properties = fn node ->
   node
   |> Map.get("box", %{})
   |> Map.merge(layout_properties.(Map.get(node, "layout")))
   |> Map.merge(placement_properties.(Map.get(node, "placement")))
   |> Map.merge(Map.get(node, "style", %{}))
+  |> put_group_cross_axis_default.(node)
 end
 
 rule_properties = fn rule ->
@@ -117,9 +131,18 @@ end
 
 nodes = collect_nodes.(collect_nodes, model["page"])
 
+node_extra_css = fn
+  %{"id" => "bpmkbvxi"} ->
+    "\n.e-bpmkbvxi::placeholder {\n  color: #7B879B;\n  opacity: 1;\n}\n"
+
+  _node ->
+    ""
+end
+
 node_css =
   Enum.map_join(nodes, "\n", fn node ->
-    ".e-#{node["id"]} {\n#{css_declarations.(node_properties.(node))}}\n"
+    ".e-#{node["id"]} {\n#{css_declarations.(node_properties.(node))}}\n" <>
+      node_extra_css.(node)
   end)
 
 responsive_css =
@@ -137,10 +160,17 @@ responsive_css =
   end)
 
 base_css = """
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: block;
+  src: url("../assets/inter-latin.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-synthesis: none;
+  font-family: Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -148,7 +178,7 @@ html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; }
 button, input { font: inherit; }
 button, a { cursor: pointer; }
-button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #8f84f3; outline-offset: 3px; }
+button:focus-visible, input:focus-visible { outline: 3px solid #8f84f3; outline-offset: 3px; }
 """
 
 attributes = fn node ->
@@ -184,7 +214,7 @@ html = """
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="generator" content="BubbleEx responsive-layout prototype">
-  <title>Northstar — responsive layout slice</title>
+  <title>BubbleEx issue 28 responsive slice</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
