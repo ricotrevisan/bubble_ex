@@ -226,3 +226,18 @@ mix usage_rules.search_docs "Enum.zip" --query-by title
 
 <!-- usage_rules:otp-end -->
 <!-- usage-rules-end -->
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `ricotrevisan/bubble_ex` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root and ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
