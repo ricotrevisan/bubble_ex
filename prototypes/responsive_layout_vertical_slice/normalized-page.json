@@ -1,0 +1,920 @@
+{
+  "schema_version": "frontend-model-prototype-v0",
+  "app_version": {
+    "bubble_id": "responsive-slice",
+    "name": "synthetic-contract",
+    "version": "frozen-v1"
+  },
+  "page": {
+    "id": "page-index",
+    "kind": "page",
+    "semantic": "main",
+    "source": {
+      "path": [
+        "pages",
+        "index"
+      ],
+      "map_key": "index",
+      "bubble_id": "page-index"
+    },
+    "layout": {
+      "mode": "column",
+      "align": "stretch",
+      "gap": "0px"
+    },
+    "box": {
+      "min-height": "100vh",
+      "width": "100%"
+    },
+    "style": {
+      "background": "#f7f7fb",
+      "color": "#172033"
+    },
+    "children": [
+      {
+        "id": "nav",
+        "kind": "group",
+        "semantic": "header",
+        "source": {
+          "path": [
+            "pages",
+            "index",
+            "elements",
+            "nav"
+          ]
+        },
+        "layout": {
+          "mode": "row",
+          "align": "center",
+          "justify": "space-between",
+          "gap": "24px"
+        },
+        "box": {
+          "width": "min(1120px, calc(100% - 32px))",
+          "margin": "0 auto",
+          "padding": "22px 0"
+        },
+        "children": [
+          {
+            "id": "brand",
+            "kind": "link",
+            "semantic": "a",
+            "content": "Northstar",
+            "attributes": {
+              "href": "#top",
+              "aria-label": "Northstar home"
+            },
+            "style": {
+              "font-size": "22px",
+              "font-weight": "800",
+              "color": "#172033",
+              "text-decoration": "none"
+            }
+          },
+          {
+            "id": "nav-links",
+            "kind": "group",
+            "semantic": "nav",
+            "layout": {
+              "mode": "row",
+              "align": "center",
+              "gap": "28px"
+            },
+            "children": [
+              {
+                "id": "link-platform",
+                "kind": "link",
+                "semantic": "a",
+                "content": "Platform",
+                "attributes": {
+                  "href": "#platform"
+                },
+                "style": {
+                  "color": "#566078",
+                  "text-decoration": "none",
+                  "font-weight": "600"
+                }
+              },
+              {
+                "id": "link-stories",
+                "kind": "link",
+                "semantic": "a",
+                "content": "Stories",
+                "attributes": {
+                  "href": "#stories"
+                },
+                "style": {
+                  "color": "#566078",
+                  "text-decoration": "none",
+                  "font-weight": "600"
+                }
+              },
+              {
+                "id": "link-pricing",
+                "kind": "link",
+                "semantic": "a",
+                "content": "Pricing",
+                "attributes": {
+                  "href": "#pricing"
+                },
+                "style": {
+                  "color": "#566078",
+                  "text-decoration": "none",
+                  "font-weight": "600"
+                }
+              }
+            ],
+            "responsive": [
+              {
+                "when": {
+                  "max_viewport_width": 767
+                },
+                "visibility": "collapsed"
+              }
+            ]
+          },
+          {
+            "id": "nav-cta",
+            "kind": "link",
+            "semantic": "a",
+            "content": "Start free",
+            "attributes": {
+              "href": "#signup"
+            },
+            "box": {
+              "padding": "11px 17px"
+            },
+            "style": {
+              "background": "#5b4bdb",
+              "color": "white",
+              "border-radius": "10px",
+              "text-decoration": "none",
+              "font-weight": "700"
+            }
+          }
+        ],
+        "responsive": [
+          {
+            "when": {
+              "max_viewport_width": 767
+            },
+            "box": {
+              "width": "min(100% - 32px, 1120px)",
+              "padding": "16px 0"
+            }
+          }
+        ]
+      },
+      {
+        "id": "hero",
+        "kind": "group",
+        "semantic": "section",
+        "attributes": {
+          "id": "top",
+          "aria-labelledby": "hero-title"
+        },
+        "source": {
+          "path": [
+            "pages",
+            "index",
+            "elements",
+            "hero"
+          ]
+        },
+        "layout": {
+          "mode": "row",
+          "align": "center",
+          "justify": "space-between",
+          "gap": "64px",
+          "wrap": "wrap"
+        },
+        "box": {
+          "width": "min(1120px, calc(100% - 32px))",
+          "margin": "0 auto",
+          "padding": "70px 0 86px",
+          "min-height": "620px"
+        },
+        "children": [
+          {
+            "id": "hero-copy",
+            "kind": "group",
+            "semantic": "div",
+            "layout": {
+              "mode": "column",
+              "align": "flex-start",
+              "gap": "20px"
+            },
+            "box": {
+              "flex": "1 1 350px"
+            },
+            "children": [
+              {
+                "id": "eyebrow",
+                "kind": "text",
+                "semantic": "p",
+                "content": "OPERATIONS, WITHOUT THE BUSYWORK",
+                "box": {
+                  "margin": "0"
+                },
+                "style": {
+                  "font-size": "13px",
+                  "letter-spacing": "0.14em",
+                  "font-weight": "800",
+                  "color": "#5b4bdb"
+                }
+              },
+              {
+                "id": "hero-title",
+                "kind": "text",
+                "semantic": "h1",
+                "content": "Move work forward with a calmer command center.",
+                "attributes": {
+                  "id": "hero-title"
+                },
+                "box": {
+                  "margin": "0"
+                },
+                "style": {
+                  "font-size": "clamp(42px, 5.4vw, 72px)",
+                  "line-height": "1.02",
+                  "letter-spacing": "-0.045em",
+                  "color": "#172033"
+                }
+              },
+              {
+                "id": "hero-body",
+                "kind": "text",
+                "semantic": "p",
+                "content": "Plan projects, unblock teams, and see the signal in one responsive workspace built for real decisions.",
+                "box": {
+                  "margin": "0",
+                  "max-width": "580px"
+                },
+                "style": {
+                  "font-size": "19px",
+                  "line-height": "1.65",
+                  "color": "#667087"
+                }
+              },
+              {
+                "id": "hero-actions",
+                "kind": "group",
+                "semantic": "div",
+                "layout": {
+                  "mode": "row",
+                  "align": "center",
+                  "gap": "14px",
+                  "wrap": "wrap"
+                },
+                "box": {
+                  "padding": "8px 0 0"
+                },
+                "children": [
+                  {
+                    "id": "primary-cta",
+                    "kind": "button",
+                    "semantic": "button",
+                    "content": "Create workspace",
+                    "attributes": {
+                      "type": "button"
+                    },
+                    "box": {
+                      "padding": "15px 22px"
+                    },
+                    "style": {
+                      "border": "0",
+                      "border-radius": "12px",
+                      "background": "#5b4bdb",
+                      "color": "white",
+                      "font-weight": "800",
+                      "font-size": "16px"
+                    }
+                  },
+                  {
+                    "id": "secondary-cta",
+                    "kind": "link",
+                    "semantic": "a",
+                    "content": "See customer stories \u2192",
+                    "attributes": {
+                      "href": "#stories"
+                    },
+                    "box": {
+                      "padding": "14px 8px"
+                    },
+                    "style": {
+                      "color": "#29334a",
+                      "font-weight": "700",
+                      "text-decoration": "none"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "hero-visual",
+            "kind": "group",
+            "semantic": "div",
+            "layout": {
+              "mode": "align_to_parent"
+            },
+            "box": {
+              "height": "430px",
+              "flex": "1 1 350px"
+            },
+            "style": {
+              "background": "#e9e7ff",
+              "border-radius": "32px",
+              "overflow": "hidden"
+            },
+            "children": [
+              {
+                "id": "visual-halo",
+                "kind": "shape",
+                "semantic": "div",
+                "placement": {
+                  "cell": "center",
+                  "width": "82%",
+                  "height": "82%"
+                },
+                "style": {
+                  "border-radius": "50%",
+                  "background": "linear-gradient(145deg, #c9c4ff, #f8f7ff)"
+                }
+              },
+              {
+                "id": "dashboard-card",
+                "kind": "group",
+                "semantic": "article",
+                "placement": {
+                  "cell": "center",
+                  "width": "76%"
+                },
+                "layout": {
+                  "mode": "column",
+                  "gap": "18px"
+                },
+                "box": {
+                  "padding": "28px"
+                },
+                "style": {
+                  "background": "rgba(255,255,255,0.94)",
+                  "border": "1px solid rgba(45,54,88,0.08)",
+                  "border-radius": "22px",
+                  "box-shadow": "0 24px 60px rgba(45,39,109,0.18)",
+                  "z-index": "2"
+                },
+                "children": [
+                  {
+                    "id": "card-label",
+                    "kind": "text",
+                    "semantic": "p",
+                    "content": "Weekly momentum",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "font-size": "14px",
+                      "font-weight": "700",
+                      "color": "#667087"
+                    }
+                  },
+                  {
+                    "id": "card-score",
+                    "kind": "text",
+                    "semantic": "p",
+                    "content": "84%",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "font-size": "54px",
+                      "font-weight": "850",
+                      "letter-spacing": "-0.04em",
+                      "color": "#172033"
+                    }
+                  },
+                  {
+                    "id": "progress-track",
+                    "kind": "group",
+                    "semantic": "div",
+                    "layout": {
+                      "mode": "fixed"
+                    },
+                    "box": {
+                      "height": "12px",
+                      "width": "100%"
+                    },
+                    "style": {
+                      "background": "#ececf3",
+                      "border-radius": "99px",
+                      "overflow": "hidden"
+                    },
+                    "children": [
+                      {
+                        "id": "progress-fill",
+                        "kind": "shape",
+                        "semantic": "div",
+                        "placement": {
+                          "x": "0",
+                          "y": "0",
+                          "width": "84%",
+                          "height": "12px"
+                        },
+                        "style": {
+                          "background": "#5b4bdb",
+                          "border-radius": "99px"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "card-caption",
+                    "kind": "text",
+                    "semantic": "p",
+                    "content": "12 priorities completed \u00b7 3 in review",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "font-size": "14px",
+                      "color": "#667087"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "accent-shape",
+                "kind": "shape",
+                "semantic": "div",
+                "placement": {
+                  "cell": "top_end",
+                  "width": "92px",
+                  "height": "92px",
+                  "offset-x": "-18px",
+                  "offset-y": "20px"
+                },
+                "style": {
+                  "background": "#ffba76",
+                  "border-radius": "28px",
+                  "transform": "rotate(14deg)"
+                }
+              },
+              {
+                "id": "fixed-cluster",
+                "kind": "group",
+                "semantic": "div",
+                "placement": {
+                  "cell": "bottom_start",
+                  "width": "140px",
+                  "height": "100px",
+                  "offset-x": "22px",
+                  "offset-y": "-16px"
+                },
+                "layout": {
+                  "mode": "fixed"
+                },
+                "style": {
+                  "z-index": "3"
+                },
+                "children": [
+                  {
+                    "id": "cluster-a",
+                    "kind": "shape",
+                    "semantic": "div",
+                    "placement": {
+                      "x": "0",
+                      "y": "24px",
+                      "width": "72px",
+                      "height": "72px"
+                    },
+                    "style": {
+                      "background": "#50c2a7",
+                      "border-radius": "50%"
+                    }
+                  },
+                  {
+                    "id": "cluster-b",
+                    "kind": "shape",
+                    "semantic": "div",
+                    "placement": {
+                      "x": "56px",
+                      "y": "0",
+                      "width": "84px",
+                      "height": "52px"
+                    },
+                    "style": {
+                      "background": "#172033",
+                      "border-radius": "18px",
+                      "transform": "rotate(-8deg)"
+                    }
+                  }
+                ]
+              }
+            ],
+            "responsive": [
+              {
+                "when": {
+                  "max_viewport_width": 767
+                },
+                "box": {
+                  "height": "360px"
+                }
+              }
+            ]
+          }
+        ],
+        "responsive": [
+          {
+            "when": {
+              "max_viewport_width": 767
+            },
+            "box": {
+              "width": "min(100% - 32px, 1120px)",
+              "padding": "44px 0 64px",
+              "min-height": "0"
+            }
+          }
+        ]
+      },
+      {
+        "id": "platform",
+        "kind": "group",
+        "semantic": "section",
+        "attributes": {
+          "id": "platform",
+          "aria-labelledby": "platform-title"
+        },
+        "layout": {
+          "mode": "column",
+          "align": "stretch",
+          "gap": "28px"
+        },
+        "box": {
+          "width": "min(1120px, calc(100% - 32px))",
+          "margin": "0 auto",
+          "padding": "76px 0"
+        },
+        "children": [
+          {
+            "id": "platform-title",
+            "kind": "text",
+            "semantic": "h2",
+            "content": "A shared rhythm for every team",
+            "attributes": {
+              "id": "platform-title"
+            },
+            "box": {
+              "margin": "0",
+              "max-width": "620px"
+            },
+            "style": {
+              "font-size": "38px",
+              "line-height": "1.12",
+              "letter-spacing": "-0.03em"
+            }
+          },
+          {
+            "id": "feature-row",
+            "kind": "group",
+            "semantic": "div",
+            "layout": {
+              "mode": "row",
+              "align": "stretch",
+              "gap": "20px",
+              "wrap": "wrap"
+            },
+            "children": [
+              {
+                "id": "feature-1",
+                "kind": "group",
+                "semantic": "article",
+                "layout": {
+                  "mode": "column",
+                  "gap": "14px"
+                },
+                "box": {
+                  "padding": "26px",
+                  "flex": "1 1 300px"
+                },
+                "style": {
+                  "background": "white",
+                  "border": "1px solid #e5e6ee",
+                  "border-radius": "18px"
+                },
+                "children": [
+                  {
+                    "id": "feature-1-shape",
+                    "kind": "shape",
+                    "semantic": "div",
+                    "box": {
+                      "width": "42px",
+                      "height": "42px"
+                    },
+                    "style": {
+                      "background": "#dcd8ff",
+                      "border-radius": "13px"
+                    }
+                  },
+                  {
+                    "id": "feature-1-title",
+                    "kind": "text",
+                    "semantic": "h3",
+                    "content": "Plan with context",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "font-size": "20px"
+                    }
+                  },
+                  {
+                    "id": "feature-1-body",
+                    "kind": "text",
+                    "semantic": "p",
+                    "content": "Connect milestones, owners, and tradeoffs in one view.",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "line-height": "1.55",
+                      "color": "#667087"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "feature-2",
+                "kind": "group",
+                "semantic": "article",
+                "layout": {
+                  "mode": "column",
+                  "gap": "14px"
+                },
+                "box": {
+                  "padding": "26px",
+                  "flex": "1 1 300px"
+                },
+                "style": {
+                  "background": "white",
+                  "border": "1px solid #e5e6ee",
+                  "border-radius": "18px"
+                },
+                "children": [
+                  {
+                    "id": "feature-2-shape",
+                    "kind": "shape",
+                    "semantic": "div",
+                    "box": {
+                      "width": "42px",
+                      "height": "42px"
+                    },
+                    "style": {
+                      "background": "#ffd9b3",
+                      "border-radius": "13px"
+                    }
+                  },
+                  {
+                    "id": "feature-2-title",
+                    "kind": "text",
+                    "semantic": "h3",
+                    "content": "Spot the signal",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "font-size": "20px"
+                    }
+                  },
+                  {
+                    "id": "feature-2-body",
+                    "kind": "text",
+                    "semantic": "p",
+                    "content": "Responsive summaries keep the important work visible.",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "line-height": "1.55",
+                      "color": "#667087"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "feature-3",
+                "kind": "group",
+                "semantic": "article",
+                "layout": {
+                  "mode": "column",
+                  "gap": "14px"
+                },
+                "box": {
+                  "padding": "26px",
+                  "flex": "1 1 300px"
+                },
+                "style": {
+                  "background": "white",
+                  "border": "1px solid #e5e6ee",
+                  "border-radius": "18px"
+                },
+                "children": [
+                  {
+                    "id": "feature-3-shape",
+                    "kind": "shape",
+                    "semantic": "div",
+                    "box": {
+                      "width": "42px",
+                      "height": "42px"
+                    },
+                    "style": {
+                      "background": "#bcefe2",
+                      "border-radius": "13px"
+                    }
+                  },
+                  {
+                    "id": "feature-3-title",
+                    "kind": "text",
+                    "semantic": "h3",
+                    "content": "Decide together",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "font-size": "20px"
+                    }
+                  },
+                  {
+                    "id": "feature-3-body",
+                    "kind": "text",
+                    "semantic": "p",
+                    "content": "Turn updates into clear next steps without another meeting.",
+                    "box": {
+                      "margin": "0"
+                    },
+                    "style": {
+                      "line-height": "1.55",
+                      "color": "#667087"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "responsive": [
+          {
+            "when": {
+              "max_viewport_width": 767
+            },
+            "box": {
+              "width": "min(100% - 32px, 1120px)",
+              "padding": "58px 0"
+            }
+          }
+        ]
+      },
+      {
+        "id": "signup",
+        "kind": "group",
+        "semantic": "section",
+        "attributes": {
+          "id": "signup",
+          "aria-labelledby": "signup-title"
+        },
+        "layout": {
+          "mode": "row",
+          "align": "center",
+          "justify": "space-between",
+          "gap": "36px",
+          "wrap": "wrap"
+        },
+        "box": {
+          "width": "min(1120px, calc(100% - 32px))",
+          "margin": "0 auto 72px",
+          "padding": "40px"
+        },
+        "style": {
+          "background": "#172033",
+          "color": "white",
+          "border-radius": "24px"
+        },
+        "children": [
+          {
+            "id": "signup-copy",
+            "kind": "group",
+            "semantic": "div",
+            "layout": {
+              "mode": "column",
+              "gap": "8px"
+            },
+            "children": [
+              {
+                "id": "signup-title",
+                "kind": "text",
+                "semantic": "h2",
+                "content": "Make room for focused work.",
+                "attributes": {
+                  "id": "signup-title"
+                },
+                "box": {
+                  "margin": "0"
+                },
+                "style": {
+                  "font-size": "30px"
+                }
+              },
+              {
+                "id": "signup-body",
+                "kind": "text",
+                "semantic": "p",
+                "content": "Get the monthly operations field note.",
+                "box": {
+                  "margin": "0"
+                },
+                "style": {
+                  "color": "#bfc6d6"
+                }
+              }
+            ],
+            "box": {
+              "flex": "1 1 320px"
+            }
+          },
+          {
+            "id": "signup-form",
+            "kind": "group",
+            "semantic": "form",
+            "attributes": {
+              "aria-label": "Newsletter signup"
+            },
+            "layout": {
+              "mode": "row",
+              "align": "center",
+              "gap": "10px",
+              "wrap": "wrap"
+            },
+            "children": [
+              {
+                "id": "email",
+                "kind": "input",
+                "semantic": "input",
+                "attributes": {
+                  "type": "email",
+                  "placeholder": "you@example.com",
+                  "aria-label": "Email address"
+                },
+                "box": {
+                  "padding": "13px 15px",
+                  "min-width": "240px"
+                },
+                "style": {
+                  "border": "1px solid #596177",
+                  "border-radius": "10px",
+                  "font-size": "16px",
+                  "background": "white",
+                  "color": "#172033"
+                }
+              },
+              {
+                "id": "subscribe",
+                "kind": "button",
+                "semantic": "button",
+                "content": "Subscribe",
+                "attributes": {
+                  "type": "button"
+                },
+                "box": {
+                  "padding": "13px 17px"
+                },
+                "style": {
+                  "border": "0",
+                  "border-radius": "10px",
+                  "background": "#ffba76",
+                  "color": "#172033",
+                  "font-weight": "800",
+                  "font-size": "16px"
+                }
+              }
+            ],
+            "box": {
+              "flex": "0 1 auto"
+            }
+          }
+        ],
+        "responsive": [
+          {
+            "when": {
+              "max_viewport_width": 767
+            },
+            "box": {
+              "width": "min(100% - 32px, 1120px)",
+              "margin": "0 auto 32px",
+              "padding": "28px"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
