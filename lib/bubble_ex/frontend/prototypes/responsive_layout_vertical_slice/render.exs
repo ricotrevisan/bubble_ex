@@ -58,15 +58,9 @@ layout_properties = fn
 end
 
 cell_alignment = %{
-  "top_start" => {"start", "start"},
-  "top_center" => {"center", "start"},
   "top_end" => {"end", "start"},
-  "center_start" => {"start", "center"},
   "center" => {"center", "center"},
-  "center_end" => {"end", "center"},
-  "bottom_start" => {"start", "end"},
-  "bottom_center" => {"center", "end"},
-  "bottom_end" => {"end", "end"}
+  "bottom_start" => {"start", "end"}
 }
 
 placement_properties = fn

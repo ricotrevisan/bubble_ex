@@ -24,6 +24,8 @@ The command installs pinned Playwright Chromium if needed, then:
 4. performs DOM, semantics, geometry, overflow, and layout-mode assertions; and
 5. writes full-page screenshots plus `evidence/browser-audit.json`. `evidence/comparison-status.json` separately records why no Bubble-vs-candidate mismatch comparison is claimed and which architecture findings survive the spike.
 
+The browser script is measurement equipment for the question—responsive behavior cannot be judged from generated source alone—not a reusable test framework. It intentionally checks only the declared seams and writes the state needed to inspect the result.
+
 The generated page itself has no runtime dependency and can also be opened directly:
 
 ```bash
