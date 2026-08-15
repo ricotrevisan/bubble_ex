@@ -149,3 +149,7 @@ _Avoid_: App tree, page HTML file
 **Placeholder element**:
 A dimension-preserving stand-in for an unsupported, plugin, or out-of-slice node, accompanied by an export finding and binding.
 _Avoid_: Unsupported error, skipped node
+
+**Frozen case**:
+A parity-tested page whose committed Bubble references are the only thing we call visually correct. Case-correct means that case passed the fidelity gates; an app export is never “correct.”
+_Avoid_: Screenshot test, visual regression suite, golden file

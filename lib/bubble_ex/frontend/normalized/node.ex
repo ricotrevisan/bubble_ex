@@ -30,7 +30,8 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           unmapped: map(),
           placeholder?: boolean(),
           definition_ref: String.t() | nil,
-          attributes: map()
+          attributes: map(),
+          responsive: [map()]
         }
 
   @enforce_keys [:exporter_id, :kind, :map_key, :source]
@@ -50,6 +51,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
     bindings: %{},
     unmapped: %{},
     placeholder?: false,
-    attributes: %{}
+    attributes: %{},
+    responsive: []
   ]
 end

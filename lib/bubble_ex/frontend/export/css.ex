@@ -23,9 +23,23 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   @spec page(Node.t(), keyword()) :: String.t()
   def page(node, opts \\ []) do
-    node
-    |> collect()
-    |> Enum.map(&rule(&1, opts))
+    nodes = collect(node)
+
+    base =
+      nodes
+      |> Enum.map(&rule(&1, opts))
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("\n")
+
+    extras =
+      nodes
+      |> Enum.map(&extra_rule(&1, opts))
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("\n")
+
+    media = responsive_css(nodes, opts)
+
+    [base, extras, media]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n")
     |> then(fn css -> if css == "", do: "\n", else: String.trim_trailing(css) <> "\n" end)
@@ -59,7 +73,10 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.merge(layout_css(node))
     |> Map.merge(box_css(node))
     |> Map.merge(paint_css(node))
+    |> Map.merge(placement_css(node))
     |> put_fill_width(node)
+    |> put_flex_grow(node)
+    |> put_align_self(node)
     |> put_row_cross_axis(node)
     |> put_collapse(node)
   end
@@ -173,17 +190,136 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp put_row_cross_axis(css, %Node{kind: kind, layout: layout})
        when kind in [:page, :group, :reusable_definition] and is_map(layout) do
+    align = layout[:align] || layout["align"]
     mode = layout[:mode] || layout["mode"]
 
-    if mode in [:row, :column] and not Map.has_key?(css, "align-items") do
-      # Bubble Row/Column default is not CSS stretch (#28).
-      Map.put(css, "align-items", if(mode == :row, do: "normal", else: "stretch"))
-    else
-      css
+    cond do
+      is_binary(align) ->
+        Map.put(css, "align-items", align)
+
+      mode in [:row, :column] and not Map.has_key?(css, "align-items") ->
+        # Omit an explicit default so CSS stretch applies unless a case sets align.
+        css
+
+      true ->
+        css
     end
   end
 
   defp put_row_cross_axis(css, _), do: css
+
+  defp put_flex_grow(css, %Node{box: box}) when is_map(box) do
+    case box_get(box, :flex_grow) || box_get(box, :"flex-grow") do
+      nil -> css
+      n when is_number(n) -> Map.put(css, "flex-grow", n)
+      s -> Map.put(css, "flex-grow", s)
+    end
+  end
+
+  defp put_flex_grow(css, _), do: css
+
+  defp put_align_self(css, %Node{box: box}) when is_map(box) do
+    case box_get(box, :align_self) || box_get(box, :"align-self") do
+      nil -> css
+      value -> Map.put(css, "align-self", value)
+    end
+  end
+
+  defp put_align_self(css, _), do: css
+
+  @cell_alignment %{
+    "top_end" => {"end", "start"},
+    "center" => {"center", "center"},
+    "bottom_start" => {"start", "end"}
+  }
+
+  defp placement_css(%Node{box: box}) when is_map(box) do
+    case box_get(box, :placement) do
+      %{"cell" => cell} = placement ->
+        {justify, align} = Map.get(@cell_alignment, cell, {"start", "start"})
+
+        %{
+          "grid-area" => "1 / 1 / 4 / 4",
+          "justify-self" => justify,
+          "align-self" => align,
+          "width" => placement["width"],
+          "height" => placement["height"]
+        }
+        |> put_translate(placement)
+        |> Map.reject(fn {_k, v} -> is_nil(v) end)
+
+      %{"x" => _} = placement ->
+        %{
+          "position" => "absolute",
+          "left" => placement["x"] || "0px",
+          "top" => placement["y"] || "0px",
+          "width" => placement["width"],
+          "height" => placement["height"]
+        }
+        |> Map.reject(fn {_k, v} -> is_nil(v) end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp placement_css(_), do: %{}
+
+  defp put_translate(props, placement) do
+    x = Map.get(placement, "offset-x", "0px")
+    y = Map.get(placement, "offset-y", "0px")
+    if x == "0px" and y == "0px", do: props, else: Map.put(props, "translate", "#{x} #{y}")
+  end
+
+  defp extra_rule(%Node{kind: :input} = node, opts) do
+    color =
+      get_in(node.style, [:resolved, "placeholder_color"]) ||
+        get_in(node.style, ["resolved", "placeholder_color"])
+
+    if is_binary(color) do
+      id = prefixed_id(node, opts)
+
+      "[data-exporter-id=\"#{escape(id)}\"]::placeholder {\n  color: #{color};\n  opacity: 1;\n}\n"
+    else
+      ""
+    end
+  end
+
+  defp extra_rule(_, _), do: ""
+
+  defp responsive_css(nodes, opts) do
+    nodes
+    |> Enum.flat_map(fn node ->
+      Enum.map(node.responsive || [], fn rule -> {media_width(rule), node, rule} end)
+    end)
+    |> Enum.reject(fn {width, _, _} -> is_nil(width) end)
+    |> Enum.group_by(&elem(&1, 0))
+    |> Enum.sort_by(&elem(&1, 0), :desc)
+    |> Enum.map_join("\n", fn {width, entries} ->
+      inner =
+        Enum.map_join(entries, "\n", fn {_w, node, rule} ->
+          decls = responsive_decls(rule)
+          id = prefixed_id(node, opts)
+          "  [data-exporter-id=\"#{escape(id)}\"] {\n#{indent_decls(decls)}  }"
+        end)
+
+      "@media (max-width: #{width}px) {\n#{inner}\n}\n"
+    end)
+  end
+
+  defp media_width(%{"when" => %{"max_viewport_width" => w}}), do: w
+  defp media_width(%{"when" => %{max_viewport_width: w}}), do: w
+  defp media_width(_), do: nil
+
+  defp responsive_decls(%{"visibility" => "collapsed"}), do: %{"display" => "none"}
+  defp responsive_decls(%{visibility: "collapsed"}), do: %{"display" => "none"}
+  defp responsive_decls(_), do: %{}
+
+  defp indent_decls(map) do
+    map
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map_join("", fn {k, v} -> "    #{k}: #{v};\n" end)
+  end
 
   defp put_collapse(css, %Node{box: box}) when is_map(box) do
     if box[:collapsed?] || box["collapsed?"] || box[:hidden?] || box["hidden?"] do

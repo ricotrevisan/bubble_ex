@@ -40,7 +40,9 @@ The codebase follows a modular architecture with clear separation of concerns:
   payload, then write a portable HTML/CSS package (`pages/`, `reusables/`,
   hashed `assets/`, bindings/findings/coverage, `MANIFEST.json`). S1 native
   slice only; other kinds are dimension-preserving placeholders. Separate from
-  `BubbleEx.AppTree`.
+  `BubbleEx.AppTree`. Frozen-case fidelity is `BubbleEx.Frontend.Fidelity` /
+  `mix bubble.fidelity` (Playwright 1.55, Chromium 140); default `mix test`
+  excludes `:fidelity`.
 - **BubbleEx.Secrets** - Pluggable secret-scanning behaviour; `Secrets.Trufflehog` is the default adapter
 
 ### Key Dependencies

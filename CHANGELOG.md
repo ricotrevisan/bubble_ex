@@ -15,6 +15,11 @@ All notable changes to this project are documented here.
   resolved Link, and Text/Email/Password Input. Everything else is a
   dimension-preserving placeholder.
 
+- Frozen-case fidelity gates (#30): `mix bubble.fidelity` and `mix test --only
+  fidelity` render committed case `bpmkbvvo` through the S1 exporter and
+  compare it to frozen Bubble references (0 CSS-px geometry, byte-identical
+  PNGs). PR CI runs the gate; live recapture is opt-in and never default.
+
 - API Connector v2 External API types are resolved into the universal database
   map and rendered deliberately by every registered schema encoder. Detailed
   rendering and app enrichment expose structured, artifact-scoped warnings.

@@ -89,6 +89,10 @@ and `MANIFEST.json`. Workflows, conditions, and unsupported elements stay as
 bindings and findings. A leaked-credential finding blocks the export and
 writes nothing.
 
+Visual correctness is defined only for **frozen cases** (today `bpmkbvvo`).
+`mix bubble.fidelity` exports the case and compares it to committed Bubble
+references. PR CI runs that gate; it never recaptures live Bubble.
+
 ## Database Structure & Schema Export
 
 BubbleEx reconstructs a Bubble app's data model — data types (tables), option

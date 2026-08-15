@@ -1,0 +1,986 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i28-responsive-slice": {
+      "id": "bpmkbvvo",
+      "type": "Page",
+      "name": "bubbleex-i28-responsive-slice",
+      "properties": {
+        "container_layout": "column",
+        "row_gap": "64px",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "row-gap": "64px",
+        "min-height": "900px",
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "title": "BubbleEx issue 28 responsive slice"
+      },
+      "elements": {
+        "i28__headershell_row_max1120": {
+          "id": "bpmkbvvp",
+          "type": "Group",
+          "name": "I28__HeaderShell_Row_Max1120",
+          "properties": {
+            "container_layout": "row",
+            "wrap": "wrap",
+            "justify": "space-between",
+            "row_gap": "16px",
+            "column_gap": "24px",
+            "min_height": "72px",
+            "padding": "12px 16px",
+            "width": "100%",
+            "max_width": "1120px",
+            "align_self": "center",
+            "row-gap": "16px",
+            "column-gap": "24px",
+            "min-height": "72px",
+            "max-width": "1120px",
+            "align-self": "center",
+            "background": "#FFFFFF",
+            "border": "1px solid #D8E0EC",
+            "border-radius": "18px",
+            "box-shadow": "0 8px 24px rgba(23,32,51,0.08)",
+            "order": 1
+          },
+          "elements": {
+            "i28__headerbrand_text": {
+              "id": "bpmkbvvq",
+              "type": "Text",
+              "name": "I28__HeaderBrand_Text",
+              "properties": {
+                "margin": "0",
+                "min_width": "150px",
+                "min_height": "24px",
+                "width": "fit-content",
+                "align_self": "center",
+                "min-width": "150px",
+                "min-height": "24px",
+                "align-self": "center",
+                "font-family": "Inter",
+                "font-size": "18px",
+                "font-weight": "800",
+                "color": "#172033",
+                "line-height": "1.2",
+                "letter-spacing": "-0.4px",
+                "tag_type": "normal",
+                "text": "I28 case 1 \u00b7 Luma",
+                "order": 1
+              }
+            },
+            "i28__headernestednav_row_hidecollapseat768": {
+              "id": "bpmkbvvr",
+              "type": "Group",
+              "name": "I28__HeaderNestedNav_Row_HideCollapseAt768",
+              "properties": {
+                "container_layout": "row",
+                "wrap": "wrap",
+                "column_gap": "24px",
+                "min_height": "24px",
+                "width": "fit-content",
+                "align_self": "center",
+                "row_gap": "0px",
+                "column-gap": "24px",
+                "min-height": "24px",
+                "align-self": "center",
+                "row-gap": "0px",
+                "responsive": [
+                  {
+                    "when": {
+                      "max_viewport_width": 768
+                    },
+                    "visibility": "collapsed"
+                  }
+                ],
+                "order": 2
+              },
+              "elements": {
+                "i28__navcaselabel_text": {
+                  "id": "bpmkbvvs",
+                  "type": "Text",
+                  "name": "I28__NavCaseLabel_Text",
+                  "properties": {
+                    "margin": "0",
+                    "height": "20px",
+                    "font-family": "Inter",
+                    "font-size": "13px",
+                    "font-weight": "700",
+                    "color": "#5A657A",
+                    "line-height": "1.3",
+                    "tag_type": "normal",
+                    "text": "I28 case 2 \u00b7 Nested nav",
+                    "order": 1
+                  }
+                },
+                "i28__navfeatures_text": {
+                  "id": "bpmkbvvt",
+                  "type": "Text",
+                  "name": "I28__NavFeatures_Text",
+                  "properties": {
+                    "margin": "0",
+                    "height": "20px",
+                    "font-family": "Inter",
+                    "font-size": "13px",
+                    "font-weight": "600",
+                    "color": "#5A657A",
+                    "line-height": "1.3",
+                    "tag_type": "normal",
+                    "text": "Features",
+                    "order": 2
+                  }
+                },
+                "i28__navcontact_text": {
+                  "id": "bpmkbvvu",
+                  "type": "Text",
+                  "name": "I28__NavContact_Text",
+                  "properties": {
+                    "margin": "0",
+                    "height": "20px",
+                    "font-family": "Inter",
+                    "font-size": "13px",
+                    "font-weight": "600",
+                    "color": "#5A657A",
+                    "line-height": "1.3",
+                    "tag_type": "normal",
+                    "text": "Contact",
+                    "order": 3
+                  }
+                }
+              }
+            },
+            "i28__headeraction_button_labelonly": {
+              "id": "bpmkbvvv",
+              "type": "Button",
+              "name": "I28__HeaderAction_Button_LabelOnly",
+              "properties": {
+                "height": "44px",
+                "min_width": "126px",
+                "padding": "0 18px",
+                "align_self": "center",
+                "min-width": "126px",
+                "align-self": "center",
+                "font-family": "Inter",
+                "font-size": "14px",
+                "font-weight": "700",
+                "color": "#FFFFFF",
+                "line-height": "1.2",
+                "border": "1px solid #5148E8",
+                "border-radius": "12px",
+                "background": "#635BFF",
+                "button_type": "label",
+                "text": "View the slice",
+                "order": 3
+              }
+            }
+          }
+        },
+        "i28__heroshell_row_naturalwrap_max1120": {
+          "id": "bpmkbvvw",
+          "type": "Group",
+          "name": "I28__HeroShell_Row_NaturalWrap_Max1120",
+          "properties": {
+            "container_layout": "row",
+            "wrap": "wrap",
+            "row_gap": "48px",
+            "column_gap": "72px",
+            "width": "100%",
+            "max_width": "1120px",
+            "align_self": "center",
+            "row-gap": "48px",
+            "column-gap": "72px",
+            "max-width": "1120px",
+            "align-self": "center",
+            "order": 2
+          },
+          "elements": {
+            "i28__herocopy_column": {
+              "id": "bpmkbvvx",
+              "type": "Group",
+              "name": "I28__HeroCopy_Column",
+              "properties": {
+                "container_layout": "column",
+                "justify": "center",
+                "row_gap": "20px",
+                "min_height": "420px",
+                "min_width": "336px",
+                "align_self": "flex-start",
+                "width": "336px",
+                "flex_grow": "1",
+                "row-gap": "20px",
+                "min-height": "420px",
+                "min-width": "336px",
+                "align-self": "flex-start",
+                "flex-grow": "1",
+                "order": 1
+              },
+              "elements": {
+                "i28__heroeyebrow_text": {
+                  "id": "bpmkbvvy",
+                  "type": "Text",
+                  "name": "I28__HeroEyebrow_Text",
+                  "properties": {
+                    "margin": "0",
+                    "width": "fit-content",
+                    "min_height": "20px",
+                    "min-height": "20px",
+                    "font-family": "Inter",
+                    "font-size": "13px",
+                    "font-weight": "800",
+                    "color": "#E04F86",
+                    "line-height": "1.3",
+                    "letter-spacing": "1px",
+                    "tag_type": "normal",
+                    "text": "I28 case 3 \u00b7 Natural Row wrap",
+                    "order": 1
+                  }
+                },
+                "i28__heroheading_text": {
+                  "id": "bpmkbvvz",
+                  "type": "Text",
+                  "name": "I28__HeroHeading_Text",
+                  "properties": {
+                    "margin": "0",
+                    "width": "100%",
+                    "font-family": "Inter",
+                    "font-size": "52px",
+                    "font-weight": "800",
+                    "color": "#172033",
+                    "line-height": "1.05",
+                    "letter-spacing": "-1.8px",
+                    "tag_type": "h1",
+                    "text": "Responsive structure, composed like a product.",
+                    "order": 2
+                  }
+                },
+                "i28__herobody_text": {
+                  "id": "bpmkbvwa",
+                  "type": "Text",
+                  "name": "I28__HeroBody_Text",
+                  "properties": {
+                    "margin": "0",
+                    "width": "100%",
+                    "font-family": "Inter",
+                    "font-size": "18px",
+                    "font-weight": "400",
+                    "color": "#5A657A",
+                    "line-height": "1.55",
+                    "tag_type": "normal",
+                    "text": "A polished landing slice where every container earns its place: fluid shells, natural wrapping, deliberate overlap, and fixed local geometry stay readable at every width.",
+                    "order": 3
+                  }
+                },
+                "i28__herobuttons_row_naturalwrap": {
+                  "id": "bpmkbvwb",
+                  "type": "Group",
+                  "name": "I28__HeroButtons_Row_NaturalWrap",
+                  "properties": {
+                    "container_layout": "row",
+                    "wrap": "wrap",
+                    "row_gap": "12px",
+                    "column_gap": "12px",
+                    "width": "100%",
+                    "row-gap": "12px",
+                    "column-gap": "12px",
+                    "order": 4
+                  },
+                  "elements": {
+                    "i28__heroprimary_button_labelonly": {
+                      "id": "bpmkbvwc",
+                      "type": "Button",
+                      "name": "I28__HeroPrimary_Button_LabelOnly",
+                      "properties": {
+                        "height": "48px",
+                        "min_width": "144px",
+                        "padding": "0 22px",
+                        "align_self": "center",
+                        "min-width": "144px",
+                        "align-self": "center",
+                        "font-family": "Inter",
+                        "font-size": "14px",
+                        "font-weight": "700",
+                        "color": "#FFFFFF",
+                        "line-height": "1.2",
+                        "border": "1px solid #172033",
+                        "border-radius": "12px",
+                        "background": "#172033",
+                        "button_type": "label",
+                        "text": "Explore layouts",
+                        "order": 1
+                      }
+                    },
+                    "i28__herosecondary_button_labelonly": {
+                      "id": "bpmkbvwd",
+                      "type": "Button",
+                      "name": "I28__HeroSecondary_Button_LabelOnly",
+                      "properties": {
+                        "height": "48px",
+                        "min_width": "138px",
+                        "padding": "0 22px",
+                        "align_self": "center",
+                        "min-width": "138px",
+                        "align-self": "center",
+                        "font-family": "Inter",
+                        "font-size": "14px",
+                        "font-weight": "700",
+                        "color": "#172033",
+                        "line-height": "1.2",
+                        "border": "1px solid #BFC9D8",
+                        "border-radius": "12px",
+                        "background": "#FFFFFF",
+                        "button_type": "label",
+                        "text": "Read the story",
+                        "order": 2
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "i28__heroartwork_aligntoparent": {
+              "id": "bpmkbvwe",
+              "type": "Group",
+              "name": "I28__HeroArtwork_AlignToParent",
+              "properties": {
+                "container_layout": "relative",
+                "height": "420px",
+                "min_width": "336px",
+                "align_self": "flex-start",
+                "width": "336px",
+                "flex_grow": "1",
+                "min-width": "336px",
+                "align-self": "flex-start",
+                "flex-grow": "1",
+                "background": "linear-gradient(to top, #D8E7FF, #EFE5FF, #FFF0D8)",
+                "border": "1px solid #C9D6E8",
+                "border-radius": "28px",
+                "order": 2
+              },
+              "elements": {
+                "i28__artworktopright_shape": {
+                  "id": "bpmkbvwf",
+                  "type": "Shape",
+                  "name": "I28__ArtworkTopRight_Shape",
+                  "properties": {
+                    "background": "#FF8B5D",
+                    "border": "10px solid rgba(255,255,255,0.5)",
+                    "border-radius": "36px",
+                    "transform": "rotate(12deg)",
+                    "z-index": "1",
+                    "placement": {
+                      "cell": "top_end",
+                      "width": "132px",
+                      "height": "132px",
+                      "offset-x": "-18px",
+                      "offset-y": "18px"
+                    },
+                    "order": 1
+                  }
+                },
+                "i28__artworkcentercard_column": {
+                  "id": "bpmkbvwg",
+                  "type": "Group",
+                  "name": "I28__ArtworkCenterCard_Column",
+                  "properties": {
+                    "container_layout": "column",
+                    "justify": "center",
+                    "row_gap": "14px",
+                    "height": "232px",
+                    "width": "304px",
+                    "padding": "28px",
+                    "row-gap": "14px",
+                    "background": "#FFFFFF",
+                    "border": "1px solid #D4DCE8",
+                    "border-radius": "22px",
+                    "box-shadow": "0 18px 34px rgba(41,54,84,0.18)",
+                    "z-index": "2",
+                    "placement": {
+                      "cell": "center",
+                      "width": "304px",
+                      "height": "232px"
+                    },
+                    "order": 2
+                  },
+                  "elements": {
+                    "i28__centercardaccent_shape": {
+                      "id": "bpmkbvwh",
+                      "type": "Shape",
+                      "name": "I28__CenterCardAccent_Shape",
+                      "properties": {
+                        "width": "46px",
+                        "height": "46px",
+                        "background": "#635BFF",
+                        "border": "8px solid #E7E5FF",
+                        "border-radius": "16px",
+                        "order": 1
+                      }
+                    },
+                    "i28__centercardheading_text": {
+                      "id": "bpmkbvwi",
+                      "type": "Text",
+                      "name": "I28__CenterCardHeading_Text",
+                      "properties": {
+                        "margin": "0",
+                        "min_height": "24px",
+                        "width": "100%",
+                        "min-height": "24px",
+                        "font-family": "Inter",
+                        "font-size": "22px",
+                        "font-weight": "800",
+                        "color": "#172033",
+                        "line-height": "1.2",
+                        "tag_type": "h3",
+                        "text": "Centered card",
+                        "order": 2
+                      }
+                    },
+                    "i28__centercardbody_text": {
+                      "id": "bpmkbvwj",
+                      "type": "Text",
+                      "name": "I28__CenterCardBody_Text",
+                      "properties": {
+                        "margin": "0",
+                        "width": "100%",
+                        "font-family": "Inter",
+                        "font-size": "14px",
+                        "font-weight": "400",
+                        "color": "#667085",
+                        "line-height": "1.45",
+                        "tag_type": "normal",
+                        "text": "Anchored in the middle while the surrounding accents overlap on purpose.",
+                        "order": 3
+                      }
+                    }
+                  }
+                },
+                "i28__artworkbottomleft_group": {
+                  "id": "bpmkbvwk",
+                  "type": "Group",
+                  "name": "I28__ArtworkBottomLeft_Group",
+                  "properties": {
+                    "container_layout": "column",
+                    "row_gap": "8px",
+                    "width": "226px",
+                    "height": "152px",
+                    "padding": "14px",
+                    "row-gap": "8px",
+                    "background": "#172033",
+                    "border": "1px solid #2F3A52",
+                    "border-radius": "18px",
+                    "z-index": "3",
+                    "placement": {
+                      "cell": "bottom_start",
+                      "width": "226px",
+                      "height": "152px",
+                      "offset-x": "18px",
+                      "offset-y": "-18px"
+                    },
+                    "order": 3
+                  },
+                  "elements": {
+                    "i28__fixedcaselabel_text": {
+                      "id": "bpmkbvwl",
+                      "type": "Text",
+                      "name": "I28__FixedCaseLabel_Text",
+                      "properties": {
+                        "margin": "0",
+                        "min_height": "18px",
+                        "width": "fit-content",
+                        "min-height": "18px",
+                        "font-family": "Inter",
+                        "font-size": "12px",
+                        "font-weight": "700",
+                        "color": "#FFFFFF",
+                        "line-height": "1.2",
+                        "letter-spacing": "0.4px",
+                        "tag_type": "normal",
+                        "text": "I28 case 4 \u00b7 Fixed XY",
+                        "order": 1
+                      }
+                    },
+                    "i28__fixedcanvas_196x92": {
+                      "id": "bpmkbvwm",
+                      "type": "Group",
+                      "name": "I28__FixedCanvas_196x92",
+                      "properties": {
+                        "container_layout": "fixed",
+                        "width": "196px",
+                        "height": "92px",
+                        "background": "#25314A",
+                        "border": "1px solid #3B4965",
+                        "border-radius": "12px",
+                        "order": 2
+                      },
+                      "elements": {
+                        "i28__fixedshapea_x12_y12": {
+                          "id": "bpmkbvwn",
+                          "type": "Shape",
+                          "name": "I28__FixedShapeA_X12_Y12",
+                          "properties": {
+                            "background": "#39D0B3",
+                            "border": "2px solid #83E8D4",
+                            "border-radius": "16px",
+                            "z-index": "1",
+                            "placement": {
+                              "x": "12px",
+                              "y": "12px",
+                              "width": "72px",
+                              "height": "54px"
+                            },
+                            "order": 1
+                          }
+                        },
+                        "i28__fixedshapeb_x76_y30": {
+                          "id": "bpmkbvwo",
+                          "type": "Shape",
+                          "name": "I28__FixedShapeB_X76_Y30",
+                          "properties": {
+                            "background": "#FFD166",
+                            "border": "2px solid #FFE3A0",
+                            "border-radius": "23px",
+                            "z-index": "2",
+                            "placement": {
+                              "x": "76px",
+                              "y": "30px",
+                              "width": "104px",
+                              "height": "46px"
+                            },
+                            "order": 2
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "i28__featuressection_column_max1120": {
+          "id": "bpmkbvwp",
+          "type": "Group",
+          "name": "I28__FeaturesSection_Column_Max1120",
+          "properties": {
+            "container_layout": "column",
+            "row_gap": "18px",
+            "width": "100%",
+            "max_width": "1120px",
+            "align_self": "center",
+            "row-gap": "18px",
+            "max-width": "1120px",
+            "align-self": "center",
+            "order": 3
+          },
+          "elements": {
+            "i28__featurescaselabel_text": {
+              "id": "bpmkbvwq",
+              "type": "Text",
+              "name": "I28__FeaturesCaseLabel_Text",
+              "properties": {
+                "margin": "0",
+                "min_height": "20px",
+                "width": "fit-content",
+                "min-height": "20px",
+                "font-family": "Inter",
+                "font-size": "13px",
+                "font-weight": "800",
+                "color": "#635BFF",
+                "line-height": "1.3",
+                "letter-spacing": "1px",
+                "tag_type": "normal",
+                "text": "I28 case 5 \u00b7 Three wrapping cards",
+                "order": 1
+              }
+            },
+            "i28__featuresheading_text": {
+              "id": "bpmkbvwr",
+              "type": "Text",
+              "name": "I28__FeaturesHeading_Text",
+              "properties": {
+                "margin": "0",
+                "width": "100%",
+                "max_width": "720px",
+                "max-width": "720px",
+                "font-family": "Inter",
+                "font-size": "34px",
+                "font-weight": "800",
+                "color": "#172033",
+                "line-height": "1.15",
+                "letter-spacing": "-0.8px",
+                "tag_type": "h2",
+                "text": "Built from the responsive primitives that matter.",
+                "order": 2
+              }
+            },
+            "i28__featuresbody_text": {
+              "id": "bpmkbvws",
+              "type": "Text",
+              "name": "I28__FeaturesBody_Text",
+              "properties": {
+                "margin": "0",
+                "width": "100%",
+                "max_width": "760px",
+                "max-width": "760px",
+                "font-family": "Inter",
+                "font-size": "16px",
+                "font-weight": "400",
+                "color": "#5A657A",
+                "line-height": "1.55",
+                "tag_type": "normal",
+                "text": "Each card is literal, self-contained, and long enough to demonstrate predictable text wrapping without any backend data or runtime binding.",
+                "order": 3
+              }
+            },
+            "i28__featurecards_row_naturalwrap": {
+              "id": "bpmkbvwt",
+              "type": "Group",
+              "name": "I28__FeatureCards_Row_NaturalWrap",
+              "properties": {
+                "container_layout": "row",
+                "wrap": "wrap",
+                "row_gap": "24px",
+                "column_gap": "24px",
+                "width": "100%",
+                "row-gap": "24px",
+                "column-gap": "24px",
+                "order": 4
+              },
+              "elements": {
+                "i28__featurecardfluid_column": {
+                  "id": "bpmkbvwu",
+                  "type": "Group",
+                  "name": "I28__FeatureCardFluid_Column",
+                  "properties": {
+                    "container_layout": "column",
+                    "row_gap": "16px",
+                    "min_height": "258px",
+                    "padding": "24px",
+                    "min_width": "280px",
+                    "width": "280px",
+                    "flex_grow": "1",
+                    "align_self": "flex-start",
+                    "row-gap": "16px",
+                    "min-height": "258px",
+                    "min-width": "280px",
+                    "flex-grow": "1",
+                    "align-self": "flex-start",
+                    "background": "#FFFFFF",
+                    "border": "1px solid #D8E0EC",
+                    "border-radius": "20px",
+                    "order": 1
+                  },
+                  "elements": {
+                    "i28__featurecardfluid_shape": {
+                      "id": "bpmkbvwv",
+                      "type": "Shape",
+                      "name": "I28__FeatureCardFluid_Shape",
+                      "properties": {
+                        "height": "54px",
+                        "width": "54px",
+                        "background": "#DCD9FF",
+                        "border": "2px solid #635BFF",
+                        "border-radius": "17px",
+                        "order": 1
+                      }
+                    },
+                    "i28__featurecardfluid_heading_text": {
+                      "id": "bpmkbvww",
+                      "type": "Text",
+                      "name": "I28__FeatureCardFluid_Heading_Text",
+                      "properties": {
+                        "margin": "0",
+                        "min_height": "24px",
+                        "width": "100%",
+                        "min-height": "24px",
+                        "font-family": "Inter",
+                        "font-size": "20px",
+                        "font-weight": "800",
+                        "color": "#172033",
+                        "line-height": "1.25",
+                        "tag_type": "h3",
+                        "text": "Fluid by default",
+                        "order": 2
+                      }
+                    },
+                    "i28__featurecardfluid_body_text": {
+                      "id": "bpmkbvwx",
+                      "type": "Text",
+                      "name": "I28__FeatureCardFluid_Body_Text",
+                      "properties": {
+                        "margin": "0",
+                        "width": "100%",
+                        "font-family": "Inter",
+                        "font-size": "15px",
+                        "font-weight": "400",
+                        "color": "#667085",
+                        "line-height": "1.55",
+                        "tag_type": "normal",
+                        "text": "Fill sizing and an explicit maximum keep the page spacious on wide screens and calm when the viewport narrows.",
+                        "order": 3
+                      }
+                    }
+                  }
+                },
+                "i28__featurecardwrap_column": {
+                  "id": "bpmkbvwy",
+                  "type": "Group",
+                  "name": "I28__FeatureCardWrap_Column",
+                  "properties": {
+                    "container_layout": "column",
+                    "row_gap": "16px",
+                    "min_height": "258px",
+                    "padding": "24px",
+                    "min_width": "280px",
+                    "width": "280px",
+                    "flex_grow": "1",
+                    "align_self": "flex-start",
+                    "row-gap": "16px",
+                    "min-height": "258px",
+                    "min-width": "280px",
+                    "flex-grow": "1",
+                    "align-self": "flex-start",
+                    "background": "#FFF8E8",
+                    "border": "1px solid #F2D68D",
+                    "border-radius": "20px",
+                    "order": 2
+                  },
+                  "elements": {
+                    "i28__featurecardwrap_shape": {
+                      "id": "bpmkbvwz",
+                      "type": "Shape",
+                      "name": "I28__FeatureCardWrap_Shape",
+                      "properties": {
+                        "height": "54px",
+                        "width": "82px",
+                        "background": "#FFD166",
+                        "border": "2px solid #E4A928",
+                        "border-radius": "27px",
+                        "order": 1
+                      }
+                    },
+                    "i28__featurecardwrap_heading_text": {
+                      "id": "bpmkbvxa",
+                      "type": "Text",
+                      "name": "I28__FeatureCardWrap_Heading_Text",
+                      "properties": {
+                        "margin": "0",
+                        "min_height": "24px",
+                        "width": "100%",
+                        "min-height": "24px",
+                        "font-family": "Inter",
+                        "font-size": "20px",
+                        "font-weight": "800",
+                        "color": "#172033",
+                        "line-height": "1.25",
+                        "tag_type": "h3",
+                        "text": "Wrap without switches",
+                        "order": 2
+                      }
+                    },
+                    "i28__featurecardwrap_body_text": {
+                      "id": "bpmkbvxb",
+                      "type": "Text",
+                      "name": "I28__FeatureCardWrap_Body_Text",
+                      "properties": {
+                        "margin": "0",
+                        "width": "100%",
+                        "font-family": "Inter",
+                        "font-size": "15px",
+                        "font-weight": "400",
+                        "color": "#667085",
+                        "line-height": "1.55",
+                        "tag_type": "normal",
+                        "text": "Rows respond to the space available because their children declare honest minimum widths and consistent gaps.",
+                        "order": 3
+                      }
+                    }
+                  }
+                },
+                "i28__featurecardlayer_column": {
+                  "id": "bpmkbvxc",
+                  "type": "Group",
+                  "name": "I28__FeatureCardLayer_Column",
+                  "properties": {
+                    "container_layout": "column",
+                    "row_gap": "16px",
+                    "min_height": "258px",
+                    "padding": "24px",
+                    "min_width": "280px",
+                    "width": "280px",
+                    "flex_grow": "1",
+                    "align_self": "flex-start",
+                    "row-gap": "16px",
+                    "min-height": "258px",
+                    "min-width": "280px",
+                    "flex-grow": "1",
+                    "align-self": "flex-start",
+                    "background": "#ECFBF7",
+                    "border": "1px solid #9EDCCD",
+                    "border-radius": "20px",
+                    "order": 3
+                  },
+                  "elements": {
+                    "i28__featurecardlayer_shape": {
+                      "id": "bpmkbvxd",
+                      "type": "Shape",
+                      "name": "I28__FeatureCardLayer_Shape",
+                      "properties": {
+                        "height": "54px",
+                        "width": "54px",
+                        "background": "#39D0B3",
+                        "border": "8px solid #C6F3E8",
+                        "border-radius": "27px",
+                        "order": 1
+                      }
+                    },
+                    "i28__featurecardlayer_heading_text": {
+                      "id": "bpmkbvxe",
+                      "type": "Text",
+                      "name": "I28__FeatureCardLayer_Heading_Text",
+                      "properties": {
+                        "margin": "0",
+                        "min_height": "24px",
+                        "width": "100%",
+                        "min-height": "24px",
+                        "font-family": "Inter",
+                        "font-size": "20px",
+                        "font-weight": "800",
+                        "color": "#172033",
+                        "line-height": "1.25",
+                        "tag_type": "h3",
+                        "text": "Layer with intent",
+                        "order": 2
+                      }
+                    },
+                    "i28__featurecardlayer_body_text": {
+                      "id": "bpmkbvxf",
+                      "type": "Text",
+                      "name": "I28__FeatureCardLayer_Body_Text",
+                      "properties": {
+                        "margin": "0",
+                        "width": "100%",
+                        "font-family": "Inter",
+                        "font-size": "15px",
+                        "font-weight": "400",
+                        "color": "#667085",
+                        "line-height": "1.55",
+                        "tag_type": "normal",
+                        "text": "Align to Parent makes the overlap deliberate, while the nested fixed canvas preserves precise local coordinates.",
+                        "order": 3
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "i28__ctasection_row_naturalwrap_max1120": {
+          "id": "bpmkbvxg",
+          "type": "Group",
+          "name": "I28__CTASection_Row_NaturalWrap_Max1120",
+          "properties": {
+            "container_layout": "row",
+            "wrap": "wrap",
+            "justify": "space-between",
+            "row_gap": "20px",
+            "column_gap": "20px",
+            "padding": "32px",
+            "width": "100%",
+            "max_width": "1120px",
+            "align_self": "center",
+            "row-gap": "20px",
+            "column-gap": "20px",
+            "max-width": "1120px",
+            "align-self": "center",
+            "background": "#172033",
+            "border": "1px solid #2E3A55",
+            "border-radius": "24px",
+            "order": 4
+          },
+          "elements": {
+            "i28__cta_copy_text": {
+              "id": "bpmkbvxh",
+              "type": "Text",
+              "name": "I28__CTA_Copy_Text",
+              "properties": {
+                "margin": "0",
+                "min_height": "48px",
+                "min_width": "280px",
+                "align_self": "center",
+                "width": "280px",
+                "flex_grow": "1",
+                "min-height": "48px",
+                "min-width": "280px",
+                "align-self": "center",
+                "flex-grow": "1",
+                "font-family": "Inter",
+                "font-size": "20px",
+                "font-weight": "700",
+                "color": "#FFFFFF",
+                "line-height": "1.35",
+                "tag_type": "normal",
+                "text": "I28 case 6 \u00b7 Dark CTA Row \u2014 Get the next responsive field note in your inbox.",
+                "order": 1
+              }
+            },
+            "i28__cta_email_input": {
+              "id": "bpmkbvxi",
+              "type": "Input",
+              "name": "I28__CTA_Email_Input",
+              "properties": {
+                "height": "48px",
+                "padding": "12px 16px",
+                "min_width": "240px",
+                "max_width": "340px",
+                "align_self": "center",
+                "width": "240px",
+                "flex_grow": "1",
+                "min-width": "240px",
+                "max-width": "340px",
+                "align-self": "center",
+                "flex-grow": "1",
+                "font-family": "Inter",
+                "font-size": "15px",
+                "font-weight": "400",
+                "color": "#172033",
+                "border": "1px solid #8290A8",
+                "border-radius": "12px",
+                "background": "#FFFFFF",
+                "format": "email",
+                "placeholder": "you@example.com",
+                "placeholder_color": "#7B879B",
+                "order": 2
+              }
+            },
+            "i28__cta_button_labelonly": {
+              "id": "bpmkbvxj",
+              "type": "Button",
+              "name": "I28__CTA_Button_LabelOnly",
+              "properties": {
+                "height": "48px",
+                "min_width": "126px",
+                "padding": "0 20px",
+                "align_self": "center",
+                "min-width": "126px",
+                "align-self": "center",
+                "font-family": "Inter",
+                "font-size": "14px",
+                "font-weight": "800",
+                "color": "#10251F",
+                "line-height": "1.2",
+                "border": "1px solid #6DE2CC",
+                "border-radius": "12px",
+                "background": "#39D0B3",
+                "button_type": "label",
+                "text": "Join the list",
+                "order": 3
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -163,15 +163,29 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp text_tag(:h4), do: "h4"
   defp text_tag(_), do: "p"
 
+  @phrasing ~w(p h1 h2 h3 h4 button a)
+
   defp wrap(tag, node, inner, opts) do
     open = ["<", tag, attrs(node, tag, opts), ">"]
 
-    if blank?(inner) do
-      [open, "</", tag, ">"]
-    else
-      [open, "\n", indent(inner, 1), "</", tag, ">"]
+    cond do
+      blank?(inner) ->
+        [open, "</", tag, ">"]
+
+      tag in @phrasing ->
+        [open, inner, "</", tag, ">"]
+
+      true ->
+        [open, "\n", indent(inner, 1), "</", tag, ">"]
     end
   end
+
+  defp maybe_put_bubble_id(attrs, %Node{source: %{bubble_id: id}})
+       when is_binary(id) and id != "" do
+    Map.put(attrs, "data-bubble-id", id)
+  end
+
+  defp maybe_put_bubble_id(attrs, _), do: attrs
 
   defp void(tag, node, opts) do
     ["<", tag, attrs(node, tag, opts), ">"]
@@ -183,6 +197,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     node
     |> node_attrs(tag, opts)
     |> Map.put("data-exporter-id", id)
+    |> maybe_put_bubble_id(node)
     |> maybe_put_class(node, opts)
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == false or v == "" end)
     |> Enum.sort_by(&elem(&1, 0))

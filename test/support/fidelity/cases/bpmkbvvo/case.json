@@ -1,0 +1,60 @@
+{
+  "id": "bpmkbvvo",
+  "browser": {
+    "playwright": "1.55.0",
+    "chromium": "140.0.7339.16",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpmkbvvo",
+    "page_path": "bubbleex-i28-responsive-slice",
+    "page_payload_sha256": "706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b"
+  },
+  "viewports": [390, 483, 484, 485, 615, 616, 617, 637, 638, 639, 767, 768, 769, 775, 776, 777, 783, 784, 785, 919, 920, 921, 1151, 1152, 1153, 1440],
+  "transitions": {
+    "390": "representative narrow page",
+    "484": "CTA input and button join one line",
+    "616": "feature cards move from one to two columns",
+    "638": "CTA copy and input share the first line",
+    "768": "inclusive hidden-and-collapsed nav boundary",
+    "776": "hero children move from stacked to one line",
+    "784": "CTA becomes one flex line",
+    "920": "feature cards move from two to three columns",
+    "1152": "1120 px shell clamp",
+    "1440": "representative wide page"
+  },
+  "node_ids": [
+    "bpmkbvvo", "bpmkbvvp", "bpmkbvvq", "bpmkbvvr", "bpmkbvvs", "bpmkbvvt", "bpmkbvvu", "bpmkbvvv",
+    "bpmkbvvw", "bpmkbvvx", "bpmkbvvy", "bpmkbvvz", "bpmkbvwa", "bpmkbvwb", "bpmkbvwc", "bpmkbvwd",
+    "bpmkbvwe", "bpmkbvwf", "bpmkbvwg", "bpmkbvwh", "bpmkbvwi", "bpmkbvwj", "bpmkbvwk", "bpmkbvwl",
+    "bpmkbvwm", "bpmkbvwn", "bpmkbvwo", "bpmkbvwp", "bpmkbvwq", "bpmkbvwr", "bpmkbvws", "bpmkbvwt",
+    "bpmkbvwu", "bpmkbvwv", "bpmkbvww", "bpmkbvwx", "bpmkbvwy", "bpmkbvwz", "bpmkbvxa", "bpmkbvxb",
+    "bpmkbvxc", "bpmkbvxd", "bpmkbvxe", "bpmkbvxf", "bpmkbvxg", "bpmkbvxh", "bpmkbvxi", "bpmkbvxj"
+  ],
+  "text_node_ids": [
+    "bpmkbvvq", "bpmkbvvs", "bpmkbvvt", "bpmkbvvu", "bpmkbvvv", "bpmkbvvy", "bpmkbvvz", "bpmkbvwa",
+    "bpmkbvwc", "bpmkbvwd", "bpmkbvwi", "bpmkbvwj", "bpmkbvwl", "bpmkbvwq", "bpmkbvwr", "bpmkbvws",
+    "bpmkbvww", "bpmkbvwx", "bpmkbvxa", "bpmkbvxb", "bpmkbvxe", "bpmkbvxf", "bpmkbvxh", "bpmkbvxi", "bpmkbvxj"
+  ],
+  "semantics": {
+    "main": ["bpmkbvvo"],
+    "headings": {
+      "h1": ["bpmkbvvz"],
+      "h2": ["bpmkbvwr"],
+      "h3": ["bpmkbvwi", "bpmkbvww", "bpmkbvxa", "bpmkbvxe"]
+    },
+    "buttons": ["bpmkbvvv", "bpmkbvwc", "bpmkbvwd", "bpmkbvxj"],
+    "inputs": ["bpmkbvxi"],
+    "decorative": ["bpmkbvwf", "bpmkbvwh", "bpmkbvwn", "bpmkbvwo", "bpmkbvwv", "bpmkbvwz", "bpmkbvxd"]
+  }
+}

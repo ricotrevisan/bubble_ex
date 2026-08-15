@@ -184,7 +184,8 @@ defmodule BubbleEx.Frontend.Normalize do
       style: style_from(raw),
       children: children,
       unmapped: unmapped_keys(raw),
-      attributes: container_attributes(raw, kind)
+      attributes: container_attributes(raw, kind),
+      responsive: responsive_from(raw)
     }
 
     {node, child_diags}
@@ -234,7 +235,8 @@ defmodule BubbleEx.Frontend.Normalize do
           children: children,
           bindings: bindings,
           unmapped: unmapped_keys(raw),
-          attributes: element_attributes(raw, kind, variant)
+          attributes: element_attributes(raw, kind, variant),
+          responsive: responsive_from(raw)
         }
 
         {node, child_diags ++ slot_diagnostics(node, kind, variant)}
@@ -255,7 +257,8 @@ defmodule BubbleEx.Frontend.Normalize do
           content: slots,
           bindings: bindings,
           unmapped: unmapped_keys(raw),
-          definition_ref: definition_key
+          definition_ref: definition_key,
+          responsive: responsive_from(raw)
         }
 
         {node, []}
@@ -285,7 +288,8 @@ defmodule BubbleEx.Frontend.Normalize do
           bindings: Map.put(bindings, "plugin", plugin_binding),
           unmapped: unmapped_keys(raw),
           placeholder?: true,
-          attributes: %{"data-placeholder-kind" => type || "unknown"}
+          attributes: %{"data-placeholder-kind" => type || "unknown"},
+          responsive: responsive_from(raw)
         }
 
         diag = %Diagnostic{
@@ -322,11 +326,12 @@ defmodule BubbleEx.Frontend.Normalize do
     {:instance, ref}
   end
 
+  @text_tags %{"normal" => :normal, "h1" => :h1, "h2" => :h2, "h3" => :h3, "h4" => :h4}
+
   defp classify_text(raw) do
     case Payload.prop(raw, "tag_type") do
       tag when tag in [nil, "normal", "h1", "h2", "h3", "h4"] ->
-        variant = if tag in [nil, "normal"], do: :normal, else: String.to_existing_atom(tag)
-        {:native, :text, variant}
+        {:native, :text, Map.get(@text_tags, tag, :normal)}
 
       _other ->
         {:placeholder, :unsupported_text_variant}
@@ -408,8 +413,8 @@ defmodule BubbleEx.Frontend.Normalize do
 
     base = %{
       mode: mode,
-      row_gap: numeric_prop(raw, "row_gap"),
-      column_gap: numeric_prop(raw, "column_gap"),
+      row_gap: gap_prop(raw, "row_gap"),
+      column_gap: gap_prop(raw, "column_gap"),
       wrap: wrap_from(raw),
       justify: justify_from(raw),
       align: align_from(raw),
@@ -461,9 +466,23 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp box_from(raw) do
-    sidecar = Payload.prop(raw, "__bp_layout__")
-    sidecar = if is_map(sidecar), do: sidecar, else: %{}
+    sidecar = box_sidecar(raw)
 
+    raw
+    |> box_dimensions(sidecar)
+    |> Map.merge(box_offsets(raw, sidecar))
+    |> Map.merge(box_flags(raw))
+    |> Map.reject(fn {_k, v} -> is_nil(v) or v == false end)
+  end
+
+  defp box_sidecar(raw) do
+    case Payload.prop(raw, "__bp_layout__") do
+      sidecar when is_map(sidecar) -> sidecar
+      _ -> %{}
+    end
+  end
+
+  defp box_dimensions(raw, sidecar) do
     %{
       width: dim(raw, sidecar, "width"),
       height: dim(raw, sidecar, "height"),
@@ -472,15 +491,37 @@ defmodule BubbleEx.Frontend.Normalize do
       min_height: dim(raw, sidecar, "min_height"),
       max_height: dim(raw, sidecar, "max_height"),
       padding: Payload.prop(raw, "padding") || sidecar["padding"],
-      margin: Payload.prop(raw, "margin") || sidecar["margin"],
+      margin: Payload.prop(raw, "margin") || sidecar["margin"]
+    }
+  end
+
+  defp box_offsets(raw, sidecar) do
+    %{
       x: dim(raw, sidecar, "left") || dim(raw, sidecar, "x"),
       y: dim(raw, sidecar, "top") || dim(raw, sidecar, "y"),
       rotation: Payload.prop(raw, "rotation") || sidecar["rotation"],
-      z_index: Payload.prop(raw, "zindex") || Payload.prop(raw, "z_index"),
-      collapsed?: collapsed?(raw),
-      hidden?: hidden?(raw)
+      z_index:
+        Payload.prop(raw, "zindex") || Payload.prop(raw, "z_index") ||
+          Payload.prop(raw, "z-index"),
+      align_self: Payload.prop(raw, "align-self") || Payload.prop(raw, "align_self"),
+      flex_grow: Payload.prop(raw, "flex-grow") || Payload.prop(raw, "flex_grow"),
+      placement: Payload.prop(raw, "placement")
     }
-    |> Map.reject(fn {_k, v} -> is_nil(v) or v == false end)
+  end
+
+  defp box_flags(raw) do
+    %{collapsed?: collapsed?(raw), hidden?: hidden?(raw)}
+  end
+
+  defp responsive_from(raw) do
+    case Payload.prop(raw, "responsive") do
+      rules when is_list(rules) -> rules
+      _ -> []
+    end
+  end
+
+  defp gap_prop(raw, key) do
+    Payload.prop(raw, key) || Payload.prop(raw, String.replace(key, "_", "-"))
   end
 
   defp dim(raw, sidecar, key) do
@@ -546,7 +587,25 @@ defmodule BubbleEx.Frontend.Normalize do
       "placeholder_color"
     ]
 
-    Map.take(props, keys)
+    css_ready = [
+      "background",
+      "color",
+      "border",
+      "border-radius",
+      "box-shadow",
+      "font-family",
+      "font-size",
+      "font-weight",
+      "line-height",
+      "letter-spacing",
+      "transform",
+      "z-index",
+      "opacity"
+    ]
+
+    props
+    |> Map.take(keys ++ css_ready)
+    |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
 
   defp extract_slots(raw, kind, exporter_id) do
@@ -847,13 +906,6 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp order_of(_), do: 0
-
-  defp numeric_prop(raw, key) do
-    case Payload.prop(raw, key) do
-      n when is_number(n) -> n
-      _ -> nil
-    end
-  end
 
   defp unmapped_keys(raw) when is_map(raw) do
     known =

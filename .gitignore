@@ -28,3 +28,6 @@ bubble_ex-*.tar
 
 # graphify knowledge-graph output (generated)
 graphify-out/
+
+# Playwright for frozen-case fidelity gates
+test/support/fidelity/node_modules/

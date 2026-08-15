@@ -25,7 +25,18 @@ This runs, in order: `mix format --check-formatted`, `mix compile --warnings-as-
 
 ## Testing
 
-Tests are offline by default and do not require external services or credentials. Integration tests (tagged `:integration`) hit live Bubble.io endpoints and are excluded from the default run. To run them explicitly:
+Tests are offline by default and do not require external services or credentials. Integration tests (tagged `:integration`) hit live Bubble.io endpoints and are
+excluded from the default run. Frozen-case fidelity tests (tagged `:fidelity`)
+need pinned Playwright 1.55 and are also excluded from `mix quality`. To run
+them:
+
+```bash
+cd test/support/fidelity && npm install && npx playwright install chromium
+mix test --only fidelity
+# or: mix bubble.fidelity
+```
+
+To run integration tests explicitly:
 
 ```bash
 mix test --only integration
