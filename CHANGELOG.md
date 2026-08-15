@@ -6,6 +6,15 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 frontend exporter: `BubbleEx.Frontend.normalize/2`, `export/3`,
+  `export_payload/3`, `BubbleEx.export_frontend/3`, and
+  `mix bubble.export_frontend`. Writes a portable HTML/CSS package with
+  bindings, findings, and coverage for the modern responsive renderer.
+  S1 lowers Page, Group (Fixed / Align to Parent / Row / Column), plain
+  Text, public Image, decorative Shape, label-only Button, text-only
+  resolved Link, and Text/Email/Password Input. Everything else is a
+  dimension-preserving placeholder.
+
 - API Connector v2 External API types are resolved into the universal database
   map and rendered deliberately by every registered schema encoder. Detailed
   rendering and app enrichment expose structured, artifact-scoped warnings.

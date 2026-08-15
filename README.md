@@ -8,6 +8,7 @@ BubbleEx is a set of utilities that scans bubble.io apps. It can:
 - scan for exposed secrets (built-in Native scanner or Trufflehog)
 - query application logs for monitoring and debugging
 - deep search through nested data structures to find specific values
+- export a modern-responsive frontend as portable HTML, CSS, assets, and manifests
 
 > **Responsible use:** BubbleEx must only be used on apps you own or are explicitly
 > authorized to test. See [SECURITY.md](SECURITY.md) for details.
@@ -58,8 +59,35 @@ config :bubble_ex,
   apps: [
     default_timeout: 10_000,
     max_body_length: 100_000_000
+  ],
+  frontend: [
+    asset_timeout: 30_000,
+    max_asset_bytes: 20_000_000
   ]
 ```
+
+## Frontend export
+
+Export one modern-responsive app version as a portable HTML/CSS package.
+Legacy Bubble rendering is rejected with `:unsupported_renderer`.
+
+```elixir
+{:ok, result} = BubbleEx.export_frontend("my-app", "out/frontend", app_version: "live")
+# or from an already-decoded payload:
+{:ok, result} = BubbleEx.Frontend.export_payload(payload, "out/frontend")
+```
+
+CLI (public apps only; no credentials):
+
+```
+mix bubble.export_frontend my-app -o out/frontend [--version live] [--pages index,about] [--fallback] [--force]
+```
+
+The package contains `pages/`, reusable fragments, shared/page CSS, hashed
+`assets/`, `model.json`, `bindings.json`, `findings.json`, `coverage.json`,
+and `MANIFEST.json`. Workflows, conditions, and unsupported elements stay as
+bindings and findings. A leaked-credential finding blocks the export and
+writes nothing.
 
 ## Database Structure & Schema Export
 

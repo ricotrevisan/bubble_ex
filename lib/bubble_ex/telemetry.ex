@@ -11,7 +11,9 @@ defmodule BubbleEx.Telemetry do
         [
           [:bubble_ex, :http, :request, :stop],
           [:bubble_ex, :apps, :fetch_app, :stop],
-          [:bubble_ex, :secrets, :scan, :stop]
+          [:bubble_ex, :secrets, :scan, :stop],
+          [:bubble_ex, :frontend, :normalize, :stop],
+          [:bubble_ex, :frontend, :export, :stop]
         ],
         &MyApp.handle_event/4,
         nil
@@ -34,6 +36,16 @@ defmodule BubbleEx.Telemetry do
   Emitted by `BubbleEx.Secrets.scan/2`.
     * start metadata: `%{adapter}`
     * stop metadata: adds `%{finding_count, error}`
+
+  ### `[:bubble_ex, :frontend, :normalize, :start | :stop | :exception]`
+  Emitted by `BubbleEx.Frontend.normalize/2`.
+    * start metadata: `%{}`
+    * stop metadata: adds `%{page_count, error}`
+
+  ### `[:bubble_ex, :frontend, :export, :start | :stop | :exception]`
+  Emitted by `BubbleEx.Frontend.export/3`.
+    * start metadata: `%{out_dir}`
+    * stop metadata: adds `%{file_count, error}`
 
   ## Measurements
 

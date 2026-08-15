@@ -11,6 +11,10 @@ config :bubble_ex,
   apps: [
     default_timeout: 10_000,
     max_body_length: 100_000_000
+  ],
+  frontend: [
+    asset_timeout: 30_000,
+    max_asset_bytes: 20_000_000
   ]
 
 import_config "#{config_env()}.exs"

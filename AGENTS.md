@@ -36,6 +36,11 @@ The codebase follows a modular architecture with clear separation of concerns:
 - **BubbleEx.Db** - Database structure analysis (`Db.Reader`) and schema encoders behind the `Db.Encoder` behaviour: `Db.Dbml` (DBML) and `Db.Sql.Postgres` (PostgreSQL DDL). New targets (SQLite, Convex) register in `Db.Encoder`.
 - **BubbleEx.Logs** - Log querying and filtering functionality
 - **BubbleEx.Server** - Asynchronous scan processing (GenServer on top of `Task.Supervisor`)
+- **BubbleEx.Frontend** - Modern-responsive frontend export: normalize a decoded
+  payload, then write a portable HTML/CSS package (`pages/`, `reusables/`,
+  hashed `assets/`, bindings/findings/coverage, `MANIFEST.json`). S1 native
+  slice only; other kinds are dimension-preserving placeholders. Separate from
+  `BubbleEx.AppTree`.
 - **BubbleEx.Secrets** - Pluggable secret-scanning behaviour; `Secrets.Trufflehog` is the default adapter
 
 ### Key Dependencies

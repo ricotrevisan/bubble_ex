@@ -1,0 +1,303 @@
+defmodule BubbleEx.FrontendTest do
+  use ExUnit.Case, async: true
+
+  alias BubbleEx.Error
+  alias BubbleEx.Frontend
+  alias BubbleEx.Frontend.Normalized
+
+  describe "normalize/2" do
+    test "rejects a non-map payload as :invalid_input" do
+      assert {:error, %Error{kind: :invalid_input}} = Frontend.normalize("not a map")
+      assert {:error, %Error{kind: :invalid_input}} = Frontend.normalize(42)
+      assert {:error, %Error{kind: :invalid_input}} = Frontend.normalize([%{"_id" => "x"}])
+    end
+
+    test "rejects invalid JSON as :parse_failed" do
+      assert {:error, %Error{kind: :parse_failed}} = Frontend.normalize("{not json")
+    end
+
+    test "rejects a decoded JSON array as :invalid_input" do
+      assert {:error, %Error{kind: :invalid_input}} = Frontend.normalize("[1, 2]")
+    end
+
+    test "rejects a legacy renderer as :unsupported_renderer" do
+      payload = %{
+        "_id" => "legacyapp",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg1",
+            "type" => "Page",
+            "name" => "index",
+            "new_responsive" => false
+          }
+        }
+      }
+
+      assert {:error, %Error{kind: :unsupported_renderer}} = Frontend.normalize(payload)
+    end
+
+    test "normalizes a modern page into the versioned model with diagnostics" do
+      payload = modern_page()
+
+      assert {:ok, %Normalized{} = model} = Frontend.normalize(payload)
+      assert model.normalized_schema_version == 1
+      assert model.identity.bubble_id == "s1app"
+      assert model.identity.app_version == "live"
+      assert is_list(model.diagnostics)
+      assert [page] = model.pages
+      assert page.kind == :page
+      assert page.variant == :column
+      assert is_binary(page.exporter_id)
+      assert page.source.map_key == "home"
+      assert page.source.bubble_id == "pghome"
+      assert is_list(page.source.path)
+    end
+
+    test "accepts the raw aliased payload shape used by parse_app_json" do
+      payload = %{
+        "_id" => "rawapp",
+        "%p3" => %{
+          "home" => %{
+            "id" => "pghome",
+            "%x" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"}
+          }
+        }
+      }
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert page.kind == :page
+      assert page.variant == :column
+    end
+
+    test "lowers S1 kinds and keeps unresolved expressions on the node" do
+      payload = s1_payload()
+
+      assert {:ok, %Normalized{pages: [page], diagnostics: diags}} = Frontend.normalize(payload)
+      kinds = Enum.map(page.children, & &1.kind)
+      assert kinds == [:group, :text, :text, :image, :shape, :button, :link, :input, :placeholder]
+
+      [row, heading, dynamic, image, shape, button, link, input, plugin] = page.children
+
+      assert row.kind == :group
+      assert row.variant == :row
+      assert row.layout.mode == :row
+      assert row.layout.row_gap == 8
+      assert row.layout.column_gap == 16
+
+      assert heading.kind == :text
+      assert heading.variant == :h1
+      assert heading.content["text"].resolved == "Hello"
+
+      assert dynamic.kind == :text
+      assert dynamic.variant == :normal
+      assert dynamic.content["text"].binding_id
+      assert dynamic.bindings["text"].kind == :value
+      assert dynamic.bindings["text"].id == dynamic.exporter_id <> " :: text"
+
+      assert image.kind == :image
+      assert image.variant == :zoom
+      assert image.content["src"].resolved == "https://cdn.example/hero.png"
+
+      assert shape.kind == :shape
+      assert shape.attributes["aria-hidden"] == "true"
+
+      assert button.kind == :button
+      assert button.variant == :label
+      assert button.content["label"].resolved == "Go"
+
+      assert link.kind == :link
+      assert link.content["destination"].resolved == "https://example.com"
+
+      assert input.kind == :input
+      assert input.variant == :email
+      assert input.attributes["type"] == "email"
+
+      assert plugin.kind == :placeholder
+      assert plugin.placeholder?
+      assert plugin.bindings["plugin"].kind == :plugin
+
+      assert Enum.any?(diags, fn d ->
+               d.code == :unsupported_element and plugin.exporter_id in d.refs
+             end)
+    end
+
+    test "icon buttons and rich text become placeholders" do
+      payload =
+        page_with_elements(%{
+          "iconBtn" => %{
+            "id" => "b1",
+            "type" => "Button",
+            "properties" => %{"button_type" => "icon", "text" => "X"}
+          },
+          "rich" => %{
+            "id" => "t1",
+            "type" => "Text",
+            "properties" => %{"tag_type" => "bbcode", "text" => "[b]nope[/b]"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert Enum.all?(page.children, & &1.placeholder?)
+    end
+
+    test "normalizes reusable definitions once and instances as references" do
+      payload = %{
+        "_id" => "s1app",
+        "pages" => %{
+          "home" => %{
+            "id" => "pghome",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "nav" => %{
+                "id" => "inst1",
+                "type" => "CustomElement",
+                "properties" => %{"definition" => "cmpNav", "original_name" => "Nav"}
+              }
+            }
+          }
+        },
+        "element_definitions" => %{
+          "cmpNav" => %{
+            "id" => "cmpNavInner",
+            "name" => "Left Nav",
+            "type" => "CustomDefinition",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "label" => %{
+                "id" => "elNav",
+                "type" => "Text",
+                "properties" => %{"text" => "Nav", "tag_type" => "normal"}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, model} = Frontend.normalize(payload)
+      assert [defn] = model.reusables
+      assert defn.kind == :reusable_definition
+      assert [text] = defn.children
+      assert text.kind == :text
+      assert text.content["text"].resolved == "Nav"
+
+      assert [page] = model.pages
+      assert [inst] = page.children
+      assert inst.kind == :reusable_instance
+      assert inst.definition_ref == "cmpNav"
+      assert inst.children == []
+    end
+  end
+
+  defp modern_page do
+    %{
+      "_id" => "s1app",
+      "app_version" => "live",
+      "pages" => %{
+        "home" => %{
+          "id" => "pghome",
+          "type" => "Page",
+          "name" => "index",
+          "properties" => %{
+            "container_layout" => "column",
+            "title" => "Home"
+          },
+          "elements" => %{}
+        }
+      }
+    }
+  end
+
+  defp page_with_elements(elements) do
+    %{
+      "_id" => "s1app",
+      "app_version" => "live",
+      "pages" => %{
+        "home" => %{
+          "id" => "pghome",
+          "type" => "Page",
+          "name" => "index",
+          "properties" => %{"container_layout" => "column", "title" => "Home"},
+          "elements" => elements
+        }
+      }
+    }
+  end
+
+  defp s1_payload do
+    page_with_elements(%{
+      "row" => %{
+        "id" => "elRow",
+        "type" => "Group",
+        "properties" => %{
+          "container_layout" => "row",
+          "row_gap" => 8,
+          "column_gap" => 16,
+          "order" => 1
+        }
+      },
+      "heading" => %{
+        "id" => "elH1",
+        "type" => "Text",
+        "properties" => %{"tag_type" => "h1", "text" => "Hello", "order" => 2}
+      },
+      "dynamic" => %{
+        "id" => "elDyn",
+        "type" => "Text",
+        "properties" => %{
+          "tag_type" => "normal",
+          "order" => 3,
+          "text" => %{
+            "type" => "TextExpression",
+            "entries" => %{
+              "0" => "Hi ",
+              "1" => %{"type" => "PageData", "properties" => %{"name" => "Current User"}}
+            }
+          }
+        }
+      },
+      "hero" => %{
+        "id" => "elImg",
+        "type" => "Image",
+        "properties" => %{
+          "run_mode" => "zoom",
+          "src" => "https://cdn.example/hero.png",
+          "alt" => "Hero",
+          "order" => 4
+        }
+      },
+      "dot" => %{
+        "id" => "elShape",
+        "type" => "Shape",
+        "properties" => %{"bgcolor" => "#fff", "order" => 5}
+      },
+      "cta" => %{
+        "id" => "elBtn",
+        "type" => "Button",
+        "properties" => %{"text" => "Go", "order" => 6}
+      },
+      "docs" => %{
+        "id" => "elLink",
+        "type" => "Link",
+        "properties" => %{"text" => "Docs", "destination" => "https://example.com", "order" => 7}
+      },
+      "email" => %{
+        "id" => "elInput",
+        "type" => "Input",
+        "properties" => %{
+          "format" => "email",
+          "placeholder" => "you@example.com",
+          "order" => 8
+        }
+      },
+      "plug" => %{
+        "id" => "elPlug",
+        "type" => "materialicons-Materialicon",
+        "properties" => %{"order" => 9}
+      }
+    })
+  end
+end

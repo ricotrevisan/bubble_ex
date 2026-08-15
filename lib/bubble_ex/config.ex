@@ -236,4 +236,24 @@ defmodule BubbleEx.Config do
       get(:apps, :max_body_length) ||
       100_000_000
   end
+
+  @doc """
+  Timeout in milliseconds for public frontend asset downloads.
+  """
+  @spec frontend_asset_timeout(keyword()) :: integer()
+  def frontend_asset_timeout(opts \\ []) do
+    Keyword.get(opts, :asset_timeout) ||
+      get(:frontend, :asset_timeout) ||
+      30_000
+  end
+
+  @doc """
+  Maximum number of bytes accepted for a single frontend asset download.
+  """
+  @spec frontend_max_asset_bytes(keyword()) :: integer()
+  def frontend_max_asset_bytes(opts \\ []) do
+    Keyword.get(opts, :max_asset_bytes) ||
+      get(:frontend, :max_asset_bytes) ||
+      20_000_000
+  end
 end

@@ -33,6 +33,8 @@ defmodule BubbleEx.Error do
   - `:cli_failed` - an external CLI ran but exited non-zero / unusable output
   - `:request_failed` - the request never completed (transport/timeout error)
   - `:unknown_format` - an unrecognized schema/output format was requested
+  - `:unsupported_renderer` - the app is not using Bubble's modern responsive renderer
+  - `:export_blocked` - a blocking finding (e.g. leaked credential) stopped a frontend export
   """
   @type kind ::
           :not_a_bubble_app
@@ -47,6 +49,8 @@ defmodule BubbleEx.Error do
           | :cli_failed
           | :request_failed
           | :unknown_format
+          | :unsupported_renderer
+          | :export_blocked
 
   @type t :: %__MODULE__{kind: kind(), message: String.t(), context: map()}
 

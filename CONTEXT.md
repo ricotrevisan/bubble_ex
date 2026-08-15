@@ -115,3 +115,37 @@ _Avoid_: Audit log, server log
 **Log filter**:
 A set of criteria that selects application logs by message category, app, app version, or time range.
 _Avoid_: Search, query
+
+## Frontend export
+
+**Normalized frontend model**:
+The versioned, serializable description of one app version's pages, reusable definitions, styles, and source references produced by a pure payload-to-model transformation.
+_Avoid_: App payload, page HTML, DOM
+
+**Normalization diagnostic**:
+A problem recorded while building the normalized frontend model, such as an unsupported element. Distinct from a secret-scan finding.
+_Avoid_: Finding, error
+
+**Binding**:
+A lossless record of an unresolved expression, condition, workflow, custom state, API action, or plugin slot. Bindings stay on their element node; the bindings manifest is a derived index.
+_Avoid_: Placeholder, expression AST
+
+**Export finding**:
+An export-time diagnostic keyed back to a normalized reference. Severity is blocking, warning, or info. A leaked credential is blocking and fails the export.
+_Avoid_: Secret-scan finding (unless wrapping one), normalization diagnostic
+
+**Coverage**:
+Per-page and overall counts of resolved versus unresolved bindings and native versus placeholder elements.
+_Avoid_: Correctness score, quality gate
+
+**Exporter ID**:
+A deterministic identity for a normalized node within one app version, derived from app-version identity, entity kind, map key, and source path.
+_Avoid_: Bubble ID, CSS class
+
+**Frontend export package**:
+The on-disk portable unit of HTML, CSS, hashed public assets, the normalized model, bindings, export findings, coverage, and MANIFEST.
+_Avoid_: App tree, page HTML file
+
+**Placeholder element**:
+A dimension-preserving stand-in for an unsupported, plugin, or out-of-slice node, accompanied by an export finding and binding.
+_Avoid_: Unsupported error, skipped node

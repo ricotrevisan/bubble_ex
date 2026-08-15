@@ -3,7 +3,7 @@ defmodule BubbleEx do
   BubbleEx is a library for fetching and parsing information from Bubble.io.
   """
 
-  alias BubbleEx.{Apps, Contributors, Logs, Plugins, Secrets, Server}
+  alias BubbleEx.{Apps, Contributors, Error, Frontend, Logs, Plugins, Secrets, Server}
 
   @doc """
   Fetches information about a Bubble.io app.
@@ -183,5 +183,86 @@ defmodule BubbleEx do
   @spec cancel_scan(reference()) :: :ok | {:error, :not_found}
   def cancel_scan(ref) when is_reference(ref) do
     Server.cancel_scan(ref)
+  end
+
+  @doc """
+  Fetches one named app version and writes a portable frontend package.
+
+  See `BubbleEx.Frontend` for the normalize/export seams and package layout.
+  `:app_version` is `"live"` (default), `"test"`, or `"development"`. There is
+  no `:try_test` fallback. `:username`/`:password` authenticate the payload
+  fetch only; asset downloads stay unauthenticated.
+  """
+  @spec export_frontend(String.t(), String.t(), keyword()) ::
+          {:ok, Frontend.Export.Result.t()} | {:error, Error.t()}
+  def export_frontend(app, out_dir, opts \\ []) when is_binary(app) and is_binary(out_dir) do
+    with {:ok, url} <- frontend_version_url(app, Keyword.get(opts, :app_version, "live")),
+         {:ok, payload} <- fetch_frontend_payload(url, opts) do
+      Frontend.export_payload(payload, out_dir, export_opts(opts))
+    end
+  end
+
+  defp frontend_version_url(app, version) when version in ["live", "test", "development"] do
+    case Apps.Validator.validate_input(app) do
+      {:ok, url} -> {:ok, apply_app_version(url, version)}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp frontend_version_url(_app, version) do
+    {:error,
+     Error.new(:invalid_input, "app_version must be live, test, or development", %{
+       app_version: version
+     })}
+  end
+
+  defp apply_app_version(url, "live"), do: url
+
+  defp apply_app_version(url, version) do
+    if String.contains?(url, "/version-") do
+      url
+    else
+      String.trim_trailing(url, "/") <> "/version-#{version}"
+    end
+  end
+
+  defp fetch_frontend_payload(url, opts) do
+    fetch_opts = [
+      include_payload: true,
+      try_test: false,
+      username: Keyword.get(opts, :username),
+      password: Keyword.get(opts, :password)
+    ]
+
+    case Apps.fetch_app(url, fetch_opts) do
+      {:ok, %{valid?: true, payload: payload}} when is_map(payload) ->
+        {:ok, payload}
+
+      {:ok, %{valid?: false} = attrs} ->
+        {:error,
+         Error.new(:not_a_bubble_app, attrs[:notes] || "app version is not reachable", %{
+           url: url
+         })}
+
+      {:ok, _} ->
+        {:error, Error.new(:parse_failed, "fetched app did not include a payload", %{url: url})}
+
+      {:error, %Error{}} = error ->
+        error
+
+      {:error, reason} ->
+        {:error, Error.new(:request_failed, "failed to fetch app version", %{reason: reason})}
+    end
+  end
+
+  defp export_opts(opts) do
+    Keyword.take(opts, [
+      :pages,
+      :fallback,
+      :force,
+      :secret_scan_adapter,
+      :asset_timeout,
+      :max_asset_bytes
+    ])
   end
 end
