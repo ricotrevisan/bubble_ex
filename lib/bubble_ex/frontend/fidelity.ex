@@ -384,6 +384,7 @@ defmodule BubbleEx.Frontend.Fidelity do
       Enum.flat_map(snapshot, fn
         {"main", ids} -> expect_tags(document, ids, "main")
         {"headings", levels} -> heading_problems(document, levels)
+        {"paragraphs", ids} -> expect_tags(document, ids, "p")
         {"buttons", ids} -> expect_tags(document, ids, "button")
         {"inputs", ids} -> expect_tags(document, ids, "input")
         {"input_attributes", by_id} -> attribute_problems(document, "input", by_id)

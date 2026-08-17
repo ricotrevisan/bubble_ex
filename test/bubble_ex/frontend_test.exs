@@ -142,6 +142,27 @@ defmodule BubbleEx.FrontendTest do
       assert Enum.all?(page.children, & &1.placeholder?)
     end
 
+    test "classifies explicit normal and h4 Text semantics" do
+      payload =
+        page_with_elements(%{
+          "normal" => %{
+            "id" => "t-normal",
+            "type" => "Text",
+            "properties" => %{"tag_type" => "normal", "text" => "Body", "order" => 1}
+          },
+          "h4" => %{
+            "id" => "t-h4",
+            "type" => "Text",
+            "properties" => %{"tag_type" => "h4", "text" => "Heading four", "order" => 2}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [normal, h4] = page.children
+      assert normal.variant == :normal
+      assert h4.variant == :h4
+    end
+
     test "classifies Image stretch_or_rescale including adjust_height" do
       payload =
         page_with_elements(%{

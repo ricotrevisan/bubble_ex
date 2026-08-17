@@ -36,6 +36,11 @@ All notable changes to this project are documented here.
   and supplies placeholder-backed accessible names. This validates the static
   Text/Email/Password subset, not broader Input behavior.
 
+- Explicit `normal` Text semantics groundwork (#38): frozen #35–#37 nodes now
+  structurally assert `<p>`, while shared CSS neutralizes browser paragraph and
+  heading defaults before authored typography is applied. A controlled `h4`
+  capture remains required.
+
 - API Connector v2 External API types are resolved into the universal database
   map and rendered deliberately by every registered schema encoder. Detailed
   rendering and app enrichment expose structured, artifact-scoped warnings.

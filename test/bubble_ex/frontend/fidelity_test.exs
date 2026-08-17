@@ -24,6 +24,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert case_.source.page_id == "bpewigqu"
       assert case_.source.page_path == "bubbleex-i37-text-password-input"
       assert case_.viewports == [390, 1440]
+      assert case_.semantics["paragraphs"] == ["bpsszjnj", "bpezpmwv", "bpdzfyan"]
     end
 
     test "loads the frozen bptaixqv text-only Link pin" do
@@ -81,6 +82,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
       <body>
       <main data-exporter-id="page/1" data-bubble-id="bpmkbvvo">
         <h1 data-exporter-id="t1" data-bubble-id="bpmkbvvz">Title</h1>
+        <p data-exporter-id="p1" data-bubble-id="paragraph">Body</p>
         <button type="button" data-exporter-id="b1" data-bubble-id="bpmkbvvv">Go</button>
         <input type="email" data-exporter-id="i1" data-bubble-id="bpmkbvxi" placeholder="you@example.com">
         <div data-exporter-id="s1" data-bubble-id="bpmkbvwf" aria-hidden="true"></div>
@@ -92,12 +94,19 @@ defmodule BubbleEx.Frontend.FidelityTest do
       snapshot = %{
         "main" => ["bpmkbvvo"],
         "headings" => %{"h1" => ["bpmkbvvz"]},
+        "paragraphs" => ["paragraph"],
         "buttons" => ["bpmkbvvv"],
         "inputs" => ["bpmkbvxi"],
         "decorative" => ["bpmkbvwf"]
       }
 
       assert :ok = Fidelity.structure(html, snapshot)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Fidelity.structure(
+                 String.replace(html, "<p data-exporter-id", "<div data-exporter-id"),
+                 snapshot
+               )
     end
 
     test "checks text-only Link names and navigation attributes" do

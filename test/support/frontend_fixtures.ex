@@ -104,6 +104,16 @@ defmodule BubbleEx.FrontendFixtures do
               "style" => "Text__headline_",
               "properties" => %{"tag_type" => "h1", "text" => "Hello", "order" => 1}
             },
+            "body" => %{
+              "id" => "elNormal",
+              "type" => "Text",
+              "properties" => %{"tag_type" => "normal", "text" => "Body", "order" => 2}
+            },
+            "subheading" => %{
+              "id" => "elH4",
+              "type" => "Text",
+              "properties" => %{"tag_type" => "h4", "text" => "Heading four", "order" => 3}
+            },
             "cta" => %{
               "id" => "elBtn",
               "type" => "Button",

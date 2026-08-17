@@ -9,6 +9,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     base = """
     * { box-sizing: border-box; }
     body { margin: 0; }
+    p, h1, h2, h3, h4 { margin: 0; font: inherit; }
     button, input { font: inherit; }
     """
 

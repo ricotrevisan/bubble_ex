@@ -94,6 +94,10 @@ defmodule BubbleEx.Frontend.ExportTest do
       html = File.read!(Path.join(out, "pages/index/index.html"))
       assert html =~ "<h1"
       assert html =~ "Hello"
+      assert html =~ ~s(<p data-bubble-id="elNormal")
+      assert html =~ ">Body</p>"
+      assert html =~ ~s(<h4 data-bubble-id="elH4")
+      assert html =~ ">Heading four</h4>"
       assert html =~ "<button"
       assert html =~ ~s(type="button")
       assert html =~ "Go"
@@ -110,6 +114,7 @@ defmodule BubbleEx.Frontend.ExportTest do
 
       shared = File.read!(Path.join(out, "styles/shared.css"))
       assert shared =~ ".s-headline"
+      assert shared =~ "p, h1, h2, h3, h4 { margin: 0; font: inherit; }"
 
       assert Enum.any?(result.findings, &(&1["type"] == "unsupported_element"))
       assert result.coverage["overall"]["elements"]["placeholder"] >= 1
