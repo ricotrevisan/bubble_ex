@@ -133,6 +133,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     {"max-height", :max_height},
     {"padding", :padding},
     {"margin", :margin},
+    {"overflow", :overflow},
     {"left", :x},
     {"top", :y}
   ]
@@ -167,14 +168,31 @@ defmodule BubbleEx.Frontend.Export.Css do
     resolved
     |> Map.new(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
     |> Map.merge(image_fit(kind, variant))
+    |> Map.merge(native_display(kind))
     |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
 
-  defp image_fit(:image, :stretch), do: %{"object-fit" => "fill"}
-  defp image_fit(:image, :rescale), do: %{"object-fit" => "contain"}
-  defp image_fit(:image, :zoom), do: %{"object-fit" => "cover"}
-  defp image_fit(:image, :adjust_height), do: %{"height" => "auto", "object-fit" => "contain"}
+  defp image_fit(:image, :stretch),
+    do: %{"object-fit" => "fill", "display" => "block", "overflow" => "hidden"}
+
+  defp image_fit(:image, :rescale),
+    do: %{"object-fit" => "contain", "display" => "block", "overflow" => "hidden"}
+
+  defp image_fit(:image, :zoom),
+    do: %{"object-fit" => "cover", "display" => "block", "overflow" => "hidden"}
+
+  defp image_fit(:image, :adjust_height),
+    do: %{
+      "height" => "auto",
+      "object-fit" => "contain",
+      "display" => "block",
+      "overflow" => "hidden"
+    }
+
   defp image_fit(_, _), do: %{}
+
+  defp native_display(:link), do: %{"display" => "block", "text-decoration" => "none"}
+  defp native_display(_), do: %{}
 
   defp put_fill_width(css, %Node{layout: layout}) when is_map(layout) do
     if layout[:fill_width?] || layout["fill_width?"] do
@@ -370,6 +388,9 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp css_size(nil), do: nil
   defp css_size(n) when is_number(n), do: "#{n}px"
+  defp css_size("hidden"), do: "hidden"
+  defp css_size("visible"), do: "visible"
+  defp css_size("auto"), do: "auto"
   defp css_size(s) when is_binary(s), do: s
   defp css_size(_), do: nil
 

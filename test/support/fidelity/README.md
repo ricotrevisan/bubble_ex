@@ -3,9 +3,11 @@
 Implements [issue #30](https://github.com/ricotrevisan/bubble_ex/issues/30).
 
 A frozen case is the only thing we call visually correct. The suite contains
-only frozen cases; today that is `bpmkbvvo` (the #28 page). PR CI renders the
-candidate from `BubbleEx.Frontend.export_payload/3` against **committed**
-references. It never talks to live Bubble.
+only frozen cases; today that is `bpmkbvvo` (the #28 page), `bprkyexk`
+(the #35 Image modes page), `bptaixqv` (the #36 text-only Link page), and
+`bpewigqu` (the #37 Text/Password Input page). PR CI renders the candidate from
+`BubbleEx.Frontend.export_payload/3` against **committed** references. It never
+talks to live Bubble.
 
 ## Run
 

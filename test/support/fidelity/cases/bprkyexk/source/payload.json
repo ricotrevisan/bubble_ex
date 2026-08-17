@@ -1,0 +1,322 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i35-image-modes": {
+      "id": "bprkyexk",
+      "type": "Page",
+      "name": "bubbleex-i35-image-modes",
+      "properties": {
+        "container_layout": "column",
+        "row_gap": "32px",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "row-gap": "32px",
+        "min-height": "900px",
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "title": "BubbleEx issue 35 image modes"
+      },
+      "elements": {
+        "i35__title": {
+          "id": "bpejnisb",
+          "type": "Text",
+          "name": "I35__Title_Text",
+          "properties": {
+            "margin": "0",
+            "padding": "0 12px",
+            "height": "24px",
+            "min_height": "24px",
+            "max_height": "24px",
+            "width": "fit-content",
+            "min-height": "24px",
+            "max-height": "24px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I35 case · Image modes",
+            "order": 1
+          }
+        },
+        "i35__grid": {
+          "id": "bpxqyziu",
+          "type": "Group",
+          "name": "I35__Grid_Column",
+          "properties": {
+            "container_layout": "column",
+            "row_gap": "24px",
+            "width": "320px",
+            "max_width": "320px",
+            "align_self": "center",
+            "row-gap": "24px",
+            "max-width": "320px",
+            "align-self": "center",
+            "background": "#FFFFFF",
+            "order": 2
+          },
+          "elements": {
+            "i35__card_stretch": {
+              "id": "bplzwsyd",
+              "type": "Group",
+              "name": "I35__Card_Stretch",
+              "properties": {
+                "container_layout": "column",
+                "row_gap": "8px",
+                "width": "320px",
+                "max_width": "320px",
+                "min_width": "320px",
+                "row-gap": "8px",
+                "max-width": "320px",
+                "min-width": "320px",
+                "background": "#FFFFFF",
+                "border": "1px solid #D8E0EC",
+                "border-radius": "18px",
+                "order": 1
+              },
+              "elements": {
+                "i35__label_stretch": {
+                  "id": "bpfkfscp",
+                  "type": "Text",
+                  "name": "I35__Label_Stretch",
+                  "properties": {
+                    "margin": "0",
+                    "padding": "0 12px",
+                    "min_height": "24px",
+                    "width": "fit-content",
+                    "min-height": "24px",
+                    "font-family": "Inter",
+                    "font-size": "16px",
+                    "font-weight": "800",
+                    "color": "#172033",
+                    "line-height": "1.2",
+                    "tag_type": "normal",
+                    "text": "STRETCH",
+                    "order": 1
+                  }
+                },
+                "i35__image_stretch": {
+                  "id": "bpytyoqr",
+                  "type": "Image",
+                  "name": "I35__Image_Stretch",
+                  "properties": {
+                    "run_mode": "stretch",
+                    "stretch_or_rescale": "stretch",
+                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "alt": "I35__Image_Stretch",
+                    "alt_tag": "I35__Image_Stretch",
+                    "width": "320px",
+                    "height": "180px",
+                    "min_width": "320px",
+                    "max_width": "320px",
+                    "min_height": "180px",
+                    "max_height": "180px",
+                    "min-width": "320px",
+                    "max-width": "320px",
+                    "min-height": "180px",
+                    "max-height": "180px",
+                    "display": "block",
+                    "order": 2
+                  }
+                }
+              }
+            },
+            "i35__card_rescale": {
+              "id": "bplaqadx",
+              "type": "Group",
+              "name": "I35__Card_Rescale",
+              "properties": {
+                "container_layout": "column",
+                "row_gap": "8px",
+                "width": "320px",
+                "max_width": "320px",
+                "min_width": "320px",
+                "row-gap": "8px",
+                "max-width": "320px",
+                "min-width": "320px",
+                "background": "#FFFFFF",
+                "border": "1px solid #D8E0EC",
+                "border-radius": "18px",
+                "order": 2
+              },
+              "elements": {
+                "i35__label_rescale": {
+                  "id": "bplcjfsc",
+                  "type": "Text",
+                  "name": "I35__Label_Rescale",
+                  "properties": {
+                    "margin": "0",
+                    "padding": "0 12px",
+                    "min_height": "24px",
+                    "width": "fit-content",
+                    "min-height": "24px",
+                    "font-family": "Inter",
+                    "font-size": "16px",
+                    "font-weight": "800",
+                    "color": "#172033",
+                    "line-height": "1.2",
+                    "tag_type": "normal",
+                    "text": "RESCALE",
+                    "order": 1
+                  }
+                },
+                "i35__image_rescale": {
+                  "id": "bpybdvkr",
+                  "type": "Image",
+                  "name": "I35__Image_Rescale",
+                  "properties": {
+                    "run_mode": "rescale",
+                    "stretch_or_rescale": "rescale",
+                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "alt": "I35__Image_Rescale",
+                    "alt_tag": "I35__Image_Rescale",
+                    "width": "320px",
+                    "height": "180px",
+                    "min_width": "320px",
+                    "max_width": "320px",
+                    "min_height": "180px",
+                    "max_height": "180px",
+                    "min-width": "320px",
+                    "max-width": "320px",
+                    "min-height": "180px",
+                    "max-height": "180px",
+                    "display": "block",
+                    "order": 2
+                  }
+                }
+              }
+            },
+            "i35__card_zoom": {
+              "id": "bpplxakv",
+              "type": "Group",
+              "name": "I35__Card_Zoom",
+              "properties": {
+                "container_layout": "column",
+                "row_gap": "8px",
+                "width": "320px",
+                "max_width": "320px",
+                "min_width": "320px",
+                "row-gap": "8px",
+                "max-width": "320px",
+                "min-width": "320px",
+                "background": "#FFFFFF",
+                "border": "1px solid #D8E0EC",
+                "border-radius": "18px",
+                "order": 3
+              },
+              "elements": {
+                "i35__label_zoom": {
+                  "id": "bpverxop",
+                  "type": "Text",
+                  "name": "I35__Label_Zoom",
+                  "properties": {
+                    "margin": "0",
+                    "padding": "0 12px",
+                    "min_height": "24px",
+                    "width": "fit-content",
+                    "min-height": "24px",
+                    "font-family": "Inter",
+                    "font-size": "16px",
+                    "font-weight": "800",
+                    "color": "#172033",
+                    "line-height": "1.2",
+                    "tag_type": "normal",
+                    "text": "ZOOM",
+                    "order": 1
+                  }
+                },
+                "i35__image_zoom": {
+                  "id": "bppdcmmg",
+                  "type": "Image",
+                  "name": "I35__Image_Zoom",
+                  "properties": {
+                    "run_mode": "zoom",
+                    "stretch_or_rescale": "zoom",
+                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "alt": "I35__Image_Zoom",
+                    "alt_tag": "I35__Image_Zoom",
+                    "width": "320px",
+                    "height": "180px",
+                    "min_width": "320px",
+                    "max_width": "320px",
+                    "min_height": "180px",
+                    "max_height": "180px",
+                    "min-width": "320px",
+                    "max-width": "320px",
+                    "min-height": "180px",
+                    "max-height": "180px",
+                    "display": "block",
+                    "order": 2
+                  }
+                }
+              }
+            },
+            "i35__card_adjust": {
+              "id": "bppbahkc",
+              "type": "Group",
+              "name": "I35__Card_Adjust",
+              "properties": {
+                "container_layout": "column",
+                "row_gap": "8px",
+                "width": "320px",
+                "max_width": "320px",
+                "min_width": "320px",
+                "row-gap": "8px",
+                "max-width": "320px",
+                "min-width": "320px",
+                "background": "#FFFFFF",
+                "border": "1px solid #D8E0EC",
+                "border-radius": "18px",
+                "order": 4
+              },
+              "elements": {
+                "i35__label_adjust": {
+                  "id": "bpkmtmbi",
+                  "type": "Text",
+                  "name": "I35__Label_Adjust",
+                  "properties": {
+                    "margin": "0",
+                    "padding": "0 12px",
+                    "min_height": "24px",
+                    "width": "fit-content",
+                    "min-height": "24px",
+                    "font-family": "Inter",
+                    "font-size": "16px",
+                    "font-weight": "800",
+                    "color": "#172033",
+                    "line-height": "1.2",
+                    "tag_type": "normal",
+                    "text": "ADJUST",
+                    "order": 1
+                  }
+                },
+                "i35__image_adjust": {
+                  "id": "bpomvais",
+                  "type": "Image",
+                  "name": "I35__Image_Adjust",
+                  "properties": {
+                    "run_mode": "adjust_height",
+                    "stretch_or_rescale": "adjust_height",
+                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "alt": "I35__Image_Adjust",
+                    "alt_tag": "I35__Image_Adjust",
+                    "width": "320px",
+                    "min_width": "320px",
+                    "max_width": "320px",
+                    "min-width": "320px",
+                    "max-width": "320px",
+                    "display": "block",
+                    "order": 2
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

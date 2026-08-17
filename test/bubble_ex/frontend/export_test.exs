@@ -116,6 +116,110 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "lowers Bubble Link navigation properties and rewrites a page id", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload =
+        FrontendFixtures.two_page_app()
+        |> put_in(["pages", "home", "elements"], %{
+          "external" => %{
+            "id" => "linkExternal",
+            "type" => "Link",
+            "properties" => %{
+              "text" => "External",
+              "linktype" => "externallink",
+              "url" => "https://example.com/docs"
+            }
+          },
+          "internal" => %{
+            "id" => "linkInternal",
+            "type" => "Link",
+            "properties" => %{
+              "text" => "Internal",
+              "linktype" => "pagelink",
+              "page" => "pgabout"
+            }
+          },
+          "newtab" => %{
+            "id" => "linkNewTab",
+            "type" => "Link",
+            "properties" => %{
+              "text" => "New tab",
+              "url" => "https://example.com/new-tab",
+              "open_in_new_tab" => true,
+              "nofollow" => true
+            }
+          },
+          "disabled" => %{
+            "id" => "linkDisabled",
+            "type" => "Link",
+            "properties" => %{
+              "text" => "Disabled",
+              "url" => "https://example.com/disabled",
+              "link_disabled" => true
+            }
+          }
+        })
+
+      assert {:ok, _result} = Frontend.export_payload(payload, out, @scan)
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      {:ok, document} = Floki.parse_document(html)
+
+      assert link_attr(document, "linkExternal", "href") == "https://example.com/docs"
+      assert link_attr(document, "linkInternal", "href") == "../about/index.html"
+      assert link_attr(document, "linkNewTab", "target") == "_blank"
+      assert link_attr(document, "linkNewTab", "rel") == "nofollow noopener"
+      assert link_attr(document, "linkDisabled", "href") == nil
+
+      assert html =~
+               ~s(data-bubble-id="linkDisabled")
+
+      css = File.read!(Path.join(out, "styles/pages/index.css"))
+      assert css =~ "display: block"
+    end
+
+    @tag :tmp_dir
+    test "lowers Bubble Text and Password Input attributes", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload =
+        FrontendFixtures.modern_page()
+        |> put_in(["pages", "home", "elements"], %{
+          "text" => %{
+            "id" => "inputText",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "text",
+              "placeholder" => "Text placeholder"
+            }
+          },
+          "password" => %{
+            "id" => "inputPassword",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "password",
+              "content" => "BubbleEx mask demo",
+              "placeholder" => "Password placeholder"
+            }
+          }
+        })
+
+      assert {:ok, _result} = Frontend.export_payload(payload, out, @scan)
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      {:ok, document} = Floki.parse_document(html)
+
+      assert input_attr(document, "inputText", "type") == "text"
+      assert input_attr(document, "inputText", "value") == nil
+      assert input_attr(document, "inputText", "placeholder") == "Text placeholder"
+      assert input_attr(document, "inputText", "aria-label") == "Text placeholder"
+
+      assert input_attr(document, "inputPassword", "type") == "password"
+      assert input_attr(document, "inputPassword", "value") == "BubbleEx mask demo"
+      assert input_attr(document, "inputPassword", "placeholder") == "Password placeholder"
+      assert input_attr(document, "inputPassword", "aria-label") == "Password placeholder"
+    end
+
+    @tag :tmp_dir
     test "blocks the export and writes nothing when the secret scan finds a credential", %{
       tmp_dir: tmp
     } do
@@ -186,6 +290,19 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert {:ok, %Result{files: files}} = Frontend.export(model, out, @scan)
       assert "MANIFEST.json" in files
     end
+  end
+
+  defp link_attr(document, bubble_id, name),
+    do: element_attr(document, ~s(a[data-bubble-id="#{bubble_id}"]), name)
+
+  defp input_attr(document, bubble_id, name),
+    do: element_attr(document, ~s(input[data-bubble-id="#{bubble_id}"]), name)
+
+  defp element_attr(document, selector, name) do
+    document
+    |> Floki.find(selector)
+    |> Floki.attribute(name)
+    |> List.first()
   end
 
   defp decode_key_order(json) do

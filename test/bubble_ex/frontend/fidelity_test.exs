@@ -5,14 +5,48 @@ defmodule BubbleEx.Frontend.FidelityTest do
   alias BubbleEx.Frontend.Fidelity
 
   describe "cases/0" do
-    test "lists only frozen cases and includes bpmkbvvo" do
+    test "lists the frozen S1 layout, Image, Link, and Input cases" do
       ids = Fidelity.cases()
       assert "bpmkbvvo" in ids
+      assert "bprkyexk" in ids
+      assert "bptaixqv" in ids
+      assert "bpewigqu" in ids
       assert ids == Enum.sort(ids)
     end
   end
 
   describe "load_case/1" do
+    test "loads the frozen bpewigqu Text/Password Input pin" do
+      assert {:ok, case_} = Fidelity.load_case("bpewigqu")
+      assert case_.id == "bpewigqu"
+      assert case_.browser.playwright == "1.55.0"
+      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.source.page_id == "bpewigqu"
+      assert case_.source.page_path == "bubbleex-i37-text-password-input"
+      assert case_.viewports == [390, 1440]
+    end
+
+    test "loads the frozen bptaixqv text-only Link pin" do
+      assert {:ok, case_} = Fidelity.load_case("bptaixqv")
+      assert case_.id == "bptaixqv"
+      assert case_.browser.playwright == "1.55.0"
+      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.source.page_id == "bptaixqv"
+      assert case_.source.page_path == "bubbleex-i36-text-only-link"
+      assert case_.viewports == [390, 1440]
+    end
+
+    test "loads the frozen bprkyexk image-mode pin" do
+      assert {:ok, case_} = Fidelity.load_case("bprkyexk")
+      assert case_.id == "bprkyexk"
+      assert case_.browser.playwright == "1.55.0"
+      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.source.page_id == "bprkyexk"
+      assert case_.source.page_path == "bubbleex-i35-image-modes"
+      assert 390 in case_.viewports
+      assert 1440 in case_.viewports
+    end
+
     test "loads the frozen bpmkbvvo pin and viewport matrix" do
       assert {:ok, case_} = Fidelity.load_case("bpmkbvvo")
       assert case_.id == "bpmkbvvo"
@@ -64,6 +98,75 @@ defmodule BubbleEx.Frontend.FidelityTest do
       }
 
       assert :ok = Fidelity.structure(html, snapshot)
+    end
+
+    test "checks text-only Link names and navigation attributes" do
+      html = """
+      <html><body>
+        <a data-exporter-id="external" data-bubble-id="external" href="https://example.com">External</a>
+        <a data-exporter-id="newtab" data-bubble-id="newtab" href="https://example.com/new" target="_blank" rel="nofollow noopener">New tab</a>
+        <a data-exporter-id="disabled" data-bubble-id="disabled">Disabled</a>
+      </body></html>
+      """
+
+      snapshot = %{
+        "links" => ["external", "newtab", "disabled"],
+        "link_attributes" => %{
+          "external" => %{"href" => "https://example.com", "target" => nil},
+          "newtab" => %{
+            "href" => "https://example.com/new",
+            "target" => "_blank",
+            "rel" => "nofollow noopener"
+          },
+          "disabled" => %{"href" => nil}
+        }
+      }
+
+      assert :ok = Fidelity.structure(html, snapshot)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Fidelity.structure(String.replace(html, ">Disabled<", "><"), snapshot)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Fidelity.structure(
+                 String.replace(html, ~s( target="_blank"), ""),
+                 snapshot
+               )
+    end
+
+    test "checks Text and Password Input attributes" do
+      html = """
+      <html><body>
+        <input data-exporter-id="text" data-bubble-id="text" type="text" placeholder="Text placeholder" aria-label="Text placeholder">
+        <input data-exporter-id="password" data-bubble-id="password" type="password" value="BubbleEx mask demo" placeholder="Password placeholder" aria-label="Password placeholder">
+      </body></html>
+      """
+
+      snapshot = %{
+        "inputs" => ["text", "password"],
+        "input_attributes" => %{
+          "text" => %{
+            "type" => "text",
+            "value" => nil,
+            "placeholder" => "Text placeholder",
+            "aria-label" => "Text placeholder"
+          },
+          "password" => %{
+            "type" => "password",
+            "value" => "BubbleEx mask demo",
+            "placeholder" => "Password placeholder",
+            "aria-label" => "Password placeholder"
+          }
+        }
+      }
+
+      assert :ok = Fidelity.structure(html, snapshot)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Fidelity.structure(
+                 String.replace(html, ~s(type="password"), ~s(type="text")),
+                 snapshot
+               )
     end
 
     test "fails on script tags, inline handlers, or missing exporter ids" do
@@ -127,6 +230,30 @@ defmodule BubbleEx.Frontend.FidelityTest do
     @tag :tmp_dir
     test "bpmkbvvo passes the committed-reference gate", %{tmp_dir: tmp} do
       assert {:ok, report} = Fidelity.run("bpmkbvvo", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bprkyexk passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bprkyexk", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bptaixqv passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bptaixqv", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bpewigqu passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bpewigqu", out_dir: Path.join(tmp, "pkg"))
       assert report["status"] == "pass"
       assert report["mismatches"] == []
     end

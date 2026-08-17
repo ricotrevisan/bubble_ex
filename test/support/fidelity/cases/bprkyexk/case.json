@@ -1,0 +1,49 @@
+{
+  "id": "bprkyexk",
+  "browser": {
+    "playwright": "1.55.0",
+    "chromium": "140.0.7339.16",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bprkyexk",
+    "page_path": "bubbleex-i35-image-modes",
+    "page_payload_sha256": "a0d2323562628fa2a98b731c610bdffba7ccb3b7e1157479341a324eab7f39f7"
+  },
+  "public_assets": [
+    {
+      "url": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+      "path": "assets/bubbleex-i35-image-modes.png",
+      "sha256": "a05a97b6579313f9f571bda7f537995ca9440d949324e0a97f1db668abe55388"
+    }
+  ],
+  "viewports": [390, 1440],
+  "transitions": {
+    "390": "representative narrow page",
+    "1440": "representative wide page"
+  },
+  "node_ids": [
+    "bprkyexk", "bpejnisb", "bpxqyziu",
+    "bplzwsyd", "bpfkfscp", "bpytyoqr",
+    "bplaqadx", "bplcjfsc", "bpybdvkr",
+    "bpplxakv", "bpverxop", "bppdcmmg",
+    "bppbahkc", "bpkmtmbi", "bpomvais"
+  ],
+  "text_node_ids": [
+    "bpejnisb", "bpfkfscp", "bplcjfsc", "bpverxop", "bpkmtmbi"
+  ],
+  "semantics": {
+    "main": ["bprkyexk"],
+    "images": ["bpytyoqr", "bpybdvkr", "bppdcmmg", "bpomvais"]
+  }
+}

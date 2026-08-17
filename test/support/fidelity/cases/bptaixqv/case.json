@@ -1,0 +1,87 @@
+{
+  "id": "bptaixqv",
+  "browser": {
+    "playwright": "1.55.0",
+    "chromium": "140.0.7339.16",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bptaixqv",
+    "page_path": "bubbleex-i36-text-only-link",
+    "page_payload_sha256": "690add1ab087d24ea23ceeef69be3d9759567be2be2bfe17476cd6a0542a67ac"
+  },
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "representative narrow page with the fixed-width wrapping sample",
+    "1440": "representative wide page"
+  },
+  "node_ids": [
+    "bptaixqv",
+    "bplitgya",
+    "bpquwpiu",
+    "bpqmhpsx",
+    "bprufrnd",
+    "bptocyke",
+    "bpuhlwce"
+  ],
+  "text_node_ids": [
+    "bplitgya",
+    "bpquwpiu",
+    "bpqmhpsx",
+    "bprufrnd",
+    "bptocyke",
+    "bpuhlwce"
+  ],
+  "semantics": {
+    "main": [
+      "bptaixqv"
+    ],
+    "links": [
+      "bpquwpiu",
+      "bpqmhpsx",
+      "bprufrnd",
+      "bptocyke",
+      "bpuhlwce"
+    ],
+    "link_attributes": {
+      "bpquwpiu": {
+        "href": "https://example.com/docs",
+        "target": null,
+        "rel": null
+      },
+      "bpqmhpsx": {
+        "href": "../bubbleex-i36-target/index.html",
+        "target": null,
+        "rel": null
+      },
+      "bprufrnd": {
+        "href": "https://example.com/new-tab",
+        "target": "_blank",
+        "rel": "nofollow noopener"
+      },
+      "bptocyke": {
+        "href": "https://example.com/wrap",
+        "target": null,
+        "rel": null
+      },
+      "bpuhlwce": {
+        "href": null,
+        "target": null,
+        "rel": null
+      }
+    }
+  }
+}

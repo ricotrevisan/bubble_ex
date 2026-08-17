@@ -340,8 +340,8 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp classify_image(raw) do
     mode =
-      Payload.prop(raw, "run_mode") || Payload.prop(raw, "image_rendering") ||
-        Payload.prop(raw, "rendering")
+      Payload.prop(raw, "run_mode") || Payload.prop(raw, "stretch_or_rescale") ||
+        Payload.prop(raw, "image_rendering") || Payload.prop(raw, "rendering")
 
     case mode do
       m when m in [nil, "stretch"] ->
@@ -491,7 +491,8 @@ defmodule BubbleEx.Frontend.Normalize do
       min_height: dim(raw, sidecar, "min_height"),
       max_height: dim(raw, sidecar, "max_height"),
       padding: Payload.prop(raw, "padding") || sidecar["padding"],
-      margin: Payload.prop(raw, "margin") || sidecar["margin"]
+      margin: Payload.prop(raw, "margin") || sidecar["margin"],
+      overflow: Payload.prop(raw, "overflow") || sidecar["overflow"]
     }
   end
 
@@ -665,7 +666,7 @@ defmodule BubbleEx.Frontend.Normalize do
     {text_slots, text_bindings} = value_slot(raw, "text", exporter_id, ["text", "label"])
 
     dest =
-      Payload.prop(raw, "destination") || Payload.prop(raw, "url") ||
+      Payload.prop(raw, "destination") || Payload.prop(raw, "url") || Payload.prop(raw, "page") ||
         Payload.prop(raw, "internal_page")
 
     {dest_slots, dest_bindings} =
@@ -685,7 +686,7 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp input_slots(raw, exporter_id) do
     {value_slots, value_bindings} =
-      value_slot(raw, "value", exporter_id, ["initial_content", "value", "text"])
+      value_slot(raw, "value", exporter_id, ["content", "initial_content", "value", "text"])
 
     {ph_slots, ph_bindings} = value_slot(raw, "placeholder", exporter_id, ["placeholder"])
     {Map.merge(value_slots, ph_slots), Map.merge(value_bindings, ph_bindings)}
@@ -693,7 +694,9 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp image_slots(raw, exporter_id) do
     src = Payload.prop(raw, "src") || Payload.prop(raw, "image") || Payload.prop(raw, "img")
-    alt = Payload.prop(raw, "alt") || Payload.prop(raw, "alt_text")
+
+    alt =
+      Payload.prop(raw, "alt") || Payload.prop(raw, "alt_text") || Payload.prop(raw, "alt_tag")
 
     {src_slots, src_bindings} =
       case literal_or_binding(src, exporter_id, "src", raw) do
@@ -864,13 +867,16 @@ defmodule BubbleEx.Frontend.Normalize do
     %{
       "target" => if(Payload.prop(raw, "open_in_new_tab") == true, do: "_blank"),
       "rel" => link_rel(raw),
-      "disabled" => Payload.prop(raw, "disabled") == true
+      "disabled" =>
+        Payload.prop(raw, "disabled") == true or Payload.prop(raw, "link_disabled") == true
     }
     |> Map.reject(fn {_k, v} -> is_nil(v) or v == false end)
   end
 
   defp element_attributes(raw, :image, _variant) do
-    alt = Payload.prop(raw, "alt") || Payload.prop(raw, "alt_text")
+    alt =
+      Payload.prop(raw, "alt") || Payload.prop(raw, "alt_text") || Payload.prop(raw, "alt_tag")
+
     if is_binary(alt), do: %{"alt" => alt}, else: %{}
   end
 
@@ -984,7 +990,9 @@ defmodule BubbleEx.Frontend.Normalize do
         "destination",
         "url",
         "internal_page",
+        "page",
         "placeholder",
+        "content",
         "initial_content",
         "value",
         "tag_type",
@@ -994,9 +1002,11 @@ defmodule BubbleEx.Frontend.Normalize do
         "button_type",
         "show_icon",
         "link_type",
+        "linktype",
         "content_format",
         "format",
         "disabled",
+        "link_disabled",
         "required",
         "open_in_new_tab",
         "nofollow",

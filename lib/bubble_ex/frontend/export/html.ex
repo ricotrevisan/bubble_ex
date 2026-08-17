@@ -216,10 +216,13 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp node_attrs(node, "input", _opts) do
+    placeholder = resolved(node, "placeholder")
+
     node.attributes
     |> Map.put_new("type", "text")
     |> Map.put("value", resolved(node, "value"))
-    |> Map.put_new("placeholder", resolved(node, "placeholder"))
+    |> Map.put("placeholder", placeholder)
+    |> Map.put_new("aria-label", placeholder)
   end
 
   defp node_attrs(node, "button", _opts) do

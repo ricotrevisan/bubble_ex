@@ -142,6 +142,104 @@ defmodule BubbleEx.FrontendTest do
       assert Enum.all?(page.children, & &1.placeholder?)
     end
 
+    test "classifies Image stretch_or_rescale including adjust_height" do
+      payload =
+        page_with_elements(%{
+          "a" => %{
+            "id" => "i1",
+            "type" => "Image",
+            "properties" => %{
+              "stretch_or_rescale" => "adjust_height",
+              "src" => "https://cdn.example/a.png",
+              "alt_tag" => "A"
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      [image] = page.children
+      assert image.kind == :image
+      assert image.variant == :adjust_height
+      assert image.content["src"].resolved == "https://cdn.example/a.png"
+      assert image.content["alt"].resolved == "A"
+    end
+
+    test "normalizes Bubble Link page and link_disabled properties" do
+      payload =
+        page_with_elements(%{
+          "internal" => %{
+            "id" => "l1",
+            "type" => "Link",
+            "properties" => %{
+              "text" => "Target",
+              "linktype" => "pagelink",
+              "page" => "target-page",
+              "open_in_new_tab" => true,
+              "nofollow" => true
+            }
+          },
+          "disabled" => %{
+            "id" => "l2",
+            "type" => "Link",
+            "properties" => %{
+              "text" => "Disabled",
+              "linktype" => "externallink",
+              "url" => "https://example.com/disabled",
+              "link_disabled" => true
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      [disabled, internal] = page.children
+
+      assert disabled.kind == :link
+      assert disabled.content["destination"].resolved == "https://example.com/disabled"
+      assert disabled.attributes["disabled"] == true
+
+      assert internal.kind == :link
+      assert internal.content["destination"].resolved == "target-page"
+      assert internal.attributes["target"] == "_blank"
+      assert internal.attributes["rel"] == "nofollow noopener"
+    end
+
+    test "normalizes Bubble Text and Password Input content" do
+      payload =
+        page_with_elements(%{
+          "password" => %{
+            "id" => "password1",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "password",
+              "content" => "BubbleEx mask demo",
+              "placeholder" => "Password placeholder"
+            }
+          },
+          "text" => %{
+            "id" => "text1",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "text",
+              "placeholder" => "Text placeholder"
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      [password, text] = page.children
+
+      assert password.kind == :input
+      assert password.variant == :password
+      assert password.attributes["type"] == "password"
+      assert password.content["value"].resolved == "BubbleEx mask demo"
+      assert password.content["placeholder"].resolved == "Password placeholder"
+
+      assert text.kind == :input
+      assert text.variant == :text
+      assert text.attributes["type"] == "text"
+      assert text.content["placeholder"].resolved == "Text placeholder"
+    end
+
     test "normalizes reusable definitions once and instances as references" do
       payload = %{
         "_id" => "s1app",

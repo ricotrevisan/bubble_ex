@@ -1,0 +1,134 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i37-text-password-input": {
+      "id": "bpewigqu",
+      "type": "Page",
+      "name": "bubbleex-i37-text-password-input",
+      "properties": {
+        "container_layout": "column",
+        "row_gap": "12px",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "title": "BubbleEx issue 37 Text Password Input"
+      },
+      "elements": {
+        "i37__title": {
+          "id": "bpsszjnj",
+          "type": "Text",
+          "name": "I37__Title_Text",
+          "properties": {
+            "margin": "0",
+            "height": "24px",
+            "min_height": "24px",
+            "max_height": "24px",
+            "width": "fit-content",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I37 case · Text / Password Input",
+            "order": 1
+          }
+        },
+        "i37__text_label": {
+          "id": "bpezpmwv",
+          "type": "Text",
+          "name": "I37__Text_Label",
+          "properties": {
+            "margin": "0",
+            "height": "24px",
+            "min_height": "24px",
+            "max_height": "24px",
+            "width": "fit-content",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I37 TEXT · empty with placeholder",
+            "order": 2
+          }
+        },
+        "i37__text_input": {
+          "id": "bparqerk",
+          "type": "Input",
+          "name": "I37__Text_Input",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "12px 16px",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "color": "#172033",
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "placeholder_color": "#7B879B",
+            "content_format": "text",
+            "placeholder": "I37 text placeholder",
+            "order": 3
+          }
+        },
+        "i37__password_label": {
+          "id": "bpdzfyan",
+          "type": "Text",
+          "name": "I37__Password_Label",
+          "properties": {
+            "margin": "0",
+            "height": "24px",
+            "min_height": "24px",
+            "max_height": "24px",
+            "width": "fit-content",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I37 PASSWORD · masked literal",
+            "order": 4
+          }
+        },
+        "i37__password_input": {
+          "id": "bpoxbrfl",
+          "type": "Input",
+          "name": "I37__Password_Input",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "12px 16px",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "color": "#172033",
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "placeholder_color": "#7B879B",
+            "content_format": "password",
+            "placeholder": "I37 password placeholder",
+            "order": 5,
+            "content": "BubbleEx mask demo"
+          }
+        }
+      }
+    }
+  }
+}

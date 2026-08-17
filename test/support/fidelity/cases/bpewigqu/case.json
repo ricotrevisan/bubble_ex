@@ -1,0 +1,69 @@
+{
+  "id": "bpewigqu",
+  "browser": {
+    "playwright": "1.55.0",
+    "chromium": "140.0.7339.16",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpewigqu",
+    "page_path": "bubbleex-i37-text-password-input",
+    "page_payload_sha256": "e7d64ce3c8852c7948990757f9e0899155d7a0758cf6ad6908c43f7a6b4f714e"
+  },
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "representative narrow page",
+    "1440": "representative wide page"
+  },
+  "node_ids": [
+    "bpewigqu",
+    "bpsszjnj",
+    "bpezpmwv",
+    "bparqerk",
+    "bpdzfyan",
+    "bpoxbrfl"
+  ],
+  "text_node_ids": [
+    "bpsszjnj",
+    "bpezpmwv",
+    "bparqerk",
+    "bpdzfyan",
+    "bpoxbrfl"
+  ],
+  "semantics": {
+    "main": [
+      "bpewigqu"
+    ],
+    "inputs": [
+      "bparqerk",
+      "bpoxbrfl"
+    ],
+    "input_attributes": {
+      "bparqerk": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I37 text placeholder",
+        "aria-label": "I37 text placeholder"
+      },
+      "bpoxbrfl": {
+        "type": "password",
+        "value": "BubbleEx mask demo",
+        "placeholder": "I37 password placeholder",
+        "aria-label": "I37 password placeholder"
+      }
+    }
+  }
+}

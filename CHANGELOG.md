@@ -16,9 +16,25 @@ All notable changes to this project are documented here.
   dimension-preserving placeholder.
 
 - Frozen-case fidelity gates (#30): `mix bubble.fidelity` and `mix test --only
-  fidelity` render committed case `bpmkbvvo` through the S1 exporter and
-  compare it to frozen Bubble references (0 CSS-px geometry, byte-identical
-  PNGs). PR CI runs the gate; live recapture is opt-in and never default.
+  fidelity` render committed cases through the S1 exporter and compare them
+  to frozen Bubble references (0 CSS-px geometry, byte-identical PNGs). PR
+  CI runs the gate; live recapture is opt-in and never default.
+
+- Frozen S1 Image case `bprkyexk` (#35): Stretch, Rescale, Zoom, and
+  Adjust-element-height on one authorized page, with public image bytes
+  hashed and rewritten by the exporter. This is case-correct, not S1
+  slice-complete.
+
+- Frozen S1 text-only Link case `bptaixqv` (#36): resolved external and
+  internal destinations, new-tab + nofollow, wrapping, and literal disabled
+  behavior on one authorized page. Internal Bubble page ids are rewritten to
+  portable package paths.
+
+- Frozen S1 Text/Password Input case `bpewigqu` (#37): empty Text placeholder
+  paint and a benign masked Password literal on one authorized page. The
+  exporter preserves Bubble's `content` field, emits exact native input types,
+  and supplies placeholder-backed accessible names. This validates the static
+  Text/Email/Password subset, not broader Input behavior.
 
 - API Connector v2 External API types are resolved into the universal database
   map and rendered deliberately by every registered schema encoder. Detailed

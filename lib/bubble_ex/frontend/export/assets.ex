@@ -49,9 +49,41 @@ defmodule BubbleEx.Frontend.Export.Assets do
   defp resolved_src(_), do: nil
 
   defp download(url, opts) do
-    if http?(url),
-      do: fetch_asset(url, opts),
-      else: {:error, asset_finding(url, "asset is not a public HTTP URL")}
+    cond do
+      local = local_asset(url, opts) ->
+        store_or_reject(url, local, [], Config.frontend_max_asset_bytes(opts))
+
+      http?(url) ->
+        fetch_asset(url, opts)
+
+      true ->
+        {:error, asset_finding(url, "asset is not a public HTTP URL")}
+    end
+  end
+
+  defp local_asset(url, opts) do
+    files = Keyword.get(opts, :asset_files, %{})
+
+    case files[url] || files[strip_query(url)] do
+      path when is_binary(path) ->
+        case File.read(path) do
+          {:ok, bytes} -> bytes
+          {:error, _} -> nil
+        end
+
+      bytes when is_binary(bytes) ->
+        bytes
+
+      _ ->
+        nil
+    end
+  end
+
+  defp strip_query(url) do
+    case String.split(url, "?", parts: 2) do
+      [base, _] -> base
+      [base] -> base
+    end
   end
 
   defp fetch_asset(url, opts) do

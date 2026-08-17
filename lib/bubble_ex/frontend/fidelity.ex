@@ -3,8 +3,8 @@ defmodule BubbleEx.Frontend.Fidelity do
   Frozen-case visual fidelity gate (#30).
 
   A frozen case is the only thing BubbleEx calls visually correct. The suite
-  contains only frozen cases; today that is `bpmkbvvo`. PR CI renders a
-  candidate against committed references — it never talks to live Bubble.
+  contains only frozen cases. PR CI renders a candidate against committed
+  references — it never talks to live Bubble.
   """
 
   alias BubbleEx.Error
@@ -87,7 +87,8 @@ defmodule BubbleEx.Frontend.Fidelity do
         payload,
         out_dir,
         force: true,
-        secret_scan_adapter: BubbleEx.Frontend.Fidelity.NoSecrets
+        secret_scan_adapter: BubbleEx.Frontend.Fidelity.NoSecrets,
+        asset_files: local_asset_files(case_)
       )
     else
       {:error, :enoent} ->
@@ -99,6 +100,14 @@ defmodule BubbleEx.Frontend.Fidelity do
       {:error, %Error{}} = error ->
         error
     end
+  end
+
+  defp local_asset_files(case_) do
+    assets = get_in(case_.raw, ["public_assets"]) || []
+
+    Map.new(assets, fn asset ->
+      {asset["url"], Path.join(case_dir(case_.id), asset["path"])}
+    end)
   end
 
   defp pin_font(case_, out_dir) do
@@ -350,11 +359,22 @@ defmodule BubbleEx.Frontend.Fidelity do
   end
 
   defp correlated_ids(snapshot) do
-    Enum.flat_map(snapshot, fn
-      {_, ids} when is_list(ids) -> ids
-      {_, map} when is_map(map) -> Enum.flat_map(Map.values(map), &List.wrap/1)
-      _ -> []
+    snapshot
+    |> Enum.flat_map(fn
+      {kind, by_id} when kind in ["link_attributes", "input_attributes"] and is_map(by_id) ->
+        Map.keys(by_id)
+
+      {_, ids} when is_list(ids) ->
+        ids
+
+      {_, map} when is_map(map) ->
+        Enum.flat_map(Map.values(map), &List.wrap/1)
+
+      _ ->
+        []
     end)
+    |> Enum.filter(&is_binary/1)
+    |> Enum.uniq()
   end
 
   defp check_declared_semantics(_document, snapshot) when snapshot == %{}, do: :ok
@@ -366,6 +386,10 @@ defmodule BubbleEx.Frontend.Fidelity do
         {"headings", levels} -> heading_problems(document, levels)
         {"buttons", ids} -> expect_tags(document, ids, "button")
         {"inputs", ids} -> expect_tags(document, ids, "input")
+        {"input_attributes", by_id} -> attribute_problems(document, "input", by_id)
+        {"images", ids} -> expect_tags(document, ids, "img")
+        {"links", ids} -> link_problems(document, ids)
+        {"link_attributes", by_id} -> attribute_problems(document, "a", by_id)
         {"decorative", ids} -> expect_aria_hidden(document, ids)
         {"nodes", ids} -> expect_exporter_ids(document, ids)
         _ -> []
@@ -393,6 +417,52 @@ defmodule BubbleEx.Frontend.Fidelity do
         [] -> [%{id: id, expected: tag, actual: nil}]
       end
     end)
+  end
+
+  defp link_problems(document, ids) do
+    expect_tags(document, ids, "a") ++
+      Enum.flat_map(List.wrap(ids), &link_name_problem(document, &1))
+  end
+
+  defp link_name_problem(document, id) do
+    case Floki.find(document, ~s([data-bubble-id="#{id}"])) do
+      [node | _] -> accessible_link_name_problem(id, node |> Floki.text() |> String.trim())
+      [] -> []
+    end
+  end
+
+  defp accessible_link_name_problem(id, ""),
+    do: [%{id: id, expected: "accessible name", actual: nil}]
+
+  defp accessible_link_name_problem(_id, _name), do: []
+
+  defp attribute_problems(document, tag, by_id) when is_map(by_id) do
+    Enum.flat_map(by_id, fn {id, expected} ->
+      attributes_for(document, tag, id, expected)
+    end)
+  end
+
+  defp attribute_problems(_document, _tag, _), do: []
+
+  defp attributes_for(document, tag, id, expected) do
+    case Floki.find(document, ~s([data-bubble-id="#{id}"])) do
+      [{^tag, _, _} = node | _] when is_map(expected) ->
+        Enum.flat_map(expected, &attribute_problem(node, id, &1))
+
+      [{other, _, _} | _] ->
+        [%{id: id, expected: tag, actual: other}]
+
+      [] ->
+        [%{id: id, expected: tag, actual: nil}]
+    end
+  end
+
+  defp attribute_problem(node, id, {name, expected}) do
+    actual = attr(node, name)
+
+    if actual == expected,
+      do: [],
+      else: [%{id: id, attribute: name, expected: expected, actual: actual}]
   end
 
   defp expect_exporter_ids(document, ids) do

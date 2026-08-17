@@ -89,7 +89,9 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp page_refs(%Node{} = page) do
-    [page.map_key, page.name, Naming.slug(page.name), Naming.slug(page.map_key)]
+    bubble_id = if is_map(page.source), do: Map.get(page.source, :bubble_id)
+
+    [page.map_key, page.name, Naming.slug(page.name), Naming.slug(page.map_key), bubble_id]
     |> Enum.filter(&(is_binary(&1) and &1 != ""))
     |> Enum.uniq()
   end

@@ -1,0 +1,196 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i36-text-only-link": {
+      "id": "bptaixqv",
+      "type": "Page",
+      "name": "bubbleex-i36-text-only-link",
+      "properties": {
+        "container_layout": "column",
+        "row_gap": "16px",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "title": "BubbleEx issue 36 text-only Link"
+      },
+      "elements": {
+        "i36__title": {
+          "id": "bplitgya",
+          "type": "Text",
+          "name": "I36__Title_Text",
+          "properties": {
+            "margin": "0",
+            "padding": "0 12px",
+            "height": "24px",
+            "min_height": "24px",
+            "max_height": "24px",
+            "width": "fit-content",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I36 case · Text-only Link",
+            "order": 1
+          }
+        },
+        "i36__link_external": {
+          "id": "bpquwpiu",
+          "type": "Link",
+          "name": "I36__Link_External",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "12px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "line-height": "20px",
+            "color": "#2457C5",
+            "background": "#FFFFFF",
+            "border": "1px solid #D8E0EC",
+            "border-radius": "12px",
+            "order": 2,
+            "no_html": true,
+            "text": "I36 EXTERNAL · example.com",
+            "linktype": "externallink",
+            "url": "https://example.com/docs"
+          }
+        },
+        "i36__link_internal": {
+          "id": "bpqmhpsx",
+          "type": "Link",
+          "name": "I36__Link_Internal",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "12px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "line-height": "20px",
+            "color": "#2457C5",
+            "background": "#FFFFFF",
+            "border": "1px solid #D8E0EC",
+            "border-radius": "12px",
+            "order": 3,
+            "no_html": true,
+            "text": "I36 INTERNAL · target page",
+            "linktype": "pagelink",
+            "page": "bpmxfdes"
+          }
+        },
+        "i36__link_newtab": {
+          "id": "bprufrnd",
+          "type": "Link",
+          "name": "I36__Link_NewTab_Nofollow",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "12px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "line-height": "20px",
+            "color": "#2457C5",
+            "background": "#FFFFFF",
+            "border": "1px solid #D8E0EC",
+            "border-radius": "12px",
+            "order": 4,
+            "no_html": true,
+            "text": "I36 NEW TAB + NOFOLLOW",
+            "linktype": "externallink",
+            "url": "https://example.com/new-tab",
+            "open_in_new_tab": true,
+            "nofollow": true
+          }
+        },
+        "i36__link_wrap": {
+          "id": "bptocyke",
+          "type": "Link",
+          "name": "I36__Link_Wrap",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "72px",
+            "min_height": "72px",
+            "max_height": "72px",
+            "padding": "12px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "line-height": "20px",
+            "color": "#2457C5",
+            "background": "#FFFFFF",
+            "border": "1px solid #D8E0EC",
+            "border-radius": "12px",
+            "order": 5,
+            "no_html": true,
+            "text": "I36 WRAP · deterministic text-only link wraps onto two lines",
+            "linktype": "externallink",
+            "url": "https://example.com/wrap"
+          }
+        },
+        "i36__link_disabled": {
+          "id": "bpuhlwce",
+          "type": "Link",
+          "name": "I36__Link_Disabled",
+          "properties": {
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "12px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "line-height": "20px",
+            "color": "#6B7280",
+            "background": "#FFFFFF",
+            "border": "1px solid #D8E0EC",
+            "border-radius": "12px",
+            "order": 6,
+            "no_html": true,
+            "text": "I36 DISABLED · no navigation",
+            "linktype": "externallink",
+            "url": "https://example.com/disabled",
+            "link_disabled": true
+          }
+        }
+      }
+    },
+    "bubbleex-i36-target": {
+      "id": "bpmxfdes",
+      "type": "Page",
+      "name": "bubbleex-i36-target",
+      "properties": {
+        "container_layout": "column",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "background": "#F4F7FB",
+        "title": "BubbleEx issue 36 internal target"
+      },
+      "elements": {}
+    }
+  }
+}
