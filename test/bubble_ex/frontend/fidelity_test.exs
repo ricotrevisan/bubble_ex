@@ -5,17 +5,30 @@ defmodule BubbleEx.Frontend.FidelityTest do
   alias BubbleEx.Frontend.Fidelity
 
   describe "cases/0" do
-    test "lists the frozen S1 layout, Image, Link, and Input cases" do
+    test "lists the frozen S1 layout, Text semantics, Image, Link, and Input cases" do
       ids = Fidelity.cases()
       assert "bpmkbvvo" in ids
       assert "bprkyexk" in ids
       assert "bptaixqv" in ids
       assert "bpewigqu" in ids
+      assert "bpcybc" in ids
       assert ids == Enum.sort(ids)
     end
   end
 
   describe "load_case/1" do
+    test "loads the frozen bpcybc normal/H4 Text pin" do
+      assert {:ok, case_} = Fidelity.load_case("bpcybc")
+      assert case_.id == "bpcybc"
+      assert case_.browser.playwright == "1.55.0"
+      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.source.page_id == "bpcybc"
+      assert case_.source.page_path == "bubbleex-i38-h4-text"
+      assert case_.viewports == [390, 1440]
+      assert case_.semantics["paragraphs"] == ["bpcbhs"]
+      assert case_.semantics["headings"] == %{"h4" => ["bpupqk"]}
+    end
+
     test "loads the frozen bpewigqu Text/Password Input pin" do
       assert {:ok, case_} = Fidelity.load_case("bpewigqu")
       assert case_.id == "bpewigqu"
@@ -263,6 +276,14 @@ defmodule BubbleEx.Frontend.FidelityTest do
     @tag :tmp_dir
     test "bpewigqu passes the committed-reference gate", %{tmp_dir: tmp} do
       assert {:ok, report} = Fidelity.run("bpewigqu", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bpcybc passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bpcybc", out_dir: Path.join(tmp, "pkg"))
       assert report["status"] == "pass"
       assert report["mismatches"] == []
     end

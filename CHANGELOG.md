@@ -36,10 +36,13 @@ All notable changes to this project are documented here.
   and supplies placeholder-backed accessible names. This validates the static
   Text/Email/Password subset, not broader Input behavior.
 
-- Explicit `normal` Text semantics groundwork (#38): frozen #35–#37 nodes now
-  structurally assert `<p>`, while shared CSS neutralizes browser paragraph and
-  heading defaults before authored typography is applied. A controlled `h4`
-  capture remains required.
+- Frozen S1 normal/H4 Text case `bpcybc` (#38): explicit `normal` and `h4`
+  paint, geometry, typography, fixed-width two-line wrapping, and exporter-owned
+  `<p>` / `<h4>` semantics on one authorized page. Shared CSS neutralizes browser
+  paragraph and heading defaults before authored typography is applied. An
+  authorized full-suite live review found all five cases and 34 viewports
+  byte-identical to their committed references, with exact tracked geometry and
+  typography.
 
 - API Connector v2 External API types are resolved into the universal database
   map and rendered deliberately by every registered schema encoder. Detailed

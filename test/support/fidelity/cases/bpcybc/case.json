@@ -1,0 +1,53 @@
+{
+  "id": "bpcybc",
+  "browser": {
+    "playwright": "1.55.0",
+    "chromium": "140.0.7339.16",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpcybc",
+    "page_path": "bubbleex-i38-h4-text",
+    "page_payload_sha256": "6b8fd2cb6fe130887477070220531f1bfeedff104133dcaf68c3dbcd28e950fa"
+  },
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "representative narrow page with fixed-width two-line H4 wrapping",
+    "1440": "representative wide page; the controlled fixed-width H4 remains two lines"
+  },
+  "node_ids": [
+    "bpcybc",
+    "bpcbhs",
+    "bpupqk"
+  ],
+  "text_node_ids": [
+    "bpcbhs",
+    "bpupqk"
+  ],
+  "semantics": {
+    "main": [
+      "bpcybc"
+    ],
+    "paragraphs": [
+      "bpcbhs"
+    ],
+    "headings": {
+      "h4": [
+        "bpupqk"
+      ]
+    }
+  }
+}

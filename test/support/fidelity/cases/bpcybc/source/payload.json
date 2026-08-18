@@ -1,0 +1,60 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i38-h4-text": {
+      "id": "bpcybc",
+      "type": "Page",
+      "name": "bubbleex-i38-h4-text",
+      "properties": {
+        "container_layout": "column",
+        "row_gap": "16px",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "title": "BubbleEx issue 38 H4 Text"
+      },
+      "elements": {
+        "i38__title": {
+          "id": "bpcbhs",
+          "type": "Text",
+          "name": "I38__Title_Normal_Text",
+          "properties": {
+            "margin": "0",
+            "width": "fit-content",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I38 case · Normal / H4 Text",
+            "order": 1
+          }
+        },
+        "i38__h4": {
+          "id": "bpupqk",
+          "type": "Text",
+          "name": "I38__H4_Text",
+          "properties": {
+            "margin": "0",
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "font-family": "Inter",
+            "font-size": "24px",
+            "font-weight": "700",
+            "letter-spacing": "-1px",
+            "color": "#172033",
+            "line-height": "1.4",
+            "tag_type": "h4",
+            "text": "I38 H4 · semantic heading wraps onto two lines",
+            "order": 2
+          }
+        }
+      }
+    }
+  }
+}
