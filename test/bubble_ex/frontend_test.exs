@@ -40,7 +40,7 @@ defmodule BubbleEx.FrontendTest do
       payload = modern_page()
 
       assert {:ok, %Normalized{} = model} = Frontend.normalize(payload)
-      assert model.normalized_schema_version == 1
+      assert model.normalized_schema_version == 2
       assert model.identity.bubble_id == "s1app"
       assert model.identity.app_version == "live"
       assert is_list(model.diagnostics)
@@ -259,6 +259,89 @@ defmodule BubbleEx.FrontendTest do
       assert text.variant == :text
       assert text.attributes["type"] == "text"
       assert text.content["placeholder"].resolved == "Text placeholder"
+    end
+
+    test "normalizes the characterized S2 static-control slice" do
+      assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
+               Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())
+
+      assert model.normalized_schema_version == 2
+
+      [multiline, checkbox, unchecked_checkbox, dropdown, radios, dynamic_dropdown] =
+        page.children
+
+      assert multiline.kind == :multiline_input
+      assert multiline.variant == :fixed
+      assert multiline.content["value"].resolved == "Line one\nLine two"
+      assert multiline.content["placeholder"].resolved == "Describe the export"
+      assert multiline.attributes["maxlength"] == 240
+
+      assert checkbox.kind == :checkbox
+      assert checkbox.variant == :static
+      assert checkbox.content["label"].resolved == "Include static assets"
+      assert checkbox.content["checked"].resolved == true
+      assert checkbox.attributes["required"] == true
+
+      assert unchecked_checkbox.kind == :checkbox
+      assert unchecked_checkbox.variant == :static
+      assert unchecked_checkbox.content["checked"].resolved == false
+      refute Map.has_key?(unchecked_checkbox.attributes, "required")
+
+      assert dropdown.kind == :dropdown
+      assert dropdown.variant == :static
+
+      assert dropdown.content["choices"].resolved == [
+               %{"label" => "HTML", "value" => "HTML"},
+               %{"label" => "React", "value" => "React"},
+               %{"label" => "Vue", "value" => "Vue"}
+             ]
+
+      assert dropdown.content["value"].resolved == "React"
+      assert dropdown.content["placeholder"].resolved == "Choose a target"
+
+      assert dynamic_dropdown.kind == :placeholder
+      assert dynamic_dropdown.variant == :unsupported_dropdown_variant
+      assert dynamic_dropdown.bindings["plugin"].kind == :plugin
+
+      assert radios.kind == :radio_buttons
+      assert radios.variant == :static
+      refute Map.has_key?(radios.content, "label")
+      assert radios.content["value"].resolved == "Wide"
+      assert length(radios.content["choices"].resolved) == 2
+
+      assert Enum.any?(diagnostics, fn diagnostic ->
+               diagnostic.code == :unsupported_element and
+                 dynamic_dropdown.exporter_id in diagnostic.refs
+             end)
+    end
+
+    test "keeps auto-height multiline and dynamic choice controls as placeholders" do
+      payload =
+        page_with_elements(%{
+          "auto" => %{
+            "id" => "m1",
+            "type" => "MultiLineInput",
+            "properties" => %{"fit_height" => true}
+          },
+          "dynamic_checkbox" => %{
+            "id" => "c1",
+            "type" => "Checkbox",
+            "properties" => %{"contents" => "dynamic_state", "dynamic" => %{"type" => "PageData"}}
+          },
+          "dynamic_dropdown" => %{
+            "id" => "d1",
+            "type" => "Dropdown",
+            "properties" => %{"choices_style" => "dynamic"}
+          },
+          "dynamic_radios" => %{
+            "id" => "r1",
+            "type" => "RadioButtons",
+            "properties" => %{"choices_style" => "dynamic"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert Enum.all?(page.children, & &1.placeholder?)
     end
 
     test "normalizes reusable definitions once and instances as references" do

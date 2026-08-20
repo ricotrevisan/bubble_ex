@@ -89,9 +89,12 @@ and `MANIFEST.json`. Workflows, conditions, and unsupported elements stay as
 bindings and findings. A leaked-credential finding blocks the export and
 writes nothing.
 
-Visual correctness is defined only for **frozen cases** (today `bpmkbvvo`).
-`mix bubble.fidelity` exports the case and compares it to committed Bubble
-references. PR CI runs that gate; it never recaptures live Bubble.
+Visual correctness is defined only for committed **frozen cases**. The first
+characterized S2 slice adds fixed-height Multiline Input plus static Checkbox,
+Dropdown, and Radio Buttons; dynamic choices/status and fit-height multiline
+remain placeholders. `mix bubble.fidelity` exports every case and compares it
+to committed Bubble references. PR CI runs that gate; it never recaptures live
+Bubble.
 
 ## Database Structure & Schema Export
 

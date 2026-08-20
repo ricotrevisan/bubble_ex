@@ -87,6 +87,96 @@ defmodule BubbleEx.FrontendFixtures do
     }
   end
 
+  def s2_controls_app do
+    %{
+      "_id" => "s2controls",
+      "app_version" => "test",
+      "pages" => %{
+        "controls" => %{
+          "id" => "page-controls",
+          "type" => "Page",
+          "name" => "s2-static-controls",
+          "properties" => %{
+            "container_layout" => "column",
+            "row_gap" => "16px",
+            "padding" => "20px",
+            "title" => "S2 static controls"
+          },
+          "elements" => %{
+            "multiline" => %{
+              "id" => "control-multiline",
+              "type" => "MultiLineInput",
+              "properties" => %{
+                "fit_height" => false,
+                "content" => "Line one\nLine two",
+                "placeholder" => "Describe the export",
+                "limit_number_of_characters" => true,
+                "character_limit" => 240,
+                "width" => "320px",
+                "height" => "96px",
+                "order" => 1
+              }
+            },
+            "checkbox" => %{
+              "id" => "control-checkbox",
+              "type" => "Checkbox",
+              "properties" => %{
+                "label" => "Include static assets",
+                "contents" => "checked",
+                "mandatory" => true,
+                "order" => 2
+              }
+            },
+            "checkbox_unchecked" => %{
+              "id" => "control-checkbox-unchecked",
+              "type" => "Checkbox",
+              "properties" => %{
+                "label" => "Leave static assets out",
+                "contents" => "unchecked",
+                "mandatory" => false,
+                "order" => 3
+              }
+            },
+            "dropdown" => %{
+              "id" => "control-dropdown",
+              "type" => "Dropdown",
+              "properties" => %{
+                "choices" => "HTML\nReact\nVue",
+                "placeholder" => "Choose a target",
+                "default" => "React",
+                "mandatory" => true,
+                "width" => "240px",
+                "height" => "44px",
+                "order" => 4
+              }
+            },
+            "radios" => %{
+              "id" => "control-radios",
+              "type" => "RadioButtons",
+              "properties" => %{
+                "choices" => "Narrow\nWide",
+                "default" => "Wide",
+                "mandatory" => true,
+                "order" => 5
+              }
+            },
+            "dynamic_dropdown" => %{
+              "id" => "control-dynamic-dropdown",
+              "type" => "Dropdown",
+              "properties" => %{
+                "choices_style" => "dynamic",
+                "choices" => %{"type" => "PageData", "name" => "Things"},
+                "width" => "240px",
+                "height" => "44px",
+                "order" => 6
+              }
+            }
+          }
+        }
+      }
+    }
+  end
+
   def s1_elements_app do
     %{
       "_id" => "s1app",

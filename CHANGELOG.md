@@ -44,6 +44,16 @@ All notable changes to this project are documented here.
   byte-identical to their committed references, with exact tracked geometry and
   typography.
 
+- Frozen static native controls case `bpqqfagk` (#32): fixed-height Multiline
+  Input, literal checked/unchecked Checkboxes, static Dropdown, and static Radio
+  Buttons.
+  The normalized schema is now v2. Exported controls preserve resolved value,
+  choices/default, placeholder, maxlength, checked/required/disabled state,
+  labels, and native keyboard semantics. Fit-height multiline and dynamic
+  checkbox/dropdown/radio variants remain dimension-preserving placeholders.
+  The authorized two-viewport Bubble capture passes with zero geometry error
+  and byte-identical Chromium 140 PNGs.
+
 - API Connector v2 External API types are resolved into the universal database
   map and rendered deliberately by every registered schema encoder. Detailed
   rendering and app enrichment expose structured, artifact-scoped warnings.

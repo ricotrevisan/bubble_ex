@@ -8,9 +8,12 @@ defmodule BubbleEx.Frontend.Export.Css do
   def shared(%Normalized{styles: styles}) do
     base = """
     * { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; }
     body { margin: 0; }
-    p, h1, h2, h3, h4 { margin: 0; font: inherit; }
-    button, input { font: inherit; }
+    p, h1, h2, h3, h4, fieldset, legend { margin: 0; font: inherit; }
+    fieldset { min-width: 0; padding: 0; border: 0; }
+    button, input, textarea, select { font: inherit; }
+    textarea { resize: none; }
     """
 
     style_rules =
@@ -170,6 +173,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.new(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
     |> Map.merge(image_fit(kind, variant))
     |> Map.merge(native_display(kind))
+    |> Map.merge(native_control(kind))
     |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
 
@@ -194,6 +198,36 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp native_display(:link), do: %{"display" => "block", "text-decoration" => "none"}
   defp native_display(_), do: %{}
+
+  defp native_control(:multiline_input), do: %{"display" => "block"}
+
+  defp native_control(:dropdown) do
+    %{
+      "appearance" => "none",
+      "background-image" =>
+        ~s|url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPCFET0NUWVBFIHN2ZyBQVUJMSUMgIi0vL1czQy8vRFREIFNWRyAxLjEvL0VOIiAiaHR0cDovL3d3dy53My5vcmcvR3JhcGhpY3MvU1ZHLzEuMS9EVEQvc3ZnMTEuZHRkIj4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2ZXJzaW9uPSIxLjEiICB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCI+CiAgIDxwYXRoIGZpbGw9IiM5OTk5OTkiIGQ9Ik03LjQxLDguNThMMTIsMTMuMTdMMTYuNTksOC41OEwxOCwxMEwxMiwxNkw2LDEwTDcuNDEsOC41OFoiIC8+Cjwvc3ZnPgo=")|,
+      "background-position" => "right 0 top 50%, 0 0",
+      "background-repeat" => "no-repeat, repeat",
+      "background-size" => "1em, 100%",
+      "display" => "block"
+    }
+  end
+
+  defp native_control(:checkbox), do: %{"display" => "block"}
+
+  defp native_control(:radio_buttons) do
+    %{
+      "display" => "grid",
+      "gap" => "10px 20px",
+      "grid-auto-rows" => "max-content",
+      "grid-template-columns" => "repeat(1, 1fr)",
+      "justify-items" => "stretch",
+      "overflow" => "hidden",
+      "position" => "relative"
+    }
+  end
+
+  defp native_control(_), do: %{}
 
   defp put_fill_width(css, %Node{layout: layout}) when is_map(layout) do
     if layout[:fill_width?] || layout["fill_width?"] do
@@ -290,7 +324,8 @@ defmodule BubbleEx.Frontend.Export.Css do
     if x == "0px" and y == "0px", do: props, else: Map.put(props, "translate", "#{x} #{y}")
   end
 
-  defp extra_rule(%Node{kind: :input} = node, opts) do
+  defp extra_rule(%Node{kind: kind} = node, opts)
+       when kind in [:input, :multiline_input] do
     color =
       get_in(node.style, [:resolved, "placeholder_color"]) ||
         get_in(node.style, ["resolved", "placeholder_color"])
@@ -302,6 +337,62 @@ defmodule BubbleEx.Frontend.Export.Css do
     else
       ""
     end
+  end
+
+  defp extra_rule(%Node{kind: :radio_buttons} = node, opts) do
+    id = prefixed_id(node, opts) |> escape()
+    selector = "[data-exporter-id=\"#{id}\"]"
+
+    """
+    #{selector} > input[type="radio"] {
+      display: block;
+      position: absolute;
+      left: -20px;
+      top: 0;
+      opacity: 0;
+    }
+    #{selector} > label {
+      display: inline-block;
+      position: relative;
+      padding: 0 6px;
+      vertical-align: middle;
+      cursor: pointer;
+    }
+    #{selector} > label::before {
+      content: "";
+      display: inline-block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 15px;
+      height: 15px;
+      margin: -2px 0 0 -20px;
+      border: 1px solid #CCCCCC;
+      border-radius: 50%;
+      background: #FFFFFF;
+      transition: border 0.15s ease-in-out;
+    }
+    #{selector} > label::after {
+      content: " ";
+      display: inline-block;
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      width: 9px;
+      height: 9px;
+      margin: -2px 0 0 -20px;
+      border-radius: 50%;
+      background-color: #337AB7;
+      transform: scale(0);
+      transition: transform 0.1s cubic-bezier(0.8, -0.33, 0.2, 1.33);
+    }
+    #{selector} > input[type="radio"]:checked + label::before {
+      border-color: #337AB7;
+    }
+    #{selector} > input[type="radio"]:checked + label::after {
+      transform: scale(1);
+    }
+    """
   end
 
   defp extra_rule(_, _), do: ""

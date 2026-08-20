@@ -108,6 +108,13 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :image} = node, opts), do: void("img", node, opts)
   defp do_render(%Node{kind: :input} = node, opts), do: void("input", node, opts)
 
+  defp do_render(%Node{kind: :multiline_input} = node, opts),
+    do: wrap("textarea", node, escape_textarea(slot_text(node, "value", opts)), opts)
+
+  defp do_render(%Node{kind: :checkbox} = node, opts), do: render_checkbox(node, opts)
+  defp do_render(%Node{kind: :dropdown} = node, opts), do: render_dropdown(node, opts)
+  defp do_render(%Node{kind: :radio_buttons} = node, opts), do: render_radio_buttons(node, opts)
+
   defp children_html_or_empty(%Node{kind: kind} = node, opts)
        when kind in [:group, :reusable_definition],
        do: children_html(node, opts)
@@ -138,6 +145,130 @@ defmodule BubbleEx.Frontend.Export.Html do
     wrap("a", node, escape(slot_text(node, "text", opts)), opts)
   end
 
+  defp render_checkbox(node, opts) do
+    label = slot_text(node, "label", opts)
+
+    input_attributes =
+      node.attributes
+      |> Map.put("type", "checkbox")
+      |> Map.put("checked", if(resolved(node, "checked") == true, do: "checked"))
+      |> maybe_put_control_label(label, node)
+
+    inner = ["<input", raw_attrs(input_attributes), ">", checkbox_label(label)]
+    wrap("label", node, inner, opts)
+  end
+
+  defp checkbox_label(""), do: ""
+  defp checkbox_label(label), do: ["<span>", escape(label), "</span>"]
+
+  defp render_dropdown(node, opts) do
+    selected = resolved(node, "value")
+    placeholder = slot_text(node, "placeholder", opts)
+    choices = resolved_choices(node)
+
+    inner =
+      [
+        dropdown_placeholder(placeholder, selected)
+        | Enum.map(choices, &option_html(&1, selected))
+      ]
+
+    wrap("select", node, inner, opts)
+  end
+
+  defp dropdown_placeholder("", _selected), do: ""
+
+  defp dropdown_placeholder(placeholder, selected) do
+    attributes = %{
+      "value" => "",
+      "disabled" => "disabled",
+      "selected" => if(is_nil(selected) or selected == "", do: "selected")
+    }
+
+    ["<option", raw_attrs(attributes), ">", escape(placeholder), "</option>"]
+  end
+
+  defp option_html(%{"label" => label, "value" => value}, selected) do
+    value = to_string(value)
+
+    attributes = %{
+      "value" => value,
+      "selected" => if(to_string(selected) == value, do: "selected")
+    }
+
+    ["<option", raw_attrs(attributes), ">", escape(label), "</option>"]
+  end
+
+  defp render_radio_buttons(node, opts) do
+    label = slot_text(node, "label", opts)
+    selected = resolved(node, "value")
+    name = prefixed_id(node, opts)
+
+    legend = if label == "", do: "", else: ["<legend>", escape(label), "</legend>"]
+
+    options =
+      node
+      |> resolved_choices()
+      |> Enum.with_index()
+      |> Enum.map(fn {choice, index} ->
+        radio_option_html(choice, selected, name, index, node.attributes)
+      end)
+
+    wrap("fieldset", node, [legend | options], opts)
+  end
+
+  defp radio_option_html(
+         %{"label" => label, "value" => value},
+         selected,
+         name,
+         index,
+         attributes
+       ) do
+    value = to_string(value)
+    option_id = "#{name}_option_#{index}"
+
+    input_attributes =
+      attributes
+      |> Map.put("type", "radio")
+      |> Map.put("id", option_id)
+      |> Map.put("name", name)
+      |> Map.put("value", value)
+      |> Map.put("checked", if(to_string(selected) == value, do: "checked"))
+
+    [
+      "<input",
+      raw_attrs(input_attributes),
+      ">",
+      "<label for=\"",
+      escape(option_id),
+      "\">",
+      escape(label),
+      "</label>"
+    ]
+  end
+
+  defp resolved_choices(node) do
+    case resolved(node, "choices") do
+      choices when is_list(choices) -> choices
+      _ -> []
+    end
+  end
+
+  defp maybe_put_control_label(attributes, "", node) do
+    Map.put(attributes, "aria-label", node.name || "Checkbox")
+  end
+
+  defp maybe_put_control_label(attributes, _label, _node), do: attributes
+
+  defp html_attr({key, true}), do: [" ", key, "=\"", key, "\""]
+  defp html_attr({key, value}), do: [" ", key, "=\"", escape(to_string(value)), "\""]
+
+  defp raw_attrs(attributes) do
+    attributes
+    |> Enum.reject(fn {_key, value} -> is_nil(value) or value == false or value == "" end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(&html_attr/1)
+  end
+
   defp slot_text(node, slot, opts) do
     case resolved(node, slot) do
       value when is_binary(value) or is_number(value) ->
@@ -163,7 +294,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp text_tag(:h4), do: "h4"
   defp text_tag(_), do: "p"
 
-  @phrasing ~w(p h1 h2 h3 h4 button a)
+  @phrasing ~w(p h1 h2 h3 h4 button a label textarea select)
 
   defp wrap(tag, node, inner, opts) do
     open = ["<", tag, attrs(node, tag, opts), ">"]
@@ -201,7 +332,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     |> maybe_put_class(node, opts)
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == false or v == "" end)
     |> Enum.sort_by(&elem(&1, 0))
-    |> Enum.map(fn {k, v} -> [" ", k, "=\"", escape(to_string(v)), "\""] end)
+    |> Enum.map(&html_attr/1)
   end
 
   defp node_attrs(node, "img", opts) do
@@ -213,6 +344,33 @@ defmodule BubbleEx.Frontend.Export.Html do
 
     alt = resolved(node, "alt") || node.attributes["alt"] || ""
     %{"src" => src, "alt" => alt}
+  end
+
+  defp node_attrs(%Node{kind: :checkbox}, "label", _opts), do: %{}
+
+  defp node_attrs(%Node{kind: :radio_buttons} = node, "fieldset", _opts) do
+    label = resolved(node, "label")
+
+    node.attributes
+    |> Map.take(["disabled"])
+    |> then(fn attributes ->
+      if is_binary(label) and label != "",
+        do: attributes,
+        else: Map.put(attributes, "aria-label", node.name || "Radio buttons")
+    end)
+  end
+
+  defp node_attrs(%Node{kind: :multiline_input} = node, "textarea", _opts) do
+    placeholder = resolved(node, "placeholder")
+
+    node.attributes
+    |> Map.put("placeholder", placeholder)
+    |> Map.put_new("aria-label", placeholder || node.name || "Multiline input")
+  end
+
+  defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do
+    placeholder = resolved(node, "placeholder")
+    Map.put_new(node.attributes, "aria-label", placeholder || node.name || "Dropdown")
   end
 
   defp node_attrs(node, "input", _opts) do
@@ -296,6 +454,14 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp blank?(iodata) do
     iodata |> IO.iodata_to_binary() |> String.trim() == ""
+  end
+
+  defp escape_textarea(value) do
+    value
+    |> escape()
+    |> String.replace("\r\n", "&#10;")
+    |> String.replace("\r", "&#10;")
+    |> String.replace("\n", "&#10;")
   end
 
   defp escape(value) do

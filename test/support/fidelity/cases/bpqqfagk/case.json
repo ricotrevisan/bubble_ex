@@ -1,0 +1,112 @@
+{
+  "id": "bpqqfagk",
+  "browser": {
+    "playwright": "1.55.0",
+    "chromium": "140.0.7339.16",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+    "source_url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpqqfagk",
+    "page_path": "bubbleex-i32-static-controls",
+    "page_payload_sha256": "780683e2c8d6d839e12903404016d49cd3ded6ed1d58a0d3eaacec873c4b760c"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "representative narrow page; capped static controls remain 320 px wide",
+    "1440": "representative wide page; capped static controls retain the characterized geometry"
+  },
+  "node_ids": [
+    "bpqqfagk",
+    "bpklphpi",
+    "bpzpdzus",
+    "bpzpdzut",
+    "bpolflkd",
+    "bpzpdzuu",
+    "bpzpdzuv"
+  ],
+  "text_node_ids": [
+    "bpklphpi",
+    "bpzpdzus",
+    "bpzpdzut",
+    "bpolflkd",
+    "bpzpdzuu",
+    "bpzpdzuv"
+  ],
+  "semantics": {
+    "main": [
+      "bpqqfagk"
+    ],
+    "paragraphs": [
+      "bpklphpi"
+    ],
+    "checkboxes": [
+      "bpzpdzut",
+      "bpolflkd"
+    ],
+    "selects": [
+      "bpzpdzuu"
+    ],
+    "radio_groups": [
+      "bpzpdzuv"
+    ],
+    "control_attributes": {
+      "bpzpdzus": {
+        "value": "I32 multiline literal",
+        "placeholder": "I32 multiline placeholder",
+        "maxlength": "120",
+        "required": false,
+        "disabled": false
+      },
+      "bpzpdzut": {
+        "label": "I32 checkbox · checked and required",
+        "checked": true,
+        "required": true,
+        "disabled": false
+      },
+      "bpzpdzuu": {
+        "choices": [
+          "Alpha",
+          "Beta",
+          "Gamma"
+        ],
+        "value": "Beta",
+        "placeholder": "I32 dropdown placeholder",
+        "required": true,
+        "disabled": false
+      },
+      "bpzpdzuv": {
+        "choices": [
+          "Narrow",
+          "Wide"
+        ],
+        "value": "Wide",
+        "required": true,
+        "disabled": false
+      },
+      "bpolflkd": {
+        "label": "I32 checkbox · unchecked and optional",
+        "checked": false,
+        "required": false,
+        "disabled": false
+      }
+    },
+    "textareas": [
+      "bpzpdzus"
+    ]
+  }
+}

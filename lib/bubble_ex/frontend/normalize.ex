@@ -271,7 +271,11 @@ defmodule BubbleEx.Frontend.Normalize do
           kind: :plugin,
           slot: "plugin",
           source: source_ref(raw, path, map_key),
-          payload: %{"type" => type, "reason" => to_string(reason)}
+          payload: %{
+            "type" => type,
+            "reason" => to_string(reason),
+            "properties" => Payload.properties(raw)
+          }
         }
 
         node = %Node{
@@ -314,6 +318,14 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Button", raw), do: classify_button(raw)
   defp classify("Link", raw), do: classify_link(raw)
   defp classify("Input", raw), do: classify_input(raw)
+  defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
+  defp classify("Checkbox", raw), do: classify_checkbox(raw)
+  defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
+
+  defp classify(type, raw)
+       when type in ["RadioButtons", "Radio Buttons", "RadioButtonGroup"],
+       do: classify_static_choices(raw, :radio_buttons)
+
   defp classify("Page", raw), do: {:native, :group, layout_mode(raw)}
   defp classify(type, _raw) when is_binary(type), do: {:placeholder, :unsupported_kind}
   defp classify(_type, _raw), do: {:placeholder, :unknown_kind}
@@ -390,6 +402,39 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  defp classify_multiline_input(raw) do
+    fit_height? = Payload.prop(raw, "fit_height") == true
+    auto_height? = Payload.prop(raw, "auto_height") == true
+    stretch? = Payload.prop(raw, "stretch_to_fit") == true
+
+    if fit_height? or auto_height? or stretch?,
+      do: {:placeholder, :unsupported_multiline_input_variant},
+      else: {:native, :multiline_input, :fixed}
+  end
+
+  defp classify_checkbox(raw) do
+    case Payload.prop(raw, "contents") do
+      contents when contents in ["checked", "unchecked"] ->
+        {:native, :checkbox, :static}
+
+      _ ->
+        {:placeholder, :unsupported_checkbox_variant}
+    end
+  end
+
+  defp classify_static_choices(raw, kind) do
+    if Payload.prop(raw, "choices_style") in [nil, "static"] do
+      {:native, kind, :static}
+    else
+      reason =
+        if kind == :dropdown,
+          do: :unsupported_dropdown_variant,
+          else: :unsupported_radio_buttons_variant
+
+      {:placeholder, reason}
+    end
+  end
+
   defp icon_only_link?(raw) do
     Payload.prop(raw, "link_type") in ["icon", "icon_only"]
   end
@@ -402,6 +447,12 @@ defmodule BubbleEx.Frontend.Normalize do
     "Button" => :button,
     "Link" => :link,
     "Input" => :input,
+    "MultiLineInput" => :multiline_input,
+    "Checkbox" => :checkbox,
+    "Dropdown" => :dropdown,
+    "RadioButtons" => :radio_buttons,
+    "Radio Buttons" => :radio_buttons,
+    "RadioButtonGroup" => :radio_buttons,
     "CustomElement" => :reusable_instance,
     "ReusableElement" => :reusable_instance
   }
@@ -610,15 +661,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp extract_slots(raw, kind, exporter_id) do
-    {resolved, bindings} =
-      case kind do
-        :text -> value_slot(raw, "text", exporter_id, ["text", "content"])
-        :button -> value_slot(raw, "label", exporter_id, ["text", "label"])
-        :link -> link_slots(raw, exporter_id)
-        :input -> input_slots(raw, exporter_id)
-        :image -> image_slots(raw, exporter_id)
-        _ -> {%{}, %{}}
-      end
+    {resolved, bindings} = primary_slots(kind, raw, exporter_id)
 
     {condition, condition_bindings} = condition_slot(raw, exporter_id)
     {workflow, workflow_bindings} = workflow_slot(raw, exporter_id)
@@ -640,6 +683,19 @@ defmodule BubbleEx.Frontend.Normalize do
 
     {slots, Map.merge(bindings, extra)}
   end
+
+  defp primary_slots(:text, raw, id), do: value_slot(raw, "text", id, ["text", "content"])
+  defp primary_slots(:button, raw, id), do: value_slot(raw, "label", id, ["text", "label"])
+  defp primary_slots(:link, raw, id), do: link_slots(raw, id)
+
+  defp primary_slots(kind, raw, id) when kind in [:input, :multiline_input],
+    do: input_slots(raw, id)
+
+  defp primary_slots(:checkbox, raw, id), do: checkbox_slots(raw, id)
+  defp primary_slots(:dropdown, raw, id), do: choice_control_slots(raw, id, false)
+  defp primary_slots(:radio_buttons, raw, id), do: choice_control_slots(raw, id, true)
+  defp primary_slots(:image, raw, id), do: image_slots(raw, id)
+  defp primary_slots(_kind, _raw, _id), do: {%{}, %{}}
 
   defp named_map_slot(raw, exporter_id, key, kind) do
     value = raw[key] || Payload.prop(raw, key)
@@ -690,6 +746,150 @@ defmodule BubbleEx.Frontend.Normalize do
 
     {ph_slots, ph_bindings} = value_slot(raw, "placeholder", exporter_id, ["placeholder"])
     {Map.merge(value_slots, ph_slots), Map.merge(value_bindings, ph_bindings)}
+  end
+
+  defp checkbox_slots(raw, exporter_id) do
+    {label_slots, label_bindings} =
+      value_slot(raw, "label", exporter_id, ["label", "text", "caption"])
+
+    {checked_slots, checked_bindings} = checkbox_checked_slot(raw, exporter_id)
+
+    {Map.merge(label_slots, checked_slots), Map.merge(label_bindings, checked_bindings)}
+  end
+
+  defp checkbox_checked_slot(raw, exporter_id) do
+    case Payload.prop(raw, "contents") do
+      "checked" ->
+        {%{"checked" => %{resolved: true}}, %{}}
+
+      "unchecked" ->
+        {%{"checked" => %{resolved: false}}, %{}}
+
+      nil ->
+        property_slot(raw, "checked", exporter_id, [
+          "checked",
+          "default_checked",
+          "initial_status"
+        ])
+
+      value ->
+        bound_slot(exporter_id, "checked", value)
+    end
+  end
+
+  defp choice_control_slots(raw, exporter_id, labeled?) do
+    {choices_slots, choices_bindings} = choices_slot(raw, exporter_id)
+
+    {value_slots, value_bindings} =
+      property_slot(raw, "value", exporter_id, [
+        "value",
+        "default",
+        "default_value",
+        "initial_value"
+      ])
+
+    {placeholder_slots, placeholder_bindings} =
+      value_slot(raw, "placeholder", exporter_id, ["placeholder"])
+
+    {label_slots, label_bindings} =
+      if labeled?,
+        do: value_slot(raw, "label", exporter_id, ["label", "text", "caption"]),
+        else: {%{}, %{}}
+
+    slots =
+      choices_slots
+      |> Map.merge(value_slots)
+      |> Map.merge(placeholder_slots)
+      |> Map.merge(label_slots)
+
+    bindings =
+      choices_bindings
+      |> Map.merge(value_bindings)
+      |> Map.merge(placeholder_bindings)
+      |> Map.merge(label_bindings)
+
+    {slots, bindings}
+  end
+
+  defp choices_slot(raw, exporter_id) do
+    case first_property(raw, ["choices", "static_choices", "options"]) do
+      {:found, choices} when is_binary(choices) ->
+        normalized =
+          choices
+          |> String.split(~r/\r?\n/, trim: true)
+          |> Enum.map(&%{"label" => &1, "value" => &1})
+
+        {%{"choices" => %{resolved: normalized}}, %{}}
+
+      {:found, choices} when is_list(choices) ->
+        case normalize_choices(choices) do
+          {:ok, normalized} -> {%{"choices" => %{resolved: normalized}}, %{}}
+          :error -> bound_slot(exporter_id, "choices", choices)
+        end
+
+      {:found, value} ->
+        bound_slot(exporter_id, "choices", value)
+
+      :missing ->
+        {%{}, %{}}
+    end
+  end
+
+  defp normalize_choices(choices) do
+    Enum.reduce_while(choices, {:ok, []}, fn
+      value, {:ok, acc} when is_binary(value) or is_number(value) ->
+        choice = %{"label" => to_string(value), "value" => to_string(value)}
+        {:cont, {:ok, [choice | acc]}}
+
+      %{"label" => label, "value" => value}, {:ok, acc}
+      when (is_binary(label) or is_number(label)) and
+             (is_binary(value) or is_number(value)) ->
+        choice = %{"label" => to_string(label), "value" => to_string(value)}
+        {:cont, {:ok, [choice | acc]}}
+
+      _, _ ->
+        {:halt, :error}
+    end)
+    |> case do
+      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      :error -> :error
+    end
+  end
+
+  defp property_slot(raw, slot, exporter_id, keys) do
+    case first_property(raw, keys) do
+      {:found, value} ->
+        case literal_or_binding(value, exporter_id, slot, raw) do
+          {:resolved, literal} -> {%{slot => %{resolved: literal}}, %{}}
+          {:binding, binding} -> {%{slot => %{binding_id: binding.id}}, %{slot => binding}}
+          :empty -> {%{}, %{}}
+        end
+
+      :missing ->
+        {%{}, %{}}
+    end
+  end
+
+  defp first_property(raw, keys) do
+    props = Payload.properties(raw)
+
+    Enum.find_value(keys, :missing, &fetch_property(props, raw, &1))
+  end
+
+  defp fetch_property(props, raw, key) do
+    case Map.fetch(props, key) do
+      {:ok, value} -> {:found, value}
+      :error -> fetch_raw_property(raw, key)
+    end
+  end
+
+  defp fetch_raw_property(raw, key) do
+    if Map.has_key?(raw, key), do: {:found, Map.get(raw, key)}
+  end
+
+  defp bound_slot(exporter_id, slot, value) do
+    binding = binding(exporter_id, slot, :value, value)
+    {%{slot => %{binding_id: binding.id}}, %{slot => binding}}
   end
 
   defp image_slots(raw, exporter_id) do
@@ -846,13 +1046,26 @@ defmodule BubbleEx.Frontend.Normalize do
   defp container_attributes(_raw, _), do: %{}
 
   defp element_attributes(raw, :input, variant) do
-    %{
-      "type" => input_type(variant),
-      "placeholder" => Payload.prop(raw, "placeholder"),
-      "disabled" => Payload.prop(raw, "disabled") == true,
-      "required" => Payload.prop(raw, "required") == true
-    }
-    |> Map.reject(fn {_k, v} -> is_nil(v) or v == false end)
+    raw
+    |> common_control_attributes()
+    |> Map.put("type", input_type(variant))
+    |> Map.put("placeholder", Payload.prop(raw, "placeholder"))
+    |> reject_empty_attributes()
+  end
+
+  defp element_attributes(raw, :multiline_input, _variant) do
+    raw
+    |> common_control_attributes()
+    |> Map.put("placeholder", Payload.prop(raw, "placeholder"))
+    |> Map.put("maxlength", multiline_maxlength(raw))
+    |> reject_empty_attributes()
+  end
+
+  defp element_attributes(raw, kind, _variant)
+       when kind in [:checkbox, :dropdown, :radio_buttons] do
+    raw
+    |> common_control_attributes()
+    |> reject_empty_attributes()
   end
 
   defp element_attributes(raw, :button, _variant) do
@@ -882,6 +1095,26 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp element_attributes(_raw, :shape, _variant), do: %{"aria-hidden" => "true"}
   defp element_attributes(_raw, _kind, _variant), do: %{}
+
+  defp multiline_maxlength(raw) do
+    case Payload.prop(raw, "limit_number_of_characters") do
+      false -> nil
+      _ -> Payload.prop(raw, "character_limit") || Payload.prop(raw, "maxlength")
+    end
+  end
+
+  defp common_control_attributes(raw) do
+    %{
+      "disabled" => Payload.prop(raw, "disabled") == true,
+      "required" =>
+        Payload.prop(raw, "required") == true or Payload.prop(raw, "mandatory") == true or
+          Payload.prop(raw, "required_checked") == true
+    }
+  end
+
+  defp reject_empty_attributes(attributes) do
+    Map.reject(attributes, fn {_key, value} -> is_nil(value) or value == false end)
+  end
 
   defp input_type(:email), do: "email"
   defp input_type(:password), do: "password"
@@ -1005,6 +1238,26 @@ defmodule BubbleEx.Frontend.Normalize do
         "linktype",
         "content_format",
         "format",
+        "auto_height",
+        "stretch_to_fit",
+        "character_limit",
+        "limit_number_of_characters",
+        "maxlength",
+        "caption",
+        "contents",
+        "dynamic",
+        "checked",
+        "default_checked",
+        "initial_status",
+        "choices_style",
+        "choices",
+        "static_choices",
+        "options",
+        "default",
+        "default_value",
+        "initial_value",
+        "mandatory",
+        "required_checked",
         "disabled",
         "link_disabled",
         "required",

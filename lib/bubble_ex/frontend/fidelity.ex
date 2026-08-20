@@ -388,6 +388,10 @@ defmodule BubbleEx.Frontend.Fidelity do
         {"buttons", ids} -> expect_tags(document, ids, "button")
         {"inputs", ids} -> expect_tags(document, ids, "input")
         {"input_attributes", by_id} -> attribute_problems(document, "input", by_id)
+        {"textareas", ids} -> expect_tags(document, ids, "textarea")
+        {"selects", ids} -> expect_tags(document, ids, "select")
+        {"checkboxes", ids} -> nested_control_problems(document, ids, "label", "checkbox")
+        {"radio_groups", ids} -> nested_control_problems(document, ids, "fieldset", "radio")
         {"images", ids} -> expect_tags(document, ids, "img")
         {"links", ids} -> link_problems(document, ids)
         {"link_attributes", by_id} -> attribute_problems(document, "a", by_id)
@@ -418,6 +422,17 @@ defmodule BubbleEx.Frontend.Fidelity do
         [] -> [%{id: id, expected: tag, actual: nil}]
       end
     end)
+  end
+
+  defp nested_control_problems(document, ids, tag, type) do
+    expect_tags(document, ids, tag) ++
+      Enum.flat_map(List.wrap(ids), fn id ->
+        selector = ~s([data-bubble-id="#{id}"] input[type="#{type}"])
+
+        if Floki.find(document, selector) == [],
+          do: [%{id: id, expected: "input[type=#{type}]", actual: nil}],
+          else: []
+      end)
   end
 
   defp link_problems(document, ids) do
@@ -506,9 +521,9 @@ defmodule BubbleEx.Frontend.Fidelity do
 
   defp unlabeled_inputs(document) do
     document
-    |> Floki.find("input[data-exporter-id]")
+    |> Floki.find("input[data-exporter-id], textarea[data-exporter-id], select[data-exporter-id]")
     |> Enum.reject(&input_named?/1)
-    |> Enum.map(&%{role: "input", id: attr(&1, "data-exporter-id")})
+    |> Enum.map(&%{role: element_tag(&1), id: attr(&1, "data-exporter-id")})
   end
 
   defp unlabeled_links(document) do
@@ -533,6 +548,9 @@ defmodule BubbleEx.Frontend.Fidelity do
   defp input_named?(node) do
     attr(node, "aria-label") not in [nil, ""] or attr(node, "placeholder") not in [nil, ""]
   end
+
+  defp element_tag({tag, _, _}), do: tag
+  defp element_tag(_), do: "control"
 
   defp attr({_, attrs, _}, name) do
     Enum.find_value(attrs, fn

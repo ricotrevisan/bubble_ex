@@ -20,7 +20,7 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert result.files == Enum.sort(result.files)
       assert result.files == result.manifest["files"]
       assert result.manifest["package_version"] == 1
-      assert result.manifest["normalized_schema_version"] == 1
+      assert result.manifest["normalized_schema_version"] == 2
       assert result.manifest["bubble_id"] == "s1app"
       assert result.manifest["app_version"] == "live"
       assert is_binary(result.manifest["source_sha256"])
@@ -81,7 +81,7 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert fragment =~ "Nav"
 
       model_json = File.read!(Path.join(out, "model.json")) |> Jason.decode!()
-      assert model_json["normalized_schema_version"] == 1
+      assert model_json["normalized_schema_version"] == 2
     end
 
     @tag :tmp_dir
@@ -114,7 +114,7 @@ defmodule BubbleEx.Frontend.ExportTest do
 
       shared = File.read!(Path.join(out, "styles/shared.css"))
       assert shared =~ ".s-headline"
-      assert shared =~ "p, h1, h2, h3, h4 { margin: 0; font: inherit; }"
+      assert shared =~ "p, h1, h2, h3, h4, fieldset, legend { margin: 0; font: inherit; }"
 
       assert Enum.any?(result.findings, &(&1["type"] == "unsupported_element"))
       assert result.coverage["overall"]["elements"]["placeholder"] >= 1
@@ -222,6 +222,66 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert input_attr(document, "inputPassword", "value") == "BubbleEx mask demo"
       assert input_attr(document, "inputPassword", "placeholder") == "Password placeholder"
       assert input_attr(document, "inputPassword", "aria-label") == "Password placeholder"
+    end
+
+    @tag :tmp_dir
+    test "emits semantic HTML for the characterized S2 static-control slice", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      assert {:ok, result} =
+               Frontend.export_payload(FrontendFixtures.s2_controls_app(), out, @scan)
+
+      html = File.read!(Path.join(out, "pages/s2-static-controls/index.html"))
+      {:ok, document} = Floki.parse_document(html)
+
+      assert element_attr(document, ~s(textarea[data-bubble-id="control-multiline"]), "maxlength") ==
+               "240"
+
+      assert html =~ ">Line one&#10;Line two</textarea>"
+
+      assert element_attr(
+               document,
+               ~s(label[data-bubble-id="control-checkbox"] input[type="checkbox"]),
+               "checked"
+             ) == "checked"
+
+      assert Floki.find(document, ~s(label[data-bubble-id="control-checkbox"])) |> Floki.text() =~
+               "Include static assets"
+
+      assert element_attr(
+               document,
+               ~s(label[data-bubble-id="control-checkbox-unchecked"] input[type="checkbox"]),
+               "checked"
+             ) == nil
+
+      assert element_attr(document, ~s(select[data-bubble-id="control-dropdown"]), "required") ==
+               "required"
+
+      assert Floki.find(document, ~s(select[data-bubble-id="control-dropdown"] option))
+             |> Enum.map(&Floki.text/1) == ["Choose a target", "HTML", "React", "Vue"]
+
+      assert element_attr(document, ~s(option[value="React"]), "selected") == "selected"
+
+      assert element_attr(document, ~s(fieldset[data-bubble-id="control-radios"]), "aria-label") ==
+               "radios"
+
+      assert length(
+               Floki.find(
+                 document,
+                 ~s(fieldset[data-bubble-id="control-radios"] input[type="radio"])
+               )
+             ) ==
+               2
+
+      assert element_attr(document, ~s(input[type="radio"][value="Wide"]), "checked") ==
+               "checked"
+
+      assert html =~ ~s(data-placeholder-kind="Dropdown")
+      assert result.manifest["package_version"] == 1
+      assert result.manifest["normalized_schema_version"] == 2
+      assert result.coverage["overall"]["elements"]["native"] == 5
+      assert result.coverage["overall"]["elements"]["placeholder"] == 1
+      assert Enum.any?(result.findings, &(&1["type"] == "unsupported_element"))
     end
 
     @tag :tmp_dir

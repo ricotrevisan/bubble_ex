@@ -8,7 +8,7 @@ defmodule BubbleEx.Frontend.Normalized do
 
   alias BubbleEx.Frontend.Normalized.{Diagnostic, Identity, Node, Source, Style}
 
-  @schema_version 1
+  @schema_version 2
 
   @type t :: %__MODULE__{
           normalized_schema_version: pos_integer(),

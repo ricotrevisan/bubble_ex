@@ -1,0 +1,170 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i32-static-controls": {
+      "id": "bpqqfagk",
+      "type": "Page",
+      "name": "bubbleex-i32-static-controls",
+      "properties": {
+        "container_layout": "column",
+        "row_gap": "16px",
+        "min_height": "900px",
+        "width": "100%",
+        "padding": "20px 16px 56px",
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "title": "BubbleEx issue 32 static controls"
+      },
+      "elements": {
+        "i32__title": {
+          "id": "bpklphpi",
+          "type": "Text",
+          "name": "I32__Title_Normal_Text",
+          "properties": {
+            "margin": "0",
+            "width": "fit-content",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "color": "#172033",
+            "line-height": "1.2",
+            "tag_type": "normal",
+            "text": "I32 case · static native controls",
+            "order": 1
+          }
+        },
+        "i32__multiline": {
+          "id": "bpzpdzus",
+          "type": "MultiLineInput",
+          "name": "I32__Fixed_Multiline_Input",
+          "properties": {
+            "fit_height": false,
+            "content": "I32 multiline literal",
+            "placeholder": "I32 multiline placeholder",
+            "limit_number_of_characters": true,
+            "character_limit": 120,
+            "margin": "0",
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "96px",
+            "min_height": "96px",
+            "max_height": "96px",
+            "padding": "12px",
+            "align_self": "flex-start",
+            "background": "#FFFFFF",
+            "border": "1px solid #AAB4C5",
+            "border-radius": "8px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "400",
+            "color": "#172033",
+            "line-height": "1.4",
+            "placeholder_color": "#667085",
+            "opacity": 1,
+            "order": 2
+          }
+        },
+        "i32__checkbox": {
+          "id": "bpzpdzut",
+          "type": "Checkbox",
+          "name": "I32__Checked_Required_Checkbox",
+          "properties": {
+            "contents": "checked",
+            "label": "I32 checkbox · checked and required",
+            "mandatory": true,
+            "margin": "0",
+            "width": "fit-content",
+            "align_self": "flex-start",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "600",
+            "color": "#172033",
+            "line-height": "1.4",
+            "opacity": 1,
+            "order": 3
+          }
+        },
+        "i32__dropdown": {
+          "id": "bpzpdzuu",
+          "type": "Dropdown",
+          "name": "I32__Static_Dropdown",
+          "properties": {
+            "choices": "Alpha\nBeta\nGamma",
+            "default": "Beta",
+            "placeholder": "I32 dropdown placeholder",
+            "mandatory": true,
+            "computed_value": "text",
+            "margin": "0",
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "44px",
+            "min_height": "44px",
+            "max_height": "44px",
+            "padding": "8px 12px",
+            "align_self": "flex-start",
+            "background": "#FFFFFF",
+            "border": "1px solid #AAB4C5",
+            "border-radius": "8px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "500",
+            "color": "#172033",
+            "placeholder_color": "#667085",
+            "opacity": 1,
+            "order": 5
+          }
+        },
+        "i32__radios": {
+          "id": "bpzpdzuv",
+          "type": "RadioButtons",
+          "name": "I32__Static_Radio_Buttons",
+          "properties": {
+            "choices": "Narrow\nWide",
+            "default": "Wide",
+            "mandatory": true,
+            "computed_value": "text",
+            "color": "#172033",
+            "margin": "0",
+            "width": "320px",
+            "min_width": "320px",
+            "max_width": "320px",
+            "height": "48px",
+            "min_height": "48px",
+            "max_height": "48px",
+            "padding": "3px 0 3px 20px",
+            "align_self": "flex-start",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "500",
+            "line-height": "16px",
+            "opacity": 1,
+            "order": 6
+          }
+        },
+        "i32__checkbox_unchecked": {
+          "id": "bpolflkd",
+          "type": "Checkbox",
+          "name": "I32__Unchecked_Optional_Checkbox",
+          "properties": {
+            "contents": "unchecked",
+            "label": "I32 checkbox · unchecked and optional",
+            "mandatory": false,
+            "margin": "0",
+            "width": "fit-content",
+            "align_self": "flex-start",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "600",
+            "color": "#172033",
+            "line-height": "1.4",
+            "opacity": 1,
+            "order": 4
+          }
+        }
+      }
+    }
+  }
+}

@@ -191,6 +191,32 @@ defmodule BubbleEx.Frontend.FidelityTest do
                )
     end
 
+    test "checks S2 static-control semantics" do
+      html = """
+      <html><body>
+        <textarea data-exporter-id="multiline" data-bubble-id="multiline" aria-label="Details"></textarea>
+        <label data-exporter-id="checkbox" data-bubble-id="checkbox"><input type="checkbox"><span>Assets</span></label>
+        <select data-exporter-id="dropdown" data-bubble-id="dropdown" aria-label="Target"><option>HTML</option></select>
+        <fieldset data-exporter-id="radios" data-bubble-id="radios"><legend>Viewport</legend><label><input type="radio" name="viewport">Narrow</label></fieldset>
+      </body></html>
+      """
+
+      snapshot = %{
+        "textareas" => ["multiline"],
+        "checkboxes" => ["checkbox"],
+        "selects" => ["dropdown"],
+        "radio_groups" => ["radios"]
+      }
+
+      assert :ok = Fidelity.structure(html, snapshot)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Fidelity.structure(
+                 String.replace(html, ~s(type="radio"), ~s(type="checkbox")),
+                 snapshot
+               )
+    end
+
     test "fails on script tags, inline handlers, or missing exporter ids" do
       assert {:error, %Error{kind: :invalid_input}} =
                Fidelity.structure(

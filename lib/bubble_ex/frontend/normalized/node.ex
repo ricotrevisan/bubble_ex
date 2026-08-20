@@ -10,6 +10,10 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           | :button
           | :link
           | :input
+          | :multiline_input
+          | :checkbox
+          | :dropdown
+          | :radio_buttons
           | :reusable_definition
           | :reusable_instance
           | :placeholder
