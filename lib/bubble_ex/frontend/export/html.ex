@@ -101,7 +101,8 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :button} = node, opts) do
     label = slot_text(node, "label", opts)
     body = if label == "", do: slot_text(node, "text", opts), else: label
-    wrap("button", node, escape(body), opts)
+    tag = if navigation_button?(node), do: "a", else: "button"
+    wrap(tag, node, escape(body), opts)
   end
 
   defp do_render(%Node{kind: :link} = node, opts), do: render_link(node, opts)
@@ -400,6 +401,12 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp node_attrs(node, _tag, _opts), do: node.attributes || %{}
+
+  defp navigation_button?(%Node{kind: :button, content: %{"destination" => %{resolved: dest}}})
+       when is_binary(dest) and dest != "",
+       do: true
+
+  defp navigation_button?(_), do: false
 
   defp link_href(node, opts) do
     cond do

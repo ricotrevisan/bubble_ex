@@ -151,6 +151,133 @@ defmodule BubbleEx.FrontendTest do
              end)
     end
 
+    test "converts a single unconditioned Go to page button into a navigation button" do
+      payload = %{
+        "_id" => "s1app",
+        "app_version" => "live",
+        "pages" => %{
+          "home" => %{
+            "id" => "pghome",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "go" => %{
+                "id" => "elGo",
+                "type" => "Button",
+                "properties" => %{"text" => "About", "order" => 1}
+              }
+            },
+            "workflows" => %{
+              "wfGo" => %{
+                "id" => "wfGo",
+                "type" => "ButtonClicked",
+                "properties" => %{"element_id" => "elGo"},
+                "actions" => %{
+                  "0" => %{
+                    "id" => "actGo",
+                    "type" => "ChangePage",
+                    "properties" => %{"page" => "about"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [button] = page.children
+      assert button.kind == :button
+      assert button.variant == :navigation
+      assert button.content["destination"].resolved == "about"
+      assert button.bindings["workflow"].kind == :workflow
+      assert button.bindings["workflow"].payload["type"] == "ButtonClicked"
+    end
+
+    test "keeps buttons as buttons when the click workflow is not a pure navigation" do
+      payload =
+        page_with_elements(%{
+          "multi" => %{
+            "id" => "elMulti",
+            "type" => "Button",
+            "properties" => %{"text" => "Do stuff", "order" => 1}
+          },
+          "dynamic" => %{
+            "id" => "elDyn",
+            "type" => "Button",
+            "properties" => %{"text" => "Maybe", "order" => 2}
+          }
+        })
+        |> put_in(["pages", "home", "workflows"], %{
+          "wfMulti" => %{
+            "type" => "ButtonClicked",
+            "properties" => %{"element_id" => "elMulti"},
+            "actions" => %{
+              "0" => %{"type" => "ChangePage", "properties" => %{"page" => "about"}},
+              "1" => %{"type" => "TerminateWorkflow", "properties" => %{}}
+            }
+          },
+          "wfDyn" => %{
+            "type" => "ButtonClicked",
+            "properties" => %{"element_id" => "elDyn"},
+            "condition" => %{"type" => "IsLoggedIn"},
+            "actions" => %{
+              "0" => %{"type" => "OpenURL", "properties" => %{"url" => "https://example.com"}}
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [dynamic, multi] = Enum.sort_by(page.children, & &1.source.bubble_id)
+      assert dynamic.source.bubble_id == "elDyn"
+      assert multi.source.bubble_id == "elMulti"
+      assert dynamic.variant == :label
+      refute Map.has_key?(dynamic.content, "destination")
+      assert multi.variant == :label
+      refute Map.has_key?(multi.content, "destination")
+    end
+
+    test "converts an aliased ButtonClicked OpenURL workflow" do
+      payload = %{
+        "_id" => "rawapp",
+        "%p3" => %{
+          "home" => %{
+            "id" => "pghome",
+            "%x" => "Page",
+            "%nm" => "index",
+            "%el" => %{
+              "go" => %{
+                "id" => "elGo",
+                "%x" => "Button",
+                "%nm" => "Docs",
+                "%p" => %{"%3" => "Docs"}
+              }
+            },
+            "%wf" => %{
+              "wf" => %{
+                "id" => "wf",
+                "%x" => "ButtonClicked",
+                "%p" => %{"%ei" => "elGo"},
+                "actions" => %{
+                  "0" => %{
+                    "%x" => "OpenURL",
+                    "%p" => %{"url" => "https://example.com", "open_in_new_tab" => true}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [button] = page.children
+      assert button.variant == :navigation
+      assert button.content["destination"].resolved == "https://example.com"
+      assert button.attributes["target"] == "_blank"
+    end
+
     test "icon buttons and rich text become placeholders" do
       payload =
         page_with_elements(%{

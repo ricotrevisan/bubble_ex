@@ -379,6 +379,56 @@ defmodule BubbleEx.Frontend.ExportTest do
       refute File.exists?(metadata_out)
     end
 
+    @tag :tmp_dir
+    test "emits a semantic link for a single Go to page button and keeps workflow metadata", %{
+      tmp_dir: tmp
+    } do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "s1app",
+        "app_version" => "live",
+        "pages" => %{
+          "home" => %{
+            "id" => "pghome",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column", "title" => "Home"},
+            "elements" => %{
+              "go" => %{
+                "id" => "elGo",
+                "type" => "Button",
+                "properties" => %{"text" => "About"}
+              }
+            },
+            "workflows" => %{
+              "wfGo" => %{
+                "type" => "ButtonClicked",
+                "properties" => %{"element_id" => "elGo"},
+                "actions" => %{
+                  "0" => %{"type" => "ChangePage", "properties" => %{"page" => "about"}}
+                }
+              }
+            }
+          },
+          "about" => %{
+            "id" => "pgabout",
+            "type" => "Page",
+            "name" => "about",
+            "properties" => %{"container_layout" => "column"}
+          }
+        }
+      }
+
+      assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
+      home = File.read!(Path.join(out, "pages/index/index.html"))
+      assert home =~ ~s(<a )
+      assert home =~ ~s(href="../about/index.html")
+      assert home =~ "About"
+      refute home =~ "<button"
+      assert Enum.any?(result.bindings, &(&1["kind"] == "workflow"))
+    end
+
     test "rejects raw transport authentication without a fetched origin" do
       assert {:error, %Error{kind: :invalid_input}} =
                Frontend.export_payload(

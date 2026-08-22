@@ -441,7 +441,7 @@ defmodule BubbleEx.Frontend.Export do
   defp link_findings(pages, plan) do
     pages
     |> Enum.flat_map(&collect/1)
-    |> Enum.filter(&(&1.kind == :link))
+    |> Enum.filter(&(&1.kind == :link or navigation_export?(&1)))
     |> Enum.flat_map(fn node ->
       dest =
         case node.content do
@@ -475,6 +475,12 @@ defmodule BubbleEx.Frontend.Export do
       end
     end)
   end
+
+  defp navigation_export?(%Node{kind: :button, content: %{"destination" => %{resolved: dest}}})
+       when is_binary(dest) and dest != "",
+       do: true
+
+  defp navigation_export?(_), do: false
 
   defp internal_looking?(dest, _plan) do
     # A dest that matches a known page of the full model (by being a simple slug)

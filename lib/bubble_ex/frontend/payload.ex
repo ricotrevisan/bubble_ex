@@ -27,6 +27,14 @@ defmodule BubbleEx.Frontend.Payload do
   @spec elements(map()) :: map()
   def elements(node), do: section(node, "elements", "%el")
 
+  @spec workflows(map()) :: map()
+  def workflows(node) do
+    case Map.get(node, "workflows") || Map.get(node, "%wf") || Map.get(node, "%w") do
+      inner when is_map(inner) -> inner
+      _ -> %{}
+    end
+  end
+
   @spec type(map()) :: String.t() | nil
   def type(node) when is_map(node) do
     case Map.get(node, "type") || Map.get(node, "%x") do
@@ -56,6 +64,7 @@ defmodule BubbleEx.Frontend.Payload do
     "border_width" => ["%bw"],
     "boxshadow" => ["%bos"],
     "content" => ["%3"],
+    "element_id" => ["%ei"],
     "font_color" => ["%fc"],
     "font_size" => ["%fs"],
     "is_visible" => ["%iv"],

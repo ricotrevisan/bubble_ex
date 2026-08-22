@@ -181,7 +181,8 @@ defmodule BubbleEx.Frontend.Normalize do
   defp normalize_container(raw, identity, kind, path, map_key) do
     exporter_id = Naming.exporter_id(identity, kind, path)
     layout = layout_from(raw)
-    {children, child_diags} = normalize_children(raw, identity, path)
+    workflows = click_workflows(raw)
+    {children, child_diags} = normalize_children(raw, identity, path, workflows)
 
     node = %Node{
       exporter_id: exporter_id,
@@ -202,13 +203,13 @@ defmodule BubbleEx.Frontend.Normalize do
     {node, child_diags}
   end
 
-  defp normalize_children(parent, identity, parent_path) do
+  defp normalize_children(parent, identity, parent_path, workflows) do
     Payload.elements(parent)
     |> Enum.sort_by(fn {key, node} -> {order_of(node), key} end)
     |> Enum.reduce({[], []}, fn {key, raw}, {nodes, diags} ->
       if is_map(raw) do
         path = parent_path ++ ["elements", key]
-        {node, node_diags} = normalize_element(raw, identity, path, key)
+        {node, node_diags} = normalize_element(raw, identity, path, key, workflows)
         {[node | nodes], diags ++ node_diags}
       else
         {nodes, diags}
@@ -217,20 +218,24 @@ defmodule BubbleEx.Frontend.Normalize do
     |> then(fn {nodes, diags} -> {Enum.reverse(nodes), diags} end)
   end
 
-  defp normalize_element(raw, identity, path, map_key) do
+  defp normalize_element(raw, identity, path, map_key, workflows) do
     type = Payload.type(raw)
     exporter_id = Naming.exporter_id(identity, element_kind(type), path)
+    workflows = merge_click_workflows(workflows, raw)
 
     case classify(type, raw) do
       {:native, kind, variant} ->
         {children, child_diags} =
           if kind == :group do
-            normalize_children(raw, identity, path)
+            normalize_children(raw, identity, path, workflows)
           else
             {[], []}
           end
 
         {slots, bindings} = extract_slots(raw, kind, exporter_id)
+
+        {kind, variant, slots, bindings, attributes} =
+          maybe_navigation_button(raw, kind, variant, slots, bindings, workflows, exporter_id)
 
         node = %Node{
           exporter_id: exporter_id,
@@ -246,7 +251,7 @@ defmodule BubbleEx.Frontend.Normalize do
           children: children,
           bindings: bindings,
           unmapped: unmapped_keys(raw),
-          attributes: element_attributes(raw, kind, variant),
+          attributes: Map.merge(element_attributes(raw, kind, variant), attributes),
           responsive: responsive_from(raw)
         }
 
@@ -946,8 +951,132 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  defp maybe_navigation_button(raw, :button, :label, slots, bindings, workflows, exporter_id) do
+    case navigation_from_workflows(raw, workflows) do
+      {:ok, dest, workflow, action} ->
+        slots = Map.put(slots, "destination", %{resolved: dest})
+        binding = binding(exporter_id, "workflow", :workflow, workflow)
+        bindings = Map.put(bindings, "workflow", binding)
+        {:button, :navigation, slots, bindings, navigation_attributes(action)}
+
+      :error ->
+        {:button, :label, slots, bindings, %{}}
+    end
+  end
+
+  defp maybe_navigation_button(_raw, kind, variant, slots, bindings, _workflows, _exporter_id) do
+    {kind, variant, slots, bindings, %{}}
+  end
+
+  defp navigation_from_workflows(raw, workflows) do
+    id = Payload.bubble_id(raw)
+    matches = if is_binary(id), do: Map.get(workflows, id, []), else: []
+
+    with true <- Payload.prop(raw, "disabled") != true,
+         [workflow] <- matches,
+         false <- conditioned?(workflow),
+         [action] <- workflow_actions(workflow),
+         false <- conditioned?(action),
+         dest when is_binary(dest) <- navigation_destination(action),
+         true <- not parameterized?(action) do
+      {:ok, dest, workflow, action}
+    else
+      _ -> :error
+    end
+  end
+
+  defp click_workflows(raw) do
+    raw
+    |> Payload.workflows()
+    |> Enum.reduce(%{}, fn {_key, wf}, acc -> index_click_workflow(acc, wf) end)
+  end
+
+  defp merge_click_workflows(parent, raw) do
+    Map.merge(parent, click_workflows(raw), fn _id, left, right -> left ++ right end)
+  end
+
+  defp index_click_workflow(acc, wf) when is_map(wf) do
+    if Payload.type(wf) == "ButtonClicked" do
+      case Payload.prop(wf, "element_id") do
+        id when is_binary(id) and id != "" -> Map.update(acc, id, [wf], &(&1 ++ [wf]))
+        _ -> acc
+      end
+    else
+      acc
+    end
+  end
+
+  defp index_click_workflow(acc, _wf), do: acc
+
+  defp workflow_actions(wf) when is_map(wf) do
+    (wf["actions"] || %{})
+    |> Enum.reject(fn {key, _} -> to_string(key) == "length" end)
+    |> Enum.filter(fn {_key, action} -> is_map(action) end)
+    |> Enum.sort_by(fn {key, _} -> index_key(key) end)
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  defp workflow_actions(_), do: []
+
+  defp conditioned?(node) when is_map(node) do
+    Enum.any?(
+      [
+        node["condition"],
+        node["only_when"],
+        node["%c"],
+        Payload.prop(node, "condition"),
+        Payload.prop(node, "only_when")
+      ],
+      &present_condition?/1
+    )
+  end
+
+  defp present_condition?(nil), do: false
+  defp present_condition?(""), do: false
+  defp present_condition?(value) when is_map(value), do: map_size(value) > 0
+  defp present_condition?(false), do: false
+  defp present_condition?(_), do: true
+
+  defp parameterized?(action) do
+    params = Payload.prop(action, "params") || Payload.prop(action, "url_parameters")
+
+    case params do
+      nil -> false
+      "" -> false
+      params when is_map(params) -> map_size(params) > 0
+      _ -> true
+    end
+  end
+
+  defp navigation_destination(action) when is_map(action) do
+    case Payload.type(action) || action["type"] do
+      "OpenURL" ->
+        static_destination(Payload.prop(action, "url"))
+
+      "ChangePage" ->
+        Enum.find_value(
+          ["page", "dest_page", "destination", "internal_page", "page_name"],
+          &static_destination(Payload.prop(action, &1) || action[&1])
+        )
+
+      _ ->
+        nil
+    end
+  end
+
+  defp static_destination(value) when is_binary(value) and value != "", do: value
+  defp static_destination(_), do: nil
+
+  defp navigation_attributes(action) do
+    if Payload.prop(action, "open_in_new_tab") == true do
+      %{"target" => "_blank", "rel" => "noopener"}
+    else
+      %{}
+    end
+  end
+
   defp workflow_slot(raw, exporter_id) do
-    workflows = raw["workflows"] || raw["%w"]
+    workflows = Payload.workflows(raw)
 
     if is_map(workflows) and map_size(workflows) > 0 do
       binding = %{
@@ -1095,12 +1224,14 @@ defmodule BubbleEx.Frontend.Normalize do
     |> reject_empty_attributes()
   end
 
+  defp element_attributes(raw, :button, :navigation) do
+    if Payload.prop(raw, "disabled") == true, do: %{"disabled" => true}, else: %{}
+  end
+
   defp element_attributes(raw, :button, _variant) do
     if Payload.prop(raw, "disabled") == true,
       do: %{"disabled" => true},
-      else:
-        %{"type" => "button"}
-        |> then(fn attrs -> Map.put(attrs, "type", "button") end)
+      else: %{"type" => "button"}
   end
 
   defp element_attributes(raw, :link, _variant) do
@@ -1194,6 +1325,7 @@ defmodule BubbleEx.Frontend.Normalize do
         "%st",
         "workflows",
         "%w",
+        "%wf",
         "new_responsive",
         "legacy_responsive"
       ])

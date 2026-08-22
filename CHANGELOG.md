@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Button-to-link inference (#21): a label-only Button with exactly one
+  unconditioned `ButtonClicked` workflow whose only action is a static
+  `ChangePage` or `OpenURL` is exported as a semantic `<a>`. The original
+  workflow payload is preserved on the node. Multi-action, conditioned,
+  parameterized, disabled, icon, and `ListGoToPage` clicks stay buttons.
+
 - S1 frontend exporter: `BubbleEx.Frontend.normalize/2`, `export/3`,
   `export_payload/3`, `BubbleEx.export_frontend/3`, and
   `mix bubble.export_frontend`. Writes a portable HTML/CSS package with

@@ -39,7 +39,7 @@ This is deliberately narrower than “support every property on eight types.” 
 | Text | plain literal or payload-resolved content; raw tag unset/`normal`, `h1`, `h2`, `h3`, or `h4` (`h1`/`h2`/`h3` occur in #28; explicit `normal` occurs in #35–#38; explicit `h4` occurs in #38) | BBCode, mixed rich spans, automatic link/email recognition, workflow clicks, unobserved tag enums |
 | Image | public/resolved source; Stretch, Rescale, Zoom, Adjust-element-height; alt text | authenticated source fetch; PDF thumbnail behavior; workflow clicks |
 | Shape | resolved decorative background/gradient/border/radius/opacity/rotation | click workflow semantics |
-| Button | Label; resolved label; native disabled state | Icon, Icon + label, workflow execution, Button-to-Link inference |
+| Button | Label; resolved label; native disabled state; single static ChangePage/OpenURL click exported as `<a>` (#21) | Icon, Icon + label, workflow execution, multi-action/conditioned clicks |
 | Link | Text; explicit resolved internal or external destination; new-tab/nofollow; literal disabled lowers without `href` while preserving destination metadata | icon Link; unresolved/conditional navigation; inferred destination |
 | Input | Text, Email, Password; resolved initial value; placeholder/required/disabled | every other Bubble content format, auto-binding, Bubble-specific mask/validation behavior |
 
