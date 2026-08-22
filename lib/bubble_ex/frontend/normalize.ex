@@ -30,7 +30,7 @@ defmodule BubbleEx.Frontend.Normalize do
     e ->
       {:error,
        Error.new(:parse_failed, "payload contains shapes the frontend cannot process", %{
-         error: Exception.message(e)
+         error: safe_exception_message(e, opts)
        })}
   end
 
@@ -39,6 +39,17 @@ defmodule BubbleEx.Frontend.Normalize do
      Error.new(:invalid_input, "payload must be a JSON object or an Elixir map", %{
        payload: payload
      })}
+  end
+
+  defp safe_exception_message(exception, opts) do
+    message = Exception.message(exception)
+    taints = Keyword.get(opts, :credential_taints, [])
+
+    if Enum.any?(taints, &(is_binary(&1) and &1 != "" and String.contains?(message, &1))) do
+      "redacted authenticated payload error"
+    else
+      message
+    end
   end
 
   defp do_run(payload, _opts) do
@@ -577,30 +588,38 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp dim(raw, sidecar, key) do
-    Payload.prop(raw, key) || sidecar[key]
+    Payload.prop(raw, key) || sidecar[key] || fixed_aliased_dimension(raw, key)
   end
 
-  defp collapsed?(raw) do
-    Payload.prop(raw, "collapse_when_hidden") == true or Payload.prop(raw, "collapsed") == true
+  defp fixed_aliased_dimension(raw, "width") do
+    if Payload.prop(raw, "single_width") == true, do: Payload.properties(raw)["%w"]
   end
+
+  defp fixed_aliased_dimension(raw, "height") do
+    if Payload.prop(raw, "single_height") == true, do: Payload.properties(raw)["%h"]
+  end
+
+  defp fixed_aliased_dimension(_raw, _key), do: nil
+
+  defp collapsed?(raw), do: Payload.prop(raw, "collapsed") == true
 
   defp hidden?(raw) do
     Payload.prop(raw, "hidden") == true or Payload.prop(raw, "is_visible") == false
   end
 
   defp style_from(raw) do
-    props = Payload.properties(raw)
     style_key = raw["style"] || Payload.prop(raw, "style")
+    paint = local_paint(raw)
 
     layers =
       []
       |> maybe_shared_layer(style_key)
-      |> maybe_layer(:local, nil, local_paint(props))
+      |> maybe_layer(:local, nil, paint)
 
     %{
       style_key: style_key,
       layers: layers,
-      resolved: local_paint(props)
+      resolved: paint
     }
   end
 
@@ -616,7 +635,7 @@ defmodule BubbleEx.Frontend.Normalize do
     layers ++ [%{origin: origin, key: key, properties: paint, provenance: origin}]
   end
 
-  defp local_paint(props) do
+  defp local_paint(raw) do
     keys = [
       "bgcolor",
       "background",
@@ -655,8 +674,8 @@ defmodule BubbleEx.Frontend.Normalize do
       "opacity"
     ]
 
-    props
-    |> Map.take(keys ++ css_ready)
+    (keys ++ css_ready)
+    |> Map.new(&{&1, Payload.prop(raw, &1)})
     |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
 
@@ -965,6 +984,18 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  defp literal_or_binding(
+         %{"%x" => "TextExpression", "%e" => entries} = expr,
+         id,
+         slot,
+         _raw
+       ) do
+    case flatten_text_expression(entries) do
+      {:ok, text} -> {:resolved, text}
+      :unresolved -> {:binding, binding(id, slot, :value, expr)}
+    end
+  end
+
   defp literal_or_binding(value, id, slot, _raw) when is_map(value) do
     {:binding, binding(id, slot, :value, value)}
   end
@@ -1027,15 +1058,11 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp container_name(raw, :page, map_key) do
     # Page directory names slug the Bubble page path, not the display title (#29 Q5).
-    first_binary([raw["name"], Payload.prop(raw, "name"), map_key])
+    Payload.name(raw) || map_key
   end
 
   defp container_name(raw, _kind, map_key) do
     Payload.display_name(raw) || Payload.name(raw) || map_key
-  end
-
-  defp first_binary(values) do
-    Enum.find(values, &(is_binary(&1) and &1 != ""))
   end
 
   defp container_attributes(raw, :page) do
@@ -1155,6 +1182,7 @@ defmodule BubbleEx.Frontend.Normalize do
         "type",
         "%x",
         "name",
+        "%nm",
         "default_name",
         "display",
         "properties",

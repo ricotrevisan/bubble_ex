@@ -339,6 +339,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     src =
       case Keyword.get(opts, :assets, %{}) |> Map.get(node.exporter_id) do
         %{path: path} -> "../../" <> path
+        %{failed?: true} -> nil
         _ -> Map.get(node.attributes, "asset_src") || resolved(node, "src") || ""
       end
 

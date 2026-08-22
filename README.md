@@ -77,11 +77,37 @@ Legacy Bubble rendering is rejected with `:unsupported_renderer`.
 {:ok, result} = BubbleEx.Frontend.export_payload(payload, "out/frontend")
 ```
 
-CLI (public apps only; no credentials):
+CLI:
 
+```bash
+mix bubble.export_frontend my-app -o out/frontend [--version live] [--pages index,about] [--authenticated-assets] [--fallback] [--force]
 ```
-mix bubble.export_frontend my-app -o out/frontend [--version live] [--pages index,about] [--fallback] [--force]
+
+Private apps can import HTTP Basic credentials and an existing Bubble
+application-user session from namespaced environment variables:
+
+```bash
+BUBBLE_EX_FRONTEND_USERNAME=<username> \
+BUBBLE_EX_FRONTEND_PASSWORD=<password> \
+BUBBLE_EX_FRONTEND_SESSION_COOKIE='<cookie-name>=<cookie-value>' \
+mix bubble.export_frontend <app-or-url> -o <out-dir> --version test
 ```
+
+Basic Auth can instead use URL userinfo, for example
+`https://<username>:<password>@<app-host>/version-test`. Do not combine URL
+userinfo with the Basic environment pair. The session cookie can be used alone
+or with either Basic source.
+
+Credentials are sent only over HTTPS to the exact effective app origin (scheme,
+host, and port). Assets remain unauthenticated by default. Add
+`--authenticated-assets` to allow credentials on exact-origin asset requests;
+cross-origin assets and redirects never receive them.
+
+BubbleEx imports the supplied session as-is. It does not log in, refresh,
+rotate, or persist sessions, and it does not execute private workflows or fetch
+private Bubble records. Credentials are not written to packages, results,
+findings, logs, errors, or telemetry. `BubbleEx.Frontend.export_payload/3` does
+not accept raw authentication because a decoded payload has no trusted origin.
 
 The package contains `pages/`, reusable fragments, shared/page CSS, hashed
 `assets/`, `model.json`, `bindings.json`, `findings.json`, `coverage.json`,

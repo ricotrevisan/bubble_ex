@@ -336,6 +336,65 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert result.coverage["overall"]["pages"]["not_exported"] == 1
     end
 
+    @tag :tmp_dir
+    test "selects hydrated aliased pages by %nm and blocks metadata-only pages", %{tmp_dir: tmp} do
+      payload = %{
+        "_id" => "liveapp",
+        "%p3" => %{
+          "opaque" => %{
+            "%el" => %{
+              "text" => %{
+                "%nm" => "Greeting",
+                "%p" => %{"%3" => "Hello"},
+                "%x" => "Text",
+                "id" => "text"
+              }
+            },
+            "%nm" => "target-page",
+            "%p" => %{},
+            "%x" => "Page",
+            "id" => "opaque"
+          },
+          "metadata" => %{
+            "%nm" => "other-page",
+            "%p" => %{"%rf" => nil},
+            "%x" => "Page",
+            "id" => "metadata"
+          }
+        }
+      }
+
+      hydrated_out = Path.join(tmp, "hydrated")
+
+      assert {:ok, result} =
+               Frontend.export_payload(payload, hydrated_out, @scan ++ [pages: ["target-page"]])
+
+      assert "pages/target-page/index.html" in result.files
+
+      metadata_out = Path.join(tmp, "metadata")
+
+      assert {:error, %Error{kind: :parse_failed}} =
+               Frontend.export_payload(payload, metadata_out, @scan ++ [pages: ["other-page"]])
+
+      refute File.exists?(metadata_out)
+    end
+
+    test "rejects raw transport authentication without a fetched origin" do
+      assert {:error, %Error{kind: :invalid_input}} =
+               Frontend.export_payload(
+                 FrontendFixtures.modern_page(),
+                 "unused",
+                 @scan ++ [session_cookie: "session=not-accepted-here"]
+               )
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Frontend.export_payload(
+                 FrontendFixtures.modern_page(),
+                 "unused",
+                 @scan ++ [asset_access: :same_origin]
+               )
+    end
+
     test "rejects an unknown page ref or an empty inclusion list" do
       payload = FrontendFixtures.two_page_app()
 

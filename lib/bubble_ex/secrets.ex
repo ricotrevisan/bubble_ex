@@ -34,13 +34,30 @@ defmodule BubbleEx.Secrets do
     adapter = Keyword.get(opts, :adapter, configured_adapter())
 
     Telemetry.span([:secrets, :scan], %{adapter: adapter}, fn ->
-      result = adapter.scan(payload, opts)
-      {result, scan_stop_metadata(result)}
+      result = adapter.scan(payload, Keyword.delete(opts, :telemetry_redact_values))
+      {result, scan_stop_metadata(result, Keyword.get(opts, :telemetry_redact_values, []))}
     end)
   end
 
-  defp scan_stop_metadata({:ok, findings}), do: %{finding_count: length(findings), error: nil}
-  defp scan_stop_metadata({:error, error}), do: %{finding_count: 0, error: error}
+  defp scan_stop_metadata({:ok, findings}, _taints),
+    do: %{finding_count: length(findings), error: nil}
+
+  defp scan_stop_metadata({:error, %Error{} = error}, taints) do
+    safe_error =
+      if tainted?(error, taints),
+        do: Error.new(error.kind, "secret scan failed safely", %{}),
+        else: error
+
+    %{finding_count: 0, error: safe_error}
+  end
+
+  defp tainted?(term, taints) do
+    binary = :erlang.term_to_binary(term)
+
+    Enum.any?(taints, fn taint ->
+      is_binary(taint) and taint != "" and :binary.match(binary, taint) != :nomatch
+    end)
+  end
 
   defp configured_adapter do
     Application.get_env(:bubble_ex, :secrets_adapter, @default_adapter)

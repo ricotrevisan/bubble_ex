@@ -16,6 +16,7 @@ defmodule BubbleEx.Frontend.Export.Writer do
 
     with :ok <- check_target(out_dir, Keyword.get(opts, :force, false)),
          :ok <- write_staging(staging, entries),
+         :ok <- scan_staging(staging, Keyword.get(opts, :credential_taints, [])),
          :ok <- move_into(staging, out_dir) do
       {:ok, files}
     else
@@ -25,11 +26,12 @@ defmodule BubbleEx.Frontend.Export.Writer do
     end
   rescue
     e ->
-      {:error,
-       Error.new(:invalid_input, "failed writing output", %{
-         error: Exception.message(e),
-         out_dir: out_dir
-       })}
+      context =
+        if Keyword.get(opts, :credential_taints, []) == [],
+          do: %{error: Exception.message(e), out_dir: out_dir},
+          else: %{out_dir: out_dir}
+
+      {:error, Error.new(:invalid_input, "failed writing output", context)}
   end
 
   defp write_staging(staging, entries) do
@@ -43,6 +45,30 @@ defmodule BubbleEx.Frontend.Export.Writer do
     end)
 
     :ok
+  end
+
+  defp scan_staging(_staging, []), do: :ok
+
+  defp scan_staging(staging, taints) do
+    leaked? =
+      staging
+      |> Path.join("**/*")
+      |> Path.wildcard(match_dot: true)
+      |> Enum.any?(fn path ->
+        relative = Path.relative_to(path, staging)
+        body = if File.regular?(path), do: File.read!(path), else: ""
+
+        Enum.any?(taints, fn taint ->
+          is_binary(taint) and taint != "" and
+            (:binary.match(relative, taint) != :nomatch or :binary.match(body, taint) != :nomatch)
+        end)
+      end)
+
+    if leaked? do
+      {:error, Error.new(:export_blocked, "export blocked by credential-tainted output", %{})}
+    else
+      :ok
+    end
   end
 
   defp move_into(staging, out_dir) do

@@ -47,13 +47,46 @@ defmodule BubbleEx.Frontend.Payload do
 
   def bubble_id(_), do: nil
 
+  @property_aliases %{
+    "background_style" => ["%bas"],
+    "bgcolor" => ["%bgc"],
+    "border_color" => ["%bc"],
+    "border_roundness" => ["%br"],
+    "border_style" => ["%bs"],
+    "border_width" => ["%bw"],
+    "boxshadow" => ["%bos"],
+    "content" => ["%3"],
+    "font_color" => ["%fc"],
+    "font_size" => ["%fs"],
+    "is_visible" => ["%iv"],
+    "letter_spacing" => ["%ls"],
+    "line_height" => ["%lh"],
+    "style" => ["%s"],
+    "text" => ["%3"]
+  }
+
   @spec prop(map(), String.t()) :: term()
   def prop(node, key) when is_map(node) and is_binary(key) do
     props = properties(node)
 
     case Map.fetch(props, key) do
-      {:ok, value} -> value
-      :error -> Map.get(node, key)
+      {:ok, value} ->
+        value
+
+      :error ->
+        case fetch_alias(props, Map.get(@property_aliases, key, [])) do
+          {:ok, value} -> value
+          :error -> Map.get(node, key)
+        end
+    end
+  end
+
+  defp fetch_alias(_props, []), do: :error
+
+  defp fetch_alias(props, [key | rest]) do
+    case Map.fetch(props, key) do
+      {:ok, value} -> {:ok, value}
+      :error -> fetch_alias(props, rest)
     end
   end
 
@@ -72,6 +105,7 @@ defmodule BubbleEx.Frontend.Payload do
     first_binary([
       prop(node, "original_name"),
       Map.get(node, "name"),
+      Map.get(node, "%nm"),
       Map.get(node, "default_name"),
       prop(node, "name")
     ])

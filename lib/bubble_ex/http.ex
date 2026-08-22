@@ -14,6 +14,7 @@ defmodule BubbleEx.HTTP do
   require Logger
 
   alias __MODULE__.{Error, Response}
+  alias BubbleEx.Frontend.SafeUrl
   alias BubbleEx.Telemetry
 
   @type headers :: [{binary(), binary()}]
@@ -66,16 +67,25 @@ defmodule BubbleEx.HTTP do
   @spec request(atom(), String.t(), iodata() | nil, headers(), options()) ::
           {:ok, Response.t()} | {:error, Error.t()}
   def request(method, url, body, headers \\ [], options \\ []) when method in [:get, :post] do
-    Telemetry.span([:http, :request], %{method: method, url: url}, fn ->
-      result = do_request(method, url, body, headers, options)
-      {result, request_stop_metadata(result)}
-    end)
+    Telemetry.span(
+      [:http, :request],
+      %{method: method, url: safe_request_url(url, options)},
+      fn ->
+        result = do_request(method, url, body, headers, options)
+        {result, request_stop_metadata(result)}
+      end
+    )
+  end
+
+  defp safe_request_url(url, options) do
+    SafeUrl.safe(url, Keyword.get(options, :redact_values, []))
   end
 
   defp request_stop_metadata({:ok, %Response{status_code: status}}),
     do: %{status: status, error: nil}
 
-  defp request_stop_metadata({:error, error}), do: %{status: nil, error: error}
+  defp request_stop_metadata({:error, _error}),
+    do: %{status: nil, error: %Error{reason: :request_failed, original: nil}}
 
   @doc false
   @spec resolve_finch(keyword()) :: term() | nil
@@ -99,9 +109,11 @@ defmodule BubbleEx.HTTP do
       |> Keyword.put(:method, method)
       |> Keyword.put(:url, url)
       |> Keyword.put(:headers, header_overrides ++ headers)
+      |> maybe_put_identity_encoding(control_options)
       |> maybe_put_body(method, body)
       |> Keyword.put_new(:decode_body, false)
       |> Keyword.put_new(:retry, false)
+      |> maybe_put_bounded_into(control_options)
 
     req_options =
       case resolve_finch(effective_options) do
@@ -128,6 +140,7 @@ defmodule BubbleEx.HTTP do
     timeout = Keyword.get(options, :timeout)
     recv_timeout = Keyword.get(options, :recv_timeout)
     max_body_length = Keyword.get(options, :max_body_length)
+    bounded_body? = Keyword.get(options, :bounded_body, false)
     pool_timeout = Keyword.get(options, :pool_timeout)
     proxy = Keyword.get(options, :proxy)
     proxy_auth = Keyword.get(options, :proxy_auth)
@@ -147,7 +160,7 @@ defmodule BubbleEx.HTTP do
 
     control_options =
       if max_body_length do
-        %{max_body_length: max_body_length}
+        %{max_body_length: max_body_length, bounded_body?: bounded_body?}
       else
         %{}
       end
@@ -212,6 +225,8 @@ defmodule BubbleEx.HTTP do
       :timeout,
       :recv_timeout,
       :max_body_length,
+      :bounded_body,
+      :redact_values,
       :proxy,
       :proxy_auth,
       :pool_timeout
@@ -270,19 +285,100 @@ defmodule BubbleEx.HTTP do
   end
 
   defp build_response(request, response, control_options) do
-    body = response.body
+    {body, streamed_too_large?, streamed?} = streamed_body(response)
     max_body_length = Map.get(control_options, :max_body_length)
 
-    if max_body_length && is_binary(body) && byte_size(body) > max_body_length do
-      {:error, %Error{reason: :body_too_large, original: :body_too_large}}
-    else
-      {:ok,
-       %Response{
-         status_code: response.status,
-         headers: response.headers,
-         body: body,
-         request_url: URI.to_string(request.url)
-       }}
+    cond do
+      streamed_too_large? or
+          (max_body_length && is_binary(body) && byte_size(body) > max_body_length) ->
+        {:error, %Error{reason: :body_too_large, original: :body_too_large}}
+
+      streamed? and encoded_response?(response) ->
+        {:error, %Error{reason: :unsupported_content_encoding, original: nil}}
+
+      true ->
+        {:ok,
+         %Response{
+           status_code: response.status,
+           headers: response.headers,
+           body: body,
+           request_url: URI.to_string(request.url)
+         }}
+    end
+  end
+
+  defp maybe_put_bounded_into(req_options, %{
+         max_body_length: max_bytes,
+         bounded_body?: true
+       }) do
+    Keyword.put(req_options, :into, bounded_into(max_bytes))
+  end
+
+  defp maybe_put_bounded_into(req_options, _control_options), do: req_options
+
+  defp maybe_put_identity_encoding(req_options, %{bounded_body?: true}) do
+    Keyword.update!(req_options, :headers, fn headers ->
+      if header_present?(headers, "accept-encoding"),
+        do: headers,
+        else: [{"accept-encoding", "identity"} | headers]
+    end)
+  end
+
+  defp maybe_put_identity_encoding(req_options, _control_options), do: req_options
+
+  defp header_present?(headers, name) do
+    Enum.any?(headers, fn {key, _} -> String.downcase(to_string(key)) == name end)
+  end
+
+  defp bounded_into(max_bytes) do
+    fn {:data, data}, {request, response} ->
+      state =
+        Map.get(response.private, :bubble_ex_body, %{chunks: [], size: 0, too_large?: false})
+
+      size = state.size + byte_size(data)
+
+      too_large? =
+        state.too_large? or size > max_bytes or declared_too_large?(response, max_bytes)
+
+      state =
+        if too_large?,
+          do: %{state | size: size, too_large?: true},
+          else: %{state | chunks: [data | state.chunks], size: size}
+
+      response = %{response | private: Map.put(response.private, :bubble_ex_body, state)}
+      if too_large?, do: {:halt, {request, response}}, else: {:cont, {request, response}}
+    end
+  end
+
+  defp streamed_body(response) do
+    case Map.get(response.private, :bubble_ex_body) do
+      %{chunks: chunks, too_large?: too_large?} ->
+        {chunks |> Enum.reverse() |> IO.iodata_to_binary(), too_large?, true}
+
+      _ ->
+        {response.body, false, false}
+    end
+  end
+
+  defp encoded_response?(response) do
+    response
+    |> Req.Response.get_header("content-encoding")
+    |> Enum.any?(fn value -> String.downcase(value) not in ["", "identity"] end)
+  end
+
+  defp declared_too_large?(response, max_bytes) do
+    response
+    |> Req.Response.get_header("content-length")
+    |> List.first()
+    |> case do
+      nil ->
+        false
+
+      value ->
+        case Integer.parse(value) do
+          {length, ""} when length >= 0 -> length > max_bytes
+          _ -> false
+        end
     end
   end
 
@@ -488,7 +584,11 @@ defmodule BubbleEx.HTTP do
 
     if retryable_result?(result) and attempt < max_retries do
       delay = retry_delay(result, base_delay, attempt)
-      Logger.debug("Retrying #{method} #{url} in #{delay}ms after attempt #{attempt + 1}")
+
+      Logger.debug(
+        "Retrying #{method} #{SafeUrl.safe(url)} in #{delay}ms after attempt #{attempt + 1}"
+      )
+
       Process.sleep(delay)
 
       do_request_with_retry(

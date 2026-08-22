@@ -57,18 +57,46 @@ defmodule BubbleEx.FrontendTest do
       payload = %{
         "_id" => "rawapp",
         "%p3" => %{
-          "home" => %{
-            "id" => "pghome",
+          "opaque" => %{
+            "id" => "pgopaque",
             "%x" => "Page",
-            "name" => "index",
-            "properties" => %{"container_layout" => "column"}
+            "%nm" => "tanstack-chart-demo",
+            "%p" => %{"container_layout" => "column"},
+            "%el" => %{
+              "text" => %{
+                "id" => "text",
+                "%x" => "Text",
+                "%nm" => "Greeting",
+                "%p" => %{
+                  "%3" => %{"%x" => "TextExpression", "%e" => %{"0" => "Hello"}},
+                  "%fc" => "#123456",
+                  "%fs" => 18,
+                  "%w" => 120,
+                  "collapse_when_hidden" => true,
+                  "single_width" => true,
+                  "tag_type" => "normal"
+                }
+              }
+            }
           }
         }
       }
 
       assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
       assert page.kind == :page
+      assert page.name == "tanstack-chart-demo"
       assert page.variant == :column
+      refute Map.has_key?(page.unmapped, "%nm")
+
+      assert [text] = page.children
+      assert text.kind == :text
+      assert text.name == "Greeting"
+      assert text.content["text"].resolved == "Hello"
+      assert text.style.resolved["font_color"] == "#123456"
+      assert text.style.resolved["font_size"] == 18
+      assert text.box.width == 120
+      refute text.box[:collapsed?]
+      refute Map.has_key?(text.unmapped, "%nm")
     end
 
     test "lowers S1 kinds and keeps unresolved expressions on the node" do

@@ -15,6 +15,14 @@ All notable changes to this project are documented here.
   resolved Link, and Text/Email/Password Input. Everything else is a
   dimension-preserving placeholder.
 
+- Authenticated/private-app frontend export (#33): HTTP Basic Auth can come
+  from `BUBBLE_EX_FRONTEND_USERNAME` plus `BUBBLE_EX_FRONTEND_PASSWORD`, or
+  URL userinfo; `BUBBLE_EX_FRONTEND_SESSION_COOKIE` imports an existing Bubble
+  application-user session. Payload auth is HTTPS exact-origin scoped, and
+  `--authenticated-assets` explicitly opts same-origin assets into auth.
+  Credentials and sessions are never persisted. Login, session renewal,
+  private workflow execution, and private-record fetching remain out of scope.
+
 - Frozen-case fidelity gates (#30): `mix bubble.fidelity` and `mix test --only
   fidelity` render committed cases through the S1 exporter and compare them
   to frozen Bubble references (0 CSS-px geometry, byte-identical PNGs). PR
@@ -69,6 +77,14 @@ All notable changes to this project are documented here.
   (regex + base64 + opt-in entropy, no live verification).
 
 ### Changed
+
+- Frontend live-payload parsing now applies Bubble's data-only
+  `Object.assign(..., JSON.parse(...))` page patches instead of exporting only
+  the initial page metadata. Decoded `%nm` names, aliased text expressions,
+  and common paint aliases are normalized through the existing payload seam.
+  `collapse_when_hidden` is treated as behavior, not current visibility.
+  Selecting a live metadata-only page now fails instead of reporting empty
+  100% coverage; fetch the page-specific URL to hydrate its tree.
 
 - New Reader output uses `external_types: :preserve`, which may add by-value
   shapes to generated artifacts. Use `external_types: :legacy` during migration

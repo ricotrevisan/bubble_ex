@@ -26,6 +26,44 @@ defmodule BubbleEx.Apps.ParserTest do
       assert app_json["_id"] == "synthapp"
     end
 
+    test "merges Bubble Object.assign JSON patches into the initial app map" do
+      payload = ~S"""
+      const app = JSON.parse('{"%p3":{"opaque":{"%nm":"old-name","%p":{"%rf":null},"%x":"page","id":"opaque"}},"_index":{"id_to_path":{"existing":"path"}}}');
+      app['%p3']['opaque'] = Object.assign(app['%p3']['opaque'] ? app['%p3']['opaque'] : {}, JSON.parse('{"%el":{"text":{"%nm":"Greeting","%p":{"text":"Hello"},"%x":"Text","id":"text"}},"%nm":"tanstack-chart-demo","%wf":{}}'));
+      app['_index']['id_to_path'] = Object.assign(app['_index']['id_to_path'] ? app['_index']['id_to_path'] : {}, JSON.parse('{"text":"pages.opaque.elements.text"}'));
+      """
+
+      assert {:ok, app_json} = Parser.parse_app_json(payload)
+      page = app_json["%p3"]["opaque"]
+
+      assert page["%nm"] == "tanstack-chart-demo"
+      assert page["%p"] == %{"%rf" => nil}
+      assert page["%el"]["text"]["%p"]["text"] == "Hello"
+
+      assert app_json["_index"]["id_to_path"] == %{
+               "existing" => "path",
+               "text" => "pages.opaque.elements.text"
+             }
+    end
+
+    test "fails instead of silently dropping a malformed Bubble page patch" do
+      payload = ~S"""
+      const app = JSON.parse('{"%p3":{"opaque":{"%nm":"target"}}}');
+      app['%p3']['opaque'] = Object.assign(app['%p3']['opaque'] ? app['%p3']['opaque'] : {}, JSON.parse(not_a_string_literal));
+      """
+
+      assert {:error, %{phase: :decode_app_json_patch}} = Parser.parse_app_json(payload)
+    end
+
+    test "ignores unrelated Object.assign JavaScript" do
+      payload = ~S"""
+      const app = JSON.parse('{"_id":"synthapp"}');
+      const copy = Object.assign({}, {"not":"an app patch"});
+      """
+
+      assert {:ok, %{"_id" => "synthapp"}} = Parser.parse_app_json(payload)
+    end
+
     # Real Bubble payloads escape every single quote, so decode is escape-heavy.
     # The legacy decoder built a per-character list of tiny binaries, amplifying
     # memory ~160x (a 15MB dynamic.js peaked at 2.4GB and OOM-killed production).

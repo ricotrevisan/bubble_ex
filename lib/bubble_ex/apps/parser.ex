@@ -19,7 +19,8 @@ defmodule BubbleEx.Apps.Parser do
       {:ok, absolute_url}
     else
       {:error, reason} ->
-        Logger.error("Failed to extract dynamic JS URL from #{base_url}: #{inspect(reason)}")
+        Logger.error("Failed to extract dynamic JS URL: #{inspect(reason)}")
+
         {:error, %{phase: :discover_dynamic_js, url: base_url, reason: reason}}
     end
   end
@@ -30,9 +31,96 @@ defmodule BubbleEx.Apps.Parser do
   @spec parse_app_json(String.t()) :: {:ok, map()} | {:error, term()}
   def parse_app_json(js_content) do
     with {:ok, app_line} <- find_app_line(js_content),
-         {:ok, json_string} <- extract_json_string_internal(app_line) do
-      decode_json(json_string)
+         {:ok, json_string} <- extract_json_string_internal(app_line),
+         {:ok, app} <- decode_json(json_string) do
+      apply_object_assign_patches(js_content, app)
     end
+  end
+
+  @object_assign_patch ~r/^\s*app(?<path>(?:\[['"][^'"\r\n]+['"]\])+)\s*=\s*Object\.assign\(.*?,\s*JSON\.parse/
+  @path_segment ~r/\[['"]([^'"]+)['"]\]/
+
+  # Bubble builds the initial app map first, then merges the requested page and
+  # indexes into it with Object.assign calls. Only interpret this narrow,
+  # data-only form; never evaluate JavaScript.
+  defp apply_object_assign_patches(js_content, app) do
+    if :binary.match(js_content, "Object.assign") == :nomatch,
+      do: {:ok, app},
+      else: reduce_object_assign_patches(js_content, app)
+  end
+
+  defp reduce_object_assign_patches(js_content, app) do
+    result =
+      js_content
+      |> :binary.split("\n", [:global])
+      |> Enum.reduce_while({:ok, app, 0}, &apply_object_assign_patch/2)
+
+    finish_object_assign_patches(result, js_content)
+  end
+
+  defp finish_object_assign_patches({:error, _reason} = error, _js_content), do: error
+
+  defp finish_object_assign_patches({:ok, patched, 0}, js_content) do
+    if page_patch_expected?(js_content),
+      do: {:error, %{phase: :decode_app_json_patch, reason: :page_patch_not_applied}},
+      else: {:ok, patched}
+  end
+
+  defp finish_object_assign_patches({:ok, patched, _page_patch_count}, _js_content),
+    do: {:ok, patched}
+
+  defp apply_object_assign_patch(line, {:ok, app, page_patch_count}) do
+    case Regex.named_captures(@object_assign_patch, line) do
+      %{"path" => encoded_path} ->
+        apply_captured_patch(line, encoded_path, app, page_patch_count)
+
+      nil ->
+        {:cont, {:ok, app, page_patch_count}}
+    end
+  end
+
+  defp apply_captured_patch(line, encoded_path, app, page_patch_count) do
+    path =
+      @path_segment
+      |> Regex.scan(encoded_path, capture: :all_but_first)
+      |> List.flatten()
+
+    with [_ | _] <- path,
+         {:ok, json_string} <- extract_json_string_internal(line),
+         {:ok, patch} when is_map(patch) <- decode_json(json_string) do
+      count = if List.first(path) == "%p3", do: page_patch_count + 1, else: page_patch_count
+      {:cont, {:ok, merge_patch_at_path(app, path, patch), count}}
+    else
+      [] ->
+        {:halt, {:error, %{phase: :decode_app_json_patch, reason: :empty_path}}}
+
+      {:ok, _other} ->
+        {:halt, {:error, %{phase: :decode_app_json_patch, reason: :patch_is_not_map}}}
+
+      {:error, reason} ->
+        {:halt, {:error, %{phase: :decode_app_json_patch, reason: reason}}}
+    end
+  end
+
+  defp page_patch_expected?(js_content) do
+    Regex.match?(~r/app\[['"]%p3['"]\].*Object\.assign/, js_content)
+  end
+
+  defp merge_patch_at_path(map, [key], patch) do
+    Map.update(map, key, patch, fn
+      existing when is_map(existing) -> Map.merge(existing, patch)
+      _existing -> patch
+    end)
+  end
+
+  defp merge_patch_at_path(map, [key | rest], patch) do
+    child =
+      case Map.get(map, key) do
+        existing when is_map(existing) -> existing
+        _existing -> %{}
+      end
+
+    Map.put(map, key, merge_patch_at_path(child, rest, patch))
   end
 
   @doc """

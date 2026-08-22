@@ -2,8 +2,9 @@ defmodule BubbleEx.Frontend.Export do
   @moduledoc false
 
   alias BubbleEx.{Error, Secrets}
-  alias BubbleEx.Frontend.{Json, Naming}
+  alias BubbleEx.Frontend.{Json, Naming, Payload}
   alias BubbleEx.Frontend.Export.{Assets, Css, Html, Result, Writer}
+  alias BubbleEx.Frontend.Fetch.Context
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
 
@@ -11,14 +12,60 @@ defmodule BubbleEx.Frontend.Export do
 
   @spec run(Normalized.t(), String.t(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
   def run(%Normalized{} = model, out_dir, opts) when is_binary(out_dir) do
-    with :ok <- Writer.precheck(out_dir, opts),
+    with :ok <- validate_asset_access(opts),
+         :ok <- Writer.precheck(out_dir, opts),
          {:ok, selected} <- select_pages(model, opts),
+         :ok <- validate_hydrated_pages(model, selected),
          :ok <- scan_secrets(model, opts) do
       build_and_write(model, selected, out_dir, opts)
     end
   rescue
     e ->
-      {:error, Error.new(:parse_failed, "frontend export failed", %{error: Exception.message(e)})}
+      context =
+        if Keyword.get(opts, :credential_taints, []) == [],
+          do: %{error: Exception.message(e)},
+          else: %{}
+
+      {:error, Error.new(:parse_failed, "frontend export failed", context)}
+  end
+
+  defp validate_asset_access(opts) do
+    case {Keyword.get(opts, :asset_access, :public), Keyword.get(opts, :fetch_context)} do
+      {:public, _} ->
+        :ok
+
+      {:same_origin, %Context{}} ->
+        :ok
+
+      {:same_origin, _} ->
+        {:error,
+         Error.new(
+           :invalid_input,
+           "asset_access: :same_origin requires an authoritative fetched page origin",
+           %{}
+         )}
+
+      {_, _} ->
+        {:error, Error.new(:invalid_input, "asset_access must be :public or :same_origin", %{})}
+    end
+  end
+
+  defp credential_gate(model, entries, opts) do
+    taints = Keyword.get(opts, :credential_taints, [])
+
+    bodies = [
+      :erlang.term_to_binary(model)
+      | Enum.flat_map(entries, fn {name, body} -> [name, IO.iodata_to_binary(body)] end)
+    ]
+
+    if Enum.any?(taints, fn taint ->
+         is_binary(taint) and taint != "" and
+           Enum.any?(bodies, &(:binary.match(&1, taint) != :nomatch))
+       end) do
+      {:error, Error.new(:export_blocked, "export blocked by credential-tainted output", %{})}
+    else
+      :ok
+    end
   end
 
   defp scan_secrets(%Normalized{source: source}, opts) do
@@ -41,20 +88,55 @@ defmodule BubbleEx.Frontend.Export do
             }
           end)
 
-        {:error,
-         Error.new(:export_blocked, "export blocked by leaked credential", %{findings: blocking})}
+        safe_blocking =
+          if tainted_term?(blocking, opts) do
+            [
+              %{
+                "severity" => "blocking",
+                "type" => "leaked_credential",
+                "message" => "secret scan reported credential-tainted authenticated input",
+                "refs" => [],
+                "payload" => %{}
+              }
+            ]
+          else
+            blocking
+          end
 
-      {:error, %Error{}} = error ->
-        error
+        {:error,
+         Error.new(:export_blocked, "export blocked by leaked credential", %{
+           findings: safe_blocking
+         })}
+
+      {:error, %Error{} = error} ->
+        {:error, safe_error(error, opts)}
     end
+  end
+
+  defp safe_error(%Error{} = error, opts) do
+    if tainted_term?(error, opts) do
+      Error.new(error.kind, "authenticated export failed safely", %{})
+    else
+      error
+    end
+  end
+
+  defp tainted_term?(term, opts) do
+    binary = :erlang.term_to_binary(term)
+
+    Enum.any?(Keyword.get(opts, :credential_taints, []), fn taint ->
+      is_binary(taint) and taint != "" and :binary.match(binary, taint) != :nomatch
+    end)
   end
 
   defp scan_opts(opts) do
-    case Keyword.get(opts, :secret_scan_adapter) do
-      nil -> []
-      adapter -> [adapter: adapter]
-    end
+    []
+    |> maybe_scan_adapter(Keyword.get(opts, :secret_scan_adapter))
+    |> Keyword.put(:telemetry_redact_values, Keyword.get(opts, :credential_taints, []))
   end
+
+  defp maybe_scan_adapter(opts, nil), do: opts
+  defp maybe_scan_adapter(opts, adapter), do: Keyword.put(opts, :adapter, adapter)
 
   defp select_pages(%Normalized{pages: pages}, opts) do
     case Keyword.get(opts, :pages, :all) do
@@ -69,6 +151,28 @@ defmodule BubbleEx.Frontend.Export do
 
       _ ->
         {:error, Error.new(:invalid_input, "pages must be :all or a list of page refs", %{})}
+    end
+  end
+
+  defp validate_hydrated_pages(%Normalized{source: source}, selected) do
+    raw_pages = if is_map(source.payload), do: Payload.pages(source.payload), else: %{}
+
+    if Enum.any?(selected, &unhydrated_aliased_page?(&1, raw_pages)) do
+      {:error,
+       Error.new(
+         :parse_failed,
+         "selected Bubble page payload is metadata-only; fetch that page URL directly",
+         %{}
+       )}
+    else
+      :ok
+    end
+  end
+
+  defp unhydrated_aliased_page?(%Node{map_key: key}, raw_pages) do
+    case Map.get(raw_pages, key) do
+      %{"%nm" => _name} = raw -> not Map.has_key?(raw, "%el")
+      _raw -> false
     end
   end
 
@@ -113,21 +217,18 @@ defmodule BubbleEx.Frontend.Export do
     manifest = manifest(model, files, opts)
     entries = [{"MANIFEST.json", encode_manifest(manifest)} | entries]
 
-    case Writer.publish(out_dir, entries, opts) do
-      {:ok, written} ->
-        {:ok,
-         %Result{
-           out_dir: out_dir,
-           files: written,
-           model: model,
-           bindings: bindings,
-           findings: findings,
-           coverage: coverage,
-           manifest: manifest
-         }}
-
-      {:error, _} = error ->
-        error
+    with :ok <- credential_gate(model, entries, opts),
+         {:ok, written} <- Writer.publish(out_dir, entries, opts) do
+      {:ok,
+       %Result{
+         out_dir: out_dir,
+         files: written,
+         model: model,
+         bindings: bindings,
+         findings: findings,
+         coverage: coverage,
+         manifest: manifest
+       }}
     end
   end
 
@@ -203,7 +304,8 @@ defmodule BubbleEx.Frontend.Export do
          Html.fragment(node,
            expand: &expand(model, &1),
            rewrite_href: fn _n, dest -> dest end,
-           style_class: &style_class(&1, plan)
+           style_class: &style_class(&1, plan),
+           assets: assets
          )}
       end)
 
@@ -252,6 +354,7 @@ defmodule BubbleEx.Frontend.Export do
   defp asset_entries(assets) do
     assets
     |> Map.values()
+    |> Enum.filter(&(is_binary(Map.get(&1, :path)) and is_binary(Map.get(&1, :bytes))))
     |> Enum.uniq_by(& &1.path)
     |> Enum.map(fn asset -> {asset.path, asset.bytes} end)
   end
@@ -532,11 +635,17 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp visible_options(opts) do
-    %{
+    visible = %{
       "pages" => pages_option(Keyword.get(opts, :pages, :all)),
       "fallback" => Keyword.get(opts, :fallback, false),
       "force" => Keyword.get(opts, :force, false)
     }
+
+    if Keyword.has_key?(opts, :asset_access) do
+      Map.put(visible, "asset_access", Atom.to_string(Keyword.fetch!(opts, :asset_access)))
+    else
+      visible
+    end
   end
 
   defp pages_option(:all), do: "all"

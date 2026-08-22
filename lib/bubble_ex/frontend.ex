@@ -14,7 +14,7 @@ defmodule BubbleEx.Frontend do
   """
 
   alias BubbleEx.{Error, Telemetry}
-  alias BubbleEx.Frontend.{Export, Normalize, Normalized}
+  alias BubbleEx.Frontend.{Auth, Export, Fetch, Normalize, Normalized}
 
   @type normalize_option :: {atom(), term()}
   @type export_option ::
@@ -24,6 +24,7 @@ defmodule BubbleEx.Frontend do
           | {:secret_scan_adapter, module()}
           | {:asset_timeout, pos_integer()}
           | {:max_asset_bytes, pos_integer()}
+          | {:asset_access, :public | :same_origin}
 
   @doc """
   Pure, deterministic normalization of a decoded app payload.
@@ -69,9 +70,43 @@ defmodule BubbleEx.Frontend do
   @spec export_payload(term(), String.t(), keyword()) ::
           {:ok, Export.Result.t()} | {:error, Error.t()}
   def export_payload(payload, out_dir, opts \\ []) do
-    with {:ok, model} <- normalize(payload, []) do
-      export(model, out_dir, opts)
+    if Enum.any?([:username, :password, :session_cookie], &Keyword.has_key?(opts, &1)) do
+      {:error,
+       Error.new(
+         :invalid_input,
+         "export_payload/3 does not accept transport authentication without a fetched origin",
+         %{}
+       )}
+    else
+      with {:ok, model} <- normalize(payload, []) do
+        export(model, out_dir, opts)
+      end
     end
+  end
+
+  @doc false
+  @spec export_fetched(term(), String.t(), keyword(), Fetch.Context.t()) ::
+          {:ok, Export.Result.t()} | {:error, Error.t()}
+  def export_fetched(payload, out_dir, opts, %Fetch.Context{} = context) do
+    taints = Auth.taints(context.auth)
+
+    if tainted?(out_dir, taints) do
+      {:error,
+       Error.new(:export_blocked, "export blocked by credential-tainted output path", %{})}
+    else
+      with {:ok, model} <- normalize(payload, credential_taints: taints) do
+        internal_opts =
+          opts
+          |> Keyword.put(:fetch_context, context)
+          |> Keyword.put(:credential_taints, taints)
+
+        export(model, out_dir, internal_opts)
+      end
+    end
+  end
+
+  defp tainted?(value, taints) do
+    Enum.any?(taints, &(is_binary(&1) and &1 != "" and String.contains?(value, &1)))
   end
 
   defp normalize_stop({:ok, model}),

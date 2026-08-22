@@ -4,6 +4,7 @@ defmodule BubbleEx do
   """
 
   alias BubbleEx.{Apps, Contributors, Error, Frontend, Logs, Plugins, Secrets, Server}
+  alias BubbleEx.Frontend.{Auth, Fetch}
 
   @doc """
   Fetches information about a Bubble.io app.
@@ -190,15 +191,21 @@ defmodule BubbleEx do
 
   See `BubbleEx.Frontend` for the normalize/export seams and package layout.
   `:app_version` is `"live"` (default), `"test"`, or `"development"`. There is
-  no `:try_test` fallback. `:username`/`:password` authenticate the payload
-  fetch only; asset downloads stay unauthenticated.
+  no `:try_test` fallback.
+
+  Optional `:username`/`:password` Basic credentials and an imported
+  `:session_cookie` are scoped to the exact effective HTTPS app origin. Assets
+  remain unauthenticated unless `asset_access: :same_origin` is selected.
   """
   @spec export_frontend(String.t(), String.t(), keyword()) ::
           {:ok, Frontend.Export.Result.t()} | {:error, Error.t()}
   def export_frontend(app, out_dir, opts \\ []) when is_binary(app) and is_binary(out_dir) do
-    with {:ok, url} <- frontend_version_url(app, Keyword.get(opts, :app_version, "live")),
-         {:ok, payload} <- fetch_frontend_payload(url, opts) do
-      Frontend.export_payload(payload, out_dir, export_opts(opts))
+    with {:ok, sanitized_app, auth} <- Auth.prepare(app, opts),
+         {:ok, url} <-
+           frontend_version_url(sanitized_app, Keyword.get(opts, :app_version, "live")),
+         {:ok, auth} <- Auth.rescope(auth, url),
+         {:ok, payload, fetch_context} <- Fetch.run(url, auth, opts) do
+      Frontend.export_fetched(payload, out_dir, export_opts(opts), fetch_context)
     end
   end
 
@@ -226,35 +233,6 @@ defmodule BubbleEx do
     end
   end
 
-  defp fetch_frontend_payload(url, opts) do
-    fetch_opts = [
-      include_payload: true,
-      try_test: false,
-      username: Keyword.get(opts, :username),
-      password: Keyword.get(opts, :password)
-    ]
-
-    case Apps.fetch_app(url, fetch_opts) do
-      {:ok, %{valid?: true, payload: payload}} when is_map(payload) ->
-        {:ok, payload}
-
-      {:ok, %{valid?: false} = attrs} ->
-        {:error,
-         Error.new(:not_a_bubble_app, attrs[:notes] || "app version is not reachable", %{
-           url: url
-         })}
-
-      {:ok, _} ->
-        {:error, Error.new(:parse_failed, "fetched app did not include a payload", %{url: url})}
-
-      {:error, %Error{}} = error ->
-        error
-
-      {:error, reason} ->
-        {:error, Error.new(:request_failed, "failed to fetch app version", %{reason: reason})}
-    end
-  end
-
   defp export_opts(opts) do
     Keyword.take(opts, [
       :pages,
@@ -262,7 +240,8 @@ defmodule BubbleEx do
       :force,
       :secret_scan_adapter,
       :asset_timeout,
-      :max_asset_bytes
+      :max_asset_bytes,
+      :asset_access
     ])
   end
 end

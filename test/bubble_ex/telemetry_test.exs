@@ -83,7 +83,7 @@ defmodule BubbleEx.TelemetryTest do
       assert {:error, _} = HTTP.get("https://example.bubbleapps.io/", [], max_retries: 0)
 
       assert_received {:telemetry, [:bubble_ex, :http, :request, :stop], _,
-                       %{status: nil, error: %HTTP.Error{}}}
+                       %{status: nil, error: %HTTP.Error{reason: :request_failed, original: nil}}}
     end
   end
 
