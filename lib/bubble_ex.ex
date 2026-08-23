@@ -196,6 +196,12 @@ defmodule BubbleEx do
   Optional `:username`/`:password` Basic credentials and an imported
   `:session_cookie` are scoped to the exact effective HTTPS app origin. Assets
   remain unauthenticated unless `asset_access: :same_origin` is selected.
+
+  When selected live pages are metadata-only, BubbleEx fetches each page path
+  from the same app origin before export. A leading `/version-test` or
+  `/version-development` prefix is preserved. At most 20 extra page requests
+  are made by default; set `:max_page_fetches` to a non-negative integer to
+  override the bound.
   """
   @spec export_frontend(String.t(), String.t(), keyword()) ::
           {:ok, Frontend.Export.Result.t()} | {:error, Error.t()}
@@ -204,7 +210,8 @@ defmodule BubbleEx do
          {:ok, url} <-
            frontend_version_url(sanitized_app, Keyword.get(opts, :app_version, "live")),
          {:ok, auth} <- Auth.rescope(auth, url),
-         {:ok, payload, fetch_context} <- Fetch.run(url, auth, opts) do
+         {:ok, payload, fetch_context} <- Fetch.run(url, auth, opts),
+         {:ok, payload} <- Fetch.hydrate_selected_pages(payload, fetch_context, opts) do
       Frontend.export_fetched(payload, out_dir, export_opts(opts), fetch_context)
     end
   end

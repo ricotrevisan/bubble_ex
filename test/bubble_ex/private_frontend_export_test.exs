@@ -376,6 +376,118 @@ defmodule BubbleEx.PrivateFrontendExportTest do
     assert_no_secret(inspect(error))
   end
 
+  @tag :tmp_dir
+  test "rejects a credential-tainted page path before an extra request", %{tmp_dir: tmp} do
+    pid = self()
+
+    payload = %{
+      "_id" => "private-hydration",
+      "%p3" => %{
+        "opaque" => %{
+          "%nm" => @password,
+          "%p" => %{"container_layout" => "column"},
+          "%x" => "Page",
+          "id" => "opaque"
+        }
+      }
+    }
+
+    stub_app(pid, payload)
+    out = Path.join(tmp, "pkg")
+
+    assert {:error, %Error{kind: :export_blocked} = error} =
+             BubbleEx.export_frontend(
+               "https://app.example.test",
+               out,
+               @scan ++ credentials()
+             )
+
+    refute_received {:request, "app.example.test", "/#{@password}", _, _}
+    refute File.exists?(out)
+    assert_no_secret(inspect(error))
+  end
+
+  @tag :tmp_dir
+  test "an extra page redirect cannot leave the authenticated origin", %{tmp_dir: tmp} do
+    pid = self()
+    handler = {__MODULE__, :hydration_http, System.unique_integer()}
+
+    :telemetry.attach_many(
+      handler,
+      [[:bubble_ex, :http, :request, :start], [:bubble_ex, :http, :request, :stop]],
+      fn name, measurements, metadata, test_pid ->
+        send(test_pid, {:hydration_telemetry, name, measurements, metadata})
+      end,
+      pid
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    payload = %{
+      "_id" => "private-hydration",
+      "%p3" => %{
+        "opaque" => %{
+          "%nm" => "private-page",
+          "%p" => %{"container_layout" => "column"},
+          "%x" => "Page",
+          "id" => "opaque"
+        }
+      }
+    }
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      record(conn, pid)
+
+      case conn.request_path || "/" do
+        "/" ->
+          conn |> Conn.put_resp_header("x-bubble-test", "1") |> Conn.resp(200, page_html())
+
+        "/package/dynamic_js/1/dynamic.js" ->
+          conn |> Conn.put_resp_header("x-bubble-test", "1") |> dynamic_response(payload)
+
+        "/private-page" ->
+          conn
+          |> Conn.put_resp_header("location", "https://evil.example.test/#{@password}")
+          |> Conn.resp(302, "")
+      end
+    end)
+
+    out = Path.join(tmp, "pkg")
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(
+          pid,
+          {:hydration_result,
+           BubbleEx.export_frontend(
+             "https://app.example.test",
+             out,
+             @scan ++ credentials()
+           )}
+        )
+      end)
+
+    assert_received {:hydration_result, {:error, %Error{kind: :request_failed} = error}}
+    assert_received {:request, "app.example.test", "/private-page", [@basic], [@cookie]}
+    refute_received {:request, "evil.example.test", _, _, _}
+    refute File.exists?(out)
+
+    telemetry = collect_hydration_telemetry()
+    assert telemetry != []
+    assert_no_secret(inspect(error))
+    assert_no_secret(log)
+    assert_no_secret(inspect(telemetry))
+  end
+
+  defp collect_hydration_telemetry(acc \\ []) do
+    receive do
+      {:hydration_telemetry, name, measurements, metadata} ->
+        collect_hydration_telemetry([{name, measurements, metadata} | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
   defp credentials, do: [username: @username, password: @password, session_cookie: @cookie]
   defp expected_basic, do: @basic
 

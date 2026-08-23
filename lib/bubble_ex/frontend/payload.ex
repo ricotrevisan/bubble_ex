@@ -21,6 +21,30 @@ defmodule BubbleEx.Frontend.Payload do
   @spec reusables(map()) :: map()
   def reusables(payload), do: section(payload, "element_definitions", "%ed")
 
+  @spec page_path(map()) :: String.t() | nil
+  def page_path(page) when is_map(page) do
+    Enum.find([Map.get(page, "%nm"), Map.get(page, "name")], fn
+      name when is_binary(name) -> String.trim(name) != ""
+      _ -> false
+    end)
+  end
+
+  def page_path(_), do: nil
+
+  @spec hydrated_page?(map()) :: boolean()
+  def hydrated_page?(page) when is_map(page) do
+    is_map(Map.get(page, "%el")) or is_map(Map.get(page, "elements"))
+  end
+
+  def hydrated_page?(_), do: false
+
+  @spec unhydrated_page?(map()) :: boolean()
+  def unhydrated_page?(page) when is_map(page) do
+    is_binary(page_path(page)) and not hydrated_page?(page)
+  end
+
+  def unhydrated_page?(_), do: false
+
   @spec styles(map()) :: map()
   def styles(payload), do: section(payload, "styles", "%s")
 

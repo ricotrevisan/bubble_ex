@@ -65,7 +65,7 @@ defmodule Mix.Tasks.Bubble.ExportFrontendTest do
   end
 
   @tag :tmp_dir
-  test "accepts --version, --pages, --fallback, and --force", %{tmp_dir: tmp} do
+  test "accepts --version, --pages, --max-page-fetches, --fallback, and --force", %{tmp_dir: tmp} do
     out = Path.join(tmp, "pkg")
     stub_fetch(FrontendFixtures.two_page_app())
 
@@ -79,6 +79,8 @@ defmodule Mix.Tasks.Bubble.ExportFrontendTest do
           "live",
           "--pages",
           "index",
+          "--max-page-fetches",
+          "0",
           "--fallback",
           "--force"
         ])
@@ -87,6 +89,36 @@ defmodule Mix.Tasks.Bubble.ExportFrontendTest do
     assert output =~ "Wrote"
     assert File.exists?(Path.join(out, "pages/index/index.html"))
     refute File.exists?(Path.join(out, "pages/about/index.html"))
+  end
+
+  @tag :tmp_dir
+  test "--max-page-fetches fails closed before writing an over-bound export", %{tmp_dir: tmp} do
+    payload = %{
+      "_id" => "mix-hydration",
+      "%p3" => %{
+        "opaque" => %{
+          "%nm" => "page-a",
+          "%p" => %{"container_layout" => "column"},
+          "%x" => "Page",
+          "id" => "opaque"
+        }
+      }
+    }
+
+    stub_fetch(payload)
+    out = Path.join(tmp, "pkg")
+
+    assert_raise Mix.Error, ~r/max_page_fetches/, fn ->
+      Mix.Tasks.Bubble.ExportFrontend.run([
+        "https://app.example.test",
+        "-o",
+        out,
+        "--max-page-fetches",
+        "0"
+      ])
+    end
+
+    refute File.exists?(out)
   end
 
   @tag :tmp_dir
