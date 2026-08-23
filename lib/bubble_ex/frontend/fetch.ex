@@ -3,8 +3,9 @@ defmodule BubbleEx.Frontend.Fetch do
 
   alias BubbleEx.Apps.Parser
   alias BubbleEx.{Config, Error, HTTP}
-  alias BubbleEx.Frontend.{Auth, SafeUrl}
+  alias BubbleEx.Frontend.{Auth, Naming, Payload, SafeUrl}
 
+  @default_max_page_fetches 20
   @max_redirects 5
 
   defmodule Context do
@@ -18,13 +19,329 @@ defmodule BubbleEx.Frontend.Fetch do
           {:ok, map(), Context.t()} | {:error, Error.t()}
   def run(url, %Auth{} = auth, opts \\ []) do
     with {:ok, page_url, scoped_auth} <- resolve_dedicated(url, auth, opts),
-         {:ok, page} <-
-           fetch_bubble_page(page_url, scoped_auth, auth_state(scoped_auth, page_url), opts),
-         {:ok, dynamic_url} <- dynamic_url(page, scoped_auth),
+         {:ok, payload, effective_page_url} <-
+           fetch_page_payload(
+             page_url,
+             scoped_auth,
+             auth_state(scoped_auth, page_url),
+             opts
+           ),
+         {:ok, effective_auth} <- Auth.rescope(scoped_auth, effective_page_url) do
+      {:ok, payload, %Context{page_url: effective_page_url, auth: effective_auth}}
+    end
+  end
+
+  @spec hydrate_selected_pages(map(), Context.t(), keyword()) ::
+          {:ok, map()} | {:error, Error.t()}
+  def hydrate_selected_pages(payload, %Context{} = context, opts \\ []) when is_map(payload) do
+    with {:ok, max_page_fetches} <- max_page_fetches(opts),
+         {:ok, jobs, unhydrated_names} <- hydration_jobs(payload, context, opts),
+         :ok <- within_page_fetch_bound(jobs, unhydrated_names, max_page_fetches, context.auth) do
+      fetch_hydration_jobs(payload, jobs, context, opts)
+    end
+  end
+
+  defp fetch_page_payload(page_url, auth, page_state, opts) do
+    with {:ok, page} <- fetch_bubble_page(page_url, auth, page_state, opts),
+         {:ok, dynamic_url} <- dynamic_url(page, auth),
          {:ok, dynamic} <-
-           fetch_bubble_page(dynamic_url, scoped_auth, auth_state(scoped_auth, dynamic_url), opts),
+           fetch_bubble_page(dynamic_url, auth, auth_state(auth, dynamic_url), opts),
          {:ok, payload} <- parse_payload(dynamic.body) do
-      {:ok, payload, %Context{page_url: page.url, auth: scoped_auth}}
+      {:ok, payload, page.url}
+    end
+  end
+
+  defp max_page_fetches(opts) do
+    case Keyword.get(opts, :max_page_fetches, @default_max_page_fetches) do
+      max when is_integer(max) and max >= 0 ->
+        {:ok, max}
+
+      _max ->
+        {:error,
+         Error.new(:invalid_input, "max_page_fetches must be a non-negative integer", %{})}
+    end
+  end
+
+  defp hydration_jobs(payload, context, opts) do
+    selected = Keyword.get(opts, :pages, :all)
+    pages = Payload.pages(payload)
+
+    with :ok <- validate_selected_pages(pages, selected) do
+      pages
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.filter(fn {key, page} ->
+        is_map(page) and selected_page?(key, page, selected) and
+          Payload.unhydrated_page?(page)
+      end)
+      |> build_hydration_jobs(context)
+    end
+  end
+
+  defp validate_selected_pages(_pages, :all), do: :ok
+
+  defp validate_selected_pages(_pages, []) do
+    {:error, Error.new(:invalid_input, "pages filter must not be empty", %{})}
+  end
+
+  defp validate_selected_pages(pages, refs) when is_list(refs) do
+    if Enum.all?(refs, &known_page_ref?(pages, &1)) do
+      :ok
+    else
+      {:error, Error.new(:invalid_input, "unknown page ref", %{})}
+    end
+  end
+
+  defp validate_selected_pages(_pages, _selected) do
+    {:error, Error.new(:invalid_input, "pages must be :all or a list of page refs", %{})}
+  end
+
+  defp known_page_ref?(pages, ref) do
+    Enum.any?(pages, fn
+      {key, page} when is_map(page) -> ref in page_refs(key, page)
+      _ -> false
+    end)
+  end
+
+  defp build_hydration_jobs(candidates, context) do
+    candidates
+    |> Enum.reduce_while({:ok, []}, fn {key, page}, {:ok, targets} ->
+      name = Payload.page_path(page)
+
+      case page_url(context.page_url, name, context.auth) do
+        {:ok, url} ->
+          target = %{key: key, name: name, url: url, normalized_url: SafeUrl.normalize(url)}
+          {:cont, {:ok, [target | targets]}}
+
+        {:error, _} = error ->
+          {:halt, error}
+      end
+    end)
+    |> finish_hydration_jobs()
+  end
+
+  defp finish_hydration_jobs({:ok, targets}) do
+    targets = Enum.reverse(targets)
+    {:ok, group_hydration_jobs(targets), Enum.map(targets, & &1.name) |> Enum.uniq()}
+  end
+
+  defp finish_hydration_jobs({:error, _} = error), do: error
+
+  defp group_hydration_jobs(targets) do
+    {order, grouped} =
+      Enum.reduce(targets, {[], %{}}, fn target, {order, grouped} ->
+        normalized = target.normalized_url
+
+        case Map.fetch(grouped, normalized) do
+          :error ->
+            job = %{url: target.url, normalized_url: normalized, targets: [target]}
+            {order ++ [normalized], Map.put(grouped, normalized, job)}
+
+          {:ok, job} ->
+            updated = %{job | targets: job.targets ++ [target]}
+            {order, Map.put(grouped, normalized, updated)}
+        end
+      end)
+
+    Enum.map(order, &Map.fetch!(grouped, &1))
+  end
+
+  defp selected_page?(_key, _page, :all), do: true
+
+  defp selected_page?(key, page, refs) when is_list(refs) do
+    Enum.any?(page_refs(key, page), &(&1 in refs))
+  end
+
+  defp selected_page?(_key, _page, _selected), do: false
+
+  defp page_refs(key, page) do
+    path = Payload.page_path(page)
+    normalized_name = Payload.name(page)
+    bubble_id = Payload.bubble_id(page)
+
+    [
+      key,
+      path,
+      normalized_name,
+      Naming.slug(path),
+      Naming.slug(normalized_name),
+      Naming.slug(key),
+      bubble_id
+    ]
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> Enum.uniq()
+  end
+
+  defp page_url(base_url, name, auth) when is_binary(name) do
+    with :ok <- validate_page_path(name, auth) do
+      build_page_url(base_url, name, auth)
+    end
+  end
+
+  defp validate_page_path(name, auth) do
+    cond do
+      credential_tainted?(name, auth) ->
+        {:error,
+         Error.new(:export_blocked, "page hydration blocked by credential-tainted path", %{})}
+
+      valid_page_path?(name) ->
+        :ok
+
+      true ->
+        {:error, Error.new(:invalid_input, "Bubble page path is invalid", %{})}
+    end
+  end
+
+  defp credential_tainted?(value, auth) do
+    Enum.any?(Auth.taints(auth), fn
+      taint when is_binary(taint) and taint != "" -> String.contains?(value, taint)
+      _ -> false
+    end)
+  end
+
+  defp build_page_url(base_url, name, auth) do
+    uri = URI.parse(base_url)
+    prefix = version_prefix(uri.path)
+    encoded_name = URI.encode(name, &URI.char_unreserved?/1)
+
+    url =
+      %{uri | path: prefix <> "/" <> encoded_name, query: nil, fragment: nil, userinfo: nil}
+      |> URI.to_string()
+
+    if SafeUrl.https?(url) and Auth.scoped_to?(auth, url) do
+      {:ok, url}
+    else
+      {:error,
+       Error.new(:request_failed, "frontend page hydration URL left the app origin", %{
+         url: safe(url, auth)
+       })}
+    end
+  rescue
+    _ -> {:error, Error.new(:invalid_input, "Bubble page path is invalid", %{})}
+  end
+
+  defp valid_page_path?(name) do
+    name not in [".", ".."] and not String.contains?(name, ["/", "\\", "?", "#"]) and
+      not Regex.match?(~r/[\x00-\x1F\x7F]/, name)
+  end
+
+  defp version_prefix(path) when is_binary(path) do
+    case Regex.run(~r{^/(version-(?:live|test|development))(?:/|$)}, path,
+           capture: :all_but_first
+         ) do
+      [prefix] -> "/" <> prefix
+      _ -> ""
+    end
+  end
+
+  defp version_prefix(_path), do: ""
+
+  defp within_page_fetch_bound(jobs, names, max, auth) do
+    if length(jobs) <= max do
+      :ok
+    else
+      {:error,
+       Error.new(
+         :invalid_input,
+         "requested page hydration exceeds max_page_fetches",
+         %{
+           max_page_fetches: max,
+           page_fetches: length(jobs),
+           unhydrated_pages: redact_names(names, auth)
+         }
+       )}
+    end
+  end
+
+  defp redact_names(names, auth) do
+    taints = Auth.taints(auth)
+
+    Enum.map(names, fn name ->
+      Enum.reduce(taints, name, fn
+        taint, acc when is_binary(taint) and taint != "" ->
+          String.replace(acc, taint, "[REDACTED]")
+
+        _taint, acc ->
+          acc
+      end)
+    end)
+  end
+
+  defp fetch_hydration_jobs(payload, jobs, context, opts) do
+    Enum.reduce_while(jobs, {:ok, payload}, fn job, {:ok, merged} ->
+      fetch_hydration_job(job, merged, context, opts)
+    end)
+  end
+
+  defp fetch_hydration_job(job, merged, context, opts) do
+    if Enum.all?(job.targets, &hydrated_page?(merged, &1.key)) do
+      {:cont, {:ok, merged}}
+    else
+      do_fetch_hydration_job(job, merged, context, opts)
+    end
+  end
+
+  defp do_fetch_hydration_job(job, merged, context, opts) do
+    case fetch_page_payload(job.url, context.auth, :scoped, opts) do
+      {:ok, fetched, _effective_page_url} ->
+        {:cont, {:ok, merge_job_targets(merged, fetched, job.targets)}}
+
+      {:error, _} = error ->
+        {:halt, error}
+    end
+  end
+
+  defp merge_job_targets(payload, fetched, targets) do
+    Enum.reduce(targets, payload, fn target, acc ->
+      merge_page_payload(acc, fetched, target.key)
+    end)
+  end
+
+  defp hydrated_page?(payload, key) do
+    case Map.get(Payload.pages(payload), key) do
+      page when is_map(page) -> Payload.hydrated_page?(page)
+      _ -> false
+    end
+  end
+
+  defp merge_page_payload(payload, fetched, key) do
+    fetched_page = Map.get(Payload.pages(fetched), key)
+
+    payload
+    |> merge_page(key, fetched_page)
+    |> merge_id_to_path(fetched)
+  end
+
+  defp merge_page(payload, _key, fetched_page) when not is_map(fetched_page), do: payload
+
+  defp merge_page(payload, key, fetched_page) do
+    cond do
+      is_map(payload["%p3"]) ->
+        update_in(payload, ["%p3", key], fn
+          existing when is_map(existing) -> Map.merge(existing, fetched_page)
+          _ -> fetched_page
+        end)
+
+      is_map(payload["pages"]) ->
+        update_in(payload, ["pages", key], fn
+          existing when is_map(existing) -> Map.merge(existing, fetched_page)
+          _ -> fetched_page
+        end)
+
+      true ->
+        payload
+    end
+  end
+
+  defp merge_id_to_path(payload, fetched) do
+    case get_in(fetched, ["_index", "id_to_path"]) do
+      fetched_paths when is_map(fetched_paths) ->
+        update_in(payload, [Access.key("_index", %{}), Access.key("id_to_path", %{})], fn
+          existing when is_map(existing) -> Map.merge(existing, fetched_paths)
+          _ -> fetched_paths
+        end)
+
+      _ ->
+        payload
     end
   end
 

@@ -15,7 +15,7 @@ defmodule BubbleEx.Frontend.Export do
     with :ok <- validate_asset_access(opts),
          :ok <- Writer.precheck(out_dir, opts),
          {:ok, selected} <- select_pages(model, opts),
-         :ok <- validate_hydrated_pages(model, selected),
+         :ok <- validate_hydrated_pages(model, selected, opts),
          :ok <- scan_secrets(model, opts) do
       build_and_write(model, selected, out_dir, opts)
     end
@@ -154,26 +154,46 @@ defmodule BubbleEx.Frontend.Export do
     end
   end
 
-  defp validate_hydrated_pages(%Normalized{source: source}, selected) do
-    raw_pages = if is_map(source.payload), do: Payload.pages(source.payload), else: %{}
+  defp validate_hydrated_pages(%Normalized{source: source}, selected, opts) do
+    raw_pages = live_raw_pages(source.payload, opts)
+    names = Enum.flat_map(selected, &unhydrated_page_name(&1, raw_pages))
+    hydrated_pages_result(names, opts)
+  end
 
-    if Enum.any?(selected, &unhydrated_aliased_page?(&1, raw_pages)) do
-      {:error,
-       Error.new(
-         :parse_failed,
-         "selected Bubble page payload is metadata-only; fetch that page URL directly",
-         %{}
-       )}
+  defp live_raw_pages(payload, opts) do
+    if match?(%Context{}, Keyword.get(opts, :fetch_context)) do
+      Payload.pages(payload)
     else
-      :ok
+      aliased_raw_pages(payload)
     end
   end
 
-  defp unhydrated_aliased_page?(%Node{map_key: key}, raw_pages) do
+  defp aliased_raw_pages(%{"%p3" => pages}) when is_map(pages), do: pages
+  defp aliased_raw_pages(_payload), do: %{}
+
+  defp unhydrated_page_name(%Node{map_key: key, name: normalized_name}, raw_pages) do
     case Map.get(raw_pages, key) do
-      %{"%nm" => _name} = raw -> not Map.has_key?(raw, "%el")
-      _raw -> false
+      raw when is_map(raw) ->
+        if Payload.unhydrated_page?(raw),
+          do: [Payload.page_path(raw) || normalized_name || key],
+          else: []
+
+      _ ->
+        []
     end
+  end
+
+  defp hydrated_pages_result([], _opts), do: :ok
+
+  defp hydrated_pages_result(names, opts) do
+    error =
+      Error.new(
+        :parse_failed,
+        "selected Bubble page payload is metadata-only after page hydration",
+        %{pages: names}
+      )
+
+    {:error, safe_error(error, opts)}
   end
 
   defp resolve_page_refs(pages, refs) do

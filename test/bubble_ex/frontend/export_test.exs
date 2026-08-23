@@ -356,7 +356,9 @@ defmodule BubbleEx.Frontend.ExportTest do
             "id" => "opaque"
           },
           "metadata" => %{
-            "%nm" => "other-page",
+            "%nm" => "",
+            "name" => "other-page",
+            "elements" => nil,
             "%p" => %{"%rf" => nil},
             "%x" => "Page",
             "id" => "metadata"

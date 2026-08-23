@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Selected live-page hydration (#40): `BubbleEx.export_frontend/3` and
+  `mix bubble.export_frontend` fetch each requested metadata-only page from the
+  sanitized app origin, preserving `/version-test` and `/version-development`
+  prefixes. Extra page fetches are deduplicated and capped at 20 by default;
+  use `max_page_fetches:` or `--max-page-fetches` to override the bound.
+
 - Button-to-link inference (#21): a label-only Button with exactly one
   unconditioned `ButtonClicked` workflow whose only action is a static
   `ChangePage` or `OpenURL` is exported as a semantic `<a>`. The original
@@ -89,8 +95,9 @@ All notable changes to this project are documented here.
   the initial page metadata. Decoded `%nm` names, aliased text expressions,
   and common paint aliases are normalized through the existing payload seam.
   `collapse_when_hidden` is treated as behavior, not current visibility.
-  Selecting a live metadata-only page now fails instead of reporting empty
-  100% coverage; fetch the page-specific URL to hydrate its tree.
+  Selected live metadata-only pages are hydrated from their page-specific URLs
+  before one combined export. A requested page that remains metadata-only still
+  fails closed instead of reporting empty 100% coverage.
 
 - New Reader output uses `external_types: :preserve`, which may add by-value
   shapes to generated artifacts. Use `external_types: :legacy` during migration

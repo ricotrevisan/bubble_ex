@@ -19,7 +19,7 @@ defmodule BubbleEx.Apps.Parser do
       {:ok, absolute_url}
     else
       {:error, reason} ->
-        Logger.error("Failed to extract dynamic JS URL: #{inspect(reason)}")
+        Logger.error("Failed to extract dynamic JS URL")
 
         {:error, %{phase: :discover_dynamic_js, url: base_url, reason: reason}}
     end

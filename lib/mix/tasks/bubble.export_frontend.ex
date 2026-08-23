@@ -4,11 +4,12 @@ defmodule Mix.Tasks.Bubble.ExportFrontend do
   @moduledoc """
   Fetches one Bubble app version and writes a frontend export package.
 
-      mix bubble.export_frontend APP -o OUT_DIR [--version VERSION] [--pages PAGES] [--authenticated-assets] [--fallback] [--force]
+      mix bubble.export_frontend APP -o OUT_DIR [--version VERSION] [--pages PAGES] [--max-page-fetches N] [--authenticated-assets] [--fallback] [--force]
 
   `APP` is a Bubble ID or URL. `--version` is `live` (default), `test`, or
   `development`. `--pages` is a comma-separated inclusion list of page slugs or
-  map keys.
+  map keys. `--max-page-fetches` bounds extra page-specific hydration requests
+  and defaults to 20.
 
   Private-app credentials come from `BUBBLE_EX_FRONTEND_USERNAME` plus
   `BUBBLE_EX_FRONTEND_PASSWORD`, or from URL userinfo such as
@@ -30,6 +31,7 @@ defmodule Mix.Tasks.Bubble.ExportFrontend do
     out: :string,
     version: :string,
     pages: :string,
+    max_page_fetches: :integer,
     authenticated_assets: :boolean,
     fallback: :boolean,
     force: :boolean
@@ -43,7 +45,7 @@ defmodule Mix.Tasks.Bubble.ExportFrontend do
     cond do
       invalid != [] ->
         Mix.raise(
-          "usage: mix bubble.export_frontend APP -o OUT_DIR [--version VERSION] [--pages PAGES] [--authenticated-assets] [--fallback] [--force]"
+          "usage: mix bubble.export_frontend APP -o OUT_DIR [--version VERSION] [--pages PAGES] [--max-page-fetches N] [--authenticated-assets] [--fallback] [--force]"
         )
 
       match?([_], args) and is_binary(Keyword.get(opts, :out)) ->
@@ -61,7 +63,7 @@ defmodule Mix.Tasks.Bubble.ExportFrontend do
 
       true ->
         Mix.raise(
-          "usage: mix bubble.export_frontend APP -o OUT_DIR [--version VERSION] [--pages PAGES] [--authenticated-assets] [--fallback] [--force]"
+          "usage: mix bubble.export_frontend APP -o OUT_DIR [--version VERSION] [--pages PAGES] [--max-page-fetches N] [--authenticated-assets] [--fallback] [--force]"
         )
     end
   end
@@ -70,6 +72,7 @@ defmodule Mix.Tasks.Bubble.ExportFrontend do
     []
     |> put_opt(:app_version, Keyword.get(opts, :version))
     |> put_opt(:pages, parse_pages(Keyword.get(opts, :pages)))
+    |> put_opt(:max_page_fetches, Keyword.get(opts, :max_page_fetches))
     |> put_opt(:fallback, Keyword.get(opts, :fallback))
     |> put_opt(:force, Keyword.get(opts, :force))
     |> put_opt(:asset_access, authenticated_asset_access(opts))
