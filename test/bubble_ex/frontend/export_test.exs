@@ -85,6 +85,60 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "packages a public image whose source appends Current Page Width", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+      source_file = Path.join(tmp, "hero.png")
+      url = "https://cdn.example/hero.png?ignore_imgix=1&n="
+
+      File.write!(
+        source_file,
+        Base.decode64!(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+      )
+
+      expression = %{
+        "%x" => "TextExpression",
+        "%e" => %{
+          "0" => url,
+          "1" => %{
+            "%x" => "PageData",
+            "%p" => %{"%nm" => "Current Page Width"}
+          }
+        }
+      }
+
+      payload =
+        FrontendFixtures.modern_page()
+        |> put_in(["pages", "home", "elements"], %{
+          "hero" => %{
+            "id" => "imageWidth",
+            "type" => "Image",
+            "properties" => %{"src" => expression, "alt" => "Hero"}
+          }
+        })
+
+      assert {:ok, result} =
+               Frontend.export_payload(
+                 payload,
+                 out,
+                 @scan ++ [asset_files: %{url => source_file}]
+               )
+
+      asset_path = Enum.find(result.files, &String.starts_with?(&1, "assets/"))
+      assert is_binary(asset_path)
+      assert File.read!(Path.join(out, asset_path)) == File.read!(source_file)
+
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(src="../../#{asset_path}")
+      refute html =~ url
+
+      assert Enum.any?(result.bindings, fn binding ->
+               binding["slot"] == "src" and binding["payload"] == expression
+             end)
+    end
+
+    @tag :tmp_dir
     test "lowers S1 controls and keeps unsupported nodes as placeholders", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 
@@ -222,6 +276,88 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert input_attr(document, "inputPassword", "value") == "BubbleEx mask demo"
       assert input_attr(document, "inputPassword", "placeholder") == "Password placeholder"
       assert input_attr(document, "inputPassword", "aria-label") == "Password placeholder"
+    end
+
+    @tag :tmp_dir
+    test "lowers live compact input and choice-control aliases", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload =
+        FrontendFixtures.modern_page()
+        |> put_in(["pages", "home", "elements"], %{
+          "email" => %{
+            "id" => "compact-email",
+            "%x" => "Input",
+            "%p" => %{"%cf" => "email", "%ps" => "you@example.com"}
+          },
+          "multiline" => %{
+            "id" => "compact-multiline",
+            "%x" => "MultiLineInput",
+            "%p" => %{
+              "%c1" => "I32 multiline literal",
+              "%ps" => "I32 multiline placeholder",
+              "character_limit" => 120
+            }
+          },
+          "password" => %{
+            "id" => "compact-password",
+            "%x" => "Input",
+            "%p" => %{
+              "%cf" => "password",
+              "%c1" => "BubbleEx mask demo",
+              "%ps" => "I37 password placeholder"
+            }
+          },
+          "radios" => %{
+            "id" => "compact-radios",
+            "%x" => "RadioButtons",
+            "%p" => %{"%ch" => "Narrow\nWide", "%d1" => "Wide"}
+          },
+          "select" => %{
+            "id" => "compact-select",
+            "%x" => "Dropdown",
+            "%p" => %{
+              "%ch" => "Alpha\nBeta\nGamma",
+              "%d1" => "Beta",
+              "%ps" => "Choose"
+            }
+          }
+        })
+
+      assert {:ok, _result} = Frontend.export_payload(payload, out, @scan)
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      {:ok, document} = Floki.parse_document(html)
+
+      assert input_attr(document, "compact-email", "type") == "email"
+      assert input_attr(document, "compact-email", "placeholder") == "you@example.com"
+      assert input_attr(document, "compact-password", "type") == "password"
+      assert input_attr(document, "compact-password", "value") == "BubbleEx mask demo"
+
+      assert element_attr(
+               document,
+               ~s(textarea[data-bubble-id="compact-multiline"]),
+               "placeholder"
+             ) == "I32 multiline placeholder"
+
+      assert Floki.find(document, ~s(textarea[data-bubble-id="compact-multiline"]))
+             |> Floki.text() == "I32 multiline literal"
+
+      assert Floki.find(document, ~s(select[data-bubble-id="compact-select"] option))
+             |> Enum.map(&Floki.text/1) == ["Choose", "Alpha", "Beta", "Gamma"]
+
+      assert element_attr(document, ~s(option[value="Beta"]), "selected") == "selected"
+
+      assert Floki.find(
+               document,
+               ~s(fieldset[data-bubble-id="compact-radios"] input[type="radio"])
+             )
+             |> length() == 2
+
+      assert element_attr(
+               document,
+               ~s(fieldset[data-bubble-id="compact-radios"] input[value="Wide"]),
+               "checked"
+             ) == "checked"
     end
 
     @tag :tmp_dir

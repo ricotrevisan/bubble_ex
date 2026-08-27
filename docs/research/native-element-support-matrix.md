@@ -178,6 +178,8 @@ These refine the common rendering contract; they do not promote the prototype sc
 - **Style precedence remains only partly characterized.** The controlled literal/static slice validates its authored layers and one viewport rule; it does not establish exporter-ready precedence for every property, shared style, condition, or interaction state.[B-GENERAL][B-STYLE][B-COND][R23][C28]
 - **Icon resources are unresolved.** Documentation names seven libraries, but exact glyph identifiers, versions, delivery format, redistribution permissions, fallback metrics, and accessible-name sources remain uncaptured.[B-VISUAL]
 - **Rich text is unresolved.** Bubble documents BBCode, automatic links/email, and mixed rich formatting. No safe, lossless conversion policy or controlled case exists.[B-VISUAL]
+- **Arbitrary custom font CSS needs a product decision.** The portable exporter can bundle static Google declarations through its HTTPS host and WOFF/WOFF2 allowlist without forwarding Bubble credentials. Supporting other stylesheet/font hosts needs an explicit trust, sanitization, licensing, size-limit, and fallback policy; until then those sources remain unsupported rather than being fetched implicitly.
+- **Runtime-populated choice controls need a product decision.** Literal Dropdown and Radio Buttons choices lower to native controls. Dynamic choice expressions remain bindings and the element remains a placeholder because a portable static package has no accepted data-loading or expression-runtime contract.
 
 ### Non-blocking boundaries
 

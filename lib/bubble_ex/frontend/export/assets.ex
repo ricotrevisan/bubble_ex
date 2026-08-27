@@ -88,6 +88,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
   defp resolved_src(%Node{content: %{"src" => %{resolved: url}}}), do: url
   defp resolved_src(%Node{content: %{"src" => %{"resolved" => url}}}), do: url
+  defp resolved_src(%Node{attributes: %{"asset_src" => url}}), do: url
   defp resolved_src(_), do: nil
 
   defp resolve_asset_url(raw_url, opts) do

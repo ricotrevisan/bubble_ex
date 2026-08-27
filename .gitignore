@@ -31,3 +31,6 @@ graphify-out/
 
 # Playwright for frozen-case fidelity gates
 test/support/fidelity/node_modules/
+
+# Local frontend export and visual-comparison artifacts
+/output/

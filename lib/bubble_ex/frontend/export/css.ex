@@ -4,8 +4,8 @@ defmodule BubbleEx.Frontend.Export.Css do
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
 
-  @spec shared(Normalized.t()) :: String.t()
-  def shared(%Normalized{styles: styles}) do
+  @spec shared(Normalized.t(), String.t()) :: String.t()
+  def shared(%Normalized{styles: styles}, font_css \\ "") when is_binary(font_css) do
     base = """
     * { box-sizing: border-box; }
     html { -webkit-font-smoothing: antialiased; }
@@ -22,26 +22,30 @@ defmodule BubbleEx.Frontend.Export.Css do
         if decls == "", do: "", else: ".#{style.class_name} {\n#{decls}}\n"
       end)
 
-    String.trim_trailing(base <> "\n" <> style_rules) <> "\n"
+    [font_css, base, style_rules]
+    |> Enum.reject(&(String.trim(&1) == ""))
+    |> Enum.join("\n")
+    |> String.trim_trailing()
+    |> Kernel.<>("\n")
   end
 
   @spec page(Node.t(), keyword()) :: String.t()
   def page(node, opts \\ []) do
-    nodes = collect(node)
+    entries = collect(node)
 
     base =
-      nodes
+      entries
       |> Enum.map(&rule(&1, opts))
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n")
 
     extras =
-      nodes
-      |> Enum.map(&extra_rule(&1, opts))
+      entries
+      |> Enum.map(fn {node, _parent_mode} -> extra_rule(node, opts) end)
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n")
 
-    media = responsive_css(nodes, opts)
+    media = responsive_css(entries, opts)
 
     [base, extras, media]
     |> Enum.reject(&(&1 == ""))
@@ -49,13 +53,17 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> then(fn css -> if css == "", do: "\n", else: String.trim_trailing(css) <> "\n" end)
   end
 
-  defp collect(%Node{} = node) do
-    [node | Enum.flat_map(node.children, &collect/1)]
+  # Parent layout affects how Bubble's fill sizing maps to CSS. Keep that
+  # context in the traversal rather than duplicating it in the normalized model.
+  defp collect(%Node{} = node, parent_mode \\ nil) do
+    mode = layout_value(node.layout, :mode)
+
+    [{node, parent_mode} | Enum.flat_map(node.children, &collect(&1, mode))]
   end
 
-  defp rule(%Node{} = node, opts) do
+  defp rule({%Node{} = node, parent_mode}, opts) do
     id = prefixed_id(node, opts)
-    decls = declarations(node)
+    decls = declarations(node, parent_mode)
     if decls == "", do: "", else: "[data-exporter-id=\"#{escape(id)}\"] {\n#{decls}}\n"
   end
 
@@ -66,22 +74,22 @@ defmodule BubbleEx.Frontend.Export.Css do
     end
   end
 
-  defp declarations(%Node{} = node) do
+  defp declarations(%Node{} = node, parent_mode) do
     node
-    |> css_map()
+    |> css_map(parent_mode)
     |> declarations_from_paint()
   end
 
-  defp css_map(node) do
+  defp css_map(node, parent_mode) do
     %{}
     |> Map.merge(layout_css(node))
     |> Map.merge(box_css(node))
     |> Map.merge(paint_css(node))
-    |> Map.merge(placement_css(node))
-    |> put_fill_width(node)
+    |> Map.merge(placement_css(node, parent_mode))
+    |> put_fill_sizing(node, parent_mode)
     |> put_flex_grow(node)
     |> put_align_self(node)
-    |> put_row_cross_axis(node)
+    |> put_container_alignment(node)
     |> put_collapse(node)
   end
 
@@ -222,44 +230,59 @@ defmodule BubbleEx.Frontend.Export.Css do
       "grid-auto-rows" => "max-content",
       "grid-template-columns" => "repeat(1, 1fr)",
       "justify-items" => "stretch",
+      "line-height" => "1",
       "overflow" => "hidden",
+      "padding" => "3px 0 3px 20px",
       "position" => "relative"
     }
   end
 
   defp native_control(_), do: %{}
 
-  defp put_fill_width(css, %Node{layout: layout}) when is_map(layout) do
-    if layout[:fill_width?] || layout["fill_width?"] do
-      css
-      |> Map.put("flex-grow", "1")
-      |> Map.put("flex-basis", "auto")
-    else
-      css
-    end
+  defp put_fill_sizing(css, %Node{layout: layout}, parent_mode) when is_map(layout) do
+    css
+    |> put_fill_width(layout_value(layout, :fill_width?), parent_mode)
+    |> put_fill_height(layout_value(layout, :fill_height?), parent_mode)
   end
 
-  defp put_fill_width(css, _), do: css
+  defp put_fill_sizing(css, _node, _parent_mode), do: css
 
-  defp put_row_cross_axis(css, %Node{kind: kind, layout: layout})
+  defp put_fill_width(css, true, :row) do
+    css
+    |> Map.put("flex-basis", "0")
+    |> Map.put("flex-grow", "1")
+    |> Map.put("flex-shrink", "1")
+  end
+
+  defp put_fill_width(css, true, _parent_mode), do: Map.put(css, "width", "100%")
+  defp put_fill_width(css, _fill?, _parent_mode), do: css
+
+  defp put_fill_height(css, true, :column) do
+    css
+    |> Map.put("flex-basis", "0")
+    |> Map.put("flex-grow", "1")
+    |> Map.put("flex-shrink", "1")
+  end
+
+  defp put_fill_height(css, true, :row), do: Map.put(css, "align-self", "stretch")
+  defp put_fill_height(css, true, _parent_mode), do: Map.put(css, "height", "100%")
+  defp put_fill_height(css, _fill?, _parent_mode), do: css
+
+  defp put_container_alignment(css, %Node{kind: kind, layout: layout})
        when kind in [:page, :group, :reusable_definition] and is_map(layout) do
-    align = layout[:align] || layout["align"]
-    mode = layout[:mode] || layout["mode"]
+    case {layout_value(layout, :align), layout_value(layout, :mode)} do
+      {align, _mode} when is_binary(align) ->
+        Map.put(css, "align-items", flex_alignment(align))
 
-    cond do
-      is_binary(align) ->
-        Map.put(css, "align-items", align)
+      {nil, mode} when mode in [:row, :column, "row", "column"] ->
+        Map.put(css, "align-items", "flex-start")
 
-      mode in [:row, :column] and not Map.has_key?(css, "align-items") ->
-        # Omit an explicit default so CSS stretch applies unless a case sets align.
-        css
-
-      true ->
+      _ ->
         css
     end
   end
 
-  defp put_row_cross_axis(css, _), do: css
+  defp put_container_alignment(css, _node), do: css
 
   defp put_flex_grow(css, %Node{box: box}) when is_map(box) do
     case box_get(box, :flex_grow) || box_get(box, :"flex-grow") do
@@ -274,53 +297,98 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp put_align_self(css, %Node{box: box}) when is_map(box) do
     case box_get(box, :align_self) || box_get(box, :"align-self") do
       nil -> css
-      value -> Map.put(css, "align-self", value)
+      value -> Map.put(css, "align-self", flex_alignment(value))
     end
   end
 
   defp put_align_self(css, _), do: css
 
   @cell_alignment %{
+    "top_start" => {"start", "start"},
+    "top_center" => {"center", "start"},
     "top_end" => {"end", "start"},
+    "center_start" => {"start", "center"},
     "center" => {"center", "center"},
-    "bottom_start" => {"start", "end"}
+    "center_end" => {"end", "center"},
+    "bottom_start" => {"start", "end"},
+    "bottom_center" => {"center", "end"},
+    "bottom_end" => {"end", "end"}
   }
 
-  defp placement_css(%Node{box: box}) when is_map(box) do
+  # Bubble's Fixed containers absolutely position every direct child. When
+  # offsets are absent Bubble uses the fixed canvas origin; nonant placement is
+  # only meaningful for Align-to-Parent containers.
+  defp placement_css(%Node{box: box}, :fixed) when is_map(box) do
+    %{
+      "position" => "absolute",
+      "left" => css_size(box_get(box, :x) || 0),
+      "top" => css_size(box_get(box, :y) || 0),
+      "margin" => "0px"
+    }
+  end
+
+  defp placement_css(%Node{box: box}, _parent_mode) when is_map(box) do
     case box_get(box, :placement) do
-      %{"cell" => cell} = placement ->
+      placement when is_map(placement) -> placement_properties(box, placement)
+      _ -> %{}
+    end
+  end
+
+  defp placement_css(_, _parent_mode), do: %{}
+
+  defp placement_properties(box, placement) do
+    case box_get(placement, :cell) do
+      cell when is_binary(cell) ->
         {justify, align} = Map.get(@cell_alignment, cell, {"start", "start"})
 
         %{
           "grid-area" => "1 / 1 / 4 / 4",
           "justify-self" => justify,
-          "align-self" => align,
-          "width" => placement["width"],
-          "height" => placement["height"]
+          "align-self" => align
         }
+        |> put_placement_dimensions(box, placement)
         |> put_translate(placement)
-        |> Map.reject(fn {_k, v} -> is_nil(v) end)
-
-      %{"x" => _} = placement ->
-        %{
-          "position" => "absolute",
-          "left" => placement["x"] || "0px",
-          "top" => placement["y"] || "0px",
-          "width" => placement["width"],
-          "height" => placement["height"]
-        }
-        |> Map.reject(fn {_k, v} -> is_nil(v) end)
 
       _ ->
-        %{}
+        absolute_placement(box, placement)
     end
   end
 
-  defp placement_css(_), do: %{}
+  defp absolute_placement(box, placement) do
+    if box_get(placement, :x) || box_get(placement, :y) do
+      %{
+        "position" => "absolute",
+        "left" => css_size(box_get(placement, :x) || "0px"),
+        "top" => css_size(box_get(placement, :y) || "0px")
+      }
+      |> put_placement_dimensions(box, placement)
+    else
+      %{}
+    end
+  end
+
+  # Older normalized payloads kept dimensions in placement. Prefer canonical
+  # box dimensions when both forms are present.
+  defp put_placement_dimensions(props, box, placement) do
+    props
+    |> maybe_put_placement_dimension("width", box, placement, :width)
+    |> maybe_put_placement_dimension("height", box, placement, :height)
+  end
+
+  defp maybe_put_placement_dimension(props, css_key, box, placement, key) do
+    if is_nil(box_get(box, key)) do
+      case css_size(box_get(placement, key)) do
+        nil -> props
+        value -> Map.put(props, css_key, value)
+      end
+    else
+      props
+    end
+  end
 
   defp put_translate(props, placement) do
-    x = Map.get(placement, "offset-x", "0px")
-    y = Map.get(placement, "offset-y", "0px")
+    x = box_get(placement, :"offset-x") || box_get(placement, :offset_x) || "0px"
+    y = box_get(placement, :"offset-y") || box_get(placement, :offset_y) || "0px"
     if x == "0px" and y == "0px", do: props, else: Map.put(props, "translate", "#{x} #{y}")
   end
 
@@ -397,9 +465,9 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp extra_rule(_, _), do: ""
 
-  defp responsive_css(nodes, opts) do
-    nodes
-    |> Enum.flat_map(fn node ->
+  defp responsive_css(entries, opts) do
+    entries
+    |> Enum.flat_map(fn {node, _parent_mode} ->
       Enum.map(node.responsive || [], fn rule -> {media_width(rule), node, rule} end)
     end)
     |> Enum.reject(fn {width, _, _} -> is_nil(width) end)
@@ -444,10 +512,21 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp declarations_from_paint(map) when is_map(map) do
     map
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-    |> Enum.map(fn {k, v} -> {css_prop_name(k), v} end)
+    |> Enum.map(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map_join("", fn {k, v} -> "  #{k}: #{v};\n" end)
   end
+
+  defp layout_value(layout, key) when is_map(layout) do
+    Map.get(layout, key) || Map.get(layout, Atom.to_string(key))
+  end
+
+  defp layout_value(_layout, _key), do: nil
+
+  defp flex_alignment(value) when value in [:start, "start"], do: "flex-start"
+  defp flex_alignment(value) when value in [:end, "end"], do: "flex-end"
+  defp flex_alignment(value) when is_atom(value), do: Atom.to_string(value)
+  defp flex_alignment(value), do: value
 
   defp wrap_value(layout) do
     case layout[:wrap] || layout["wrap"] do
@@ -515,6 +594,15 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp css_paint_value(key, n) when key in ["font_size", "letter_spacing"] and is_number(n),
     do: "#{n}px"
+
+  defp css_paint_value(key, value)
+       when key in ["font_face", "font_family", "font-family"] and is_binary(value) do
+    if String.downcase(String.trim(value)) == "inter" do
+      ~s("Inter", Helvetica, Arial, sans-serif)
+    else
+      value
+    end
+  end
 
   defp css_paint_value(_key, value), do: value
 

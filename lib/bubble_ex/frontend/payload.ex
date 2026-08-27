@@ -80,22 +80,39 @@ defmodule BubbleEx.Frontend.Payload do
   def bubble_id(_), do: nil
 
   @property_aliases %{
+    "background_gradient_direction" => ["%b4"],
+    "background_gradient_from" => ["%bgf"],
+    "background_gradient_to" => ["%bgt"],
     "background_style" => ["%bas"],
     "bgcolor" => ["%bgc"],
     "border_color" => ["%bc"],
     "border_roundness" => ["%br"],
-    "border_style" => ["%bs"],
+    "border_style" => ["%bos"],
     "border_width" => ["%bw"],
-    "boxshadow" => ["%bos"],
-    "content" => ["%3"],
+    "boxshadow_blur" => ["%bsb"],
+    "boxshadow_color" => ["%bsc"],
+    "boxshadow_horizontal" => ["%bh"],
+    "boxshadow_spread" => ["%bsp"],
+    "boxshadow_style" => ["%bs"],
+    "boxshadow_vertical" => ["%bv"],
+    "choices" => ["%ch"],
+    "content" => ["%c1", "%3"],
+    "content_format" => ["%cf"],
+    "contents" => ["%ct"],
+    "default" => ["%d1"],
     "element_id" => ["%ei"],
     "font_color" => ["%fc"],
     "font_size" => ["%fs"],
     "is_visible" => ["%iv"],
+    "label" => ["%lab"],
     "letter_spacing" => ["%ls"],
     "line_height" => ["%lh"],
+    "mandatory" => ["%1m"],
+    "placeholder" => ["%ps"],
+    "run_mode" => ["%2f", "2f"],
     "style" => ["%s"],
-    "text" => ["%3"]
+    "text" => ["%3"],
+    "text_align" => ["%fa"]
   }
 
   @spec prop(map(), String.t()) :: term()

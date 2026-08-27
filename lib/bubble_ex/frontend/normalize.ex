@@ -8,6 +8,82 @@ defmodule BubbleEx.Frontend.Normalize do
 
   @legacy_markers ["legacy", "old"]
 
+  @raw_background_properties [
+    "%b4",
+    "%bas",
+    "%bgc",
+    "%bgf",
+    "%bgt",
+    "background",
+    "background_gradient_direction",
+    "background_gradient_from",
+    "background_gradient_mid",
+    "background_gradient_style",
+    "background_gradient_to",
+    "background_style",
+    "backdrop_background_style",
+    "backdrop_bgcolor",
+    "bgcolor"
+  ]
+  @raw_border_properties [
+    "%bc",
+    "%bos",
+    "%br",
+    "%bw",
+    "border",
+    "border-radius",
+    "border_color",
+    "border_radius",
+    "border_roundness",
+    "border_style",
+    "border_width"
+  ]
+  @raw_shadow_properties [
+    "%bh",
+    "%bs",
+    "%bsb",
+    "%bsc",
+    "%bsp",
+    "%bv",
+    "box-shadow",
+    "box_shadow",
+    "boxshadow",
+    "boxshadow_blur",
+    "boxshadow_color",
+    "boxshadow_enable",
+    "boxshadow_horizontal",
+    "boxshadow_spread",
+    "boxshadow_style",
+    "boxshadow_vertical"
+  ]
+  @raw_opacity_properties ["opacity"]
+
+  @typography_properties [
+    "%fa",
+    "%fc",
+    "%fs",
+    "%lh",
+    "%ls",
+    "color",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font_color",
+    "font_face",
+    "font_family",
+    "font_size",
+    "font_weight",
+    "letter-spacing",
+    "letter_spacing",
+    "line-height",
+    "line_height",
+    "placeholder_color",
+    "text_align",
+    "transform",
+    "z-index"
+  ]
+  @compact_control_properties ["%1m", "%c1", "%cf", "%ch", "%ct", "%d1", "%lab", "%ps"]
+
   @spec run(term(), keyword()) :: {:ok, Normalized.t()} | {:error, Error.t()}
   def run(payload, _opts \\ [])
 
@@ -130,7 +206,7 @@ defmodule BubbleEx.Frontend.Normalize do
           class_name: class_name,
           display_name: display,
           applies_to: Payload.type(raw),
-          properties: Payload.properties(raw),
+          properties: shared_style_properties(raw),
           source: %Source{path: ["styles", key], map_key: key, bubble_id: Payload.bubble_id(raw)}
         }
 
@@ -204,12 +280,20 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp normalize_children(parent, identity, parent_path, workflows) do
+    parent_mode = layout_mode(parent)
+
     Payload.elements(parent)
     |> Enum.sort_by(fn {key, node} -> {order_of(node), key} end)
     |> Enum.reduce({[], []}, fn {key, raw}, {nodes, diags} ->
       if is_map(raw) do
         path = parent_path ++ ["elements", key]
         {node, node_diags} = normalize_element(raw, identity, path, key, workflows)
+
+        node =
+          node
+          |> put_child_alignment(raw, parent_mode)
+          |> put_fixed_parent_offsets(raw, parent_mode)
+
         {[node | nodes], diags ++ node_diags}
       else
         {nodes, diags}
@@ -217,6 +301,48 @@ defmodule BubbleEx.Frontend.Normalize do
     end)
     |> then(fn {nodes, diags} -> {Enum.reverse(nodes), diags} end)
   end
+
+  defp put_child_alignment(node, raw, parent_mode) do
+    alignment = child_alignment(raw, parent_mode)
+
+    if is_binary(alignment) do
+      %{node | box: Map.put(node.box, :align_self, canonical_alignment(alignment))}
+    else
+      node
+    end
+  end
+
+  defp child_alignment(raw, :column), do: Payload.prop(raw, "horiz_alignment")
+  defp child_alignment(raw, :row), do: Payload.prop(raw, "vert_alignment")
+  defp child_alignment(_raw, _parent_mode), do: nil
+
+  defp put_fixed_parent_offsets(node, raw, :fixed) do
+    props = Payload.properties(raw)
+
+    fixed_box = %{
+      x: props["%l"],
+      y: props["%t"],
+      z_index: props["%z"],
+      width: props["%w"] || fixed_child_default(node.kind, :width),
+      height: props["%h"] || fixed_child_default(node.kind, :height)
+    }
+
+    %{
+      node
+      | box:
+          fixed_box
+          |> Map.reject(fn {_key, value} -> is_nil(value) end)
+          |> Map.merge(node.box)
+    }
+  end
+
+  defp put_fixed_parent_offsets(node, _raw, _parent_mode), do: node
+
+  # These are Bubble's runtime defaults for a Shape dropped into a Fixed
+  # container. Explicit compact or canonical dimensions always win.
+  defp fixed_child_default(:shape, :width), do: 200
+  defp fixed_child_default(:shape, :height), do: 150
+  defp fixed_child_default(_kind, _axis), do: nil
 
   defp normalize_element(raw, identity, path, map_key, workflows) do
     type = Payload.type(raw)
@@ -439,7 +565,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp classify_static_choices(raw, kind) do
-    if Payload.prop(raw, "choices_style") in [nil, "static"] do
+    if Payload.prop(raw, "choices_style") in [nil, "static"] and static_choices?(raw) do
       {:native, kind, :static}
     else
       reason =
@@ -448,6 +574,15 @@ defmodule BubbleEx.Frontend.Normalize do
           else: :unsupported_radio_buttons_variant
 
       {:placeholder, reason}
+    end
+  end
+
+  defp static_choices?(raw) do
+    case first_property(raw, ["choices", "static_choices", "options"]) do
+      :missing -> true
+      {:found, choices} when is_binary(choices) -> true
+      {:found, choices} when is_list(choices) -> match?({:ok, _}, normalize_choices(choices))
+      {:found, _dynamic} -> false
     end
   end
 
@@ -482,10 +617,11 @@ defmodule BubbleEx.Frontend.Normalize do
       mode: mode,
       row_gap: gap_prop(raw, "row_gap"),
       column_gap: gap_prop(raw, "column_gap"),
-      wrap: wrap_from(raw),
-      justify: justify_from(raw),
-      align: align_from(raw),
-      fill_width?: fill_width?(raw)
+      wrap: wrap_from(raw, mode),
+      justify: justify_from(raw, mode),
+      align: align_from(raw, mode),
+      fill_width?: fill_axis?(raw, :width),
+      fill_height?: fill_axis?(raw, :height) || legacy_fixed_fill_height?(raw, mode)
     }
 
     Map.reject(base, fn {_k, v} -> is_nil(v) end)
@@ -503,40 +639,80 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
-  defp wrap_from(raw) do
+  defp wrap_from(raw, mode) do
     case Payload.prop(raw, "container_wrap") || Payload.prop(raw, "wrap") do
       true -> :wrap
       "wrap" -> :wrap
       false -> :nowrap
       "nowrap" -> :nowrap
+      _ when mode == :row -> :wrap
       _ -> nil
     end
   end
 
-  defp justify_from(raw) do
-    case Payload.prop(raw, "container_horiz_alignment") || Payload.prop(raw, "justify") do
-      v when is_binary(v) -> v
+  defp justify_from(raw, :column) do
+    alignment_prop(raw, "container_vert_alignment", "justify")
+  end
+
+  defp justify_from(raw, _mode) do
+    alignment_prop(raw, "container_horiz_alignment", "justify")
+  end
+
+  defp align_from(raw, :column) do
+    alignment_prop(raw, "container_horiz_alignment", "align")
+  end
+
+  defp align_from(raw, _mode) do
+    alignment_prop(raw, "container_vert_alignment", "align")
+  end
+
+  defp alignment_prop(raw, primary, fallback) do
+    case Payload.prop(raw, primary) || Payload.prop(raw, fallback) do
+      value when is_binary(value) -> canonical_alignment(value)
       _ -> nil
     end
   end
 
-  defp align_from(raw) do
-    case Payload.prop(raw, "container_vert_alignment") || Payload.prop(raw, "align") do
-      v when is_binary(v) -> v
-      _ -> nil
+  defp canonical_alignment(value) do
+    case String.replace(value, "_", "-") do
+      value when value in ["left", "top", "start"] -> "flex-start"
+      value when value in ["right", "bottom", "end"] -> "flex-end"
+      value -> value
     end
   end
 
-  defp fill_width?(raw) do
-    Payload.prop(raw, "fit_width") == "fill" or Payload.prop(raw, "width_behavior") == "fill" or
-      Payload.prop(raw, "horizontal_sizing") == "fill"
+  defp fill_axis?(raw, axis) do
+    fit = Payload.prop(raw, "fit_#{axis}")
+    single = Payload.prop(raw, "single_#{axis}")
+    behavior = Payload.prop(raw, "#{axis}_behavior")
+
+    sizing =
+      Payload.prop(raw, if(axis == :width, do: "horizontal_sizing", else: "vertical_sizing"))
+
+    cond do
+      fit == "fill" or behavior == "fill" or sizing == "fill" -> true
+      single == false and fit != true -> true
+      single == true or fit == true -> false
+      true -> nil
+    end
   end
+
+  defp legacy_fixed_fill_height?(raw, :fixed) do
+    props = Payload.properties(raw)
+
+    is_nil(props["%h"]) and is_nil(Payload.prop(raw, "height")) and
+      is_nil(Payload.prop(raw, "min_height")) and is_nil(Payload.prop(raw, "max_height")) and
+      is_nil(Payload.prop(raw, "fit_height")) and is_nil(Payload.prop(raw, "single_height"))
+  end
+
+  defp legacy_fixed_fill_height?(_raw, _mode), do: false
 
   defp box_from(raw) do
     sidecar = box_sidecar(raw)
 
     raw
     |> box_dimensions(sidecar)
+    |> put_fixed_container_dimensions(raw)
     |> Map.merge(box_offsets(raw, sidecar))
     |> Map.merge(box_flags(raw))
     |> Map.reject(fn {_k, v} -> is_nil(v) or v == false end)
@@ -557,25 +733,149 @@ defmodule BubbleEx.Frontend.Normalize do
       max_width: dim(raw, sidecar, "max_width"),
       min_height: dim(raw, sidecar, "min_height"),
       max_height: dim(raw, sidecar, "max_height"),
-      padding: Payload.prop(raw, "padding") || sidecar["padding"],
-      margin: Payload.prop(raw, "margin") || sidecar["margin"],
+      padding: spacing(raw, sidecar, "padding"),
+      margin: spacing(raw, sidecar, "margin"),
       overflow: Payload.prop(raw, "overflow") || sidecar["overflow"]
     }
+  end
+
+  # Bubble supplies compact %w/%h values for legacy Fixed containers without
+  # the single_* flags used by responsive nodes. Its runtime also gives a
+  # heightless Fixed Group the editor/runtime default height of 250px.
+  defp put_fixed_container_dimensions(box, raw) do
+    if layout_mode(raw) == :fixed and Payload.type(raw) == "Group" do
+      props = Payload.properties(raw)
+
+      default_width = if Payload.prop(raw, "fit_width") == true, do: nil, else: 400
+
+      default_height =
+        if is_nil(Payload.prop(raw, "fit_height")) and
+             is_nil(Payload.prop(raw, "single_height")),
+           do: 250
+
+      box
+      |> put_fixed_axis(:width, props["%w"], default_width)
+      |> put_fixed_axis(:height, props["%h"], default_height)
+    else
+      box
+    end
+  end
+
+  defp put_fixed_axis(box, axis, compact_value, default) do
+    min_key = String.to_existing_atom("min_#{axis}")
+    max_key = String.to_existing_atom("max_#{axis}")
+    value = box[axis] || compact_value
+
+    cond do
+      not is_nil(value) ->
+        box
+        |> put_if_nil(axis, value)
+        |> put_if_nil(min_key, value)
+        |> put_if_nil(max_key, value)
+
+      not is_nil(default) and is_nil(box[max_key]) ->
+        fixed = fixed_default_at_least(default, box[min_key])
+
+        box
+        |> Map.put(axis, fixed)
+        |> Map.put(min_key, fixed)
+        |> Map.put(max_key, fixed)
+
+      true ->
+        box
+    end
+  end
+
+  defp fixed_default_at_least(default, minimum) when is_number(minimum),
+    do: max(default, minimum)
+
+  defp fixed_default_at_least(default, minimum) when is_binary(minimum) do
+    case Regex.run(~r/^(-?(?:\d+(?:\.\d+)?|\.\d+))px$/, String.trim(minimum),
+           capture: :all_but_first
+         ) do
+      [number] ->
+        case Float.parse(number) do
+          {parsed, ""} -> max(default, parsed)
+          _ -> default
+        end
+
+      _ ->
+        default
+    end
+  end
+
+  defp fixed_default_at_least(default, _minimum), do: default
+
+  defp put_if_nil(map, key, value) do
+    if is_nil(map[key]), do: Map.put(map, key, value), else: map
   end
 
   defp box_offsets(raw, sidecar) do
     %{
       x: dim(raw, sidecar, "left") || dim(raw, sidecar, "x"),
       y: dim(raw, sidecar, "top") || dim(raw, sidecar, "y"),
-      rotation: Payload.prop(raw, "rotation") || sidecar["rotation"],
+      rotation:
+        Payload.prop(raw, "rotation") || Payload.prop(raw, "rotation_angle") ||
+          sidecar["rotation"],
       z_index:
         Payload.prop(raw, "zindex") || Payload.prop(raw, "z_index") ||
           Payload.prop(raw, "z-index"),
       align_self: Payload.prop(raw, "align-self") || Payload.prop(raw, "align_self"),
       flex_grow: Payload.prop(raw, "flex-grow") || Payload.prop(raw, "flex_grow"),
-      placement: Payload.prop(raw, "placement")
+      placement: Payload.prop(raw, "placement") || nonant_placement(raw)
     }
   end
+
+  @nonant_cells %{
+    "aa" => "top_start",
+    "ba" => "top_center",
+    "ca" => "top_end",
+    "ab" => "center_start",
+    "bb" => "center",
+    "cb" => "center_end",
+    "ac" => "bottom_start",
+    "bc" => "bottom_center",
+    "cc" => "bottom_end"
+  }
+
+  defp nonant_placement(raw) do
+    case Payload.prop(raw, "nonant_alignment") do
+      cell when is_binary(cell) ->
+        case Map.fetch(@nonant_cells, String.downcase(cell)) do
+          {:ok, canonical} -> %{"cell" => canonical}
+          :error -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp spacing(raw, sidecar, key) do
+    Payload.prop(raw, key) || sidecar[key] || directional_spacing(raw, key)
+  end
+
+  defp directional_spacing(raw, key) do
+    values =
+      Enum.map(["top", "right", "bottom", "left"], fn side ->
+        Payload.prop(raw, "#{key}_#{side}")
+      end)
+
+    if Enum.any?(values, &(not is_nil(&1))) do
+      values
+      |> Enum.map(&spacing_part/1)
+      |> Enum.join(" ")
+    end
+  end
+
+  defp spacing_part(nil), do: "0px"
+  defp spacing_part(value) when is_number(value), do: "#{value}px"
+
+  defp spacing_part(value) when is_binary(value) do
+    if Regex.match?(~r/^-?(?:\d+(?:\.\d+)?|\.\d+)$/, value), do: value <> "px", else: value
+  end
+
+  defp spacing_part(value), do: to_string(value)
 
   defp box_flags(raw) do
     %{collapsed?: collapsed?(raw), hidden?: hidden?(raw)}
@@ -584,16 +884,49 @@ defmodule BubbleEx.Frontend.Normalize do
   defp responsive_from(raw) do
     case Payload.prop(raw, "responsive") do
       rules when is_list(rules) -> rules
-      _ -> []
+      _ -> compact_responsive_from(raw)
     end
   end
+
+  defp compact_responsive_from(raw) do
+    states = raw["%s"]
+
+    if Payload.prop(raw, "collapse_when_hidden") == true and
+         Payload.prop(raw, "is_visible") == true and is_map(states) and map_size(states) == 1 do
+      states
+      |> Map.values()
+      |> Enum.flat_map(&compact_responsive_rule/1)
+    else
+      []
+    end
+  end
+
+  defp compact_responsive_rule(%{
+         "%x" => "State",
+         "%c" => %{
+           "%x" => "PageData",
+           "%p" => %{"%nm" => "Current Page Width"},
+           "%n" => %{
+             "%x" => "Message",
+             "%nm" => "less_or_equal_than",
+             "%a" => width
+           }
+         },
+         "%p" => %{"%iv" => false} = overrides
+       })
+       when is_number(width) and width >= 0 and map_size(overrides) == 1 do
+    [%{"when" => %{"max_viewport_width" => width}, "visibility" => "collapsed"}]
+  end
+
+  defp compact_responsive_rule(_state), do: []
 
   defp gap_prop(raw, key) do
     Payload.prop(raw, key) || Payload.prop(raw, String.replace(key, "_", "-"))
   end
 
   defp dim(raw, sidecar, key) do
-    Payload.prop(raw, key) || sidecar[key] || fixed_aliased_dimension(raw, key)
+    Payload.prop(raw, key) || Payload.prop(raw, "#{key}_css") ||
+      Payload.prop(raw, "#{key}_px") || sidecar[key] || fixed_aliased_dimension(raw, key)
   end
 
   defp fixed_aliased_dimension(raw, "width") do
@@ -641,48 +974,228 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp local_paint(raw) do
-    keys = [
-      "bgcolor",
-      "background",
-      "background_style",
+    legacy_keys = [
       "font_face",
       "font_size",
       "font_color",
       "font_weight",
       "letter_spacing",
       "line_height",
-      "border_style",
-      "border_width",
-      "border_color",
-      "border_roundness",
-      "border_radius",
-      "boxshadow",
-      "box_shadow",
-      "opacity",
       "color",
-      "placeholder_color"
-    ]
-
-    css_ready = [
-      "background",
-      "color",
-      "border",
-      "border-radius",
-      "box-shadow",
+      "placeholder_color",
       "font-family",
       "font-size",
       "font-weight",
       "line-height",
       "letter-spacing",
+      "text_align",
       "transform",
-      "z-index",
-      "opacity"
+      "z-index"
     ]
 
-    (keys ++ css_ready)
-    |> Map.new(&{&1, Payload.prop(raw, &1)})
-    |> Map.reject(fn {_k, v} -> is_nil(v) end)
+    legacy_keys
+    |> Map.new(&{&1, paint_prop(raw, &1)})
+    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.merge(canonical_paint(raw))
   end
+
+  defp shared_style_properties(raw) do
+    raw
+    |> local_paint()
+    |> put_shared_property("text_align", Payload.prop(raw, "text_align"))
+    |> put_shared_length("padding_top", Payload.prop(raw, "padding_top"))
+    |> put_shared_length("padding_right", Payload.prop(raw, "padding_right"))
+    |> put_shared_length("padding_bottom", Payload.prop(raw, "padding_bottom"))
+    |> put_shared_length("padding_left", Payload.prop(raw, "padding_left"))
+  end
+
+  defp put_shared_property(properties, _key, nil), do: properties
+  defp put_shared_property(properties, key, value), do: Map.put(properties, key, value)
+
+  defp put_shared_length(properties, key, value) do
+    put_shared_property(properties, key, css_length(value))
+  end
+
+  defp canonical_paint(raw) do
+    %{}
+    |> put_paint("background", canonical_background(raw))
+    |> put_paint("border", canonical_border(raw))
+    |> put_paint("border-radius", canonical_border_radius(raw))
+    |> put_paint("box-shadow", canonical_box_shadow(raw))
+    |> put_paint("opacity", canonical_opacity(raw))
+  end
+
+  defp put_paint(paint, _key, nil), do: paint
+  defp put_paint(paint, key, value), do: Map.put(paint, key, value)
+
+  defp canonical_background(raw) do
+    case Payload.prop(raw, "background") do
+      value when is_binary(value) -> value
+      value when not is_nil(value) -> nil
+      nil -> background_from_bubble(raw)
+    end
+  end
+
+  defp background_from_bubble(raw) do
+    style =
+      Payload.prop(raw, "background_style") || Payload.prop(raw, "backdrop_background_style")
+
+    color = Payload.prop(raw, "bgcolor") || Payload.prop(raw, "backdrop_bgcolor")
+
+    case style do
+      "none" -> "none"
+      "gradient" -> canonical_gradient(raw)
+      value when value in [nil, "bgcolor"] and is_binary(color) -> color
+      _ -> nil
+    end
+  end
+
+  defp canonical_gradient(raw) do
+    from = Payload.prop(raw, "background_gradient_from")
+    mid = Payload.prop(raw, "background_gradient_mid")
+    to = Payload.prop(raw, "background_gradient_to")
+    style = Payload.prop(raw, "background_gradient_style")
+
+    if style in [nil, "linear"] and is_binary(from) and is_binary(to) and
+         (is_nil(mid) or is_binary(mid)) do
+      direction = gradient_direction(Payload.prop(raw, "background_gradient_direction"))
+      stops = [from, mid, to] |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+      "linear-gradient(#{direction}#{stops})"
+    end
+  end
+
+  defp gradient_direction("bottom"), do: "to top, "
+  defp gradient_direction("top"), do: "to bottom, "
+  defp gradient_direction("left"), do: "to right, "
+  defp gradient_direction("right"), do: "to left, "
+  defp gradient_direction("bottom_left"), do: "to top right, "
+  defp gradient_direction("bottom_right"), do: "to top left, "
+  defp gradient_direction("top_left"), do: "to bottom right, "
+  defp gradient_direction("top_right"), do: "to bottom left, "
+  defp gradient_direction(_), do: ""
+
+  defp canonical_border(raw) do
+    case Payload.prop(raw, "border") do
+      value when is_binary(value) ->
+        value
+
+      value when not is_nil(value) ->
+        nil
+
+      nil ->
+        case Payload.prop(raw, "border_style") do
+          "none" ->
+            "none"
+
+          style when is_binary(style) ->
+            width = css_length(Payload.prop(raw, "border_width"))
+            color = Payload.prop(raw, "border_color")
+
+            if is_binary(width) and is_binary(color), do: "#{width} #{style} #{color}"
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  defp canonical_border_radius(raw) do
+    direct = Payload.prop(raw, "border-radius")
+    radius = Payload.prop(raw, "border_radius") || Payload.prop(raw, "border_roundness")
+    css_length(if(is_nil(direct), do: radius, else: direct))
+  end
+
+  defp canonical_box_shadow(raw) do
+    direct =
+      Payload.prop(raw, "box-shadow") || Payload.prop(raw, "box_shadow") ||
+        Payload.prop(raw, "boxshadow")
+
+    cond do
+      is_binary(direct) -> direct
+      is_nil(direct) -> bubble_box_shadow(raw)
+      true -> nil
+    end
+  end
+
+  defp bubble_box_shadow(raw) do
+    enabled = Payload.prop(raw, "boxshadow_enable")
+    style = Payload.prop(raw, "boxshadow_style")
+
+    cond do
+      enabled == false or style == "none" -> "none"
+      enabled == true or style in ["outset", "inset"] -> build_box_shadow(raw, style)
+      true -> nil
+    end
+  end
+
+  defp build_box_shadow(raw, style) do
+    color = Payload.prop(raw, "boxshadow_color")
+
+    if is_binary(color) do
+      x = css_length(Payload.prop(raw, "boxshadow_horizontal") || 0)
+      y = css_length(Payload.prop(raw, "boxshadow_vertical") || 0)
+      blur = css_length(Payload.prop(raw, "boxshadow_blur") || 0)
+      spread = Payload.prop(raw, "boxshadow_spread")
+
+      parts =
+        []
+        |> maybe_prepend_inset(style)
+        |> Kernel.++([x, y, blur])
+        |> maybe_append_spread(spread)
+        |> Kernel.++([color])
+
+      if Enum.all?(parts, &is_binary/1), do: Enum.join(parts, " ")
+    end
+  end
+
+  defp maybe_prepend_inset(parts, "inset"), do: parts ++ ["inset"]
+  defp maybe_prepend_inset(parts, _style), do: parts
+
+  defp maybe_append_spread(parts, spread) when spread in [nil, 0, 0.0, "0", "0px"], do: parts
+  defp maybe_append_spread(parts, spread), do: parts ++ [css_length(spread)]
+
+  defp canonical_opacity(raw) do
+    raw
+    |> Payload.prop("opacity")
+    |> normalize_opacity()
+  end
+
+  defp normalize_opacity(opacity) when is_number(opacity) and opacity >= 0 and opacity <= 1,
+    do: opacity
+
+  defp normalize_opacity(opacity) when is_number(opacity) and opacity > 1 and opacity <= 100,
+    do: opacity / 100
+
+  defp normalize_opacity(opacity) when is_binary(opacity) do
+    case Float.parse(String.trim(opacity)) do
+      {number, ""} -> normalize_opacity(number)
+      _ -> nil
+    end
+  end
+
+  defp normalize_opacity(_opacity), do: nil
+
+  defp css_length(nil), do: nil
+  defp css_length(0), do: "0"
+  defp css_length(value) when is_number(value), do: "#{value}px"
+
+  defp css_length(value) when is_binary(value) do
+    value = String.trim(value)
+
+    if Regex.match?(~r/^-?\d+(?:\.\d+)?$/, value) do
+      if value in ["0", "0.0"], do: "0", else: value <> "px"
+    else
+      value
+    end
+  end
+
+  defp css_length(_value), do: nil
+
+  defp paint_prop(raw, "font_face") do
+    Payload.prop(raw, "font_face") || Payload.prop(raw, "font_family")
+  end
+
+  defp paint_prop(raw, key), do: Payload.prop(raw, key)
 
   defp extract_slots(raw, kind, exporter_id) do
     {resolved, bindings} = primary_slots(kind, raw, exporter_id)
@@ -902,8 +1415,14 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp fetch_property(props, raw, key) do
     case Map.fetch(props, key) do
-      {:ok, value} -> {:found, value}
-      :error -> fetch_raw_property(raw, key)
+      {:ok, value} ->
+        {:found, value}
+
+      :error ->
+        case Payload.prop(raw, key) do
+          nil -> fetch_raw_property(raw, key)
+          value -> {:found, value}
+        end
     end
   end
 
@@ -917,7 +1436,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp image_slots(raw, exporter_id) do
-    src = Payload.prop(raw, "src") || Payload.prop(raw, "image") || Payload.prop(raw, "img")
+    src = image_src(raw)
 
     alt =
       Payload.prop(raw, "alt") || Payload.prop(raw, "alt_text") || Payload.prop(raw, "alt_tag")
@@ -1147,6 +1666,66 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp flatten_text_expression(_), do: :unresolved
 
+  # Bubble can append Current Page Width to an otherwise fixed public image URL.
+  # The value only refreshes the same image as the viewport changes. Keep the
+  # expression as a binding, but expose its fixed prefix for the static asset
+  # pipeline.
+  defp public_image_src_fallback(%{"type" => "TextExpression", "entries" => entries}),
+    do: public_image_src_fallback_entries(entries)
+
+  defp public_image_src_fallback(%{"%x" => "TextExpression", "%e" => entries}),
+    do: public_image_src_fallback_entries(entries)
+
+  defp public_image_src_fallback(_), do: nil
+
+  defp public_image_src_fallback_entries(entries) when is_map(entries) do
+    case entries |> Enum.sort_by(fn {key, _} -> index_key(key) end) |> Enum.map(&elem(&1, 1)) do
+      [url, page_width] when is_binary(url) ->
+        if public_http_url?(url) and terminal_query_value?(url) and
+             current_page_width?(page_width),
+           do: url
+
+      _ ->
+        nil
+    end
+  end
+
+  defp public_image_src_fallback_entries(_), do: nil
+
+  defp current_page_width?(%{"type" => "PageData", "properties" => properties})
+       when is_map(properties),
+       do: properties["name"] == "Current Page Width"
+
+  defp current_page_width?(%{"%x" => "PageData", "%p" => properties}) when is_map(properties),
+    do: properties["%nm"] == "Current Page Width" or properties["name"] == "Current Page Width"
+
+  defp current_page_width?(_), do: false
+
+  defp public_http_url?(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host, userinfo: nil}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        true
+
+      _ ->
+        false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp terminal_query_value?(url) do
+    case URI.parse(url) do
+      %URI{query: query, fragment: nil} when is_binary(query) -> String.ends_with?(url, "=")
+      _ -> false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp image_src(raw),
+    do: Payload.prop(raw, "src") || Payload.prop(raw, "image") || Payload.prop(raw, "img")
+
   defp index_key(k) when is_integer(k), do: k
 
   defp index_key(k) when is_binary(k) do
@@ -1248,7 +1827,11 @@ defmodule BubbleEx.Frontend.Normalize do
     alt =
       Payload.prop(raw, "alt") || Payload.prop(raw, "alt_text") || Payload.prop(raw, "alt_tag")
 
-    if is_binary(alt), do: %{"alt" => alt}, else: %{}
+    %{
+      "alt" => if(is_binary(alt), do: alt),
+      "asset_src" => raw |> image_src() |> public_image_src_fallback()
+    }
+    |> reject_empty_attributes()
   end
 
   defp element_attributes(_raw, :shape, _variant), do: %{"aria-hidden" => "true"}
@@ -1304,6 +1887,17 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp order_of(_), do: 0
 
+  defp consumed_paint_properties(raw) do
+    []
+    |> consume_paint_properties(canonical_background(raw), @raw_background_properties)
+    |> consume_paint_properties(canonical_border(raw), @raw_border_properties)
+    |> consume_paint_properties(canonical_box_shadow(raw), @raw_shadow_properties)
+    |> consume_paint_properties(canonical_opacity(raw), @raw_opacity_properties)
+  end
+
+  defp consume_paint_properties(properties, nil, _keys), do: properties
+  defp consume_paint_properties(properties, _canonical, keys), do: properties ++ keys
+
   defp unmapped_keys(raw) when is_map(raw) do
     known =
       MapSet.new([
@@ -1336,97 +1930,135 @@ defmodule BubbleEx.Frontend.Normalize do
       |> Map.new()
 
     known_props =
-      MapSet.new([
-        "container_layout",
-        "row_gap",
-        "column_gap",
-        "container_wrap",
-        "wrap",
-        "container_horiz_alignment",
-        "justify",
-        "container_vert_alignment",
-        "align",
-        "fit_width",
-        "width_behavior",
-        "horizontal_sizing",
-        "width",
-        "height",
-        "min_width",
-        "max_width",
-        "min_height",
-        "max_height",
-        "padding",
-        "margin",
-        "left",
-        "top",
-        "x",
-        "y",
-        "rotation",
-        "zindex",
-        "z_index",
-        "collapse_when_hidden",
-        "collapsed",
-        "hidden",
-        "is_visible",
-        "style",
-        "title",
-        "original_name",
-        "name",
-        "order",
-        "text",
-        "label",
-        "src",
-        "image",
-        "img",
-        "alt",
-        "alt_text",
-        "destination",
-        "url",
-        "internal_page",
-        "page",
-        "placeholder",
-        "content",
-        "initial_content",
-        "value",
-        "tag_type",
-        "run_mode",
-        "image_rendering",
-        "rendering",
-        "button_type",
-        "show_icon",
-        "link_type",
-        "linktype",
-        "content_format",
-        "format",
-        "auto_height",
-        "stretch_to_fit",
-        "character_limit",
-        "limit_number_of_characters",
-        "maxlength",
-        "caption",
-        "contents",
-        "dynamic",
-        "checked",
-        "default_checked",
-        "initial_status",
-        "choices_style",
-        "choices",
-        "static_choices",
-        "options",
-        "default",
-        "default_value",
-        "initial_value",
-        "mandatory",
-        "required_checked",
-        "disabled",
-        "link_disabled",
-        "required",
-        "open_in_new_tab",
-        "nofollow",
-        "definition",
-        "custom_definition",
-        "__bp_layout__"
-      ])
+      MapSet.new(
+        [
+          "container_layout",
+          "row_gap",
+          "column_gap",
+          "container_wrap",
+          "wrap",
+          "container_horiz_alignment",
+          "justify",
+          "container_vert_alignment",
+          "align",
+          "fit_width",
+          "fit_height",
+          "single_width",
+          "single_height",
+          "width_behavior",
+          "height_behavior",
+          "horizontal_sizing",
+          "vertical_sizing",
+          "width",
+          "height",
+          "%w",
+          "%h",
+          "min_width",
+          "max_width",
+          "min_height",
+          "max_height",
+          "min_width_css",
+          "max_width_css",
+          "min_height_css",
+          "max_height_css",
+          "min_width_px",
+          "max_width_px",
+          "min_height_px",
+          "max_height_px",
+          "padding",
+          "padding_top",
+          "padding_right",
+          "padding_bottom",
+          "padding_left",
+          "margin",
+          "margin_top",
+          "margin_right",
+          "margin_bottom",
+          "margin_left",
+          "left",
+          "top",
+          "%l",
+          "%t",
+          "x",
+          "y",
+          "rotation",
+          "rotation_angle",
+          "zindex",
+          "z_index",
+          "%z",
+          "horiz_alignment",
+          "vert_alignment",
+          "nonant_alignment",
+          "collapse_when_hidden",
+          "collapsed",
+          "hidden",
+          "is_visible",
+          "style",
+          "font_family",
+          "backdrop_background_style",
+          "backdrop_bgcolor",
+          "title",
+          "original_name",
+          "name",
+          "order",
+          "text",
+          "label",
+          "src",
+          "image",
+          "img",
+          "alt",
+          "alt_text",
+          "destination",
+          "url",
+          "internal_page",
+          "page",
+          "placeholder",
+          "content",
+          "initial_content",
+          "value",
+          "tag_type",
+          "run_mode",
+          "%2f",
+          "2f",
+          "image_rendering",
+          "rendering",
+          "button_type",
+          "show_icon",
+          "link_type",
+          "linktype",
+          "content_format",
+          "format",
+          "auto_height",
+          "stretch_to_fit",
+          "character_limit",
+          "limit_number_of_characters",
+          "maxlength",
+          "caption",
+          "contents",
+          "dynamic",
+          "checked",
+          "default_checked",
+          "initial_status",
+          "choices_style",
+          "choices",
+          "static_choices",
+          "options",
+          "default",
+          "default_value",
+          "initial_value",
+          "mandatory",
+          "required_checked",
+          "disabled",
+          "link_disabled",
+          "required",
+          "open_in_new_tab",
+          "nofollow",
+          "definition",
+          "custom_definition",
+          "__bp_layout__"
+        ] ++
+          @typography_properties ++ @compact_control_properties ++ consumed_paint_properties(raw)
+      )
 
     leftover_props =
       raw

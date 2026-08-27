@@ -28,6 +28,108 @@ defmodule BubbleEx.ExportFrontendTest do
   end
 
   @tag :tmp_dir
+  test "packages used Google WebFonts as local deduplicated WOFF2 assets", %{tmp_dir: tmp} do
+    out = Path.join(tmp, "pkg")
+    pid = self()
+    payload = inter_payload()
+    font_url = "https://fonts.gstatic.com/s/inter/v20/inter-latin.woff2"
+    font = <<"wOF2", 0, 1, 2, 3, 4, 5, 6, 7>>
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(pid, {:font_request, conn.host, conn.request_path})
+
+      case {conn.host, conn.request_path || "/"} do
+        {"s1app.bubbleapps.io", "/"} ->
+          conn
+          |> Conn.put_resp_header("x-bubble-test", "1")
+          |> Conn.resp(200, webfont_page_html())
+
+        {"s1app.bubbleapps.io", "/package/dynamic_js/1/dynamic.js"} ->
+          conn
+          |> Conn.put_resp_header("x-bubble-test", "1")
+          |> Conn.resp(200, dynamic_script(payload))
+
+        {"fonts.googleapis.com", "/css"} ->
+          conn
+          |> Conn.put_resp_content_type("text/css")
+          |> Conn.resp(200, inter_font_css(font_url))
+
+        {"fonts.gstatic.com", "/s/inter/v20/inter-latin.woff2"} ->
+          conn
+          |> Conn.put_resp_content_type("font/woff2")
+          |> Conn.resp(200, font)
+      end
+    end)
+
+    assert {:ok, %Result{files: files}} = BubbleEx.export_frontend("s1app", out, @scan)
+
+    font_paths = Enum.filter(files, &String.ends_with?(&1, ".woff2"))
+    assert [font_path] = font_paths
+    assert File.read!(Path.join(out, font_path)) == font
+
+    shared = File.read!(Path.join(out, "styles/shared.css"))
+
+    for weight <- [400, 500, 600, 700, 800] do
+      assert shared =~ "font-weight: #{weight};"
+    end
+
+    assert shared =~ "url(\"../#{font_path}\")"
+    refute shared =~ "fonts.googleapis.com"
+    refute shared =~ "fonts.gstatic.com"
+
+    manifest = File.read!(Path.join(out, "MANIFEST.json")) |> Jason.decode!()
+    assert font_path in manifest["files"]
+
+    assert_received {:font_request, "fonts.googleapis.com", "/css"}
+    assert_received {:font_request, "fonts.gstatic.com", "/s/inter/v20/inter-latin.woff2"}
+    refute_received {:font_request, "fonts.gstatic.com", _, _}
+  end
+
+  @tag :tmp_dir
+  test "font download failures become findings without remote font CSS", %{tmp_dir: tmp} do
+    out = Path.join(tmp, "pkg")
+    payload = inter_payload()
+    font_url = "https://fonts.gstatic.com/s/inter/v20/inter-latin.woff2"
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case {conn.host, conn.request_path || "/"} do
+        {"s1app.bubbleapps.io", "/"} ->
+          conn
+          |> Conn.put_resp_header("x-bubble-test", "1")
+          |> Conn.resp(200, webfont_page_html())
+
+        {"s1app.bubbleapps.io", "/package/dynamic_js/1/dynamic.js"} ->
+          conn
+          |> Conn.put_resp_header("x-bubble-test", "1")
+          |> Conn.resp(200, dynamic_script(payload))
+
+        {"fonts.googleapis.com", "/css"} ->
+          conn
+          |> Conn.put_resp_content_type("text/css")
+          |> Conn.resp(200, inter_font_css(font_url))
+
+        {"fonts.gstatic.com", "/s/inter/v20/inter-latin.woff2"} ->
+          conn
+          |> Conn.put_resp_content_type("text/html")
+          |> Conn.resp(200, "login")
+      end
+    end)
+
+    assert {:ok, %Result{findings: findings, files: files}} =
+             BubbleEx.export_frontend("s1app", out, @scan)
+
+    assert Enum.any?(findings, &(&1["message"] =~ "unexpected content type"))
+    refute Enum.any?(files, &String.ends_with?(&1, ".woff2"))
+
+    shared = File.read!(Path.join(out, "styles/shared.css"))
+    refute shared =~ "@font-face"
+    refute shared =~ "fonts.gstatic.com"
+
+    page_css = File.read!(Path.join(out, "styles/pages/index.css"))
+    assert page_css =~ ~s(font-family: "Inter", Helvetica, Arial, sans-serif;)
+  end
+
+  @tag :tmp_dir
   test "requests the test version URL and does not fall back", %{tmp_dir: tmp} do
     out = Path.join(tmp, "pkg")
     pid = self()
@@ -94,6 +196,42 @@ defmodule BubbleEx.ExportFrontendTest do
     assert_received {:fetched, "/version-test/page-b"}
     assert_received {:fetched, "/package/dynamic_js/page-b/dynamic.js"}
     refute_received {:fetched, _}
+  end
+
+  @tag :tmp_dir
+  test "preserves a custom Bubble branch in selected-page hydration URLs", %{tmp_dir: tmp} do
+    pid = self()
+    payload = aliased_metadata_app([{"opaque-a", "page-a"}])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      path = conn.request_path || "/"
+      send(pid, {:fetched, path})
+      conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
+
+      case path do
+        "/version-13iti" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/root/dynamic.js"))
+
+        "/package/dynamic_js/root/dynamic.js" ->
+          Conn.resp(conn, 200, dynamic_script(payload))
+
+        "/version-13iti/page-a" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/page-a/dynamic.js"))
+
+        "/package/dynamic_js/page-a/dynamic.js" ->
+          Conn.resp(conn, 200, dynamic_script(payload, "opaque-a", "page-a"))
+      end
+    end)
+
+    assert {:ok, %Result{}} =
+             BubbleEx.export_frontend(
+               "https://app.example.test/version-13iti",
+               Path.join(tmp, "pkg"),
+               @scan ++ [pages: ["page-a"]]
+             )
+
+    assert_received {:fetched, "/version-13iti/page-a"}
+    refute_received {:fetched, "/page-a"}
   end
 
   @tag :tmp_dir
@@ -258,6 +396,63 @@ defmodule BubbleEx.ExportFrontendTest do
     assert_received {:fetched, "/"}
     assert_received {:fetched, "/package/dynamic_js/1/dynamic.js"}
     refute_received {:fetched, _}
+  end
+
+  defp webfont_page_html do
+    """
+    <html>
+      <script>
+        const WebFontConfig = {google: {families: ["Inter:regular", "Inter:500", "Inter:600", "Inter:700", "Inter:800"]}};
+      </script>
+      <script src="/package/dynamic_js/1/dynamic.js"></script>
+    </html>
+    """
+  end
+
+  defp inter_payload do
+    FrontendFixtures.modern_page()
+    |> put_in(["pages", "home", "properties", "font_family"], "Inter")
+    |> put_in(["pages", "home", "elements"], %{
+      "regular" => %{
+        "id" => "regular",
+        "type" => "Text",
+        "properties" => %{"text" => "Regular", "font_weight" => "400"}
+      },
+      "medium" => %{
+        "id" => "medium",
+        "type" => "Text",
+        "properties" => %{"text" => "Medium", "font_weight" => "500"}
+      },
+      "semibold" => %{
+        "id" => "semibold",
+        "type" => "Text",
+        "properties" => %{"text" => "Semibold", "font_weight" => "600"}
+      },
+      "bold" => %{
+        "id" => "bold",
+        "type" => "Text",
+        "properties" => %{"text" => "Bold", "font_weight" => "700"}
+      },
+      "extra" => %{
+        "id" => "extra",
+        "type" => "Text",
+        "properties" => %{"text" => "Extra", "font_weight" => "800"}
+      }
+    })
+  end
+
+  defp inter_font_css(font_url) do
+    Enum.map_join([400, 500, 600, 700, 800], "\n", fn weight ->
+      """
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: #{weight};
+        src: url(#{font_url}) format('woff2');
+        unicode-range: U+0000-00FF;
+      }
+      """
+    end)
   end
 
   defp stub_fetch(payload) do

@@ -4,6 +4,7 @@ defmodule BubbleEx.Frontend.Fetch do
   alias BubbleEx.Apps.Parser
   alias BubbleEx.{Config, Error, HTTP}
   alias BubbleEx.Frontend.{Auth, Naming, Payload, SafeUrl}
+  alias BubbleEx.Frontend.Export.Fonts
 
   @default_max_page_fetches 20
   @max_redirects 5
@@ -11,15 +12,20 @@ defmodule BubbleEx.Frontend.Fetch do
   defmodule Context do
     @moduledoc false
     @enforce_keys [:page_url, :auth]
-    defstruct [:page_url, :auth]
-    @type t :: %__MODULE__{page_url: String.t(), auth: BubbleEx.Frontend.Auth.t()}
+    defstruct [:page_url, :auth, font_sources: []]
+
+    @type t :: %__MODULE__{
+            page_url: String.t(),
+            auth: BubbleEx.Frontend.Auth.t(),
+            font_sources: [String.t()]
+          }
   end
 
   @spec run(String.t(), Auth.t(), keyword()) ::
           {:ok, map(), Context.t()} | {:error, Error.t()}
   def run(url, %Auth{} = auth, opts \\ []) do
     with {:ok, page_url, scoped_auth} <- resolve_dedicated(url, auth, opts),
-         {:ok, payload, effective_page_url} <-
+         {:ok, payload, effective_page_url, font_sources} <-
            fetch_page_payload(
              page_url,
              scoped_auth,
@@ -27,7 +33,8 @@ defmodule BubbleEx.Frontend.Fetch do
              opts
            ),
          {:ok, effective_auth} <- Auth.rescope(scoped_auth, effective_page_url) do
-      {:ok, payload, %Context{page_url: effective_page_url, auth: effective_auth}}
+      {:ok, payload,
+       %Context{page_url: effective_page_url, auth: effective_auth, font_sources: font_sources}}
     end
   end
 
@@ -47,7 +54,7 @@ defmodule BubbleEx.Frontend.Fetch do
          {:ok, dynamic} <-
            fetch_bubble_page(dynamic_url, auth, auth_state(auth, dynamic_url), opts),
          {:ok, payload} <- parse_payload(dynamic.body) do
-      {:ok, payload, page.url}
+      {:ok, payload, page.url, Fonts.discover(page.body, page.url)}
     end
   end
 
@@ -225,9 +232,7 @@ defmodule BubbleEx.Frontend.Fetch do
   end
 
   defp version_prefix(path) when is_binary(path) do
-    case Regex.run(~r{^/(version-(?:live|test|development))(?:/|$)}, path,
-           capture: :all_but_first
-         ) do
+    case Regex.run(~r{^/(version-[A-Za-z0-9_-]+)(?:/|$)}, path, capture: :all_but_first) do
       [prefix] -> "/" <> prefix
       _ -> ""
     end
@@ -282,7 +287,7 @@ defmodule BubbleEx.Frontend.Fetch do
 
   defp do_fetch_hydration_job(job, merged, context, opts) do
     case fetch_page_payload(job.url, context.auth, :scoped, opts) do
-      {:ok, fetched, _effective_page_url} ->
+      {:ok, fetched, _effective_page_url, _font_sources} ->
         {:cont, {:ok, merge_job_targets(merged, fetched, job.targets)}}
 
       {:error, _} = error ->

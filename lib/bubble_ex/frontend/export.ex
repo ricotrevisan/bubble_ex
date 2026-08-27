@@ -3,7 +3,7 @@ defmodule BubbleEx.Frontend.Export do
 
   alias BubbleEx.{Error, Secrets}
   alias BubbleEx.Frontend.{Json, Naming, Payload}
-  alias BubbleEx.Frontend.Export.{Assets, Css, Html, Result, Writer}
+  alias BubbleEx.Frontend.Export.{Assets, Css, Fonts, Html, Result, Writer}
   alias BubbleEx.Frontend.Fetch.Context
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
@@ -222,16 +222,18 @@ defmodule BubbleEx.Frontend.Export do
 
   defp build_and_write(model, selected, out_dir, opts) do
     plan = plan_names(model, selected)
-    {assets, asset_findings} = Assets.collect(selected ++ model.reusables, opts)
+    nodes = selected ++ model.reusables
+    {assets, asset_findings} = Assets.collect(nodes, opts)
+    {font_css, font_assets, font_findings} = Fonts.collect(nodes, model.styles, opts)
     bindings = collect_bindings(model)
-    findings = collect_findings(model, selected, plan, opts) ++ asset_findings
+    findings = collect_findings(model, selected, plan, opts) ++ asset_findings ++ font_findings
     coverage = coverage(model, selected, bindings, opts)
 
     entries =
       json_entries(model, bindings, findings, coverage, plan, opts) ++
         html_entries(model, selected, plan, assets, opts) ++
-        css_entries(model, selected, plan) ++
-        asset_entries(assets)
+        css_entries(model, selected, plan, font_css) ++
+        asset_entries(assets, font_assets)
 
     files = Enum.sort(["MANIFEST.json" | Enum.map(entries, &elem(&1, 0))])
     manifest = manifest(model, files, opts)
@@ -332,8 +334,8 @@ defmodule BubbleEx.Frontend.Export do
     [catalog | page_docs ++ fragments]
   end
 
-  defp css_entries(model, _selected, plan) do
-    shared = {"styles/shared.css", Css.shared(model)}
+  defp css_entries(model, _selected, plan, font_css) do
+    shared = {"styles/shared.css", Css.shared(model, font_css)}
 
     page_css =
       Enum.map(plan.pages, fn {page, dir} ->
@@ -371,9 +373,8 @@ defmodule BubbleEx.Frontend.Export do
     end)
   end
 
-  defp asset_entries(assets) do
-    assets
-    |> Map.values()
+  defp asset_entries(assets, font_assets) do
+    (Map.values(assets) ++ font_assets)
     |> Enum.filter(&(is_binary(Map.get(&1, :path)) and is_binary(Map.get(&1, :bytes))))
     |> Enum.uniq_by(& &1.path)
     |> Enum.map(fn asset -> {asset.path, asset.bytes} end)

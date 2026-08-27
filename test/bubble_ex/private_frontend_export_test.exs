@@ -291,6 +291,68 @@ defmodule BubbleEx.PrivateFrontendExportTest do
   end
 
   @tag :tmp_dir
+  test "Google font requests never receive Bubble authentication", %{tmp_dir: tmp} do
+    pid = self()
+    font_url = "https://fonts.gstatic.com/s/inter/v20/private-test.woff2"
+
+    payload =
+      FrontendFixtures.modern_page()
+      |> put_in(["pages", "home", "properties", "font_family"], "Inter")
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      record(conn, pid)
+
+      case {conn.host, conn.request_path || "/"} do
+        {"app.example.test", "/"} ->
+          conn
+          |> Conn.put_resp_header("x-bubble-test", "1")
+          |> Conn.resp(
+            200,
+            """
+            <script>const WebFontConfig = {google: {families: ["Inter:regular"]}};</script>
+            <script src="/package/dynamic_js/1/dynamic.js"></script>
+            """
+          )
+
+        {"app.example.test", "/package/dynamic_js/1/dynamic.js"} ->
+          conn
+          |> Conn.put_resp_header("x-bubble-test", "1")
+          |> dynamic_response(payload)
+
+        {"fonts.googleapis.com", "/css"} ->
+          conn
+          |> Conn.put_resp_content_type("text/css")
+          |> Conn.resp(
+            200,
+            """
+            @font-face {
+              font-family: 'Inter';
+              font-style: normal;
+              font-weight: 400;
+              src: url(#{font_url}) format('woff2');
+            }
+            """
+          )
+
+        {"fonts.gstatic.com", "/s/inter/v20/private-test.woff2"} ->
+          conn
+          |> Conn.put_resp_content_type("font/woff2")
+          |> Conn.resp(200, <<"wOF2", 0, 1, 2, 3>>)
+      end
+    end)
+
+    assert {:ok, _} =
+             BubbleEx.export_frontend(
+               "https://app.example.test",
+               Path.join(tmp, "pkg"),
+               @scan ++ credentials() ++ [asset_access: :same_origin]
+             )
+
+    assert_received {:request, "fonts.googleapis.com", "/css", [], []}
+    assert_received {:request, "fonts.gstatic.com", "/s/inter/v20/private-test.woff2", [], []}
+  end
+
+  @tag :tmp_dir
   test "failed protected assets become findings and non-fetching HTML", %{tmp_dir: tmp} do
     pid = self()
     stub_app_with_asset(pid, asset_payload(), :html_login)
