@@ -100,13 +100,15 @@ defmodule BubbleEx.Frontend.Export.Fonts do
   end
 
   defp stylesheet_links(html, base_url) do
-    with {:ok, document} <- Floki.parse_document(html) do
-      document
-      |> Floki.find("link[href]")
-      |> Floki.attribute("href")
-      |> Enum.flat_map(&resolve_url(base_url, &1))
-    else
-      _ -> []
+    case Floki.parse_document(html) do
+      {:ok, document} ->
+        document
+        |> Floki.find("link[href]")
+        |> Floki.attribute("href")
+        |> Enum.flat_map(&resolve_url(base_url, &1))
+
+      _ ->
+        []
     end
   end
 
@@ -272,45 +274,68 @@ defmodule BubbleEx.Frontend.Export.Fonts do
 
   defp fetch_font(url, total_bytes, opts) do
     max_bytes = Config.frontend_max_asset_bytes(opts)
-    max_total = max_bytes * 4
     timeout = Config.frontend_asset_timeout(opts)
 
-    case HTTP.get(url, [{"user-agent", @user_agent}],
-           follow_redirect: false,
-           timeout: timeout,
-           recv_timeout: timeout,
-           max_body_length: max_bytes,
-           bounded_body: true,
-           redact_values: credential_taints(opts)
-         ) do
-      {:ok, %{status_code: 200, body: body, headers: headers}} when is_binary(body) ->
-        cond do
-          byte_size(body) > max_bytes ->
-            {:error, "font asset exceeded max_asset_bytes"}
+    url
+    |> HTTP.get([{"user-agent", @user_agent}],
+      follow_redirect: false,
+      timeout: timeout,
+      recv_timeout: timeout,
+      max_body_length: max_bytes,
+      bounded_body: true,
+      redact_values: credential_taints(opts)
+    )
+    |> handle_font_response(url, total_bytes, max_bytes)
+  end
 
-          total_bytes + byte_size(body) > max_total ->
-            {:error, "font assets exceeded the total byte limit"}
-
-          not woff2_content_type?(headers) ->
-            {:error, "font asset returned an unexpected content type"}
-
-          not match?(<<"wOF2", _::binary>>, body) ->
-            {:error, "font asset was not a valid WOFF2 file"}
-
-          true ->
-            {:ok, asset_record(url, body)}
-        end
-
-      {:ok, %{status_code: status}} ->
-        {:error, "font asset download returned HTTP #{status}"}
-
-      {:error, %HTTP.Error{reason: :body_too_large}} ->
-        {:error, "font asset exceeded max_asset_bytes"}
-
-      {:error, _} ->
-        {:error, "font asset download failed"}
+  defp handle_font_response(
+         {:ok, %{status_code: 200, body: body, headers: headers}},
+         url,
+         total_bytes,
+         max_bytes
+       )
+       when is_binary(body) do
+    with :ok <- validate_font_size(body, max_bytes),
+         :ok <- validate_total_font_size(body, total_bytes, max_bytes * 4),
+         :ok <- validate_font_content_type(headers),
+         :ok <- validate_woff2_signature(body) do
+      {:ok, asset_record(url, body)}
     end
   end
+
+  defp handle_font_response({:ok, %{status_code: status}}, _url, _total_bytes, _max_bytes),
+    do: {:error, "font asset download returned HTTP #{status}"}
+
+  defp handle_font_response(
+         {:error, %HTTP.Error{reason: :body_too_large}},
+         _url,
+         _total_bytes,
+         _max_bytes
+       ),
+       do: {:error, "font asset exceeded max_asset_bytes"}
+
+  defp handle_font_response({:error, _reason}, _url, _total_bytes, _max_bytes),
+    do: {:error, "font asset download failed"}
+
+  defp validate_font_size(body, max_bytes) when byte_size(body) > max_bytes,
+    do: {:error, "font asset exceeded max_asset_bytes"}
+
+  defp validate_font_size(_body, _max_bytes), do: :ok
+
+  defp validate_total_font_size(body, total_bytes, max_total)
+       when total_bytes + byte_size(body) > max_total,
+       do: {:error, "font assets exceeded the total byte limit"}
+
+  defp validate_total_font_size(_body, _total_bytes, _max_total), do: :ok
+
+  defp validate_font_content_type(headers) do
+    if woff2_content_type?(headers),
+      do: :ok,
+      else: {:error, "font asset returned an unexpected content type"}
+  end
+
+  defp validate_woff2_signature(<<"wOF2", _::binary>>), do: :ok
+  defp validate_woff2_signature(_body), do: {:error, "font asset was not a valid WOFF2 file"}
 
   defp asset_record(url, body) do
     hash = :sha256 |> :crypto.hash(body) |> Base.encode16(case: :lower)

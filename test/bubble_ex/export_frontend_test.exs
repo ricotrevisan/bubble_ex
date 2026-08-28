@@ -217,9 +217,25 @@ defmodule BubbleEx.ExportFrontendTest do
       "shared" => reusable_definition("Shared", "From page B")
     }
 
+    root_styles = %{
+      "root-style" => %{"id" => "root-style", "%x" => "Text", "%p" => %{"%fc" => "red"}},
+      "shared-style" => %{"id" => "shared-style", "%x" => "Text", "%p" => %{"%fc" => "red"}}
+    }
+
+    page_a_styles = %{
+      "page-a-style" => %{"id" => "page-a-style", "%x" => "Text", "%p" => %{"%fc" => "blue"}},
+      "shared-style" => %{"id" => "shared-style", "%x" => "Text", "%p" => %{"%fc" => "blue"}}
+    }
+
+    page_b_styles = %{
+      "page-b-style" => %{"id" => "page-b-style", "%x" => "Text", "%p" => %{"%fc" => "green"}},
+      "shared-style" => %{"id" => "shared-style", "%x" => "Text", "%p" => %{"%fc" => "green"}}
+    }
+
     payload =
       aliased_metadata_app([{"opaque-a", "page-a"}, {"opaque-b", "page-b"}])
       |> Map.put("%ed", root_definitions)
+      |> Map.put("styles", root_styles)
 
     Req.Test.stub(__MODULE__, fn conn ->
       conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
@@ -235,7 +251,9 @@ defmodule BubbleEx.ExportFrontendTest do
           Conn.resp(conn, 200, page_html("/package/dynamic_js/page-a/dynamic.js"))
 
         "/package/dynamic_js/page-a/dynamic.js" ->
-          page_payload = Map.put(payload, "%ed", page_a_definitions)
+          page_payload =
+            payload |> Map.put("%ed", page_a_definitions) |> Map.put("styles", page_a_styles)
+
           Conn.resp(conn, 200, dynamic_script(page_payload, "opaque-a", "page-a"))
 
         "/version-test/page-b" ->
@@ -246,6 +264,7 @@ defmodule BubbleEx.ExportFrontendTest do
             payload
             |> Map.delete("%ed")
             |> Map.put("element_definitions", page_b_definitions)
+            |> Map.put("styles", page_b_styles)
 
           Conn.resp(conn, 200, dynamic_script(page_payload, "opaque-b", "page-b"))
       end
@@ -263,6 +282,12 @@ defmodule BubbleEx.ExportFrontendTest do
 
     assert Enum.map(result.model.reusables, & &1.map_key) ==
              ["page-a-only", "page-b-only", "root-only", "shared"]
+
+    assert Map.keys(result.model.source.payload["styles"]) |> Enum.sort() ==
+             ["page-a-style", "page-b-style", "root-style", "shared-style"]
+
+    assert get_in(result.model.source.payload, ["styles", "shared-style", "%p", "%fc"]) ==
+             "green"
 
     shared = Enum.find(result.model.reusables, &(&1.map_key == "shared"))
     assert [text] = shared.children

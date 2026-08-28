@@ -23,6 +23,16 @@ mix quality
 
 This runs, in order: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo`, and `mix test`. All four must be green.
 
+Before publishing, also check the package as a production dependency:
+
+```bash
+scripts/package_consumer_smoke.sh
+```
+
+This builds the Hex package, unpacks it into a temporary directory, and compiles
+and runs it from a fresh Mix project outside the checkout. The check downloads
+production dependencies and removes its temporary files when it finishes.
+
 ## Testing
 
 Tests are offline by default and do not require external services or credentials. Integration tests (tagged `:integration`) hit live Bubble.io endpoints and are

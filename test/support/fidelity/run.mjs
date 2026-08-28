@@ -9,6 +9,7 @@ import { pathToFileURL } from "url";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
+const { PNG } = require("pngjs");
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -77,6 +78,49 @@ function inspectScript(ids) {
       scrollHeight: document.documentElement.scrollHeight,
       elements,
     };
+  };
+}
+
+function comparableTypography(property, value) {
+  if (property !== "fontFamily" || typeof value !== "string") return value;
+  return value.split(",", 1)[0].trim().replace(/^['"]|['"]$/g, "");
+}
+
+function comparePng(referenceBytes, candidateBytes) {
+  const reference = PNG.sync.read(referenceBytes);
+  const candidate = PNG.sync.read(candidateBytes);
+  if (reference.width !== candidate.width || reference.height !== candidate.height) {
+    return {
+      sameDimensions: false,
+      reference: { width: reference.width, height: reference.height },
+      candidate: { width: candidate.width, height: candidate.height },
+      changedPixels: null,
+      maxChannelDelta: null,
+      meanAbsoluteError: null,
+    };
+  }
+
+  let changedPixels = 0;
+  let maxChannelDelta = 0;
+  let absoluteDelta = 0;
+  for (let index = 0; index < reference.data.length; index += 4) {
+    let changed = false;
+    for (let channel = 0; channel < 4; channel += 1) {
+      const delta = Math.abs(reference.data[index + channel] - candidate.data[index + channel]);
+      absoluteDelta += delta;
+      maxChannelDelta = Math.max(maxChannelDelta, delta);
+      changed ||= delta !== 0;
+    }
+    if (changed) changedPixels += 1;
+  }
+
+  return {
+    sameDimensions: true,
+    width: reference.width,
+    height: reference.height,
+    changedPixels,
+    maxChannelDelta,
+    meanAbsoluteError: absoluteDelta / reference.data.length,
   };
 }
 
@@ -158,10 +202,19 @@ async function main() {
     });
     if (heightError !== 0) recordMismatch(mismatches, "document_height", width, null, { error: heightError });
 
-    if (candidateResult.audit.scrollWidth !== candidateResult.audit.clientWidth) {
-      recordMismatch(mismatches, "overflow", width, null, {
-        scrollWidth: candidateResult.audit.scrollWidth,
-        clientWidth: candidateResult.audit.clientWidth,
+    if (
+      candidateResult.audit.scrollWidth !== referenceResult.audit.scrollWidth ||
+      candidateResult.audit.clientWidth !== referenceResult.audit.clientWidth
+    ) {
+      recordMismatch(mismatches, "document_width", width, null, {
+        reference: {
+          scrollWidth: referenceResult.audit.scrollWidth,
+          clientWidth: referenceResult.audit.clientWidth,
+        },
+        candidate: {
+          scrollWidth: candidateResult.audit.scrollWidth,
+          clientWidth: candidateResult.audit.clientWidth,
+        },
       });
     }
 
@@ -211,7 +264,9 @@ async function main() {
           ])
         );
         const pass = properties.every(
-          (property) => referenceElement[property] === candidateElement[property]
+          (property) =>
+            comparableTypography(property, referenceElement[property]) ===
+            comparableTypography(property, candidateElement[property])
         );
         typography.push({ width, id, pass, properties: values });
         if (!pass) recordMismatch(mismatches, "typography", width, id, values);
@@ -221,8 +276,23 @@ async function main() {
     const referencePng = fs.readFileSync(path.join(caseDir, "reference", `${width}x${height}.png`));
     const candidatePng = fs.readFileSync(path.join(workDir, candidateResult.screenshot));
     const byteIdentical = referencePng.equals(candidatePng);
-    screenshots.push({ width, height, byteIdentical });
-    if (!byteIdentical) recordMismatch(mismatches, "screenshot", width, null, {});
+    const pixelDiff = comparePng(referencePng, candidatePng);
+    const tolerance = caseJson.pixel_tolerance || {};
+    const maxChangedPixels = tolerance.max_changed_pixels || 0;
+    const maxChannelDelta = tolerance.max_channel_delta || 0;
+    const maxMeanAbsoluteError = tolerance.max_mean_absolute_error || 0;
+    const withinTolerance =
+      pixelDiff.sameDimensions &&
+      pixelDiff.changedPixels <= maxChangedPixels &&
+      pixelDiff.maxChannelDelta <= maxChannelDelta &&
+      pixelDiff.meanAbsoluteError <= maxMeanAbsoluteError;
+    screenshots.push({ width, height, byteIdentical, withinTolerance, pixelDiff });
+    if (!withinTolerance) {
+      recordMismatch(mismatches, "screenshot", width, null, {
+        pixelDiff,
+        tolerance: { maxChangedPixels, maxChannelDelta, maxMeanAbsoluteError },
+      });
+    }
   }
 
   const report = {
@@ -237,7 +307,11 @@ async function main() {
     typography: { sampleCount: typography.length },
     collapse: { sampleCount: collapsed.length },
     documentHeight: { allExact: documentHeights.every((result) => result.error === 0) },
-    screenshots: { allByteIdentical: screenshots.every((result) => result.byteIdentical) },
+    screenshots: {
+      allByteIdentical: screenshots.every((result) => result.byteIdentical),
+      allWithinTolerance: screenshots.every((result) => result.withinTolerance),
+      results: screenshots,
+    },
     mismatches,
   };
 

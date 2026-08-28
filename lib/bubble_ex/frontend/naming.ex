@@ -83,11 +83,39 @@ defmodule BubbleEx.Frontend.Naming do
 
   @spec reusable_dirname(String.t() | nil, String.t()) :: String.t()
   def reusable_dirname(name, map_key) do
+    {dirname, _taken} = reusable_dirname(name, map_key, MapSet.new())
+    dirname
+  end
+
+  @spec reusable_dirname(String.t() | nil, String.t(), MapSet.t()) ::
+          {String.t(), MapSet.t()}
+  def reusable_dirname(name, map_key, taken) do
     key = slug_or_key(map_key)
 
-    case slug(name) do
-      "" -> key
-      s -> s <> "--" <> key
+    base =
+      case slug(name) do
+        "" -> key
+        s -> s <> "--" <> key
+      end
+
+    unique_dirname(base, taken)
+  end
+
+  defp unique_dirname(base, taken) do
+    if MapSet.member?(taken, base) do
+      unique_dirname(base, 2, taken)
+    else
+      {base, MapSet.put(taken, base)}
+    end
+  end
+
+  defp unique_dirname(base, suffix, taken) do
+    candidate = base <> "--" <> Integer.to_string(suffix)
+
+    if MapSet.member?(taken, candidate) do
+      unique_dirname(base, suffix + 1, taken)
+    else
+      {candidate, MapSet.put(taken, candidate)}
     end
   end
 

@@ -85,6 +85,47 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "keeps reusable package paths unique when names and map keys slugify alike", %{
+      tmp_dir: tmp
+    } do
+      out = Path.join(tmp, "pkg")
+
+      reusable = fn id, name, text ->
+        %{
+          "id" => id,
+          "name" => name,
+          "type" => "CustomDefinition",
+          "properties" => %{"container_layout" => "column"},
+          "elements" => %{
+            "label" => %{
+              "id" => id <> "-label",
+              "type" => "Text",
+              "properties" => %{"text" => text}
+            }
+          }
+        }
+      end
+
+      payload =
+        FrontendFixtures.modern_page()
+        |> Map.put("element_definitions", %{
+          "card one" => reusable.("first-card", "Card!", "First card"),
+          "card-one" => reusable.("second-card", "Card?", "Second card")
+        })
+
+      assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
+
+      first = "reusables/card--card-one/fragment.html"
+      second = "reusables/card--card-one--2/fragment.html"
+
+      assert first in result.files
+      assert second in result.files
+      assert result.files == Enum.uniq(result.files)
+      assert File.read!(Path.join(out, first)) =~ "First card"
+      assert File.read!(Path.join(out, second)) =~ "Second card"
+    end
+
+    @tag :tmp_dir
     test "packages a public image whose source appends Current Page Width", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
       source_file = Path.join(tmp, "hero.png")

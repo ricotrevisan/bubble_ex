@@ -1,8 +1,9 @@
 {
   "name": "bubble-ex-fidelity",
   "private": true,
-  "description": "Pinned Playwright 1.55.0 for frozen-case fidelity gates (#30).",
+  "description": "Pinned Playwright 1.55.1 for frozen-case fidelity gates (#30).",
   "dependencies": {
-    "playwright": "1.55.0"
+    "playwright": "1.55.1",
+    "pngjs": "7.0.0"
   }
 }

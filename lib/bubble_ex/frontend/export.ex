@@ -3,7 +3,7 @@ defmodule BubbleEx.Frontend.Export do
 
   alias BubbleEx.{Error, Secrets}
   alias BubbleEx.Frontend.{Json, Naming, Payload}
-  alias BubbleEx.Frontend.Export.{Assets, Css, Fonts, Html, Result, Writer}
+  alias BubbleEx.Frontend.Export.{Assets, Css, Fonts, Html, Result, Safety, Writer}
   alias BubbleEx.Frontend.Fetch.Context
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
@@ -84,7 +84,7 @@ defmodule BubbleEx.Frontend.Export do
               "type" => "leaked_credential",
               "message" => "secret scan reported a leaked credential",
               "refs" => [],
-              "payload" => stringify(finding)
+              "payload" => safe_secret_finding(finding)
             }
           end)
 
@@ -112,6 +112,25 @@ defmodule BubbleEx.Frontend.Export do
         {:error, safe_error(error, opts)}
     end
   end
+
+  defp safe_secret_finding(finding) when is_map(finding) do
+    finding
+    |> Map.take([
+      :detector,
+      :path,
+      :decoder,
+      :verified,
+      :confidence,
+      "detector",
+      "path",
+      "decoder",
+      "verified",
+      "confidence"
+    ])
+    |> stringify()
+  end
+
+  defp safe_secret_finding(_finding), do: %{}
 
   defp safe_error(%Error{} = error, opts) do
     if tainted_term?(error, opts) do
@@ -261,10 +280,13 @@ defmodule BubbleEx.Frontend.Export do
         {[{page, dir} | acc], taken}
       end)
 
-    reusables =
-      Enum.map(model.reusables, fn node ->
-        {node, Naming.reusable_dirname(node.name, node.map_key)}
+    {reusables, _taken} =
+      Enum.reduce(model.reusables, {[], MapSet.new()}, fn node, {acc, taken} ->
+        {dir, taken} = Naming.reusable_dirname(node.name, node.map_key, taken)
+        {[{node, dir} | acc], taken}
       end)
+
+    reusables = Enum.reverse(reusables)
 
     styles =
       Map.new(model.styles, fn style ->
@@ -368,45 +390,45 @@ defmodule BubbleEx.Frontend.Export do
   defp expanded_instance_css(%Node{} = node, model, prefix, stack) do
     nested = Enum.map_join(node.children, "
 ", &expanded_instance_css(&1, model, prefix, stack))
-
-    own =
-      if node.kind == :reusable_instance do
-        instance_id =
-          if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
-
-        case expand(model, node) do
-          %Node{} = definition ->
-            identity = definition.map_key
-
-            if MapSet.member?(stack, identity) do
-              ""
-            else
-              next_stack = MapSet.put(stack, identity)
-
-              definition_nested =
-                Enum.map_join(
-                  definition.children,
-                  "
-",
-                  &expanded_instance_css(&1, model, instance_id, next_stack)
-                )
-
-              [definition_nested, Css.expanded_definition(definition, instance_id)]
-              |> Enum.reject(&(&1 == ""))
-              |> Enum.join("
-")
-            end
-
-          _ ->
-            ""
-        end
-      else
-        ""
-      end
+    own = expanded_reusable_css(node, model, prefix, stack)
 
     [nested, own] |> Enum.reject(&(&1 == "")) |> Enum.join("
 ")
   end
+
+  defp expanded_reusable_css(%Node{kind: :reusable_instance} = node, model, prefix, stack) do
+    instance_id =
+      if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
+
+    expanded_reusable_definition_css(expand(model, node), model, instance_id, stack)
+  end
+
+  defp expanded_reusable_css(_node, _model, _prefix, _stack), do: ""
+
+  defp expanded_reusable_definition_css(%Node{} = definition, model, instance_id, stack) do
+    identity = definition.map_key
+
+    if MapSet.member?(stack, identity) do
+      ""
+    else
+      next_stack = MapSet.put(stack, identity)
+
+      definition_nested =
+        Enum.map_join(
+          definition.children,
+          "
+",
+          &expanded_instance_css(&1, model, instance_id, next_stack)
+        )
+
+      [definition_nested, Css.expanded_definition(definition, instance_id)]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("
+")
+    end
+  end
+
+  defp expanded_reusable_definition_css(_definition, _model, _instance_id, _stack), do: ""
 
   defp asset_entries(assets, font_assets) do
     (Map.values(assets) ++ font_assets)
@@ -436,7 +458,7 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp external?(dest) do
-    String.contains?(dest, "://") or String.starts_with?(dest, "//")
+    String.starts_with?(dest, "//") or Regex.match?(~r/^\s*[a-z][a-z0-9+.-]*:/iu, dest)
   end
 
   defp style_class(%Node{style: style}, plan) when is_map(style) do
@@ -494,8 +516,9 @@ defmodule BubbleEx.Frontend.Export do
       |> reusable_findings(model)
       |> Enum.uniq_by(&{&1["type"], &1["refs"], &1["payload"]})
 
+    security = Safety.findings(model.styles, selected ++ model.reusables)
     fallback = fallback_findings(opts, selected)
-    unsupported ++ reusable ++ links ++ fallback
+    unsupported ++ reusable ++ links ++ security ++ fallback
   end
 
   defp reusable_findings(nodes, model) do
@@ -509,53 +532,64 @@ defmodule BubbleEx.Frontend.Export do
 
   defp reusable_findings(%Node{} = node, model, prefix, stack) do
     nested = Enum.flat_map(node.children, &reusable_findings(&1, model, prefix, stack))
-
-    own =
-      if node.kind == :reusable_instance do
-        ref = node.definition_ref
-
-        instance_id =
-          if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
-
-        case expand(model, node) do
-          nil ->
-            [
-              %{
-                "severity" => "warning",
-                "type" => "missing_reusable_definition",
-                "message" => "reusable instance references a definition that was not fetched",
-                "refs" => [instance_id],
-                "payload" => %{"definition_ref" => ref}
-              }
-            ]
-
-          %Node{} = definition ->
-            identity = definition.map_key
-
-            if MapSet.member?(stack, identity) do
-              [
-                %{
-                  "severity" => "warning",
-                  "type" => "reusable_cycle",
-                  "message" => "recursive reusable expansion was stopped at a cycle",
-                  "refs" => [instance_id],
-                  "payload" => %{"definition_ref" => ref}
-                }
-              ]
-            else
-              next_stack = MapSet.put(stack, identity)
-
-              Enum.flat_map(
-                definition.children,
-                &reusable_findings(&1, model, instance_id, next_stack)
-              )
-            end
-        end
-      else
-        []
-      end
+    own = reusable_instance_findings(node, model, prefix, stack)
 
     nested ++ own
+  end
+
+  defp reusable_instance_findings(
+         %Node{kind: :reusable_instance} = node,
+         model,
+         prefix,
+         stack
+       ) do
+    instance_id =
+      if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
+
+    reusable_definition_findings(
+      expand(model, node),
+      node.definition_ref,
+      model,
+      instance_id,
+      stack
+    )
+  end
+
+  defp reusable_instance_findings(_node, _model, _prefix, _stack), do: []
+
+  defp reusable_definition_findings(nil, ref, _model, instance_id, _stack) do
+    [
+      %{
+        "severity" => "warning",
+        "type" => "missing_reusable_definition",
+        "message" => "reusable instance references a definition that was not fetched",
+        "refs" => [instance_id],
+        "payload" => %{"definition_ref" => ref}
+      }
+    ]
+  end
+
+  defp reusable_definition_findings(%Node{} = definition, ref, model, instance_id, stack) do
+    identity = definition.map_key
+
+    if MapSet.member?(stack, identity) do
+      [
+        %{
+          "severity" => "warning",
+          "type" => "reusable_cycle",
+          "message" => "recursive reusable expansion was stopped at a cycle",
+          "refs" => [instance_id],
+          "payload" => %{"definition_ref" => ref}
+        }
+      ]
+    else
+      next_stack = MapSet.put(stack, identity)
+
+      Enum.flat_map(
+        definition.children,
+        &reusable_findings(&1, model, instance_id, next_stack)
+      )
+    end
   end
 
   defp collect_ids(%Node{} = node) do
@@ -566,38 +600,34 @@ defmodule BubbleEx.Frontend.Export do
     pages
     |> Enum.flat_map(&collect/1)
     |> Enum.filter(&(&1.kind == :link or navigation_export?(&1)))
-    |> Enum.flat_map(fn node ->
-      dest =
-        case node.content do
-          %{"destination" => %{resolved: d}} -> d
-          _ -> nil
-        end
+    |> Enum.flat_map(&link_finding(&1, plan))
+  end
 
-      cond do
-        not is_binary(dest) ->
-          []
+  defp link_finding(
+         %Node{content: %{"destination" => %{resolved: dest}}} = node,
+         plan
+       )
+       when is_binary(dest) do
+    if non_exported_page_link?(dest, plan) do
+      [
+        %{
+          "severity" => "info",
+          "type" => "link_to_non_exported_page",
+          "message" => "resolved destination is not in this export",
+          "refs" => [node.exporter_id],
+          "payload" => %{"destination" => dest}
+        }
+      ]
+    else
+      []
+    end
+  end
 
-        external?(dest) ->
-          []
+  defp link_finding(_node, _plan), do: []
 
-        Map.has_key?(plan.page_by_ref, dest) ->
-          []
-
-        internal_looking?(dest, plan) ->
-          [
-            %{
-              "severity" => "info",
-              "type" => "link_to_non_exported_page",
-              "message" => "resolved destination is not in this export",
-              "refs" => [node.exporter_id],
-              "payload" => %{"destination" => dest}
-            }
-          ]
-
-        true ->
-          []
-      end
-    end)
+  defp non_exported_page_link?(dest, plan) do
+    Safety.safe_href?(dest) and not external?(dest) and
+      not Map.has_key?(plan.page_by_ref, dest) and internal_looking?(dest, plan)
   end
 
   defp navigation_export?(%Node{kind: :button, content: %{"destination" => %{resolved: dest}}})

@@ -2,6 +2,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   @moduledoc false
 
   alias BubbleEx.Frontend.{Naming, Normalized}
+  alias BubbleEx.Frontend.Export.Safety
   alias BubbleEx.Frontend.Normalized.Node
 
   @spec shared(Normalized.t(), String.t()) :: String.t()
@@ -495,7 +496,7 @@ defmodule BubbleEx.Frontend.Export.Css do
       get_in(node.style, [:resolved, "placeholder_color"]) ||
         get_in(node.style, ["resolved", "placeholder_color"])
 
-    if is_binary(color) do
+    if is_binary(color) and Safety.safe_css_value?(color) do
       id = prefixed_id(node, opts)
 
       "[data-exporter-id=\"#{escape(id)}\"]::placeholder {\n  color: #{color};\n  opacity: 1;\n}\n"
@@ -610,6 +611,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     map
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
     |> Enum.map(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
+    |> Enum.filter(fn {_k, value} -> Safety.safe_css_value?(value) end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map_join("", fn {k, v} -> "  #{k}: #{v};\n" end)
   end

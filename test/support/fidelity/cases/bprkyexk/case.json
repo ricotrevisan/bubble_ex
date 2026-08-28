@@ -1,8 +1,8 @@
 {
   "id": "bprkyexk",
   "browser": {
-    "playwright": "1.55.0",
-    "chromium": "140.0.7339.16",
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
     "reduced_motion": "reduce",
@@ -18,7 +18,8 @@
     "app_version": "test",
     "page_id": "bprkyexk",
     "page_path": "bubbleex-i35-image-modes",
-    "page_payload_sha256": "a0d2323562628fa2a98b731c610bdffba7ccb3b7e1157479341a324eab7f39f7"
+    "page_payload_sha256": "a0d2323562628fa2a98b731c610bdffba7ccb3b7e1157479341a324eab7f39f7",
+    "payload_sha256": "b0c88215f512fec1971046cf3889ef4361e649259347e21ab25f3c9de7874692"
   },
   "public_assets": [
     {
@@ -46,5 +47,11 @@
     "main": ["bprkyexk"],
     "paragraphs": ["bpejnisb", "bpfkfscp", "bplcjfsc", "bpverxop", "bpkmtmbi"],
     "images": ["bpytyoqr", "bpybdvkr", "bppdcmmg", "bpomvais"]
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 3400,
+    "max_channel_delta": 100,
+    "max_mean_absolute_error": 0.15,
+    "rationale": "Geometry, document height, primary typography, and semantics remain exact. This bounded allowance covers frozen text/native-control rasterization drift in the pinned Chromium 140 headless shell."
   }
 }

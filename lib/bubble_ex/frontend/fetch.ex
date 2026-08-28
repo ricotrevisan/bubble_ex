@@ -291,6 +291,7 @@ defmodule BubbleEx.Frontend.Fetch do
         hydrated =
           merged
           |> merge_reusable_definitions(fetched)
+          |> merge_styles(fetched)
           |> merge_job_targets(fetched, job.targets)
 
         {:cont, {:ok, hydrated}}
@@ -308,6 +309,17 @@ defmodule BubbleEx.Frontend.Fetch do
     else
       key = reusable_definitions_key(payload, fetched)
       Map.put(payload, key, Map.merge(reusable_definitions(payload), fetched_definitions))
+    end
+  end
+
+  defp merge_styles(payload, fetched) do
+    fetched_styles = Payload.styles(fetched)
+
+    if map_size(fetched_styles) == 0 do
+      payload
+    else
+      key = if is_map(payload["%s"]), do: "%s", else: "styles"
+      Map.put(payload, key, Map.merge(Payload.styles(payload), fetched_styles))
     end
   end
 

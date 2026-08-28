@@ -1,8 +1,8 @@
 {
   "id": "bpqqfagk",
   "browser": {
-    "playwright": "1.55.0",
-    "chromium": "140.0.7339.16",
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
     "reduced_motion": "reduce",
@@ -11,15 +11,15 @@
   "font": {
     "family": "Inter",
     "path": "assets/inter-latin.woff2",
-    "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
-    "source_url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2"
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
   "source": {
     "bubble_id": "tiptap-plugin",
     "app_version": "test",
     "page_id": "bpqqfagk",
     "page_path": "bubbleex-i32-static-controls",
-    "page_payload_sha256": "780683e2c8d6d839e12903404016d49cd3ded6ed1d58a0d3eaacec873c4b760c"
+    "page_payload_sha256": "780683e2c8d6d839e12903404016d49cd3ded6ed1d58a0d3eaacec873c4b760c",
+    "payload_sha256": "e78aefeb7d7202d31e7d0b98395382208c954be1d66dac93228e664ec7a7339c"
   },
   "public_assets": [],
   "viewports": [

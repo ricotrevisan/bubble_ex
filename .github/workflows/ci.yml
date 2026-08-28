@@ -11,8 +11,8 @@ jobs:
         include:
           - elixir: "1.17"
             otp: "27"
-          - elixir: "1.18"
-            otp: "27"
+          - elixir: "1.18.4"
+            otp: "28.0"
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -29,6 +29,9 @@ jobs:
             ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-
       - run: mix deps.get
       - run: mix quality
+      - name: Check the production package from a fresh consumer
+        if: matrix.elixir == '1.18.4' && matrix.otp == '28.0'
+        run: scripts/package_consumer_smoke.sh
 
   fidelity:
     runs-on: ubuntu-latest
@@ -51,7 +54,7 @@ jobs:
       - name: Install pinned Playwright
         working-directory: test/support/fidelity
         run: |
-          npm install
+          npm ci
           npx playwright install --with-deps chromium
       - run: mix test --only fidelity
         env:

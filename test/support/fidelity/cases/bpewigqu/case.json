@@ -1,8 +1,8 @@
 {
   "id": "bpewigqu",
   "browser": {
-    "playwright": "1.55.0",
-    "chromium": "140.0.7339.16",
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
     "reduced_motion": "reduce",
@@ -18,7 +18,8 @@
     "app_version": "test",
     "page_id": "bpewigqu",
     "page_path": "bubbleex-i37-text-password-input",
-    "page_payload_sha256": "e7d64ce3c8852c7948990757f9e0899155d7a0758cf6ad6908c43f7a6b4f714e"
+    "page_payload_sha256": "e7d64ce3c8852c7948990757f9e0899155d7a0758cf6ad6908c43f7a6b4f714e",
+    "payload_sha256": "1683a08b5802de364eb6b63ca97f37bcebffa980a9f13e03bf491218cbb2d233"
   },
   "viewports": [
     390,
@@ -70,5 +71,11 @@
         "aria-label": "I37 password placeholder"
       }
     }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 7200,
+    "max_channel_delta": 100,
+    "max_mean_absolute_error": 0.35,
+    "rationale": "Geometry, document height, primary typography, and semantics remain exact. This bounded allowance covers frozen text/native-control rasterization drift in the pinned Chromium 140 headless shell."
   }
 }

@@ -74,6 +74,34 @@ defmodule BubbleEx.Frontend.SafeUrl do
     _ -> false
   end
 
+  @spec pin_public_http_destination(String.t(), timeout()) ::
+          {:ok, {String.t(), String.t()}} | {:error, Error.t()}
+  def pin_public_http_destination(url, timeout) do
+    pin_public_http_destination(url, timeout, &resolve_host/2)
+  end
+
+  @doc false
+  @spec pin_public_http_destination(String.t(), timeout(), function()) ::
+          {:ok, {String.t(), String.t()}} | {:error, Error.t()}
+  def pin_public_http_destination(url, timeout, resolver)
+      when is_binary(url) and is_integer(timeout) and is_function(resolver, 2) do
+    with %URI{scheme: scheme, host: host} = uri <- URI.parse(url),
+         true <- scheme in ["http", "https"] and is_binary(host),
+         true <- uri.port in [nil, 80, 443],
+         {:ok, addresses} <- resolver.(host, timeout),
+         true <- addresses != [] and Enum.all?(addresses, &public_ip?/1) do
+      address = Enum.min_by(addresses, &:erlang.term_to_binary/1)
+      pinned_host = address |> :inet.ntoa() |> to_string()
+      {:ok, {URI.to_string(%{uri | host: pinned_host}), host}}
+    else
+      _ ->
+        {:error,
+         Error.new(:invalid_input, "URL is not a public network destination", %{url: safe(url)})}
+    end
+  rescue
+    _ -> {:error, Error.new(:invalid_input, "URL is not a public network destination", %{})}
+  end
+
   @spec bubbleapps_host?(String.t()) :: boolean()
   def bubbleapps_host?(url), do: host_matches?(url, ~r/(?:^|\.)bubbleapps\.io$/i)
 
@@ -111,6 +139,57 @@ defmodule BubbleEx.Frontend.SafeUrl do
   rescue
     _ -> safe(url)
   end
+
+  defp resolve_host(host, timeout) when is_binary(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, address} -> {:ok, [address]}
+      {:error, _} -> bounded_resolve(String.to_charlist(host), timeout)
+    end
+  end
+
+  defp bounded_resolve(host, timeout) do
+    task =
+      Task.async(fn ->
+        [:inet, :inet6]
+        |> Enum.flat_map(&resolve_family(host, &1))
+        |> Enum.uniq()
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, addresses} -> {:ok, addresses}
+      _ -> {:error, :resolution_failed}
+    end
+  end
+
+  defp resolve_family(host, family) do
+    case :inet.getaddrs(host, family) do
+      {:ok, values} -> values
+      {:error, _} -> []
+    end
+  end
+
+  defp public_ip?({a, _, _, _}) when a in [0, 10, 127], do: false
+  defp public_ip?({100, b, _, _}) when b in 64..127, do: false
+  defp public_ip?({169, 254, _, _}), do: false
+  defp public_ip?({172, b, _, _}) when b in 16..31, do: false
+  defp public_ip?({192, 0, 0, _}), do: false
+  defp public_ip?({192, 0, 2, _}), do: false
+  defp public_ip?({192, 168, _, _}), do: false
+  defp public_ip?({198, b, _, _}) when b in [18, 19], do: false
+  defp public_ip?({198, 51, 100, _}), do: false
+  defp public_ip?({203, 0, 113, _}), do: false
+  defp public_ip?({a, _, _, _}) when a >= 224, do: false
+  defp public_ip?({_, _, _, _}), do: true
+
+  defp public_ip?({0, 0, 0, 0, 0, 0xFFFF, high, low}) do
+    public_ip?({div(high, 256), rem(high, 256), div(low, 256), rem(low, 256)})
+  end
+
+  defp public_ip?({0, 0, 0, 0, 0, 0, _, _}), do: false
+  defp public_ip?({0x2001, 0x0DB8, _, _, _, _, _, _}), do: false
+  defp public_ip?({a, _, _, _, _, _, _, _}) when a in 0x2000..0x3FFF, do: true
+  defp public_ip?({_, _, _, _, _, _, _, _}), do: false
+  defp public_ip?(_address), do: false
 
   defp redact(value, taints) do
     Enum.reduce(taints, value, fn

@@ -101,7 +101,10 @@ or with either Basic source.
 Credentials are sent only over HTTPS to the exact effective app origin (scheme,
 host, and port). Assets remain unauthenticated by default. Add
 `--authenticated-assets` to allow credentials on exact-origin asset requests;
-cross-origin assets and redirects never receive them.
+cross-origin assets and redirects never receive them. Cross-origin public assets
+must resolve to public HTTP(S) destinations; the validated address is pinned for
+the connection, and redirects are revalidated at every hop. Failed downloads
+become findings and never remain as remote HTML fallbacks.
 
 BubbleEx imports the supplied session as-is. It does not log in, refresh,
 rotate, or persist sessions, and it does not execute private workflows or fetch
@@ -111,18 +114,22 @@ not accept raw authentication because a decoded payload has no trusted origin.
 
 The package contains `pages/`, reusable fragments, shared/page CSS, hashed
 `assets/`, `model.json`, `bindings.json`, `findings.json`, `coverage.json`,
-and `MANIFEST.json`. Workflows, conditions, and unsupported elements stay as
-bindings and findings. A leaked-credential finding blocks the export and
-writes nothing.
+and `MANIFEST.json`. Reusable paths are deterministic and collision-safe.
+Only relative links and explicit HTTP(S), mail, or telephone schemes are emitted.
+CSS values that can escape their declaration or fetch remote URLs are omitted
+with findings. Workflows, conditions, and unsupported elements stay
+as bindings and findings. A leaked-credential finding blocks the export, redacts
+raw secret material from its error, and writes nothing.
 
 Visual correctness is defined only for committed **frozen cases**. The committed
 S2 cases include fixed-height Multiline Input and static
-Checkbox/Dropdown/Radio Buttons. Issue #42 separately characterizes a live,
-controlled fixture with nested static Group-based reusables, a literal Font
-Awesome 4 icon, and an always-visible top-right Floating Group; focused
-regressions pin their normalization/export contracts. Dynamic choices/status,
-fit-height multiline, other icon libraries, runtime reusable state, and
-Repeating Group cell data remain bindings or dimension-preserving placeholders.
+Checkbox/Dropdown/Radio Buttons. The Issue #42 frozen case pins a controlled
+two-page fixture with nested static Group-based reusables, a sanitized inline
+Font Awesome 4 icon, an always-visible top-right Floating Group, portable
+internal navigation, and an explicit Repeating Group placeholder. Dynamic
+choices/status, fit-height multiline, other icon libraries, runtime reusable
+state, and Repeating Group cell data remain bindings or dimension-preserving
+placeholders.
 `mix bubble.fidelity` exports every committed case and compares it to Bubble
 references. PR CI runs that gate; it never recaptures live Bubble.
 

@@ -353,6 +353,28 @@ defmodule BubbleEx.PrivateFrontendExportTest do
   end
 
   @tag :tmp_dir
+  test "failed public assets become findings without remote HTML fallbacks", %{tmp_dir: tmp} do
+    pid = self()
+    stub_app_with_asset(pid, asset_payload(), :html_login)
+    out = Path.join(tmp, "pkg")
+
+    assert {:ok, result} =
+             BubbleEx.export_frontend(
+               "https://app.example.test",
+               out,
+               @scan ++ credentials()
+             )
+
+    assert Enum.any?(result.findings, &(&1["type"] == "asset_failure"))
+    page = File.read!(Path.join(out, "pages/index/index.html"))
+    fragment = File.read!(Path.join(out, "reusables/gallery--gallery/fragment.html"))
+    refute page =~ "/private.png"
+    refute fragment =~ "/private.png"
+    assert {:ok, doc} = Floki.parse_document(page)
+    assert Floki.find(doc, "img") |> Floki.attribute("src") == []
+  end
+
+  @tag :tmp_dir
   test "failed protected assets become findings and non-fetching HTML", %{tmp_dir: tmp} do
     pid = self()
     stub_app_with_asset(pid, asset_payload(), :html_login)

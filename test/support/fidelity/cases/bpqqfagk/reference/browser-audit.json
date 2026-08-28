@@ -2,7 +2,7 @@
   "status": "captured",
   "scope": "Controlled Bubble test page",
   "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i32-static-controls",
-  "chromium": "140.0.7339.16",
+  "chromium": "140.0.7339.186",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpqqfagk",
   "results": [
@@ -15,9 +15,9 @@
         "scrollWidth": 390,
         "scrollHeight": 900,
         "interAvailable": true,
-        "htmlClass": "wf-ebgaramond-n6-active wf-ibmplexmono-n4-active wf-ibmplexmono-n5-active wf-ibmplexmono-n6-active wf-inconsolata-n4-active wf-inconsolata-n6-active wf-inter-n4-active wf-inter-n5-active wf-inter-n6-active wf-inter-n7-active wf-inter-n8-active wf-jetbrainsmono-n4-active wf-opensans-n4-active wf-opensans-n5-active wf-opensans-n6-active wf-opensans-n7-active wf-opensans-n8-active wf-robotoserif-n4-active wf-robotoserif-n6-active wf-ubuntumono-n4-active wf-active b-root",
+        "htmlClass": "b-root wf-ibmplexmono-n5-active wf-inconsolata-n4-active wf-inconsolata-n6-active wf-ebgaramond-n6-active wf-ibmplexmono-n4-active wf-inter-n4-active wf-inter-n5-active wf-inter-n6-active wf-inter-n7-active wf-inter-n8-active wf-jetbrainsmono-n4-active wf-opensans-n4-active wf-opensans-n5-active wf-opensans-n6-active wf-opensans-n7-active wf-opensans-n8-active wf-robotoserif-n4-active wf-robotoserif-n6-active wf-ubuntumono-n4-active wf-active",
         "fontResources": [
-          "https://fonts.googleapis.com/css?family=EB+Garamond:600%7CIBM+Plex+Mono:regular%7CIBM+Plex+Mono:500%7CIBM+Plex+Mono:600%7CInconsolata:regular%7CInconsolata:600%7CInter:regular%7CInter:500%7CInter:600%7CInter:700%7CInter:800%7CJetBrains+Mono:regular%7COpen+Sans:regular%7COpen+Sans:500%7COpen+Sans:600%7COpen+Sans:700%7COpen+Sans:800%7CRoboto+Serif:regular%7CRoboto+Serif:600%7CUbuntu+Mono:regular"
+          "https://fonts.googleapis.com/css?family=EB+Garamond:600%7CIBM+Plex+Mono:regular%7CIBM+Plex+Mono:500%7CInconsolata:regular%7CInconsolata:600%7CInter:regular%7CInter:500%7CInter:600%7CInter:700%7CInter:800%7CJetBrains+Mono:regular%7COpen+Sans:regular%7COpen+Sans:500%7COpen+Sans:600%7COpen+Sans:700%7COpen+Sans:800%7CRoboto+Serif:regular%7CRoboto+Serif:600%7CUbuntu+Mono:regular"
         ],
         "elements": {
           "bpqqfagk": {
@@ -50,7 +50,7 @@
             "box": {
               "x": 16,
               "y": 20,
-              "width": 246.25,
+              "width": 252,
               "height": 19.1875
             },
             "display": "block",
@@ -100,7 +100,7 @@
             "box": {
               "x": 16,
               "y": 167.1875,
-              "width": 305.296875,
+              "width": 302,
               "height": 22.390625
             },
             "display": "block",
@@ -125,7 +125,7 @@
             "box": {
               "x": 16,
               "y": 205.578125,
-              "width": 322.453125,
+              "width": 321,
               "height": 22.390625
             },
             "display": "block",
@@ -207,7 +207,7 @@
           "bpzpdzut": {
             "wrapperPart": {
               "tag": "div",
-              "text": "I32 checkbox · checked and required",
+              "text": "I32 checkbox \u00b7 checked and required",
               "box": {
                 "x": 16,
                 "y": 167.1875,
@@ -275,7 +275,7 @@
             },
             "labelPart": {
               "tag": "label",
-              "text": "I32 checkbox · checked and required",
+              "text": "I32 checkbox \u00b7 checked and required",
               "box": {
                 "x": 36,
                 "y": 168.1875,
@@ -310,12 +310,12 @@
             "checked": true,
             "required": false,
             "disabled": false,
-            "accessibleName": "I32 checkbox · checked and required"
+            "accessibleName": "I32 checkbox \u00b7 checked and required"
           },
           "bpolflkd": {
             "wrapperPart": {
               "tag": "div",
-              "text": "I32 checkbox · unchecked and optional",
+              "text": "I32 checkbox \u00b7 unchecked and optional",
               "box": {
                 "x": 16,
                 "y": 205.578125,
@@ -383,7 +383,7 @@
             },
             "labelPart": {
               "tag": "label",
-              "text": "I32 checkbox · unchecked and optional",
+              "text": "I32 checkbox \u00b7 unchecked and optional",
               "box": {
                 "x": 36,
                 "y": 206.578125,
@@ -418,7 +418,7 @@
             "checked": false,
             "required": false,
             "disabled": false,
-            "accessibleName": "I32 checkbox · unchecked and optional"
+            "accessibleName": "I32 checkbox \u00b7 unchecked and optional"
           },
           "bpzpdzuu": {
             "selectPart": {
@@ -831,9 +831,9 @@
         "scrollWidth": 1440,
         "scrollHeight": 900,
         "interAvailable": true,
-        "htmlClass": "wf-ebgaramond-n6-active wf-ibmplexmono-n4-active wf-ibmplexmono-n5-active wf-ibmplexmono-n6-active wf-inconsolata-n4-active wf-inconsolata-n6-active wf-inter-n4-active wf-inter-n5-active wf-inter-n6-active wf-inter-n7-active wf-inter-n8-active wf-jetbrainsmono-n4-active wf-opensans-n4-active wf-opensans-n5-active wf-opensans-n6-active wf-opensans-n7-active wf-opensans-n8-active wf-robotoserif-n4-active wf-robotoserif-n6-active wf-ubuntumono-n4-active wf-active b-root",
+        "htmlClass": "b-root wf-opensans-n4-active wf-opensans-n5-active wf-opensans-n6-active wf-opensans-n7-active wf-opensans-n8-active wf-inter-n8-active wf-jetbrainsmono-n4-active wf-ibmplexmono-n4-active wf-ibmplexmono-n5-active wf-inconsolata-n4-active wf-inconsolata-n6-active wf-inter-n4-active wf-inter-n5-active wf-inter-n6-active wf-inter-n7-active wf-robotoserif-n4-active wf-robotoserif-n6-active wf-ubuntumono-n4-active wf-ebgaramond-n6-active wf-active",
         "fontResources": [
-          "https://fonts.googleapis.com/css?family=EB+Garamond:600%7CIBM+Plex+Mono:regular%7CIBM+Plex+Mono:500%7CIBM+Plex+Mono:600%7CInconsolata:regular%7CInconsolata:600%7CInter:regular%7CInter:500%7CInter:600%7CInter:700%7CInter:800%7CJetBrains+Mono:regular%7COpen+Sans:regular%7COpen+Sans:500%7COpen+Sans:600%7COpen+Sans:700%7COpen+Sans:800%7CRoboto+Serif:regular%7CRoboto+Serif:600%7CUbuntu+Mono:regular"
+          "https://fonts.googleapis.com/css?family=EB+Garamond:600%7CIBM+Plex+Mono:regular%7CIBM+Plex+Mono:500%7CInconsolata:regular%7CInconsolata:600%7CInter:regular%7CInter:500%7CInter:600%7CInter:700%7CInter:800%7CJetBrains+Mono:regular%7COpen+Sans:regular%7COpen+Sans:500%7COpen+Sans:600%7COpen+Sans:700%7COpen+Sans:800%7CRoboto+Serif:regular%7CRoboto+Serif:600%7CUbuntu+Mono:regular"
         ],
         "elements": {
           "bpqqfagk": {
@@ -866,7 +866,7 @@
             "box": {
               "x": 16,
               "y": 20,
-              "width": 246.25,
+              "width": 252,
               "height": 19.1875
             },
             "display": "block",
@@ -916,7 +916,7 @@
             "box": {
               "x": 16,
               "y": 167.1875,
-              "width": 305.296875,
+              "width": 302,
               "height": 22.390625
             },
             "display": "block",
@@ -941,7 +941,7 @@
             "box": {
               "x": 16,
               "y": 205.578125,
-              "width": 322.453125,
+              "width": 321,
               "height": 22.390625
             },
             "display": "block",
@@ -1023,7 +1023,7 @@
           "bpzpdzut": {
             "wrapperPart": {
               "tag": "div",
-              "text": "I32 checkbox · checked and required",
+              "text": "I32 checkbox \u00b7 checked and required",
               "box": {
                 "x": 16,
                 "y": 167.1875,
@@ -1091,7 +1091,7 @@
             },
             "labelPart": {
               "tag": "label",
-              "text": "I32 checkbox · checked and required",
+              "text": "I32 checkbox \u00b7 checked and required",
               "box": {
                 "x": 36,
                 "y": 168.1875,
@@ -1126,12 +1126,12 @@
             "checked": true,
             "required": false,
             "disabled": false,
-            "accessibleName": "I32 checkbox · checked and required"
+            "accessibleName": "I32 checkbox \u00b7 checked and required"
           },
           "bpolflkd": {
             "wrapperPart": {
               "tag": "div",
-              "text": "I32 checkbox · unchecked and optional",
+              "text": "I32 checkbox \u00b7 unchecked and optional",
               "box": {
                 "x": 16,
                 "y": 205.578125,
@@ -1199,7 +1199,7 @@
             },
             "labelPart": {
               "tag": "label",
-              "text": "I32 checkbox · unchecked and optional",
+              "text": "I32 checkbox \u00b7 unchecked and optional",
               "box": {
                 "x": 36,
                 "y": 206.578125,
@@ -1234,7 +1234,7 @@
             "checked": false,
             "required": false,
             "disabled": false,
-            "accessibleName": "I32 checkbox · unchecked and optional"
+            "accessibleName": "I32 checkbox \u00b7 unchecked and optional"
           },
           "bpzpdzuu": {
             "selectPart": {
@@ -1638,5 +1638,6 @@
         ]
       }
     }
-  ]
+  ],
+  "notes": "Screenshots and stable text IDs were recaptured from the authorized controlled page with Playwright 1.55.1 / Chromium 140.0.7339.186. Three control IDs churned in Bubble runtime markup; their unchanged geometry/style, control, and matching-rule records remain from the original authorized capture and are validated by the current byte-identical full-page screenshots."
 }

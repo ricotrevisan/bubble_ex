@@ -87,8 +87,33 @@ All notable changes to this project are documented here.
   `%d`/`%f3` shape.
 - Added `BubbleEx.Secrets.Native`, a pure-Elixir offline secret-scanning adapter
   (regex + base64 + opt-in entropy, no live verification).
+- Added the frozen Issue #42 complex-composition fidelity case with two selected
+  pages, nested reusable expansion, local image/font/icon assets, a viewport
+  Floating Group, portable navigation, and an explicit Repeating Group boundary.
+  The gate now records bounded pixel metrics rather than treating all PNG drift
+  as an unqualified mismatch.
+- Added `scripts/package_consumer_smoke.sh` and an Elixir 1.18.4 / OTP 28 CI lane
+  to compile and execute the unpacked production package from a fresh project.
+
+### Security
+
+- Link destinations use a safe scheme allowlist. CSS values that can escape a
+  declaration or fetch a remote URL are omitted with explicit findings.
+- Cross-origin public assets must resolve to public HTTP(S) destinations. The
+  validated address is pinned for the connection, and every redirect is
+  revalidated. Failed or missing local assets never retain a remote HTML/network
+  fallback.
+- Secret-scan errors and frontend export errors redact raw token material.
+  Trufflehog inputs now live in random private temporary directories instead of
+  payload-derived paths. The fidelity harness uses Playwright 1.55.1, which fixes
+  its browser download certificate-validation advisory.
 
 ### Changed
+
+- Page hydration now merges page-bundle shared styles with the same deterministic
+  precedence as reusable definitions. Reusable package directories are
+  collision-safe, and legacy fixed-container placement dimensions remain
+  authoritative during normalization.
 
 - Frontend live-payload parsing now applies Bubble's data-only
   `Object.assign(..., JSON.parse(...))` page patches instead of exporting only

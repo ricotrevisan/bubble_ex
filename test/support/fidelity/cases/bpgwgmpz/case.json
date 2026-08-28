@@ -1,0 +1,101 @@
+{
+  "id": "bpgwgmpz",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 844
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "13iti",
+    "page_id": "bpgwgmpz",
+    "page_path": "bubbleex-complex-demo",
+    "page_payload_sha256": "2f0f334eef4862c0fb6648ecea62c0cded6d87969e414fc1d2201455a0990b23",
+    "payload_sha256": "5f793038b329654b9705399adad375f54ac60d572205788863e14f94205a1101"
+  },
+  "public_assets": [
+    {
+      "url": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
+      "path": "assets/bubbleex-i35-image-modes.png"
+    },
+    {
+      "url": "/static/icon_libraries/fontawesome-4.7.0.svg",
+      "path": "assets/fontawesome-4.7.0-fa-star.svg"
+    }
+  ],
+  "export_pages": [
+    "bubbleex-complex-demo",
+    "bubbleex-complex-detail"
+  ],
+  "viewports": [
+    390,
+    1512
+  ],
+  "transitions": {
+    "390": "intentional 416 px document overflow, stacked reusable cards, 1024 px hint collapsed",
+    "1512": "1120 px section clamp with two reusable cards on one row"
+  },
+  "node_ids": [
+    "bpcjysad",
+    "bpcjysae",
+    "bpcjyrzf",
+    "bpcjyrzg",
+    "bpcjyrzh",
+    "bpcjyrzi",
+    "bpcjyrzq",
+    "bpcjyrzj",
+    "bpcjyrzk",
+    "bpcjyrzl",
+    "bpcjyrzn",
+    "bpcjyrzo",
+    "bpcjyrzr"
+  ],
+  "text_node_ids": [
+    "bpcjysae",
+    "bpcjyrzg",
+    "bpcjyrzh",
+    "bpcjyrzi",
+    "bpcjyrzq"
+  ],
+  "semantics": {
+    "main": [
+      "bpgwgmpz"
+    ],
+    "headings": {
+      "h2": [
+        "bpcjyrzh"
+      ]
+    },
+    "paragraphs": [
+      "bpcjysae",
+      "bpcjyrzg",
+      "bpcjyrzi",
+      "bpcjyrzq"
+    ],
+    "links": [
+      "bpcjyrzo"
+    ],
+    "link_attributes": {
+      "bpcjyrzo": {
+        "href": "../bubbleex-complex-detail/index.html"
+      }
+    },
+    "decorative": [
+      "bpcjyrzr"
+    ]
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 48,
+    "max_channel_delta": 6,
+    "rationale": "The portable exporter emits an accessibility-hidden inline SVG instead of Bubble runtime button markup; both preserve the captured FA4 path and exact 18x18 geometry, with 48 edge-antialias pixels differing by at most 6/255.",
+    "max_mean_absolute_error": 3e-05
+  }
+}

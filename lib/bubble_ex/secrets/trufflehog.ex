@@ -78,22 +78,26 @@ defmodule BubbleEx.Secrets.Trufflehog do
   end
 
   defp run_scan(payload, id, cli, opts) do
+    case create_temp_file(payload) do
+      {:ok, temp} -> run_scan_with_temp(temp, id, cli, opts)
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp run_scan_with_temp(temp, id, cli, opts) do
     ref = Keyword.get(opts, :ref)
     server_pid = Keyword.get(opts, :server_pid)
     log_level = Keyword.get(opts, :log_level, "5")
 
-    {:ok, temp_file_path} = create_temp_file(payload, id)
-    payload_json = if is_map(payload), do: Jason.encode!(payload), else: payload
-
     try do
-      Logger.info("Starting Trufflehog scan for payload with ID: #{id}")
+      Logger.info("Starting Trufflehog scan")
       stream(server_pid, ref, "Starting Trufflehog scan for payload with ID: #{id}")
 
       # `:spawn_executable` with an explicit argv avoids shell interpolation of
       # the (untrusted) temp path / id — no command-injection surface.
       args = [
         "filesystem",
-        temp_file_path,
+        temp.path,
         "--json",
         "--log-level=#{log_level}",
         "--results=verified,unknown",
@@ -102,14 +106,14 @@ defmodule BubbleEx.Secrets.Trufflehog do
 
       port = Port.open({:spawn_executable, cli}, [:binary, :exit_status, args: args])
       {terminal_output, status} = collect_output(port, "", ref, server_pid)
-      findings = parse_findings(terminal_output, payload_json)
+      findings = parse_findings(terminal_output, temp.payload_json)
 
       handle_status(status, findings, ref, server_pid)
     rescue
-      e ->
-        {:error, Error.new(:cli_failed, "trufflehog scan error: #{inspect(e)}", %{})}
+      _error ->
+        {:error, Error.new(:cli_failed, "trufflehog scan failed safely", %{})}
     after
-      File.rm(temp_file_path)
+      File.rm_rf(temp.dir)
     end
   end
 
@@ -136,11 +140,75 @@ defmodule BubbleEx.Secrets.Trufflehog do
     |> Enum.reject(&Map.get(&1, "InvalidResult", false))
   end
 
-  defp create_temp_file(payload, id) do
-    temp_file_path = Path.join(System.tmp_dir!(), "#{id}.json")
-    contents = if is_map(payload), do: Jason.encode!(payload, pretty: true), else: payload
-    File.write!(temp_file_path, contents)
-    {:ok, temp_file_path}
+  defp create_temp_file(payload) do
+    with {:ok, payload_json, file_contents} <- encode_payload(payload),
+         {:ok, temp_dir} <- create_private_temp_dir(3) do
+      write_private_temp_file(temp_dir, payload_json, file_contents)
+    end
+  rescue
+    _ -> temp_setup_error(:setup_failed)
+  end
+
+  defp write_private_temp_file(temp_dir, payload_json, file_contents) do
+    temp_file = Path.join(temp_dir, "payload.json")
+
+    case File.write(temp_file, file_contents, [:exclusive]) do
+      :ok ->
+        {:ok, %{path: temp_file, dir: temp_dir, payload_json: payload_json}}
+
+      {:error, reason} ->
+        File.rm_rf(temp_dir)
+        temp_setup_error(reason)
+    end
+  end
+
+  defp encode_payload(payload) when is_map(payload) do
+    with {:ok, payload_json} <- Jason.encode(payload),
+         {:ok, file_contents} <- Jason.encode(payload, pretty: true) do
+      {:ok, payload_json, file_contents}
+    else
+      {:error, reason} -> temp_setup_error(reason)
+    end
+  end
+
+  defp encode_payload(payload) when is_binary(payload), do: {:ok, payload, payload}
+
+  defp create_private_temp_dir(attempts) when attempts > 0 do
+    case System.tmp_dir() do
+      temp_root when is_binary(temp_root) -> create_named_temp_dir(temp_root, attempts)
+      _ -> temp_setup_error(:temp_dir_unavailable)
+    end
+  end
+
+  defp create_private_temp_dir(_attempts), do: temp_setup_error(:name_collision)
+
+  defp create_named_temp_dir(temp_root, attempts) do
+    random = Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
+    temp_dir = Path.join(temp_root, "bubble_ex_trufflehog_#{random}")
+    secure_temp_dir(temp_dir, attempts)
+  end
+
+  defp secure_temp_dir(temp_dir, attempts) do
+    case File.mkdir(temp_dir) do
+      :ok -> restrict_temp_dir(temp_dir)
+      {:error, :eexist} -> create_private_temp_dir(attempts - 1)
+      {:error, reason} -> temp_setup_error(reason)
+    end
+  end
+
+  defp restrict_temp_dir(temp_dir) do
+    case File.chmod(temp_dir, 0o700) do
+      :ok ->
+        {:ok, temp_dir}
+
+      {:error, reason} ->
+        File.rm_rf(temp_dir)
+        temp_setup_error(reason)
+    end
+  end
+
+  defp temp_setup_error(_reason) do
+    {:error, Error.new(:cli_failed, "could not prepare private trufflehog input", %{})}
   end
 
   # Adds an "Encoded" field for BASE64 findings so the original encoded value can

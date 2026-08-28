@@ -51,11 +51,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
         end
 
       {:error, finding} ->
-        assets =
-          if authenticated_asset_mode?(opts),
-            do: Map.put(state.assets, node.exporter_id, %{failed?: true}),
-            else: state.assets
-
+        assets = Map.put(state.assets, node.exporter_id, %{failed?: true})
         %{state | assets: assets, findings: [finding | state.findings]}
     end
   end
@@ -88,14 +84,8 @@ defmodule BubbleEx.Frontend.Export.Assets do
     %{state | assets: Map.put(state.assets, node.exporter_id, asset)}
   end
 
-  defp apply_outcome(node, {{:error, finding}, protected?}, state) do
-    assets =
-      if protected? do
-        Map.put(state.assets, node.exporter_id, %{failed?: true})
-      else
-        state.assets
-      end
-
+  defp apply_outcome(node, {{:error, finding}, _protected?}, state) do
+    assets = Map.put(state.assets, node.exporter_id, %{failed?: true})
     findings = if finding in state.findings, do: state.findings, else: [finding | state.findings]
     %{state | assets: assets, findings: findings}
   end
@@ -109,26 +99,36 @@ defmodule BubbleEx.Frontend.Export.Assets do
   defp resolved_src(_), do: nil
 
   defp resolve_asset_url(raw_url, opts) do
-    cond do
-      local_asset_configured?(raw_url, opts) ->
-        {:ok, raw_url}
+    if local_asset_configured?(raw_url, opts) do
+      {:ok, raw_url}
+    else
+      case resolve_http_url(raw_url, opts) do
+        {:ok, url} ->
+          {:ok, url}
 
-      http?(raw_url) and not SafeUrl.userinfo?(raw_url) ->
-        {:ok, raw_url}
+        {:userinfo, url} ->
+          {:error, asset_finding(url, "asset URL must not contain userinfo")}
+
+        _ ->
+          {:error, asset_finding(raw_url, "asset is not a public HTTP URL")}
+      end
+    end
+  end
+
+  defp resolve_http_url(raw_url, opts) do
+    cond do
+      http?(raw_url) and SafeUrl.userinfo?(raw_url) ->
+        {:userinfo, raw_url}
 
       http?(raw_url) ->
-        {:error, asset_finding(raw_url, "asset URL must not contain userinfo")}
+        {:ok, raw_url}
 
       match?(%Context{}, Keyword.get(opts, :fetch_context)) ->
         %Context{page_url: page_url} = Keyword.fetch!(opts, :fetch_context)
-
-        case SafeUrl.resolve(page_url, raw_url) do
-          {:ok, url} -> {:ok, url}
-          {:error, _} -> {:error, asset_finding(raw_url, "asset URL is invalid")}
-        end
+        SafeUrl.resolve(page_url, raw_url)
 
       true ->
-        {:error, asset_finding(raw_url, "asset is not a public HTTP URL")}
+        :error
     end
   end
 
@@ -138,8 +138,14 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
   defp download(raw_url, url, protected?, opts) do
     case local_asset(raw_url, url, opts) do
-      {:ok, bytes} -> store_or_reject(url, bytes, [], Config.frontend_max_asset_bytes(opts))
-      :none -> if protected?, do: fetch_protected(url, opts), else: fetch_public(url, opts)
+      {:ok, bytes} ->
+        store_or_reject(url, bytes, [], Config.frontend_max_asset_bytes(opts))
+
+      {:error, finding} ->
+        {:error, finding}
+
+      :none ->
+        if protected?, do: fetch_protected(url, opts), else: fetch_public(url, opts)
     end
   end
 
@@ -158,12 +164,12 @@ defmodule BubbleEx.Frontend.Export.Assets do
     case value do
       path when is_binary(path) ->
         case File.read(path) do
-          {:ok, bytes} -> {:ok, bytes}
-          {:error, _} -> :none
-        end
+          {:ok, bytes} ->
+            {:ok, bytes}
 
-      bytes when is_binary(bytes) ->
-        {:ok, bytes}
+          {:error, _} ->
+            {:error, asset_finding(resolved_url, "configured local asset could not be read")}
+        end
 
       _ ->
         :none
@@ -174,13 +180,6 @@ defmodule BubbleEx.Frontend.Export.Assets do
     case String.split(url, "?", parts: 2) do
       [base, _] -> base
       [base] -> base
-    end
-  end
-
-  defp authenticated_asset_mode?(opts) do
-    case {Keyword.get(opts, :asset_access, :public), Keyword.get(opts, :fetch_context)} do
-      {:same_origin, %Context{auth: auth}} -> Auth.enabled?(auth)
-      _ -> false
     end
   end
 
@@ -219,29 +218,134 @@ defmodule BubbleEx.Frontend.Export.Assets do
     end
   end
 
-  defp fetch_public(url, opts) do
+  defp fetch_public(url, opts), do: do_fetch_public(url, opts, MapSet.new(), 0)
+
+  defp do_fetch_public(_url, _opts, _visited, hops) when hops > @max_redirects do
+    {:error, asset_finding(nil, "asset redirect limit exceeded")}
+  end
+
+  defp do_fetch_public(url, opts, visited, hops) do
+    normalized = SafeUrl.normalize(url)
+
+    if MapSet.member?(visited, normalized) do
+      {:error, asset_finding(url, "asset redirect loop detected")}
+    else
+      request_public_asset(url, opts, visited, normalized, hops)
+    end
+  end
+
+  defp request_public_asset(url, opts, visited, normalized, hops) do
     timeout = Config.frontend_asset_timeout(opts)
     max_bytes = Config.frontend_max_asset_bytes(opts)
 
-    case HTTP.get(url, [],
-           recv_timeout: timeout,
-           timeout: timeout,
-           max_body_length: max_bytes,
-           bounded_body: true,
-           redact_values: credential_taints(opts)
-         ) do
-      {:ok, %{status_code: 200, body: body, headers: headers}} ->
-        store_or_reject(url, body, headers, max_bytes)
+    case public_request(url, opts, timeout) do
+      {:ok, {request_url, headers, connection_options}} ->
+        response =
+          HTTP.get(
+            request_url,
+            headers,
+            [
+              follow_redirect: false,
+              recv_timeout: timeout,
+              timeout: timeout,
+              max_body_length: max_bytes,
+              bounded_body: true,
+              redact_values: credential_taints(opts)
+            ] ++ connection_options
+          )
 
-      {:ok, %{status_code: status}} ->
-        {:error, asset_finding(url, "asset download returned HTTP #{status}")}
-
-      {:error, %HTTP.Error{reason: :body_too_large}} ->
-        {:error, asset_finding(url, "asset exceeded max_asset_bytes")}
+        handle_public_response(response, url, opts, visited, normalized, hops, max_bytes)
 
       {:error, _} ->
-        {:error, asset_finding(url, "asset download failed")}
+        {:error, asset_finding(url, "asset destination did not resolve to a public address")}
     end
+  end
+
+  defp public_request(url, opts, timeout) do
+    if same_origin_asset?(url, opts) do
+      {:ok, {url, [], []}}
+    else
+      case SafeUrl.pin_public_http_destination(url, min(timeout, 5_000)) do
+        {:ok, {request_url, hostname}} ->
+          {:ok,
+           {request_url, [{"host", hostname}],
+            [connect_options: [hostname: hostname, timeout: timeout]]}}
+
+        {:error, _} = error ->
+          error
+      end
+    end
+  end
+
+  defp same_origin_asset?(url, opts) do
+    case Keyword.get(opts, :fetch_context) do
+      %Context{page_url: page_url} ->
+        case SafeUrl.origin(page_url) do
+          {:ok, origin} -> SafeUrl.same_origin?(origin, url)
+          _ -> false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  defp handle_public_response(
+         {:ok, %{status_code: 200, body: body, headers: headers}},
+         url,
+         _opts,
+         _visited,
+         _normalized,
+         _hops,
+         max_bytes
+       ) do
+    store_or_reject(url, body, headers, max_bytes)
+  end
+
+  defp handle_public_response(
+         {:ok, %{status_code: status, headers: headers}},
+         url,
+         opts,
+         visited,
+         normalized,
+         hops,
+         _max_bytes
+       )
+       when status in 300..399 do
+    with location when is_binary(location) <- header(headers, "location"),
+         {:ok, next} <- SafeUrl.resolve(url, location) do
+      do_fetch_public(next, opts, MapSet.put(visited, normalized), hops + 1)
+    else
+      _ -> {:error, asset_finding(url, "asset redirect location was invalid")}
+    end
+  end
+
+  defp handle_public_response(
+         {:ok, %{status_code: status}},
+         url,
+         _opts,
+         _visited,
+         _normalized,
+         _hops,
+         _max_bytes
+       ) do
+    {:error, asset_finding(url, "asset download returned HTTP #{status}")}
+  end
+
+  defp handle_public_response(
+         {:error, %HTTP.Error{reason: :body_too_large}},
+         url,
+         _opts,
+         _visited,
+         _normalized,
+         _hops,
+         _max_bytes
+       ) do
+    {:error, asset_finding(url, "asset exceeded max_asset_bytes")}
+  end
+
+  defp handle_public_response(_response, url, _opts, _visited, _normalized, _hops, _max_bytes) do
+    {:error, asset_finding(url, "asset download failed")}
   end
 
   defp fetch_protected(url, opts) do
@@ -334,25 +438,32 @@ defmodule BubbleEx.Frontend.Export.Assets do
     tags = Regex.scan(path_regex, body) |> Enum.map(&hd/1)
     remainder = Regex.replace(path_regex, body, "") |> String.trim()
 
-    if tags != [] and remainder == "" do
-      tags
-      |> Enum.reduce_while({:ok, []}, fn tag, {:ok, paths} ->
-        case Regex.run(~r/\bd="([^\"]+)"/, tag) do
-          [_, data] ->
-            if Regex.match?(~r/^[0-9eE.,+\-\sMmZzLlHhVvCcSsQqTtAa]+$/, data),
-              do: {:cont, {:ok, [~s(<path fill="currentColor" d="#{data}"/>) | paths]}},
-              else: {:halt, :error}
-
-          _ ->
-            {:halt, :error}
-        end
-      end)
-      |> case do
-        {:ok, paths} -> {:ok, Enum.reverse(paths)}
-        :error -> :error
-      end
-    else
+    if tags == [] or remainder != "" do
       :error
+    else
+      sanitize_path_tags(tags)
+    end
+  end
+
+  defp sanitize_path_tags(tags) do
+    case Enum.reduce_while(tags, [], &collect_sanitized_path/2) do
+      :error -> :error
+      paths -> {:ok, Enum.reverse(paths)}
+    end
+  end
+
+  defp collect_sanitized_path(tag, paths) do
+    case Regex.run(~r/\bd="([^\"]+)"/, tag) do
+      [_, data] -> collect_safe_path_data(data, paths)
+      _ -> {:halt, :error}
+    end
+  end
+
+  defp collect_safe_path_data(data, paths) do
+    if Regex.match?(~r/^[0-9eE.,+\-\sMmZzLlHhVvCcSsQqTtAa]+$/, data) do
+      {:cont, [~s(<path fill="currentColor" d="#{data}"/>) | paths]}
+    else
+      {:halt, :error}
     end
   end
 

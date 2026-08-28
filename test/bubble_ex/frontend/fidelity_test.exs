@@ -12,16 +12,37 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert "bptaixqv" in ids
       assert "bpewigqu" in ids
       assert "bpcybc" in ids
+      assert "bpqqfagk" in ids
+      assert "bpgwgmpz" in ids
       assert ids == Enum.sort(ids)
     end
   end
 
   describe "load_case/1" do
+    test "loads the frozen Issue #42 complex composition pin" do
+      assert {:ok, case_} = Fidelity.load_case("bpgwgmpz")
+      assert case_.id == "bpgwgmpz"
+      assert case_.browser.playwright == "1.55.1"
+      assert case_.browser.chromium == "140.0.7339.186"
+      assert case_.source.page_id == "bpgwgmpz"
+      assert case_.source.page_path == "bubbleex-complex-demo"
+
+      assert case_.source.payload_sha256 ==
+               "5f793038b329654b9705399adad375f54ac60d572205788863e14f94205a1101"
+
+      assert case_.viewports == [390, 1512]
+      assert case_.export_pages == ["bubbleex-complex-demo", "bubbleex-complex-detail"]
+      assert "bpcjyrzk" in case_.node_ids
+      assert "bpcjyrzr" in case_.node_ids
+      assert "bpcjysad" in case_.node_ids
+      assert "bpcjyrzn" in case_.node_ids
+    end
+
     test "loads the frozen bpcybc normal/H4 Text pin" do
       assert {:ok, case_} = Fidelity.load_case("bpcybc")
       assert case_.id == "bpcybc"
-      assert case_.browser.playwright == "1.55.0"
-      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.browser.playwright == "1.55.1"
+      assert case_.browser.chromium == "140.0.7339.186"
       assert case_.source.page_id == "bpcybc"
       assert case_.source.page_path == "bubbleex-i38-h4-text"
       assert case_.viewports == [390, 1440]
@@ -32,8 +53,8 @@ defmodule BubbleEx.Frontend.FidelityTest do
     test "loads the frozen bpewigqu Text/Password Input pin" do
       assert {:ok, case_} = Fidelity.load_case("bpewigqu")
       assert case_.id == "bpewigqu"
-      assert case_.browser.playwright == "1.55.0"
-      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.browser.playwright == "1.55.1"
+      assert case_.browser.chromium == "140.0.7339.186"
       assert case_.source.page_id == "bpewigqu"
       assert case_.source.page_path == "bubbleex-i37-text-password-input"
       assert case_.viewports == [390, 1440]
@@ -43,8 +64,8 @@ defmodule BubbleEx.Frontend.FidelityTest do
     test "loads the frozen bptaixqv text-only Link pin" do
       assert {:ok, case_} = Fidelity.load_case("bptaixqv")
       assert case_.id == "bptaixqv"
-      assert case_.browser.playwright == "1.55.0"
-      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.browser.playwright == "1.55.1"
+      assert case_.browser.chromium == "140.0.7339.186"
       assert case_.source.page_id == "bptaixqv"
       assert case_.source.page_path == "bubbleex-i36-text-only-link"
       assert case_.viewports == [390, 1440]
@@ -53,8 +74,8 @@ defmodule BubbleEx.Frontend.FidelityTest do
     test "loads the frozen bprkyexk image-mode pin" do
       assert {:ok, case_} = Fidelity.load_case("bprkyexk")
       assert case_.id == "bprkyexk"
-      assert case_.browser.playwright == "1.55.0"
-      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.browser.playwright == "1.55.1"
+      assert case_.browser.chromium == "140.0.7339.186"
       assert case_.source.page_id == "bprkyexk"
       assert case_.source.page_path == "bubbleex-i35-image-modes"
       assert 390 in case_.viewports
@@ -64,8 +85,8 @@ defmodule BubbleEx.Frontend.FidelityTest do
     test "loads the frozen bpmkbvvo pin and viewport matrix" do
       assert {:ok, case_} = Fidelity.load_case("bpmkbvvo")
       assert case_.id == "bpmkbvvo"
-      assert case_.browser.playwright == "1.55.0"
-      assert case_.browser.chromium == "140.0.7339.16"
+      assert case_.browser.playwright == "1.55.1"
+      assert case_.browser.chromium == "140.0.7339.186"
       assert case_.browser.dpr == 1
       assert case_.browser.locale == "en-US"
       assert case_.browser.reduced_motion == "reduce"
@@ -312,6 +333,46 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert {:ok, report} = Fidelity.run("bpcybc", out_dir: Path.join(tmp, "pkg"))
       assert report["status"] == "pass"
       assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bpqqfagk passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bpqqfagk", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bpgwgmpz passes the Issue #42 complex-composition gate", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+      assert {:ok, report} = Fidelity.run("bpgwgmpz", out_dir: out)
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+      assert report["screenshots"]["allWithinTolerance"]
+
+      manifest = Jason.decode!(File.read!(Path.join(out, "MANIFEST.json")))
+
+      assert Enum.filter(manifest["files"], &String.ends_with?(&1, "/index.html")) == [
+               "pages/bubbleex-complex-demo/index.html",
+               "pages/bubbleex-complex-detail/index.html"
+             ]
+
+      html = File.read!(Path.join(out, "pages/bubbleex-complex-demo/index.html"))
+      assert {:ok, document} = Floki.parse_document(html)
+      ids = Floki.find(document, "[data-exporter-id]") |> Floki.attribute("data-exporter-id")
+      assert ids == Enum.uniq(ids)
+      assert html =~ "NESTED REUSABLE"
+      assert html =~ ~s(href="../bubbleex-complex-detail/index.html")
+      assert html =~ ~s(<symbol id="fa-star")
+
+      css = File.read!(Path.join(out, "styles/pages/bubbleex-complex-demo.css"))
+      assert css =~ "position: fixed;"
+      assert css =~ "z-index: 20;"
+
+      assert [finding] = Jason.decode!(File.read!(Path.join(out, "findings.json")))
+      assert finding["payload"] == %{"reason" => "unsupported_kind", "type" => "RepeatingGroup"}
     end
   end
 end

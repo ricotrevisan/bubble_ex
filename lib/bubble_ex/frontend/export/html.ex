@@ -1,6 +1,7 @@
 defmodule BubbleEx.Frontend.Export.Html do
   @moduledoc false
 
+  alias BubbleEx.Frontend.Export.Safety
   alias BubbleEx.Frontend.Naming
   alias BubbleEx.Frontend.Normalized.Node
 
@@ -152,22 +153,40 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp render_icon(node, opts) do
     fragment = node.attributes["asset_fragment"]
 
-    href =
+    symbol =
       case Keyword.get(opts, :assets, %{}) |> Map.get(node.exporter_id) do
-        %{path: path} -> "../../" <> path <> "#" <> fragment
-        _ -> ""
+        %{bytes: bytes} -> inline_icon_symbol(bytes, fragment)
+        _ -> nil
       end
 
     inner =
-      [
-        ~s(<svg viewBox="0 0 32 32" data-icon-set="fa" aria-hidden="true">),
-        ~s(<use href="),
-        escape(href),
-        ~s("></use></svg>)
-      ]
+      if is_binary(symbol) do
+        [
+          ~s(<svg viewBox="0 0 32 32" data-icon-set="fa" aria-hidden="true"><defs>),
+          symbol,
+          ~s(</defs><use width="32" height="32" href="##{fragment}"></use></svg>)
+        ]
+      else
+        ""
+      end
 
     wrap("span", node, inner, opts)
   end
+
+  defp inline_icon_symbol(bytes, fragment) when is_binary(bytes) and is_binary(fragment) do
+    regex =
+      Regex.compile!(
+        "<symbol\s+id=\"#{Regex.escape(fragment)}\"[^>]*>.*?</symbol>",
+        "s"
+      )
+
+    case Regex.run(regex, bytes) do
+      [symbol] -> symbol
+      _ -> nil
+    end
+  end
+
+  defp inline_icon_symbol(_bytes, _fragment), do: nil
 
   defp children_html(%Node{children: children}, opts) do
     children
@@ -443,21 +462,20 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp navigation_button?(_), do: false
 
+  defp link_href(%Node{attributes: %{"disabled" => true}}, _opts), do: nil
+
+  defp link_href(%Node{content: %{"destination" => %{binding_id: _}}}, _opts), do: nil
+
   defp link_href(node, opts) do
-    cond do
-      node.attributes["disabled"] == true ->
-        nil
-
-      match?(%{"destination" => %{binding_id: _}}, node.content) ->
-        nil
-
-      true ->
-        case resolved(node, "destination") do
-          dest when is_binary(dest) -> Keyword.get(opts, :rewrite_href).(node, dest)
-          _ -> nil
-        end
-    end
+    safe_link_href(node, resolved(node, "destination"), opts)
   end
+
+  defp safe_link_href(node, destination, opts) when is_binary(destination) do
+    rewritten = Keyword.get(opts, :rewrite_href).(node, destination)
+    if Safety.safe_href?(rewritten), do: rewritten
+  end
+
+  defp safe_link_href(_node, _destination, _opts), do: nil
 
   defp maybe_put_class(attrs, node, opts) do
     case Keyword.get(opts, :style_class).(node) do

@@ -322,11 +322,11 @@ defmodule BubbleEx.Frontend.Normalize do
     props = Payload.properties(raw)
 
     fixed_box = %{
-      x: props["%l"],
-      y: props["%t"],
+      x: props["%l"] || placement_value(node, :x),
+      y: props["%t"] || placement_value(node, :y),
       z_index: props["%z"],
-      width: props["%w"] || fixed_child_default(node.kind, :width),
-      height: props["%h"] || fixed_child_default(node.kind, :height)
+      width: props["%w"] || placement_value(node, :width) || fixed_child_default(node, :width),
+      height: props["%h"] || placement_value(node, :height) || fixed_child_default(node, :height)
     }
 
     %{
@@ -342,9 +342,15 @@ defmodule BubbleEx.Frontend.Normalize do
 
   # These are Bubble's runtime defaults for a Shape dropped into a Fixed
   # container. Explicit compact or canonical dimensions always win.
-  defp fixed_child_default(:shape, :width), do: 200
-  defp fixed_child_default(:shape, :height), do: 150
-  defp fixed_child_default(_kind, _axis), do: nil
+  defp placement_value(%Node{box: box}, key) when is_map(box) do
+    placement = box[:placement] || box["placement"] || %{}
+    placement[key] || placement[Atom.to_string(key)]
+  end
+
+  defp placement_value(_node, _key), do: nil
+  defp fixed_child_default(%Node{kind: :shape}, :width), do: 200
+  defp fixed_child_default(%Node{kind: :shape}, :height), do: 150
+  defp fixed_child_default(_node, _axis), do: nil
 
   defp normalize_element(raw, identity, path, map_key, workflows) do
     type = Payload.type(raw)
@@ -732,13 +738,17 @@ defmodule BubbleEx.Frontend.Normalize do
     sizing =
       Payload.prop(raw, if(axis == :width, do: "horizontal_sizing", else: "vertical_sizing"))
 
-    cond do
-      fit == "fill" or behavior == "fill" or sizing == "fill" -> true
-      single == false and fit != true -> true
-      single == true or fit == true -> false
-      true -> nil
+    if Enum.any?([fit, behavior, sizing], &(&1 == "fill")) do
+      true
+    else
+      fill_axis_from_flags(fit, single)
     end
   end
+
+  defp fill_axis_from_flags(fit, false) when fit != true, do: true
+  defp fill_axis_from_flags(_fit, true), do: false
+  defp fill_axis_from_flags(true, _single), do: false
+  defp fill_axis_from_flags(_fit, _single), do: nil
 
   defp legacy_fixed_fill_height?(raw, :fixed) do
     props = Payload.properties(raw)
@@ -855,19 +865,29 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp box_offsets(raw, sidecar) do
     %{
-      x: dim(raw, sidecar, "left") || dim(raw, sidecar, "x"),
-      y: dim(raw, sidecar, "top") || dim(raw, sidecar, "y"),
+      x: first_truthy([dim(raw, sidecar, "left"), dim(raw, sidecar, "x")]),
+      y: first_truthy([dim(raw, sidecar, "top"), dim(raw, sidecar, "y")]),
       rotation:
-        Payload.prop(raw, "rotation") || Payload.prop(raw, "rotation_angle") ||
-          sidecar["rotation"],
+        first_truthy([
+          Payload.prop(raw, "rotation"),
+          Payload.prop(raw, "rotation_angle"),
+          sidecar["rotation"]
+        ]),
       z_index:
-        Payload.prop(raw, "zindex") || Payload.prop(raw, "z_index") ||
-          Payload.prop(raw, "z-index") || compact_floating_z(raw),
-      align_self: Payload.prop(raw, "align-self") || Payload.prop(raw, "align_self"),
-      flex_grow: Payload.prop(raw, "flex-grow") || Payload.prop(raw, "flex_grow"),
-      placement: Payload.prop(raw, "placement") || nonant_placement(raw)
+        first_truthy([
+          Payload.prop(raw, "zindex"),
+          Payload.prop(raw, "z_index"),
+          Payload.prop(raw, "z-index"),
+          compact_floating_z(raw)
+        ]),
+      align_self:
+        first_truthy([Payload.prop(raw, "align-self"), Payload.prop(raw, "align_self")]),
+      flex_grow: first_truthy([Payload.prop(raw, "flex-grow"), Payload.prop(raw, "flex_grow")]),
+      placement: first_truthy([Payload.prop(raw, "placement"), nonant_placement(raw)])
     }
   end
+
+  defp first_truthy(values), do: Enum.find(values, & &1)
 
   @nonant_cells %{
     "aa" => "top_start",
@@ -909,9 +929,7 @@ defmodule BubbleEx.Frontend.Normalize do
       end)
 
     if Enum.any?(values, &(not is_nil(&1))) do
-      values
-      |> Enum.map(&spacing_part/1)
-      |> Enum.join(" ")
+      Enum.map_join(values, " ", &spacing_part/1)
     end
   end
 
@@ -1124,26 +1142,25 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp canonical_border(raw) do
     case Payload.prop(raw, "border") do
-      value when is_binary(value) ->
-        value
+      value when is_binary(value) -> value
+      nil -> canonical_border_parts(raw)
+      _value -> nil
+    end
+  end
 
-      value when not is_nil(value) ->
+  defp canonical_border_parts(raw) do
+    case Payload.prop(raw, "border_style") do
+      "none" ->
+        "none"
+
+      style when is_binary(style) ->
+        width = css_length(Payload.prop(raw, "border_width"))
+        color = Payload.prop(raw, "border_color")
+
+        if is_binary(width) and is_binary(color), do: "#{width} #{style} #{color}"
+
+      _ ->
         nil
-
-      nil ->
-        case Payload.prop(raw, "border_style") do
-          "none" ->
-            "none"
-
-          style when is_binary(style) ->
-            width = css_length(Payload.prop(raw, "border_width"))
-            color = Payload.prop(raw, "border_color")
-
-            if is_binary(width) and is_binary(color), do: "#{width} #{style} #{color}"
-
-          _ ->
-            nil
-        end
     end
   end
 

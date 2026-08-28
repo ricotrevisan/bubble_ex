@@ -8,6 +8,7 @@ defmodule BubbleEx.Frontend.Fidelity do
   """
 
   alias BubbleEx.Error
+  alias BubbleEx.Frontend.Json
 
   @cases_dir Path.expand("../../../test/support/fidelity/cases", __DIR__)
 
@@ -82,14 +83,17 @@ defmodule BubbleEx.Frontend.Fidelity do
     out_dir = Keyword.get(opts, :out_dir) || default_out_dir(case_.id)
 
     with {:ok, raw} <- File.read(payload_path),
-         {:ok, payload} <- Jason.decode(raw) do
-      BubbleEx.Frontend.export_payload(
-        payload,
-        out_dir,
-        force: true,
-        secret_scan_adapter: BubbleEx.Frontend.Fidelity.NoSecrets,
-        asset_files: local_asset_files(case_)
-      )
+         {:ok, payload} <- Jason.decode(raw),
+         :ok <- verify_payload_sha(payload, case_.source.payload_sha256) do
+      export_opts =
+        [
+          force: true,
+          secret_scan_adapter: BubbleEx.Frontend.Fidelity.NoSecrets,
+          asset_files: local_asset_files(case_)
+        ]
+        |> maybe_select_pages(case_.export_pages)
+
+      BubbleEx.Frontend.export_payload(payload, out_dir, export_opts)
     else
       {:error, :enoent} ->
         {:error, Error.new(:not_found, "frozen case has no source payload", %{case: case_.id})}
@@ -101,6 +105,22 @@ defmodule BubbleEx.Frontend.Fidelity do
         error
     end
   end
+
+  defp verify_payload_sha(_payload, nil), do: :ok
+
+  defp verify_payload_sha(payload, expected) do
+    if Json.sha256(payload) == expected do
+      :ok
+    else
+      {:error,
+       Error.new(:invalid_input, "frozen source payload SHA-256 does not match the pin", %{})}
+    end
+  end
+
+  defp maybe_select_pages(opts, pages) when is_list(pages) and pages != [],
+    do: Keyword.put(opts, :pages, pages)
+
+  defp maybe_select_pages(opts, _pages), do: opts
 
   defp local_asset_files(case_) do
     assets = get_in(case_.raw, ["public_assets"]) || []
@@ -302,9 +322,11 @@ defmodule BubbleEx.Frontend.Fidelity do
         app_version: get_in(json, ["source", "app_version"]),
         page_id: get_in(json, ["source", "page_id"]),
         page_path: get_in(json, ["source", "page_path"]),
-        page_payload_sha256: get_in(json, ["source", "page_payload_sha256"])
+        page_payload_sha256: get_in(json, ["source", "page_payload_sha256"]),
+        payload_sha256: get_in(json, ["source", "payload_sha256"])
       },
       viewports: json["viewports"] || [],
+      export_pages: json["export_pages"] || [],
       node_ids: json["node_ids"] || [],
       text_node_ids: json["text_node_ids"] || [],
       semantics: json["semantics"] || %{},

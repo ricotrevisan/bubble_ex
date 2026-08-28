@@ -1,8 +1,8 @@
 {
   "id": "bpcybc",
   "browser": {
-    "playwright": "1.55.0",
-    "chromium": "140.0.7339.16",
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
     "reduced_motion": "reduce",
@@ -18,7 +18,8 @@
     "app_version": "test",
     "page_id": "bpcybc",
     "page_path": "bubbleex-i38-h4-text",
-    "page_payload_sha256": "6b8fd2cb6fe130887477070220531f1bfeedff104133dcaf68c3dbcd28e950fa"
+    "page_payload_sha256": "6b8fd2cb6fe130887477070220531f1bfeedff104133dcaf68c3dbcd28e950fa",
+    "payload_sha256": "5be47e78ddac187533fd913b54b891834f15dfe43b24b7f710d826918ca83389"
   },
   "viewports": [
     390,
@@ -49,5 +50,11 @@
         "bpupqk"
       ]
     }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 5600,
+    "max_channel_delta": 100,
+    "max_mean_absolute_error": 0.3,
+    "rationale": "Geometry, document height, primary typography, and semantics remain exact. This bounded allowance covers frozen text/native-control rasterization drift in the pinned Chromium 140 headless shell."
   }
 }
