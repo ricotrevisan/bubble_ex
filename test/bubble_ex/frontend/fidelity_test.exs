@@ -360,8 +360,11 @@ defmodule BubbleEx.Frontend.FidelityTest do
              }
 
       assert Enum.all?(report["screenshots"]["results"], fn result ->
-               result["pixelDiff"]["rawChangedPixels"] == 48 and
-                 result["pixelDiff"]["changedPixels"] == 0
+               diff = result["pixelDiff"]
+
+               diff["rawChangedPixels"] > diff["changedPixels"] and
+                 diff["rawMaxChannelDelta"] >= diff["maxChannelDelta"] and
+                 diff["rawMeanAbsoluteError"] >= diff["meanAbsoluteError"]
              end)
 
       manifest = Jason.decode!(File.read!(Path.join(out, "MANIFEST.json")))

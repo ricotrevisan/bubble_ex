@@ -108,5 +108,11 @@
     "textareas": [
       "bpzpdzus"
     ]
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 4500,
+    "max_channel_delta": 100,
+    "max_mean_absolute_error": 0.22,
+    "rationale": "Pinned Chromium 140 renders the committed Inter bytes differently between the Debian capture host and Ubuntu CI. The Ubuntu gate observed 4,097 material pixels, a 91/255 maximum channel delta, and 0.201 mean absolute error at 390px; geometry, typography, document size, controls, and semantics remain exact."
   }
 }
