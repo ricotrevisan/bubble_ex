@@ -90,8 +90,9 @@ All notable changes to this project are documented here.
 - Added the frozen Issue #42 complex-composition fidelity case with two selected
   pages, nested reusable expansion, local image/font/icon assets, a viewport
   Floating Group, portable navigation, and an explicit Repeating Group boundary.
-  The gate now records bounded pixel metrics rather than treating all PNG drift
-  as an unqualified mismatch.
+  The gate now records bounded material pixel metrics rather than treating all
+  PNG drift as an unqualified mismatch. A pinned Pixelmatch comparator excludes
+  detected edge antialiasing from the gate while retaining raw pixel telemetry.
 - Added `scripts/package_consumer_smoke.sh` and an Elixir 1.18.4 / OTP 28 CI lane
   to compile and execute the unpacked production package from a fresh project.
 

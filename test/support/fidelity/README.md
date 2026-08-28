@@ -36,10 +36,16 @@ in `case.json`):
 - document `scrollHeight`, `clientWidth`, and `scrollWidth` match the source
 - collapse is behavioral (reference absent ⇒ candidate 0×0)
 - every present reference node exists on the candidate
-- full-page PNGs satisfy the case's explicit changed-pixel, channel-delta, and
-  mean-absolute-error bounds; omitted bounds default to byte-equivalent pixels
+- full-page PNGs satisfy the case's explicit material changed-pixel,
+  channel-delta, and mean-absolute-error bounds; omitted bounds default to zero
+  material pixel differences
 - no scripts / `on*` handlers; exporter ids on correlated nodes
 - a11y checks apply only to emitted controls
+
+Pixelmatch 7.1.0 classifies material pixel differences at a zero color
+threshold and excludes only detected edge antialiasing from the gated metrics. The
+report also records raw changed-pixel, channel-delta, and mean-error telemetry,
+so host font-rasterizer drift stays visible without making CI host-dependent.
 
 Pixel allowances are quantitative and must include a rationale in `case.json`.
 They cover pinned-browser raster behavior only. They do not weaken geometry,

@@ -7,9 +7,11 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { createRequire } from "module";
+import pixelmatch from "pixelmatch";
 
 const require = createRequire(import.meta.url);
 const { PNG } = require("pngjs");
+const PIXELMATCH_THRESHOLD = 0;
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -97,21 +99,49 @@ function comparePng(referenceBytes, candidateBytes) {
       changedPixels: null,
       maxChannelDelta: null,
       meanAbsoluteError: null,
+      rawChangedPixels: null,
+      rawMaxChannelDelta: null,
+      rawMeanAbsoluteError: null,
     };
   }
 
-  let changedPixels = 0;
+  const materialMask = new Uint8Array(reference.data.length);
+  const changedPixels = pixelmatch(
+    reference.data,
+    candidate.data,
+    materialMask,
+    reference.width,
+    reference.height,
+    {
+      threshold: PIXELMATCH_THRESHOLD,
+      includeAA: false,
+      diffMask: true,
+    }
+  );
+
   let maxChannelDelta = 0;
   let absoluteDelta = 0;
+  let rawChangedPixels = 0;
+  let rawMaxChannelDelta = 0;
+  let rawAbsoluteDelta = 0;
+
   for (let index = 0; index < reference.data.length; index += 4) {
-    let changed = false;
+    let rawChanged = false;
+    const materialChanged = materialMask[index + 3] !== 0;
+
     for (let channel = 0; channel < 4; channel += 1) {
       const delta = Math.abs(reference.data[index + channel] - candidate.data[index + channel]);
-      absoluteDelta += delta;
-      maxChannelDelta = Math.max(maxChannelDelta, delta);
-      changed ||= delta !== 0;
+      rawAbsoluteDelta += delta;
+      rawMaxChannelDelta = Math.max(rawMaxChannelDelta, delta);
+      rawChanged ||= delta !== 0;
+
+      if (materialChanged) {
+        absoluteDelta += delta;
+        maxChannelDelta = Math.max(maxChannelDelta, delta);
+      }
     }
-    if (changed) changedPixels += 1;
+
+    if (rawChanged) rawChangedPixels += 1;
   }
 
   return {
@@ -121,6 +151,9 @@ function comparePng(referenceBytes, candidateBytes) {
     changedPixels,
     maxChannelDelta,
     meanAbsoluteError: absoluteDelta / reference.data.length,
+    rawChangedPixels,
+    rawMaxChannelDelta,
+    rawMeanAbsoluteError: rawAbsoluteDelta / reference.data.length,
   };
 }
 
@@ -137,7 +170,7 @@ async function main() {
       reportPath,
       JSON.stringify({ status: "fail", error: "playwright_missing" }, null, 2) + "\n"
     );
-    console.error("playwright is not installed (need 1.55.0)");
+    console.error("playwright is not installed (need 1.55.1)");
     process.exit(1);
   }
 
@@ -299,6 +332,12 @@ async function main() {
     status: mismatches.length === 0 ? "pass" : "fail",
     case: caseJson.id,
     chromium: version,
+    pixelComparison: {
+      algorithm: "pixelmatch",
+      threshold: PIXELMATCH_THRESHOLD,
+      includeAntialias: false,
+      rawMetricsIncluded: true,
+    },
     viewportCount: viewports.length,
     geometry: {
       sampleCount: geometry.length,

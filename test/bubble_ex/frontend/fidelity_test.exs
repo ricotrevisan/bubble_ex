@@ -352,6 +352,18 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert report["mismatches"] == []
       assert report["screenshots"]["allWithinTolerance"]
 
+      assert report["pixelComparison"] == %{
+               "algorithm" => "pixelmatch",
+               "includeAntialias" => false,
+               "rawMetricsIncluded" => true,
+               "threshold" => 0
+             }
+
+      assert Enum.all?(report["screenshots"]["results"], fn result ->
+               result["pixelDiff"]["rawChangedPixels"] == 48 and
+                 result["pixelDiff"]["changedPixels"] == 0
+             end)
+
       manifest = Jason.decode!(File.read!(Path.join(out, "MANIFEST.json")))
 
       assert Enum.filter(manifest["files"], &String.ends_with?(&1, "/index.html")) == [
