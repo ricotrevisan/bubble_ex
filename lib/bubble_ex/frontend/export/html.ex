@@ -1,6 +1,7 @@
 defmodule BubbleEx.Frontend.Export.Html do
   @moduledoc false
 
+  alias BubbleEx.Frontend.Naming
   alias BubbleEx.Frontend.Normalized.Node
 
   @spec page_document(Node.t(), keyword()) :: String.t()
@@ -90,7 +91,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     do: wrap("main", node, children_html(node, opts), opts)
 
   defp do_render(%Node{kind: kind} = node, opts)
-       when kind in [:group, :reusable_definition, :shape, :placeholder],
+       when kind in [:group, :floating_group, :reusable_definition, :shape, :placeholder],
        do: wrap("div", node, children_html_or_empty(node, opts), opts)
 
   defp do_render(%Node{kind: :reusable_instance} = node, opts), do: render_instance(node, opts)
@@ -107,6 +108,7 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp do_render(%Node{kind: :link} = node, opts), do: render_link(node, opts)
   defp do_render(%Node{kind: :image} = node, opts), do: void("img", node, opts)
+  defp do_render(%Node{kind: :icon} = node, opts), do: render_icon(node, opts)
   defp do_render(%Node{kind: :input} = node, opts), do: void("input", node, opts)
 
   defp do_render(%Node{kind: :multiline_input} = node, opts),
@@ -117,23 +119,54 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :radio_buttons} = node, opts), do: render_radio_buttons(node, opts)
 
   defp children_html_or_empty(%Node{kind: kind} = node, opts)
-       when kind in [:group, :reusable_definition],
+       when kind in [:group, :floating_group, :reusable_definition],
        do: children_html(node, opts)
 
   defp children_html_or_empty(_node, _opts), do: ""
 
   defp render_instance(node, opts) do
+    stack = Keyword.get(opts, :expansion_stack, MapSet.new())
+
     inner =
       case Keyword.get(opts, :expand).(node) do
-        %Node{} = definition -> children_html(definition, instance_opts(opts, node))
-        _ -> ""
+        %Node{} = definition ->
+          identity = definition.map_key
+
+          if MapSet.member?(stack, identity),
+            do: "",
+            else: children_html(definition, instance_opts(opts, node, identity, stack))
+
+        _ ->
+          ""
       end
 
     wrap("div", node, inner, opts)
   end
 
-  defp instance_opts(opts, instance) do
-    Keyword.put(opts, :id_prefix, instance.exporter_id)
+  defp instance_opts(opts, instance, identity, stack) do
+    opts
+    |> Keyword.put(:id_prefix, prefixed_id(instance, opts))
+    |> Keyword.put(:expansion_stack, MapSet.put(stack, identity))
+  end
+
+  defp render_icon(node, opts) do
+    fragment = node.attributes["asset_fragment"]
+
+    href =
+      case Keyword.get(opts, :assets, %{}) |> Map.get(node.exporter_id) do
+        %{path: path} -> "../../" <> path <> "#" <> fragment
+        _ -> ""
+      end
+
+    inner =
+      [
+        ~s(<svg viewBox="0 0 32 32" data-icon-set="fa" aria-hidden="true">),
+        ~s(<use href="),
+        escape(href),
+        ~s("></use></svg>)
+      ]
+
+    wrap("span", node, inner, opts)
   end
 
   defp children_html(%Node{children: children}, opts) do
@@ -348,6 +381,8 @@ defmodule BubbleEx.Frontend.Export.Html do
     %{"src" => src, "alt" => alt}
   end
 
+  defp node_attrs(%Node{kind: :icon}, "span", _opts), do: %{"aria-hidden" => "true"}
+
   defp node_attrs(%Node{kind: :checkbox}, "label", _opts), do: %{}
 
   defp node_attrs(%Node{kind: :radio_buttons} = node, "fieldset", _opts) do
@@ -434,7 +469,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp prefixed_id(node, opts) do
     case Keyword.get(opts, :id_prefix) do
       nil -> node.exporter_id
-      prefix -> prefix <> "/" <> node.map_key
+      prefix -> Naming.expanded_id(prefix, node)
     end
   end
 

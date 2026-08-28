@@ -325,6 +325,7 @@ defmodule BubbleEx.Frontend.Export do
         {"reusables/#{dir}/fragment.html",
          Html.fragment(node,
            expand: &expand(model, &1),
+           expansion_stack: MapSet.new([node.map_key]),
            rewrite_href: fn _n, dest -> dest end,
            style_class: &style_class(&1, plan),
            assets: assets
@@ -344,33 +345,67 @@ defmodule BubbleEx.Frontend.Export do
 
     reusable_css =
       Enum.map(plan.reusables, fn {node, dir} ->
-        {"styles/reusables/#{dir}.css", Css.page(node)}
+        {"styles/reusables/#{dir}.css", page_and_instance_css(node, model)}
       end)
 
     [shared | page_css ++ reusable_css]
   end
 
   defp page_and_instance_css(page, model) do
-    instance_css =
-      page
-      |> collect()
-      |> Enum.filter(&(&1.kind == :reusable_instance))
-      |> Enum.map_join("\n", fn inst ->
-        case expand(model, inst) do
-          %Node{children: children} ->
-            Enum.map_join(children, "\n", &Css.page(&1, id_prefix: inst.exporter_id))
+    stack =
+      if page.kind == :reusable_definition, do: MapSet.new([page.map_key]), else: MapSet.new()
 
-          _ ->
-            ""
-        end
-      end)
+    instance_css = expanded_instance_css(page, model, nil, stack)
 
-    [Css.page(page), instance_css]
+    [instance_css, Css.page(page)]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n")
     |> then(fn css ->
       if String.trim(css) == "", do: "\n", else: String.trim_trailing(css) <> "\n"
     end)
+  end
+
+  defp expanded_instance_css(%Node{} = node, model, prefix, stack) do
+    nested = Enum.map_join(node.children, "
+", &expanded_instance_css(&1, model, prefix, stack))
+
+    own =
+      if node.kind == :reusable_instance do
+        instance_id =
+          if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
+
+        case expand(model, node) do
+          %Node{} = definition ->
+            identity = definition.map_key
+
+            if MapSet.member?(stack, identity) do
+              ""
+            else
+              next_stack = MapSet.put(stack, identity)
+
+              definition_nested =
+                Enum.map_join(
+                  definition.children,
+                  "
+",
+                  &expanded_instance_css(&1, model, instance_id, next_stack)
+                )
+
+              [definition_nested, Css.expanded_definition(definition, instance_id)]
+              |> Enum.reject(&(&1 == ""))
+              |> Enum.join("
+")
+            end
+
+          _ ->
+            ""
+        end
+      else
+        ""
+      end
+
+    [nested, own] |> Enum.reject(&(&1 == "")) |> Enum.join("
+")
   end
 
   defp asset_entries(assets, font_assets) do
@@ -381,7 +416,9 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp expand(%Normalized{reusables: reusables}, %Node{definition_ref: ref}) do
-    Enum.find(reusables, fn node -> node.map_key == ref end)
+    Enum.find(reusables, fn node ->
+      node.map_key == ref or (node.source && node.source.bubble_id == ref)
+    end)
   end
 
   defp rewrite_href(_node, dest, plan, from_dir) do
@@ -451,8 +488,74 @@ defmodule BubbleEx.Frontend.Export do
       end)
 
     links = link_findings(selected, plan)
+
+    reusable =
+      (selected ++ model.reusables)
+      |> reusable_findings(model)
+      |> Enum.uniq_by(&{&1["type"], &1["refs"], &1["payload"]})
+
     fallback = fallback_findings(opts, selected)
-    unsupported ++ links ++ fallback
+    unsupported ++ reusable ++ links ++ fallback
+  end
+
+  defp reusable_findings(nodes, model) do
+    Enum.flat_map(nodes, fn node ->
+      stack =
+        if node.kind == :reusable_definition, do: MapSet.new([node.map_key]), else: MapSet.new()
+
+      reusable_findings(node, model, nil, stack)
+    end)
+  end
+
+  defp reusable_findings(%Node{} = node, model, prefix, stack) do
+    nested = Enum.flat_map(node.children, &reusable_findings(&1, model, prefix, stack))
+
+    own =
+      if node.kind == :reusable_instance do
+        ref = node.definition_ref
+
+        instance_id =
+          if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
+
+        case expand(model, node) do
+          nil ->
+            [
+              %{
+                "severity" => "warning",
+                "type" => "missing_reusable_definition",
+                "message" => "reusable instance references a definition that was not fetched",
+                "refs" => [instance_id],
+                "payload" => %{"definition_ref" => ref}
+              }
+            ]
+
+          %Node{} = definition ->
+            identity = definition.map_key
+
+            if MapSet.member?(stack, identity) do
+              [
+                %{
+                  "severity" => "warning",
+                  "type" => "reusable_cycle",
+                  "message" => "recursive reusable expansion was stopped at a cycle",
+                  "refs" => [instance_id],
+                  "payload" => %{"definition_ref" => ref}
+                }
+              ]
+            else
+              next_stack = MapSet.put(stack, identity)
+
+              Enum.flat_map(
+                definition.children,
+                &reusable_findings(&1, model, instance_id, next_stack)
+              )
+            end
+        end
+      else
+        []
+      end
+
+    nested ++ own
   end
 
   defp collect_ids(%Node{} = node) do
@@ -596,19 +699,33 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp collect_expanded(%Node{} = node, model) do
-    nested = Enum.flat_map(node.children, &collect_expanded(&1, model))
+    stack =
+      if node.kind == :reusable_definition, do: MapSet.new([node.map_key]), else: MapSet.new()
 
-    expanded =
-      if node.kind == :reusable_instance do
-        case expand(model, node) do
-          %Node{} = defn -> Enum.flat_map(defn.children, &collect_expanded(&1, model))
-          _ -> []
+    collect_expanded(node, model, stack)
+  end
+
+  defp collect_expanded(%Node{} = node, model, stack) do
+    nested = Enum.flat_map(node.children, &collect_expanded(&1, model, stack))
+
+    case {node.kind, expand(model, node)} do
+      {:reusable_instance, nil} ->
+        [%{node | placeholder?: true} | nested]
+
+      {:reusable_instance, %Node{} = definition} ->
+        identity = definition.map_key
+
+        if MapSet.member?(stack, identity) do
+          [%{node | placeholder?: true} | nested]
+        else
+          next_stack = MapSet.put(stack, identity)
+          expanded = Enum.flat_map(definition.children, &collect_expanded(&1, model, next_stack))
+          [node | nested ++ expanded]
         end
-      else
-        []
-      end
 
-    [node | nested ++ expanded]
+      _ ->
+        [node | nested]
+    end
   end
 
   defp element_counts(nodes) do

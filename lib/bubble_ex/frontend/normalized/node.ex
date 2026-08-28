@@ -6,6 +6,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           | :group
           | :text
           | :image
+          | :icon
           | :shape
           | :button
           | :link
@@ -14,6 +15,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           | :checkbox
           | :dropdown
           | :radio_buttons
+          | :floating_group
           | :reusable_definition
           | :reusable_instance
           | :placeholder

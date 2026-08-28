@@ -1,7 +1,7 @@
 defmodule BubbleEx.Frontend.Export.Css do
   @moduledoc false
 
-  alias BubbleEx.Frontend.Normalized
+  alias BubbleEx.Frontend.{Naming, Normalized}
   alias BubbleEx.Frontend.Normalized.Node
 
   @spec shared(Normalized.t(), String.t()) :: String.t()
@@ -53,6 +53,36 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> then(fn css -> if css == "", do: "\n", else: String.trim_trailing(css) <> "\n" end)
   end
 
+  @spec expanded_definition(Node.t(), String.t()) :: String.t()
+  def expanded_definition(%Node{} = definition, instance_id) when is_binary(instance_id) do
+    root_opts = [exporter_id_override: instance_id]
+    child_opts = [id_prefix: instance_id]
+    root_definition = drop_instance_root_alignment(definition)
+
+    root =
+      [
+        rule({root_definition, nil}, root_opts),
+        extra_rule(root_definition, root_opts),
+        responsive_css([{root_definition, nil}], root_opts)
+      ]
+
+    children = Enum.map(definition.children, &page(&1, child_opts))
+
+    (root ++ children)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+    |> then(fn css ->
+      if String.trim(css) == "", do: "\n", else: String.trim_trailing(css) <> "\n"
+    end)
+  end
+
+  defp drop_instance_root_alignment(%Node{layout: layout} = definition)
+       when is_map(layout) do
+    %{definition | layout: Map.drop(layout, [:align, "align"])}
+  end
+
+  defp drop_instance_root_alignment(definition), do: definition
+
   # Parent layout affects how Bubble's fill sizing maps to CSS. Keep that
   # context in the traversal rather than duplicating it in the normalized model.
   defp collect(%Node{} = node, parent_mode \\ nil) do
@@ -68,9 +98,15 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp prefixed_id(node, opts) do
-    case Keyword.get(opts, :id_prefix) do
-      nil -> node.exporter_id
-      prefix -> prefix <> "/" <> node.map_key
+    case Keyword.get(opts, :exporter_id_override) do
+      id when is_binary(id) ->
+        id
+
+      _ ->
+        case Keyword.get(opts, :id_prefix) do
+          nil -> node.exporter_id
+          prefix -> Naming.expanded_id(prefix, node)
+        end
     end
   end
 
@@ -83,9 +119,12 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp css_map(node, parent_mode) do
     %{}
     |> Map.merge(layout_css(node))
+    |> Map.merge(native_position_css(node))
     |> Map.merge(box_css(node))
     |> Map.merge(paint_css(node))
+    |> Map.merge(runtime_boundary_css(node))
     |> Map.merge(placement_css(node, parent_mode))
+    |> Map.merge(floating_css(node))
     |> put_fill_sizing(node, parent_mode)
     |> put_flex_grow(node)
     |> put_align_self(node)
@@ -93,10 +132,43 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> put_collapse(node)
   end
 
+  defp runtime_boundary_css(%Node{
+         kind: :placeholder,
+         attributes: %{"data-placeholder-kind" => "RepeatingGroup"}
+       }),
+       do: %{"color" => "#000000", "display" => "grid"}
+
+  defp runtime_boundary_css(_node), do: %{}
+
+  defp native_position_css(%Node{kind: :page}), do: %{}
+  defp native_position_css(_node), do: %{"position" => "relative"}
+
+  defp floating_css(%Node{kind: :floating_group, attributes: attributes}) do
+    %{"position" => "fixed"}
+    |> put_floating_axis(attributes["data-floating-vertical"], :vertical)
+    |> put_floating_axis(attributes["data-floating-horizontal"], :horizontal)
+  end
+
+  defp floating_css(_node), do: %{}
+
+  defp put_floating_axis(css, value, :vertical) when value in ["top", "bottom"],
+    do: Map.put(css, value, "0")
+
+  defp put_floating_axis(css, "both", :vertical),
+    do: css |> Map.put("top", "0") |> Map.put("bottom", "0")
+
+  defp put_floating_axis(css, value, :horizontal) when value in ["left", "right"],
+    do: Map.put(css, value, "0")
+
+  defp put_floating_axis(css, "both", :horizontal),
+    do: css |> Map.put("left", "0") |> Map.put("right", "0")
+
+  defp put_floating_axis(css, _value, _axis), do: css
+
   defp layout_css(%Node{layout: nil}), do: %{}
 
   defp layout_css(%Node{kind: kind, layout: layout})
-       when kind in [:page, :group, :reusable_definition] do
+       when kind in [:page, :group, :floating_group, :reusable_definition] do
     case layout[:mode] || layout["mode"] do
       :row ->
         %{
@@ -177,13 +249,22 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp paint_css(%Node{style: style, kind: kind, variant: variant}) do
     resolved = (style[:resolved] || style["resolved"] || %{}) |> stringify_keys()
 
-    resolved
-    |> Map.new(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
+    paint = Map.new(resolved, fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
+
+    kind
+    |> native_default_paint()
+    |> Map.merge(paint)
     |> Map.merge(image_fit(kind, variant))
     |> Map.merge(native_display(kind))
     |> Map.merge(native_control(kind))
     |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
+
+  defp native_default_paint(kind)
+       when kind in [:floating_group, :reusable_definition, :reusable_instance],
+       do: %{"color" => "#000000"}
+
+  defp native_default_paint(_kind), do: %{}
 
   defp image_fit(:image, :stretch),
     do: %{"object-fit" => "fill", "display" => "block", "overflow" => "hidden"}
@@ -205,6 +286,10 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp image_fit(_, _), do: %{}
 
   defp native_display(:link), do: %{"display" => "block", "text-decoration" => "none"}
+
+  defp native_display(:icon),
+    do: %{"align-items" => "center", "display" => "flex", "justify-content" => "center"}
+
   defp native_display(_), do: %{}
 
   defp native_control(:multiline_input), do: %{"display" => "block"}
@@ -269,7 +354,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp put_fill_height(css, _fill?, _parent_mode), do: css
 
   defp put_container_alignment(css, %Node{kind: kind, layout: layout})
-       when kind in [:page, :group, :reusable_definition] and is_map(layout) do
+       when kind in [:page, :group, :floating_group, :reusable_definition] and is_map(layout) do
     case {layout_value(layout, :align), layout_value(layout, :mode)} do
       {align, _mode} when is_binary(align) ->
         Map.put(css, "align-items", flex_alignment(align))
@@ -390,6 +475,18 @@ defmodule BubbleEx.Frontend.Export.Css do
     x = box_get(placement, :"offset-x") || box_get(placement, :offset_x) || "0px"
     y = box_get(placement, :"offset-y") || box_get(placement, :offset_y) || "0px"
     if x == "0px" and y == "0px", do: props, else: Map.put(props, "translate", "#{x} #{y}")
+  end
+
+  defp extra_rule(%Node{kind: :icon} = node, opts) do
+    id = prefixed_id(node, opts) |> escape()
+
+    """
+    [data-exporter-id="#{id}"] > svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
+    """
   end
 
   defp extra_rule(%Node{kind: kind} = node, opts)
@@ -579,6 +676,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp css_prop_name("font_size"), do: "font-size"
   defp css_prop_name("font_color"), do: "color"
   defp css_prop_name("font_weight"), do: "font-weight"
+  defp css_prop_name("icon_color"), do: "color"
   defp css_prop_name("letter_spacing"), do: "letter-spacing"
   defp css_prop_name("line_height"), do: "line-height"
   defp css_prop_name("border_color"), do: "border-color"

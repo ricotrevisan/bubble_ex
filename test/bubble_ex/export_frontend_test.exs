@@ -199,6 +199,77 @@ defmodule BubbleEx.ExportFrontendTest do
   end
 
   @tag :tmp_dir
+  test "unions hydration definitions with deterministic page-bundle precedence", %{
+    tmp_dir: tmp
+  } do
+    root_definitions = %{
+      "root-only" => reusable_definition("Root only", "From root"),
+      "shared" => reusable_definition("Shared", "From root")
+    }
+
+    page_a_definitions = %{
+      "page-a-only" => reusable_definition("Page A only", "From page A"),
+      "shared" => reusable_definition("Shared", "From page A")
+    }
+
+    page_b_definitions = %{
+      "page-b-only" => reusable_definition("Page B only", "From page B"),
+      "shared" => reusable_definition("Shared", "From page B")
+    }
+
+    payload =
+      aliased_metadata_app([{"opaque-a", "page-a"}, {"opaque-b", "page-b"}])
+      |> Map.put("%ed", root_definitions)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
+
+      case conn.request_path || "/" do
+        "/version-test" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/root/dynamic.js"))
+
+        "/package/dynamic_js/root/dynamic.js" ->
+          Conn.resp(conn, 200, dynamic_script(payload))
+
+        "/version-test/page-a" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/page-a/dynamic.js"))
+
+        "/package/dynamic_js/page-a/dynamic.js" ->
+          page_payload = Map.put(payload, "%ed", page_a_definitions)
+          Conn.resp(conn, 200, dynamic_script(page_payload, "opaque-a", "page-a"))
+
+        "/version-test/page-b" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/page-b/dynamic.js"))
+
+        "/package/dynamic_js/page-b/dynamic.js" ->
+          page_payload =
+            payload
+            |> Map.delete("%ed")
+            |> Map.put("element_definitions", page_b_definitions)
+
+          Conn.resp(conn, 200, dynamic_script(page_payload, "opaque-b", "page-b"))
+      end
+    end)
+
+    assert {:ok, %Result{} = result} =
+             BubbleEx.export_frontend(
+               "https://app.example.test/version-test",
+               Path.join(tmp, "pkg"),
+               @scan ++ [pages: ["page-b", "page-a"]]
+             )
+
+    assert Map.keys(result.model.source.payload["%ed"]) |> Enum.sort() ==
+             ["page-a-only", "page-b-only", "root-only", "shared"]
+
+    assert Enum.map(result.model.reusables, & &1.map_key) ==
+             ["page-a-only", "page-b-only", "root-only", "shared"]
+
+    shared = Enum.find(result.model.reusables, &(&1.map_key == "shared"))
+    assert [text] = shared.children
+    assert text.content["text"].resolved == "From page B"
+  end
+
+  @tag :tmp_dir
   test "preserves a custom Bubble branch in selected-page hydration URLs", %{tmp_dir: tmp} do
     pid = self()
     payload = aliased_metadata_app([{"opaque-a", "page-a"}])
@@ -499,6 +570,23 @@ defmodule BubbleEx.ExportFrontendTest do
            }}
         end),
       "_index" => %{"id_to_path" => %{"existing" => "pages.existing"}}
+    }
+  end
+
+  defp reusable_definition(name, text) do
+    %{
+      "%nm" => name,
+      "%x" => "CustomDefinition",
+      "id" => name,
+      "%p" => %{"container_layout" => "column"},
+      "%el" => %{
+        "label" => %{
+          "%nm" => "Label",
+          "%x" => "Text",
+          "id" => "#{name}-label",
+          "%p" => %{"%3" => text}
+        }
+      }
     }
   end
 

@@ -62,6 +62,7 @@ defmodule BubbleEx.Frontend.Normalize do
     "%fa",
     "%fc",
     "%fs",
+    "%ic",
     "%lh",
     "%ls",
     "color",
@@ -73,6 +74,7 @@ defmodule BubbleEx.Frontend.Normalize do
     "font_family",
     "font_size",
     "font_weight",
+    "icon_color",
     "letter-spacing",
     "letter_spacing",
     "line-height",
@@ -352,7 +354,7 @@ defmodule BubbleEx.Frontend.Normalize do
     case classify(type, raw) do
       {:native, kind, variant} ->
         {children, child_diags} =
-          if kind == :group do
+          if kind in [:group, :floating_group] do
             normalize_children(raw, identity, path, workflows)
           else
             {[], []}
@@ -456,6 +458,9 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Group", raw), do: {:native, :group, layout_mode(raw) || :column}
   defp classify("Text", raw), do: classify_text(raw)
   defp classify("Image", raw), do: classify_image(raw)
+  defp classify("Icon", raw), do: classify_icon(raw)
+  defp classify("FloatingGroup", raw), do: classify_floating_group(raw)
+
   defp classify("Shape", _raw), do: {:native, :shape, :decorative}
   defp classify("Button", raw), do: classify_button(raw)
   defp classify("Link", raw), do: classify_link(raw)
@@ -490,6 +495,42 @@ defmodule BubbleEx.Frontend.Normalize do
       _other ->
         {:placeholder, :unsupported_text_variant}
     end
+  end
+
+  defp classify_icon(raw) do
+    case Payload.prop(raw, "icon") do
+      icon when is_binary(icon) ->
+        if Regex.match?(~r/^fa fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, icon) and
+             static_element?(raw) and Payload.prop(raw, "icon_spin") not in [true, "true"],
+           do: {:native, :icon, :fontawesome_4},
+           else: {:placeholder, :unsupported_icon_variant}
+
+      _ ->
+        {:placeholder, :unsupported_icon_variant}
+    end
+  end
+
+  defp classify_floating_group(raw) do
+    vertical = Payload.prop(raw, "floating_reference")
+
+    horizontal =
+      Payload.prop(raw, "floating_reference_horizontal_resp") ||
+        Payload.prop(raw, "floating_reference_horizontal")
+
+    if static_element?(raw) and layout_mode(raw) == :column and vertical == "top" and
+         horizontal == "right" do
+      {:native, :floating_group, :column}
+    else
+      {:placeholder, :unsupported_floating_group_variant}
+    end
+  end
+
+  defp static_element?(raw) do
+    visible = Payload.prop(raw, "is_visible")
+    states = raw["states"] || raw["%st"]
+
+    visible in [nil, true] and Payload.workflows(raw) == %{} and
+      (is_nil(states) or states == %{})
   end
 
   defp classify_image(raw) do
@@ -594,6 +635,8 @@ defmodule BubbleEx.Frontend.Normalize do
     "Group" => :group,
     "Text" => :text,
     "Image" => :image,
+    "Icon" => :icon,
+    "FloatingGroup" => :floating_group,
     "Shape" => :shape,
     "Button" => :button,
     "Link" => :link,
@@ -819,7 +862,7 @@ defmodule BubbleEx.Frontend.Normalize do
           sidecar["rotation"],
       z_index:
         Payload.prop(raw, "zindex") || Payload.prop(raw, "z_index") ||
-          Payload.prop(raw, "z-index"),
+          Payload.prop(raw, "z-index") || compact_floating_z(raw),
       align_self: Payload.prop(raw, "align-self") || Payload.prop(raw, "align_self"),
       flex_grow: Payload.prop(raw, "flex-grow") || Payload.prop(raw, "flex_grow"),
       placement: Payload.prop(raw, "placement") || nonant_placement(raw)
@@ -849,6 +892,10 @@ defmodule BubbleEx.Frontend.Normalize do
       _ ->
         nil
     end
+  end
+
+  defp compact_floating_z(raw) do
+    if Payload.type(raw) == "FloatingGroup", do: Payload.properties(raw)["%z"]
   end
 
   defp spacing(raw, sidecar, key) do
@@ -979,6 +1026,7 @@ defmodule BubbleEx.Frontend.Normalize do
       "font_size",
       "font_color",
       "font_weight",
+      "icon_color",
       "letter_spacing",
       "line_height",
       "color",
@@ -1834,6 +1882,27 @@ defmodule BubbleEx.Frontend.Normalize do
     |> reject_empty_attributes()
   end
 
+  defp element_attributes(raw, :icon, :fontawesome_4) do
+    "fa fa-" <> name = Payload.prop(raw, "icon")
+
+    %{
+      "aria-hidden" => "true",
+      "asset_fragment" => "fa-" <> name,
+      "asset_src" => "/static/icon_libraries/fontawesome-4.7.0.svg",
+      "icon_set" => "fa"
+    }
+  end
+
+  defp element_attributes(raw, :floating_group, _variant) do
+    %{
+      "data-floating-horizontal" =>
+        Payload.prop(raw, "floating_reference_horizontal_resp") ||
+          Payload.prop(raw, "floating_reference_horizontal"),
+      "data-floating-vertical" => Payload.prop(raw, "floating_reference")
+    }
+    |> reject_empty_attributes()
+  end
+
   defp element_attributes(_raw, :shape, _variant), do: %{"aria-hidden" => "true"}
   defp element_attributes(_raw, _kind, _variant), do: %{}
 
@@ -2053,8 +2122,20 @@ defmodule BubbleEx.Frontend.Normalize do
           "required",
           "open_in_new_tab",
           "nofollow",
+          "%1l",
+          "%3f",
+          "%9i",
+          "%ci",
+          "%pa",
+          "custom_id",
           "definition",
           "custom_definition",
+          "floating_reference",
+          "floating_reference_horizontal",
+          "floating_reference_horizontal_resp",
+          "icon",
+          "internal_page",
+          "link_type",
           "__bp_layout__"
         ] ++
           @typography_properties ++ @compact_control_properties ++ consumed_paint_properties(raw)

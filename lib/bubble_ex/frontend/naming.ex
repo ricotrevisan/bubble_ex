@@ -24,6 +24,45 @@ defmodule BubbleEx.Frontend.Naming do
     Enum.join([bubble_id, app_version, kind_name, Enum.join(path, "/")], "/")
   end
 
+  @spec expanded_id(String.t(), map() | struct()) :: String.t()
+  def expanded_id(prefix, node) when is_binary(prefix) do
+    suffix =
+      node
+      |> source_path()
+      |> relative_definition_path()
+      |> case do
+        [] -> [node_field(node, :map_key)]
+        path -> path
+      end
+      |> Enum.reject(&(&1 in [nil, "", "elements"]))
+      |> Enum.join("/")
+
+    if suffix == "", do: prefix, else: prefix <> "/" <> suffix
+  end
+
+  defp source_path(node) do
+    case node_field(node, :source) do
+      source when is_map(source) -> node_field(source, :path) || []
+      _ -> []
+    end
+  end
+
+  defp relative_definition_path(path) when is_list(path) do
+    case Enum.find_index(path, &(&1 == "element_definitions")) do
+      index when is_integer(index) -> Enum.drop(path, index + 2)
+      _ -> []
+    end
+  end
+
+  defp relative_definition_path(_path), do: []
+
+  defp node_field(%{__struct__: _} = struct, key), do: Map.get(struct, key)
+
+  defp node_field(map, key) when is_map(map),
+    do: Map.get(map, key) || Map.get(map, to_string(key))
+
+  defp node_field(_node, _key), do: nil
+
   @spec page_dirname(String.t() | nil, String.t(), MapSet.t()) :: {String.t(), MapSet.t()}
   def page_dirname(name, map_key, taken) do
     base =

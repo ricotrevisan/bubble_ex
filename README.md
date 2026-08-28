@@ -115,12 +115,16 @@ and `MANIFEST.json`. Workflows, conditions, and unsupported elements stay as
 bindings and findings. A leaked-credential finding blocks the export and
 writes nothing.
 
-Visual correctness is defined only for committed **frozen cases**. The first
-characterized S2 slice adds fixed-height Multiline Input plus static Checkbox,
-Dropdown, and Radio Buttons; dynamic choices/status and fit-height multiline
-remain placeholders. `mix bubble.fidelity` exports every case and compares it
-to committed Bubble references. PR CI runs that gate; it never recaptures live
-Bubble.
+Visual correctness is defined only for committed **frozen cases**. The committed
+S2 cases include fixed-height Multiline Input and static
+Checkbox/Dropdown/Radio Buttons. Issue #42 separately characterizes a live,
+controlled fixture with nested static Group-based reusables, a literal Font
+Awesome 4 icon, and an always-visible top-right Floating Group; focused
+regressions pin their normalization/export contracts. Dynamic choices/status,
+fit-height multiline, other icon libraries, runtime reusable state, and
+Repeating Group cell data remain bindings or dimension-preserving placeholders.
+`mix bubble.fidelity` exports every committed case and compares it to Bubble
+references. PR CI runs that gate; it never recaptures live Bubble.
 
 ## Database Structure & Schema Export
 

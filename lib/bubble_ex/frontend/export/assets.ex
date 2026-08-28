@@ -25,7 +25,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
     state =
       nodes
-      |> Enum.flat_map(&image_nodes/1)
+      |> Enum.flat_map(&asset_nodes/1)
       |> Enum.reduce(state, &collect_one(&1, &2, opts))
 
     {state.assets, state.findings |> Enum.reverse() |> redact_findings(opts)}
@@ -67,6 +67,23 @@ defmodule BubbleEx.Frontend.Export.Assets do
     apply_outcome(node, {outcome, protected?}, state)
   end
 
+  defp apply_outcome(%Node{kind: :icon} = node, {{:ok, asset}, _protected?}, state) do
+    fragment = node.attributes["asset_fragment"]
+
+    case sanitize_icon_sprite(asset.bytes, fragment) do
+      {:ok, bytes} ->
+        sanitized = asset_record(asset.url, bytes, [{"content-type", "image/svg+xml"}])
+        %{state | assets: Map.put(state.assets, node.exporter_id, sanitized)}
+
+      :error ->
+        finding =
+          asset_finding(asset.url, "icon sprite did not contain a safe Font Awesome symbol")
+          |> Map.put("refs", [node.exporter_id])
+
+        %{state | findings: [finding | state.findings]}
+    end
+  end
+
   defp apply_outcome(node, {{:ok, asset}, _protected?}, state) do
     %{state | assets: Map.put(state.assets, node.exporter_id, asset)}
   end
@@ -83,8 +100,8 @@ defmodule BubbleEx.Frontend.Export.Assets do
     %{state | assets: assets, findings: findings}
   end
 
-  defp image_nodes(%Node{kind: :image} = node), do: [node]
-  defp image_nodes(%Node{children: children}), do: Enum.flat_map(children, &image_nodes/1)
+  defp asset_nodes(%Node{kind: kind} = node) when kind in [:image, :icon], do: [node]
+  defp asset_nodes(%Node{children: children}), do: Enum.flat_map(children, &asset_nodes/1)
 
   defp resolved_src(%Node{content: %{"src" => %{resolved: url}}}), do: url
   defp resolved_src(%Node{content: %{"src" => %{"resolved" => url}}}), do: url
@@ -278,6 +295,64 @@ defmodule BubbleEx.Frontend.Export.Assets do
       do_fetch_protected(next, auth, opts, MapSet.put(visited, normalized), hops + 1)
     else
       _ -> {:error, asset_finding(url, "asset redirect left the authenticated origin")}
+    end
+  end
+
+  defp sanitize_icon_sprite(bytes, fragment)
+       when is_binary(bytes) and is_binary(fragment) do
+    with true <- Regex.match?(~r/^fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, fragment),
+         regex =
+           Regex.compile!(
+             "<symbol\\s+id=\\\"#{Regex.escape(fragment)}\\\"\\s+viewBox=\\\"([^\\\"]+)\\\"[^>]*>(.*?)</symbol>",
+             "s"
+           ),
+         [_, view_box, body] <- Regex.run(regex, bytes),
+         true <- safe_view_box?(view_box),
+         {:ok, paths} <- sanitize_icon_paths(body) do
+      {:ok,
+       [
+         ~s(<svg xmlns="http://www.w3.org/2000/svg">),
+         ~s(<symbol id="#{fragment}" viewBox="#{view_box}">),
+         paths,
+         "</symbol></svg>"
+       ]
+       |> IO.iodata_to_binary()}
+    else
+      _ -> :error
+    end
+  end
+
+  defp sanitize_icon_sprite(_bytes, _fragment), do: :error
+
+  defp safe_view_box?(view_box) do
+    parts = String.split(view_box, ~r/\s+/, trim: true)
+    length(parts) == 4 and Enum.all?(parts, &Regex.match?(~r/^-?(?:\d+(?:\.\d+)?|\.\d+)$/, &1))
+  end
+
+  defp sanitize_icon_paths(body) do
+    path_regex = ~r/<path\b[^>]*\/>/
+    tags = Regex.scan(path_regex, body) |> Enum.map(&hd/1)
+    remainder = Regex.replace(path_regex, body, "") |> String.trim()
+
+    if tags != [] and remainder == "" do
+      tags
+      |> Enum.reduce_while({:ok, []}, fn tag, {:ok, paths} ->
+        case Regex.run(~r/\bd="([^\"]+)"/, tag) do
+          [_, data] ->
+            if Regex.match?(~r/^[0-9eE.,+\-\sMmZzLlHhVvCcSsQqTtAa]+$/, data),
+              do: {:cont, {:ok, [~s(<path fill="currentColor" d="#{data}"/>) | paths]}},
+              else: {:halt, :error}
+
+          _ ->
+            {:halt, :error}
+        end
+      end)
+      |> case do
+        {:ok, paths} -> {:ok, Enum.reverse(paths)}
+        :error -> :error
+      end
+    else
+      :error
     end
   end
 

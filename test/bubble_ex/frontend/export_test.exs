@@ -629,4 +629,232 @@ defmodule BubbleEx.Frontend.ExportTest do
       |> String.trim("\"")
     end)
   end
+
+  @tag :tmp_dir
+  test "recursively expands reusable definitions with stable nested ids and root CSS", %{
+    tmp_dir: tmp
+  } do
+    payload = advanced_reusable_app()
+    out = Path.join(tmp, "nested-reusables")
+
+    assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
+
+    html = File.read!(Path.join(out, "pages/index/index.html"))
+    css = File.read!(Path.join(out, "styles/pages/index.css"))
+    reusable_css = File.read!(Path.join(out, "styles/reusables/outer--outer-map.css"))
+    outer_id = "advanced/live/reusable_instance/pages/home/elements/floating/elements/outer"
+
+    assert html =~ ~s(data-exporter-id="#{outer_id}")
+    assert html =~ ~s(data-exporter-id="#{outer_id}/nested")
+    assert html =~ ~s(data-exporter-id="#{outer_id}/nested/inner-label")
+    assert html =~ ~s(data-exporter-id="#{outer_id}/group-a/label")
+    assert html =~ ~s(data-exporter-id="#{outer_id}/group-b/label")
+    assert html =~ "Nested label"
+    assert html =~ ~s(href="../detail/index.html")
+
+    assert css =~ ~s([data-exporter-id="#{outer_id}"])
+    assert css =~ "background: #FFFFFF"
+    assert css =~ ~s([data-exporter-id="#{outer_id}/nested/inner-label"])
+    assert css =~ ~s([data-exporter-id="#{outer_id}/group-a/label"])
+    assert css =~ ~s([data-exporter-id="#{outer_id}/group-b/label"])
+    assert reusable_css =~ "/nested/inner-label"
+    assert css =~ "position: fixed"
+    assert css =~ "right: 0"
+    assert css =~ "top: 0"
+
+    runtime_id = "advanced/live/placeholder/pages/home/elements/runtime-list"
+    assert css =~ ~s([data-exporter-id="#{runtime_id}"])
+    assert css =~ "display: grid"
+    assert css =~ "width: 320px"
+    assert css =~ "height: 120px"
+    assert css =~ "border: 1px dashed #D8E0EC"
+    assert Floki.find(html, ~s([data-exporter-id="#{runtime_id}"])) |> Floki.text() == ""
+
+    assert [runtime_finding] =
+             Enum.filter(result.findings, &(&1["type"] == "unsupported_element"))
+
+    assert runtime_finding["refs"] == [runtime_id]
+
+    assert runtime_finding["payload"] == %{
+             "reason" => "unsupported_kind",
+             "type" => "RepeatingGroup"
+           }
+
+    page_coverage = Enum.find(result.coverage["pages"], &(&1["slug"] == "index"))
+    assert page_coverage["elements"]["placeholder"] == 1
+
+    bindings = File.read!(Path.join(out, "bindings.json")) |> Jason.decode!()
+    assert Enum.any?(bindings, &(&1["id"] == runtime_id <> " :: plugin"))
+
+    refute Enum.any?(result.findings, &(&1["type"] == "missing_reusable_definition"))
+    refute Enum.any?(result.findings, &(&1["type"] == "reusable_cycle"))
+  end
+
+  @tag :tmp_dir
+  test "reports missing reusable definitions and stops reusable cycles", %{tmp_dir: tmp} do
+    payload = advanced_reusable_app()
+
+    payload =
+      update_in(payload, ["pages", "home", "elements"], fn elements ->
+        elements
+        |> Map.put("missing", %{
+          "id" => "missing-instance",
+          "type" => "CustomElement",
+          "properties" => %{"definition" => "absent-definition"}
+        })
+        |> Map.put("cycle", %{
+          "id" => "cycle-instance",
+          "type" => "CustomElement",
+          "properties" => %{"definition" => "cycle-root"}
+        })
+      end)
+
+    payload =
+      put_in(payload, ["element_definitions", "cycle-map"], %{
+        "id" => "cycle-root",
+        "name" => "Cycle",
+        "type" => "CustomDefinition",
+        "properties" => %{"container_layout" => "column"},
+        "elements" => %{
+          "self" => %{
+            "id" => "self-instance",
+            "type" => "CustomElement",
+            "properties" => %{"definition" => "cycle-root"}
+          }
+        }
+      })
+
+    assert {:ok, result} =
+             Frontend.export_payload(payload, Path.join(tmp, "cycles"), @scan)
+
+    types = Enum.map(result.findings, & &1["type"])
+    assert "missing_reusable_definition" in types
+    assert "reusable_cycle" in types
+
+    assert result.coverage["pages"]
+           |> Enum.find(&(&1["slug"] == "index"))
+           |> get_in(["elements", "placeholder"]) >= 3
+  end
+
+  defp advanced_reusable_app do
+    %{
+      "_id" => "advanced",
+      "pages" => %{
+        "home" => %{
+          "id" => "page",
+          "type" => "Page",
+          "name" => "index",
+          "properties" => %{"container_layout" => "column"},
+          "elements" => %{
+            "runtime-list" => %{
+              "id" => "runtime-list",
+              "type" => "RepeatingGroup",
+              "properties" => %{
+                "single_width" => true,
+                "width" => 320,
+                "single_height" => true,
+                "height" => 120,
+                "bgcolor" => "#FFFFFF",
+                "border_style" => "dashed",
+                "border_width" => 1,
+                "border_color" => "#D8E0EC"
+              }
+            },
+            "detail-link" => %{
+              "id" => "detail-link",
+              "type" => "Link",
+              "properties" => %{
+                "%1l" => "pagelink",
+                "%3" => "Open detail",
+                "%pa" => "detail-page-id"
+              }
+            },
+            "floating" => %{
+              "id" => "floating",
+              "type" => "FloatingGroup",
+              "properties" => %{
+                "container_layout" => "column",
+                "floating_reference" => "top",
+                "floating_reference_horizontal_resp" => "right"
+              },
+              "elements" => %{
+                "outer" => %{
+                  "id" => "outer-instance",
+                  "type" => "CustomElement",
+                  "properties" => %{"definition" => "outer-root"}
+                }
+              }
+            }
+          }
+        },
+        "detail" => %{
+          "id" => "detail-page-id",
+          "type" => "Page",
+          "name" => "detail",
+          "properties" => %{"container_layout" => "column"}
+        }
+      },
+      "element_definitions" => %{
+        "outer-map" => %{
+          "id" => "outer-root",
+          "name" => "Outer",
+          "type" => "CustomDefinition",
+          "properties" => %{
+            "bgcolor" => "#FFFFFF",
+            "container_layout" => "column",
+            "row_gap" => 8,
+            "padding" => 12
+          },
+          "elements" => %{
+            "group-a" => %{
+              "id" => "group-a",
+              "type" => "Group",
+              "properties" => %{"container_layout" => "column"},
+              "elements" => %{
+                "label" => %{
+                  "id" => "label-a",
+                  "type" => "Text",
+                  "properties" => %{"text" => "Label A", "font_color" => "#111111"}
+                }
+              }
+            },
+            "group-b" => %{
+              "id" => "group-b",
+              "type" => "Group",
+              "properties" => %{"container_layout" => "column"},
+              "elements" => %{
+                "label" => %{
+                  "id" => "label-b",
+                  "type" => "Text",
+                  "properties" => %{"text" => "Label B", "font_color" => "#222222"}
+                }
+              }
+            },
+            "nested" => %{
+              "id" => "nested-instance",
+              "type" => "CustomElement",
+              "properties" => %{"definition" => "inner-root"}
+            }
+          }
+        },
+        "inner-map" => %{
+          "id" => "inner-root",
+          "name" => "Inner",
+          "type" => "CustomDefinition",
+          "properties" => %{"container_layout" => "row"},
+          "elements" => %{
+            "inner-label" => %{
+              "id" => "inner-label",
+              "type" => "Text",
+              "properties" => %{
+                "text" => "Nested label",
+                "tag_type" => "normal",
+                "font_color" => "#172033"
+              }
+            }
+          }
+        }
+      }
+    }
+  end
 end

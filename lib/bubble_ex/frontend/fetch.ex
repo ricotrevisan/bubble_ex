@@ -288,10 +288,48 @@ defmodule BubbleEx.Frontend.Fetch do
   defp do_fetch_hydration_job(job, merged, context, opts) do
     case fetch_page_payload(job.url, context.auth, :scoped, opts) do
       {:ok, fetched, _effective_page_url, _font_sources} ->
-        {:cont, {:ok, merge_job_targets(merged, fetched, job.targets)}}
+        hydrated =
+          merged
+          |> merge_reusable_definitions(fetched)
+          |> merge_job_targets(fetched, job.targets)
+
+        {:cont, {:ok, hydrated}}
 
       {:error, _} = error ->
         {:halt, error}
+    end
+  end
+
+  defp merge_reusable_definitions(payload, fetched) do
+    fetched_definitions = reusable_definitions(fetched)
+
+    if map_size(fetched_definitions) == 0 do
+      payload
+    else
+      key = reusable_definitions_key(payload, fetched)
+      Map.put(payload, key, Map.merge(reusable_definitions(payload), fetched_definitions))
+    end
+  end
+
+  # A decoded payload should normally use only one of these keys. Combining both
+  # keeps every definition if a bundle contains a mixed readable/aliased shape.
+  # Page bundles are merged in hydration-job order, so the current bundle wins
+  # duplicate keys deterministically.
+  defp reusable_definitions(payload) do
+    aliased = if is_map(payload["%ed"]), do: payload["%ed"], else: %{}
+
+    readable =
+      if is_map(payload["element_definitions"]), do: payload["element_definitions"], else: %{}
+
+    Map.merge(aliased, readable)
+  end
+
+  defp reusable_definitions_key(payload, fetched) do
+    cond do
+      is_map(payload["element_definitions"]) -> "element_definitions"
+      is_map(payload["%ed"]) -> "%ed"
+      is_map(fetched["element_definitions"]) -> "element_definitions"
+      true -> "%ed"
     end
   end
 

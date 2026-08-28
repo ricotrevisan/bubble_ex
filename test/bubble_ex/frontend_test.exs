@@ -1230,6 +1230,88 @@ defmodule BubbleEx.FrontendTest do
       assert inst.definition_ref == "cmpNav"
       assert inst.children == []
     end
+
+    test "lowers compact reusable, icon, and static floating-group metadata" do
+      payload = %{
+        "_id" => "advanced",
+        "%p3" => %{
+          "home" => %{
+            "%id" => "page",
+            "%x" => "Page",
+            "%p" => %{"container_layout" => "column"},
+            "%el" => %{
+              "floating" => %{
+                "%id" => "floating",
+                "%x" => "FloatingGroup",
+                "%p" => %{
+                  "%3f" => "top",
+                  "%z" => 20,
+                  "floating_reference_horizontal_resp" => "right",
+                  "container_layout" => "column"
+                },
+                "%el" => %{
+                  "instance" => %{
+                    "%id" => "instance",
+                    "%x" => "CustomElement",
+                    "%p" => %{"%ci" => "definition-bubble-id"}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "%ed" => %{
+          "definition-map-key" => %{
+            "%id" => "definition-bubble-id",
+            "%x" => "CustomDefinition",
+            "%p" => %{"container_layout" => "row"},
+            "%el" => %{
+              "star" => %{
+                "%id" => "star",
+                "%x" => "Icon",
+                "%p" => %{"%9i" => "fa fa-star", "%ic" => "#5EEAD4"}
+              },
+              "suffix-icon" => %{
+                "%id" => "suffix-icon",
+                "%x" => "Icon",
+                "%p" => %{"%9i" => "fa fa-star fa-spin"}
+              },
+              "unsupported-icon" => %{
+                "%id" => "unsupported-icon",
+                "%x" => "Icon",
+                "%p" => %{"%9i" => "material-icons star"}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, model} = Frontend.normalize(payload)
+      assert [definition] = model.reusables
+      assert [icon, suffix_icon, unsupported_icon] = definition.children
+      assert icon.kind == :icon
+      assert icon.variant == :fontawesome_4
+      assert icon.attributes["asset_fragment"] == "fa-star"
+      assert icon.attributes["asset_src"] == "/static/icon_libraries/fontawesome-4.7.0.svg"
+      assert icon.style.resolved["icon_color"] == "#5EEAD4"
+      assert icon.unmapped == %{}
+      assert suffix_icon.kind == :placeholder
+      assert suffix_icon.variant == :unsupported_icon_variant
+      assert unsupported_icon.kind == :placeholder
+      assert unsupported_icon.variant == :unsupported_icon_variant
+      assert unsupported_icon.placeholder?
+      assert Enum.any?(model.diagnostics, &(&1.refs == [unsupported_icon.exporter_id]))
+
+      assert [page] = model.pages
+      assert [floating] = page.children
+      assert floating.kind == :floating_group
+      assert floating.attributes["data-floating-vertical"] == "top"
+      assert floating.attributes["data-floating-horizontal"] == "right"
+      assert floating.box.z_index == 20
+      assert [instance] = floating.children
+      assert instance.kind == :reusable_instance
+      assert instance.definition_ref == "definition-bubble-id"
+    end
   end
 
   test "supports two-stop gradients and preserves unsupported gradient metadata" do
