@@ -694,6 +694,45 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert html =~ "Oops! 404 error"
       assert html =~ "<h1"
     end
+
+    @tag :tmp_dir
+    test "lowers BBCode Text to a safe HTML subset", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "bbcode-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "rich" => %{
+                "id" => "t1",
+                "type" => "Text",
+                "properties" => %{
+                  "text" =>
+                    "[b]FEATURES[/b][ul][li]One[/li][/ul][url=https://example.com]Docs[/url][url=javascript:alert(1)]xss[/url]<script>alert(1)</script>"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ "<strong>FEATURES</strong>"
+      assert html =~ "<ul><li>One</li></ul>"
+      assert html =~ ~s(href="https://example.com")
+      assert html =~ ">Docs</a>"
+      assert html =~ "xss"
+      refute html =~ "javascript:"
+      refute html =~ "<script>"
+      assert html =~ "&lt;script&gt;"
+    end
   end
 
   describe "export/3" do

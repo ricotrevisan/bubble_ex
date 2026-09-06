@@ -495,7 +495,7 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp classify_text(raw) do
     case Payload.prop(raw, "tag_type") do
-      tag when tag in [nil, "normal", "h1", "h2", "h3", "h4"] ->
+      tag when tag in [nil, "normal", "h1", "h2", "h3", "h4", "bbcode"] ->
         {:native, :text, Map.get(@text_tags, tag, :normal)}
 
       _other ->
