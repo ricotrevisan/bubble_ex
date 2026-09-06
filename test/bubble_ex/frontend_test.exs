@@ -1037,7 +1037,7 @@ defmodule BubbleEx.FrontendTest do
       assert button.attributes["target"] == "_blank"
     end
 
-    test "icon buttons and rich text become placeholders" do
+    test "icon buttons stay placeholders and BBCode Text stays native" do
       payload =
         page_with_elements(%{
           "iconBtn" => %{
@@ -1053,7 +1053,11 @@ defmodule BubbleEx.FrontendTest do
         })
 
       assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
-      assert Enum.all?(page.children, & &1.placeholder?)
+      assert [button, text] = Enum.sort_by(page.children, & &1.kind)
+      assert button.kind == :placeholder
+      assert text.kind == :text
+      refute text.placeholder?
+      assert text.content["text"].resolved == "[b]nope[/b]"
     end
 
     test "classifies explicit normal and h4 Text semantics" do

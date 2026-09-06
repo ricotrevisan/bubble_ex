@@ -1,7 +1,7 @@
 defmodule BubbleEx.Frontend.Export.Html do
   @moduledoc false
 
-  alias BubbleEx.Frontend.Export.Safety
+  alias BubbleEx.Frontend.Export.{Bbcode, Safety}
   alias BubbleEx.Frontend.Naming
   alias BubbleEx.Frontend.Normalized.Node
 
@@ -98,7 +98,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :reusable_instance} = node, opts), do: render_instance(node, opts)
 
   defp do_render(%Node{kind: :text} = node, opts),
-    do: wrap(text_tag(node.variant), node, escape(slot_text(node, "text", opts)), opts)
+    do: wrap(text_tag(node.variant), node, text_inner_html(node, opts), opts)
 
   defp do_render(%Node{kind: :button} = node, opts) do
     label = slot_text(node, "label", opts)
@@ -320,6 +320,16 @@ defmodule BubbleEx.Frontend.Export.Html do
     |> Enum.reject(fn {_key, value} -> is_nil(value) or value == false or value == "" end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map(&html_attr/1)
+  end
+
+  defp text_inner_html(node, opts) do
+    raw = slot_text(node, "text", opts)
+
+    if Bbcode.present?(raw) do
+      Bbcode.to_html(raw)
+    else
+      escape(raw)
+    end
   end
 
   defp slot_text(node, slot, opts) do
