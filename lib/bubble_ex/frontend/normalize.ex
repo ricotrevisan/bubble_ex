@@ -684,7 +684,18 @@ defmodule BubbleEx.Frontend.Normalize do
       "relative" -> :align_to_parent
       "align_to_parent" -> :align_to_parent
       "align-to-parent" -> :align_to_parent
-      _ -> nil
+      _ -> inferred_layout_mode(raw)
+    end
+  end
+
+  # Live 404/reset_pw boilerplate is new_responsive but omits container_layout.
+  # Compact %l/%t/%w/%h is then the only layout signal; Bubble paints it as Fixed.
+  defp inferred_layout_mode(raw) do
+    props = Payload.properties(raw)
+
+    if Payload.type(raw) in ["Page", "Group"] and
+         Enum.any?(["%l", "%t", "%w", "%h"], &Map.has_key?(props, &1)) do
+      :fixed
     end
   end
 
@@ -796,15 +807,28 @@ defmodule BubbleEx.Frontend.Normalize do
   # the single_* flags used by responsive nodes. Its runtime also gives a
   # heightless Fixed Group the editor/runtime default height of 250px.
   defp put_fixed_container_dimensions(box, raw) do
-    if layout_mode(raw) == :fixed and Payload.type(raw) == "Group" do
+    if layout_mode(raw) == :fixed do
       props = Payload.properties(raw)
+      type = Payload.type(raw)
 
-      default_width = if Payload.prop(raw, "fit_width") == true, do: nil, else: 400
+      default_width =
+        cond do
+          Payload.prop(raw, "fit_width") == true -> nil
+          type == "Group" -> 400
+          true -> nil
+        end
 
       default_height =
-        if is_nil(Payload.prop(raw, "fit_height")) and
-             is_nil(Payload.prop(raw, "single_height")),
-           do: 250
+        cond do
+          type != "Group" ->
+            nil
+
+          is_nil(Payload.prop(raw, "fit_height")) and is_nil(Payload.prop(raw, "single_height")) ->
+            250
+
+          true ->
+            nil
+        end
 
       box
       |> put_fixed_axis(:width, props["%w"], default_width)
@@ -990,8 +1014,26 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp dim(raw, sidecar, key) do
-    Payload.prop(raw, key) || Payload.prop(raw, "#{key}_css") ||
-      Payload.prop(raw, "#{key}_px") || sidecar[key] || fixed_aliased_dimension(raw, key)
+    css = Payload.prop(raw, "#{key}_css")
+    px = Payload.prop(raw, "#{key}_px")
+    raw_value = Payload.prop(raw, key)
+
+    cond do
+      is_binary(css) ->
+        css
+
+      not is_nil(px) ->
+        px
+
+      key in ["min_width", "max_width"] and is_number(raw_value) ->
+        sidecar[key] || fixed_aliased_dimension(raw, key)
+
+      not is_nil(raw_value) ->
+        raw_value
+
+      true ->
+        sidecar[key] || fixed_aliased_dimension(raw, key)
+    end
   end
 
   defp fixed_aliased_dimension(raw, "width") do

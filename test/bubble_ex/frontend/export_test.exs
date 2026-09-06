@@ -633,6 +633,67 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert {:error, %Error{kind: :invalid_input}} =
                Frontend.export_payload(payload, "unused", @scan ++ [pages: []])
     end
+
+    @tag :tmp_dir
+    test "places compact-geometry 404 children with Fixed offsets", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "compact-404-app",
+        "app_version" => "test",
+        "%p3" => %{
+          "AAX" => %{
+            "id" => "AAU",
+            "%x" => "Page",
+            "%nm" => "404",
+            "%p" => %{
+              "%h" => 1699,
+              "%l" => 0,
+              "%t" => 0,
+              "%w" => 1080,
+              "new_responsive" => true
+            },
+            "%el" => %{
+              "bTGiK" => %{
+                "id" => "bTGlD",
+                "%x" => "Text",
+                "%p" => %{
+                  "%3" => "The page you're looking for does not exist.",
+                  "%h" => 105,
+                  "%l" => 0,
+                  "%t" => 87,
+                  "%w" => 527
+                }
+              },
+              "bTHAP0" => %{
+                "id" => "bTGlA",
+                "%x" => "Text",
+                "%p" => %{
+                  "%3" => "Oops! 404 error",
+                  "%h" => 82,
+                  "%l" => 0,
+                  "%t" => 1,
+                  "%w" => 403,
+                  "tag_type" => "h1"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      css = File.read!(Path.join(out, "styles/pages/404.css"))
+      assert css =~ "height: 1699px"
+      assert css =~ "top: 1px"
+      assert css =~ "top: 87px"
+      assert css =~ "position: absolute"
+      refute css =~ "max-width: 140px"
+
+      html = File.read!(Path.join(out, "pages/404/index.html"))
+      assert html =~ "Oops! 404 error"
+      assert html =~ "<h1"
+    end
   end
 
   describe "export/3" do

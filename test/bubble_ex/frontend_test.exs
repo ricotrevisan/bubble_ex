@@ -620,6 +620,135 @@ defmodule BubbleEx.FrontendTest do
       assert shape.box.height == 150
     end
 
+    test "infers Fixed layout from compact geometry when container_layout is omitted" do
+      payload = %{
+        "_id" => "compact-404-app",
+        "%p3" => %{
+          "AAX" => %{
+            "id" => "AAU",
+            "%x" => "Page",
+            "%nm" => "404",
+            "%p" => %{
+              "%h" => 1699,
+              "%l" => 0,
+              "%t" => 0,
+              "%w" => 1080,
+              "element_version" => 3,
+              "new_responsive" => true,
+              "preset_width" => "custom"
+            },
+            "%el" => %{
+              "bTGlI" => %{
+                "id" => "bTGkv",
+                "%x" => "Group",
+                "%nm" => "Group main",
+                "%p" => %{"%h" => 900, "%l" => 0, "%t" => 0, "%w" => 1080, "%z" => 31},
+                "%el" => %{
+                  "bTGMt" => %{
+                    "id" => "bTGkx",
+                    "%x" => "Group",
+                    "%nm" => "Group container",
+                    "%p" => %{
+                      "%h" => 665,
+                      "%l" => 20,
+                      "%t" => 20,
+                      "%w" => 1040,
+                      "%z" => 3,
+                      "max_width" => 140,
+                      "min_width" => 35,
+                      "use_max_width" => true
+                    },
+                    "%el" => %{
+                      "bTGiK" => %{
+                        "id" => "bTGlD",
+                        "%x" => "Text",
+                        "%p" => %{
+                          "%3" => %{
+                            "%e" => %{"0" => "The page you're looking for does not exist."},
+                            "%x" => "TextExpression"
+                          },
+                          "%h" => 105,
+                          "%l" => 0,
+                          "%t" => 87,
+                          "%w" => 527,
+                          "%z" => 5
+                        }
+                      },
+                      "bTHAP0" => %{
+                        "id" => "bTGlA",
+                        "%x" => "Text",
+                        "%p" => %{
+                          "%3" => %{"%e" => %{"0" => "Oops! 404 error"}, "%x" => "TextExpression"},
+                          "%h" => 82,
+                          "%l" => 0,
+                          "%t" => 1,
+                          "%w" => 403,
+                          "%z" => 2,
+                          "tag_type" => "h1"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert page.layout.mode == :fixed
+      assert page.box.width == 1080
+      assert page.box.height == 1699
+      assert page.box.max_width == 1080
+
+      assert [main] = page.children
+      assert main.layout.mode == :fixed
+      assert main.box.x == 0
+      assert main.box.y == 0
+      assert main.box.width == 1080
+      assert main.box.height == 900
+
+      assert [container] = main.children
+      assert container.layout.mode == :fixed
+      assert container.box.x == 20
+      assert container.box.y == 20
+      assert container.box.width == 1040
+      assert container.box.height == 665
+      assert container.box.max_width == 1040
+      assert container.box.min_width == 1040
+
+      [heading, body] = Enum.sort_by(container.children, & &1.box.y)
+      assert heading.variant == :h1
+      assert heading.box.y == 1
+      assert body.variant == :normal
+      assert body.box.y == 87
+    end
+
+    test "keeps explicit Column layout even when compact offsets are leftover" do
+      payload =
+        page_with_elements(%{
+          "row" => %{
+            "id" => "elRow",
+            "type" => "Group",
+            "properties" => %{
+              "container_layout" => "column",
+              "%l" => 40,
+              "%t" => 80,
+              "%w" => 200,
+              "%h" => 50
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert page.layout.mode == :column
+      assert [group] = page.children
+      assert group.layout.mode == :column
+      refute Map.has_key?(group.box, :x)
+      refute Map.has_key?(group.box, :y)
+    end
+
     test "maps Bubble nonants to all direction-aware placement cells" do
       nonants = [
         {"aa", "top_start"},
