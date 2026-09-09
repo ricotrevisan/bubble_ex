@@ -199,6 +199,57 @@ defmodule BubbleEx.ExportFrontendTest do
   end
 
   @tag :tmp_dir
+  test "hydrates a selected empty page that has properties but no element tree", %{tmp_dir: tmp} do
+    pid = self()
+    payload = aliased_metadata_app([{"opaque-empty", "empty-page"}])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      path = conn.request_path || "/"
+      send(pid, {:fetched, path})
+      conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
+
+      case path do
+        "/version-test" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/root/dynamic.js"))
+
+        "/package/dynamic_js/root/dynamic.js" ->
+          Conn.resp(conn, 200, dynamic_script(payload))
+
+        "/version-test/empty-page" ->
+          Conn.resp(conn, 200, page_html("/package/dynamic_js/empty-page/dynamic.js"))
+
+        "/package/dynamic_js/empty-page/dynamic.js" ->
+          patch = %{"%p" => %{"container_layout" => "column", "min_height_px" => 900}}
+
+          script =
+            dynamic_script(payload) <>
+              "app['%p3']['opaque-empty'] = Object.assign(app['%p3']['opaque-empty'] || {}, JSON.parse('#{js_json(patch)}'));\n"
+
+          Conn.resp(conn, 200, script)
+      end
+    end)
+
+    out = Path.join(tmp, "pkg")
+
+    assert {:ok, %Result{} = result} =
+             BubbleEx.export_frontend(
+               "https://app.example.test/version-test",
+               out,
+               @scan ++ [pages: ["empty-page"]]
+             )
+
+    assert "pages/empty-page/index.html" in result.files
+
+    assert File.read!(Path.join(out, "pages/empty-page/index.html")) =~
+             ~s(data-bubble-id="opaque-empty")
+
+    assert_received {:fetched, "/version-test"}
+    assert_received {:fetched, "/package/dynamic_js/root/dynamic.js"}
+    assert_received {:fetched, "/version-test/empty-page"}
+    assert_received {:fetched, "/package/dynamic_js/empty-page/dynamic.js"}
+  end
+
+  @tag :tmp_dir
   test "unions hydration definitions with deterministic page-bundle precedence", %{
     tmp_dir: tmp
   } do

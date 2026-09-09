@@ -369,6 +369,8 @@ defmodule BubbleEx.Frontend.Fetch do
   defp merge_page(payload, _key, fetched_page) when not is_map(fetched_page), do: payload
 
   defp merge_page(payload, key, fetched_page) do
+    fetched_page = ensure_element_map(fetched_page)
+
     cond do
       is_map(payload["%p3"]) ->
         update_in(payload, ["%p3", key], fn
@@ -384,6 +386,37 @@ defmodule BubbleEx.Frontend.Fetch do
 
       true ->
         payload
+    end
+  end
+
+  # A successful page-specific fetch can still omit %el when the page has no
+  # children (e.g. an internal-link target). Only treat that as hydrated empty
+  # when the fetched page carries real layout properties, not a metadata stub.
+  defp ensure_element_map(page) do
+    cond do
+      is_map(Map.get(page, "%el")) or is_map(Map.get(page, "elements")) ->
+        page
+
+      empty_page_definition?(page) ->
+        put_empty_elements(page)
+
+      true ->
+        page
+    end
+  end
+
+  defp empty_page_definition?(page) do
+    props = Payload.properties(page)
+
+    Map.has_key?(props, "new_responsive") or Map.has_key?(props, "min_height_px") or
+      Map.has_key?(props, "padding_top") or map_size(props) > 3
+  end
+
+  defp put_empty_elements(page) do
+    if is_map(page["%p"]) or is_binary(page["%x"]) do
+      Map.put(page, "%el", %{})
+    else
+      Map.put(page, "elements", %{})
     end
   end
 
