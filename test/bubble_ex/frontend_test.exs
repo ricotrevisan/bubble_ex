@@ -1353,13 +1353,30 @@ defmodule BubbleEx.FrontendTest do
              end)
     end
 
+    test "lowers static fit-height multiline as a native variant" do
+      payload =
+        page_with_elements(%{
+          "fit" => %{
+            "id" => "m-fit",
+            "type" => "MultiLineInput",
+            "properties" => %{"fit_height" => true, "content" => "Line one\nLine two"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [ml] = page.children
+      assert ml.kind == :multiline_input
+      assert ml.variant == :fit_height
+      refute ml.placeholder?
+    end
+
     test "keeps auto-height multiline and dynamic choice controls as placeholders" do
       payload =
         page_with_elements(%{
           "auto" => %{
             "id" => "m1",
             "type" => "MultiLineInput",
-            "properties" => %{"fit_height" => true}
+            "properties" => %{"auto_height" => true}
           },
           "dynamic_checkbox" => %{
             "id" => "c1",

@@ -579,6 +579,18 @@ defmodule BubbleEx.Frontend.Export.Css do
     """
   end
 
+  defp extra_rule(%Node{kind: :multiline_input, variant: :fit_height} = node, opts) do
+    id = prefixed_id(node, opts) |> escape()
+
+    """
+    [data-exporter-id="#{id}"] {
+      field-sizing: content;
+      height: auto;
+      overflow: hidden;
+    }
+    """ <> extra_rule(%{node | variant: :fixed}, opts)
+  end
+
   defp extra_rule(%Node{kind: kind} = node, opts)
        when kind in [:input, :multiline_input] do
     color =

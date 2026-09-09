@@ -518,6 +518,43 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "paints fit-height multiline with field-sizing content", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "fit-ml-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "field" => %{
+                "id" => "m1",
+                "type" => "MultiLineInput",
+                "properties" => %{
+                  "fit_height" => true,
+                  "content" => "Line one\n\nLine three",
+                  "order" => 1
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ "<textarea"
+      assert html =~ "Line one&#10;&#10;Line three"
+      css = File.read!(Path.join(out, "styles/pages/index.css"))
+      assert css =~ "field-sizing: content"
+      assert css =~ "height: auto"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 
