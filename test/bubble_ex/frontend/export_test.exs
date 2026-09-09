@@ -779,6 +779,56 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "paints simple slider and static search with datalist", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "slider-search-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "slider" => %{
+                "id" => "s1",
+                "type" => "SliderInput",
+                "properties" => %{
+                  "range_type" => "simple",
+                  "min_value" => 0,
+                  "max_value" => 100,
+                  "content" => 40,
+                  "order" => 1
+                }
+              },
+              "search" => %{
+                "id" => "q1",
+                "type" => "AutocompleteDropdown",
+                "properties" => %{
+                  "choices_style" => "static",
+                  "choices" => "Alpha\nBeta",
+                  "placeholder" => "Search",
+                  "order" => 2
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(type="range")
+      assert html =~ ~s(value="40")
+      assert html =~ ~s(type="search")
+      assert html =~ "<datalist"
+      assert html =~ ~s(value="Alpha")
+      refute html =~ "data-placeholder-kind"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 

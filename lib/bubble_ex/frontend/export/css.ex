@@ -388,6 +388,23 @@ defmodule BubbleEx.Frontend.Export.Css do
     }
   end
 
+  defp native_control(:slider) do
+    %{
+      "display" => "block",
+      "width" => "100%",
+      "margin" => "0"
+    }
+  end
+
+  defp native_control(:search) do
+    %{
+      "appearance" => "none",
+      "background" => "#ffffff",
+      "border" => "1px solid #cccccc",
+      "display" => "block"
+    }
+  end
+
   defp native_control(:multiline_input), do: %{"display" => "block"}
 
   defp native_control(:dropdown) do
@@ -598,7 +615,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp extra_rule(%Node{kind: kind} = node, opts)
-       when kind in [:input, :multiline_input] do
+       when kind in [:input, :multiline_input, :search] do
     color =
       get_in(node.style, [:resolved, "placeholder_color"]) ||
         get_in(node.style, ["resolved", "placeholder_color"])

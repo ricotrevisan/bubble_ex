@@ -474,6 +474,8 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("DateInput", raw), do: classify_date_input(raw)
   defp classify("FileInput", raw), do: classify_file_input(raw)
   defp classify("PictureInput", raw), do: classify_picture_input(raw)
+  defp classify("SliderInput", raw), do: classify_slider(raw)
+  defp classify("AutocompleteDropdown", raw), do: classify_search(raw)
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
   defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
@@ -678,6 +680,30 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  defp classify_slider(raw) do
+    type = Payload.prop(raw, "range_type")
+
+    cond do
+      not static_element?(raw) ->
+        {:placeholder, :unsupported_slider_variant}
+
+      type in [nil, "simple"] ->
+        {:native, :slider, :simple}
+
+      true ->
+        {:placeholder, :unsupported_slider_variant}
+    end
+  end
+
+  defp classify_search(raw) do
+    if Payload.prop(raw, "choices_style") in [nil, "static"] and static_element?(raw) and
+         static_choices?(raw) do
+      {:native, :search, :static}
+    else
+      {:placeholder, :unsupported_search_variant}
+    end
+  end
+
   defp classify_multiline_input(raw) do
     fit_height? = Payload.prop(raw, "fit_height") == true
     auto_height? = Payload.prop(raw, "auto_height") == true
@@ -753,6 +779,8 @@ defmodule BubbleEx.Frontend.Normalize do
     "DateInput" => :input,
     "FileInput" => :file_input,
     "PictureInput" => :file_input,
+    "SliderInput" => :slider,
+    "AutocompleteDropdown" => :search,
     "CustomElement" => :reusable_instance,
     "ReusableElement" => :reusable_instance
   }
@@ -1432,8 +1460,10 @@ defmodule BubbleEx.Frontend.Normalize do
   defp primary_slots(:button, raw, id), do: value_slot(raw, "label", id, ["text", "label"])
   defp primary_slots(:link, raw, id), do: link_slots(raw, id)
 
-  defp primary_slots(kind, raw, id) when kind in [:input, :multiline_input, :file_input],
+  defp primary_slots(kind, raw, id) when kind in [:input, :multiline_input, :file_input, :slider],
     do: input_slots(raw, id)
+
+  defp primary_slots(:search, raw, id), do: choice_control_slots(raw, id, false)
 
   defp primary_slots(:checkbox, raw, id), do: checkbox_slots(raw, id)
   defp primary_slots(:dropdown, raw, id), do: choice_control_slots(raw, id, false)
@@ -2018,6 +2048,33 @@ defmodule BubbleEx.Frontend.Normalize do
     |> reject_empty_attributes()
   end
 
+  defp element_attributes(raw, :slider, _variant) do
+    raw
+    |> common_control_attributes()
+    |> Map.put("type", "range")
+    |> Map.put("min", number_attr(Payload.prop(raw, "min_value") || 0))
+    |> Map.put("max", number_attr(Payload.prop(raw, "max_value") || 100))
+    |> Map.put("step", number_attr(Payload.prop(raw, "step") || 1))
+    |> Map.put(
+      "value",
+      number_attr(Payload.prop(raw, "content") || Payload.prop(raw, "value"))
+    )
+    |> Map.put("aria-label", Payload.name(raw) || "Slider")
+    |> reject_empty_attributes()
+  end
+
+  defp element_attributes(raw, :search, _variant) do
+    raw
+    |> common_control_attributes()
+    |> Map.put("type", "search")
+    |> Map.put("placeholder", Payload.prop(raw, "placeholder"))
+    |> Map.put_new(
+      "aria-label",
+      Payload.prop(raw, "placeholder") || Payload.name(raw) || "Search"
+    )
+    |> reject_empty_attributes()
+  end
+
   defp element_attributes(raw, kind, _variant)
        when kind in [:checkbox, :dropdown, :radio_buttons] do
     raw
@@ -2140,6 +2197,10 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp maybe_put_inputmode(attrs, :phone), do: Map.put(attrs, "inputmode", "tel")
   defp maybe_put_inputmode(attrs, _variant), do: attrs
+
+  defp number_attr(nil), do: nil
+  defp number_attr(value) when is_number(value) or is_binary(value), do: value
+  defp number_attr(_), do: nil
 
   defp link_rel(raw) do
     parts =
