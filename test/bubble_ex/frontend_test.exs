@@ -1462,6 +1462,25 @@ defmodule BubbleEx.FrontendTest do
       assert file.attributes["type"] == "file"
     end
 
+    test "lowers static PictureInput as an image file control" do
+      payload =
+        page_with_elements(%{
+          "pic" => %{
+            "id" => "p1",
+            "type" => "PictureInput",
+            "properties" => %{"placeholder" => "Photo"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      [pic] = page.children
+      assert pic.kind == :file_input
+      assert pic.variant == :image
+      refute pic.placeholder?
+      assert pic.attributes["type"] == "file"
+      assert pic.attributes["accept"] == "image/*"
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())
