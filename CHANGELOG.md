@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Theme tokens and default styles: export emits `:root` CSS variables from
+  `settings.client_safe` color/font tokens and applies `default_styles` classes
+  to elements that omit an explicit style (unstyled primary buttons, `--font_default`).
+
 - Empty-page hydration: a page-specific fetch that returns layout properties but
   no `%el` (internal-link targets like `bubbleex-i36-target`) is treated as a
   hydrated empty page instead of failing the export.

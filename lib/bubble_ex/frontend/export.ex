@@ -270,7 +270,10 @@ defmodule BubbleEx.Frontend.Export do
     plan = plan_names(model, selected)
     nodes = selected ++ model.reusables
     {assets, asset_findings} = Assets.collect(nodes, opts)
-    {font_css, font_assets, font_findings} = Fonts.collect(nodes, model.styles, opts)
+
+    {font_css, font_assets, font_findings} =
+      Fonts.collect(nodes, model.styles, Keyword.put(opts, :font_default, font_default(model)))
+
     bindings = collect_bindings(model)
     findings = collect_findings(model, selected, plan, opts) ++ asset_findings ++ font_findings
     coverage = coverage(model, selected, bindings, opts)
@@ -324,6 +327,7 @@ defmodule BubbleEx.Frontend.Export do
       pages: Enum.reverse(pages),
       reusables: reusables,
       styles: styles,
+      default_styles: default_styles(model),
       page_by_ref: page_lookup(Enum.reverse(pages))
     }
   end
@@ -488,12 +492,50 @@ defmodule BubbleEx.Frontend.Export do
     String.starts_with?(dest, "//") or Regex.match?(~r/^\s*[a-z][a-z0-9+.-]*:/iu, dest)
   end
 
-  defp style_class(%Node{style: style}, plan) when is_map(style) do
-    key = style[:style_key] || style["style_key"]
+  defp style_class(%Node{} = node, plan) do
+    key = style_key(node) || plan.default_styles[bubble_type(node)]
     plan.styles[key]
   end
 
   defp style_class(_, _), do: nil
+
+  defp style_key(%Node{style: style}) when is_map(style) do
+    style[:style_key] || style["style_key"]
+  end
+
+  defp style_key(_), do: nil
+
+  defp default_styles(%Normalized{source: %{payload: payload}}) when is_map(payload) do
+    get_in(payload, ["settings", "client_safe", "default_styles"]) || %{}
+  end
+
+  defp default_styles(_), do: %{}
+
+  defp font_default(%Normalized{source: %{payload: payload}}) when is_map(payload) do
+    get_in(payload, ["settings", "client_safe", "font_tokens", "%d1"])
+  end
+
+  defp font_default(_), do: nil
+
+  @bubble_types %{
+    page: "Page",
+    group: "Group",
+    text: "Text",
+    button: "Button",
+    input: "Input",
+    multiline_input: "MultiLineInput",
+    checkbox: "Checkbox",
+    dropdown: "Dropdown",
+    radio_buttons: "RadioButtons",
+    image: "Image",
+    shape: "Shape",
+    link: "Link",
+    icon: "Icon",
+    floating_group: "FloatingGroup"
+  }
+
+  defp bubble_type(%Node{kind: kind}), do: Map.get(@bubble_types, kind)
+  defp bubble_type(_), do: nil
 
   defp page_title(%Node{attributes: %{"title" => title}}) when is_binary(title), do: title
   defp page_title(%Node{name: name}) when is_binary(name), do: name

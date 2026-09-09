@@ -6,7 +6,9 @@ defmodule BubbleEx.Frontend.Export.Css do
   alias BubbleEx.Frontend.Normalized.Node
 
   @spec shared(Normalized.t(), String.t()) :: String.t()
-  def shared(%Normalized{styles: styles}, font_css \\ "") when is_binary(font_css) do
+  def shared(%Normalized{} = model, font_css \\ "") when is_binary(font_css) do
+    styles = model.styles
+
     base = """
     * { box-sizing: border-box; }
     html { -webkit-font-smoothing: antialiased; }
@@ -14,6 +16,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     p, h1, h2, h3, h4, fieldset, legend { margin: 0; font: inherit; }
     fieldset { min-width: 0; padding: 0; border: 0; }
     button, input, textarea, select { font: inherit; }
+    button { border: none; background: none; padding: 0; }
     textarea { resize: none; }
     """
 
@@ -23,7 +26,7 @@ defmodule BubbleEx.Frontend.Export.Css do
         if decls == "", do: "", else: ".#{style.class_name} {\n#{decls}}\n"
       end)
 
-    [font_css, base, style_rules]
+    [font_css, token_css(model), base, style_rules]
     |> Enum.reject(&(String.trim(&1) == ""))
     |> Enum.join("\n")
     |> String.trim_trailing()
@@ -76,6 +79,83 @@ defmodule BubbleEx.Frontend.Export.Css do
       if String.trim(css) == "", do: "\n", else: String.trim_trailing(css) <> "\n"
     end)
   end
+
+  @color_token_names %{
+    "%3" => "text",
+    "alert" => "alert",
+    "background" => "background",
+    "destructive" => "destructive",
+    "primary" => "primary",
+    "primary_contrast" => "primary_contrast",
+    "success" => "success",
+    "surface" => "surface"
+  }
+
+  defp token_css(%Normalized{source: source}) do
+    client = payload_client(source)
+    colors = client["color_tokens"] || %{}
+    font = get_in(client, ["font_tokens", "%d1"])
+
+    decls =
+      color_token_decls(colors) ++
+        font_token_decls(font)
+
+    if decls == [] do
+      ""
+    else
+      ":root {\n" <> Enum.map_join(decls, "\n", &("  " <> &1)) <> "\n}\n"
+    end
+  end
+
+  defp token_css(_), do: ""
+
+  defp payload_client(%{payload: payload}) when is_map(payload) do
+    get_in(payload, ["settings", "client_safe"]) || %{}
+  end
+
+  defp payload_client(_), do: %{}
+
+  defp color_token_decls(colors) when is_map(colors) do
+    Enum.flat_map(@color_token_names, fn {key, name} ->
+      value = get_in(colors, [key, "%d1"])
+
+      case parse_rgba(value) do
+        {css, rgb} ->
+          [
+            "--color_#{name}_default: #{css};",
+            "--color_#{name}_default_rgb: #{rgb};"
+          ]
+
+        nil ->
+          []
+      end
+    end)
+  end
+
+  defp color_token_decls(_), do: []
+
+  defp font_token_decls(family) when is_binary(family) and family != "" do
+    quoted = if String.contains?(family, " "), do: ~s("#{family}"), else: family
+    ["--font_default: #{quoted}, Helvetica, Arial, sans-serif;"]
+  end
+
+  defp font_token_decls(_), do: []
+
+  defp parse_rgba(value) when is_binary(value) do
+    case Regex.run(
+           ~r/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)$/,
+           String.trim(value)
+         ) do
+      [_, r, g, b, a] ->
+        css = if a == "1", do: "rgb(#{r}, #{g}, #{b})", else: "rgba(#{r}, #{g}, #{b}, #{a})"
+        {css, "#{r}, #{g}, #{b}"}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_rgba(_), do: nil
 
   defp drop_instance_root_alignment(%Node{layout: layout} = definition)
        when is_map(layout) do

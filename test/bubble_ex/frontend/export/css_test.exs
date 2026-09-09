@@ -6,6 +6,35 @@ defmodule BubbleEx.Frontend.Export.CssTest do
   alias BubbleEx.Frontend.Normalized.{Node, Style}
   alias BubbleEx.Frontend.Normalized.Source
 
+  test "emits :root design tokens from client_safe color and font tokens" do
+    model = %Normalized{
+      styles: [],
+      source: %Source{
+        path: [],
+        map_key: nil,
+        bubble_id: "app",
+        payload: %{
+          "settings" => %{
+            "client_safe" => %{
+              "font_tokens" => %{"%d1" => "Open Sans"},
+              "color_tokens" => %{
+                "primary" => %{"%d1" => "rgba(79, 70, 229, 1)"},
+                "%3" => %{"%d1" => "rgba(15, 23, 42, 1)"}
+              }
+            }
+          }
+        }
+      }
+    }
+
+    css = Css.shared(model)
+    assert css =~ "--font_default: \"Open Sans\", Helvetica, Arial, sans-serif;"
+    assert css =~ "--color_primary_default: rgb(79, 70, 229);"
+    assert css =~ "--color_primary_default_rgb: 79, 70, 229;"
+    assert css =~ "--color_text_default: rgb(15, 23, 42);"
+    assert css =~ "--color_text_default_rgb: 15, 23, 42;"
+  end
+
   test "emits canonical shared typography values" do
     style = %Style{
       exporter_id: "style",
