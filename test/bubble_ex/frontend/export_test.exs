@@ -602,6 +602,55 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "paints decimal currency percent phone and euro-date Inputs as text fields", %{
+      tmp_dir: tmp
+    } do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "extra-input-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "decimal" => %{
+                "id" => "d1",
+                "type" => "Input",
+                "properties" => %{"content_format" => "decimal", "content" => 12.5, "order" => 1}
+              },
+              "phone" => %{
+                "id" => "p1",
+                "type" => "Input",
+                "properties" => %{
+                  "content_format" => "us_phone",
+                  "content" => "5550101234",
+                  "order" => 2
+                }
+              },
+              "euro" => %{
+                "id" => "e1",
+                "type" => "Input",
+                "properties" => %{"content_format" => "euro_date", "order" => 3}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(inputmode="decimal")
+      assert html =~ ~s(inputmode="tel")
+      assert html =~ ~s(value="12.5")
+      assert html =~ ~s(value="5550101234")
+      refute html =~ "data-placeholder-kind"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 
