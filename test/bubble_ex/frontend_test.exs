@@ -1425,6 +1425,43 @@ defmodule BubbleEx.FrontendTest do
       assert picker.attributes["type"] == "text"
     end
 
+    test "lowers datetime DateInput, numbers Input, and FileInput as native controls" do
+      payload =
+        page_with_elements(%{
+          "numbers" => %{
+            "id" => "n1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "numbers", "placeholder" => "Numbers"}
+          },
+          "datetime" => %{
+            "id" => "dt1",
+            "type" => "DateInput",
+            "properties" => %{"input_type" => "datetime", "placeholder" => "When"}
+          },
+          "file" => %{
+            "id" => "f1",
+            "type" => "FileInput",
+            "properties" => %{"placeholder" => "Upload"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      by_kind_variant = Map.new(page.children, &{{&1.kind, &1.variant}, &1})
+
+      numbers = by_kind_variant[{:input, :numbers}]
+      refute numbers.placeholder?
+      assert numbers.attributes["type"] == "text"
+      assert numbers.attributes["inputmode"] == "numeric"
+
+      datetime = by_kind_variant[{:input, :datetime_input}]
+      refute datetime.placeholder?
+      assert datetime.attributes["type"] == "text"
+
+      file = by_kind_variant[{:file_input, :file}]
+      refute file.placeholder?
+      assert file.attributes["type"] == "file"
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())

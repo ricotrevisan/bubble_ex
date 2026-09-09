@@ -697,6 +697,57 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "paints numbers Input, datetime DateInput, and FileInput", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "leftover-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "numbers" => %{
+                "id" => "n1",
+                "type" => "Input",
+                "properties" => %{
+                  "content_format" => "numbers",
+                  "placeholder" => "Numbers",
+                  "order" => 1
+                }
+              },
+              "datetime" => %{
+                "id" => "dt1",
+                "type" => "DateInput",
+                "properties" => %{
+                  "input_type" => "datetime",
+                  "placeholder" => "When",
+                  "order" => 2
+                }
+              },
+              "file" => %{
+                "id" => "f1",
+                "type" => "FileInput",
+                "properties" => %{"placeholder" => "Upload", "order" => 3}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(inputmode="numeric")
+      assert html =~ ~s(placeholder="When")
+      assert html =~ ~s(type="file")
+      refute html =~ ~s(type="datetime-local")
+      refute html =~ "data-placeholder-kind"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 

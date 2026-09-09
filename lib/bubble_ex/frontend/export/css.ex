@@ -382,6 +382,12 @@ defmodule BubbleEx.Frontend.Export.Css do
     }
   end
 
+  defp native_control(:file_input) do
+    %{
+      "display" => "block"
+    }
+  end
+
   defp native_control(:multiline_input), do: %{"display" => "block"}
 
   defp native_control(:dropdown) do
