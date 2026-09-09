@@ -114,8 +114,10 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :image} = node, opts), do: void("img", node, opts)
   defp do_render(%Node{kind: :icon} = node, opts), do: render_icon(node, opts)
 
-  defp do_render(%Node{kind: kind} = node, opts) when kind in [:input, :file_input],
+  defp do_render(%Node{kind: kind} = node, opts) when kind in [:input, :file_input, :slider],
     do: void("input", node, opts)
+
+  defp do_render(%Node{kind: :search} = node, opts), do: render_search(node, opts)
 
   defp do_render(%Node{kind: :multiline_input} = node, opts),
     do: wrap("textarea", node, escape_textarea(slot_text(node, "value", opts)), opts)
@@ -234,6 +236,39 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp checkbox_label(""), do: ""
   defp checkbox_label(label), do: ["<span>", escape(label), "</span>"]
+
+  defp render_search(node, opts) do
+    choices = resolved_choices(node)
+    list_id = search_list_id(node)
+    node = put_search_list(node, list_id, choices)
+    input = void("input", node, opts)
+
+    if choices == [] do
+      input
+    else
+      options =
+        Enum.map(choices, fn choice ->
+          value = to_string(choice["value"] || choice["label"] || "")
+          ["<option value=\"", escape(value), "\">"]
+        end)
+
+      [input, "<datalist id=\"", escape(list_id), "\">", options, "</datalist>"]
+    end
+  end
+
+  defp search_list_id(%Node{source: %{bubble_id: id}}) when is_binary(id) and id != "",
+    do: "list-" <> id
+
+  defp search_list_id(%Node{exporter_id: id}) when is_binary(id),
+    do: "list-" <> String.replace(id, "/", "-")
+
+  defp search_list_id(_), do: "list-search"
+
+  defp put_search_list(node, _list_id, []), do: node
+
+  defp put_search_list(node, list_id, _choices) do
+    %{node | attributes: Map.put(node.attributes || %{}, "list", list_id)}
+  end
 
   defp render_dropdown(node, opts) do
     selected = resolved(node, "value")
@@ -476,6 +511,21 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do
     placeholder = resolved(node, "placeholder")
     Map.put_new(node.attributes, "aria-label", placeholder || node.name || "Dropdown")
+  end
+
+  defp node_attrs(%Node{kind: :slider} = node, "input", _opts) do
+    node.attributes
+    |> Map.put("type", "range")
+    |> Map.drop(["placeholder"])
+  end
+
+  defp node_attrs(%Node{kind: :search} = node, "input", _opts) do
+    placeholder = resolved(node, "placeholder")
+
+    node.attributes
+    |> Map.put("type", "search")
+    |> Map.put("placeholder", placeholder)
+    |> Map.put_new("aria-label", placeholder || node.name || "Search")
   end
 
   defp node_attrs(%Node{kind: :file_input} = node, "input", _opts) do

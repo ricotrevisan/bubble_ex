@@ -1481,6 +1481,47 @@ defmodule BubbleEx.FrontendTest do
       assert pic.attributes["accept"] == "image/*"
     end
 
+    test "lowers simple SliderInput and static AutocompleteDropdown as native controls" do
+      payload =
+        page_with_elements(%{
+          "slider" => %{
+            "id" => "s1",
+            "type" => "SliderInput",
+            "properties" => %{
+              "range_type" => "simple",
+              "min_value" => 0,
+              "max_value" => 100,
+              "step" => 1,
+              "content" => 40
+            }
+          },
+          "search" => %{
+            "id" => "q1",
+            "type" => "AutocompleteDropdown",
+            "properties" => %{
+              "choices_style" => "static",
+              "choices" => "Alpha\nBeta\nGamma",
+              "placeholder" => "Search"
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      by = Map.new(page.children, &{&1.kind, &1})
+
+      slider = by[:slider]
+      refute slider.placeholder?
+      assert slider.variant == :simple
+      assert slider.attributes["type"] == "range"
+      assert slider.attributes["min"] == 0
+      assert slider.attributes["value"] == 40
+
+      search = by[:search]
+      refute search.placeholder?
+      assert search.attributes["type"] == "search"
+      assert length(search.content["choices"].resolved) == 3
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())

@@ -6,6 +6,11 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 simple SliderInput (`type=range`) and static AutocompleteDropdown
+  (`type=search` + `<datalist>`). Two-handle sliders and dynamic/Google
+  search stay placeholders. Authorized page `bubbleex-i67-slider-search`
+  is on `tiptap-plugin` Test; freeze is a follow-up.
+
 - Frozen S1 PictureInput case `bpdimzwm` (`bubbleex-i65-picture-input`)
 
 - S1 PictureInput lowering as `<input type="file" accept="image/*">`.
