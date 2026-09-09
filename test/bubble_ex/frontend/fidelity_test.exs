@@ -21,6 +21,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert "bpqkcldq" in ids
       assert "bpjehwxg" in ids
       assert "bpizatjd" in ids
+      assert "bpoyzixi" in ids
       assert ids == Enum.sort(ids)
     end
   end
@@ -92,6 +93,13 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert case_.id == "bpizatjd"
       assert case_.source.page_path == "bubbleex-i61-address-dateinput"
       assert case_.semantics["inputs"] == ["bpoubwmx", "bpcfmgay"]
+    end
+
+    test "loads the frozen bpoyzixi datetime/numbers/file pin" do
+      assert {:ok, case_} = Fidelity.load_case("bpoyzixi")
+      assert case_.id == "bpoyzixi"
+      assert case_.source.page_path == "bubbleex-i63-datetime-numbers-file"
+      assert case_.semantics["inputs"] == ["bperdgvn", "bpeqiyev", "bpfileiid"]
     end
 
     test "loads the frozen bpwipyqn BBCode Text pin" do
@@ -455,6 +463,14 @@ defmodule BubbleEx.Frontend.FidelityTest do
     @tag :tmp_dir
     test "bpizatjd passes the committed-reference gate", %{tmp_dir: tmp} do
       assert {:ok, report} = Fidelity.run("bpizatjd", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bpoyzixi passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bpoyzixi", out_dir: Path.join(tmp, "pkg"))
       assert report["status"] == "pass"
       assert report["mismatches"] == []
     end

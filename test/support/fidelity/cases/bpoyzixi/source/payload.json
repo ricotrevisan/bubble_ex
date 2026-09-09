@@ -1,0 +1,177 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i63-datetime-numbers-file": {
+      "elements": {
+        "i63__dt": {
+          "id": "bpeqiyev",
+          "name": "I63__DateTime_Input",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "input_type": "datetime",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 5,
+            "padding": "12px 16px",
+            "placeholder": "I63 datetime placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "DateInput"
+        },
+        "i63__dt_label": {
+          "id": "bpdzwjek",
+          "name": "I63__DateTime_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 4,
+            "tag_type": "normal",
+            "text": "I63 DateInput datetime",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i63__f": {
+          "id": "bpfileiid",
+          "name": "I63__FileInput",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 7,
+            "padding": "12px 16px",
+            "placeholder": "I63 file placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "FileInput"
+        },
+        "i63__f_label": {
+          "id": "bpfilelid",
+          "name": "I63__File_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 6,
+            "tag_type": "normal",
+            "text": "I63 FileInput",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i63__n": {
+          "id": "bperdgvn",
+          "name": "I63__Numbers_Input",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "content_format": "numbers",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 3,
+            "padding": "12px 16px",
+            "placeholder": "I63 numbers placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "Input"
+        },
+        "i63__n_label": {
+          "id": "bpgekpfz",
+          "name": "I63__Numbers_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "I63 numbers",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i63__title": {
+          "id": "bpmrhrza",
+          "name": "I63__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I63 case · datetime / numbers / file",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpoyzixi",
+      "name": "bubbleex-i63-datetime-numbers-file",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "12px",
+        "title": "BubbleEx datetime numbers file",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
