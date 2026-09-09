@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frozen S1 date / integer Input case `bpqkcldq`
+  (`bubbleex-i57-date-integer-input`)
+
 - S1 date and integer Input lowering (`content_format` `date` / `integer`
   as `type=text`, integer `inputmode=numeric`). Authorized page
   `bubbleex-i57-date-integer-input` is on `tiptap-plugin` Test; freeze is a

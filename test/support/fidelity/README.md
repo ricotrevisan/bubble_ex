@@ -5,7 +5,7 @@ Implements [issue #30](https://github.com/ricotrevisan/bubble_ex/issues/30).
 A frozen case is the only thing we call visually correct. The suite contains
 nine frozen cases: `bpmkbvvo` (#28), `bprkyexk` (#35), `bptaixqv` (#36),
 `bpewigqu` (#37), `bpcybc` (#38), `bpqqfagk` (static native controls), and
-`bpgwgmpz` (the Issue #42 complex composition), and `bpwipyqn` (#44 BBCode Text), and `bpiordvb` (icon / icon+label Button), and `bpaupfbj` (icon / icon+label Link), and `bpuzekut` (fit-height MultiLineInput). The Text cases pin
+`bpgwgmpz` (the Issue #42 complex composition), and `bpwipyqn` (#44 BBCode Text), and `bpiordvb` (icon / icon+label Button), and `bpaupfbj` (icon / icon+label Link), and `bpuzekut` (fit-height MultiLineInput), and `bpqkcldq` (date / integer Input). The Text cases pin
 exporter-owned `<p>` and heading semantics without comparing tags to Bubble.
 The Issue #42 case also pins two portable pages, nested reusable expansion, a
 local image/font/icon set, an always-visible Floating Group, and the intentional

@@ -18,6 +18,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert "bpiordvb" in ids
       assert "bpaupfbj" in ids
       assert "bpuzekut" in ids
+      assert "bpqkcldq" in ids
       assert ids == Enum.sort(ids)
     end
   end
@@ -61,6 +62,13 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert case_.id == "bpuzekut"
       assert case_.source.page_path == "bubbleex-i55-fit-height-multiline"
       assert case_.semantics["textareas"] == ["bpwhiple"]
+    end
+
+    test "loads the frozen bpqkcldq date/integer Input pin" do
+      assert {:ok, case_} = Fidelity.load_case("bpqkcldq")
+      assert case_.id == "bpqkcldq"
+      assert case_.source.page_path == "bubbleex-i57-date-integer-input"
+      assert case_.semantics["inputs"] == ["bpouecpw", "bpyaqmrs"]
     end
 
     test "loads the frozen bpwipyqn BBCode Text pin" do
@@ -400,6 +408,14 @@ defmodule BubbleEx.Frontend.FidelityTest do
     @tag :tmp_dir
     test "bpuzekut passes the committed-reference gate", %{tmp_dir: tmp} do
       assert {:ok, report} = Fidelity.run("bpuzekut", out_dir: Path.join(tmp, "pkg"))
+      assert report["status"] == "pass"
+      assert report["mismatches"] == []
+    end
+
+    @tag :fidelity
+    @tag :tmp_dir
+    test "bpqkcldq passes the committed-reference gate", %{tmp_dir: tmp} do
+      assert {:ok, report} = Fidelity.run("bpqkcldq", out_dir: Path.join(tmp, "pkg"))
       assert report["status"] == "pass"
       assert report["mismatches"] == []
     end

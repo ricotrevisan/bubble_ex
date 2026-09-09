@@ -1,0 +1,81 @@
+{
+  "id": "bpqkcldq",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpqkcldq",
+    "page_path": "bubbleex-i57-date-integer-input",
+    "page_payload_sha256": "515851844451042be0b69f54448dff4f91ef3018d1995e8124eb53014a16fe7e",
+    "payload_sha256": "1b6c96563bc7785c6069f72ae1875a403877bbf38546e3d7f50c9fc10450c419"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; date and integer inputs stay 320px wide",
+    "1440": "wide page; the same left-stacked date and integer inputs"
+  },
+  "node_ids": [
+    "bpqkcldq",
+    "bpgnwgim",
+    "bpdyfmvp",
+    "bpouecpw",
+    "bpsibqik",
+    "bpyaqmrs"
+  ],
+  "text_node_ids": [
+    "bpgnwgim",
+    "bpdyfmvp",
+    "bpsibqik"
+  ],
+  "semantics": {
+    "main": [
+      "bpqkcldq"
+    ],
+    "paragraphs": [
+      "bpgnwgim",
+      "bpdyfmvp",
+      "bpsibqik"
+    ],
+    "inputs": [
+      "bpouecpw",
+      "bpyaqmrs"
+    ],
+    "input_attributes": {
+      "bpouecpw": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I57 date placeholder",
+        "aria-label": "I57 date placeholder"
+      },
+      "bpyaqmrs": {
+        "type": "text",
+        "value": "12345",
+        "placeholder": "I57 integer placeholder",
+        "aria-label": "I57 integer placeholder",
+        "inputmode": "numeric"
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 7200,
+    "max_channel_delta": 100,
+    "max_mean_absolute_error": 0.35,
+    "rationale": "Geometry, document height, primary typography, and semantics remain exact. This bounded allowance covers frozen text/native-control rasterization drift in the pinned Chromium 140 headless shell, same class as bpewigqu."
+  }
+}
