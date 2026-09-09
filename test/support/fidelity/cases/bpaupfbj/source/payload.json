@@ -1,0 +1,95 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i53-icon-link": {
+      "elements": {
+        "i53__icon": {
+          "id": "bptvrsvd",
+          "name": "I53__Icon_Only_Link",
+          "properties": {
+            "bgcolor": "#FFFFFF",
+            "border_color": "#D8E0EC",
+            "border_roundness": 12,
+            "border_style": "solid",
+            "border_width": "1px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "font_color": "#2457C5",
+            "height": "48px",
+            "icon": "fa fa-star",
+            "link_type": "icon",
+            "min_height": "48px",
+            "min_width": "48px",
+            "order": 3,
+            "padding": "12px",
+            "url": "https://example.com/docs",
+            "width": "48px"
+          },
+          "type": "Link"
+        },
+        "i53__label": {
+          "id": "bpimohkt",
+          "name": "I53__Icon_Label_Link",
+          "properties": {
+            "bgcolor": "#FFFFFF",
+            "border_color": "#D8E0EC",
+            "border_roundness": 12,
+            "border_style": "solid",
+            "border_width": "1px",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "font_color": "#2457C5",
+            "height": "48px",
+            "icon": "fa fa-star",
+            "icon_placement": "left",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 2,
+            "padding": "12px",
+            "show_icon": true,
+            "text": "I53 ICON+LABEL",
+            "url": "https://example.com/docs",
+            "width": "320px"
+          },
+          "type": "Link"
+        },
+        "i53__title": {
+          "id": "bpihmicz",
+          "name": "I53__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "line-height": "1.2",
+            "margin": "0",
+            "min_height": "24px",
+            "order": 1,
+            "padding": "0 12px",
+            "tag_type": "normal",
+            "text": "I53 case · icon Link",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpaupfbj",
+      "name": "bubbleex-i53-icon-link",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "16px",
+        "title": "BubbleEx icon Link",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
