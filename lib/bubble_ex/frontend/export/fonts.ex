@@ -30,7 +30,7 @@ defmodule BubbleEx.Frontend.Export.Fonts do
   @spec collect([Node.t()], [Style.t()], keyword()) :: {String.t(), [asset()], [map()]}
   def collect(nodes, styles, opts) when is_list(nodes) and is_list(styles) do
     sources = font_sources(opts)
-    used = used_faces(nodes, styles)
+    used = used_faces(nodes, styles, opts)
 
     if sources == [] or map_size(used) == 0 do
       {"", [], []}
@@ -371,7 +371,7 @@ defmodule BubbleEx.Frontend.Export.Fonts do
     "\"" <> escaped <> "\""
   end
 
-  defp used_faces(nodes, styles) do
+  defp used_faces(nodes, styles, opts) do
     referenced = referenced_style_keys(nodes)
 
     values =
@@ -380,11 +380,22 @@ defmodule BubbleEx.Frontend.Export.Fonts do
          |> Enum.filter(&MapSet.member?(referenced, &1.map_key))
          |> Enum.flat_map(&map_style_values(&1.properties)))
 
-    families = values |> Enum.flat_map(&family_value/1) |> MapSet.new()
+    families =
+      values
+      |> Enum.flat_map(&family_value/1)
+      |> MapSet.new()
+      |> put_default_font(Keyword.get(opts, :font_default))
+
     weights = values |> Enum.flat_map(&weight_value/1) |> MapSet.new() |> MapSet.put(400)
 
     Map.new(families, &{String.downcase(&1), weights})
   end
+
+  defp put_default_font(families, family) when is_binary(family) and family != "" do
+    MapSet.put(families, family)
+  end
+
+  defp put_default_font(families, _), do: families
 
   defp referenced_style_keys(nodes) do
     nodes

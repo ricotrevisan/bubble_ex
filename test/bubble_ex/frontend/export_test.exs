@@ -477,6 +477,57 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "theme-app",
+        "app_version" => "test",
+        "settings" => %{
+          "client_safe" => %{
+            "font_tokens" => %{"%d1" => "Open Sans"},
+            "color_tokens" => %{
+              "primary" => %{"%d1" => "rgba(79, 70, 229, 1)"},
+              "primary_contrast" => %{"%d1" => "rgba(255, 255, 255, 1)"}
+            },
+            "default_styles" => %{"Button" => "Button_primary_button_"}
+          }
+        },
+        "styles" => %{
+          "Button_primary_button_" => %{
+            "type" => "Button",
+            "properties" => %{
+              "bgcolor" => "var(--color_primary_default)",
+              "font_family" => "var(--font_default)"
+            }
+          }
+        },
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "go" => %{
+                "id" => "btn",
+                "type" => "Button",
+                "properties" => %{"text" => "Confirm"}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(class="s-button-primary-button")
+      shared = File.read!(Path.join(out, "styles/shared.css"))
+      assert shared =~ "--color_primary_default:"
+      assert shared =~ "--font_default:"
+    end
+
+    @tag :tmp_dir
     test "falls back to Native when the default secret scanner is missing its CLI", %{
       tmp_dir: tmp
     } do
