@@ -6,10 +6,12 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frozen S1 Address Input / DateInput case `bpizatjd`
+  (`bubbleex-i61-address-dateinput`)
+
 - S1 Address Input and DateInput lowering as `type=text` (no Google
   autocomplete, no native date-picker chrome). Authorized page
-  `bubbleex-i61-address-dateinput` is on `tiptap-plugin` Test; freeze is
-  a follow-up.
+  `bubbleex-i61-address-dateinput` is on `tiptap-plugin` Test.
 
 - Frozen S1 extra Input formats case `bpjehwxg`
   (`bubbleex-i59-input-formats`)

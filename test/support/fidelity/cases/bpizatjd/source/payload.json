@@ -1,0 +1,133 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i61-address-dateinput": {
+      "elements": {
+        "i61__addr": {
+          "id": "bpoubwmx",
+          "name": "I61__Address_Input",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "content_format": "address",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 3,
+            "padding": "12px 16px",
+            "placeholder": "I61 address placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "Input"
+        },
+        "i61__addr_label": {
+          "id": "bprqfure",
+          "name": "I61__Address_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "I61 address",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i61__di": {
+          "id": "bpcfmgay",
+          "name": "I61__DateInput",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "input_type": "date",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 5,
+            "padding": "12px 16px",
+            "placeholder": "I61 date placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "DateInput"
+        },
+        "i61__di_label": {
+          "id": "bptzxred",
+          "name": "I61__DateInput_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 4,
+            "tag_type": "normal",
+            "text": "I61 DateInput",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i61__title": {
+          "id": "bpvrrjdj",
+          "name": "I61__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I61 case · address / DateInput",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpizatjd",
+      "name": "bubbleex-i61-address-dateinput",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "12px",
+        "title": "BubbleEx address DateInput",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}

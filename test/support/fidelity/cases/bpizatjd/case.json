@@ -1,0 +1,80 @@
+{
+  "id": "bpizatjd",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpizatjd",
+    "page_path": "bubbleex-i61-address-dateinput",
+    "page_payload_sha256": "4aec4c5a460fe236fffb6afcb6b0c3a56ef90a63d6d0fe91d020384431130f42",
+    "payload_sha256": "d228fdeae045874b48a5cbd4f90f354731d7a4f6426b58cbc18a9abc07c2e7ac"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; address and DateInput stay 320px wide",
+    "1440": "wide page; the same left-stacked address and DateInput"
+  },
+  "node_ids": [
+    "bpizatjd",
+    "bpvrrjdj",
+    "bprqfure",
+    "bpoubwmx",
+    "bptzxred",
+    "bpcfmgay"
+  ],
+  "text_node_ids": [
+    "bpvrrjdj",
+    "bprqfure",
+    "bptzxred"
+  ],
+  "semantics": {
+    "main": [
+      "bpizatjd"
+    ],
+    "paragraphs": [
+      "bpvrrjdj",
+      "bprqfure",
+      "bptzxred"
+    ],
+    "inputs": [
+      "bpoubwmx",
+      "bpcfmgay"
+    ],
+    "input_attributes": {
+      "bpoubwmx": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I61 address placeholder",
+        "aria-label": "I61 address placeholder"
+      },
+      "bpcfmgay": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I61 date placeholder",
+        "aria-label": "I61 date placeholder"
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 8000,
+    "max_channel_delta": 120,
+    "max_mean_absolute_error": 0.4,
+    "rationale": "Geometry and document height are the gate. Channel allowance covers DateInput wrapper vs native text field raster in pinned Chromium 140, same class as bpewigqu."
+  }
+}
