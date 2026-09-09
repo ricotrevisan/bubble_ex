@@ -829,6 +829,58 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "paints a two-handle range slider and an open dialog Popup", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "range-popup-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "range" => %{
+                "id" => "r1",
+                "type" => "SliderInput",
+                "properties" => %{
+                  "range_type" => "range",
+                  "min_value" => 0,
+                  "max_value" => 50,
+                  "order" => 1
+                }
+              },
+              "popup" => %{
+                "id" => "p1",
+                "type" => "Popup",
+                "properties" => %{"is_visible" => true, "order" => 2},
+                "elements" => %{
+                  "body" => %{
+                    "id" => "t1",
+                    "type" => "Text",
+                    "properties" => %{"text" => "Popup body", "order" => 1}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(role="group")
+      assert html =~ ~s(aria-label="Range start")
+      assert html =~ ~s(aria-label="Range end")
+      assert html =~ "<dialog"
+      assert html =~ "open"
+      assert html =~ "Popup body"
+      refute html =~ "data-placeholder-kind"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 
