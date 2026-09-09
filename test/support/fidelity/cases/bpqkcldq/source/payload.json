@@ -1,0 +1,134 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i57-date-integer-input": {
+      "elements": {
+        "i57__date_input": {
+          "id": "bpouecpw",
+          "name": "I57__Date_Input",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "content_format": "date",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 3,
+            "padding": "12px 16px",
+            "placeholder": "I57 date placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "Input"
+        },
+        "i57__date_label": {
+          "id": "bpdyfmvp",
+          "name": "I57__Date_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "I57 date",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i57__int_input": {
+          "id": "bpyaqmrs",
+          "name": "I57__Integer_Input",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "content": "12345",
+            "content_format": "integer",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 5,
+            "padding": "12px 16px",
+            "placeholder": "I57 integer placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "Input"
+        },
+        "i57__int_label": {
+          "id": "bpsibqik",
+          "name": "I57__Integer_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 4,
+            "tag_type": "normal",
+            "text": "I57 integer",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i57__title": {
+          "id": "bpgnwgim",
+          "name": "I57__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I57 case · date / integer Input",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpqkcldq",
+      "name": "bubbleex-i57-date-integer-input",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "12px",
+        "title": "BubbleEx date integer Input",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
