@@ -1522,6 +1522,43 @@ defmodule BubbleEx.FrontendTest do
       assert length(search.content["choices"].resolved) == 3
     end
 
+    test "lowers two-handle SliderInput and a visible Popup as native controls" do
+      payload =
+        page_with_elements(%{
+          "range" => %{
+            "id" => "r1",
+            "type" => "SliderInput",
+            "properties" => %{"range_type" => "range", "min_value" => 0, "max_value" => 100}
+          },
+          "popup" => %{
+            "id" => "p1",
+            "type" => "Popup",
+            "properties" => %{"is_visible" => true, "container_layout" => "column"},
+            "elements" => %{
+              "body" => %{
+                "id" => "t1",
+                "type" => "Text",
+                "properties" => %{"text" => "Popup body", "order" => 1}
+              }
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      by = Map.new(page.children, &{&1.kind, &1})
+
+      range = by[:slider]
+      refute range.placeholder?
+      assert range.variant == :range
+      assert range.attributes["value"] == 0
+      assert range.attributes["value_high"] == 100
+
+      popup = by[:popup]
+      refute popup.placeholder?
+      assert popup.attributes["open"] == true
+      assert hd(popup.children).kind == :text
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())

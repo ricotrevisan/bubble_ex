@@ -92,8 +92,21 @@ defmodule BubbleEx.Frontend.Export.Html do
     do: wrap("main", node, children_html(node, opts), opts)
 
   defp do_render(%Node{kind: kind} = node, opts)
-       when kind in [:group, :floating_group, :reusable_definition, :shape, :placeholder],
+       when kind in [
+              :group,
+              :floating_group,
+              :reusable_definition,
+              :shape,
+              :placeholder,
+              :group_focus
+            ],
        do: wrap("div", node, children_html_or_empty(node, opts), opts)
+
+  defp do_render(%Node{kind: :popup} = node, opts),
+    do: wrap("dialog", node, children_html(node, opts), opts)
+
+  defp do_render(%Node{kind: :slider, variant: :range} = node, opts),
+    do: render_range_slider(node, opts)
 
   defp do_render(%Node{kind: :reusable_instance} = node, opts), do: render_instance(node, opts)
 
@@ -127,7 +140,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :radio_buttons} = node, opts), do: render_radio_buttons(node, opts)
 
   defp children_html_or_empty(%Node{kind: kind} = node, opts)
-       when kind in [:group, :floating_group, :reusable_definition],
+       when kind in [:group, :floating_group, :reusable_definition, :popup, :group_focus],
        do: children_html(node, opts)
 
   defp children_html_or_empty(_node, _opts), do: ""
@@ -236,6 +249,43 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp checkbox_label(""), do: ""
   defp checkbox_label(label), do: ["<span>", escape(label), "</span>"]
+
+  defp render_range_slider(node, opts) do
+    min = Map.get(node.attributes, "min")
+    max = Map.get(node.attributes, "max")
+    low = Map.get(node.attributes, "value") || min
+    high = Map.get(node.attributes, "value_high") || max
+    base = Map.take(node.attributes || %{}, ["min", "max", "step", "disabled"])
+
+    start_node = %{
+      node
+      | attributes:
+          base
+          |> Map.put("type", "range")
+          |> Map.put("value", low)
+          |> Map.put("aria-label", "Range start")
+    }
+
+    end_node = %{
+      node
+      | attributes:
+          base
+          |> Map.put("type", "range")
+          |> Map.put("value", high)
+          |> Map.put("aria-label", "Range end")
+    }
+
+    container = %{
+      node
+      | attributes:
+          (node.attributes || %{})
+          |> Map.drop(["min", "max", "step", "value", "value_high", "type"])
+          |> Map.put("role", "group")
+    }
+
+    inner = [void("input", start_node, opts), void("input", end_node, opts)]
+    wrap("div", container, inner, opts)
+  end
 
   defp render_search(node, opts) do
     choices = resolved_choices(node)
@@ -511,6 +561,11 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do
     placeholder = resolved(node, "placeholder")
     Map.put_new(node.attributes, "aria-label", placeholder || node.name || "Dropdown")
+  end
+
+  defp node_attrs(%Node{kind: :popup} = node, "dialog", _opts) do
+    node.attributes
+    |> Map.take(["open"])
   end
 
   defp node_attrs(%Node{kind: :slider} = node, "input", _opts) do

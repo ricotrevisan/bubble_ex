@@ -396,6 +396,14 @@ defmodule BubbleEx.Frontend.Export.Css do
     }
   end
 
+  defp native_control(:popup) do
+    %{
+      "border" => "1px solid #cccccc",
+      "padding" => "16px",
+      "margin" => "0"
+    }
+  end
+
   defp native_control(:search) do
     %{
       "appearance" => "none",

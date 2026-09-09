@@ -360,7 +360,7 @@ defmodule BubbleEx.Frontend.Normalize do
     case classify(type, raw) do
       {:native, kind, variant} ->
         {children, child_diags} =
-          if kind in [:group, :floating_group] do
+          if kind in [:group, :floating_group, :popup, :group_focus] do
             normalize_children(raw, identity, path, workflows)
           else
             {[], []}
@@ -476,6 +476,8 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("PictureInput", raw), do: classify_picture_input(raw)
   defp classify("SliderInput", raw), do: classify_slider(raw)
   defp classify("AutocompleteDropdown", raw), do: classify_search(raw)
+  defp classify("Popup", raw), do: classify_popup(raw)
+  defp classify("GroupFocus", raw), do: classify_group_focus(raw)
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
   defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
@@ -690,8 +692,27 @@ defmodule BubbleEx.Frontend.Normalize do
       type in [nil, "simple"] ->
         {:native, :slider, :simple}
 
+      type == "range" ->
+        {:native, :slider, :range}
+
       true ->
         {:placeholder, :unsupported_slider_variant}
+    end
+  end
+
+  defp classify_popup(raw) do
+    if static_element?(raw) do
+      {:native, :popup, layout_mode(raw) || :column}
+    else
+      {:placeholder, :unsupported_popup_variant}
+    end
+  end
+
+  defp classify_group_focus(raw) do
+    if static_element?(raw) do
+      {:native, :group_focus, layout_mode(raw) || :column}
+    else
+      {:placeholder, :unsupported_group_focus_variant}
     end
   end
 
@@ -781,6 +802,8 @@ defmodule BubbleEx.Frontend.Normalize do
     "PictureInput" => :file_input,
     "SliderInput" => :slider,
     "AutocompleteDropdown" => :search,
+    "Popup" => :popup,
+    "GroupFocus" => :group_focus,
     "CustomElement" => :reusable_instance,
     "ReusableElement" => :reusable_instance
   }
@@ -2048,6 +2071,21 @@ defmodule BubbleEx.Frontend.Normalize do
     |> reject_empty_attributes()
   end
 
+  defp element_attributes(raw, :slider, :range) do
+    min = number_attr(Payload.prop(raw, "min_value") || 0)
+    max = number_attr(Payload.prop(raw, "max_value") || 100)
+
+    raw
+    |> common_control_attributes()
+    |> Map.put("min", min)
+    |> Map.put("max", max)
+    |> Map.put("step", number_attr(Payload.prop(raw, "step") || 1))
+    |> Map.put("value", min)
+    |> Map.put("value_high", max)
+    |> Map.put("aria-label", Payload.name(raw) || "Range")
+    |> reject_empty_attributes()
+  end
+
   defp element_attributes(raw, :slider, _variant) do
     raw
     |> common_control_attributes()
@@ -2061,6 +2099,14 @@ defmodule BubbleEx.Frontend.Normalize do
     )
     |> Map.put("aria-label", Payload.name(raw) || "Slider")
     |> reject_empty_attributes()
+  end
+
+  defp element_attributes(raw, :popup, _variant) do
+    if Payload.prop(raw, "is_visible") == true do
+      %{"open" => true}
+    else
+      %{}
+    end
   end
 
   defp element_attributes(raw, :search, _variant) do
