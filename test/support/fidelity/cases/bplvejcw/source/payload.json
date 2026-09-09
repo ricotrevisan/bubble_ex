@@ -1,0 +1,128 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i67-slider-search": {
+      "elements": {
+        "i67__q_label": {
+          "id": "bpsrchlid",
+          "name": "I67__Search_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 4,
+            "tag_type": "normal",
+            "text": "I67 search",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i67__search": {
+          "id": "bpsrchiid",
+          "name": "I67__Search",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "choices": "Alpha\nBeta\nGamma",
+            "choices_style": "static",
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 5,
+            "padding": "12px 16px",
+            "placeholder": "I67 search placeholder",
+            "placeholder_color": "#7B879B",
+            "width": "320px"
+          },
+          "type": "AutocompleteDropdown"
+        },
+        "i67__sl_label": {
+          "id": "bptpxlow",
+          "name": "I67__Slider_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "I67 slider",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i67__slider": {
+          "id": "bpilwdan",
+          "name": "I67__Slider",
+          "properties": {
+            "content": 40,
+            "height": "48px",
+            "max_height": "48px",
+            "max_value": 100,
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_value": 0,
+            "min_width": "320px",
+            "order": 3,
+            "range_type": "simple",
+            "step": 1,
+            "width": "320px"
+          },
+          "type": "SliderInput"
+        },
+        "i67__title": {
+          "id": "bpymvxor",
+          "name": "I67__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I67 case · slider / search",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bplvejcw",
+      "name": "bubbleex-i67-slider-search",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "12px",
+        "title": "BubbleEx slider search",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}

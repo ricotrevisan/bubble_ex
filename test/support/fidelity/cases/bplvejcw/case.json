@@ -1,0 +1,81 @@
+{
+  "id": "bplvejcw",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bplvejcw",
+    "page_path": "bubbleex-i67-slider-search",
+    "page_payload_sha256": "20550f3af6162df46fb9dee501ac5e908c5d9f30620e332409a21b5c84c72e1d",
+    "payload_sha256": "5d644fca9eabd3d9c7ecddb2f1d7db95409c00731f2ba2c6f86933cebe10b37f"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; slider and search stay 320px wide",
+    "1440": "wide page; the same left-stacked slider and search"
+  },
+  "node_ids": [
+    "bplvejcw",
+    "bpymvxor",
+    "bptpxlow",
+    "bpilwdan",
+    "bpsrchlid",
+    "bpsrchiid"
+  ],
+  "text_node_ids": [
+    "bpymvxor",
+    "bptpxlow",
+    "bpsrchlid"
+  ],
+  "semantics": {
+    "main": [
+      "bplvejcw"
+    ],
+    "paragraphs": [
+      "bpymvxor",
+      "bptpxlow",
+      "bpsrchlid"
+    ],
+    "inputs": [
+      "bpilwdan",
+      "bpsrchiid"
+    ],
+    "input_attributes": {
+      "bpilwdan": {
+        "type": "range",
+        "min": "0",
+        "max": "100",
+        "step": "1",
+        "value": "40",
+        "aria-label": "I67__Slider"
+      },
+      "bpsrchiid": {
+        "type": "search",
+        "placeholder": "I67 search placeholder",
+        "aria-label": "I67 search placeholder"
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 16000,
+    "max_channel_delta": 255,
+    "max_mean_absolute_error": 1.4,
+    "rationale": "Geometry is the gate. Native range/search chrome vs Bubble SliderInput and AutocompleteDropdown paint needs a wide channel/MAE allowance."
+  }
+}
