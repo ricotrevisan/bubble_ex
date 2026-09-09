@@ -6,12 +6,15 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frozen S1 numbers / datetime / FileInput case `bpoyzixi`
+  (`bubbleex-i63-datetime-numbers-file`)
+
 - S1 numbers-only Input, datetime DateInput, and FileInput lowering.
   Numbers use `inputmode=numeric`. Datetime stays `type=text` (no
   native picker). FileInput is `<input type="file">` with no upload.
   Authorized page `bubbleex-i63-datetime-numbers-file` is on
-  `tiptap-plugin` Test; freeze is a follow-up. Google address
-  autocomplete remains deferred (needs a live Google contract).
+  `tiptap-plugin` Test. Google address autocomplete remains deferred
+  (needs a live Google contract).
 
 - Frozen S1 Address Input / DateInput case `bpizatjd`
   (`bubbleex-i61-address-dateinput`)

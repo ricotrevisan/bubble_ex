@@ -1,0 +1,90 @@
+{
+  "id": "bpoyzixi",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpoyzixi",
+    "page_path": "bubbleex-i63-datetime-numbers-file",
+    "page_payload_sha256": "86ea0dc81fd20e6bb6ab25f012bf7b8e8ca0d7c829c4578e8db5f1e0b9800e7d",
+    "payload_sha256": "3c868fa381ad907bf3505702a3fd456dd28961a212d97c3aafedcabda111f128"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; numbers, datetime, and file controls stay 320px wide",
+    "1440": "wide page; the same left-stacked leftover controls"
+  },
+  "node_ids": [
+    "bpoyzixi",
+    "bpmrhrza",
+    "bpgekpfz",
+    "bperdgvn",
+    "bpdzwjek",
+    "bpeqiyev",
+    "bpfilelid",
+    "bpfileiid"
+  ],
+  "text_node_ids": [
+    "bpmrhrza",
+    "bpgekpfz",
+    "bpdzwjek",
+    "bpfilelid"
+  ],
+  "semantics": {
+    "main": [
+      "bpoyzixi"
+    ],
+    "paragraphs": [
+      "bpmrhrza",
+      "bpgekpfz",
+      "bpdzwjek",
+      "bpfilelid"
+    ],
+    "inputs": [
+      "bperdgvn",
+      "bpeqiyev",
+      "bpfileiid"
+    ],
+    "input_attributes": {
+      "bperdgvn": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I63 numbers placeholder",
+        "aria-label": "I63 numbers placeholder",
+        "inputmode": "numeric"
+      },
+      "bpeqiyev": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I63 datetime placeholder",
+        "aria-label": "I63 datetime placeholder"
+      },
+      "bpfileiid": {
+        "type": "file",
+        "aria-label": "I63 file placeholder"
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 14000,
+    "max_channel_delta": 255,
+    "max_mean_absolute_error": 1.2,
+    "rationale": "Geometry is the gate. Native file-control UA chrome vs Bubble FileInput paint, plus DateInput wrapper vs type=text, needs a wide channel/MAE allowance in pinned Chromium 140."
+  }
+}
