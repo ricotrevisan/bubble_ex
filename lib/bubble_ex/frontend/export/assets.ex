@@ -95,8 +95,8 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
   defp asset_nodes(%Node{kind: kind} = node) when kind in [:image, :icon], do: [node]
 
-  defp asset_nodes(%Node{kind: :button, attributes: %{"asset_fragment" => fragment}} = node)
-       when is_binary(fragment) and fragment != "",
+  defp asset_nodes(%Node{kind: kind, attributes: %{"asset_fragment" => fragment}} = node)
+       when kind in [:button, :link] and is_binary(fragment) and fragment != "",
        do: [node]
 
   defp asset_nodes(%Node{children: children}), do: Enum.flat_map(children, &asset_nodes/1)
