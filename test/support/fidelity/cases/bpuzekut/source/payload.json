@@ -1,0 +1,71 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i55-fit-height-multiline": {
+      "elements": {
+        "i55__multiline": {
+          "id": "bpwhiple",
+          "name": "I55__Fit_Height_Multiline",
+          "properties": {
+            "align_self": "flex-start",
+            "background": "#FFFFFF",
+            "border": "1px solid #AAB4C5",
+            "border-radius": "8px",
+            "character_limit": 120,
+            "color": "#172033",
+            "content": "I55 fit-height line one\n\nI55 fit-height line three",
+            "fit_height": true,
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "400",
+            "height": "91px",
+            "limit_number_of_characters": true,
+            "line-height": "1.4",
+            "margin": "0",
+            "max_width": "320px",
+            "min_height": "91px",
+            "min_width": "320px",
+            "opacity": 1,
+            "order": 2,
+            "padding": "12px",
+            "placeholder": "I55 multiline placeholder",
+            "placeholder_color": "#667085",
+            "width": "320px"
+          },
+          "type": "MultiLineInput"
+        },
+        "i55__title": {
+          "id": "bpbjkail",
+          "name": "I55__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "line-height": "1.2",
+            "margin": "0",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I55 case · fit-height Multiline",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpuzekut",
+      "name": "bubbleex-i55-fit-height-multiline",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "16px",
+        "title": "BubbleEx fit-height Multiline",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
