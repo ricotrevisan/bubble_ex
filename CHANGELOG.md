@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frontend export falls back to `BubbleEx.Secrets.Native` when the default
+  Trufflehog CLI is missing (`:cli_missing`), so `mix bubble.export_frontend`
+  works without Trufflehog. An explicit non-Trufflehog adapter is unchanged.
+
 - Frozen BBCode Text case `bpwipyqn` (#44): controlled `bubbleex-i44-bbcode-text`
   page on `tiptap-plugin` Test. Block BBCode (`[ul]/[ol]`) exports as a `div`
   with Bubble-like list/link CSS; `[b]`, `[url=https]` stay inline.

@@ -52,6 +52,21 @@ defmodule Mix.Tasks.Bubble.ExportFrontendTest do
     assert File.exists?(Path.join(out, "MANIFEST.json"))
   end
 
+  @tag :tmp_dir
+  test "exports when the configured scanner reports a missing CLI", %{tmp_dir: tmp} do
+    Application.put_env(:bubble_ex, :secrets_adapter, FrontendFixtures.missing_cli_scanner())
+    out = Path.join(tmp, "pkg")
+    stub_fetch(FrontendFixtures.modern_page())
+
+    output =
+      ExUnit.CaptureIO.capture_io(fn ->
+        Mix.Tasks.Bubble.ExportFrontend.run(["s1app", "-o", out, "--force"])
+      end)
+
+    assert output =~ "Wrote"
+    assert File.exists?(Path.join(out, "MANIFEST.json"))
+  end
+
   test "raises a usage error without arguments" do
     assert_raise Mix.Error, ~r/usage/, fn ->
       Mix.Tasks.Bubble.ExportFrontend.run([])

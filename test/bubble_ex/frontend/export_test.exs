@@ -477,6 +477,35 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "falls back to Native when the default secret scanner is missing its CLI", %{
+      tmp_dir: tmp
+    } do
+      out = Path.join(tmp, "pkg")
+      previous = Application.get_env(:bubble_ex, :secrets_adapter)
+      Application.put_env(:bubble_ex, :secrets_adapter, FrontendFixtures.missing_cli_scanner())
+
+      try do
+        assert {:ok, %Result{}} =
+                 Frontend.export_payload(FrontendFixtures.modern_page(), out, force: true)
+
+        assert File.exists?(Path.join(out, "MANIFEST.json"))
+      after
+        if previous do
+          Application.put_env(:bubble_ex, :secrets_adapter, previous)
+        else
+          Application.delete_env(:bubble_ex, :secrets_adapter)
+        end
+      end
+    end
+
+    test "does not Native-fallback an explicit non-Trufflehog scanner" do
+      assert {:error, %Error{kind: :cli_missing}} =
+               Frontend.export_payload(FrontendFixtures.modern_page(), "unused",
+                 secret_scan_adapter: FrontendFixtures.missing_cli_scanner()
+               )
+    end
+
+    @tag :tmp_dir
     test "refuses a non-empty out_dir without force", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
       File.mkdir_p!(out)
