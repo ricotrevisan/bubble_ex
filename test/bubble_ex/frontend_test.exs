@@ -1393,6 +1393,38 @@ defmodule BubbleEx.FrontendTest do
       refute euro.placeholder?
     end
 
+    test "lowers static address Input and DateInput as native text fields" do
+      payload =
+        page_with_elements(%{
+          "address" => %{
+            "id" => "addr1",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "address",
+              "placeholder" => "Address placeholder"
+            }
+          },
+          "picker" => %{
+            "id" => "di1",
+            "type" => "DateInput",
+            "properties" => %{"input_type" => "date", "placeholder" => "Date placeholder"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      by_variant = Map.new(page.children, &{&1.variant, &1})
+
+      address = by_variant[:address]
+      assert address.kind == :input
+      refute address.placeholder?
+      assert address.attributes["type"] == "text"
+
+      picker = by_variant[:date_input]
+      assert picker.kind == :input
+      refute picker.placeholder?
+      assert picker.attributes["type"] == "text"
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())

@@ -471,6 +471,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Button", raw), do: classify_button(raw)
   defp classify("Link", raw), do: classify_link(raw)
   defp classify("Input", raw), do: classify_input(raw)
+  defp classify("DateInput", raw), do: classify_date_input(raw)
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
   defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
@@ -615,7 +616,8 @@ defmodule BubbleEx.Frontend.Normalize do
     "euro_date" => :euro_date,
     "integer" => :integer,
     "percent" => :percent,
-    "us_phone" => :phone
+    "us_phone" => :phone,
+    "address" => :address
   }
 
   defp classify_input(raw) do
@@ -636,6 +638,14 @@ defmodule BubbleEx.Frontend.Normalize do
 
       true ->
         {:placeholder, :unsupported_input_variant}
+    end
+  end
+
+  defp classify_date_input(raw) do
+    if static_element?(raw) do
+      {:native, :input, :date_input}
+    else
+      {:placeholder, :unsupported_date_input_variant}
     end
   end
 
@@ -711,6 +721,7 @@ defmodule BubbleEx.Frontend.Normalize do
     "RadioButtons" => :radio_buttons,
     "Radio Buttons" => :radio_buttons,
     "RadioButtonGroup" => :radio_buttons,
+    "DateInput" => :input,
     "CustomElement" => :reusable_instance,
     "ReusableElement" => :reusable_instance
   }
