@@ -622,9 +622,19 @@ defmodule BubbleEx.Frontend.Normalize do
     auto_height? = Payload.prop(raw, "auto_height") == true
     stretch? = Payload.prop(raw, "stretch_to_fit") == true
 
-    if fit_height? or auto_height? or stretch?,
-      do: {:placeholder, :unsupported_multiline_input_variant},
-      else: {:native, :multiline_input, :fixed}
+    cond do
+      auto_height? or stretch? ->
+        {:placeholder, :unsupported_multiline_input_variant}
+
+      fit_height? and static_element?(raw) ->
+        {:native, :multiline_input, :fit_height}
+
+      fit_height? ->
+        {:placeholder, :unsupported_multiline_input_variant}
+
+      true ->
+        {:native, :multiline_input, :fixed}
+    end
   end
 
   defp classify_checkbox(raw) do

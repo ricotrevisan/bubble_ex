@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 fit-height MultiLineInput lowering (`fit_height` + static content →
+  `field-sizing: content`). Authorized page `bubbleex-i55-fit-height-multiline`
+  is on `tiptap-plugin` Test; freeze is a follow-up.
+
 - Frozen S1 icon Link case `bpaupfbj` (`bubbleex-i53-icon-link`)
 
 - S1 icon / icon+label Link lowering for static Font Awesome 4 icons
