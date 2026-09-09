@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Literal newlines in Text become `<br>` so 404 boilerplate keeps its paragraph
+  break. Native Input chrome uses `appearance: none`, white fill, and a 1px border.
+
 - S1 icon / icon+label Button lowering for static Font Awesome 4 icons, with frozen
   case `bpiordvb` on `tiptap-plugin` Test (`bubbleex-i51-icon-button`).
 

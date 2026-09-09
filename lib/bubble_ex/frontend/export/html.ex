@@ -343,10 +343,15 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp text_inner_html(node, opts) do
     raw = slot_text(node, "text", opts)
 
-    if Bbcode.present?(raw) do
-      Bbcode.to_html(raw)
-    else
-      escape(raw)
+    cond do
+      Bbcode.present?(raw) ->
+        Bbcode.to_html(raw)
+
+      is_binary(raw) and String.contains?(raw, "\n") ->
+        raw |> escape() |> String.replace("\n", "<br>")
+
+      true ->
+        escape(raw)
     end
   end
 

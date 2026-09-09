@@ -477,6 +477,47 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "preserves literal newlines in Text and paints native Input chrome", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "paint-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "body" => %{
+                "id" => "t1",
+                "type" => "Text",
+                "properties" => %{"text" => "First line\n\nSecond line", "order" => 1}
+              },
+              "field" => %{
+                "id" => "i1",
+                "type" => "Input",
+                "properties" => %{
+                  "format" => "password",
+                  "placeholder" => "********",
+                  "order" => 2
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ "First line<br><br>Second line"
+      css = File.read!(Path.join(out, "styles/pages/index.css"))
+      assert css =~ "appearance: none"
+      assert css =~ "border: 1px solid #cccccc"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 

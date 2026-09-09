@@ -373,6 +373,15 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp native_display(_), do: %{}
 
+  defp native_control(:input) do
+    %{
+      "appearance" => "none",
+      "background" => "#ffffff",
+      "border" => "1px solid #cccccc",
+      "display" => "block"
+    }
+  end
+
   defp native_control(:multiline_input), do: %{"display" => "block"}
 
   defp native_control(:dropdown) do
@@ -662,28 +671,30 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp extra_rule(%Node{kind: :text} = node, opts) do
     raw = text_slot(node)
+    id = prefixed_id(node, opts) |> escape()
+    selector = "[data-exporter-id=\"#{id}\"]"
 
-    if Bbcode.present?(raw) do
-      id = prefixed_id(node, opts) |> escape()
-      selector = "[data-exporter-id=\"#{id}\"]"
+    bbcode =
+      if Bbcode.present?(raw) do
+        """
+        #{selector} a {
+          color: inherit;
+          text-decoration: none;
+        }
+        #{selector} ul,
+        #{selector} ol {
+          margin: 1.4em 0 0 0;
+          padding-left: 40px;
+        }
+        #{selector} li {
+          margin: 0;
+        }
+        """
+      else
+        ""
+      end
 
-      """
-      #{selector} a {
-        color: inherit;
-        text-decoration: none;
-      }
-      #{selector} ul,
-      #{selector} ol {
-        margin: 1.4em 0 0 0;
-        padding-left: 40px;
-      }
-      #{selector} li {
-        margin: 0;
-      }
-      """
-    else
-      ""
-    end
+    bbcode
   end
 
   defp extra_rule(_, _), do: ""
