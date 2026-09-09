@@ -556,6 +556,52 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
+    test "paints date and integer Inputs as text fields", %{tmp_dir: tmp} do
+      out = Path.join(tmp, "pkg")
+
+      payload = %{
+        "_id" => "date-int-app",
+        "app_version" => "test",
+        "pages" => %{
+          "home" => %{
+            "id" => "pg",
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "date" => %{
+                "id" => "d1",
+                "type" => "Input",
+                "properties" => %{
+                  "content_format" => "date",
+                  "placeholder" => "Date placeholder",
+                  "order" => 1
+                }
+              },
+              "integer" => %{
+                "id" => "i1",
+                "type" => "Input",
+                "properties" => %{
+                  "content_format" => "integer",
+                  "content" => "12345",
+                  "placeholder" => "Integer placeholder",
+                  "order" => 2
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(type="text")
+      assert html =~ ~s(inputmode="numeric")
+      assert html =~ ~s(value="12345")
+      refute html =~ "data-placeholder-kind"
+    end
+
+    @tag :tmp_dir
     test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 

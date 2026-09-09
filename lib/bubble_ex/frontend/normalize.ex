@@ -613,6 +613,8 @@ defmodule BubbleEx.Frontend.Normalize do
       f when f in [nil, "text"] -> {:native, :input, :text}
       "email" -> {:native, :input, :email}
       "password" -> {:native, :input, :password}
+      "date" -> {:native, :input, :date}
+      "integer" -> {:native, :input, :integer}
       _ -> {:placeholder, :unsupported_input_variant}
     end
   end
@@ -1928,6 +1930,7 @@ defmodule BubbleEx.Frontend.Normalize do
     |> common_control_attributes()
     |> Map.put("type", input_type(variant))
     |> Map.put("placeholder", Payload.prop(raw, "placeholder"))
+    |> maybe_put_inputmode(variant)
     |> reject_empty_attributes()
   end
 
@@ -2052,6 +2055,9 @@ defmodule BubbleEx.Frontend.Normalize do
   defp input_type(:email), do: "email"
   defp input_type(:password), do: "password"
   defp input_type(_), do: "text"
+
+  defp maybe_put_inputmode(attrs, :integer), do: Map.put(attrs, "inputmode", "numeric")
+  defp maybe_put_inputmode(attrs, _variant), do: attrs
 
   defp link_rel(raw) do
     parts =

@@ -1299,6 +1299,41 @@ defmodule BubbleEx.FrontendTest do
       assert text.content["placeholder"].resolved == "Text placeholder"
     end
 
+    test "lowers static date and integer Inputs as native text-typed variants" do
+      payload =
+        page_with_elements(%{
+          "date" => %{
+            "id" => "date1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "date", "placeholder" => "Date placeholder"}
+          },
+          "integer" => %{
+            "id" => "int1",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "integer",
+              "content" => "12345",
+              "placeholder" => "Integer placeholder"
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      [date, integer] = page.children
+
+      assert date.kind == :input
+      assert date.variant == :date
+      refute date.placeholder?
+      assert date.attributes["type"] == "text"
+
+      assert integer.kind == :input
+      assert integer.variant == :integer
+      refute integer.placeholder?
+      assert integer.attributes["type"] == "text"
+      assert integer.attributes["inputmode"] == "numeric"
+      assert integer.content["value"].resolved == "12345"
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())
