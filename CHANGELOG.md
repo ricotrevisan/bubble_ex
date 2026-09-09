@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Empty-page hydration: a page-specific fetch that returns layout properties but
+  no `%el` (internal-link targets like `bubbleex-i36-target`) is treated as a
+  hydrated empty page instead of failing the export.
+
 - Frontend export falls back to `BubbleEx.Secrets.Native` when the default
   Trufflehog CLI is missing (`:cli_missing`), so `mix bubble.export_frontend`
   works without Trufflehog. An explicit non-Trufflehog adapter is unchanged.
