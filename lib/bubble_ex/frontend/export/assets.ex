@@ -63,9 +63,12 @@ defmodule BubbleEx.Frontend.Export.Assets do
     apply_outcome(node, {outcome, protected?}, state)
   end
 
-  defp apply_outcome(%Node{kind: :icon} = node, {{:ok, asset}, _protected?}, state) do
-    fragment = node.attributes["asset_fragment"]
-
+  defp apply_outcome(
+         %Node{attributes: %{"asset_fragment" => fragment}} = node,
+         {{:ok, asset}, _protected?},
+         state
+       )
+       when is_binary(fragment) do
     case sanitize_icon_sprite(asset.bytes, fragment) do
       {:ok, bytes} ->
         sanitized = asset_record(asset.url, bytes, [{"content-type", "image/svg+xml"}])
@@ -91,6 +94,11 @@ defmodule BubbleEx.Frontend.Export.Assets do
   end
 
   defp asset_nodes(%Node{kind: kind} = node) when kind in [:image, :icon], do: [node]
+
+  defp asset_nodes(%Node{kind: :button, attributes: %{"asset_fragment" => fragment}} = node)
+       when is_binary(fragment) and fragment != "",
+       do: [node]
+
   defp asset_nodes(%Node{children: children}), do: Enum.flat_map(children, &asset_nodes/1)
 
   defp resolved_src(%Node{content: %{"src" => %{resolved: url}}}), do: url

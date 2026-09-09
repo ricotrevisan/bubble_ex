@@ -104,9 +104,10 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp do_render(%Node{kind: :button} = node, opts) do
     label = slot_text(node, "label", opts)
-    body = if label == "", do: slot_text(node, "text", opts), else: label
+    text = if label == "", do: slot_text(node, "text", opts), else: label
+    inner = button_inner_html(node, text, opts)
     tag = if navigation_button?(node), do: "a", else: "button"
-    wrap(tag, node, escape(body), opts)
+    wrap(tag, node, inner, opts)
   end
 
   defp do_render(%Node{kind: :link} = node, opts), do: render_link(node, opts)
@@ -153,6 +154,24 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp render_icon(node, opts) do
+    wrap("span", node, icon_svg(node, opts), opts)
+  end
+
+  defp button_inner_html(%Node{variant: variant} = node, text, opts)
+       when variant in [:icon, :label_icon] do
+    svg = icon_svg(node, opts)
+    label = if text == "", do: [], else: escape(text)
+
+    cond do
+      svg == "" -> label
+      label == [] -> svg
+      true -> [svg, label]
+    end
+  end
+
+  defp button_inner_html(_node, text, _opts), do: escape(text)
+
+  defp icon_svg(node, opts) do
     fragment = node.attributes["asset_fragment"]
 
     symbol =
@@ -161,18 +180,15 @@ defmodule BubbleEx.Frontend.Export.Html do
         _ -> nil
       end
 
-    inner =
-      if is_binary(symbol) do
-        [
-          ~s(<svg viewBox="0 0 32 32" data-icon-set="fa" aria-hidden="true"><defs>),
-          symbol,
-          ~s(</defs><use width="32" height="32" href="##{fragment}"></use></svg>)
-        ]
-      else
-        ""
-      end
-
-    wrap("span", node, inner, opts)
+    if is_binary(symbol) do
+      [
+        ~s(<svg viewBox="0 0 32 32" data-icon-set="fa" aria-hidden="true"><defs>),
+        symbol,
+        ~s(</defs><use width="32" height="32" href="##{fragment}"></use></svg>)
+      ]
+    else
+      ""
+    end
   end
 
   defp inline_icon_symbol(bytes, fragment) when is_binary(bytes) and is_binary(fragment) do
@@ -463,6 +479,7 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp node_attrs(node, "button", _opts) do
     node.attributes
+    |> Map.take(["disabled", "aria-label"])
     |> Map.put("type", "button")
   end
 
