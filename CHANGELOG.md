@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 icon / icon+label Button lowering for static Font Awesome 4 icons, with frozen
+  case `bpiordvb` on `tiptap-plugin` Test (`bubbleex-i51-icon-button`).
+
 - Theme tokens and default styles: export emits `:root` CSS variables from
   `settings.client_safe` color/font tokens and applies `default_styles` classes
   to elements that omit an explicit style (unstyled primary buttons, `--font_default`).

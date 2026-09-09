@@ -506,8 +506,8 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify_icon(raw) do
     case Payload.prop(raw, "icon") do
       icon when is_binary(icon) ->
-        if Regex.match?(~r/^fa fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, icon) and
-             static_element?(raw) and Payload.prop(raw, "icon_spin") not in [true, "true"],
+        if fontawesome_4_icon?(icon) and static_element?(raw) and
+             Payload.prop(raw, "icon_spin") not in [true, "true"],
            do: {:native, :icon, :fontawesome_4},
            else: {:placeholder, :unsupported_icon_variant}
 
@@ -530,6 +530,12 @@ defmodule BubbleEx.Frontend.Normalize do
       {:placeholder, :unsupported_floating_group_variant}
     end
   end
+
+  defp fontawesome_4_icon?(icon) when is_binary(icon) do
+    Regex.match?(~r/^fa fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
+  end
+
+  defp fontawesome_4_icon?(_), do: false
 
   defp static_element?(raw) do
     visible = Payload.prop(raw, "is_visible")
@@ -563,9 +569,24 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp classify_button(raw) do
+    icon = Payload.prop(raw, "icon")
+
     case Payload.prop(raw, "button_type") do
-      t when t in [nil, "label", "text"] -> {:native, :button, :label}
-      _ -> {:placeholder, :unsupported_button_variant}
+      t when t in [nil, "label", "text"] ->
+        {:native, :button, :label}
+
+      "icon" when is_binary(icon) ->
+        if fontawesome_4_icon?(icon) and static_element?(raw),
+          do: {:native, :button, :icon},
+          else: {:placeholder, :unsupported_button_variant}
+
+      "label_icon" when is_binary(icon) ->
+        if fontawesome_4_icon?(icon) and static_element?(raw),
+          do: {:native, :button, :label_icon},
+          else: {:placeholder, :unsupported_button_variant}
+
+      _ ->
+        {:placeholder, :unsupported_button_variant}
     end
   end
 
@@ -1914,6 +1935,19 @@ defmodule BubbleEx.Frontend.Normalize do
     if Payload.prop(raw, "disabled") == true, do: %{"disabled" => true}, else: %{}
   end
 
+  defp element_attributes(raw, :button, :icon) do
+    label = Payload.prop(raw, "text") || Payload.name(raw) || "Button"
+    label = if is_binary(label) and String.trim(label) != "", do: label, else: "Button"
+
+    fontawesome_sprite_attributes(raw)
+    |> Map.merge(element_attributes(raw, :button, :label))
+    |> Map.put("aria-label", label)
+  end
+
+  defp element_attributes(raw, :button, :label_icon) do
+    Map.merge(fontawesome_sprite_attributes(raw), element_attributes(raw, :button, :label))
+  end
+
   defp element_attributes(raw, :button, _variant) do
     if Payload.prop(raw, "disabled") == true,
       do: %{"disabled" => true},
@@ -1942,14 +1976,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :icon, :fontawesome_4) do
-    "fa fa-" <> name = Payload.prop(raw, "icon")
-
-    %{
-      "aria-hidden" => "true",
-      "asset_fragment" => "fa-" <> name,
-      "asset_src" => "/static/icon_libraries/fontawesome-4.7.0.svg",
-      "icon_set" => "fa"
-    }
+    Map.merge(%{"aria-hidden" => "true"}, fontawesome_sprite_attributes(raw))
   end
 
   defp element_attributes(raw, :floating_group, _variant) do
@@ -1964,6 +1991,16 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp element_attributes(_raw, :shape, _variant), do: %{"aria-hidden" => "true"}
   defp element_attributes(_raw, _kind, _variant), do: %{}
+
+  defp fontawesome_sprite_attributes(raw) do
+    "fa fa-" <> name = Payload.prop(raw, "icon")
+
+    %{
+      "asset_fragment" => "fa-" <> name,
+      "asset_src" => "/static/icon_libraries/fontawesome-4.7.0.svg",
+      "icon_set" => "fa"
+    }
+  end
 
   defp multiline_maxlength(raw) do
     case Payload.prop(raw, "limit_number_of_characters") do

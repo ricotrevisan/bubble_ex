@@ -1,0 +1,76 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i51-icon-button": {
+      "elements": {
+        "i51__icon": {
+          "id": "bpabbztp",
+          "name": "I51__Icon_Only_Button",
+          "properties": {
+            "bgcolor": "#4F46E5",
+            "button_type": "icon",
+            "font_color": "#FFFFFF",
+            "height": "48px",
+            "icon": "fa fa-star",
+            "min_height": "48px",
+            "min_width": "48px",
+            "order": 2,
+            "width": "48px"
+          },
+          "type": "Button"
+        },
+        "i51__label": {
+          "id": "bphmpsvf",
+          "name": "I51__Icon_Label_Button",
+          "properties": {
+            "bgcolor": "#4F46E5",
+            "button_type": "label_icon",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "font_color": "#FFFFFF",
+            "height": "48px",
+            "icon": "fa fa-star",
+            "icon_placement": "left",
+            "min_height": "48px",
+            "order": 3,
+            "padding": "12px 16px",
+            "text": "I51 ICON+LABEL"
+          },
+          "type": "Button"
+        },
+        "i51__title": {
+          "id": "bptkmqeq",
+          "name": "I51__Title_Normal_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "line-height": "1.2",
+            "margin": "0",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I51 case · icon Button",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpiordvb",
+      "name": "bubbleex-i51-icon-button",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "16px",
+        "title": "BubbleEx icon Button",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}

@@ -1060,6 +1060,37 @@ defmodule BubbleEx.FrontendTest do
       assert text.content["text"].resolved == "[b]nope[/b]"
     end
 
+    test "lowers static Font Awesome icon buttons as native variants" do
+      payload =
+        page_with_elements(%{
+          "iconOnly" => %{
+            "id" => "b-icon",
+            "type" => "Button",
+            "properties" => %{"button_type" => "icon", "icon" => "fa fa-star", "order" => 1}
+          },
+          "iconLabel" => %{
+            "id" => "b-label",
+            "type" => "Button",
+            "properties" => %{
+              "button_type" => "label_icon",
+              "icon" => "fa fa-star",
+              "text" => "Go",
+              "order" => 2
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [icon_only, icon_label] = page.children
+      assert icon_only.kind == :button
+      assert icon_only.variant == :icon
+      refute icon_only.placeholder?
+      assert icon_only.attributes["asset_fragment"] == "fa-star"
+      assert icon_label.kind == :button
+      assert icon_label.variant == :label_icon
+      refute icon_label.placeholder?
+    end
+
     test "classifies explicit normal and h4 Text semantics" do
       payload =
         page_with_elements(%{
