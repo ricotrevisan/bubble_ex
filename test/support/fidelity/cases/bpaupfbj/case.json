@@ -1,0 +1,64 @@
+{
+  "id": "bpaupfbj",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpaupfbj",
+    "page_path": "bubbleex-i53-icon-link",
+    "page_payload_sha256": "029fc6ac70fb3d5de1271c85aada35860577eb1cddb2837958f9a2d782d9f001",
+    "payload_sha256": "383de102c6d267bb95a7e723bf65bbe9a06dc1c37ce7a7f75a9eca342794cb66"
+  },
+  "public_assets": [
+    {
+      "url": "/static/icon_libraries/fontawesome-4.7.0.svg",
+      "path": "assets/fontawesome-4.7.0-fa-star.svg"
+    }
+  ],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; icon-only 48px link and icon+label stay left-stacked",
+    "1440": "wide page; the same left-stacked icon links"
+  },
+  "node_ids": [
+    "bpaupfbj",
+    "bpihmicz",
+    "bpimohkt",
+    "bptvrsvd"
+  ],
+  "text_node_ids": [
+    "bpihmicz"
+  ],
+  "semantics": {
+    "main": [
+      "bpaupfbj"
+    ],
+    "paragraphs": [
+      "bpihmicz"
+    ],
+    "links": [
+      "bpimohkt"
+    ]
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 5600,
+    "max_channel_delta": 230,
+    "max_mean_absolute_error": 0.3,
+    "rationale": "Geometry and document height are exact. Channel allowance covers FA4 inline SVG vs Bubble icon-font raster in pinned Chromium 140. Primary Inter typography is pinned on the title."
+  }
+}
