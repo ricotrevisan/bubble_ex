@@ -1,0 +1,68 @@
+{
+  "id": "bpdimzwm",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpdimzwm",
+    "page_path": "bubbleex-i65-picture-input",
+    "page_payload_sha256": "f9c236cad764e47fe24b49885dd9a58adb1cf3fb0deef38be1ed0a524aebe304",
+    "payload_sha256": "29dc34f7d50e6a367a8b97a93b11091b567d65e8029e0050327316e00d3fa212"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; PictureInput stays 320px wide",
+    "1440": "wide page; the same left-stacked PictureInput"
+  },
+  "node_ids": [
+    "bpdimzwm",
+    "bphwkdii",
+    "bpfabzyv",
+    "bpbyjqwg"
+  ],
+  "text_node_ids": [
+    "bphwkdii",
+    "bpfabzyv"
+  ],
+  "semantics": {
+    "main": [
+      "bpdimzwm"
+    ],
+    "paragraphs": [
+      "bphwkdii",
+      "bpfabzyv"
+    ],
+    "inputs": [
+      "bpbyjqwg"
+    ],
+    "input_attributes": {
+      "bpbyjqwg": {
+        "type": "file",
+        "accept": "image/*",
+        "aria-label": "I65 picture placeholder"
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 14000,
+    "max_channel_delta": 255,
+    "max_mean_absolute_error": 1.2,
+    "rationale": "Geometry is the gate. Native file-control UA chrome vs Bubble PictureInput paint needs a wide channel/MAE allowance, same class as bpoyzixi FileInput."
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i65-picture-input": {
+      "elements": {
+        "i65__label": {
+          "id": "bpfabzyv",
+          "name": "I65__Picture_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "I65 PictureInput",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i65__pic": {
+          "id": "bpbyjqwg",
+          "name": "I65__PictureInput",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "15px",
+            "font-weight": "400",
+            "height": "48px",
+            "max_height": "48px",
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_width": "320px",
+            "order": 3,
+            "padding": "12px 16px",
+            "placeholder": "I65 picture placeholder",
+            "width": "320px"
+          },
+          "type": "PictureInput"
+        },
+        "i65__title": {
+          "id": "bphwkdii",
+          "name": "I65__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I65 case · PictureInput",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpdimzwm",
+      "name": "bubbleex-i65-picture-input",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "12px",
+        "title": "BubbleEx PictureInput",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
