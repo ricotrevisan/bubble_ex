@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 PictureInput lowering as `<input type="file" accept="image/*">`.
+  Authorized page `bubbleex-i65-picture-input` is on `tiptap-plugin` Test;
+  freeze is a follow-up.
+
 - Frozen S1 numbers / datetime / FileInput case `bpoyzixi`
   (`bubbleex-i63-datetime-numbers-file`)
 

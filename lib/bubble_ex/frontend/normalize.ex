@@ -473,6 +473,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Input", raw), do: classify_input(raw)
   defp classify("DateInput", raw), do: classify_date_input(raw)
   defp classify("FileInput", raw), do: classify_file_input(raw)
+  defp classify("PictureInput", raw), do: classify_picture_input(raw)
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
   defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
@@ -669,6 +670,14 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  defp classify_picture_input(raw) do
+    if static_element?(raw) do
+      {:native, :file_input, :image}
+    else
+      {:placeholder, :unsupported_picture_input_variant}
+    end
+  end
+
   defp classify_multiline_input(raw) do
     fit_height? = Payload.prop(raw, "fit_height") == true
     auto_height? = Payload.prop(raw, "auto_height") == true
@@ -743,6 +752,7 @@ defmodule BubbleEx.Frontend.Normalize do
     "RadioButtonGroup" => :radio_buttons,
     "DateInput" => :input,
     "FileInput" => :file_input,
+    "PictureInput" => :file_input,
     "CustomElement" => :reusable_instance,
     "ReusableElement" => :reusable_instance
   }
@@ -1984,6 +1994,12 @@ defmodule BubbleEx.Frontend.Normalize do
     |> Map.put("placeholder", Payload.prop(raw, "placeholder"))
     |> maybe_put_inputmode(variant)
     |> reject_empty_attributes()
+  end
+
+  defp element_attributes(raw, :file_input, :image) do
+    raw
+    |> then(&element_attributes(&1, :file_input, :file))
+    |> Map.put("accept", "image/*")
   end
 
   defp element_attributes(raw, :file_input, _variant) do
