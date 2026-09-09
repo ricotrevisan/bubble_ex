@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frozen S1 fit-height MultiLineInput case `bpuzekut`
+  (`bubbleex-i55-fit-height-multiline`)
+
 - S1 fit-height MultiLineInput lowering (`fit_height` + static content →
   `field-sizing: content`). Authorized page `bubbleex-i55-fit-height-multiline`
   is on `tiptap-plugin` Test; freeze is a follow-up.

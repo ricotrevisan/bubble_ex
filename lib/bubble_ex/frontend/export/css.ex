@@ -585,7 +585,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     """
     [data-exporter-id="#{id}"] {
       field-sizing: content;
-      height: auto;
+      min-height: 0;
       overflow: hidden;
     }
     """ <> extra_rule(%{node | variant: :fixed}, opts)

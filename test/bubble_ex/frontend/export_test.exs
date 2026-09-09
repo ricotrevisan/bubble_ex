@@ -548,10 +548,11 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
       html = File.read!(Path.join(out, "pages/index/index.html"))
       assert html =~ "<textarea"
+      assert html =~ ~s(rows="1")
       assert html =~ "Line one&#10;&#10;Line three"
       css = File.read!(Path.join(out, "styles/pages/index.css"))
       assert css =~ "field-sizing: content"
-      assert css =~ "height: auto"
+      assert css =~ "min-height: 0"
     end
 
     @tag :tmp_dir

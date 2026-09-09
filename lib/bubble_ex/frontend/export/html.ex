@@ -466,6 +466,9 @@ defmodule BubbleEx.Frontend.Export.Html do
     node.attributes
     |> Map.put("placeholder", placeholder)
     |> Map.put_new("aria-label", placeholder || node.name || "Multiline input")
+    |> then(fn attrs ->
+      if node.variant == :fit_height, do: Map.put(attrs, "rows", "1"), else: attrs
+    end)
   end
 
   defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do

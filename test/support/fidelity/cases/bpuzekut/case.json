@@ -1,0 +1,68 @@
+{
+  "id": "bpuzekut",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpuzekut",
+    "page_path": "bubbleex-i55-fit-height-multiline",
+    "page_payload_sha256": "5df750e1b75f545cdf4183f131d45e0fd7f01693b9e7a6b6e2c397f4efe5aabb",
+    "payload_sha256": "562634cc8618a975cd4c82439fd8af79902859d90ac3e3ff21e93cc6f4236bcf"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; fit-height textarea stays 320px wide and grows to content",
+    "1440": "wide page; the same left-stacked fit-height textarea"
+  },
+  "node_ids": [
+    "bpuzekut",
+    "bpbjkail",
+    "bpwhiple"
+  ],
+  "text_node_ids": [
+    "bpbjkail",
+    "bpwhiple"
+  ],
+  "semantics": {
+    "main": [
+      "bpuzekut"
+    ],
+    "paragraphs": [
+      "bpbjkail"
+    ],
+    "textareas": [
+      "bpwhiple"
+    ],
+    "control_attributes": {
+      "bpwhiple": {
+        "value": "I55 fit-height line one\n\nI55 fit-height line three",
+        "placeholder": "I55 multiline placeholder",
+        "maxlength": "120",
+        "required": false,
+        "disabled": false
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 4500,
+    "max_channel_delta": 120,
+    "max_mean_absolute_error": 0.22,
+    "rationale": "Geometry and document height are exact. Channel allowance covers textarea chrome plus pinned Chromium 140 Inter raster differences between the Debian capture host and Ubuntu CI, same class as bpqqfagk."
+  }
+}
