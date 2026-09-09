@@ -608,14 +608,34 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  @text_typed_input_formats %{
+    "currency" => :currency,
+    "date" => :date,
+    "decimal" => :decimal,
+    "euro_date" => :euro_date,
+    "integer" => :integer,
+    "percent" => :percent,
+    "us_phone" => :phone
+  }
+
   defp classify_input(raw) do
-    case Payload.prop(raw, "content_format") || Payload.prop(raw, "format") do
-      f when f in [nil, "text"] -> {:native, :input, :text}
-      "email" -> {:native, :input, :email}
-      "password" -> {:native, :input, :password}
-      "date" -> {:native, :input, :date}
-      "integer" -> {:native, :input, :integer}
-      _ -> {:placeholder, :unsupported_input_variant}
+    format = Payload.prop(raw, "content_format") || Payload.prop(raw, "format")
+
+    cond do
+      format in [nil, "text"] ->
+        {:native, :input, :text}
+
+      format == "email" ->
+        {:native, :input, :email}
+
+      format == "password" ->
+        {:native, :input, :password}
+
+      is_map_key(@text_typed_input_formats, format) ->
+        {:native, :input, Map.fetch!(@text_typed_input_formats, format)}
+
+      true ->
+        {:placeholder, :unsupported_input_variant}
     end
   end
 
@@ -2057,6 +2077,11 @@ defmodule BubbleEx.Frontend.Normalize do
   defp input_type(_), do: "text"
 
   defp maybe_put_inputmode(attrs, :integer), do: Map.put(attrs, "inputmode", "numeric")
+
+  defp maybe_put_inputmode(attrs, variant) when variant in [:currency, :decimal, :percent],
+    do: Map.put(attrs, "inputmode", "decimal")
+
+  defp maybe_put_inputmode(attrs, :phone), do: Map.put(attrs, "inputmode", "tel")
   defp maybe_put_inputmode(attrs, _variant), do: attrs
 
   defp link_rel(raw) do

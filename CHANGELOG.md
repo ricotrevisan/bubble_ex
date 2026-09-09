@@ -6,6 +6,11 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 decimal / percent / currency / US phone / euro-date Input lowering
+  as `type=text` with matching `inputmode`. Authorized page
+  `bubbleex-i59-input-formats` is on `tiptap-plugin` Test; freeze is a
+  follow-up.
+
 - Frozen S1 date / integer Input case `bpqkcldq`
   (`bubbleex-i57-date-integer-input`)
 

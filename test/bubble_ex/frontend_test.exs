@@ -1334,6 +1334,65 @@ defmodule BubbleEx.FrontendTest do
       assert integer.content["value"].resolved == "12345"
     end
 
+    test "lowers remaining static numeric and phone Inputs as native text-typed variants" do
+      payload =
+        page_with_elements(%{
+          "decimal" => %{
+            "id" => "dec1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "decimal", "content" => 12.5}
+          },
+          "percent" => %{
+            "id" => "pct1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "percent", "content" => 25}
+          },
+          "currency" => %{
+            "id" => "cur1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "currency", "content" => 19.99}
+          },
+          "phone" => %{
+            "id" => "ph1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "us_phone", "content" => "5550101234"}
+          },
+          "euro" => %{
+            "id" => "eu1",
+            "type" => "Input",
+            "properties" => %{"content_format" => "euro_date"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      by_variant = Map.new(page.children, &{&1.variant, &1})
+      decimal = by_variant[:decimal]
+      percent = by_variant[:percent]
+      currency = by_variant[:currency]
+      phone = by_variant[:phone]
+      euro = by_variant[:euro_date]
+
+      assert decimal.variant == :decimal
+      assert decimal.attributes["type"] == "text"
+      assert decimal.attributes["inputmode"] == "decimal"
+      assert decimal.content["value"].resolved == 12.5
+
+      assert percent.variant == :percent
+      assert percent.attributes["inputmode"] == "decimal"
+
+      assert currency.variant == :currency
+      assert currency.attributes["inputmode"] == "decimal"
+      assert currency.content["value"].resolved == 19.99
+
+      assert phone.variant == :phone
+      assert phone.attributes["inputmode"] == "tel"
+      refute phone.placeholder?
+
+      assert euro.variant == :euro_date
+      assert euro.attributes["type"] == "text"
+      refute euro.placeholder?
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())
