@@ -591,11 +591,16 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp classify_link(raw) do
-    cond do
-      Payload.prop(raw, "show_icon") == true ->
-        {:placeholder, :unsupported_link_variant}
+    fa? = fontawesome_4_icon?(Payload.prop(raw, "icon")) and static_element?(raw)
 
-      icon_only_link?(raw) ->
+    cond do
+      fa? and Payload.prop(raw, "show_icon") == true ->
+        {:native, :link, :label_icon}
+
+      fa? and icon_only_link?(raw) ->
+        {:native, :link, :icon}
+
+      Payload.prop(raw, "show_icon") == true or icon_only_link?(raw) ->
         {:placeholder, :unsupported_link_variant}
 
       true ->
@@ -1952,6 +1957,18 @@ defmodule BubbleEx.Frontend.Normalize do
     if Payload.prop(raw, "disabled") == true,
       do: %{"disabled" => true},
       else: %{"type" => "button"}
+  end
+
+  defp element_attributes(raw, :link, variant) when variant in [:icon, :label_icon] do
+    attrs = Map.merge(fontawesome_sprite_attributes(raw), element_attributes(raw, :link, :text))
+
+    if variant == :icon do
+      label = Payload.prop(raw, "text") || Payload.name(raw) || "Link"
+      label = if is_binary(label) and String.trim(label) != "", do: label, else: "Link"
+      Map.put(attrs, "aria-label", label)
+    else
+      attrs
+    end
   end
 
   defp element_attributes(raw, :link, _variant) do

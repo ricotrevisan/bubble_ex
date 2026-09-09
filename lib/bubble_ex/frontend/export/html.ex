@@ -213,7 +213,8 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp render_link(node, opts) do
-    wrap("a", node, escape(slot_text(node, "text", opts)), opts)
+    text = slot_text(node, "text", opts)
+    wrap("a", node, button_inner_html(node, text, opts), opts)
   end
 
   defp render_checkbox(node, opts) do
@@ -492,7 +493,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     href = link_href(node, opts)
 
     node.attributes
-    |> Map.delete("disabled")
+    |> Map.drop(["disabled", "asset_src", "asset_fragment", "icon_set"])
     |> then(fn attrs ->
       if href, do: Map.put(attrs, "href", href), else: Map.delete(attrs, "href")
     end)

@@ -650,8 +650,8 @@ defmodule BubbleEx.Frontend.Export.Css do
     """
   end
 
-  defp extra_rule(%Node{kind: :button, variant: variant} = node, opts)
-       when variant in [:icon, :label_icon] do
+  defp extra_rule(%Node{kind: kind, variant: variant} = node, opts)
+       when kind in [:button, :link] and variant in [:icon, :label_icon] do
     id = prefixed_id(node, opts) |> escape()
     selector = "[data-exporter-id=\"#{id}\"]"
 

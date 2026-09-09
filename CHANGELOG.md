@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- S1 icon / icon+label Link lowering for static Font Awesome 4 icons
+  (`show_icon` or `link_type: icon`). Authorized page `bubbleex-i53-icon-link`
+  is on `tiptap-plugin` Test; freeze is a follow-up.
+
 - Literal newlines in Text become `<br>` so 404 boilerplate keeps its paragraph
   break. Native Input chrome uses `appearance: none`, white fill, and a 1px border.
 

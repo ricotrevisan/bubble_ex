@@ -1060,6 +1060,42 @@ defmodule BubbleEx.FrontendTest do
       assert text.content["text"].resolved == "[b]nope[/b]"
     end
 
+    test "lowers static Font Awesome icon links as native variants" do
+      payload =
+        page_with_elements(%{
+          "iconOnly" => %{
+            "id" => "l-icon",
+            "type" => "Link",
+            "properties" => %{
+              "link_type" => "icon",
+              "icon" => "fa fa-star",
+              "url" => "https://example.com",
+              "order" => 1
+            }
+          },
+          "iconLabel" => %{
+            "id" => "l-label",
+            "type" => "Link",
+            "properties" => %{
+              "show_icon" => true,
+              "icon" => "fa fa-star",
+              "text" => "Docs",
+              "url" => "https://example.com/docs",
+              "order" => 2
+            }
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [icon_only, icon_label] = page.children
+      assert icon_only.kind == :link
+      assert icon_only.variant == :icon
+      refute icon_only.placeholder?
+      assert icon_label.kind == :link
+      assert icon_label.variant == :label_icon
+      refute icon_label.placeholder?
+    end
+
     test "lowers static Font Awesome icon buttons as native variants" do
       payload =
         page_with_elements(%{
