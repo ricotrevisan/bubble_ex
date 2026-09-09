@@ -472,6 +472,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Link", raw), do: classify_link(raw)
   defp classify("Input", raw), do: classify_input(raw)
   defp classify("DateInput", raw), do: classify_date_input(raw)
+  defp classify("FileInput", raw), do: classify_file_input(raw)
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
   defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
@@ -617,7 +618,8 @@ defmodule BubbleEx.Frontend.Normalize do
     "integer" => :integer,
     "percent" => :percent,
     "us_phone" => :phone,
-    "address" => :address
+    "address" => :address,
+    "numbers" => :numbers
   }
 
   defp classify_input(raw) do
@@ -642,10 +644,28 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp classify_date_input(raw) do
+    type = Payload.prop(raw, "input_type")
+
+    cond do
+      not static_element?(raw) ->
+        {:placeholder, :unsupported_date_input_variant}
+
+      type in [nil, "date"] ->
+        {:native, :input, :date_input}
+
+      type in ["datetime", "date_time"] ->
+        {:native, :input, :datetime_input}
+
+      true ->
+        {:placeholder, :unsupported_date_input_variant}
+    end
+  end
+
+  defp classify_file_input(raw) do
     if static_element?(raw) do
-      {:native, :input, :date_input}
+      {:native, :file_input, :file}
     else
-      {:placeholder, :unsupported_date_input_variant}
+      {:placeholder, :unsupported_file_input_variant}
     end
   end
 
@@ -722,6 +742,7 @@ defmodule BubbleEx.Frontend.Normalize do
     "Radio Buttons" => :radio_buttons,
     "RadioButtonGroup" => :radio_buttons,
     "DateInput" => :input,
+    "FileInput" => :file_input,
     "CustomElement" => :reusable_instance,
     "ReusableElement" => :reusable_instance
   }
@@ -1401,7 +1422,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp primary_slots(:button, raw, id), do: value_slot(raw, "label", id, ["text", "label"])
   defp primary_slots(:link, raw, id), do: link_slots(raw, id)
 
-  defp primary_slots(kind, raw, id) when kind in [:input, :multiline_input],
+  defp primary_slots(kind, raw, id) when kind in [:input, :multiline_input, :file_input],
     do: input_slots(raw, id)
 
   defp primary_slots(:checkbox, raw, id), do: checkbox_slots(raw, id)
@@ -1965,6 +1986,14 @@ defmodule BubbleEx.Frontend.Normalize do
     |> reject_empty_attributes()
   end
 
+  defp element_attributes(raw, :file_input, _variant) do
+    raw
+    |> common_control_attributes()
+    |> Map.put("type", "file")
+    |> Map.put_new("aria-label", Payload.prop(raw, "placeholder") || Payload.name(raw) || "File")
+    |> reject_empty_attributes()
+  end
+
   defp element_attributes(raw, :multiline_input, _variant) do
     raw
     |> common_control_attributes()
@@ -2087,7 +2116,8 @@ defmodule BubbleEx.Frontend.Normalize do
   defp input_type(:password), do: "password"
   defp input_type(_), do: "text"
 
-  defp maybe_put_inputmode(attrs, :integer), do: Map.put(attrs, "inputmode", "numeric")
+  defp maybe_put_inputmode(attrs, variant) when variant in [:integer, :numbers],
+    do: Map.put(attrs, "inputmode", "numeric")
 
   defp maybe_put_inputmode(attrs, variant) when variant in [:currency, :decimal, :percent],
     do: Map.put(attrs, "inputmode", "decimal")

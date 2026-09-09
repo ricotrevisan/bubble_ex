@@ -113,7 +113,9 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :link} = node, opts), do: render_link(node, opts)
   defp do_render(%Node{kind: :image} = node, opts), do: void("img", node, opts)
   defp do_render(%Node{kind: :icon} = node, opts), do: render_icon(node, opts)
-  defp do_render(%Node{kind: :input} = node, opts), do: void("input", node, opts)
+
+  defp do_render(%Node{kind: kind} = node, opts) when kind in [:input, :file_input],
+    do: void("input", node, opts)
 
   defp do_render(%Node{kind: :multiline_input} = node, opts),
     do: wrap("textarea", node, escape_textarea(slot_text(node, "value", opts)), opts)
@@ -474,6 +476,15 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do
     placeholder = resolved(node, "placeholder")
     Map.put_new(node.attributes, "aria-label", placeholder || node.name || "Dropdown")
+  end
+
+  defp node_attrs(%Node{kind: :file_input} = node, "input", _opts) do
+    label = resolved(node, "placeholder") || node.name || "File"
+
+    node.attributes
+    |> Map.put("type", "file")
+    |> Map.drop(["value", "placeholder"])
+    |> Map.put_new("aria-label", label)
   end
 
   defp node_attrs(node, "input", _opts) do
