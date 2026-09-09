@@ -10,6 +10,13 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
 
   def present?(_), do: false
 
+  @spec block?(term()) :: boolean()
+  def block?(text) when is_binary(text) do
+    Regex.match?(~r/\[(\/)?(?:ul|ol)\b/i, text)
+  end
+
+  def block?(_), do: false
+
   @spec to_html(String.t()) :: String.t()
   def to_html(text) when is_binary(text), do: text |> parse([]) |> emit()
 
@@ -114,7 +121,7 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     href = safe_href(attr) || safe_href(plain_text(children))
 
     if href do
-      ~s(<a href="#{escape(href)}">#{emit(children)}</a>)
+      ~s(<a href="#{escape(href)}" target="_blank">#{emit(children)}</a>)
     else
       emit(children)
     end

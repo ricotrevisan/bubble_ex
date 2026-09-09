@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frozen BBCode Text case `bpwipyqn` (#44): controlled `bubbleex-i44-bbcode-text`
+  page on `tiptap-plugin` Test. Block BBCode (`[ul]/[ol]`) exports as a `div`
+  with Bubble-like list/link CSS; `[b]`, `[url=https]` stay inline.
+
 - Selected live-page hydration (#40): `BubbleEx.export_frontend/3` and
   `mix bubble.export_frontend` fetch each requested metadata-only page from the
   sanitized app origin, preserving `/version-test` and `/version-development`

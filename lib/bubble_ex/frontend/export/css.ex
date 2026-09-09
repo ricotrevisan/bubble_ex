@@ -2,7 +2,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   @moduledoc false
 
   alias BubbleEx.Frontend.{Naming, Normalized}
-  alias BubbleEx.Frontend.Export.Safety
+  alias BubbleEx.Frontend.Export.{Bbcode, Safety}
   alias BubbleEx.Frontend.Normalized.Node
 
   @spec shared(Normalized.t(), String.t()) :: String.t()
@@ -561,7 +561,40 @@ defmodule BubbleEx.Frontend.Export.Css do
     """
   end
 
+  defp extra_rule(%Node{kind: :text} = node, opts) do
+    raw = text_slot(node)
+
+    if Bbcode.present?(raw) do
+      id = prefixed_id(node, opts) |> escape()
+      selector = "[data-exporter-id=\"#{id}\"]"
+
+      """
+      #{selector} a {
+        color: inherit;
+        text-decoration: none;
+      }
+      #{selector} ul,
+      #{selector} ol {
+        margin: 1.4em 0 0 0;
+        padding-left: 40px;
+      }
+      #{selector} li {
+        margin: 0;
+      }
+      """
+    else
+      ""
+    end
+  end
+
   defp extra_rule(_, _), do: ""
+
+  defp text_slot(%Node{content: content}) when is_map(content) do
+    slot = content["text"] || content[:text] || %{}
+    slot[:resolved] || slot["resolved"] || ""
+  end
+
+  defp text_slot(_), do: ""
 
   defp responsive_css(entries, opts) do
     entries

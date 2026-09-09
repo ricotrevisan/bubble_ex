@@ -1,0 +1,55 @@
+{
+  "id": "bpwipyqn",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpwipyqn",
+    "page_path": "bubbleex-i44-bbcode-text",
+    "page_payload_sha256": "d582b6c3faf0121c94a346dd41e68027a6fa7eae0ae1dd78aceb68cd2c1bb0ba",
+    "payload_sha256": "34d9d0c07ab1ef8b41fb99b864e75d3c133d7f0b939ad99b4afaf5fb8bf1e42b"
+  },
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "representative narrow page; BBCode body is a fixed 320px column",
+    "1440": "representative wide page; the controlled 320px BBCode column is unchanged"
+  },
+  "node_ids": [
+    "bpwipyqn",
+    "bpwipyqo",
+    "bpwipyqp"
+  ],
+  "text_node_ids": [
+    "bpwipyqo",
+    "bpwipyqp"
+  ],
+  "semantics": {
+    "main": [
+      "bpwipyqn"
+    ],
+    "paragraphs": [
+      "bpwipyqo"
+    ]
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 5600,
+    "max_channel_delta": 100,
+    "max_mean_absolute_error": 0.3,
+    "rationale": "Geometry, document height, primary typography, and semantics remain exact. This bounded allowance covers frozen text rasterization drift plus BBCode list/link paint versus Bubble's runtime renderer in the pinned Chromium 140 headless shell."
+  }
+}

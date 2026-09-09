@@ -1,0 +1,59 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i44-bbcode-text": {
+      "elements": {
+        "i44__bbcode": {
+          "id": "bpwipyqp",
+          "name": "I44__BBCode_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "400",
+            "line-height": "1.4",
+            "margin": "0",
+            "max_width": "320px",
+            "min_width": "320px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "[b]FEATURES[/b]\n[ul]\n[li]Bold and lists[/li]\n[li]Safe https link[/li]\n[/ul]\n[url=https://example.com/docs]Docs[/url]",
+            "width": "320px"
+          },
+          "type": "Text"
+        },
+        "i44__title": {
+          "id": "bpwipyqo",
+          "name": "I44__Title_Normal_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "line-height": "1.2",
+            "margin": "0",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I44 case · BBCode Text",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpwipyqn",
+      "name": "bubbleex-i44-bbcode-text",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "16px",
+        "title": "BubbleEx issue 44 BBCode Text",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
