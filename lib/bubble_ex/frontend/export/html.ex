@@ -97,8 +97,10 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp do_render(%Node{kind: :reusable_instance} = node, opts), do: render_instance(node, opts)
 
-  defp do_render(%Node{kind: :text} = node, opts),
-    do: wrap(text_tag(node.variant), node, text_inner_html(node, opts), opts)
+  defp do_render(%Node{kind: :text} = node, opts) do
+    inner = text_inner_html(node, opts)
+    wrap(text_wrapper_tag(node, opts), node, inner, opts)
+  end
 
   defp do_render(%Node{kind: :button} = node, opts) do
     label = slot_text(node, "label", opts)
@@ -332,6 +334,16 @@ defmodule BubbleEx.Frontend.Export.Html do
     end
   end
 
+  defp text_wrapper_tag(node, opts) do
+    raw = slot_text(node, "text", opts)
+
+    if Bbcode.block?(raw) do
+      "div"
+    else
+      text_tag(node.variant)
+    end
+  end
+
   defp slot_text(node, slot, opts) do
     case resolved(node, slot) do
       value when is_binary(value) or is_number(value) ->
@@ -366,7 +378,7 @@ defmodule BubbleEx.Frontend.Export.Html do
       blank?(inner) ->
         [open, "</", tag, ">"]
 
-      tag in @phrasing ->
+      tag in @phrasing or match?(%Node{kind: :text}, node) ->
         [open, inner, "</", tag, ">"]
 
       true ->

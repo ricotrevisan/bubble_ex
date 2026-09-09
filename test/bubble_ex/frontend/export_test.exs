@@ -726,6 +726,8 @@ defmodule BubbleEx.Frontend.ExportTest do
       html = File.read!(Path.join(out, "pages/index/index.html"))
       assert html =~ "<strong>FEATURES</strong>"
       assert html =~ "<ul><li>One</li></ul>"
+      assert html =~ ~s(<div data-bubble-id="t1")
+      refute html =~ ~s(<p data-bubble-id="t1")
       assert html =~ ~s(href="https://example.com")
       assert html =~ ">Docs</a>"
       assert html =~ "xss"
