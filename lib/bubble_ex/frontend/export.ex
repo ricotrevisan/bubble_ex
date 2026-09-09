@@ -1,6 +1,8 @@
 defmodule BubbleEx.Frontend.Export do
   @moduledoc false
 
+  require Logger
+
   alias BubbleEx.{Error, Secrets}
   alias BubbleEx.Frontend.{Json, Naming, Payload}
   alias BubbleEx.Frontend.Export.{Assets, Css, Fonts, Html, Result, Safety, Writer}
@@ -72,7 +74,7 @@ defmodule BubbleEx.Frontend.Export do
     payload = source.payload || %{}
     adapter_opts = scan_opts(opts)
 
-    case Secrets.scan(payload, adapter_opts) do
+    case scan_with_native_fallback(payload, adapter_opts, opts) do
       {:ok, []} ->
         :ok
 
@@ -156,6 +158,31 @@ defmodule BubbleEx.Frontend.Export do
 
   defp maybe_scan_adapter(opts, nil), do: opts
   defp maybe_scan_adapter(opts, adapter), do: Keyword.put(opts, :adapter, adapter)
+
+  defp scan_with_native_fallback(payload, adapter_opts, opts) do
+    case Secrets.scan(payload, adapter_opts) do
+      {:error, %Error{kind: :cli_missing}} = error ->
+        if native_fallback_adapter?(Keyword.get(opts, :secret_scan_adapter)) do
+          Logger.info("secret scan: trufflehog CLI missing; using BubbleEx.Secrets.Native")
+
+          Secrets.scan(
+            payload,
+            scan_opts(Keyword.put(opts, :secret_scan_adapter, BubbleEx.Secrets.Native))
+          )
+        else
+          error
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp native_fallback_adapter?(adapter)
+       when adapter in [nil, BubbleEx.Secrets.Trufflehog],
+       do: true
+
+  defp native_fallback_adapter?(_adapter), do: false
 
   defp select_pages(%Normalized{pages: pages}, opts) do
     case Keyword.get(opts, :pages, :all) do

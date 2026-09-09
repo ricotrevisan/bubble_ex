@@ -9,6 +9,10 @@ defmodule BubbleEx.FrontendFixtures do
     BubbleEx.FrontendFixtures.LeakyScan
   end
 
+  def missing_cli_scanner do
+    BubbleEx.FrontendFixtures.MissingCliScan
+  end
+
   def modern_page do
     %{
       "_id" => "s1app",
@@ -277,5 +281,16 @@ defmodule BubbleEx.FrontendFixtures.LeakyScan do
          confidence: :high
        }
      ]}
+  end
+end
+
+defmodule BubbleEx.FrontendFixtures.MissingCliScan do
+  @moduledoc false
+  @behaviour BubbleEx.Secrets
+
+  @impl true
+  def scan(_payload, _opts) do
+    {:error,
+     BubbleEx.Error.new(:cli_missing, "the trufflehog CLI is not installed or not on PATH", %{})}
   end
 end
