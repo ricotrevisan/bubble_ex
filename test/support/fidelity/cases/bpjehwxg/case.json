@@ -1,0 +1,117 @@
+{
+  "id": "bpjehwxg",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpjehwxg",
+    "page_path": "bubbleex-i59-input-formats",
+    "page_payload_sha256": "2465ef7ea4a5e25bcc9af9185f3c89bd2720a6fef0e26941c66ca3729f07c0de",
+    "payload_sha256": "126b33e280fa84d459375639c2bbde02101e48050dcf777131706f96dd76e406"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; extra Input formats stay 320px wide",
+    "1440": "wide page; the same left-stacked extra Input formats"
+  },
+  "node_ids": [
+    "bpjehwxg",
+    "bpapxulb",
+    "bpyuktye",
+    "bpsmmjkn",
+    "bppctlid",
+    "bppctiid",
+    "bpvrkzub",
+    "bpijcres",
+    "bpphnlid",
+    "bpphniid",
+    "bpeurlid",
+    "bpeuriid"
+  ],
+  "text_node_ids": [
+    "bpapxulb",
+    "bpyuktye",
+    "bppctlid",
+    "bpvrkzub",
+    "bpphnlid",
+    "bpeurlid"
+  ],
+  "semantics": {
+    "main": [
+      "bpjehwxg"
+    ],
+    "paragraphs": [
+      "bpapxulb",
+      "bpyuktye",
+      "bppctlid",
+      "bpvrkzub",
+      "bpphnlid",
+      "bpeurlid"
+    ],
+    "inputs": [
+      "bpsmmjkn",
+      "bppctiid",
+      "bpijcres",
+      "bpphniid",
+      "bpeuriid"
+    ],
+    "input_attributes": {
+      "bpsmmjkn": {
+        "type": "text",
+        "value": "12.5",
+        "placeholder": "I59 decimal placeholder",
+        "aria-label": "I59 decimal placeholder",
+        "inputmode": "decimal"
+      },
+      "bppctiid": {
+        "type": "text",
+        "value": "25",
+        "placeholder": "I59 percent placeholder",
+        "aria-label": "I59 percent placeholder",
+        "inputmode": "decimal"
+      },
+      "bpijcres": {
+        "type": "text",
+        "value": "19.99",
+        "placeholder": "I59 currency placeholder",
+        "aria-label": "I59 currency placeholder",
+        "inputmode": "decimal"
+      },
+      "bpphniid": {
+        "type": "text",
+        "value": "5550101234",
+        "placeholder": "I59 phone placeholder",
+        "aria-label": "I59 phone placeholder",
+        "inputmode": "tel"
+      },
+      "bpeuriid": {
+        "type": "text",
+        "value": null,
+        "placeholder": "I59 euro date placeholder",
+        "aria-label": "I59 euro date placeholder"
+      }
+    }
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 9000,
+    "max_channel_delta": 240,
+    "max_mean_absolute_error": 0.6,
+    "rationale": "Geometry and document height are exact. Channel/MAE allowance covers Bubble currency/phone formatting ($19.99, (555) 010-1234) vs raw payload values, plus Chromium 140 Inter raster. S1 does not reimplement Bubble format masks."
+  }
+}
