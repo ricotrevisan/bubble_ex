@@ -45,7 +45,7 @@ defines the geometry, typography, collapse, document-size, semantics, and pixel 
 | Repeating Group | One horizontal show-all row from a bounded literal list; direct Image/Text/Shape/Icon templates; other variants remain placeholders | `bpgwgmpz` empty boundary; literal lists have unit tests and landing-page observations | No searches, nested templates, pagination, animation, or virtualization; at most 100 items and 1,000 projected leaves |
 | HTML: literal path-only SVG | Strictly sanitized inline SVG | Unit tests and landing-page observations | No scripts, external references, arbitrary markup, or dynamic HTML |
 | Table / Video / Map / Alert / other HTML / Built on Bubble | Unsupported placeholders | No native parity case | No promotion based only on an approximate box |
-| Reusable definition / instance | Static Group-based definitions and recursive expansion with stable instance IDs | `bpgwgmpz` | Missing references/cycles emit findings; parameters, runtime states, and Popup/Floating reusable bases lack parity evidence |
+| Reusable definition / instance | Static definitions and recursive expansion with stable instance IDs; supplied literal scalar parameters in instance scope, including nested forwarding | `bpgwgmpz` static expansion; parameters have unit tests and landing-page observations | Missing references/cycles emit findings; parameter defaults/conditions, runtime states, and Popup/Floating reusable bases lack full parity evidence |
 
 Installed plugin elements remain placeholders, including Bubble-made plugins
 such as Rich Text Editor and Multiselect Dropdown. Native mobile and the legacy

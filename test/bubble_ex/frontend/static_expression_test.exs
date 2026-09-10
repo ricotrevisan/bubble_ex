@@ -7,7 +7,12 @@ defmodule BubbleEx.Frontend.StaticExpressionTest do
     expression = %{
       "%x" => "ArbitraryText",
       "%p" => %{"arbitrary_text" => text("one\ntwo")},
-      "%n" => %{"%nm" => "split_by", "%p" => %{"separator" => text("\n")}}
+      "%n" => %{
+        "%nm" => "split_by",
+        "%p" => %{"separator" => text("\n")},
+        "%x" => "Message",
+        "is_slidable" => true
+      }
     }
 
     assert StaticExpression.resolve(expression) == {:ok, ["one", "two"]}
@@ -72,4 +77,29 @@ defmodule BubbleEx.Frontend.StaticExpressionTest do
   end
 
   defp text(value), do: %{"%x" => "TextExpression", "%e" => %{"0" => value}}
+
+  test "reusable parameter resolution is scoped and rejects runtime state or extra operations" do
+    scope = %{"card" => %{"param_label" => "hello"}}
+
+    expression = %{
+      "%x" => "GetElement",
+      "%p" => %{"%ei" => "card"},
+      "%n" => %{"%nm" => "param_label"}
+    }
+
+    assert StaticExpression.resolve(expression, :unknown, scope) == {:ok, "hello"}
+    assert StaticExpression.resolve(expression, :unknown, %{}) == :unknown
+
+    assert expression
+           |> put_in(["%n", "%nm"], "custom.state")
+           |> StaticExpression.resolve(:unknown, scope) == :unknown
+
+    assert expression
+           |> put_in(["%n", "%a"], "ignored")
+           |> StaticExpression.resolve(:unknown, scope) == :unknown
+
+    assert expression
+           |> put_in(["%n", "%n"], %{"%nm" => "unknown"})
+           |> StaticExpression.resolve(:unknown, scope) == :unknown
+  end
 end

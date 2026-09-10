@@ -137,6 +137,8 @@ defmodule BubbleEx.Frontend.StaticRepeatingTest do
                   },
                   "%n" => %{
                     "%nm" => "split_by",
+                    "%x" => "Message",
+                    "is_slidable" => true,
                     "%p" => %{"separator" => %{"%x" => "TextExpression", "%e" => %{"0" => "\n"}}}
                   }
                 }
