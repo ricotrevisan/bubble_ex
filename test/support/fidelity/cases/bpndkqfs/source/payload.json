@@ -1,0 +1,117 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "test",
+  "pages": {
+    "bubbleex-i69-range-popup": {
+      "elements": {
+        "i69__label": {
+          "id": "bpcbxuhy",
+          "name": "I69__Range_Label",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "700",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 2,
+            "tag_type": "normal",
+            "text": "I69 range slider",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        },
+        "i69__popup": {
+          "elements": {
+            "i69__popup_text": {
+              "id": "bpxyinuu",
+              "name": "I69__Popup_Text",
+              "properties": {
+                "color": "#172033",
+                "font-family": "Inter",
+                "font-size": "16px",
+                "font-weight": "700",
+                "height": "24px",
+                "line-height": "1.2",
+                "margin": "0",
+                "max_height": "24px",
+                "min_height": "24px",
+                "order": 1,
+                "tag_type": "normal",
+                "text": "I69 popup body",
+                "width": "fit-content"
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bplcsjej",
+          "name": "I69__Popup",
+          "properties": {
+            "background": "#FFFFFF",
+            "border": "1px solid #8290A8",
+            "border-radius": "12px",
+            "container_layout": "column",
+            "is_visible": false,
+            "order": 4,
+            "padding": "16px"
+          },
+          "type": "Popup"
+        },
+        "i69__slider": {
+          "id": "bphjkgox",
+          "name": "I69__Range_Slider",
+          "properties": {
+            "height": "48px",
+            "max_height": "48px",
+            "max_value": 100,
+            "max_width": "320px",
+            "min_height": "48px",
+            "min_value": 0,
+            "min_width": "320px",
+            "order": 3,
+            "range_type": "range",
+            "step": 1,
+            "width": "320px"
+          },
+          "type": "SliderInput"
+        },
+        "i69__title": {
+          "id": "bprdfdnj",
+          "name": "I69__Title_Text",
+          "properties": {
+            "color": "#172033",
+            "font-family": "Inter",
+            "font-size": "16px",
+            "font-weight": "800",
+            "height": "24px",
+            "line-height": "1.2",
+            "margin": "0",
+            "max_height": "24px",
+            "min_height": "24px",
+            "order": 1,
+            "tag_type": "normal",
+            "text": "I69 case · range / popup",
+            "width": "fit-content"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bpndkqfs",
+      "name": "bubbleex-i69-range-popup",
+      "properties": {
+        "background": "#F4F7FB",
+        "color": "#172033",
+        "container_layout": "column",
+        "min_height": "900px",
+        "padding": "20px 16px 56px",
+        "row_gap": "12px",
+        "title": "BubbleEx range popup",
+        "width": "100%"
+      },
+      "type": "Page"
+    }
+  }
+}
