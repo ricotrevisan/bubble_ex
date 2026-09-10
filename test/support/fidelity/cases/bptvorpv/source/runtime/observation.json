@@ -1,0 +1,1376 @@
+{
+  "url": "https://tiptap-plugin.bubbleapps.io/version-83jop/bubbleex-overlay-boundaries",
+  "chromium": "140.0.7339.186",
+  "platform": "linux",
+  "arch": "x64",
+  "scope": "source characterization only; exported workflows are not executed",
+  "results": [
+    {
+      "width": 390,
+      "state": "initial",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 900,
+            "top": 0,
+            "right": 390,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorqc": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpx": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpy": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorqd": {
+          "matchCount": 0,
+          "absent": true
+        }
+      },
+      "screenshot": "390-initial.png"
+    },
+    {
+      "width": 390,
+      "state": "popup-open",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 900,
+            "top": 0,
+            "right": 390,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 35,
+            "y": 100,
+            "width": 320,
+            "height": 110,
+            "top": 100,
+            "right": 355,
+            "bottom": 210,
+            "left": 35
+          },
+          "display": "flex",
+          "position": "fixed",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; visibility: unset;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 52,
+            "y": 117,
+            "width": 286,
+            "height": 24,
+            "top": 117,
+            "right": 338,
+            "bottom": 141,
+            "left": 52
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 52,
+            "y": 153,
+            "width": 286,
+            "height": 40,
+            "top": 153,
+            "right": 338,
+            "bottom": 193,
+            "left": 52
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 0,
+          "absent": true
+        }
+      },
+      "screenshot": "390-popup-open.png"
+    },
+    {
+      "width": 390,
+      "state": "popup-closed",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 900,
+            "top": 0,
+            "right": 390,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "fixed",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; display: none;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "inline-block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 0,
+          "absent": true
+        }
+      },
+      "screenshot": "390-popup-closed.png"
+    },
+    {
+      "width": 390,
+      "state": "focus-open",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 900,
+            "top": 0,
+            "right": 390,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "fixed",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; display: none;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 196,
+            "width": 240,
+            "height": 58,
+            "top": 196,
+            "right": 256,
+            "bottom": 254,
+            "left": 16
+          },
+          "display": "flex",
+          "position": "absolute",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element GroupFocus bptvorqc bubble-r-container flex column\" style=\"background-color: rgb(255, 255, 255); visibility: unset; left: 16px; top: 196px;\"><div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div></div>"
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "inline-block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 1,
+          "box": {
+            "x": 33,
+            "y": 213,
+            "width": 206,
+            "height": 24,
+            "top": 213,
+            "right": 239,
+            "bottom": 237,
+            "left": 33
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div>"
+        }
+      },
+      "screenshot": "390-focus-open.png"
+    },
+    {
+      "width": 390,
+      "state": "focus-dismissed",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 900,
+            "top": 0,
+            "right": 390,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "fixed",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; display: none;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "absolute",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element GroupFocus bptvorqc bubble-r-container flex column\" style=\"background-color: rgb(255, 255, 255); left: 16px; top: 196px; display: none;\"><div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div></div>"
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "inline-block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div>"
+        }
+      },
+      "screenshot": "390-focus-dismissed.png"
+    },
+    {
+      "width": 1440,
+      "state": "initial",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 900,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorqc": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpx": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpy": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorqd": {
+          "matchCount": 0,
+          "absent": true
+        }
+      },
+      "screenshot": "1440-initial.png"
+    },
+    {
+      "width": 1440,
+      "state": "popup-open",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 900,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 560,
+            "y": 100,
+            "width": 320,
+            "height": 110,
+            "top": 100,
+            "right": 880,
+            "bottom": 210,
+            "left": 560
+          },
+          "display": "flex",
+          "position": "fixed",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; visibility: unset;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 577,
+            "y": 117,
+            "width": 286,
+            "height": 24,
+            "top": 117,
+            "right": 863,
+            "bottom": 141,
+            "left": 577
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 577,
+            "y": 153,
+            "width": 286,
+            "height": 40,
+            "top": 153,
+            "right": 863,
+            "bottom": 193,
+            "left": 577
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 0,
+          "absent": true
+        }
+      },
+      "screenshot": "1440-popup-open.png"
+    },
+    {
+      "width": 1440,
+      "state": "popup-closed",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 900,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "fixed",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; display: none;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 0,
+          "absent": true
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "inline-block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 0,
+          "absent": true
+        }
+      },
+      "screenshot": "1440-popup-closed.png"
+    },
+    {
+      "width": 1440,
+      "state": "focus-open",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 900,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "fixed",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; display: none;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 196,
+            "width": 240,
+            "height": 58,
+            "top": 196,
+            "right": 256,
+            "bottom": 254,
+            "left": 16
+          },
+          "display": "flex",
+          "position": "absolute",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element GroupFocus bptvorqc bubble-r-container flex column\" style=\"background-color: rgb(255, 255, 255); visibility: unset; left: 16px; top: 196px;\"><div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div></div>"
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "inline-block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 1,
+          "box": {
+            "x": 33,
+            "y": 213,
+            "width": 206,
+            "height": 24,
+            "top": 213,
+            "right": 239,
+            "bottom": 237,
+            "left": 33
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div>"
+        }
+      },
+      "screenshot": "1440-focus-open.png"
+    },
+    {
+      "width": 1440,
+      "state": "focus-dismissed",
+      "elements": {
+        "bptvorpv": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 900,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900,
+            "left": 0
+          },
+          "display": "flex",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Page bptvorpv bubble-r-container flex column main-page\"><div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div><button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button><button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button></div>"
+        },
+        "bptvorpz": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 20,
+            "width": 224,
+            "height": 24,
+            "top": 20,
+            "right": 240,
+            "bottom": 44,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpz\"><div>Overlay runtime boundaries</div></div>"
+        },
+        "bptvorqa": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 56,
+            "width": 240,
+            "height": 40,
+            "top": 56,
+            "right": 256,
+            "bottom": 96,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqa\" style=\"background-color: rgb(231, 237, 247);\">Open popup</button>"
+        },
+        "bptvorqb": {
+          "matchCount": 1,
+          "box": {
+            "x": 16,
+            "y": 108,
+            "width": 240,
+            "height": 40,
+            "top": 108,
+            "right": 256,
+            "bottom": 148,
+            "left": 16
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "visible",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorqb\" style=\"background-color: rgb(231, 237, 247);\">Toggle focus menu</button>"
+        },
+        "bptvorpw": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "fixed",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Popup bptvorpw bubble-r-container flex column\" style=\"left: 0px; right: 0px; bottom: unset; background-color: rgb(255, 255, 255); top: 100px; position: fixed; filter: none; display: none;\"><div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div><button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button></div>"
+        },
+        "bptvorqc": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "none",
+          "position": "absolute",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element GroupFocus bptvorqc bubble-r-container flex column\" style=\"background-color: rgb(255, 255, 255); left: 16px; top: 196px; display: none;\"><div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div></div>"
+        },
+        "bptvorpx": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorpx\"><div>Popup opened by workflow</div></div>"
+        },
+        "bptvorpy": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "inline-block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<button class=\"clickable-element bubble-element Button bptvorpy\" style=\"background-color: rgb(231, 237, 247);\">Close popup</button>"
+        },
+        "bptvorqd": {
+          "matchCount": 1,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "display": "block",
+          "position": "relative",
+          "visibility": "hidden",
+          "outerHTML": "<div class=\"bubble-element Text bptvorqd\"><div>Anchored focus menu</div></div>"
+        }
+      },
+      "screenshot": "1440-focus-dismissed.png"
+    }
+  ],
+  "sourcePayloadSha256": "0858595e9ccf45014218463497263c2e4618412d7ceda5997b74f79613085d0f"
+}

@@ -6,6 +6,16 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Keep Popup and Group Focus as explicit hidden runtime placeholders, retaining
+  their full definitions and reporting the runtime boundary. Do not infer an
+  open dialog from `is_visible` or paint Group Focus in the page layout.
+- Restore the actual Popup source in `bpndkqfs`, correlate its closed state,
+  and recapture it on `83jop`. Add initial-state case `bptvorpv` plus separate
+  source-only opening/dismissal observations; update the native support matrix.
+- Reject ambiguous fidelity selectors and withdraw one invalid shared-icon
+  collapse sample while retaining both icon instances' structural checks.
+- Keep the range-slider wrapper transparent as in Bubble when restoring the
+  complete source styling; retain existing pixel tolerances.
 - Correct Bubble Input/DateInput enum mappings and reject invalid frozen source
   formats. Repair and recapture four affected cases from authorized branch `83jop`.
 - Preserve explicit control borders/backgrounds over native defaults, render
@@ -16,16 +26,15 @@ All notable changes to this project are documented here.
 
 - Frozen S1 range Slider / Popup case `bpndkqfs` (`bubbleex-i69-range-popup`)
 
-- S1 two-handle SliderInput (paired `type=range` inputs) and visible Popup
-  as `<dialog open>`. Hidden popups stay closed. GroupFocus lowers as a
-  static group box. Authorized page `bubbleex-i69-range-popup` is on
-  `tiptap-plugin` Test.
+- S1 two-handle SliderInput (paired `type=range` inputs). Popup and Group Focus
+  remain runtime placeholders; the earlier static overlay lowerings were
+  withdrawn after source characterization.
 
 - Frozen S1 slider/search case `bplvejcw` (`bubbleex-i67-slider-search`)
 
 - S1 simple SliderInput (`type=range`) and static AutocompleteDropdown
-  (`type=search` + `<datalist>`). Two-handle sliders and dynamic/Google
-  search stay placeholders. Authorized page `bubbleex-i67-slider-search`
+  (`type=search` + `<datalist>`). Dynamic/Google search stays a placeholder.
+  Authorized page `bubbleex-i67-slider-search`
   is on `tiptap-plugin` Test.
 
 - Frozen S1 PictureInput case `bpdimzwm` (`bubbleex-i65-picture-input`)

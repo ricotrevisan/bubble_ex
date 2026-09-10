@@ -64,7 +64,7 @@ function inspectScript(ids) {
       const matches = document.querySelectorAll(source ? (selectors[id] || `.bubble-element.${CSS.escape(id)}`) : `[data-bubble-id="${id}"]`);
       const element = matches.length === 1 ? matches[0] : null;
       if (!element) {
-        elements[id] = { absent: true };
+        elements[id] = { absent: true, matchCount: matches.length };
         continue;
       }
       const rect = element.getBoundingClientRect();
@@ -225,8 +225,20 @@ async function main() {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       });
       const audit = await page.evaluate(inspectScript(nodeIds), { ids: nodeIds, source: Boolean(sourceUrl), selectors: caseJson.source_selectors || {} });
-      if (sourceUrl && Object.values(audit.elements).some((element) => element.absent)) {
-        throw new Error(`Source capture has missing nodes at ${width}px`);
+      if (sourceUrl) {
+        const hiddenIds = new Set(caseJson.source_hidden_node_ids || []);
+        if ([...hiddenIds].some((id) => !nodeIds.includes(id))) {
+          throw new Error("Source hidden nodes must also be correlated node_ids");
+        }
+        for (const [id, element] of Object.entries(audit.elements)) {
+          if (element.matchCount > 1 || (element.absent && !hiddenIds.has(id))) {
+            throw new Error(`Source capture has missing or ambiguous node ${id} at ${width}px`);
+          }
+          if (hiddenIds.has(id) && !element.absent &&
+            (element.display !== "none" || element.box.width !== 0 || element.box.height !== 0)) {
+            throw new Error(`Expected hidden source node ${id} is visible at ${width}px`);
+          }
+        }
       }
       const screenshot = `${sourceUrl ? "" : "candidate-"}${width}x${viewportHeight}.png`;
       await page.screenshot({ path: path.join(workDir, screenshot), fullPage: true });
@@ -295,6 +307,11 @@ async function main() {
       const candidateElement = candidateResult.audit.elements[id];
       if (!candidateElement) {
         recordMismatch(mismatches, "presence", width, id, { candidateMissing: true });
+        continue;
+      }
+
+      if (candidateElement.matchCount > 1) {
+        recordMismatch(mismatches, "presence", width, id, { ambiguousCandidate: true });
         continue;
       }
 

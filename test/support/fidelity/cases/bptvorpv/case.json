@@ -1,0 +1,68 @@
+{
+  "browser": {
+    "arch": "x64",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "platform": "linux",
+    "playwright": "1.55.1",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "id": "bptvorpv",
+  "node_ids": [
+    "bptvorpv",
+    "bptvorpz",
+    "bptvorqa",
+    "bptvorqb",
+    "bptvorpw",
+    "bptvorqc"
+  ],
+  "pixel_tolerance": {
+    "max_changed_pixels": 0,
+    "max_channel_delta": 0,
+    "max_mean_absolute_error": 0,
+    "rationale": "Static initial state only; runtime opened overlays are unsupported and characterized separately."
+  },
+  "public_assets": [],
+  "semantics": {
+    "buttons": [
+      "bptvorqa",
+      "bptvorqb"
+    ],
+    "main": [
+      "bptvorpv"
+    ],
+    "paragraphs": [
+      "bptvorpz"
+    ]
+  },
+  "source": {
+    "app_version": "83jop",
+    "bubble_id": "tiptap-plugin",
+    "page_id": "bptvorpv",
+    "page_path": "bubbleex-overlay-boundaries",
+    "page_payload_sha256": "9b644bef7c9b9b459b258fc4fe195f4d8fd75f73297526b15a2a9a074172b9a1",
+    "payload_sha256": "0858595e9ccf45014218463497263c2e4618412d7ceda5997b74f79613085d0f"
+  },
+  "source_hidden_node_ids": [
+    "bptvorpw",
+    "bptvorqc"
+  ],
+  "text_node_ids": [
+    "bptvorpz"
+  ],
+  "transitions": {
+    "1440": "wide static initial state; overlays closed",
+    "390": "narrow static initial state; overlays closed"
+  },
+  "viewports": [
+    390,
+    1440
+  ]
+}

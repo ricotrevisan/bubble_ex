@@ -1,0 +1,387 @@
+{
+  "_id": "tiptap-plugin",
+  "app_version": "83jop",
+  "pages": {
+    "bubbleex_overlay_boundaries": {
+      "elements": {
+        "overlay__group_focus": {
+          "elements": {
+            "overlay__focus_text": {
+              "id": "bptvorqd",
+              "name": "Overlay__Focus_Text",
+              "properties": {
+                "background_style": "none",
+                "border_roundness": 0,
+                "border_style": "none",
+                "boxshadow_enable": false,
+                "boxshadow_style": "none",
+                "collapse_when_hidden": true,
+                "elevation_level": "none",
+                "fit_width": false,
+                "font_color": "#172033",
+                "font_family": "Inter",
+                "font_size": 16,
+                "font_weight": "700",
+                "height": 24,
+                "line_height": 1.2,
+                "margin_bottom": 0,
+                "margin_left": 0,
+                "margin_right": 0,
+                "margin_top": 0,
+                "min_height_css": "24px",
+                "opacity": 100,
+                "order": 1,
+                "padding_bottom": 0,
+                "padding_left": 0,
+                "padding_right": 0,
+                "padding_top": 0,
+                "single_height": true,
+                "single_width": false,
+                "text": "Anchored focus menu"
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bptvorqc",
+          "name": "Overlay__Group_Focus",
+          "properties": {
+            "background_style": "bgcolor",
+            "bgcolor": "#FFFFFF",
+            "border_color": "#8290A8",
+            "border_roundness": 12,
+            "border_style": "solid",
+            "border_width": 1,
+            "boxshadow_enable": false,
+            "boxshadow_style": "none",
+            "collapse_when_hidden": true,
+            "container_layout": "column",
+            "container_vert_alignment": "flex-start",
+            "elevation_level": "none",
+            "fit_height": true,
+            "margin_bottom": 0,
+            "margin_left": 0,
+            "margin_right": 0,
+            "margin_top": 0,
+            "min_width_css": "240px",
+            "offset_left": 0,
+            "offset_top": 48,
+            "opacity": 100,
+            "order": 2,
+            "padding_bottom": 16,
+            "padding_left": 16,
+            "padding_right": 16,
+            "padding_top": 16,
+            "reference": "bptvorqb",
+            "single_height": false,
+            "single_width": true,
+            "width": 240
+          },
+          "type": "GroupFocus"
+        },
+        "overlay__open_focus": {
+          "id": "bptvorqb",
+          "name": "Overlay__Open_Focus",
+          "properties": {
+            "background_style": "bgcolor",
+            "bgcolor": "#E7EDF7",
+            "border_color": "#8290A8",
+            "border_roundness": 8,
+            "border_style": "solid",
+            "border_width": 1,
+            "boxshadow_enable": false,
+            "boxshadow_style": "none",
+            "collapse_when_hidden": true,
+            "elevation_level": "none",
+            "font_color": "#172033",
+            "font_family": "Inter",
+            "font_size": 16,
+            "font_weight": "400",
+            "height": 40,
+            "margin_bottom": 0,
+            "margin_left": 0,
+            "margin_right": 0,
+            "margin_top": 0,
+            "min_height_css": "40px",
+            "min_width_css": "240px",
+            "opacity": 100,
+            "order": 5,
+            "padding_bottom": 0,
+            "padding_left": 0,
+            "padding_right": 0,
+            "padding_top": 0,
+            "single_height": true,
+            "single_width": true,
+            "text": "Toggle focus menu",
+            "width": 240
+          },
+          "type": "Button"
+        },
+        "overlay__open_popup": {
+          "id": "bptvorqa",
+          "name": "Overlay__Open_Popup",
+          "properties": {
+            "background_style": "bgcolor",
+            "bgcolor": "#E7EDF7",
+            "border_color": "#8290A8",
+            "border_roundness": 8,
+            "border_style": "solid",
+            "border_width": 1,
+            "boxshadow_enable": false,
+            "boxshadow_style": "none",
+            "collapse_when_hidden": true,
+            "elevation_level": "none",
+            "font_color": "#172033",
+            "font_family": "Inter",
+            "font_size": 16,
+            "font_weight": "400",
+            "height": 40,
+            "margin_bottom": 0,
+            "margin_left": 0,
+            "margin_right": 0,
+            "margin_top": 0,
+            "min_height_css": "40px",
+            "min_width_css": "240px",
+            "opacity": 100,
+            "order": 4,
+            "padding_bottom": 0,
+            "padding_left": 0,
+            "padding_right": 0,
+            "padding_top": 0,
+            "single_height": true,
+            "single_width": true,
+            "text": "Open popup",
+            "width": 240
+          },
+          "type": "Button"
+        },
+        "overlay__popup": {
+          "elements": {
+            "overlay__close_popup": {
+              "id": "bptvorpy",
+              "name": "Overlay__Close_Popup",
+              "properties": {
+                "background_style": "bgcolor",
+                "bgcolor": "#E7EDF7",
+                "border_color": "#8290A8",
+                "border_roundness": 8,
+                "border_style": "solid",
+                "border_width": 1,
+                "boxshadow_enable": false,
+                "boxshadow_style": "none",
+                "collapse_when_hidden": true,
+                "elevation_level": "none",
+                "fit_width": false,
+                "font_color": "#172033",
+                "font_family": "Inter",
+                "font_size": 16,
+                "font_weight": "400",
+                "height": 40,
+                "margin_bottom": 0,
+                "margin_left": 0,
+                "margin_right": 0,
+                "margin_top": 0,
+                "min_height_css": "40px",
+                "opacity": 100,
+                "order": 2,
+                "padding_bottom": 0,
+                "padding_left": 0,
+                "padding_right": 0,
+                "padding_top": 0,
+                "single_height": true,
+                "single_width": false,
+                "text": "Close popup"
+              },
+              "type": "Button"
+            },
+            "overlay__popup_text": {
+              "id": "bptvorpx",
+              "name": "Overlay__Popup_Text",
+              "properties": {
+                "background_style": "none",
+                "border_roundness": 0,
+                "border_style": "none",
+                "boxshadow_enable": false,
+                "boxshadow_style": "none",
+                "collapse_when_hidden": true,
+                "elevation_level": "none",
+                "fit_width": false,
+                "font_color": "#172033",
+                "font_family": "Inter",
+                "font_size": 16,
+                "font_weight": "700",
+                "height": 24,
+                "line_height": 1.2,
+                "margin_bottom": 0,
+                "margin_left": 0,
+                "margin_right": 0,
+                "margin_top": 0,
+                "min_height_css": "24px",
+                "opacity": 100,
+                "order": 1,
+                "padding_bottom": 0,
+                "padding_left": 0,
+                "padding_right": 0,
+                "padding_top": 0,
+                "single_height": true,
+                "single_width": false,
+                "text": "Popup opened by workflow"
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bptvorpw",
+          "name": "Overlay__Popup",
+          "properties": {
+            "background_style": "bgcolor",
+            "bgcolor": "#FFFFFF",
+            "border_color": "#8290A8",
+            "border_roundness": 12,
+            "border_style": "solid",
+            "border_width": 1,
+            "boxshadow_enable": false,
+            "boxshadow_style": "none",
+            "collapse_when_hidden": true,
+            "container_layout": "column",
+            "container_vert_alignment": "flex-start",
+            "elevation_level": "none",
+            "fit_height": true,
+            "fit_width": false,
+            "margin_bottom": 0,
+            "margin_left": 0,
+            "margin_right": 0,
+            "margin_top": 0,
+            "max_width_css": "320px",
+            "opacity": 100,
+            "order": 1,
+            "padding_bottom": 16,
+            "padding_left": 16,
+            "padding_right": 16,
+            "padding_top": 16,
+            "row_gap": 12,
+            "single_height": false,
+            "single_width": false,
+            "use_gap": true
+          },
+          "type": "Popup"
+        },
+        "overlay__title": {
+          "id": "bptvorpz",
+          "name": "Overlay__Title",
+          "properties": {
+            "background_style": "none",
+            "border_roundness": 0,
+            "border_style": "none",
+            "boxshadow_enable": false,
+            "boxshadow_style": "none",
+            "collapse_when_hidden": true,
+            "elevation_level": "none",
+            "fit_width": true,
+            "font_color": "#172033",
+            "font_family": "Inter",
+            "font_size": 16,
+            "font_weight": "800",
+            "height": 24,
+            "line_height": 1.2,
+            "margin_bottom": 0,
+            "margin_left": 0,
+            "margin_right": 0,
+            "margin_top": 0,
+            "min_height_css": "24px",
+            "opacity": 100,
+            "order": 3,
+            "padding_bottom": 0,
+            "padding_left": 0,
+            "padding_right": 0,
+            "padding_top": 0,
+            "single_height": true,
+            "single_width": false,
+            "text": "Overlay runtime boundaries"
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bptvorpv",
+      "name": "bubbleex-overlay-boundaries",
+      "properties": {
+        "backdrop_background_style": "bgcolor",
+        "backdrop_bgcolor": "#F4F7FB",
+        "border_roundness": 0,
+        "border_style": "none",
+        "container_layout": "column",
+        "container_vert_alignment": "flex-start",
+        "default_width": 1440,
+        "element_version": 5,
+        "fit_height": false,
+        "fit_width": false,
+        "font_color": "#172033",
+        "font_family": "Inter",
+        "min_height_px": 900,
+        "min_width_px": 0,
+        "new_responsive": true,
+        "opacity": 100,
+        "padding_bottom": 56,
+        "padding_left": 16,
+        "padding_right": 16,
+        "padding_top": 20,
+        "responsive_version": 1,
+        "row_gap": 12,
+        "single_height": false,
+        "single_width": false,
+        "title": "BubbleEx overlay boundaries",
+        "use_gap": true,
+        "width": 1200
+      },
+      "type": "Page",
+      "workflows": {
+        "overlay__close_popup_clicked": {
+          "actions": {
+            "0": {
+              "id": "bppqydrv",
+              "properties": {
+                "element_id": "bptvorpw"
+              },
+              "type": "HideElement"
+            }
+          },
+          "id": "bpcpmnmu",
+          "properties": {
+            "element_id": "bptvorpy"
+          },
+          "type": "ButtonClicked"
+        },
+        "overlay__open_focus_clicked": {
+          "actions": {
+            "0": {
+              "id": "bptffouw",
+              "properties": {
+                "element_id": "bptvorqc"
+              },
+              "type": "ToggleElement"
+            }
+          },
+          "id": "bpbccsjz",
+          "properties": {
+            "element_id": "bptvorqb"
+          },
+          "type": "ButtonClicked"
+        },
+        "overlay__open_popup_clicked": {
+          "actions": {
+            "0": {
+              "id": "bppyymeb",
+              "properties": {
+                "element_id": "bptvorpw"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "bpavsdwc",
+          "properties": {
+            "element_id": "bptvorqa"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  }
+}

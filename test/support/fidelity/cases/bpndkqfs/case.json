@@ -1,10 +1,11 @@
 {
-  "id": "bpndkqfs",
   "browser": {
-    "playwright": "1.55.1",
+    "arch": "x64",
     "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
+    "platform": "linux",
+    "playwright": "1.55.1",
     "reduced_motion": "reduce",
     "viewport_height": 900
   },
@@ -13,33 +14,21 @@
     "path": "assets/inter-latin.woff2",
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
-  "source": {
-    "bubble_id": "tiptap-plugin",
-    "app_version": "test",
-    "page_id": "bpndkqfs",
-    "page_path": "bubbleex-i69-range-popup",
-    "page_payload_sha256": "bf5c3b6d175ba96da2878c27a4891756747bf5c0d14ba2893859613ae8534736",
-    "payload_sha256": "6497c455951d70171be77381bd73db32b541fedcb9ef42dbb0721ac1be10db19"
-  },
-  "public_assets": [],
-  "viewports": [
-    390,
-    1440
-  ],
-  "transitions": {
-    "390": "narrow page; range slider stays 320px wide",
-    "1440": "wide page; the same left-stacked range slider"
-  },
+  "id": "bpndkqfs",
   "node_ids": [
     "bpndkqfs",
     "bprdfdnj",
     "bpcbxuhy",
-    "bphjkgox"
+    "bphjkgox",
+    "bplcsjej"
   ],
-  "text_node_ids": [
-    "bprdfdnj",
-    "bpcbxuhy"
-  ],
+  "pixel_tolerance": {
+    "max_changed_pixels": 16000,
+    "max_channel_delta": 255,
+    "max_mean_absolute_error": 1.4,
+    "rationale": "Geometry is the gate. Two native range inputs approximate Bubble two-handle slider paint. Unmodified Popup source stays closed as a runtime placeholder."
+  },
+  "public_assets": [],
   "semantics": {
     "main": [
       "bpndkqfs"
@@ -49,10 +38,30 @@
       "bpcbxuhy"
     ]
   },
-  "pixel_tolerance": {
-    "max_changed_pixels": 16000,
-    "max_channel_delta": 255,
-    "max_mean_absolute_error": 1.4,
-    "rationale": "Geometry is the gate. Two native range inputs vs Bubble two-handle SliderInput paint. Live Bubble keeps the Popup closed on page load, so the frozen payload uses is_visible false."
+  "source": {
+    "app_version": "83jop",
+    "bubble_id": "tiptap-plugin",
+    "page_id": "bpndkqfs",
+    "page_path": "bubbleex-i69-range-popup",
+    "page_payload_sha256": "7a503447eb9496b24f887f210742d5dd57149e71ea8c6e889da4759d0487067a",
+    "payload_sha256": "9153bb41ab0f7548eb35d7c1f21b0c50faf045a4e3362418c186fdc40c65cfe2"
+  },
+  "source_hidden_node_ids": [
+    "bplcsjej"
+  ],
+  "text_node_ids": [
+    "bprdfdnj",
+    "bpcbxuhy"
+  ],
+  "transitions": {
+    "1440": "wide page; the same left-stacked range slider",
+    "390": "narrow page; range slider stays 320px wide"
+  },
+  "viewports": [
+    390,
+    1440
+  ],
+  "source_selectors": {
+    "bphjkgox": ".bubble-element.SliderInput"
   }
 }
