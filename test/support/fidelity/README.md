@@ -3,7 +3,7 @@
 Implements [issue #30](https://github.com/ricotrevisan/bubble_ex/issues/30).
 
 A frozen case is the only thing we call visually correct. The suite contains
-nine frozen cases: `bpmkbvvo` (#28), `bprkyexk` (#35), `bptaixqv` (#36),
+18 frozen cases: `bpmkbvvo` (#28), `bprkyexk` (#35), `bptaixqv` (#36),
 `bpewigqu` (#37), `bpcybc` (#38), `bpqqfagk` (static native controls), and
 `bpgwgmpz` (the Issue #42 complex composition), and `bpwipyqn` (#44 BBCode Text), and `bpiordvb` (icon / icon+label Button), and `bpaupfbj` (icon / icon+label Link), and `bpuzekut` (fit-height MultiLineInput), and `bpqkcldq` (date / integer Input), and `bpjehwxg` (decimal / percent / currency / US phone / euro-date Input), and `bpizatjd` (Address Input / DateInput), and `bpoyzixi` (numbers Input / datetime DateInput / FileInput), and `bpdimzwm` (PictureInput), and `bplvejcw` (simple Slider / static Search), and `bpndkqfs` (range Slider / closed Popup). The Text cases pin
 exporter-owned `<p>` and heading semantics without comparing tags to Bubble.
@@ -80,3 +80,23 @@ current byte-identical full-page screenshots.
   `mix bubble.fidelity --recapture` is refused unless `BUBBLE_RECAPTURE=1`,
   and even then this tree does not fetch live Bubble. Recapture is required
   before a slice-complete claim or exporter release.
+
+## Input source validation repair (2026-09-10)
+
+The Integer, extra Input formats, Address/DateInput, and numbers/datetime/FileInput
+cases were repaired and recaptured from authorized branch `83jop`. Earlier
+versions contained invalid Bubble enum values and did not prove the advertised
+format support. See [the audit](../../../docs/research/frozen-input-validation-audit.md).
+The gate now rejects invalid control enums and compares captured Input values.
+
+References use Linux font metrics. On macOS, use `scripts/fidelity_linux.sh`
+from the repository root (Docker required) to run the browser in the pinned
+Playwright Linux image. Elixir runs locally. Install the fidelity npm dependencies
+first. Platform font-metric differences must not be hidden by geometry tolerances.
+
+For an authorized source recapture, `run.mjs --capture-source URL --case DIR
+--report DIR/reference/browser-audit.json` requires `BUBBLE_RECAPTURE=1` and an
+exact match with the manifest's source URL. Optional `BUBBLE_CAPTURE_USERNAME`
+and `BUBBLE_CAPTURE_PASSWORD` supply origin-scoped HTTP Basic credentials.
+Run this measurement on Linux. Review source payload changes and update their
+canonical SHA pins separately; this command does not modify payloads or pins.

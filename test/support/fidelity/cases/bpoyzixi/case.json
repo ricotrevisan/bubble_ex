@@ -1,35 +1,20 @@
 {
-  "id": "bpoyzixi",
   "browser": {
-    "playwright": "1.55.1",
     "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
+    "playwright": "1.55.1",
     "reduced_motion": "reduce",
-    "viewport_height": 900
+    "viewport_height": 900,
+    "platform": "linux",
+    "arch": "x64"
   },
   "font": {
     "family": "Inter",
     "path": "assets/inter-latin.woff2",
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
-  "source": {
-    "bubble_id": "tiptap-plugin",
-    "app_version": "test",
-    "page_id": "bpoyzixi",
-    "page_path": "bubbleex-i63-datetime-numbers-file",
-    "page_payload_sha256": "86ea0dc81fd20e6bb6ab25f012bf7b8e8ca0d7c829c4578e8db5f1e0b9800e7d",
-    "payload_sha256": "3c868fa381ad907bf3505702a3fd456dd28961a212d97c3aafedcabda111f128"
-  },
-  "public_assets": [],
-  "viewports": [
-    390,
-    1440
-  ],
-  "transitions": {
-    "390": "narrow page; numbers, datetime, and file controls stay 320px wide",
-    "1440": "wide page; the same left-stacked leftover controls"
-  },
+  "id": "bpoyzixi",
   "node_ids": [
     "bpoyzixi",
     "bpmrhrza",
@@ -40,13 +25,36 @@
     "bpfilelid",
     "bpfileiid"
   ],
-  "text_node_ids": [
-    "bpmrhrza",
-    "bpgekpfz",
-    "bpdzwjek",
-    "bpfilelid"
-  ],
+  "pixel_tolerance": {
+    "max_changed_pixels": 14000,
+    "max_channel_delta": 255,
+    "max_mean_absolute_error": 1.2,
+    "rationale": "Geometry is the gate. Native file-control UA chrome vs Bubble FileInput paint, plus DateInput wrapper vs type=text, needs a wide channel/MAE allowance in pinned Chromium 140."
+  },
+  "public_assets": [],
   "semantics": {
+    "input_attributes": {
+      "bpeqiyev": {
+        "aria-label": "I63 datetime placeholder",
+        "placeholder": "I63 datetime placeholder",
+        "type": "text"
+      },
+      "bperdgvn": {
+        "aria-label": "I63 numbers placeholder",
+        "inputmode": "numeric",
+        "placeholder": "I63 numbers placeholder",
+        "type": "text"
+      },
+      "bpfileiid": {
+        "aria-label": "I63 file placeholder",
+        "type": "file"
+      }
+    },
+    "inputs": [
+      "bperdgvn",
+      "bpeqiyev",
+      "bpfileiid"
+    ],
     "main": [
       "bpoyzixi"
     ],
@@ -55,36 +63,37 @@
       "bpgekpfz",
       "bpdzwjek",
       "bpfilelid"
-    ],
-    "inputs": [
-      "bperdgvn",
-      "bpeqiyev",
-      "bpfileiid"
-    ],
-    "input_attributes": {
-      "bperdgvn": {
-        "type": "text",
-        "value": null,
-        "placeholder": "I63 numbers placeholder",
-        "aria-label": "I63 numbers placeholder",
-        "inputmode": "numeric"
-      },
-      "bpeqiyev": {
-        "type": "text",
-        "value": null,
-        "placeholder": "I63 datetime placeholder",
-        "aria-label": "I63 datetime placeholder"
-      },
-      "bpfileiid": {
-        "type": "file",
-        "aria-label": "I63 file placeholder"
-      }
+    ]
+  },
+  "source": {
+    "app_version": "83jop",
+    "bubble_id": "tiptap-plugin",
+    "page_id": "bpoyzixi",
+    "page_path": "bubbleex-i63-datetime-numbers-file",
+    "page_payload_sha256": "6de22a339de825543753cb36e7e016e800cbc3fbf3ac69437f795c86cbe81aff",
+    "payload_sha256": "e7f88bb581886c8d62203d32a1b60b61447c335c7f3c6a4e0cf53e7cbf5dc7f7",
+    "validation": {
+      "branch": "83jop",
+      "date": "2026-09-10",
+      "method": "Buildprint canonical schema audit and applied branch snapshot"
     }
   },
-  "pixel_tolerance": {
-    "max_changed_pixels": 14000,
-    "max_channel_delta": 255,
-    "max_mean_absolute_error": 1.2,
-    "rationale": "Geometry is the gate. Native file-control UA chrome vs Bubble FileInput paint, plus DateInput wrapper vs type=text, needs a wide channel/MAE allowance in pinned Chromium 140."
+  "text_node_ids": [
+    "bpmrhrza",
+    "bpgekpfz",
+    "bpdzwjek",
+    "bpfilelid"
+  ],
+  "transitions": {
+    "1440": "wide page; the same left-stacked leftover controls",
+    "390": "narrow page; numbers, datetime, and file controls stay 320px wide"
+  },
+  "viewports": [
+    390,
+    1440
+  ],
+  "source_selectors": {
+    "bpeqiyev": ".bubble-element.DateInput",
+    "bpfileiid": ".bubble-element.FileInput"
   }
 }

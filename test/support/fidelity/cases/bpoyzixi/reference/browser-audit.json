@@ -1,8 +1,9 @@
 {
   "status": "captured",
   "scope": "authorized-controlled-source",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i63-datetime-numbers-file",
+  "url": "https://tiptap-plugin.bubbleapps.io/version-83jop/bubbleex-i63-datetime-numbers-file",
   "chromium": "140.0.7339.186",
+  "platform": "linux",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpoyzixi",
   "results": [
@@ -92,6 +93,7 @@
           },
           "bperdgvn": {
             "tag": "input",
+            "value": "",
             "box": {
               "x": 16,
               "y": 92,
@@ -304,6 +306,7 @@
           },
           "bperdgvn": {
             "tag": "input",
+            "value": "",
             "box": {
               "x": 16,
               "y": 92,
@@ -430,5 +433,6 @@
         }
       }
     }
-  ]
+  ],
+  "architecture": "x64"
 }

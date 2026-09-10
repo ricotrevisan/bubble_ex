@@ -21,8 +21,9 @@ function arg(name, fallback = null) {
 const caseDir = arg("--case");
 const htmlPath = arg("--html");
 const reportPath = arg("--report");
+const sourceUrl = arg("--capture-source");
 
-if (!caseDir || !htmlPath || !reportPath) {
+if (!caseDir || (!htmlPath && !sourceUrl) || !reportPath) {
   console.error("usage: node run.mjs --case CASE_DIR --html CANDIDATE.html --report OUT.json");
   process.exit(2);
 }
@@ -39,7 +40,7 @@ const textNodeIds = new Set(caseJson.text_node_ids);
 const pin = caseJson.browser;
 
 function inspectScript(ids) {
-  return ({ ids }) => {
+  return ({ ids, source = false, selectors = {} }) => {
     const properties = [
       "display",
       "visibility",
@@ -60,7 +61,7 @@ function inspectScript(ids) {
     ];
     const elements = {};
     for (const id of ids) {
-      const matches = document.querySelectorAll(`[data-bubble-id="${id}"]`);
+      const matches = document.querySelectorAll(source ? (selectors[id] || `.bubble-element.${CSS.escape(id)}`) : `[data-bubble-id="${id}"]`);
       const element = matches.length === 1 ? matches[0] : null;
       if (!element) {
         elements[id] = { absent: true };
@@ -70,6 +71,7 @@ function inspectScript(ids) {
       const computedStyle = getComputedStyle(element);
       elements[id] = {
         tag: element.tagName.toLowerCase(),
+        ...(element.tagName === "INPUT" ? { value: element.value } : {}),
         box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
         ...Object.fromEntries(properties.map((property) => [property, computedStyle[property]])),
       };
@@ -162,6 +164,15 @@ function recordMismatch(mismatches, category, width, id, detail) {
 }
 
 async function main() {
+  if ((pin.platform && pin.platform !== process.platform) || (pin.arch && pin.arch !== process.arch)) {
+    throw new Error("Browser platform differs from the reference; run scripts/fidelity_linux.sh");
+  }
+  if (sourceUrl) {
+    const expected = `https://${caseJson.source.bubble_id}.bubbleapps.io/version-${caseJson.source.app_version}/${caseJson.source.page_path}`;
+    if (process.env.BUBBLE_RECAPTURE !== "1" || sourceUrl !== expected) {
+      throw new Error("Capture requires BUBBLE_RECAPTURE=1 and the exact manifest source URL");
+    }
+  }
   let chromium;
   try {
     ({ chromium } = require("playwright"));
@@ -195,23 +206,44 @@ async function main() {
     for (const width of viewports) {
       const page = await browser.newPage({
         viewport: { width, height: viewportHeight },
+        ...(sourceUrl && process.env.BUBBLE_CAPTURE_USERNAME ? { httpCredentials: {
+          username: process.env.BUBBLE_CAPTURE_USERNAME,
+          password: process.env.BUBBLE_CAPTURE_PASSWORD,
+          origin: new URL(sourceUrl).origin,
+        }} : {}),
         deviceScaleFactor: pin.dpr || 1,
         locale: pin.locale || "en-US",
         reducedMotion: "reduce",
       });
-      await page.goto(pathToFileURL(htmlPath).href);
+      await page.goto(sourceUrl || pathToFileURL(htmlPath).href);
+      if (sourceUrl) {
+        await page.waitForSelector(".bubble-element.Page");
+        await page.waitForLoadState("networkidle");
+      }
       await page.evaluate(async () => {
         await document.fonts.ready;
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       });
-      const audit = await page.evaluate(inspectScript(nodeIds), { ids: nodeIds });
-      const screenshot = `candidate-${width}x${viewportHeight}.png`;
+      const audit = await page.evaluate(inspectScript(nodeIds), { ids: nodeIds, source: Boolean(sourceUrl), selectors: caseJson.source_selectors || {} });
+      if (sourceUrl && Object.values(audit.elements).some((element) => element.absent)) {
+        throw new Error(`Source capture has missing nodes at ${width}px`);
+      }
+      const screenshot = `${sourceUrl ? "" : "candidate-"}${width}x${viewportHeight}.png`;
       await page.screenshot({ path: path.join(workDir, screenshot), fullPage: true });
       candidateByWidth.set(width, { width, height: viewportHeight, screenshot, audit });
       await page.close();
     }
   } finally {
     await browser.close();
+  }
+
+  if (sourceUrl) {
+    fs.writeFileSync(reportPath, JSON.stringify({
+      status: "captured", scope: "authorized-controlled-source", url: sourceUrl,
+      chromium: version, platform: process.platform, architecture: process.arch, deviceScaleFactor: pin.dpr || 1, sourcePageId: caseJson.source.page_id,
+      results: [...candidateByWidth.values()],
+    }, null, 2) + "\n");
+    return;
   }
 
   const geometry = [];
@@ -225,6 +257,14 @@ async function main() {
     const { width, height } = referenceResult;
     const candidateResult = candidateByWidth.get(width);
     if (!candidateResult) throw new Error(`Missing candidate viewport ${width}`);
+
+    for (const [id, element] of Object.entries(referenceResult.audit.elements)) {
+      if (Object.hasOwn(element, "value") && candidateResult.audit.elements[id]?.value !== element.value) {
+        recordMismatch(mismatches, "input_value", width, id, {
+          reference: element.value, candidate: candidateResult.audit.elements[id]?.value,
+        });
+      }
+    }
 
     const heightError = candidateResult.audit.scrollHeight - referenceResult.audit.scrollHeight;
     documentHeights.push({

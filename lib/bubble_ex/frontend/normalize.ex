@@ -618,13 +618,13 @@ defmodule BubbleEx.Frontend.Normalize do
   @text_typed_input_formats %{
     "currency" => :currency,
     "date" => :date,
-    "decimal" => :decimal,
-    "euro_date" => :euro_date,
-    "integer" => :integer,
-    "percent" => :percent,
+    "float_number" => :decimal,
+    "date_2" => :euro_date,
+    "int_number" => :integer,
+    "percentage" => :percent,
     "us_phone" => :phone,
-    "address" => :address,
-    "numbers" => :numbers
+    "geographic_address" => :address,
+    "numerical_ref" => :numbers
   }
 
   defp classify_input(raw) do
@@ -658,7 +658,7 @@ defmodule BubbleEx.Frontend.Normalize do
       type in [nil, "date"] ->
         {:native, :input, :date_input}
 
-      type in ["datetime", "date_time"] ->
+      type == "date_time" ->
         {:native, :input, :datetime_input}
 
       true ->
