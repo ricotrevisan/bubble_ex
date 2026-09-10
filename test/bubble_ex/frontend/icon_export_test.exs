@@ -5,6 +5,22 @@ defmodule BubbleEx.Frontend.IconExportTest do
   alias BubbleEx.Frontend.{Auth, Fetch}
   alias BubbleEx.FrontendFixtures
 
+  test "icon layout does not override initial visibility" do
+    payload = payload("material outlined arrow_forward")
+
+    payload =
+      update_in(
+        payload,
+        ["pages", "index", "elements", "button", "properties"],
+        &Map.put(&1, "is_visible", false)
+      )
+
+    assert {:ok, model} = Frontend.normalize(payload)
+    css = BubbleEx.Frontend.Export.Css.page(hd(model.pages))
+    assert css =~ "display: none;"
+    refute css =~ "display: inline-flex;"
+  end
+
   @tag :tmp_dir
   test "exports an outlined Material label button with its authored icon styling", %{tmp_dir: tmp} do
     payload = payload("material outlined arrow_forward")

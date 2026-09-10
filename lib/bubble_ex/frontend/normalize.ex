@@ -1156,9 +1156,19 @@ defmodule BubbleEx.Frontend.Normalize do
     raw
     |> box_dimensions(sidecar)
     |> put_fixed_container_dimensions(raw)
+    |> fit_aspect_image_height(raw)
     |> Map.merge(box_offsets(raw, sidecar))
     |> Map.merge(box_flags(raw))
     |> Map.reject(fn {_k, v} -> is_nil(v) or v == false end)
+  end
+
+  # Bubble's fit-height aspect image derives its height from width. Vertical
+  # editor bounds can retain the image's old size but do not constrain it.
+  defp fit_aspect_image_height(box, raw) do
+    if Payload.type(raw) == "Image" and Payload.prop(raw, "fit_height") == true and
+         Payload.prop(raw, "single_height") != true and not is_nil(canonical_aspect_ratio(raw)),
+       do: Map.drop(box, [:height, :min_height, :max_height]),
+       else: box
   end
 
   defp box_sidecar(raw) do

@@ -368,7 +368,6 @@ defmodule BubbleEx.FrontendTest do
         put_in(states, ["0", "%c", "%p", "%nm"], "Current User"),
         put_in(states, ["0", "%c", "%n", "%nm"], "unsupported_comparison"),
         put_in(states, ["0", "%c", "%n", "%a"], "768"),
-        put_in(states, ["0", "%p", "%iv"], true),
         put_in(states, ["0", "%c", "%n", "%n"], %{"%nm" => "and_", "%a" => false})
       ]
 

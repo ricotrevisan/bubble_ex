@@ -59,6 +59,32 @@ defmodule BubbleEx.Frontend.LayoutDefaultsTest do
     assert css =~ "grid-template-columns: repeat(3, minmax(0, 1fr));"
   end
 
+  test "fit-height aspect images ignore stale vertical bounds while fixed-height images retain them" do
+    properties = %{
+      "%w" => 240,
+      "%h" => 240,
+      "min_width_css" => "24px",
+      "min_height_css" => "240px",
+      "single_width" => true,
+      "single_height" => false,
+      "fit_height" => true,
+      "use_aspect_ratio" => true,
+      "aspect_ratio_width" => 1,
+      "aspect_ratio_height" => 1
+    }
+
+    assert {:ok, model} = Frontend.normalize(payload("row", "Image", properties))
+    image = hd(hd(model.pages).children)
+    assert image.box[:width] == "24px"
+    refute image.box[:height]
+    refute image.box[:min_height]
+    refute image.box[:max_height]
+
+    fixed = Map.merge(properties, %{"single_height" => true, "fit_height" => false})
+    assert {:ok, model} = Frontend.normalize(payload("row", "Image", fixed))
+    assert hd(hd(model.pages).children).box[:min_height] == "240px"
+  end
+
   defp payload(layout, type, properties) do
     %{
       "_id" => "defaults",
