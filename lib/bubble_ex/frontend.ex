@@ -14,7 +14,7 @@ defmodule BubbleEx.Frontend do
   """
 
   alias BubbleEx.{Error, Telemetry}
-  alias BubbleEx.Frontend.{Auth, Export, Fetch, Normalize, Normalized}
+  alias BubbleEx.Frontend.{Auth, Export, Fetch, InitialState, Normalize, Normalized}
 
   @type normalize_option :: {atom(), term()}
   @type export_option ::
@@ -88,6 +88,7 @@ defmodule BubbleEx.Frontend do
   @spec export_fetched(term(), String.t(), keyword(), Fetch.Context.t()) ::
           {:ok, Export.Result.t()} | {:error, Error.t()}
   def export_fetched(payload, out_dir, opts, %Fetch.Context{} = context) do
+    context = %{context | snapshot_at: context.snapshot_at || DateTime.utc_now()}
     taints = Auth.taints(context.auth)
 
     if tainted?(out_dir, taints) do
@@ -95,14 +96,21 @@ defmodule BubbleEx.Frontend do
        Error.new(:export_blocked, "export blocked by credential-tainted output path", %{})}
     else
       with {:ok, model} <- normalize(payload, credential_taints: taints) do
-        internal_opts =
-          opts
-          |> Keyword.put(:fetch_context, context)
-          |> Keyword.put(:credential_taints, taints)
+        model = InitialState.project(model, context)
 
-        export(model, out_dir, internal_opts)
+        export(model, out_dir, fetched_options(opts, context, taints))
       end
     end
+  end
+
+  defp fetched_options(opts, context, taints) do
+    initial_user = if InitialState.anonymous?(context), do: "anonymous", else: "unknown"
+
+    opts
+    |> Keyword.put(:fetch_context, context)
+    |> Keyword.put(:credential_taints, taints)
+    |> Keyword.put(:initial_user, initial_user)
+    |> Keyword.put(:snapshot_at, DateTime.to_iso8601(context.snapshot_at))
   end
 
   defp tainted?(value, taints) do

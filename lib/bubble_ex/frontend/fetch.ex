@@ -12,11 +12,12 @@ defmodule BubbleEx.Frontend.Fetch do
   defmodule Context do
     @moduledoc false
     @enforce_keys [:page_url, :auth]
-    defstruct [:page_url, :auth, font_sources: []]
+    defstruct [:page_url, :auth, :snapshot_at, font_sources: []]
 
     @type t :: %__MODULE__{
             page_url: String.t(),
             auth: BubbleEx.Frontend.Auth.t(),
+            snapshot_at: DateTime.t() | nil,
             font_sources: [String.t()]
           }
   end

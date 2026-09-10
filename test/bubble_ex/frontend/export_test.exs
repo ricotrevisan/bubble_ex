@@ -8,7 +8,168 @@ defmodule BubbleEx.Frontend.ExportTest do
 
   @scan [secret_scan_adapter: FrontendFixtures.clean_scanner()]
 
+  @tag :tmp_dir
+  test "fetched page exports link omitted page IDs to their public routes", %{tmp_dir: tmp} do
+    payload = FrontendFixtures.two_page_app()
+
+    payload =
+      put_in(
+        payload,
+        ["pages", "home", "elements", "toAbout", "properties", "destination"],
+        "pgabout"
+      )
+
+    url = "https://example.bubbleapps.io/version-demo/index?tracking=discard"
+    {:ok, _, auth} = BubbleEx.Frontend.Auth.prepare(url, [])
+    context = %BubbleEx.Frontend.Fetch.Context{page_url: url, auth: auth}
+
+    assert {:ok, _} =
+             Frontend.export_fetched(
+               payload,
+               tmp,
+               @scan ++ [force: true, pages: ["home"]],
+               context
+             )
+
+    html = File.read!(Path.join(tmp, "pages/index/index.html"))
+    assert html =~ ~s(href="https://example.bubbleapps.io/version-demo/about")
+    refute html =~ ~s(href="pgabout")
+    refute html =~ "tracking=discard"
+  end
+
   describe "export_payload/3" do
+    @tag :tmp_dir
+    test "modern compact row children default to fill width", %{tmp_dir: tmp} do
+      payload = %{
+        "_id" => "default-fill",
+        "pages" => %{
+          "index" => %{
+            "%x" => "Page",
+            "%nm" => "index",
+            "%p" => %{"container_layout" => "row"},
+            "%el" =>
+              Map.new(["left", "right"], fn id ->
+                {id,
+                 %{
+                   "%x" => "Group",
+                   "id" => id,
+                   "%p" => %{
+                     "container_layout" => "column",
+                     "%w" => 280,
+                     "min_width_css" => "320px"
+                   }
+                 }}
+              end)
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, tmp, @scan ++ [force: true])
+      css = File.read!(Path.join(tmp, "styles/pages/index.css"))
+      assert length(Regex.scan(~r/flex-basis: 0;/, css)) == 2
+      assert length(Regex.scan(~r/flex-grow: 1;/, css)) == 2
+      refute css =~ "width: 280px"
+    end
+
+    @tag :tmp_dir
+    test "compact groups without obsolete editor widths fill their modern parent", %{tmp_dir: tmp} do
+      payload = %{
+        "_id" => "fill",
+        "pages" => %{
+          "index" => %{
+            "%x" => "Page",
+            "%nm" => "index",
+            "%p" => %{"container_layout" => "row"},
+            "%el" => %{
+              "row" => %{"%x" => "Group", "id" => "row", "%p" => %{"container_layout" => "row"}}
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, tmp, @scan)
+      css = File.read!(Path.join(tmp, "styles/pages/index.css"))
+      assert css =~ "flex-grow: 1;"
+      assert css =~ "flex-basis: 0;"
+    end
+
+    @tag :tmp_dir
+    test "floating reusable content follows page content in document order", %{tmp_dir: tmp} do
+      payload = %{
+        "_id" => "portal-order",
+        "element_definitions" => %{
+          "header" => %{
+            "%x" => "CustomDefinition",
+            "id" => "header",
+            "%p" => %{"%et" => "FloatingGroup", "container_layout" => "row"},
+            "%el" => %{"label" => %{"%x" => "Text", "%p" => %{"%3" => "Floating header"}}}
+          }
+        },
+        "pages" => %{
+          "index" => %{
+            "%x" => "Page",
+            "%nm" => "index",
+            "%p" => %{"container_layout" => "column"},
+            "%el" => %{
+              "header" => %{
+                "%x" => "CustomElement",
+                "%p" => %{"definition" => "header", "order" => 1}
+              },
+              "text" => %{"%x" => "Text", "%p" => %{"%3" => "Page content", "order" => 2}}
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, tmp, @scan)
+      html = File.read!(Path.join(tmp, "pages/index/index.html"))
+      assert html =~ ~r/Page content.*Floating header/s
+    end
+
+    @tag :tmp_dir
+    test "aspect-ratio images fill their parent and preserve individual borders", %{tmp_dir: tmp} do
+      payload = %{
+        "_id" => "responsive-image",
+        "pages" => %{
+          "index" => %{
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "image" => %{
+                "%x" => "Image",
+                "id" => "image",
+                "%p" => %{
+                  "%w" => 320,
+                  "%h" => 240,
+                  "use_aspect_ratio" => true,
+                  "aspect_ratio_width" => 1257,
+                  "aspect_ratio_height" => 768,
+                  "min_width_css" => "320px",
+                  "four_border_style" => true,
+                  "border_style_top" => "solid",
+                  "border_color_top" => "#DBDBDB",
+                  "border_style_left" => "none"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, tmp, @scan ++ [force: true])
+      css = File.read!(Path.join(tmp, "styles/pages/index.css"))
+
+      assert css =~
+               "width: calc(100% - var(--bubble-image-border-left) - var(--bubble-image-border-right))"
+
+      assert css =~ "aspect-ratio: 1257 / 768"
+      assert css =~ "box-sizing: content-box"
+      assert css =~ "border-top: 1px solid #DBDBDB"
+      assert css =~ "border-left: none"
+      refute css =~ "height: 240px"
+    end
+
     @tag :tmp_dir
     test "writes the package skeleton and returns a Result", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
@@ -189,9 +350,9 @@ defmodule BubbleEx.Frontend.ExportTest do
       html = File.read!(Path.join(out, "pages/index/index.html"))
       assert html =~ "<h1"
       assert html =~ "Hello"
-      assert html =~ ~s(<p data-bubble-id="elNormal")
+      assert html =~ ~r/<p\b[^>]* data-bubble-id="elNormal"/
       assert html =~ ">Body</p>"
-      assert html =~ ~s(<h4 data-bubble-id="elH4")
+      assert html =~ ~r/<h4\b[^>]* data-bubble-id="elH4"/
       assert html =~ ">Heading four</h4>"
       assert html =~ "<button"
       assert html =~ ~s(type="button")
@@ -914,7 +1075,55 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
-    test "applies default style class and theme tokens to unstyled buttons", %{tmp_dir: tmp} do
+    test "compact shared style references override defaults and retain local overrides", %{
+      tmp_dir: tmp
+    } do
+      payload = %{
+        "_id" => "compact-style-app",
+        "settings" => %{
+          "client_safe" => %{
+            "default_styles" => %{"Text" => "body"},
+            "font_tokens" => %{"%d1" => "Inter"}
+          }
+        },
+        "styles" => %{
+          "body" => %{"type" => "Text", "properties" => %{"font_size" => 16}},
+          "headline" => %{
+            "%x" => "Text",
+            "%p" => %{"%fs" => 51, "%f" => "Poppins:::500", "line_height" => 1.2}
+          }
+        },
+        "pages" => %{
+          "index" => %{
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "heading" => %{
+                "%x" => "Text",
+                "id" => "heading",
+                "%s1" => "headline",
+                "%p" => %{"text" => "Build something", "%fs" => 40}
+              }
+            }
+          }
+        }
+      }
+
+      out = Path.join(tmp, "pkg")
+      assert {:ok, _} = Frontend.export_payload(payload, out, @scan)
+      html = File.read!(Path.join(out, "pages/index/index.html"))
+      assert html =~ ~s(class="s-headline")
+      refute html =~ ~s(class="s-body")
+      assert File.read!(Path.join(out, "styles/shared.css")) =~ "font-size: 51px"
+      assert File.read!(Path.join(out, "styles/shared.css")) =~ "font-family: var(--font_default)"
+      assert File.read!(Path.join(out, "styles/pages/index.css")) =~ "font-size: 40px"
+    end
+
+    @tag :tmp_dir
+    test "creation defaults do not reattach a removed style to an existing button", %{
+      tmp_dir: tmp
+    } do
       out = Path.join(tmp, "pkg")
 
       payload = %{
@@ -958,10 +1167,48 @@ defmodule BubbleEx.Frontend.ExportTest do
 
       assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
       html = File.read!(Path.join(out, "pages/index/index.html"))
-      assert html =~ ~s(class="s-button-primary-button")
+      refute html =~ ~s(class="s-button-primary-button")
+      assert html =~ ~s(class="bubbleex-text-default")
       shared = File.read!(Path.join(out, "styles/shared.css"))
       assert shared =~ "--color_primary_default:"
       assert shared =~ "--font_default:"
+    end
+
+    @tag :tmp_dir
+    test "modern fixed-size placeholders use authored CSS dimensions before editor dimensions", %{
+      tmp_dir: tmp
+    } do
+      payload = %{
+        "_id" => "placeholder-size",
+        "pages" => %{
+          "index" => %{
+            "type" => "Page",
+            "name" => "index",
+            "properties" => %{"container_layout" => "row"},
+            "elements" => %{
+              "html" => %{
+                "type" => "HTML",
+                "id" => "html",
+                "%p" => %{
+                  "%w" => 280,
+                  "%h" => 150,
+                  "single_width" => true,
+                  "single_height" => true,
+                  "min_width_css" => "24px",
+                  "min_height_css" => "24px"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, _} = Frontend.export_payload(payload, tmp, @scan)
+      css = File.read!(Path.join(tmp, "styles/pages/index.css"))
+      assert css =~ "width: 24px;"
+      assert css =~ "height: 24px;"
+      refute css =~ "width: 280px;"
+      refute css =~ "height: 150px;"
     end
 
     @tag :tmp_dir
@@ -1243,8 +1490,8 @@ defmodule BubbleEx.Frontend.ExportTest do
       html = File.read!(Path.join(out, "pages/index/index.html"))
       assert html =~ "<strong>FEATURES</strong>"
       assert html =~ "<ul><li>One</li></ul>"
-      assert html =~ ~s(<div data-bubble-id="t1")
-      refute html =~ ~s(<p data-bubble-id="t1")
+      assert html =~ ~r/<div\b[^>]* data-bubble-id="t1"/
+      refute html =~ ~r/<p\b[^>]* data-bubble-id="t1"/
       assert html =~ ~s(href="https://example.com")
       assert html =~ ">Docs</a>"
       assert html =~ "xss"
@@ -1288,6 +1535,47 @@ defmodule BubbleEx.Frontend.ExportTest do
       |> hd()
       |> String.trim("\"")
     end)
+  end
+
+  @tag :tmp_dir
+  test "compact floating reusable definitions project their base positioning", %{tmp_dir: tmp} do
+    payload = advanced_reusable_app()
+
+    payload =
+      put_in(payload, ["element_definitions", "outer-map", "properties", "%et"], "FloatingGroup")
+
+    out = Path.join(tmp, "floating-reusable")
+    assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
+    definition = Enum.find(result.model.reusables, &(&1.map_key == "outer-map"))
+    assert definition.variant == :floating_group
+    css = File.read!(Path.join(out, "styles/pages/index.css"))
+    instance_id = "advanced/live/reusable_instance/pages/home/elements/floating/elements/outer"
+
+    assert css =~
+             ~r/\[data-exporter-id="#{Regex.escape(instance_id)}"\] \{[^}]*position: fixed;[^}]*top: 0;/s
+
+    refute css =~
+             ~r/\[data-exporter-id="#{Regex.escape(instance_id)}"\] \{[^}]*position: relative;/s
+  end
+
+  @tag :tmp_dir
+  test "reusable popup definitions stay closed at the instance boundary", %{tmp_dir: tmp} do
+    payload = advanced_reusable_app()
+
+    payload =
+      put_in(payload, ["element_definitions", "outer-map", "properties", "element_type"], "Popup")
+
+    out = Path.join(tmp, "popup-reusable")
+    assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
+    html = File.read!(Path.join(out, "pages/index/index.html"))
+    document = Floki.parse_document!(html)
+    assert [_] = Floki.find(document, "[data-bubble-id=outer-instance][hidden]")
+    refute html =~ "Inner label"
+    definition = Enum.find(result.model.reusables, &(&1.map_key == "outer-map"))
+    assert definition.placeholder?
+
+    assert definition.bindings["plugin"].payload["element"] ==
+             payload["element_definitions"]["outer-map"]
   end
 
   @tag :tmp_dir

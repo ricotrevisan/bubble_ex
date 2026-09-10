@@ -512,7 +512,7 @@ defmodule BubbleEx.FrontendTest do
       assert row.box.align_self == "center"
       refute Map.has_key?(row.box, :x)
       refute Map.has_key?(row.box, :y)
-      refute Map.has_key?(row.box, :z_index)
+      assert row.box.z_index == 6
       assert row.box.max_width == "1120px"
       assert row.box.min_height == "72px"
       assert row.box.padding == "12px 16px 12px 16px"

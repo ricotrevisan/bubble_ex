@@ -28,7 +28,7 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     }
 
     css = Css.shared(model)
-    assert css =~ "--font_default: \"Open Sans\", Helvetica, Arial, sans-serif;"
+    assert css =~ "--font_default: \"Open Sans\";"
     assert css =~ "--color_primary_default: rgb(79, 70, 229);"
     assert css =~ "--color_primary_default_rgb: 79, 70, 229;"
     assert css =~ "--color_text_default: rgb(15, 23, 42);"
@@ -51,11 +51,96 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     }
 
     css = Css.shared(%Normalized{styles: [style]})
-    assert css =~ ~s(font-family: "Inter", Helvetica, Arial, sans-serif;)
+    assert css =~ "font-family: Inter;"
     assert css =~ "font-size: 15px;"
     assert css =~ "letter-spacing: 0px;"
     assert css =~ "line-height: 1.4;"
     assert css =~ "padding-top: 12px;"
+  end
+
+  test "native control typography is available inline without freezing responsive fonts" do
+    control =
+      node("select",
+        kind: :dropdown,
+        style: %{
+          resolved: %{
+            "font_face" => "Inter",
+            "font_size" => 16,
+            "font_weight" => 500,
+            "background" => "#fff"
+          }
+        }
+      )
+
+    css = Css.inline_control_font(control)
+    assert css =~ "font-family: Inter"
+    assert css =~ "font-size: 16px"
+    assert css =~ "font-weight: 500"
+    refute css =~ "background"
+    assert Css.inline_control_font(%{control | responsive: [%{"media" => %{}}]}) == ""
+  end
+
+  test "aspect-ratio image insets follow independent responsive border changes" do
+    image =
+      node("image",
+        kind: :image,
+        layout: %{fill_width?: true},
+        style: %{resolved: %{"aspect-ratio" => "3 / 2", "border" => "1px solid #000"}},
+        responsive: [
+          %{
+            "media" => %{"operator" => "<", "width" => 768},
+            "paint" => %{"border-left" => "none", "border-right" => "none"}
+          }
+        ]
+      )
+
+    css = Css.page(image)
+    [base, mobile] = String.split(css, "@media")
+    assert base =~ "--bubble-image-border-left: 1.0px"
+
+    assert base =~
+             "width: calc(100% - var(--bubble-image-border-left) - var(--bubble-image-border-right))"
+
+    assert mobile =~ "--bubble-image-border-left: 0px"
+    assert mobile =~ "--bubble-image-border-right: 0px"
+    refute mobile =~ "--bubble-image-border-top:"
+  end
+
+  test "preserves user color and font tokens referenced by live shared styles" do
+    model = %Normalized{
+      styles: [],
+      source: %Source{
+        path: [],
+        payload: %{
+          "settings" => %{
+            "client_safe" => %{
+              "color_tokens_user" => %{
+                "%d1" => %{
+                  "customInk" => %{"rgba" => "rgba(26,26,26,1)", "%del" => true},
+                  "customBlue" => %{"rgba" => "#0205D3"},
+                  "bad};body{" => %{"rgba" => "rgba(1,2,3,1)"}
+                }
+              },
+              "font_tokens_user" => %{
+                "%d1" => %{
+                  "customFont" => %{"font_family" => "Open Sans"},
+                  "retiredFont" => %{"font_family" => "Founders Grotesk:::custom", "%del" => true},
+                  "badFont" => %{"font_family" => "serif; color:red"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    css = Css.shared(model)
+    assert css =~ "--color_customInk_default: rgb(26, 26, 26);"
+    assert css =~ "--color_customBlue_default_rgb: 2, 5, 211;"
+    assert css =~ ~s(--font_customFont_default: "Open Sans";)
+    assert css =~ ~s(--font_retiredFont_default: "Founders Grotesk";)
+    refute css =~ "bad};body{"
+    refute css =~ "color:red"
   end
 
   test "emits page paint and box dimensions and centers a max-width fill child" do
@@ -77,7 +162,7 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     css = Css.page(page)
 
     assert rule(css, "page") =~ "background: #F4F7FB;"
-    assert rule(css, "page") =~ ~s(font-family: "Inter", Helvetica, Arial, sans-serif;)
+    assert rule(css, "page") =~ "font-family: Inter;"
     assert rule(css, "page") =~ "min-height: 900px;"
     assert rule(css, "page") =~ "padding: 20px 16px 56px;"
 
@@ -172,7 +257,7 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     css = Css.page(parent)
 
     assert rule(css, "relative") =~ "position: relative;"
-    assert rule(css, "relative") =~ "grid-template-columns: repeat(3, 1fr);"
+    assert rule(css, "relative") =~ "grid-template-columns: repeat(3, minmax(0, 1fr));"
 
     for {id, _cell, justify, align} <- cells do
       child_rule = rule(css, id)
@@ -267,6 +352,7 @@ defmodule BubbleEx.Frontend.Export.CssTest do
       layout: opts[:layout],
       box: Keyword.get(opts, :box, %{}),
       style: Keyword.get(opts, :style, %{resolved: %{}}),
+      responsive: Keyword.get(opts, :responsive, []),
       children: Keyword.get(opts, :children, [])
     }
   end

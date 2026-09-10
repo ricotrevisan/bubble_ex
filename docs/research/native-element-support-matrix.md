@@ -1,6 +1,7 @@
 # Native Bubble web-element support matrix
 
-Updated 2026-09-10 after the input-source repair and overlay runtime audit.
+Updated 2026-09-11 after the input-source repair, overlay audit, and initial
+landing-page renderer fixes.
 This is the current implementation and evidence ledger. The earlier proposed
 S1/S2 tiers and catalog research remain in the [historical matrix](native-element-support-matrix-history.md).
 
@@ -26,7 +27,7 @@ defines the geometry, typography, collapse, document-size, semantics, and pixel 
 | Shape | Decorative paint, border, radius, rotation, dimensions | `bpmkbvvo` | Workflow behavior remains metadata |
 | Button | Label; static Font Awesome 4 icon and icon+label; unambiguous single navigation action can lower to a link | `bpmkbvvo`, `bpiordvb` | No general click-workflow execution; other icon families/variants remain unsupported |
 | Link | Text or static Font Awesome 4 icon/icon+label; explicit destination; new tab, nofollow, literal disabled | `bptaixqv`, `bpaupfbj` | Unresolved destinations stay bindings; no inferred navigation |
-| Icon | Static Font Awesome 4 SVG bundled locally | `bpgwgmpz` | Other families, spin, and runtime variants remain placeholders |
+| Icon | Static Font Awesome 4 and Material outlined SVG bundled locally | `bpgwgmpz` covers FA4; Material has unit and landing-page observations | Other families, spin, and runtime variants remain placeholders |
 | Floating Group | Always-visible, top-right, Column container | `bpgwgmpz` | Other anchors, reusable bases, and show/hide states lack parity evidence |
 | Multiline Input | Fixed-height or static fit-height `textarea` | `bpqqfagk`, `bpuzekut` | Fit-height is the captured initial content; Bubble autosize/validation is not executed |
 | Checkbox | Literal checked/unchecked native checkbox | `bpqqfagk` | Dynamic state, binding, and workflows are not executed |
@@ -42,7 +43,8 @@ defines the geometry, typography, collapse, document-size, semantics, and pixel 
 | Popup | Hidden runtime placeholder; complete container definition retained | `bpndkqfs`, `bptvorpv` initial states | **No visible Popup support.** Opening, backdrop, placement, focus, and dismissal require runtime behavior |
 | Group Focus | Hidden runtime placeholder; reference and complete container definition retained | `bptvorpv` initial state | **No anchored menu behavior.** Showing, reference placement, and outside-click dismissal are characterized only in Bubble |
 | Repeating Group | Dimension-preserving runtime placeholder | `bpgwgmpz` empty boundary | No data, cells, scrolling, or virtualization |
-| Table / Video / Map / Alert / HTML / Built on Bubble | Unsupported placeholders | No native parity case | No promotion based only on an approximate box |
+| HTML: literal path-only SVG | Strictly sanitized inline SVG | Unit tests and landing-page observations | No scripts, external references, arbitrary markup, or dynamic HTML |
+| Table / Video / Map / Alert / other HTML / Built on Bubble | Unsupported placeholders | No native parity case | No promotion based only on an approximate box |
 | Reusable definition / instance | Static Group-based definitions and recursive expansion with stable instance IDs | `bpgwgmpz` | Missing references/cycles emit findings; parameters, runtime states, and Popup/Floating reusable bases lack parity evidence |
 
 Installed plugin elements remain placeholders, including Bubble-made plugins
@@ -50,6 +52,16 @@ such as Rich Text Editor and Multiselect Dropdown. Native mobile and the legacy
 responsive renderer are outside this web contract. Catalog provenance is retained
 in the historical matrix; current lowering is defined by
 [`Normalize`](../../lib/bubble_ex/frontend/normalize.ex).
+
+The landing-page work additionally lowers compact shared styles, user design
+tokens, authored aspect-ratio image borders, floating reusable anchors, and
+exact page-width breakpoint paint/spacing conditions. Fetched exports can apply
+direct logged-out visibility and snapshot a literal formatted year while
+retaining the original bindings. Material outlined icons also work in static
+icon buttons and links. These are bounded implementations with unit tests and
+private observations; they do not expand the 19 committed cases' parity claims.
+See the [landing-page rubric](landing-page-grading.md) for the separate acceptance
+test and remaining release gates.
 
 ## Corrections to earlier support claims
 

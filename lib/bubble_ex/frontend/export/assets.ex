@@ -76,7 +76,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
       :error ->
         finding =
-          asset_finding(asset.url, "icon sprite did not contain a safe Font Awesome symbol")
+          asset_finding(asset.url, "icon sprite did not contain a safe icon symbol")
           |> Map.put("refs", [node.exporter_id])
 
         %{state | findings: [finding | state.findings]}
@@ -412,7 +412,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
   defp sanitize_icon_sprite(bytes, fragment)
        when is_binary(bytes) and is_binary(fragment) do
-    with true <- Regex.match?(~r/^fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, fragment),
+    with true <- Regex.match?(~r/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, fragment),
          regex =
            Regex.compile!(
              "<symbol\\s+id=\\\"#{Regex.escape(fragment)}\\\"\\s+viewBox=\\\"([^\\\"]+)\\\"[^>]*>(.*?)</symbol>",
