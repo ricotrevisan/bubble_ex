@@ -267,7 +267,7 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp build_and_write(model, selected, out_dir, opts) do
-    plan = plan_names(model, selected)
+    plan = plan_names(model, selected, opts)
     nodes = selected ++ model.reusables
     {assets, asset_findings} = Assets.collect(nodes, opts)
 
@@ -303,7 +303,7 @@ defmodule BubbleEx.Frontend.Export do
     end
   end
 
-  defp plan_names(%Normalized{} = model, selected) do
+  defp plan_names(%Normalized{} = model, selected, opts) do
     {pages, _taken} =
       Enum.reduce(selected, {[], MapSet.new()}, fn page, {acc, taken} ->
         {dir, taken} = Naming.page_dirname(page.name, page.map_key, taken)
@@ -327,10 +327,26 @@ defmodule BubbleEx.Frontend.Export do
       pages: Enum.reverse(pages),
       reusables: reusables,
       styles: styles,
-      default_styles: default_styles(model),
-      page_by_ref: page_lookup(Enum.reverse(pages))
+      page_by_ref: page_lookup(Enum.reverse(pages)),
+      public_page_by_ref: public_page_lookup(model, opts)
     }
   end
+
+  defp public_page_lookup(model, opts) do
+    case Keyword.get(opts, :fetch_context) do
+      %Context{page_url: url} ->
+        Enum.reduce(model.pages, %{}, fn page, acc ->
+          destination = url |> URI.merge(public_page_route(page)) |> URI.to_string()
+          Enum.reduce(page_refs(page), acc, &Map.put(&2, &1, destination))
+        end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp public_page_route(%Node{name: "index"}), do: "./"
+  defp public_page_route(%Node{name: name}), do: URI.encode(name, &URI.char_unreserved?/1)
 
   defp page_lookup(pages) do
     Enum.reduce(pages, %{}, fn {page, dir}, acc ->
@@ -431,12 +447,12 @@ defmodule BubbleEx.Frontend.Export do
     instance_id =
       if is_binary(prefix), do: Naming.expanded_id(prefix, node), else: node.exporter_id
 
-    expanded_reusable_definition_css(expand(model, node), model, instance_id, stack)
+    expanded_reusable_definition_css(expand(model, node), model, instance_id, stack, node)
   end
 
   defp expanded_reusable_css(_node, _model, _prefix, _stack), do: ""
 
-  defp expanded_reusable_definition_css(%Node{} = definition, model, instance_id, stack) do
+  defp expanded_reusable_definition_css(%Node{} = definition, model, instance_id, stack, instance) do
     identity = definition.map_key
 
     if MapSet.member?(stack, identity) do
@@ -452,14 +468,15 @@ defmodule BubbleEx.Frontend.Export do
           &expanded_instance_css(&1, model, instance_id, next_stack)
         )
 
-      [definition_nested, Css.expanded_definition(definition, instance_id)]
+      [definition_nested, Css.expanded_definition(definition, instance_id, instance)]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("
 ")
     end
   end
 
-  defp expanded_reusable_definition_css(_definition, _model, _instance_id, _stack), do: ""
+  defp expanded_reusable_definition_css(_definition, _model, _instance_id, _stack, _instance),
+    do: ""
 
   defp asset_entries(assets, font_assets) do
     (Map.values(assets) ++ font_assets)
@@ -483,6 +500,9 @@ defmodule BubbleEx.Frontend.Export do
         {_page, to_dir} = plan.page_by_ref[dest]
         if to_dir == from_dir, do: "index.html", else: "../#{to_dir}/index.html"
 
+      Map.has_key?(plan.public_page_by_ref, dest) ->
+        plan.public_page_by_ref[dest]
+
       true ->
         dest
     end
@@ -493,8 +513,7 @@ defmodule BubbleEx.Frontend.Export do
   end
 
   defp style_class(%Node{} = node, plan) do
-    key = style_key(node) || plan.default_styles[bubble_type(node)]
-    plan.styles[key]
+    plan.styles[style_key(node)] || default_text_class(node)
   end
 
   defp style_class(_, _), do: nil
@@ -505,37 +524,26 @@ defmodule BubbleEx.Frontend.Export do
 
   defp style_key(_), do: nil
 
-  defp default_styles(%Normalized{source: %{payload: payload}}) when is_map(payload) do
-    get_in(payload, ["settings", "client_safe", "default_styles"]) || %{}
-  end
-
-  defp default_styles(_), do: %{}
-
   defp font_default(%Normalized{source: %{payload: payload}}) when is_map(payload) do
     get_in(payload, ["settings", "client_safe", "font_tokens", "%d1"])
   end
 
   defp font_default(_), do: nil
 
-  @bubble_types %{
-    page: "Page",
-    group: "Group",
-    text: "Text",
-    button: "Button",
-    input: "Input",
-    multiline_input: "MultiLineInput",
-    checkbox: "Checkbox",
-    dropdown: "Dropdown",
-    radio_buttons: "RadioButtons",
-    image: "Image",
-    shape: "Shape",
-    link: "Link",
-    icon: "Icon",
-    floating_group: "FloatingGroup"
-  }
+  defp default_text_class(%Node{kind: kind})
+       when kind in [
+              :text,
+              :button,
+              :link,
+              :input,
+              :multiline_input,
+              :dropdown,
+              :checkbox,
+              :radio_buttons
+            ],
+       do: "bubbleex-text-default"
 
-  defp bubble_type(%Node{kind: kind}), do: Map.get(@bubble_types, kind)
-  defp bubble_type(_), do: nil
+  defp default_text_class(_), do: nil
 
   defp page_title(%Node{attributes: %{"title" => title}}) when is_binary(title), do: title
   defp page_title(%Node{name: name}) when is_binary(name), do: name
@@ -578,7 +586,7 @@ defmodule BubbleEx.Frontend.Export do
         }
       end)
 
-    links = link_findings(selected, plan)
+    links = link_findings(selected ++ model.reusables, plan)
 
     reusable =
       (selected ++ model.reusables)
@@ -813,6 +821,7 @@ defmodule BubbleEx.Frontend.Export do
 
       {:reusable_instance, %Node{} = definition} ->
         identity = definition.map_key
+        node = if definition.placeholder?, do: %{node | placeholder?: true}, else: node
 
         if MapSet.member?(stack, identity) do
           [%{node | placeholder?: true} | nested]
@@ -883,6 +892,18 @@ defmodule BubbleEx.Frontend.Export do
       "fallback" => Keyword.get(opts, :fallback, false),
       "force" => Keyword.get(opts, :force, false)
     }
+
+    visible =
+      case Keyword.get(opts, :initial_user) do
+        user when user in ["anonymous", "unknown"] -> Map.put(visible, "initial_user", user)
+        _ -> visible
+      end
+
+    visible =
+      case Keyword.get(opts, :snapshot_at) do
+        at when is_binary(at) -> Map.put(visible, "snapshot_at", at)
+        _ -> visible
+      end
 
     if Keyword.has_key?(opts, :asset_access) do
       Map.put(visible, "asset_access", Atom.to_string(Keyword.fetch!(opts, :asset_access)))

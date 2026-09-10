@@ -18,11 +18,12 @@ defmodule BubbleEx.Frontend.Export.Css do
     button, input, textarea, select { font: inherit; }
     button { border: none; background: none; padding: 0; }
     textarea { resize: none; }
+    .bubbleex-text-default { font-family: var(--font_default); font-size: 14px; }
     """
 
     style_rules =
       Enum.map_join(styles, "\n", fn style ->
-        decls = declarations_from_paint(style.properties)
+        decls = style |> shared_paint(model) |> declarations_from_paint()
         if decls == "", do: "", else: ".#{style.class_name} {\n#{decls}}\n"
       end)
 
@@ -31,6 +32,28 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Enum.join("\n")
     |> String.trim_trailing()
     |> Kernel.<>("\n")
+  end
+
+  defp shared_paint(style, model) do
+    font = get_in(payload_client(model.source), ["font_tokens", "%d1"])
+
+    if style.applies_to in [
+         "Text",
+         "Button",
+         "Link",
+         "Input",
+         "MultilineInput",
+         "Dropdown",
+         "SearchBox"
+       ] do
+      properties = Map.put_new(style.properties, "font_size", 14)
+
+      if is_binary(font),
+        do: Map.put_new(properties, "font_face", "var(--font_default)"),
+        else: properties
+    else
+      style.properties
+    end
   end
 
   @spec page(Node.t(), keyword()) :: String.t()
@@ -49,7 +72,7 @@ defmodule BubbleEx.Frontend.Export.Css do
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n")
 
-    media = responsive_css(entries, opts)
+    media = responsive_css(entries, opts) <> breakpoint_css(entries, opts)
 
     [base, extras, media]
     |> Enum.reject(&(&1 == ""))
@@ -57,17 +80,33 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> then(fn css -> if css == "", do: "\n", else: String.trim_trailing(css) <> "\n" end)
   end
 
-  @spec expanded_definition(Node.t(), String.t()) :: String.t()
-  def expanded_definition(%Node{} = definition, instance_id) when is_binary(instance_id) do
+  # Chromium can initialize a select's displayed option before stylesheet fonts
+  # settle. Bubble supplies its local typography inline. Keep the same values
+  # available during element creation, without overriding responsive font rules.
+  @spec inline_control_font(Node.t()) :: String.t()
+  def inline_control_font(%Node{responsive: [], style: style}) when is_map(style) do
+    (style[:resolved] || style["resolved"] || %{})
+    |> stringify_keys()
+    |> Map.take(~w(font_face font_family font-family font_size font-size font_weight font-weight))
+    |> declarations_from_paint()
+    |> String.trim()
+  end
+
+  def inline_control_font(_node), do: ""
+
+  @spec expanded_definition(Node.t(), String.t(), Node.t() | nil) :: String.t()
+  def expanded_definition(%Node{} = definition, instance_id, instance \\ nil)
+      when is_binary(instance_id) do
     root_opts = [exporter_id_override: instance_id]
     child_opts = [id_prefix: instance_id]
-    root_definition = drop_instance_root_alignment(definition)
+    root_definition = definition |> instance_position(instance) |> drop_instance_root_alignment()
 
     root =
       [
         rule({root_definition, nil}, root_opts),
         extra_rule(root_definition, root_opts),
-        responsive_css([{root_definition, nil}], root_opts)
+        responsive_css([{root_definition, nil}], root_opts),
+        breakpoint_css([{root_definition, nil}], root_opts)
       ]
 
     children = Enum.map(definition.children, &page(&1, child_opts))
@@ -79,6 +118,16 @@ defmodule BubbleEx.Frontend.Export.Css do
       if String.trim(css) == "", do: "\n", else: String.trim_trailing(css) <> "\n"
     end)
   end
+
+  defp instance_position(%Node{variant: :floating_group} = definition, %Node{} = instance) do
+    %{
+      definition
+      | attributes: Map.merge(definition.attributes, instance.attributes),
+        box: Map.put(definition.box, :z_index, instance.box[:z_index] || definition.box[:z_index])
+    }
+  end
+
+  defp instance_position(definition, _instance), do: definition
 
   @color_token_names %{
     "%3" => "text",
@@ -98,7 +147,9 @@ defmodule BubbleEx.Frontend.Export.Css do
 
     decls =
       color_token_decls(colors) ++
-        font_token_decls(font)
+        font_token_decls(font) ++
+        user_token_decls(client["color_tokens_user"], :color) ++
+        user_token_decls(client["font_tokens_user"], :font)
 
     if decls == [] do
       ""
@@ -134,12 +185,57 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp color_token_decls(_), do: []
 
+  defp user_token_decls(%{"%d1" => tokens}, kind) when is_map(tokens) do
+    tokens
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.flat_map(fn {id, token} ->
+      if is_binary(id) and Regex.match?(~r/\A[A-Za-z0-9_-]+\z/, id) and is_map(token),
+        do: user_token_declaration(kind, id, token),
+        else: []
+    end)
+  end
+
+  defp user_token_decls(_tokens, _kind), do: []
+
+  defp user_token_declaration(:color, id, token) do
+    case parse_rgba(token["rgba"]) do
+      {css, rgb} ->
+        ["--color_#{id}_default: #{css};", "--color_#{id}_default_rgb: #{rgb};"]
+
+      nil ->
+        []
+    end
+  end
+
+  defp user_token_declaration(:font, id, token) do
+    case token["font_family"] do
+      family when is_binary(family) ->
+        family = family |> String.split(":::", parts: 2) |> hd()
+
+        if Regex.match?(~r/\A[A-Za-z0-9 ._-]+\z/, family),
+          do: [~s(--font_#{id}_default: "#{family}";)],
+          else: []
+
+      _ ->
+        []
+    end
+  end
+
   defp font_token_decls(family) when is_binary(family) and family != "" do
-    quoted = if String.contains?(family, " "), do: ~s("#{family}"), else: family
-    ["--font_default: #{quoted}, Helvetica, Arial, sans-serif;"]
+    user_token_declaration(:font, "", %{"font_family" => family})
+    |> Enum.map(&String.replace(&1, "--font__default:", "--font_default:"))
   end
 
   defp font_token_decls(_), do: []
+
+  defp parse_rgba("#" <> hex) when byte_size(hex) in [3, 6] do
+    if Regex.match?(~r/\A[0-9a-fA-F]+\z/, hex) do
+      hex = if byte_size(hex) == 3, do: String.replace(hex, ~r/./, "\\0\\0"), else: hex
+      <<r::binary-size(2), g::binary-size(2), b::binary-size(2)>> = hex
+      rgb = Enum.map_join([r, g, b], ", ", &(String.to_integer(&1, 16) |> Integer.to_string()))
+      {"rgb(#{rgb})", rgb}
+    end
+  end
 
   defp parse_rgba(value) when is_binary(value) do
     case Regex.run(
@@ -207,13 +303,14 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.merge(placement_css(node, parent_mode))
     |> Map.merge(floating_css(node))
     |> put_fill_sizing(node, parent_mode)
+    |> aspect_image_box(node)
     |> put_flex_grow(node)
     |> put_align_self(node)
     |> put_container_alignment(node)
     |> put_collapse(node)
   end
 
-  defp runtime_boundary_css(%Node{kind: :placeholder, variant: :runtime_overlay}),
+  defp runtime_boundary_css(%Node{variant: :runtime_overlay}),
     do: %{"display" => "none"}
 
   defp runtime_boundary_css(%Node{
@@ -225,6 +322,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp runtime_boundary_css(_node), do: %{}
 
   defp native_position_css(%Node{kind: :page}), do: %{}
+  defp native_position_css(%Node{kind: :reusable_instance}), do: %{}
   defp native_position_css(_node), do: %{"position" => "relative"}
 
   defp floating_css(%Node{kind: :floating_group, attributes: attributes}) do
@@ -232,6 +330,9 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> put_floating_axis(attributes["data-floating-vertical"], :vertical)
     |> put_floating_axis(attributes["data-floating-horizontal"], :horizontal)
   end
+
+  defp floating_css(%Node{kind: :reusable_definition, variant: :floating_group} = node),
+    do: floating_css(%{node | kind: :floating_group})
 
   defp floating_css(_node), do: %{}
 
@@ -276,8 +377,8 @@ defmodule BubbleEx.Frontend.Export.Css do
       :align_to_parent ->
         %{
           "display" => "grid",
-          "grid-template-columns" => "repeat(3, 1fr)",
-          "grid-template-rows" => "repeat(3, 1fr)",
+          "grid-template-columns" => "repeat(3, minmax(0, 1fr))",
+          "grid-template-rows" => "repeat(3, minmax(0, 1fr))",
           "position" => "relative"
         }
 
@@ -369,7 +470,54 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp image_fit(_, _), do: %{}
 
+  defp aspect_image_box(css, %Node{kind: :image}) do
+    if css["aspect-ratio"] do
+      css
+      |> Map.put("box-sizing", "content-box")
+      |> image_border_variables(true)
+      |> inset_image_dimensions(~w(width min-width max-width), ~w(left right))
+      |> inset_image_dimensions(~w(height min-height max-height), ~w(top bottom))
+    else
+      css
+    end
+  end
+
+  defp aspect_image_box(css, _node), do: css
+
+  defp image_border_variables(css, defaults? \\ false) do
+    Enum.reduce(~w(top right bottom left), css, fn side, acc ->
+      if defaults? or Map.has_key?(css, "border-#{side}") or Map.has_key?(css, "border"),
+        do: Map.put(acc, "--bubble-image-border-#{side}", "#{border_pixels(css, side)}px"),
+        else: acc
+    end)
+  end
+
+  defp border_pixels(css, side) do
+    case Regex.run(~r/^(\d+(?:\.\d+)?)px\s/, css["border-#{side}"] || css["border"] || "none") do
+      [_, number] -> number |> Float.parse() |> elem(0)
+      _ -> 0
+    end
+  end
+
+  defp inset_image_dimensions(css, keys, sides) do
+    Enum.reduce(keys, css, fn key, acc ->
+      case acc[key] do
+        size when is_binary(size) -> inset_image_dimension(acc, key, size, sides)
+        _ -> acc
+      end
+    end)
+  end
+
+  defp inset_image_dimension(css, key, size, sides) do
+    insets = Enum.map_join(sides, " - ", &"var(--bubble-image-border-#{&1})")
+
+    if Regex.match?(~r/^-?[0-9.]+(?:px|%)$/, size),
+      do: Map.put(css, key, "calc(#{size} - #{insets})"),
+      else: css
+  end
+
   defp native_display(:link), do: %{"display" => "block", "text-decoration" => "none"}
+  defp native_display(:text), do: %{"white-space" => "pre-wrap"}
 
   defp native_display(:icon),
     do: %{"align-items" => "center", "display" => "flex", "justify-content" => "center"}
@@ -593,6 +741,17 @@ defmodule BubbleEx.Frontend.Export.Css do
     if x == "0px" and y == "0px", do: props, else: Map.put(props, "translate", "#{x} #{y}")
   end
 
+  defp extra_rule(%Node{kind: :icon, variant: :inline_svg} = node, opts) do
+    id = prefixed_id(node, opts) |> escape()
+
+    """
+    [data-exporter-id="#{id}"] > svg {
+      width: 100%;
+      height: 100%;
+    }
+    """
+  end
+
   defp extra_rule(%Node{kind: :icon} = node, opts) do
     id = prefixed_id(node, opts) |> escape()
 
@@ -697,12 +856,14 @@ defmodule BubbleEx.Frontend.Export.Css do
     #{selector} {
       align-items: center;
       display: inline-flex;
-      gap: 16px;
+      gap: var(--bubble-button-gap, 8px);
     }
     #{selector} > svg {
       fill: currentColor;
-      height: 1em;
-      width: 1em;
+      color: var(--bubble-icon-color, currentColor);
+      flex-shrink: 0;
+      height: var(--bubble-icon-size, 24px);
+      width: var(--bubble-icon-size, 24px);
     }
     """
   end
@@ -711,6 +872,9 @@ defmodule BubbleEx.Frontend.Export.Css do
     raw = text_slot(node)
     id = prefixed_id(node, opts) |> escape()
     selector = "[data-exporter-id=\"#{id}\"]"
+
+    block_whitespace =
+      if Bbcode.block?(raw), do: "#{selector} { white-space: normal; }\n", else: ""
 
     bbcode =
       if Bbcode.present?(raw) do
@@ -732,7 +896,7 @@ defmodule BubbleEx.Frontend.Export.Css do
         ""
       end
 
-    bbcode
+    block_whitespace <> bbcode
   end
 
   defp extra_rule(%Node{kind: :slider, variant: :range} = node, opts) do
@@ -791,6 +955,34 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp media_width(%{"when" => %{"max_viewport_width" => w}}), do: w
   defp media_width(%{"when" => %{max_viewport_width: w}}), do: w
   defp media_width(_), do: nil
+
+  defp breakpoint_css(entries, opts) do
+    Enum.map_join(entries, "\n", fn {node, _parent} ->
+      Enum.map_join(node.responsive || [], "\n", fn
+        %{"media" => %{"operator" => operator, "width" => width}, "paint" => paint}
+        when operator in ["<", "<=", ">", ">="] and is_number(width) and width >= 0 ->
+          id = prefixed_id(node, opts)
+          decls = paint |> image_breakpoint_paint(node) |> declarations_from_paint()
+
+          "@media (width #{operator} #{width}px) {\n  [data-exporter-id=\"#{escape(id)}\"] {\n#{decls}  }\n}\n"
+
+        _ ->
+          ""
+      end)
+    end)
+  end
+
+  defp image_breakpoint_paint(paint, %Node{kind: :image} = node) do
+    if paint_css(node)["aspect-ratio"],
+      do:
+        paint
+        |> image_border_variables()
+        |> inset_image_dimensions(~w(width min-width max-width), ~w(left right))
+        |> inset_image_dimensions(~w(height min-height max-height), ~w(top bottom)),
+      else: paint
+  end
+
+  defp image_breakpoint_paint(paint, _node), do: paint
 
   defp responsive_decls(%{"visibility" => "collapsed"}), do: %{"display" => "none"}
   defp responsive_decls(%{visibility: "collapsed"}), do: %{"display" => "none"}
@@ -899,15 +1091,6 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp css_paint_value(key, n) when key in ["font_size", "letter_spacing"] and is_number(n),
     do: "#{n}px"
-
-  defp css_paint_value(key, value)
-       when key in ["font_face", "font_family", "font-family"] and is_binary(value) do
-    if String.downcase(String.trim(value)) == "inter" do
-      ~s("Inter", Helvetica, Arial, sans-serif)
-    else
-      value
-    end
-  end
 
   defp css_paint_value(_key, value), do: value
 

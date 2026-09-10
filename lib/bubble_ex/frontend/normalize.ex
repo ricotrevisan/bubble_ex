@@ -175,6 +175,9 @@ defmodule BubbleEx.Frontend.Normalize do
     {styles, style_taken} = normalize_styles(payload, identity)
     {pages, diagnostics} = normalize_pages(payload, identity)
     {reusables, reusable_diags} = normalize_reusables(payload, identity)
+    breakpoints = BubbleEx.Frontend.Responsive.breakpoints(payload)
+    pages = apply_breakpoints(pages, Payload.pages(payload), breakpoints)
+    reusables = apply_breakpoints(reusables, Payload.reusables(payload), breakpoints)
 
     %Normalized{
       identity: identity,
@@ -189,6 +192,41 @@ defmodule BubbleEx.Frontend.Normalize do
       styles: styles,
       diagnostics: diagnostics ++ reusable_diags ++ style_diagnostics(style_taken)
     }
+  end
+
+  defp apply_breakpoints(nodes, raw_nodes, breakpoints, parent_mode \\ nil) do
+    Enum.map(nodes, fn node ->
+      raw = raw_nodes[node.map_key] || %{}
+
+      rules =
+        raw
+        |> BubbleEx.Frontend.Responsive.breakpoint_states(breakpoints)
+        |> Enum.map(fn %{media: media, overrides: overrides} ->
+          paint = local_paint(%{"type" => Payload.type(raw), "properties" => overrides})
+          lengths = BubbleEx.Frontend.Responsive.extra_lengths(overrides)
+          hidden = BubbleEx.Frontend.Responsive.hidden_paint(raw, overrides)
+          alignment = responsive_alignment(overrides, parent_mode)
+
+          %{
+            "media" => media,
+            "paint" => paint |> Map.merge(lengths) |> Map.merge(hidden) |> Map.merge(alignment)
+          }
+        end)
+
+      %{
+        node
+        | responsive: node.responsive ++ rules,
+          children:
+            apply_breakpoints(node.children, Payload.elements(raw), breakpoints, layout_mode(raw))
+      }
+    end)
+  end
+
+  defp responsive_alignment(overrides, parent_mode) do
+    case child_alignment(%{"properties" => overrides}, parent_mode) do
+      value when is_binary(value) -> %{"align-self" => canonical_alignment(value)}
+      _ -> %{}
+    end
   end
 
   defp style_diagnostics(_taken), do: []
@@ -278,8 +316,51 @@ defmodule BubbleEx.Frontend.Normalize do
       responsive: responsive_from(raw)
     }
 
-    {node, child_diags}
+    normalize_container_boundary(node, raw, child_diags)
   end
+
+  defp normalize_container_boundary(%Node{kind: :reusable_definition} = node, raw, diags) do
+    case Payload.prop(raw, "element_type") do
+      type when type in ["Popup", "GroupFocus"] ->
+        binding = %{
+          id: node.exporter_id <> " :: plugin",
+          kind: :plugin,
+          slot: "plugin",
+          source: node.source,
+          payload: %{"type" => type, "reason" => "runtime_overlay", "element" => raw}
+        }
+
+        node = %{
+          node
+          | variant: :runtime_overlay,
+            placeholder?: true,
+            children: [],
+            bindings: %{"plugin" => binding},
+            attributes: placeholder_attributes(type, :runtime_overlay)
+        }
+
+        diag = %Diagnostic{
+          code: :unsupported_element,
+          message: placeholder_message(:runtime_overlay),
+          refs: [node.exporter_id],
+          details: %{type: type, reason: :runtime_overlay}
+        }
+
+        {node, [diag]}
+
+      "FloatingGroup" ->
+        attributes =
+          %{"data-floating-vertical" => "top", "data-floating-horizontal" => "both"}
+          |> Map.merge(element_attributes(raw, :floating_group, nil))
+
+        {%{node | variant: :floating_group, attributes: attributes}, diags}
+
+      _ ->
+        {node, diags}
+    end
+  end
+
+  defp normalize_container_boundary(node, _raw, diags), do: {node, diags}
 
   defp normalize_children(parent, identity, parent_path, workflows) do
     parent_mode = layout_mode(parent)
@@ -293,6 +374,8 @@ defmodule BubbleEx.Frontend.Normalize do
 
         node =
           node
+          |> put_default_modern_width(raw, parent_mode)
+          |> put_default_overlay_height(raw, parent_mode)
           |> put_child_alignment(raw, parent_mode)
           |> put_fixed_parent_offsets(raw, parent_mode)
 
@@ -303,6 +386,31 @@ defmodule BubbleEx.Frontend.Normalize do
     end)
     |> then(fn {nodes, diags} -> {Enum.reverse(nodes), diags} end)
   end
+
+  defp put_default_modern_width(%Node{kind: kind} = node, raw, parent_mode)
+       when kind in [:group, :button] and parent_mode in [:row, :column, :align_to_parent] do
+    if (compact_button?(kind, raw) or layout_mode(raw) in [:row, :column, :align_to_parent]) and
+         is_nil(Payload.prop(raw, "width")) do
+      %{node | layout: Map.put_new(node.layout, :fill_width?, true)}
+    else
+      node
+    end
+  end
+
+  defp put_default_modern_width(node, _raw, _parent_mode), do: node
+
+  # Readable canonical controls may intentionally omit a width to mean auto.
+  # Runtime compact controls omit the fit/fixed flags to mean fill instead.
+  defp compact_button?(:button, %{"%p" => properties}) when is_map(properties), do: true
+  defp compact_button?(_kind, _raw), do: false
+
+  defp put_default_overlay_height(%Node{kind: :group} = node, raw, :align_to_parent) do
+    if is_nil(fill_axis?(raw, :height)) and is_nil(Payload.prop(raw, "height")),
+      do: %{node | layout: Map.put(node.layout, :fill_height?, true)},
+      else: node
+  end
+
+  defp put_default_overlay_height(node, _raw, _parent_mode), do: node
 
   defp put_child_alignment(node, raw, parent_mode) do
     alignment = child_alignment(raw, parent_mode)
@@ -408,6 +516,7 @@ defmodule BubbleEx.Frontend.Normalize do
           bindings: bindings,
           unmapped: unmapped_keys(raw),
           definition_ref: definition_key,
+          attributes: element_attributes(raw, :floating_group, nil),
           responsive: responsive_from(raw)
         }
 
@@ -440,7 +549,7 @@ defmodule BubbleEx.Frontend.Normalize do
           map_key: map_key,
           source: source_ref(raw, path, map_key),
           layout: layout_from(raw),
-          box: box_from(raw),
+          box: placeholder_box(raw),
           style: style_from(raw),
           content: slots,
           bindings: Map.put(bindings, "plugin", plugin_binding),
@@ -478,6 +587,26 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp placeholder_message(_reason), do: "element lowered as a dimension-preserving placeholder"
 
+  defp placeholder_box(raw) do
+    box = box_from(raw)
+
+    if Regex.match?(~r/^\d+x\d+-[A-Za-z0-9]+$/, Payload.type(raw) || "") do
+      Enum.reduce([{:width, "%w"}, {:height, "%h"}], box, fn {axis, compact}, acc ->
+        put_plugin_dimension(acc, raw, axis, compact)
+      end)
+    else
+      box
+    end
+  end
+
+  defp put_plugin_dimension(box, raw, axis, compact) do
+    value = Payload.properties(raw)[compact]
+
+    if is_number(value) and is_nil(fill_axis?(raw, axis)),
+      do: Map.put_new(box, axis, value),
+      else: box
+  end
+
   defp classify("CustomElement", raw), do: classify_instance(raw)
   defp classify("ReusableElement", raw), do: classify_instance(raw)
   defp classify("CustomDefinition", raw), do: {:native, :group, layout_mode(raw) || :column}
@@ -486,6 +615,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Text", raw), do: classify_text(raw)
   defp classify("Image", raw), do: classify_image(raw)
   defp classify("Icon", raw), do: classify_icon(raw)
+  defp classify("HTML", raw), do: classify_html(raw)
   defp classify("FloatingGroup", raw), do: classify_floating_group(raw)
 
   defp classify("Shape", _raw), do: {:native, :shape, :decorative}
@@ -521,6 +651,22 @@ defmodule BubbleEx.Frontend.Normalize do
     {:instance, ref}
   end
 
+  defp classify_html(raw) do
+    case static_svg(raw) do
+      {:ok, _svg} -> {:native, :icon, :inline_svg}
+      _ -> {:placeholder, :unsupported_kind}
+    end
+  end
+
+  defp static_svg(raw) do
+    value = Payload.prop(raw, "html") || Payload.properties(raw)["%ht"]
+
+    case literal_or_binding(value, "svg", "html", raw) do
+      {:resolved, html} -> BubbleEx.Frontend.StaticSvg.parse(html)
+      _ -> :unsupported
+    end
+  end
+
   @text_tags %{"normal" => :normal, "h1" => :h1, "h2" => :h2, "h3" => :h3, "h4" => :h4}
 
   defp classify_text(raw) do
@@ -536,9 +682,9 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify_icon(raw) do
     case Payload.prop(raw, "icon") do
       icon when is_binary(icon) ->
-        if fontawesome_4_icon?(icon) and static_element?(raw) and
+        if supported_sprite_icon?(icon) and static_element?(raw) and
              Payload.prop(raw, "icon_spin") not in [true, "true"],
-           do: {:native, :icon, :fontawesome_4},
+           do: {:native, :icon, sprite_variant(icon)},
            else: {:placeholder, :unsupported_icon_variant}
 
       _ ->
@@ -567,11 +713,24 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp fontawesome_4_icon?(_), do: false
 
+  defp supported_sprite_icon?(icon) when is_binary(icon) do
+    fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon)
+  end
+
+  defp supported_sprite_icon?(_), do: false
+
+  defp sprite_variant("material outlined " <> _), do: :material_outlined
+  defp sprite_variant(_), do: :fontawesome_4
+
   defp static_element?(raw) do
     visible = Payload.prop(raw, "is_visible")
+    visible in [nil, true] and static_behavior?(raw)
+  end
+
+  defp static_behavior?(raw) do
     states = raw["states"] || raw["%st"]
 
-    visible in [nil, true] and Payload.workflows(raw) == %{} and
+    Payload.workflows(raw) == %{} and
       (is_nil(states) or states == %{})
   end
 
@@ -606,12 +765,12 @@ defmodule BubbleEx.Frontend.Normalize do
         {:native, :button, :label}
 
       "icon" when is_binary(icon) ->
-        if fontawesome_4_icon?(icon) and static_element?(raw),
+        if supported_sprite_icon?(icon) and static_behavior?(raw),
           do: {:native, :button, :icon},
           else: {:placeholder, :unsupported_button_variant}
 
       "label_icon" when is_binary(icon) ->
-        if fontawesome_4_icon?(icon) and static_element?(raw),
+        if supported_sprite_icon?(icon) and static_behavior?(raw),
           do: {:native, :button, :label_icon},
           else: {:placeholder, :unsupported_button_variant}
 
@@ -621,13 +780,13 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp classify_link(raw) do
-    fa? = fontawesome_4_icon?(Payload.prop(raw, "icon")) and static_element?(raw)
+    sprite? = supported_sprite_icon?(Payload.prop(raw, "icon")) and static_element?(raw)
 
     cond do
-      fa? and Payload.prop(raw, "show_icon") == true ->
+      sprite? and Payload.prop(raw, "show_icon") == true ->
         {:native, :link, :label_icon}
 
-      fa? and icon_only_link?(raw) ->
+      sprite? and icon_only_link?(raw) ->
         {:native, :link, :icon}
 
       Payload.prop(raw, "show_icon") == true or icon_only_link?(raw) ->
@@ -907,12 +1066,20 @@ defmodule BubbleEx.Frontend.Normalize do
     sizing =
       Payload.prop(raw, if(axis == :width, do: "horizontal_sizing", else: "vertical_sizing"))
 
-    if Enum.any?([fit, behavior, sizing], &(&1 == "fill")) do
+    if Enum.any?([fit, behavior, sizing], &(&1 == "fill")) or
+         responsive_image_width?(raw, axis, fit, single) do
       true
     else
       fill_axis_from_flags(fit, single)
     end
   end
+
+  defp responsive_image_width?(raw, :width, fit, single) when fit != true and single != true do
+    Payload.type(raw) == "Image" and Payload.prop(raw, "use_aspect_ratio") == true and
+      is_nil(Payload.prop(raw, "width"))
+  end
+
+  defp responsive_image_width?(_raw, _axis, _fit, _single), do: false
 
   defp fill_axis_from_flags(fit, false) when fit != true, do: true
   defp fill_axis_from_flags(_fit, true), do: false
@@ -1060,7 +1227,7 @@ defmodule BubbleEx.Frontend.Normalize do
           Payload.prop(raw, "zindex"),
           Payload.prop(raw, "z_index"),
           Payload.prop(raw, "z-index"),
-          compact_floating_z(raw)
+          Payload.properties(raw)["%z"]
         ]),
       align_self:
         first_truthy([Payload.prop(raw, "align-self"), Payload.prop(raw, "align_self")]),
@@ -1094,10 +1261,6 @@ defmodule BubbleEx.Frontend.Normalize do
       _ ->
         nil
     end
-  end
-
-  defp compact_floating_z(raw) do
-    if Payload.type(raw) == "FloatingGroup", do: Payload.properties(raw)["%z"]
   end
 
   defp spacing(raw, sidecar, key) do
@@ -1195,11 +1358,17 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp fixed_aliased_dimension(raw, "width") do
-    if Payload.prop(raw, "single_width") == true, do: Payload.properties(raw)["%w"]
+    if Payload.prop(raw, "single_width") == true do
+      Payload.prop(raw, "min_width_css") || Payload.prop(raw, "min_width_px") ||
+        Payload.properties(raw)["%w"]
+    end
   end
 
   defp fixed_aliased_dimension(raw, "height") do
-    if Payload.prop(raw, "single_height") == true, do: Payload.properties(raw)["%h"]
+    if Payload.prop(raw, "single_height") == true do
+      Payload.prop(raw, "min_height_css") || Payload.prop(raw, "min_height_px") ||
+        Payload.properties(raw)["%h"]
+    end
   end
 
   defp fixed_aliased_dimension(_raw, _key), do: nil
@@ -1211,7 +1380,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp style_from(raw) do
-    style_key = raw["style"] || Payload.prop(raw, "style")
+    style_key = raw["style"] || raw["%s1"] || Payload.prop(raw, "style")
     paint = local_paint(raw)
 
     layers =
@@ -1263,6 +1432,19 @@ defmodule BubbleEx.Frontend.Normalize do
     |> Map.new(&{&1, paint_prop(raw, &1)})
     |> Map.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.merge(canonical_paint(raw))
+    |> button_icon_paint(raw)
+  end
+
+  defp button_icon_paint(paint, raw) do
+    if Payload.type(raw) in ["Button", "Link"] do
+      paint
+      |> Map.delete("icon_color")
+      |> put_paint("--bubble-icon-color", Payload.prop(raw, "icon_color"))
+      |> put_paint("--bubble-icon-size", css_length(Payload.prop(raw, "icon_size")))
+      |> put_paint("--bubble-button-gap", css_length(Payload.prop(raw, "button_gap")))
+    else
+      paint
+    end
   end
 
   defp shared_style_properties(raw) do
@@ -1289,6 +1471,42 @@ defmodule BubbleEx.Frontend.Normalize do
     |> put_paint("border-radius", canonical_border_radius(raw))
     |> put_paint("box-shadow", canonical_box_shadow(raw))
     |> put_paint("opacity", canonical_opacity(raw))
+    |> put_paint("aspect-ratio", canonical_aspect_ratio(raw))
+    |> Map.merge(canonical_side_borders(raw))
+  end
+
+  defp canonical_aspect_ratio(raw) do
+    case {Payload.prop(raw, "use_aspect_ratio"), Payload.prop(raw, "aspect_ratio_width"),
+          Payload.prop(raw, "aspect_ratio_height")} do
+      {true, width, height}
+      when is_number(width) and width > 0 and is_number(height) and height > 0 ->
+        "#{width} / #{height}"
+
+      _ ->
+        nil
+    end
+  end
+
+  defp canonical_side_borders(raw) do
+    if Payload.prop(raw, "four_border_style") == false do
+      %{}
+    else
+      Enum.reduce(~w(top right bottom left), %{}, fn side, borders ->
+        put_paint(borders, "border-#{side}", canonical_side_border(raw, side))
+      end)
+    end
+  end
+
+  defp canonical_side_border(raw, side) do
+    style = Payload.prop(raw, "border_style_#{side}")
+    color = Payload.prop(raw, "border_color_#{side}")
+    width = css_length(Payload.prop(raw, "border_width_#{side}") || 1)
+
+    cond do
+      style == "none" -> "none"
+      is_binary(style) and is_binary(color) and is_binary(width) -> "#{width} #{style} #{color}"
+      true -> nil
+    end
   end
 
   defp put_paint(paint, _key, nil), do: paint
@@ -1354,7 +1572,7 @@ defmodule BubbleEx.Frontend.Normalize do
         "none"
 
       style when is_binary(style) ->
-        width = css_length(Payload.prop(raw, "border_width"))
+        width = css_length(Payload.prop(raw, "border_width") || 1)
         color = Payload.prop(raw, "border_color")
 
         if is_binary(width) and is_binary(color), do: "#{width} #{style} #{color}"
@@ -2135,13 +2353,15 @@ defmodule BubbleEx.Frontend.Normalize do
     label = Payload.prop(raw, "text") || Payload.name(raw) || "Button"
     label = if is_binary(label) and String.trim(label) != "", do: label, else: "Button"
 
-    fontawesome_sprite_attributes(raw)
+    sprite_attributes(raw)
     |> Map.merge(element_attributes(raw, :button, :label))
     |> Map.put("aria-label", label)
   end
 
   defp element_attributes(raw, :button, :label_icon) do
-    Map.merge(fontawesome_sprite_attributes(raw), element_attributes(raw, :button, :label))
+    sprite_attributes(raw)
+    |> Map.merge(element_attributes(raw, :button, :label))
+    |> Map.put("icon_placement", Payload.prop(raw, "icon_placement") || "left")
   end
 
   defp element_attributes(raw, :button, _variant) do
@@ -2151,14 +2371,14 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :link, variant) when variant in [:icon, :label_icon] do
-    attrs = Map.merge(fontawesome_sprite_attributes(raw), element_attributes(raw, :link, :text))
+    attrs = Map.merge(sprite_attributes(raw), element_attributes(raw, :link, :text))
 
     if variant == :icon do
       label = Payload.prop(raw, "text") || Payload.name(raw) || "Link"
       label = if is_binary(label) and String.trim(label) != "", do: label, else: "Link"
       Map.put(attrs, "aria-label", label)
     else
-      attrs
+      Map.put(attrs, "icon_placement", Payload.prop(raw, "icon_placement") || "left")
     end
   end
 
@@ -2183,8 +2403,14 @@ defmodule BubbleEx.Frontend.Normalize do
     |> reject_empty_attributes()
   end
 
-  defp element_attributes(raw, :icon, :fontawesome_4) do
-    Map.merge(%{"aria-hidden" => "true"}, fontawesome_sprite_attributes(raw))
+  defp element_attributes(raw, :icon, variant)
+       when variant in [:fontawesome_4, :material_outlined] do
+    Map.merge(%{"aria-hidden" => "true"}, sprite_attributes(raw))
+  end
+
+  defp element_attributes(raw, :icon, :inline_svg) do
+    {:ok, svg} = static_svg(raw)
+    %{"aria-hidden" => "true", "inline_svg" => svg}
   end
 
   defp element_attributes(raw, :floating_group, _variant) do
@@ -2200,13 +2426,21 @@ defmodule BubbleEx.Frontend.Normalize do
   defp element_attributes(_raw, :shape, _variant), do: %{"aria-hidden" => "true"}
   defp element_attributes(_raw, _kind, _variant), do: %{}
 
-  defp fontawesome_sprite_attributes(raw) do
-    "fa fa-" <> name = Payload.prop(raw, "icon")
+  defp sprite_attributes(raw), do: sprite_source(Payload.prop(raw, "icon"))
 
+  defp sprite_source("fa fa-" <> name) do
     %{
       "asset_fragment" => "fa-" <> name,
       "asset_src" => "/static/icon_libraries/fontawesome-4.7.0.svg",
       "icon_set" => "fa"
+    }
+  end
+
+  defp sprite_source("material outlined " <> name) do
+    %{
+      "asset_fragment" => name,
+      "asset_src" => "/static/icon_libraries/material-icons-4.0.0-outlined.svg",
+      "icon_set" => "material"
     }
   end
 

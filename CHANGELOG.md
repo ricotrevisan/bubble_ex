@@ -6,6 +6,14 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Preserve compact shared-style references, authored design tokens and default
+  typography without reapplying the editor's element-creation default styles.
+- Correct modern fill sizing, stacking order, reusable floating anchors, and
+  aspect-ratio image content boxes, including responsive border changes.
+- Keep native dropdown typography available during initial option rendering;
+  preserve plain-text spacing without adding whitespace around block BBCode.
+- Resolve links to known, unexported pages against the public source route.
+
 - Keep Popup and Group Focus as explicit hidden runtime placeholders, retaining
   their full definitions and reporting the runtime boundary. Do not infer an
   open dialog from `is_visible` or paint Group Focus in the page layout.
@@ -23,6 +31,14 @@ All notable changes to this project are documented here.
   independently of screenshot tolerances.
 
 ### Added
+
+- Static Material outlined icons and sanitized path-only inline SVG elements;
+  separate icon/label colors and authored icon placement, size, and spacing.
+- Exact configured-breakpoint paint/spacing rules and conservative fetched
+  initial snapshots for direct logged-out visibility and formatted year text.
+  Original expressions remain bindings and the snapshot time is recorded.
+- Repeatable private landing-page exports, captures, and a locked acceptance
+  rubric covering visuals, layout, content, typography, assets, and navigation.
 
 - Frozen S1 range Slider / Popup case `bpndkqfs` (`bubbleex-i69-range-popup`)
 
@@ -94,9 +110,9 @@ All notable changes to this project are documented here.
 - S1 icon / icon+label Button lowering for static Font Awesome 4 icons, with frozen
   case `bpiordvb` on `tiptap-plugin` Test (`bubbleex-i51-icon-button`).
 
-- Theme tokens and default styles: export emits `:root` CSS variables from
-  `settings.client_safe` color/font tokens and applies `default_styles` classes
-  to elements that omit an explicit style (unstyled primary buttons, `--font_default`).
+- Theme tokens: export emits `:root` CSS variables from
+  `settings.client_safe` color/font tokens. Existing unstyled elements retain
+  native defaults; the editor's `default_styles` choices apply during creation.
 
 - Empty-page hydration: a page-specific fetch that returns layout properties but
   no `%el` (internal-link targets like `bubbleex-i36-target`) is treated as a

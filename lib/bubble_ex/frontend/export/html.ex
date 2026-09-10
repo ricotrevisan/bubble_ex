@@ -1,7 +1,7 @@
 defmodule BubbleEx.Frontend.Export.Html do
   @moduledoc false
 
-  alias BubbleEx.Frontend.Export.{Bbcode, Safety}
+  alias BubbleEx.Frontend.Export.{Bbcode, Css, Safety}
   alias BubbleEx.Frontend.Naming
   alias BubbleEx.Frontend.Normalized.Node
 
@@ -143,9 +143,11 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp render_instance(node, opts) do
     stack = Keyword.get(opts, :expansion_stack, MapSet.new())
+    definition = Keyword.get(opts, :expand).(node)
+    node = instance_boundary(node, definition)
 
     inner =
-      case Keyword.get(opts, :expand).(node) do
+      case definition do
         %Node{} = definition ->
           identity = definition.map_key
 
@@ -160,10 +162,23 @@ defmodule BubbleEx.Frontend.Export.Html do
     wrap("div", node, inner, opts)
   end
 
+  defp instance_boundary(node, %Node{variant: :runtime_overlay} = definition) do
+    %{node | attributes: Map.merge(node.attributes || %{}, definition.attributes)}
+  end
+
+  defp instance_boundary(node, _definition), do: node
+
   defp instance_opts(opts, instance, identity, stack) do
     opts
     |> Keyword.put(:id_prefix, prefixed_id(instance, opts))
     |> Keyword.put(:expansion_stack, MapSet.put(stack, identity))
+  end
+
+  defp render_icon(%Node{variant: :inline_svg} = node, opts) do
+    case BubbleEx.Frontend.StaticSvg.parse(node.attributes["inline_svg"]) do
+      {:ok, svg} -> wrap("span", node, svg, opts)
+      _ -> wrap("span", node, "", opts)
+    end
   end
 
   defp render_icon(node, opts) do
@@ -178,6 +193,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     cond do
       svg == "" -> label
       label == [] -> svg
+      node.attributes["icon_placement"] == "right" -> [label, svg]
       true -> [svg, label]
     end
   end
@@ -194,8 +210,10 @@ defmodule BubbleEx.Frontend.Export.Html do
       end
 
     if is_binary(symbol) do
+      icon_set = escape(node.attributes["icon_set"] || "fa")
+
       [
-        ~s(<svg viewBox="0 0 32 32" data-icon-set="fa" aria-hidden="true"><defs>),
+        ~s(<svg viewBox="0 0 32 32" data-icon-set="#{icon_set}" aria-hidden="true"><defs>),
         symbol,
         ~s(</defs><use width="32" height="32" href="##{fragment}"></use></svg>)
       ]
@@ -219,7 +237,22 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp inline_icon_symbol(_bytes, _fragment), do: nil
 
-  defp children_html(%Node{children: children}, opts) do
+  defp children_html(%Node{kind: :page, children: children}, opts) do
+    {floating, flow} = Enum.split_with(children, &floating_boundary?(&1, opts))
+    render_children(flow ++ floating, opts)
+  end
+
+  defp children_html(%Node{children: children}, opts), do: render_children(children, opts)
+
+  defp floating_boundary?(%Node{kind: :floating_group}, _opts), do: true
+
+  defp floating_boundary?(%Node{kind: :reusable_instance} = node, opts) do
+    match?(%Node{variant: :floating_group}, Keyword.fetch!(opts, :expand).(node))
+  end
+
+  defp floating_boundary?(_node, _opts), do: false
+
+  defp render_children(children, opts) do
     children
     |> Enum.map(&render_node(&1, opts))
     |> Enum.intersperse("\n")
@@ -564,7 +597,10 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do
     placeholder = resolved(node, "placeholder")
-    Map.put_new(node.attributes, "aria-label", placeholder || node.name || "Dropdown")
+
+    node.attributes
+    |> Map.put_new("aria-label", placeholder || node.name || "Dropdown")
+    |> Map.put("style", Css.inline_control_font(node))
   end
 
   defp node_attrs(%Node{kind: :slider} = node, "input", _opts) do

@@ -117,9 +117,18 @@ The package contains `pages/`, reusable fragments, shared/page CSS, hashed
 and `MANIFEST.json`. Reusable paths are deterministic and collision-safe.
 Only relative links and explicit HTTP(S), mail, or telephone schemes are emitted.
 CSS values that can escape their declaration or fetch remote URLs are omitted
-with findings. Workflows, conditions, and unsupported elements stay
+with findings. Workflows, unresolved conditions, and unsupported elements stay
 as bindings and findings. A leaked-credential finding blocks the export, redacts
 raw secret material from its error, and writes nothing.
+
+Fetched exports capture an initial snapshot: direct logged-out visibility
+conditions are applied when no application-user session was supplied, and a
+literal `Current Date/Time:formatted as yyyy` uses the recorded UTC snapshot
+time. Expressions remain in the bindings. Exact page-width comparisons against
+configured breakpoints become CSS media rules for supported paint and spacing
+properties. General expressions, reusable parameters, and workflows are not
+executed. Links to known pages omitted by `--pages` retain their public source
+destinations; selected pages link to their local exports.
 
 Visual correctness is defined only for committed **frozen cases**. The committed
 S2 cases include fixed-height Multiline Input and static
@@ -127,9 +136,12 @@ Checkbox/Dropdown/Radio Buttons. The Issue #42 frozen case pins a controlled
 two-page fixture with nested static Group-based reusables, a sanitized inline
 Font Awesome 4 icon, an always-visible top-right Floating Group, portable
 internal navigation, and an explicit Repeating Group placeholder. Dynamic
-choices/status, fit-height multiline, other icon libraries, runtime reusable
-state, and Repeating Group cell data remain bindings or dimension-preserving
-placeholders.
+choices/status, runtime reusable state, and Repeating Group cell data remain
+bindings or dimension-preserving placeholders. Static Material outlined icons
+and a strictly sanitized, path-only SVG subset of HTML elements also export
+locally; other icon libraries and arbitrary HTML remain unsupported. These
+additional lowerings have unit tests and landing-page observations, not a new
+claim of complete frozen-case coverage.
 `mix bubble.fidelity` exports every committed case and compares it to Bubble
 references. PR CI runs that gate; it never recaptures live Bubble.
 

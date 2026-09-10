@@ -102,6 +102,7 @@ defmodule BubbleEx.Frontend.Payload do
     "custom_definition" => ["%ci", "custom_id"],
     "default" => ["%d1"],
     "element_id" => ["%ei"],
+    "element_type" => ["%et"],
     "font_color" => ["%fc"],
     "font_size" => ["%fs"],
     "floating_reference" => ["%3f"],

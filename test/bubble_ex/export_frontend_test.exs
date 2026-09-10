@@ -126,7 +126,7 @@ defmodule BubbleEx.ExportFrontendTest do
     refute shared =~ "fonts.gstatic.com"
 
     page_css = File.read!(Path.join(out, "styles/pages/index.css"))
-    assert page_css =~ ~s(font-family: "Inter", Helvetica, Arial, sans-serif;)
+    assert page_css =~ "font-family: Inter;"
   end
 
   @tag :tmp_dir

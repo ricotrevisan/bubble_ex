@@ -99,7 +99,7 @@ defmodule BubbleEx.Frontend.Export.AssetsTest do
              )
 
     assert finding["type"] == "asset_failure"
-    assert finding["message"] =~ "safe Font Awesome symbol"
+    assert finding["message"] =~ "safe icon symbol"
     assert [_exporter_id] = finding["refs"]
   end
 
