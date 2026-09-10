@@ -3,9 +3,9 @@
 Implements [issue #30](https://github.com/ricotrevisan/bubble_ex/issues/30).
 
 A frozen case is the only thing we call visually correct. The suite contains
-18 frozen cases: `bpmkbvvo` (#28), `bprkyexk` (#35), `bptaixqv` (#36),
+19 frozen cases: `bpmkbvvo` (#28), `bprkyexk` (#35), `bptaixqv` (#36),
 `bpewigqu` (#37), `bpcybc` (#38), `bpqqfagk` (static native controls), and
-`bpgwgmpz` (the Issue #42 complex composition), and `bpwipyqn` (#44 BBCode Text), and `bpiordvb` (icon / icon+label Button), and `bpaupfbj` (icon / icon+label Link), and `bpuzekut` (fit-height MultiLineInput), and `bpqkcldq` (date / integer Input), and `bpjehwxg` (decimal / percent / currency / US phone / euro-date Input), and `bpizatjd` (Address Input / DateInput), and `bpoyzixi` (numbers Input / datetime DateInput / FileInput), and `bpdimzwm` (PictureInput), and `bplvejcw` (simple Slider / static Search), and `bpndkqfs` (range Slider / closed Popup). The Text cases pin
+`bpgwgmpz` (the Issue #42 complex composition), and `bpwipyqn` (#44 BBCode Text), and `bpiordvb` (icon / icon+label Button), and `bpaupfbj` (icon / icon+label Link), and `bpuzekut` (fit-height MultiLineInput), and `bpqkcldq` (date / integer Input), and `bpjehwxg` (decimal / percent / currency / US phone / euro-date Input), and `bpizatjd` (Address Input / DateInput), and `bpoyzixi` (numbers Input / datetime DateInput / FileInput), and `bpdimzwm` (PictureInput), and `bplvejcw` (simple Slider / static Search), and `bpndkqfs` (range Slider / closed Popup), and `bptvorpv` (closed Popup / Group Focus runtime boundaries). The Text cases pin
 exporter-owned `<p>` and heading semantics without comparing tags to Bubble.
 The Issue #42 case also pins two portable pages, nested reusable expansion, a
 local image/font/icon set, an always-visible Floating Group, and the intentional
@@ -100,3 +100,26 @@ exact match with the manifest's source URL. Optional `BUBBLE_CAPTURE_USERNAME`
 and `BUBBLE_CAPTURE_PASSWORD` supply origin-scoped HTTP Basic credentials.
 Run this measurement on Linux. Review source payload changes and update their
 canonical SHA pins separately; this command does not modify payloads or pins.
+
+## Overlay source characterization (2026-09-10)
+
+`bpndkqfs` now preserves the actual source `is_visible: true` Popup definition
+and checks that it stays closed; the previous payload had changed that flag.
+`bptvorpv` freezes the initial state of valid Popup and Group Focus controls.
+Both overlays lower to hidden runtime placeholders. Their source-only interaction
+captures do not establish interactive export support. See the
+[overlay audit](../../../docs/research/overlay-runtime-audit.md).
+
+Source capture allows absent nodes only when explicitly listed in
+`source_hidden_node_ids`, which must be a subset of `node_ids`. A listed node
+must be absent or `display:none` with zero dimensions. Duplicate selector matches
+fail the source and candidate gates. The overlay experiment independently opens
+both controls and confirms their identities before freezing their initial absence.
+
+To repeat the authorized runtime experiment, run
+`node test/support/fidelity/characterize-overlays.mjs test/support/fidelity/cases/bptvorpv`
+in the pinned Linux x86-64 image with the same environment variables as source
+capture. It waits for Bubble's observed animation marker to clear and writes
+selected DOM, geometry, and screenshots under `source/runtime/`. It asserts
+initial closure, workflow opening/closing, and outside-click dismissal. These
+artifacts are not compared to the static candidate.

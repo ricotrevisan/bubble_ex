@@ -861,7 +861,7 @@ defmodule BubbleEx.Frontend.ExportTest do
     end
 
     @tag :tmp_dir
-    test "paints a two-handle range slider and an open dialog Popup", %{tmp_dir: tmp} do
+    test "paints a two-handle range slider without opening a runtime Popup", %{tmp_dir: tmp} do
       out = Path.join(tmp, "pkg")
 
       payload = %{
@@ -906,11 +906,11 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert html =~ ~s(role="group")
       assert html =~ ~s(aria-label="Range start")
       assert html =~ ~s(aria-label="Range end")
-      assert html =~ "<dialog"
-      assert html =~ "open"
-      assert html =~ "Popup body"
+      refute html =~ "<dialog"
+      refute html =~ "Popup body"
+      assert html =~ ~s(data-placeholder-kind="Popup")
+      assert html |> Floki.parse_document!() |> Floki.find("[data-bubble-id=p1][hidden]") != []
       refute html =~ ~s(<input aria-label="Range start" data-bubble-id="r1")
-      refute html =~ "data-placeholder-kind"
     end
 
     @tag :tmp_dir

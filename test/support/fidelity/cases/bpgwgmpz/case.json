@@ -55,8 +55,7 @@
     "bpcjyrzk",
     "bpcjyrzl",
     "bpcjyrzn",
-    "bpcjyrzo",
-    "bpcjyrzr"
+    "bpcjyrzo"
   ],
   "text_node_ids": [
     "bpcjysae",
@@ -97,5 +96,8 @@
     "max_channel_delta": 100,
     "max_mean_absolute_error": 0.3,
     "rationale": "On the Debian capture host, only 48 inline-SVG edge pixels differ by at most 6/255. With the same Chromium 140 and committed Inter bytes, Ubuntu CI font rasterization produced at most 52,008 material pixels, a 99/255 maximum channel delta, and 0.272 mean absolute error; geometry, typography, document size, presence, collapse, navigation, and semantics remain exact."
+  },
+  "uncorrelated_nodes": {
+    "bpcjyrzr": "Shared icon definition ID has two visible reusable instances. Earlier absent correlation was ambiguous, not evidence of collapse. Decorative semantics and full-page raster checks remain; instance-specific icon geometry is not claimed."
   }
 }

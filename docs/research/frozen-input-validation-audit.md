@@ -35,6 +35,12 @@ invalid enums. It also reports unrelated errors in existing plugin demo pages.
 It is not evidence of a zero-issue Bubble editor. Native editor access was not
 available in this session, so no zero-issue editor claim is made.
 
+Subsequent editor verification on the same day resolved the remaining displayed
+errors as stale issue-checker results. Visiting the three affected pages reduced
+the count from seven to three, then two, then zero, without further source edits.
+The user also confirmed that all seven issues were fixed. This later check
+supersedes the initial editor-access limitation above.
+
 ## Repairs and evidence
 
 - Replaced all four affected frozen payloads with selected-page snapshots from

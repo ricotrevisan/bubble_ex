@@ -1540,7 +1540,7 @@ defmodule BubbleEx.FrontendTest do
       assert length(search.content["choices"].resolved) == 3
     end
 
-    test "lowers two-handle SliderInput and a visible Popup as native controls" do
+    test "lowers two-handle SliderInput while retaining Popup as a runtime boundary" do
       payload =
         page_with_elements(%{
           "range" => %{
@@ -1571,27 +1571,36 @@ defmodule BubbleEx.FrontendTest do
       assert range.attributes["value"] == 0
       assert range.attributes["value_high"] == 100
 
-      popup = by[:popup]
-      refute popup.placeholder?
-      assert popup.attributes["open"] == true
-      assert hd(popup.children).kind == :text
+      popup = by[:placeholder]
+      assert popup.variant == :runtime_overlay
+      assert popup.placeholder?
+      refute Map.has_key?(popup.attributes, "open")
+      assert popup.bindings["plugin"].payload["element"]["elements"]["body"]["id"] == "t1"
     end
 
-    test "lowers a hidden Popup as a closed native dialog" do
-      payload =
-        page_with_elements(%{
-          "popup" => %{
-            "id" => "p-hidden",
-            "type" => "Popup",
-            "properties" => %{"is_visible" => false}
-          }
-        })
+    test "overlay visibility flags do not imply static support" do
+      for type <- ["Popup", "GroupFocus"],
+          visible <- [nil, false, true],
+          workflows <- [%{}, %{"event" => %{"type" => "ElementClicked"}}] do
+        raw = %{
+          "id" => "overlay",
+          "type" => type,
+          "properties" => %{"is_visible" => visible, "width" => 320, "height" => 180},
+          "workflows" => workflows
+        }
 
-      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
-      [popup] = page.children
-      assert popup.kind == :popup
-      refute popup.placeholder?
-      refute Map.get(popup.attributes, "open")
+        assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics}} =
+                 Frontend.normalize(page_with_elements(%{"overlay" => raw}))
+
+        [overlay] = page.children
+        assert overlay.kind == :placeholder
+        assert overlay.variant == :runtime_overlay
+        assert overlay.box.width == 320
+        assert overlay.box.height == 180
+        assert overlay.bindings["plugin"].payload["element"] == raw
+        assert overlay.attributes["hidden"] == true
+        assert Enum.any?(diagnostics, &(&1.details[:reason] == :runtime_overlay))
+      end
     end
 
     test "normalizes the characterized S2 static-control slice" do

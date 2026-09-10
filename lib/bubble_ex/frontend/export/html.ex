@@ -97,13 +97,9 @@ defmodule BubbleEx.Frontend.Export.Html do
               :floating_group,
               :reusable_definition,
               :shape,
-              :placeholder,
-              :group_focus
+              :placeholder
             ],
        do: wrap("div", node, children_html_or_empty(node, opts), opts)
-
-  defp do_render(%Node{kind: :popup} = node, opts),
-    do: wrap("dialog", node, children_html(node, opts), opts)
 
   defp do_render(%Node{kind: :slider, variant: :range} = node, opts),
     do: render_range_slider(node, opts)
@@ -140,7 +136,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :radio_buttons} = node, opts), do: render_radio_buttons(node, opts)
 
   defp children_html_or_empty(%Node{kind: kind} = node, opts)
-       when kind in [:group, :floating_group, :reusable_definition, :popup, :group_focus],
+       when kind in [:group, :floating_group, :reusable_definition],
        do: children_html(node, opts)
 
   defp children_html_or_empty(_node, _opts), do: ""
@@ -569,11 +565,6 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp node_attrs(%Node{kind: :dropdown} = node, "select", _opts) do
     placeholder = resolved(node, "placeholder")
     Map.put_new(node.attributes, "aria-label", placeholder || node.name || "Dropdown")
-  end
-
-  defp node_attrs(%Node{kind: :popup} = node, "dialog", _opts) do
-    node.attributes
-    |> Map.take(["open"])
   end
 
   defp node_attrs(%Node{kind: :slider} = node, "input", _opts) do

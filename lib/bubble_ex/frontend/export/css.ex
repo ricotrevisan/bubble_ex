@@ -213,6 +213,9 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> put_collapse(node)
   end
 
+  defp runtime_boundary_css(%Node{kind: :placeholder, variant: :runtime_overlay}),
+    do: %{"display" => "none"}
+
   defp runtime_boundary_css(%Node{
          kind: :placeholder,
          attributes: %{"data-placeholder-kind" => "RepeatingGroup"}
@@ -392,14 +395,6 @@ defmodule BubbleEx.Frontend.Export.Css do
     %{
       "display" => "block",
       "width" => "100%",
-      "margin" => "0"
-    }
-  end
-
-  defp native_control(:popup) do
-    %{
-      "border" => "1px solid #cccccc",
-      "padding" => "16px",
       "margin" => "0"
     }
   end
@@ -743,9 +738,15 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp extra_rule(%Node{kind: :slider, variant: :range} = node, opts) do
     id = prefixed_id(node, opts) |> escape()
 
+    # Bubble paints the track and handles, leaving the outer SliderInput box
+    # transparent and borderless. The paired native controls approximate those
+    # internals; painting the wrapper adds a panel absent from the source.
     """
     [data-exporter-id="#{id}"] {
       align-items: center;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
       display: flex;
       gap: 8px;
     }

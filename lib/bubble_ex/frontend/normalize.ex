@@ -360,7 +360,7 @@ defmodule BubbleEx.Frontend.Normalize do
     case classify(type, raw) do
       {:native, kind, variant} ->
         {children, child_diags} =
-          if kind in [:group, :floating_group, :popup, :group_focus] do
+          if kind in [:group, :floating_group] do
             normalize_children(raw, identity, path, workflows)
           else
             {[], []}
@@ -421,11 +421,15 @@ defmodule BubbleEx.Frontend.Normalize do
           kind: :plugin,
           slot: "plugin",
           source: source_ref(raw, path, map_key),
-          payload: %{
-            "type" => type,
-            "reason" => to_string(reason),
-            "properties" => Payload.properties(raw)
-          }
+          payload:
+            Map.merge(
+              %{
+                "type" => type,
+                "reason" => to_string(reason),
+                "properties" => Payload.properties(raw)
+              },
+              placeholder_source(raw, reason)
+            )
         }
 
         node = %Node{
@@ -442,13 +446,13 @@ defmodule BubbleEx.Frontend.Normalize do
           bindings: Map.put(bindings, "plugin", plugin_binding),
           unmapped: unmapped_keys(raw),
           placeholder?: true,
-          attributes: %{"data-placeholder-kind" => type || "unknown"},
+          attributes: placeholder_attributes(type, reason),
           responsive: responsive_from(raw)
         }
 
         diag = %Diagnostic{
           code: :unsupported_element,
-          message: "element lowered as a dimension-preserving placeholder",
+          message: placeholder_message(reason),
           refs: [exporter_id],
           details: %{type: type, reason: reason}
         }
@@ -456,6 +460,23 @@ defmodule BubbleEx.Frontend.Normalize do
         {node, [diag]}
     end
   end
+
+  # Overlays start closed. Their show/hide actions, positioning, focus, and
+  # backdrop depend on Bubble's runtime. Preserve the entire container, including
+  # descendants, for consumers without pretending a static dialog is equivalent.
+  defp placeholder_source(raw, :runtime_overlay), do: %{"element" => raw}
+  defp placeholder_source(_raw, _reason), do: %{}
+
+  defp placeholder_attributes(type, :runtime_overlay),
+    do: %{"data-placeholder-kind" => type, "hidden" => true}
+
+  defp placeholder_attributes(type, _reason),
+    do: %{"data-placeholder-kind" => type || "unknown"}
+
+  defp placeholder_message(:runtime_overlay),
+    do: "overlay retained as a hidden placeholder; opening and dismissal require Bubble workflows"
+
+  defp placeholder_message(_reason), do: "element lowered as a dimension-preserving placeholder"
 
   defp classify("CustomElement", raw), do: classify_instance(raw)
   defp classify("ReusableElement", raw), do: classify_instance(raw)
@@ -476,8 +497,10 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("PictureInput", raw), do: classify_picture_input(raw)
   defp classify("SliderInput", raw), do: classify_slider(raw)
   defp classify("AutocompleteDropdown", raw), do: classify_search(raw)
-  defp classify("Popup", raw), do: classify_popup(raw)
-  defp classify("GroupFocus", raw), do: classify_group_focus(raw)
+
+  defp classify(type, _raw) when type in ["Popup", "GroupFocus"],
+    do: {:placeholder, :runtime_overlay}
+
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
   defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
@@ -697,23 +720,6 @@ defmodule BubbleEx.Frontend.Normalize do
 
       true ->
         {:placeholder, :unsupported_slider_variant}
-    end
-  end
-
-  defp classify_popup(raw) do
-    # Hidden is still static: Bubble popups start closed even when authored visible.
-    if Payload.workflows(raw) == %{} do
-      {:native, :popup, layout_mode(raw) || :column}
-    else
-      {:placeholder, :unsupported_popup_variant}
-    end
-  end
-
-  defp classify_group_focus(raw) do
-    if static_element?(raw) do
-      {:native, :group_focus, layout_mode(raw) || :column}
-    else
-      {:placeholder, :unsupported_group_focus_variant}
     end
   end
 
@@ -2100,14 +2106,6 @@ defmodule BubbleEx.Frontend.Normalize do
     )
     |> Map.put("aria-label", Payload.name(raw) || "Slider")
     |> reject_empty_attributes()
-  end
-
-  defp element_attributes(raw, :popup, _variant) do
-    if Payload.prop(raw, "is_visible") == true do
-      %{"open" => true}
-    else
-      %{}
-    end
   end
 
   defp element_attributes(raw, :search, _variant) do
