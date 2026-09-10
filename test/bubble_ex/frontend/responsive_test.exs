@@ -92,6 +92,33 @@ defmodule BubbleEx.Frontend.ResponsiveTest do
     end
   end
 
+  test "shared styles retain configured and literal page-width conditions" do
+    literal = put_in(state("less_or_equal_than", 18), ["%c", "%n", "%a"], 500)
+
+    payload = %{
+      "_id" => "shared-responsive",
+      "settings" => %{
+        "client_safe" => %{"responsive_breakpoints" => %{"mobile" => %{"size" => 768}}}
+      },
+      "pages" => %{"index" => %{"type" => "Page"}},
+      "styles" => %{
+        "heading" => %{
+          "%x" => "Text",
+          "%p" => %{"%fs" => 40},
+          "%s" => %{"0" => state("less_than", 24), "1" => literal}
+        }
+      }
+    }
+
+    assert {:ok, model} = Frontend.normalize(payload)
+    css = Css.shared(model)
+    assert css =~ "font-size: 40px"
+    assert css =~ "@media (width < 768px)"
+    assert css =~ "font-size: 24px"
+    assert css =~ "@media (width <= 500px)"
+    assert css =~ "font-size: 18px"
+  end
+
   defp state(operator, font_size) do
     %{
       "%x" => "State",

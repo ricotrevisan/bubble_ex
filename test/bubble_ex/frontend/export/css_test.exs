@@ -58,6 +58,22 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert css =~ "padding-top: 12px;"
   end
 
+  test "button line height defaults to one without overriding authored shared line height" do
+    style = %Style{
+      exporter_id: "button",
+      map_key: "button",
+      slug: "button",
+      class_name: "s-button",
+      applies_to: "Button",
+      properties: %{}
+    }
+
+    assert Css.shared(%Normalized{styles: [style]}) =~ "line-height: 1"
+
+    assert Css.shared(%Normalized{styles: [%{style | properties: %{"line_height" => 1.5}}]}) =~
+             "line-height: 1.5"
+  end
+
   test "native control typography is available inline without freezing responsive fonts" do
     control =
       node("select",
@@ -172,6 +188,73 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert header_rule =~ "min-height: 72px;"
     assert header_rule =~ "align-self: center;"
     refute header_rule =~ "flex-basis:"
+  end
+
+  test "fill widths subtract authored and responsive side margins" do
+    group =
+      node("group",
+        layout: %{mode: :column, fill_width?: true},
+        box: %{margin: "0px 120px", max_width: "1360px"},
+        responsive: [
+          %{
+            "media" => %{"operator" => "<=", "width" => 768},
+            "paint" => %{"margin-left" => "20px", "margin-right" => "20px"}
+          }
+        ]
+      )
+
+    css = Css.page(node("page", kind: :page, layout: %{mode: :column}, children: [group]))
+
+    assert css =~
+             "width: calc(100% - var(--bubble-margin-left, 0px) - var(--bubble-margin-right, 0px))"
+
+    assert css =~ "--bubble-margin-left: 120px"
+    assert css =~ "--bubble-margin-right: 120px"
+    assert css =~ "--bubble-margin-left: 20px"
+    assert css =~ "--bubble-margin-right: 20px"
+    assert css =~ "max-width: 1360px"
+
+    # A child must not accidentally inherit an ancestor's margin variables when
+    # only one side is introduced at a breakpoint.
+    child = %{
+      group
+      | box: %{},
+        responsive: [
+          %{
+            "media" => %{"operator" => "<=", "width" => 768},
+            "paint" => %{"margin-left" => "20px"}
+          }
+        ]
+    }
+
+    child_css = Css.page(child)
+    [base, _mobile] = String.split(child_css, "@media")
+    assert base =~ "--bubble-margin-right: 0px"
+  end
+
+  test "reusable instances own their outer sizing and children keep their parent layout" do
+    child = node("child", layout: %{mode: :column, fill_width?: true})
+
+    definition =
+      node("definition",
+        kind: :reusable_definition,
+        layout: %{mode: :row, fill_height?: false},
+        box: %{height: "200px", min_height: "200px"},
+        children: [child]
+      )
+
+    instance =
+      node("instance",
+        kind: :reusable_instance,
+        layout: %{fill_height?: false, fill_width?: true},
+        box: %{min_height: "0px"}
+      )
+
+    css = Css.expanded_definition(definition, "instance", instance)
+    refute css =~ "height: 200px"
+    assert rule(css, "instance") =~ "min-height: 0px"
+    assert css =~ "flex-basis: 0"
+    assert css =~ "flex-grow: 1"
   end
 
   test "uses the parent axis for fill sizing, row wrapping, and alignment" do

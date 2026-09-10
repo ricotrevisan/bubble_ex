@@ -81,6 +81,11 @@ Mochary passes the diagnostic page tests at revision 2. Bubble and the independe
 release gates are not accepted. These scores describe the captured pages, not
 general application functionality or interactive workflow parity.
 
+Iteration 20, with the same revision 2 reference: Mochary remains 100 at all
+widths; Bubble scores 35.08 / 35.54 / 34.14, for a combined 67.45. This iteration
+adds Phosphor icons, shared-style breakpoints, margin-aware fill sizing, and
+reusable instance sizing corrections. Missing runtime content still fails.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

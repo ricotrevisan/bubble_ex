@@ -43,8 +43,7 @@ defmodule BubbleEx.Frontend.Responsive do
     with "Current Page Width" <- props["%nm"],
          false <- Map.has_key?(message, "%n"),
          operator when is_binary(operator) <- @operators[message["%nm"]],
-         %{"%x" => "Breakpoint", "%p" => %{"breakpoint_id" => id}} <- message["%a"],
-         %{"size" => width} when is_number(width) and width >= 0 <- breakpoints[id] do
+         {:ok, width} <- breakpoint_width(message["%a"], breakpoints) do
       {:ok, %{"operator" => operator, "width" => width}}
     else
       _ -> :error
@@ -52,6 +51,18 @@ defmodule BubbleEx.Frontend.Responsive do
   end
 
   defp breakpoint_condition(_condition, _breakpoints), do: :error
+
+  defp breakpoint_width(width, _breakpoints) when is_number(width) and width >= 0,
+    do: {:ok, width}
+
+  defp breakpoint_width(%{"%x" => "Breakpoint", "%p" => %{"breakpoint_id" => id}}, breakpoints) do
+    case breakpoints[id] do
+      %{"size" => width} when is_number(width) and width >= 0 -> {:ok, width}
+      _ -> :error
+    end
+  end
+
+  defp breakpoint_width(_value, _breakpoints), do: :error
 
   @spec breakpoints(map()) :: map()
   def breakpoints(payload) do

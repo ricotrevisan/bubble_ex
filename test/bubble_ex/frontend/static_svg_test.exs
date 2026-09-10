@@ -34,6 +34,24 @@ defmodule BubbleEx.Frontend.StaticSvgTest do
     end
   end
 
+  test "groups preserve safe paint inheritance and reject nested active content" do
+    assert {:ok, svg} =
+             BubbleEx.Frontend.StaticSvg.parse(
+               ~s|<svg><g fill="none"><path stroke="currentColor" d="M1 2L3 4"/></g></svg>|
+             )
+
+    assert svg =~ ~s(<g fill="none">)
+
+    for inner <- [
+          ~s|<g onclick="alert(1)"><path d="M1 2"/></g>|,
+          ~s|<g><image href="https://example.test/tracker"/></g>|,
+          ~s|<g fill="url(https://example.test/paint)"><path d="M1 2"/></g>|,
+          String.duplicate("<g>", 20) <> ~s|<path d="M1 2"/>| <> String.duplicate("</g>", 20)
+        ] do
+      assert BubbleEx.Frontend.StaticSvg.parse("<svg>#{inner}</svg>") == :unsupported
+    end
+  end
+
   defp payload(svg) do
     %{
       "_id" => "svg",

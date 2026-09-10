@@ -212,6 +212,7 @@ defmodule BubbleEx.Frontend.Normalize do
             "paint" => paint |> Map.merge(lengths) |> Map.merge(hidden) |> Map.merge(alignment)
           }
         end)
+        |> Enum.reject(&(map_size(&1["paint"]) == 0 or duplicate_collapse?(&1, node.responsive)))
 
       %{
         node
@@ -221,6 +222,20 @@ defmodule BubbleEx.Frontend.Normalize do
       }
     end)
   end
+
+  defp duplicate_collapse?(
+         %{"media" => %{"operator" => "<=", "width" => width}, "paint" => paint},
+         rules
+       )
+       when map_size(paint) == 1 do
+    paint == %{"display" => "none"} and
+      Enum.member?(rules, %{
+        "when" => %{"max_viewport_width" => width},
+        "visibility" => "collapsed"
+      })
+  end
+
+  defp duplicate_collapse?(_rule, _rules), do: false
 
   defp responsive_alignment(overrides, parent_mode) do
     case child_alignment(%{"properties" => overrides}, parent_mode) do
@@ -247,6 +262,7 @@ defmodule BubbleEx.Frontend.Normalize do
           display_name: display,
           applies_to: Payload.type(raw),
           properties: shared_style_properties(raw),
+          responsive: style_breakpoints(raw, payload),
           source: %Source{path: ["styles", key], map_key: key, bubble_id: Payload.bubble_id(raw)}
         }
 
@@ -256,6 +272,21 @@ defmodule BubbleEx.Frontend.Normalize do
       end
     end)
     |> then(fn {styles, taken} -> {Enum.reverse(styles), taken} end)
+  end
+
+  defp style_breakpoints(raw, payload) do
+    raw
+    |> BubbleEx.Frontend.Responsive.breakpoint_states(
+      BubbleEx.Frontend.Responsive.breakpoints(payload)
+    )
+    |> Enum.map(fn %{media: media, overrides: overrides} ->
+      paint = local_paint(%{"type" => Payload.type(raw), "properties" => overrides})
+
+      %{
+        "media" => media,
+        "paint" => Map.merge(paint, BubbleEx.Frontend.Responsive.extra_lengths(overrides))
+      }
+    end)
   end
 
   defp normalize_pages(payload, identity) do
@@ -714,12 +745,14 @@ defmodule BubbleEx.Frontend.Normalize do
   defp fontawesome_4_icon?(_), do: false
 
   defp supported_sprite_icon?(icon) when is_binary(icon) do
-    fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon)
+    fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon) or
+      Regex.match?(~r/^phosphor (regular|bold|fill) [a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
   end
 
   defp supported_sprite_icon?(_), do: false
 
   defp sprite_variant("material outlined " <> _), do: :material_outlined
+  defp sprite_variant("phosphor " <> _), do: :phosphor
   defp sprite_variant(_), do: :fontawesome_4
 
   defp static_element?(raw) do
@@ -1316,15 +1349,17 @@ defmodule BubbleEx.Frontend.Normalize do
          "%c" => %{
            "%x" => "PageData",
            "%p" => %{"%nm" => "Current Page Width"},
-           "%n" => %{
-             "%x" => "Message",
-             "%nm" => "less_or_equal_than",
-             "%a" => width
-           }
+           "%n" =>
+             %{
+               "%x" => "Message",
+               "%nm" => "less_or_equal_than",
+               "%a" => width
+             } = message
          },
          "%p" => %{"%iv" => false} = overrides
        })
-       when is_number(width) and width >= 0 and map_size(overrides) == 1 do
+       when is_number(width) and width >= 0 and map_size(overrides) == 1 and
+              not is_map_key(message, "%n") do
     [%{"when" => %{"max_viewport_width" => width}, "visibility" => "collapsed"}]
   end
 
@@ -2404,7 +2439,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :icon, variant)
-       when variant in [:fontawesome_4, :material_outlined] do
+       when variant in [:fontawesome_4, :material_outlined, :phosphor] do
     Map.merge(%{"aria-hidden" => "true"}, sprite_attributes(raw))
   end
 
@@ -2441,6 +2476,16 @@ defmodule BubbleEx.Frontend.Normalize do
       "asset_fragment" => name,
       "asset_src" => "/static/icon_libraries/material-icons-4.0.0-outlined.svg",
       "icon_set" => "material"
+    }
+  end
+
+  defp sprite_source("phosphor " <> description) do
+    [weight, name] = String.split(description, " ", parts: 2)
+
+    %{
+      "asset_fragment" => name,
+      "asset_src" => "/static/icon_libraries/phosphor-2.1.0-#{weight}.svg",
+      "icon_set" => "phosphor"
     }
   end
 

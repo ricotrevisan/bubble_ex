@@ -1168,7 +1168,7 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert {:ok, _} = Frontend.export_payload(payload, out, @scan ++ [force: true])
       html = File.read!(Path.join(out, "pages/index/index.html"))
       refute html =~ ~s(class="s-button-primary-button")
-      assert html =~ ~s(class="bubbleex-text-default")
+      assert html =~ ~s(class="bubbleex-text-default bubbleex-button-default")
       shared = File.read!(Path.join(out, "styles/shared.css"))
       assert shared =~ "--color_primary_default:"
       assert shared =~ "--font_default:"
