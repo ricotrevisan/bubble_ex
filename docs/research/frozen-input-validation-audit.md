@@ -56,3 +56,15 @@ The four cases previously proved only parity with incorrectly configured pages;
 their former format-support claims should not be relied on. The corrected
 references now exercise valid definitions. The audit found no other invalid
 Input/DateInput enums in the committed frozen sources.
+
+## Verification
+
+`mix quality` passes: 6 doctests, 672 tests, zero failures (37 excluded).
+The production-package consumer smoke test passes. GitHub CI passes all 18
+fidelity cases and both Elixir/OTP configurations (1.17/27 and 1.18.4/28.0).
+Native secret scanning reports no findings in the four replacement payloads.
+
+Linux ARM reproduced an existing complex-case raster overage on the untouched
+commit; Linux x86-64 CI passes. The Docker helper explicitly selects x86-64 and
+allows five minutes per test for emulation on Apple Silicon. These runtime
+settings do not change any fidelity threshold.

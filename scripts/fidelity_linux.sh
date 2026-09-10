@@ -14,4 +14,4 @@ exec "$BUBBLE_FIDELITY_DOCKER" run --rm --platform linux/amd64 \
 SH
 chmod +x "$shim_dir/node"
 cd "$repo_root"
-PATH="$shim_dir:$PATH" mix test --only fidelity "$@"
+PATH="$shim_dir:$PATH" mix test --only fidelity --timeout 300000 "$@"
