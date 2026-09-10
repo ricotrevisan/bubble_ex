@@ -100,6 +100,13 @@ rejected Message metadata on both logo lists. The original iteration 21 score
 must therefore not be treated as validation of the final PR75 commit. Regression
 tests now include that observed metadata and keep unknown arguments rejected.
 
+Iteration 26 fixes stale image-height bounds and icon styles overriding initial
+visibility, and supports showing native elements at authored breakpoints.
+Mochary remains 100; Bubble scores 41.04 / 41.46 / 40.00, for a combined 70.41.
+The corrected image is 24 × 24 at all three widths, matching fresh source
+observations. Source content generated from group data, database searches, and
+plugins still differs; none of those failures is excluded from the score.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

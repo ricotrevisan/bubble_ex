@@ -134,4 +134,44 @@ defmodule BubbleEx.Frontend.ResponsiveTest do
       }
     }
   end
+
+  test "a breakpoint can show an initially hidden native element with its normal display mode" do
+    for {type, display} <- [{"Button", "inline-flex"}, {"Group", "flex"}] do
+      show = state("less_or_equal_than", 14) |> put_in(["%p"], %{"%iv" => true})
+
+      payload = %{
+        "_id" => "show-at-mobile",
+        "settings" => %{
+          "client_safe" => %{"responsive_breakpoints" => %{"mobile" => %{"size" => 768}}}
+        },
+        "pages" => %{
+          "index" => %{
+            "%x" => "Page",
+            "%p" => %{"container_layout" => "column"},
+            "%el" => %{
+              "target" => %{
+                "%x" => type,
+                "%p" => %{
+                  "container_layout" => "column",
+                  "%iv" => false,
+                  "collapse_when_hidden" => true,
+                  "button_type" => "label_icon",
+                  "icon" => "material outlined arrow_forward",
+                  "text" => "Go"
+                },
+                "%s" => %{"0" => show}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, model} = Frontend.normalize(payload)
+      css = Css.page(hd(model.pages))
+      [base, media] = String.split(css, "@media", parts: 2)
+      assert base =~ "display: none;"
+      assert media =~ "display: #{display};"
+      assert media =~ "visibility: visible;"
+    end
+  end
 end

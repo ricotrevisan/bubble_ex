@@ -506,6 +506,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.merge(paint)
     |> Map.merge(image_fit(kind, variant))
     |> Map.merge(native_display(kind))
+    |> Map.merge(icon_control_layout(kind, variant))
     |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
 
@@ -514,6 +515,16 @@ defmodule BubbleEx.Frontend.Export.Css do
        do: %{"color" => "#000000"}
 
   defp native_default_paint(_kind), do: %{}
+
+  defp icon_control_layout(kind, variant)
+       when kind in [:button, :link] and variant in [:icon, :label_icon],
+       do: %{
+         "align-items" => "center",
+         "display" => "inline-flex",
+         "gap" => "var(--bubble-button-gap, 8px)"
+       }
+
+  defp icon_control_layout(_kind, _variant), do: %{}
 
   defp image_fit(:image, :stretch),
     do: %{"object-fit" => "fill", "display" => "block", "overflow" => "hidden"}
@@ -981,11 +992,6 @@ defmodule BubbleEx.Frontend.Export.Css do
     selector = "[data-exporter-id=\"#{id}\"]"
 
     """
-    #{selector} {
-      align-items: center;
-      display: inline-flex;
-      gap: var(--bubble-button-gap, 8px);
-    }
     #{selector} > svg {
       fill: currentColor;
       color: var(--bubble-icon-color, currentColor);
@@ -1093,6 +1099,7 @@ defmodule BubbleEx.Frontend.Export.Css do
 
           decls =
             paint
+            |> restore_visible_display(node, parent)
             |> margin_variables()
             |> breakpoint_fill(node, parent)
             |> image_breakpoint_paint(node)
@@ -1105,6 +1112,13 @@ defmodule BubbleEx.Frontend.Export.Css do
       end)
     end)
   end
+
+  defp restore_visible_display(%{"display" => "revert"} = paint, node, parent) do
+    visible = %{node | box: Map.drop(node.box, [:hidden?, :collapsed?, "hidden?", "collapsed?"])}
+    Map.put(paint, "display", css_map(visible, parent)["display"] || "revert")
+  end
+
+  defp restore_visible_display(paint, _node, _parent), do: paint
 
   defp breakpoint_fill(paint, %Node{layout: layout}, parent) when is_map(layout) do
     paint =

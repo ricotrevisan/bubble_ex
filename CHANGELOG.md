@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Respect initial hidden states on icon controls and restore the native display
+  mode when an exact page-width condition shows a native element.
+- Ignore stale vertical editor bounds on fit-height aspect-ratio images.
+
 - Accept Bubble's inert Message editor metadata during bounded list evaluation;
   continue rejecting unknown arguments and operators.
 - Retain dynamic image alt text as a binding and resolve literal reusable

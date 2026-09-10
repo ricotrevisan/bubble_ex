@@ -89,12 +89,19 @@ defmodule BubbleEx.Frontend.Responsive do
   def hidden_paint(raw, overrides) do
     case Payload.prop(%{"properties" => overrides}, "is_visible") do
       false -> hidden_declaration(Payload.prop(raw, "collapse_when_hidden"))
+      true -> visible_declaration(Payload.type(raw))
       _ -> %{}
     end
   end
 
   defp hidden_declaration(true), do: %{"display" => "none"}
   defp hidden_declaration(_), do: %{"visibility" => "hidden"}
+
+  defp visible_declaration(type)
+       when type in ["Popup", "GroupFocus", "CustomElement", "CustomDefinition"],
+       do: %{}
+
+  defp visible_declaration(_type), do: %{"display" => "revert", "visibility" => "visible"}
 
   defp length_properties do
     for prefix <- ["padding", "margin"], side <- ["top", "right", "bottom", "left"] do
