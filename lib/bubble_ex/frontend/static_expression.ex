@@ -5,8 +5,9 @@ defmodule BubbleEx.Frontend.StaticExpression do
   @max_items 100
   @max_depth 24
 
-  @spec resolve(term(), term()) :: {:ok, term()} | :unknown
-  def resolve(expression, parent \\ :unknown), do: evaluate(expression, parent, 0)
+  @spec resolve(term(), term(), map()) :: {:ok, term()} | :unknown
+  def resolve(expression, parent \\ :unknown, parameters \\ %{}),
+    do: evaluate(expression, %{parent: parent, parameters: parameters}, 0)
 
   defp evaluate(_expression, _parent, depth) when depth > @max_depth, do: :unknown
 
@@ -17,6 +18,26 @@ defmodule BubbleEx.Frontend.StaticExpression do
        when is_binary(value) and byte_size(value) <= @max_text_bytes,
        do: {:ok, value}
 
+  defp evaluate(
+         %{
+           "%x" => "GetElement",
+           "%p" => %{"%ei" => ref} = props,
+           "%n" => %{"%nm" => "param_" <> _ = key} = message
+         },
+         context,
+         depth
+       )
+       when map_size(props) == 1 and is_binary(ref) do
+    with true <- allowed_message_keys?(message, ["%nm", "%n"]),
+         %{} = parameters <- Map.get(context.parameters, ref, %{}),
+         {:ok, value} <- Map.fetch(parameters, key),
+         {:ok, resolved} <- evaluate(value, context, depth + 1) do
+      messages(resolved, message["%n"], context, depth + 1)
+    else
+      _ -> :unknown
+    end
+  end
+
   defp evaluate(%{} = expression, parent, depth) do
     with {:ok, value} <- base(expression, parent, depth + 1) do
       messages(value, expression["%n"], parent, depth + 1)
@@ -25,9 +46,9 @@ defmodule BubbleEx.Frontend.StaticExpression do
 
   defp evaluate(_expression, _parent, _depth), do: :unknown
 
-  defp base(%{"%x" => "ElementParent"}, parent, depth)
+  defp base(%{"%x" => "ElementParent"}, %{parent: parent} = context, depth)
        when is_binary(parent) or is_number(parent) or is_boolean(parent),
-       do: evaluate(parent, :unknown, depth)
+       do: evaluate(parent, context, depth)
 
   defp base(%{"%x" => "ArbitraryText", "%p" => %{"arbitrary_text" => text}}, parent, depth),
     do: evaluate(text, parent, depth)
@@ -77,12 +98,17 @@ defmodule BubbleEx.Frontend.StaticExpression do
   defp messages(_value, _message, _parent, _depth), do: :unknown
 
   defp supported_arguments?(%{"%nm" => "split_by"} = message),
-    do: Map.drop(message, ["%nm", "%n", "%p"]) == %{}
+    do: allowed_message_keys?(message, ["%nm", "%n", "%p"])
 
   defp supported_arguments?(%{"%nm" => "convert_to_number"} = message),
-    do: Map.drop(message, ["%nm", "%n"]) == %{}
+    do: allowed_message_keys?(message, ["%nm", "%n"])
 
   defp supported_arguments?(_message), do: false
+
+  defp allowed_message_keys?(message, keys) do
+    Map.drop(message, keys ++ ["%x", "is_slidable"]) == %{} and
+      message["%x"] in [nil, "Message"] and message["is_slidable"] in [nil, true, false]
+  end
 
   defp operation(
          value,

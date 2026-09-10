@@ -1781,6 +1781,28 @@ defmodule BubbleEx.Frontend.Normalize do
     {%{"items" => %{resolved: items, binding_id: binding.id}}, %{"items" => binding}}
   end
 
+  defp primary_slots(:reusable_instance, raw, id) do
+    raw
+    |> Payload.properties()
+    |> Enum.filter(fn {key, _value} -> String.starts_with?(key, "param_") end)
+    |> Enum.reduce({%{}, %{}}, fn {key, value}, {slots, bindings} ->
+      binding = binding(id, key, :expression, value)
+      slot = %{binding_id: binding.id}
+
+      slot =
+        case BubbleEx.Frontend.StaticExpression.resolve(value) do
+          {:ok, resolved}
+          when is_binary(resolved) or is_number(resolved) or is_boolean(resolved) ->
+            Map.put(slot, :resolved, resolved)
+
+          _ ->
+            slot
+        end
+
+      {Map.put(slots, key, slot), Map.put(bindings, key, binding)}
+    end)
+  end
+
   defp primary_slots(_kind, _raw, _id), do: {%{}, %{}}
 
   defp named_map_slot(raw, exporter_id, key, kind) do
@@ -1997,8 +2019,14 @@ defmodule BubbleEx.Frontend.Normalize do
         :empty -> {%{}, %{}}
       end
 
-    alt_slots = if is_binary(alt), do: %{"alt" => %{resolved: alt}}, else: %{}
-    {Map.merge(src_slots, alt_slots), src_bindings}
+    {alt_slots, alt_bindings} =
+      case literal_or_binding(alt, exporter_id, "alt", raw) do
+        {:resolved, value} -> {%{"alt" => %{resolved: value}}, %{}}
+        {:binding, binding} -> {%{"alt" => %{binding_id: binding.id}}, %{"alt" => binding}}
+        :empty -> {%{}, %{}}
+      end
+
+    {Map.merge(src_slots, alt_slots), Map.merge(src_bindings, alt_bindings)}
   end
 
   defp condition_slot(raw, exporter_id) do

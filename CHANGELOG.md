@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Accept Bubble's inert Message editor metadata during bounded list evaluation;
+  continue rejecting unknown arguments and operators.
+- Retain dynamic image alt text as a binding and resolve literal reusable
+  parameter values separately for each instance, including nested forwarding.
+  Collect each instance's assets, bindings, and safety findings independently.
+
 - Preserve shared-style page-width conditions and literal breakpoint thresholds;
   reject chained conditions in the older collapsed-visibility lowering.
 - Subtract authored side margins from fill dimensions, including responsive

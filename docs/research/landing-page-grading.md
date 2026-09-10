@@ -91,6 +91,15 @@ widths; Bubble scores 35.25 / 35.70 / 34.28, for a combined 67.53. The fourteen
 logo images have matching cell dimensions, but their animated positions still
 fail, as do missing runtime content and reusable parameter values.
 
+Iteration 23 resolves literal reusable parameters and restores acceptance of
+inert Message editor metadata. Mochary remains 100; Bubble scores
+40.93 / 41.38 / 39.95, for a combined 70.37. All visible exported images load;
+their total count still differs from the reference. Iteration 22 exposed a
+regression introduced after the iteration 21 capture: stricter argument checks
+rejected Message metadata on both logo lists. The original iteration 21 score
+must therefore not be treated as validation of the final PR75 commit. Regression
+tests now include that observed metadata and keep unknown arguments rejected.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

@@ -126,9 +126,11 @@ conditions are applied when no application-user session was supplied, and a
 literal `Current Date/Time:formatted as yyyy` uses the recorded UTC snapshot
 time. Expressions remain in the bindings. Exact page-width comparisons against
 configured breakpoints or literal thresholds become CSS media rules for supported
-paint and spacing properties, including conditions on shared styles. General
-expressions, reusable parameters, and workflows are not
-executed. Links to known pages omitted by `--pages` retain their public source
+paint and spacing properties, including conditions on shared styles. Literal
+reusable parameters resolve in their own instance scope, including forwarding
+through nested reusables; original expressions remain bindings. General
+expressions, parameter-driven conditions, and workflows are not executed.
+Links to known pages omitted by `--pages` retain their public source
 destinations; selected pages link to their local exports.
 
 Visual correctness is defined only for committed **frozen cases**. The committed

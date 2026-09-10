@@ -269,7 +269,10 @@ defmodule BubbleEx.Frontend.Export do
   defp build_and_write(model, selected, out_dir, opts) do
     plan = plan_names(model, selected, opts)
     nodes = selected ++ model.reusables
-    {assets, asset_findings} = Assets.collect(nodes, opts)
+
+    asset_nodes = expanded_nodes(nodes, model)
+
+    {assets, asset_findings} = Assets.collect(asset_nodes, opts)
 
     {font_css, font_assets, font_findings} =
       Fonts.collect(nodes, model.styles, Keyword.put(opts, :font_default, font_default(model)))
@@ -485,10 +488,13 @@ defmodule BubbleEx.Frontend.Export do
     |> Enum.map(fn asset -> {asset.path, asset.bytes} end)
   end
 
-  defp expand(%Normalized{reusables: reusables}, %Node{definition_ref: ref}) do
-    Enum.find(reusables, fn node ->
-      node.map_key == ref or (node.source && node.source.bubble_id == ref)
-    end)
+  defp expand(%Normalized{reusables: reusables}, %Node{definition_ref: ref} = instance) do
+    definition =
+      Enum.find(reusables, fn node ->
+        node.map_key == ref or (node.source && node.source.bubble_id == ref)
+      end)
+
+    BubbleEx.Frontend.ReusableParameters.expand(definition, instance)
   end
 
   defp rewrite_href(_node, dest, plan, from_dir) do
@@ -554,6 +560,7 @@ defmodule BubbleEx.Frontend.Export do
 
   defp collect_bindings(%Normalized{} = model) do
     (model.pages ++ model.reusables)
+    |> expanded_nodes(model)
     |> Enum.flat_map(&node_bindings/1)
     |> Enum.uniq_by(& &1["id"])
     |> Enum.sort_by(& &1["id"])
@@ -589,14 +596,15 @@ defmodule BubbleEx.Frontend.Export do
         }
       end)
 
-    links = link_findings(selected ++ model.reusables, plan)
+    expanded = expanded_nodes(selected ++ model.reusables, model)
+    links = link_findings(expanded, plan)
 
     reusable =
       (selected ++ model.reusables)
       |> reusable_findings(model)
       |> Enum.uniq_by(&{&1["type"], &1["refs"], &1["payload"]})
 
-    security = Safety.findings(model.styles, selected ++ model.reusables)
+    security = Safety.findings(model.styles, expanded)
     fallback = fallback_findings(opts, selected)
     unsupported ++ reusable ++ links ++ security ++ fallback
   end
@@ -813,6 +821,13 @@ defmodule BubbleEx.Frontend.Export do
       if node.kind == :reusable_definition, do: MapSet.new([node.map_key]), else: MapSet.new()
 
     collect_expanded(node, model, stack)
+  end
+
+  defp expanded_nodes(nodes, model) do
+    nodes
+    |> Enum.flat_map(&collect_expanded(&1, model))
+    |> Enum.uniq_by(& &1.exporter_id)
+    |> Enum.map(&%{&1 | children: []})
   end
 
   defp collect_expanded(%Node{} = node, model, stack) do
