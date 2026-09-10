@@ -701,7 +701,8 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp classify_popup(raw) do
-    if static_element?(raw) do
+    # Hidden is still static: Bubble popups start closed even when authored visible.
+    if Payload.workflows(raw) == %{} do
       {:native, :popup, layout_mode(raw) || :column}
     else
       {:placeholder, :unsupported_popup_variant}

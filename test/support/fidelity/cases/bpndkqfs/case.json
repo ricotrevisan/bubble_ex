@@ -1,0 +1,58 @@
+{
+  "id": "bpndkqfs",
+  "browser": {
+    "playwright": "1.55.1",
+    "chromium": "140.0.7339.186",
+    "dpr": 1,
+    "locale": "en-US",
+    "reduced_motion": "reduce",
+    "viewport_height": 900
+  },
+  "font": {
+    "family": "Inter",
+    "path": "assets/inter-latin.woff2",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+  },
+  "source": {
+    "bubble_id": "tiptap-plugin",
+    "app_version": "test",
+    "page_id": "bpndkqfs",
+    "page_path": "bubbleex-i69-range-popup",
+    "page_payload_sha256": "bf5c3b6d175ba96da2878c27a4891756747bf5c0d14ba2893859613ae8534736",
+    "payload_sha256": "6497c455951d70171be77381bd73db32b541fedcb9ef42dbb0721ac1be10db19"
+  },
+  "public_assets": [],
+  "viewports": [
+    390,
+    1440
+  ],
+  "transitions": {
+    "390": "narrow page; range slider stays 320px wide",
+    "1440": "wide page; the same left-stacked range slider"
+  },
+  "node_ids": [
+    "bpndkqfs",
+    "bprdfdnj",
+    "bpcbxuhy",
+    "bphjkgox"
+  ],
+  "text_node_ids": [
+    "bprdfdnj",
+    "bpcbxuhy"
+  ],
+  "semantics": {
+    "main": [
+      "bpndkqfs"
+    ],
+    "paragraphs": [
+      "bprdfdnj",
+      "bpcbxuhy"
+    ]
+  },
+  "pixel_tolerance": {
+    "max_changed_pixels": 16000,
+    "max_channel_delta": 255,
+    "max_mean_absolute_error": 1.4,
+    "rationale": "Geometry is the gate. Two native range inputs vs Bubble two-handle SliderInput paint. Live Bubble keeps the Popup closed on page load, so the frozen payload uses is_visible false."
+  }
+}

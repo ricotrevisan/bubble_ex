@@ -1559,6 +1559,23 @@ defmodule BubbleEx.FrontendTest do
       assert hd(popup.children).kind == :text
     end
 
+    test "lowers a hidden Popup as a closed native dialog" do
+      payload =
+        page_with_elements(%{
+          "popup" => %{
+            "id" => "p-hidden",
+            "type" => "Popup",
+            "properties" => %{"is_visible" => false}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      [popup] = page.children
+      assert popup.kind == :popup
+      refute popup.placeholder?
+      refute Map.get(popup.attributes, "open")
+    end
+
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())

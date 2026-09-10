@@ -877,6 +877,7 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert html =~ "<dialog"
       assert html =~ "open"
       assert html =~ "Popup body"
+      refute html =~ ~s(<input aria-label="Range start" data-bubble-id="r1")
       refute html =~ "data-placeholder-kind"
     end
 

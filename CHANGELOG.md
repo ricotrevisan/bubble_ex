@@ -6,10 +6,12 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Frozen S1 range Slider / Popup case `bpndkqfs` (`bubbleex-i69-range-popup`)
+
 - S1 two-handle SliderInput (paired `type=range` inputs) and visible Popup
   as `<dialog open>`. Hidden popups stay closed. GroupFocus lowers as a
   static group box. Authorized page `bubbleex-i69-range-popup` is on
-  `tiptap-plugin` Test; freeze is a follow-up.
+  `tiptap-plugin` Test.
 
 - Frozen S1 slider/search case `bplvejcw` (`bubbleex-i67-slider-search`)
 

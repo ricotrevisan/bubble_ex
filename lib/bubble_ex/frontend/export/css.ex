@@ -740,6 +740,24 @@ defmodule BubbleEx.Frontend.Export.Css do
     bbcode
   end
 
+  defp extra_rule(%Node{kind: :slider, variant: :range} = node, opts) do
+    id = prefixed_id(node, opts) |> escape()
+
+    """
+    [data-exporter-id="#{id}"] {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+    }
+    [data-exporter-id="#{id}"] > input {
+      flex: 1 1 0;
+      margin: 0;
+      min-width: 0;
+      width: auto;
+    }
+    """
+  end
+
   defp extra_rule(_, _), do: ""
 
   defp text_slot(%Node{content: content}) when is_map(content) do
