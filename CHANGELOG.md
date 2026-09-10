@@ -38,6 +38,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Bounded literal horizontal Repeating Groups with leaf templates, scalar
+  current-cell values, portable image assets, and unique repeated instance IDs.
+  Database searches, nested templates, and runtime scrolling remain unsupported.
+
 - Static Phosphor regular, bold, and fill icons, with bounded group/path SVG
   sanitization that preserves stroke geometry and rejects active content.
 

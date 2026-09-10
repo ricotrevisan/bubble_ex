@@ -27,10 +27,19 @@ defmodule BubbleEx.Frontend.InitialState do
         node
         | box: box,
           content: snapshot_content(node, context.snapshot_at),
-          children: project_nodes(node.children, Payload.elements(raw), context)
+          children: project_children(node, raw, context)
       }
     end)
   end
+
+  defp project_children(%{kind: :repeating_group} = node, raw, context) do
+    Enum.map(node.children, fn cell ->
+      %{cell | children: project_nodes(cell.children, Payload.elements(raw), context)}
+    end)
+  end
+
+  defp project_children(node, raw, context),
+    do: project_nodes(node.children, Payload.elements(raw), context)
 
   defp snapshot_content(node, %DateTime{} = at) do
     Map.new(node.content || %{}, fn {slot, content} ->

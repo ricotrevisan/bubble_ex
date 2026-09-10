@@ -86,6 +86,11 @@ widths; Bubble scores 35.08 / 35.54 / 34.14, for a combined 67.45. This iteratio
 adds Phosphor icons, shared-style breakpoints, margin-aware fill sizing, and
 reusable instance sizing corrections. Missing runtime content still fails.
 
+Iteration 21 adds bounded literal horizontal lists. Mochary remains 100 at all
+widths; Bubble scores 35.25 / 35.70 / 34.28, for a combined 67.53. The fourteen
+logo images have matching cell dimensions, but their animated positions still
+fail, as do missing runtime content and reusable parameter values.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

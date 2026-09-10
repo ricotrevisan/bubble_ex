@@ -406,6 +406,16 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp layout_css(%Node{layout: nil}), do: %{}
 
+  defp layout_css(%Node{kind: :repeating_group, layout: layout}) do
+    %{
+      "display" => "grid",
+      "grid-auto-flow" => "column",
+      "grid-auto-columns" => "minmax(max-content, #{layout[:cell_min_width]})",
+      "grid-template-rows" => "repeat(1, minmax(#{layout[:cell_min_height]}, auto))",
+      "overflow" => "auto"
+    }
+  end
+
   defp layout_css(%Node{kind: kind, layout: layout})
        when kind in [:page, :group, :floating_group, :reusable_definition] do
     case layout[:mode] || layout["mode"] do
