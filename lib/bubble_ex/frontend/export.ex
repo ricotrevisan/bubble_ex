@@ -530,6 +530,9 @@ defmodule BubbleEx.Frontend.Export do
 
   defp font_default(_), do: nil
 
+  defp default_text_class(%Node{kind: :button}),
+    do: "bubbleex-text-default bubbleex-button-default"
+
   defp default_text_class(%Node{kind: kind})
        when kind in [
               :text,

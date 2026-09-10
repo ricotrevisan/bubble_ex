@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Preserve shared-style page-width conditions and literal breakpoint thresholds;
+  reject chained conditions in the older collapsed-visibility lowering.
+- Subtract authored side margins from fill dimensions, including responsive
+  changes, and keep reusable instance sizing separate from definition defaults.
+- Preserve button default line height and reusable children's parent layout.
+
 - Preserve compact shared-style references, authored design tokens and default
   typography without reapplying the editor's element-creation default styles.
 - Correct modern fill sizing, stacking order, reusable floating anchors, and
@@ -31,6 +37,9 @@ All notable changes to this project are documented here.
   independently of screenshot tolerances.
 
 ### Added
+
+- Static Phosphor regular, bold, and fill icons, with bounded group/path SVG
+  sanitization that preserves stroke geometry and rejects active content.
 
 - Static Material outlined icons and sanitized path-only inline SVG elements;
   separate icon/label colors and authored icon placement, size, and spacing.

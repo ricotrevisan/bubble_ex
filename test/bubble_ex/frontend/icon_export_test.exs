@@ -56,6 +56,44 @@ defmodule BubbleEx.Frontend.IconExportTest do
     end
   end
 
+  @tag :tmp_dir
+  test "Phosphor outlines retain grouped fill and stroke geometry", %{tmp_dir: tmp} do
+    payload = payload("phosphor bold arrow-right")
+    sprite = Path.join(tmp, "phosphor.svg")
+
+    File.write!(sprite, """
+    <svg><symbol id="arrow-right" viewBox="0 0 256 256">
+    <g fill="none" class="nc-icon-wrapper"><path d="M0 0h256v256H0z"/>
+    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+    stroke-width="24" d="M40 128h176M144 56l72 72-72 72"/></g>
+    </symbol></svg>
+    """)
+
+    url = "https://example.test/static/icon_libraries/phosphor-2.1.0-bold.svg"
+    {:ok, _, auth} = Auth.prepare("https://example.test/", [])
+    context = %Fetch.Context{page_url: "https://example.test/", auth: auth}
+
+    assert {:ok, result} =
+             Frontend.export_fetched(
+               payload,
+               Path.join(tmp, "export"),
+               [
+                 secret_scan_adapter: FrontendFixtures.clean_scanner(),
+                 asset_files: %{url => sprite}
+               ],
+               context
+             )
+
+    assert hd(hd(result.model.pages).children).variant == :label_icon
+    assert result.findings == []
+    html = File.read!(Path.join(result.out_dir, "pages/index/index.html"))
+    assert html =~ ~s(data-icon-set="phosphor")
+    assert html =~ ~s(<g fill="none")
+    assert html =~ ~s(stroke="currentColor")
+    assert html =~ ~s(stroke-width="24")
+    refute html =~ ~s(<path fill="currentColor" d="M0 0h256)
+  end
+
   test "static icon links retain the authored trailing icon placement" do
     payload = payload("material outlined arrow_forward")
 

@@ -420,7 +420,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
            ),
          [_, view_box, body] <- Regex.run(regex, bytes),
          true <- safe_view_box?(view_box),
-         {:ok, paths} <- sanitize_icon_paths(body) do
+         {:ok, paths} <- BubbleEx.Frontend.StaticSvg.paths(body) do
       {:ok,
        [
          ~s(<svg xmlns="http://www.w3.org/2000/svg">),
@@ -439,40 +439,6 @@ defmodule BubbleEx.Frontend.Export.Assets do
   defp safe_view_box?(view_box) do
     parts = String.split(view_box, ~r/\s+/, trim: true)
     length(parts) == 4 and Enum.all?(parts, &Regex.match?(~r/^-?(?:\d+(?:\.\d+)?|\.\d+)$/, &1))
-  end
-
-  defp sanitize_icon_paths(body) do
-    path_regex = ~r/<path\b[^>]*\/>/
-    tags = Regex.scan(path_regex, body) |> Enum.map(&hd/1)
-    remainder = Regex.replace(path_regex, body, "") |> String.trim()
-
-    if tags == [] or remainder != "" do
-      :error
-    else
-      sanitize_path_tags(tags)
-    end
-  end
-
-  defp sanitize_path_tags(tags) do
-    case Enum.reduce_while(tags, [], &collect_sanitized_path/2) do
-      :error -> :error
-      paths -> {:ok, Enum.reverse(paths)}
-    end
-  end
-
-  defp collect_sanitized_path(tag, paths) do
-    case Regex.run(~r/\bd="([^\"]+)"/, tag) do
-      [_, data] -> collect_safe_path_data(data, paths)
-      _ -> {:halt, :error}
-    end
-  end
-
-  defp collect_safe_path_data(data, paths) do
-    if Regex.match?(~r/^[0-9eE.,+\-\sMmZzLlHhVvCcSsQqTtAa]+$/, data) do
-      {:cont, [~s(<path fill="currentColor" d="#{data}"/>) | paths]}
-    else
-      {:halt, :error}
-    end
   end
 
   defp store_or_reject(url, body, headers, max_bytes) when is_binary(body) do

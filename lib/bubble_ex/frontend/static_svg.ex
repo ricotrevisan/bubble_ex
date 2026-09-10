@@ -10,7 +10,7 @@ defmodule BubbleEx.Frontend.StaticSvg do
          [{"svg", attributes, children}] <- nonblank(nodes),
          true <- safe_attributes?(attributes, :svg),
          paths when paths != [] <- nonblank(children),
-         true <- Enum.all?(paths, &safe_path?/1) do
+         true <- Enum.all?(paths, &safe_shape?(&1, 0)) do
       attributes = Enum.map(attributes, &restore_attribute_case/1)
       {:ok, Floki.raw_html([{"svg", attributes, paths}])}
     else
@@ -20,6 +20,19 @@ defmodule BubbleEx.Frontend.StaticSvg do
 
   def parse(_html), do: :unsupported
 
+  @spec paths(term()) :: {:ok, String.t()} | :unsupported
+  def paths(html) when is_binary(html) and byte_size(html) <= 100_000 do
+    with {:ok, nodes} <- Floki.parse_fragment(html),
+         paths when paths != [] <- nonblank(nodes),
+         true <- Enum.all?(paths, &safe_shape?(&1, 0)) do
+      {:ok, Floki.raw_html(paths)}
+    else
+      _ -> :unsupported
+    end
+  end
+
+  def paths(_html), do: :unsupported
+
   defp nonblank(nodes) do
     Enum.reject(nodes, fn
       text when is_binary(text) -> String.trim(text) == ""
@@ -27,12 +40,19 @@ defmodule BubbleEx.Frontend.StaticSvg do
     end)
   end
 
-  defp safe_path?({"path", attributes, children}) do
+  defp safe_shape?({"path", attributes, children}, _depth) do
     nonblank(children) == [] and List.keymember?(attributes, "d", 0) and
       safe_attributes?(attributes, :path)
   end
 
-  defp safe_path?(_), do: false
+  defp safe_shape?({"g", attributes, children}, depth) when depth < 16 do
+    children = nonblank(children)
+
+    safe_attributes?(attributes, :group) and children != [] and
+      Enum.all?(children, &safe_shape?(&1, depth + 1))
+  end
+
+  defp safe_shape?(_, _), do: false
 
   defp safe_attributes?(attributes, kind) do
     Enum.all?(attributes, fn {key, value} -> safe_attribute?(key, value, kind) end)

@@ -16,15 +16,17 @@ defmodule BubbleEx.Frontend.Export.Css do
     p, h1, h2, h3, h4, fieldset, legend { margin: 0; font: inherit; }
     fieldset { min-width: 0; padding: 0; border: 0; }
     button, input, textarea, select { font: inherit; }
-    button { border: none; background: none; padding: 0; }
+    button { border: none; background: none; padding: 0; line-height: 1; }
     textarea { resize: none; }
     .bubbleex-text-default { font-family: var(--font_default); font-size: 14px; }
+    .bubbleex-button-default { line-height: 1; }
     """
 
     style_rules =
       Enum.map_join(styles, "\n", fn style ->
         decls = style |> shared_paint(model) |> declarations_from_paint()
-        if decls == "", do: "", else: ".#{style.class_name} {\n#{decls}}\n"
+        base = if decls == "", do: "", else: ".#{style.class_name} {\n#{decls}}\n"
+        base <> shared_breakpoint_css(style)
       end)
 
     [font_css, token_css(model), base, style_rules]
@@ -32,6 +34,18 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Enum.join("\n")
     |> String.trim_trailing()
     |> Kernel.<>("\n")
+  end
+
+  defp shared_breakpoint_css(style) do
+    Enum.map_join(style.responsive || [], "\n", fn
+      %{"media" => %{"operator" => operator, "width" => width}, "paint" => paint}
+      when operator in ["<", "<=", ">", ">="] and is_number(width) and width >= 0 ->
+        decls = declarations_from_paint(paint)
+        "@media (width #{operator} #{width}px) {\n  .#{style.class_name} {\n#{decls}  }\n}\n"
+
+      _ ->
+        ""
+    end)
   end
 
   defp shared_paint(style, model) do
@@ -46,7 +60,8 @@ defmodule BubbleEx.Frontend.Export.Css do
          "Dropdown",
          "SearchBox"
        ] do
-      properties = Map.put_new(style.properties, "font_size", 14)
+      properties =
+        style.properties |> Map.put_new("font_size", 14) |> button_line_height(style.applies_to)
 
       if is_binary(font),
         do: Map.put_new(properties, "font_face", "var(--font_default)"),
@@ -56,9 +71,12 @@ defmodule BubbleEx.Frontend.Export.Css do
     end
   end
 
+  defp button_line_height(properties, "Button"), do: Map.put_new(properties, "line_height", 1)
+  defp button_line_height(properties, _type), do: properties
+
   @spec page(Node.t(), keyword()) :: String.t()
   def page(node, opts \\ []) do
-    entries = collect(node)
+    entries = collect(node, Keyword.get(opts, :parent_mode))
 
     base =
       entries
@@ -98,8 +116,17 @@ defmodule BubbleEx.Frontend.Export.Css do
   def expanded_definition(%Node{} = definition, instance_id, instance \\ nil)
       when is_binary(instance_id) do
     root_opts = [exporter_id_override: instance_id]
-    child_opts = [id_prefix: instance_id]
-    root_definition = definition |> instance_position(instance) |> drop_instance_root_alignment()
+
+    child_opts = [
+      id_prefix: instance_id,
+      parent_mode: layout_value(definition.layout || %{}, :mode)
+    ]
+
+    root_definition =
+      definition
+      |> instance_position(instance)
+      |> instance_dimensions(instance)
+      |> drop_instance_root_alignment()
 
     root =
       [
@@ -128,6 +155,32 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp instance_position(definition, _instance), do: definition
+
+  defp instance_dimensions(definition, %Node{} = instance) do
+    Enum.reduce(
+      [
+        {:width, :fill_width?, [:width, :min_width, :max_width]},
+        {:height, :fill_height?, [:height, :min_height, :max_height]}
+      ],
+      definition,
+      fn {axis, fill, keys}, current ->
+        layout = instance.layout || %{}
+
+        if Map.has_key?(layout, fill) or Map.has_key?(layout, Atom.to_string(fill)) or
+             Map.has_key?(instance.box, axis) do
+          %{
+            current
+            | box: current.box |> Map.drop(keys) |> Map.merge(Map.take(instance.box, keys)),
+              layout: Map.drop(current.layout || %{}, [fill, Atom.to_string(fill)])
+          }
+        else
+          current
+        end
+      end
+    )
+  end
+
+  defp instance_dimensions(definition, _instance), do: definition
 
   @color_token_names %{
     "%3" => "text",
@@ -262,7 +315,7 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   # Parent layout affects how Bubble's fill sizing maps to CSS. Keep that
   # context in the traversal rather than duplicating it in the normalized model.
-  defp collect(%Node{} = node, parent_mode \\ nil) do
+  defp collect(%Node{} = node, parent_mode) do
     mode = layout_value(node.layout, :mode)
 
     [{node, parent_mode} | Enum.flat_map(node.children, &collect(&1, mode))]
@@ -302,6 +355,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.merge(runtime_boundary_css(node))
     |> Map.merge(placement_css(node, parent_mode))
     |> Map.merge(floating_css(node))
+    |> base_margin_variables(node)
     |> put_fill_sizing(node, parent_mode)
     |> aspect_image_box(node)
     |> put_flex_grow(node)
@@ -511,7 +565,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp inset_image_dimension(css, key, size, sides) do
     insets = Enum.map_join(sides, " - ", &"var(--bubble-image-border-#{&1})")
 
-    if Regex.match?(~r/^-?[0-9.]+(?:px|%)$/, size),
+    if Regex.match?(~r/^-?[0-9.]+(?:px|%)$/, size) or String.starts_with?(size, "calc("),
       do: Map.put(css, key, "calc(#{size} - #{insets})"),
       else: css
   end
@@ -603,7 +657,9 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.put("flex-shrink", "1")
   end
 
-  defp put_fill_width(css, true, _parent_mode), do: Map.put(css, "width", "100%")
+  defp put_fill_width(css, true, _parent_mode),
+    do: put_fill_extent(css, "width", ~w(left right))
+
   defp put_fill_width(css, _fill?, _parent_mode), do: css
 
   defp put_fill_height(css, true, :column) do
@@ -614,8 +670,70 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp put_fill_height(css, true, :row), do: Map.put(css, "align-self", "stretch")
-  defp put_fill_height(css, true, _parent_mode), do: Map.put(css, "height", "100%")
+
+  defp put_fill_height(css, true, _parent_mode),
+    do: put_fill_extent(css, "height", ~w(top bottom))
+
   defp put_fill_height(css, _fill?, _parent_mode), do: css
+
+  defp put_fill_extent(css, axis, sides) do
+    if margin_variables?(css, sides) do
+      insets = Enum.map_join(sides, " - ", &"var(--bubble-margin-#{&1}, 0px)")
+      Map.put(css, axis, "calc(100% - #{insets})")
+    else
+      Map.put(css, axis, "100%")
+    end
+  end
+
+  defp margin_variables?(css, sides),
+    do: Enum.any?(sides, &Map.has_key?(css, "--bubble-margin-#{&1}"))
+
+  defp base_margin_variables(css, node) do
+    css = margin_variables(css)
+
+    responsive? =
+      Enum.any?(node.responsive || [], fn rule ->
+        rule
+        |> Map.get("paint", %{})
+        |> Map.keys()
+        |> Enum.any?(&String.starts_with?(&1, "margin"))
+      end)
+
+    if responsive? or margin_variables?(css, ~w(top right bottom left)),
+      do:
+        Enum.reduce(
+          ~w(top right bottom left),
+          css,
+          &Map.put_new(&2, "--bubble-margin-#{&1}", "0px")
+        ),
+      else: css
+  end
+
+  defp margin_variables(css) do
+    sides = ~w(top right bottom left)
+    defaults = Map.new(Enum.zip(sides, margin_sides(css["margin"])))
+
+    Enum.reduce(sides, css, fn side, acc ->
+      value = css["margin-#{side}"] || defaults[side]
+
+      if is_binary(value) and
+           Regex.match?(~r/^(?:0|-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|%|em|rem|vh|vw))$/, value),
+         do: Map.put(acc, "--bubble-margin-#{side}", value),
+         else: acc
+    end)
+  end
+
+  defp margin_sides(value) when is_binary(value) do
+    case String.split(value) do
+      [all] -> [all, all, all, all]
+      [vertical, horizontal] -> [vertical, horizontal, vertical, horizontal]
+      [top, horizontal, bottom] -> [top, horizontal, bottom, horizontal]
+      [top, right, bottom, left] -> [top, right, bottom, left]
+      _ -> []
+    end
+  end
+
+  defp margin_sides(_value), do: []
 
   defp put_container_alignment(css, %Node{kind: kind, layout: layout})
        when kind in [:page, :group, :floating_group, :reusable_definition] and is_map(layout) do
@@ -957,12 +1075,18 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp media_width(_), do: nil
 
   defp breakpoint_css(entries, opts) do
-    Enum.map_join(entries, "\n", fn {node, _parent} ->
+    Enum.map_join(entries, "\n", fn {node, parent} ->
       Enum.map_join(node.responsive || [], "\n", fn
         %{"media" => %{"operator" => operator, "width" => width}, "paint" => paint}
         when operator in ["<", "<=", ">", ">="] and is_number(width) and width >= 0 ->
           id = prefixed_id(node, opts)
-          decls = paint |> image_breakpoint_paint(node) |> declarations_from_paint()
+
+          decls =
+            paint
+            |> margin_variables()
+            |> breakpoint_fill(node, parent)
+            |> image_breakpoint_paint(node)
+            |> declarations_from_paint()
 
           "@media (width #{operator} #{width}px) {\n  [data-exporter-id=\"#{escape(id)}\"] {\n#{decls}  }\n}\n"
 
@@ -971,6 +1095,19 @@ defmodule BubbleEx.Frontend.Export.Css do
       end)
     end)
   end
+
+  defp breakpoint_fill(paint, %Node{layout: layout}, parent) when is_map(layout) do
+    paint =
+      if margin_variables?(paint, ~w(left right)),
+        do: put_fill_width(paint, layout_value(layout, :fill_width?), parent),
+        else: paint
+
+    if margin_variables?(paint, ~w(top bottom)),
+      do: put_fill_height(paint, layout_value(layout, :fill_height?), parent),
+      else: paint
+  end
+
+  defp breakpoint_fill(paint, _node, _parent), do: paint
 
   defp image_breakpoint_paint(paint, %Node{kind: :image} = node) do
     if paint_css(node)["aspect-ratio"],

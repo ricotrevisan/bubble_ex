@@ -9,6 +9,7 @@ defmodule BubbleEx.Frontend.Normalized.Style do
           display_name: String.t() | nil,
           applies_to: String.t() | nil,
           properties: map(),
+          responsive: [map()],
           source: BubbleEx.Frontend.Normalized.Source.t()
         }
 
@@ -21,6 +22,7 @@ defmodule BubbleEx.Frontend.Normalized.Style do
     :display_name,
     :applies_to,
     :properties,
-    :source
+    :source,
+    responsive: []
   ]
 end

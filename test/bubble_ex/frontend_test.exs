@@ -366,11 +366,10 @@ defmodule BubbleEx.FrontendTest do
 
       unsupported = [
         put_in(states, ["0", "%c", "%p", "%nm"], "Current User"),
-        put_in(states, ["0", "%c", "%n", "%nm"], "greater_than"),
+        put_in(states, ["0", "%c", "%n", "%nm"], "unsupported_comparison"),
         put_in(states, ["0", "%c", "%n", "%a"], "768"),
         put_in(states, ["0", "%p", "%iv"], true),
-        update_in(states, ["0", "%p"], &Map.put(&1, "%bgc", "#ffffff")),
-        Map.put(states, "1", %{"%x" => "State"})
+        put_in(states, ["0", "%c", "%n", "%n"], %{"%nm" => "and_", "%a" => false})
       ]
 
       Enum.each(unsupported, fn raw_states ->
@@ -387,7 +386,14 @@ defmodule BubbleEx.FrontendTest do
         })
 
       assert {:ok, %Normalized{pages: [%{children: [nav]}]}} = Frontend.normalize(payload)
-      assert nav.responsive == []
+
+      assert nav.responsive == [
+               %{
+                 "media" => %{"operator" => "<=", "width" => 768},
+                 "paint" => %{"visibility" => "hidden"}
+               }
+             ]
+
       assert nav.unmapped["%s"] == states
     end
 

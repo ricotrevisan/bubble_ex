@@ -56,7 +56,7 @@ defmodule BubbleEx.Frontend.Export.AssetsTest do
 
     assert [asset] = Map.values(assets)
     assert asset.bytes =~ ~s(<symbol id="fa-star" viewBox="0 0 32 32">)
-    assert asset.bytes =~ ~s(<path fill="currentColor" d="M1 2L3 4Z"/>)
+    assert asset.bytes =~ ~s(<path fill="currentColor" d="M1 2L3 4Z"></path>)
     refute asset.bytes =~ "<image"
     assert asset.path =~ ~r|^assets/[0-9a-f]{64}\.svg$|
   end

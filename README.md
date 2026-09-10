@@ -125,8 +125,9 @@ Fetched exports capture an initial snapshot: direct logged-out visibility
 conditions are applied when no application-user session was supplied, and a
 literal `Current Date/Time:formatted as yyyy` uses the recorded UTC snapshot
 time. Expressions remain in the bindings. Exact page-width comparisons against
-configured breakpoints become CSS media rules for supported paint and spacing
-properties. General expressions, reusable parameters, and workflows are not
+configured breakpoints or literal thresholds become CSS media rules for supported
+paint and spacing properties, including conditions on shared styles. General
+expressions, reusable parameters, and workflows are not
 executed. Links to known pages omitted by `--pages` retain their public source
 destinations; selected pages link to their local exports.
 
@@ -137,7 +138,8 @@ two-page fixture with nested static Group-based reusables, a sanitized inline
 Font Awesome 4 icon, an always-visible top-right Floating Group, portable
 internal navigation, and an explicit Repeating Group placeholder. Dynamic
 choices/status, runtime reusable state, and Repeating Group cell data remain
-bindings or dimension-preserving placeholders. Static Material outlined icons
+bindings or dimension-preserving placeholders. Static Material outlined and
+Phosphor regular/bold/fill icons
 and a strictly sanitized, path-only SVG subset of HTML elements also export
 locally; other icon libraries and arbitrary HTML remain unsupported. These
 additional lowerings have unit tests and landing-page observations, not a new
