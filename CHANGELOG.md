@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Correct Bubble Input/DateInput enum mappings and reject invalid frozen source
+  formats. Repair and recapture four affected cases from authorized branch `83jop`.
+- Preserve explicit control borders/backgrounds over native defaults, render
+  static percentage/currency/US phone values, and compare captured Input values
+  independently of screenshot tolerances.
+
 ### Added
 
 - Frozen S1 range Slider / Popup case `bpndkqfs` (`bubbleex-i69-range-popup`)

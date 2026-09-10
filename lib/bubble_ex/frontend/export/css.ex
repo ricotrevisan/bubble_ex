@@ -334,10 +334,10 @@ defmodule BubbleEx.Frontend.Export.Css do
 
     kind
     |> native_default_paint()
+    |> Map.merge(native_control(kind))
     |> Map.merge(paint)
     |> Map.merge(image_fit(kind, variant))
     |> Map.merge(native_display(kind))
-    |> Map.merge(native_control(kind))
     |> Map.reject(fn {_k, v} -> is_nil(v) end)
   end
 

@@ -1,8 +1,9 @@
 {
   "status": "captured",
   "scope": "authorized-controlled-source",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i59-input-formats",
+  "url": "https://tiptap-plugin.bubbleapps.io/version-83jop/bubbleex-i59-input-formats",
   "chromium": "140.0.7339.186",
+  "platform": "linux",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpjehwxg",
   "results": [
@@ -92,6 +93,7 @@
           },
           "bpsmmjkn": {
             "tag": "input",
+            "value": "12.5",
             "box": {
               "x": 16,
               "y": 92,
@@ -142,6 +144,7 @@
           },
           "bppctiid": {
             "tag": "input",
+            "value": "25%",
             "box": {
               "x": 16,
               "y": 188,
@@ -192,6 +195,7 @@
           },
           "bpijcres": {
             "tag": "input",
+            "value": "$19.99",
             "box": {
               "x": 16,
               "y": 284,
@@ -242,6 +246,7 @@
           },
           "bpphniid": {
             "tag": "input",
+            "value": "(555) 010-1234",
             "box": {
               "x": 16,
               "y": 380,
@@ -292,6 +297,7 @@
           },
           "bpeuriid": {
             "tag": "input",
+            "value": "",
             "box": {
               "x": 16,
               "y": 476,
@@ -404,6 +410,7 @@
           },
           "bpsmmjkn": {
             "tag": "input",
+            "value": "12.5",
             "box": {
               "x": 16,
               "y": 92,
@@ -454,6 +461,7 @@
           },
           "bppctiid": {
             "tag": "input",
+            "value": "25%",
             "box": {
               "x": 16,
               "y": 188,
@@ -504,6 +512,7 @@
           },
           "bpijcres": {
             "tag": "input",
+            "value": "$19.99",
             "box": {
               "x": 16,
               "y": 284,
@@ -554,6 +563,7 @@
           },
           "bpphniid": {
             "tag": "input",
+            "value": "(555) 010-1234",
             "box": {
               "x": 16,
               "y": 380,
@@ -604,6 +614,7 @@
           },
           "bpeuriid": {
             "tag": "input",
+            "value": "",
             "box": {
               "x": 16,
               "y": 476,
@@ -630,5 +641,6 @@
         }
       }
     }
-  ]
+  ],
+  "architecture": "x64"
 }

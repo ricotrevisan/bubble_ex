@@ -4,6 +4,38 @@ defmodule BubbleEx.Frontend.FidelityTest do
   alias BubbleEx.Error
   alias BubbleEx.Frontend.Fidelity
 
+  test "all frozen sources use valid Bubble control enum values" do
+    for id <- Fidelity.cases() do
+      payload =
+        File.read!("test/support/fidelity/cases/#{id}/source/payload.json") |> Jason.decode!()
+
+      assert :ok = Fidelity.Source.validate(payload)
+    end
+  end
+
+  test "source validation rejects the invalid names that previously passed fidelity" do
+    for format <- ~w(integer decimal percent euro_date address numbers) do
+      payload = %{"type" => "Input", "id" => "bad", "properties" => %{"content_format" => format}}
+      assert {:error, %Error{kind: :invalid_input}} = Fidelity.Source.validate(payload)
+    end
+
+    assert {:error, %Error{}} =
+             Fidelity.Source.validate(%{
+               "type" => "DateInput",
+               "properties" => %{"input_type" => "datetime"}
+             })
+  end
+
+  test "source validation rejects mismatched literal initial content" do
+    for {format, content} <- [{"percentage", "25"}, {"float_number", "12.5"}, {"text", 25}] do
+      assert {:error, %Error{kind: :invalid_input}} =
+               Fidelity.Source.validate(%{
+                 "type" => "Input",
+                 "properties" => %{"content_format" => format, "content" => content}
+               })
+    end
+  end
+
   describe "cases/0" do
     test "lists the frozen S1 layout, Text semantics, Image, Link, and Input cases" do
       ids = Fidelity.cases()

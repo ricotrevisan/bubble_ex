@@ -1,35 +1,20 @@
 {
-  "id": "bpjehwxg",
   "browser": {
-    "playwright": "1.55.1",
     "chromium": "140.0.7339.186",
     "dpr": 1,
     "locale": "en-US",
+    "playwright": "1.55.1",
     "reduced_motion": "reduce",
-    "viewport_height": 900
+    "viewport_height": 900,
+    "platform": "linux",
+    "arch": "x64"
   },
   "font": {
     "family": "Inter",
     "path": "assets/inter-latin.woff2",
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
-  "source": {
-    "bubble_id": "tiptap-plugin",
-    "app_version": "test",
-    "page_id": "bpjehwxg",
-    "page_path": "bubbleex-i59-input-formats",
-    "page_payload_sha256": "2465ef7ea4a5e25bcc9af9185f3c89bd2720a6fef0e26941c66ca3729f07c0de",
-    "payload_sha256": "126b33e280fa84d459375639c2bbde02101e48050dcf777131706f96dd76e406"
-  },
-  "public_assets": [],
-  "viewports": [
-    390,
-    1440
-  ],
-  "transitions": {
-    "390": "narrow page; extra Input formats stay 320px wide",
-    "1440": "wide page; the same left-stacked extra Input formats"
-  },
+  "id": "bpjehwxg",
   "node_ids": [
     "bpjehwxg",
     "bpapxulb",
@@ -44,15 +29,56 @@
     "bpeurlid",
     "bpeuriid"
   ],
-  "text_node_ids": [
-    "bpapxulb",
-    "bpyuktye",
-    "bppctlid",
-    "bpvrkzub",
-    "bpphnlid",
-    "bpeurlid"
-  ],
+  "pixel_tolerance": {
+    "max_changed_pixels": 0,
+    "max_channel_delta": 0,
+    "max_mean_absolute_error": 0,
+    "rationale": "Correctly configured source inputs and formatted values; no allowance for format-mask differences."
+  },
+  "public_assets": [],
   "semantics": {
+    "input_attributes": {
+      "bpeuriid": {
+        "aria-label": "I59 euro date placeholder",
+        "placeholder": "I59 euro date placeholder",
+        "type": "text"
+      },
+      "bpijcres": {
+        "aria-label": "I59 currency placeholder",
+        "inputmode": "decimal",
+        "placeholder": "I59 currency placeholder",
+        "type": "text",
+        "value": "$19.99"
+      },
+      "bppctiid": {
+        "aria-label": "I59 percent placeholder",
+        "inputmode": "decimal",
+        "placeholder": "I59 percent placeholder",
+        "type": "text",
+        "value": "25%"
+      },
+      "bpphniid": {
+        "aria-label": "I59 phone placeholder",
+        "inputmode": "tel",
+        "placeholder": "I59 phone placeholder",
+        "type": "text",
+        "value": "(555) 010-1234"
+      },
+      "bpsmmjkn": {
+        "aria-label": "I59 decimal placeholder",
+        "inputmode": "decimal",
+        "placeholder": "I59 decimal placeholder",
+        "type": "text",
+        "value": "12.5"
+      }
+    },
+    "inputs": [
+      "bpsmmjkn",
+      "bppctiid",
+      "bpijcres",
+      "bpphniid",
+      "bpeuriid"
+    ],
     "main": [
       "bpjehwxg"
     ],
@@ -63,55 +89,35 @@
       "bpvrkzub",
       "bpphnlid",
       "bpeurlid"
-    ],
-    "inputs": [
-      "bpsmmjkn",
-      "bppctiid",
-      "bpijcres",
-      "bpphniid",
-      "bpeuriid"
-    ],
-    "input_attributes": {
-      "bpsmmjkn": {
-        "type": "text",
-        "value": "12.5",
-        "placeholder": "I59 decimal placeholder",
-        "aria-label": "I59 decimal placeholder",
-        "inputmode": "decimal"
-      },
-      "bppctiid": {
-        "type": "text",
-        "value": "25",
-        "placeholder": "I59 percent placeholder",
-        "aria-label": "I59 percent placeholder",
-        "inputmode": "decimal"
-      },
-      "bpijcres": {
-        "type": "text",
-        "value": "19.99",
-        "placeholder": "I59 currency placeholder",
-        "aria-label": "I59 currency placeholder",
-        "inputmode": "decimal"
-      },
-      "bpphniid": {
-        "type": "text",
-        "value": "5550101234",
-        "placeholder": "I59 phone placeholder",
-        "aria-label": "I59 phone placeholder",
-        "inputmode": "tel"
-      },
-      "bpeuriid": {
-        "type": "text",
-        "value": null,
-        "placeholder": "I59 euro date placeholder",
-        "aria-label": "I59 euro date placeholder"
-      }
+    ]
+  },
+  "source": {
+    "app_version": "83jop",
+    "bubble_id": "tiptap-plugin",
+    "page_id": "bpjehwxg",
+    "page_path": "bubbleex-i59-input-formats",
+    "page_payload_sha256": "38b770346b5a15973725c39aad0cc461a250caa3947acf67ecd6f2dab87a2186",
+    "payload_sha256": "ef022add6c73ba9f3f775a7a9a84a3d936e436748e3b917af52beb102cceb374",
+    "validation": {
+      "branch": "83jop",
+      "date": "2026-09-10",
+      "method": "Buildprint canonical schema audit and applied branch snapshot"
     }
   },
-  "pixel_tolerance": {
-    "max_changed_pixels": 10000,
-    "max_channel_delta": 240,
-    "max_mean_absolute_error": 0.8,
-    "rationale": "Geometry and document height are exact. Ubuntu CI observed 7,534 material pixels, 232/255 channel delta, and 0.72 MAE at 390px from Bubble currency/phone formatting vs raw payload values plus Inter raster. S1 does not reimplement Bubble format masks."
-  }
+  "text_node_ids": [
+    "bpapxulb",
+    "bpyuktye",
+    "bppctlid",
+    "bpvrkzub",
+    "bpphnlid",
+    "bpeurlid"
+  ],
+  "transitions": {
+    "1440": "wide page; the same left-stacked extra Input formats",
+    "390": "narrow page; extra Input formats stay 320px wide"
+  },
+  "viewports": [
+    390,
+    1440
+  ]
 }

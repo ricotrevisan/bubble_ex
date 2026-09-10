@@ -84,7 +84,8 @@ defmodule BubbleEx.Frontend.Fidelity do
 
     with {:ok, raw} <- File.read(payload_path),
          {:ok, payload} <- Jason.decode(raw),
-         :ok <- verify_payload_sha(payload, case_.source.payload_sha256) do
+         :ok <- verify_payload_sha(payload, case_.source.payload_sha256),
+         :ok <- BubbleEx.Frontend.Fidelity.Source.validate(payload) do
       export_opts =
         [
           force: true,

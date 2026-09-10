@@ -605,7 +605,7 @@ defmodule BubbleEx.Frontend.Export.Html do
 
     node.attributes
     |> Map.put_new("type", "text")
-    |> Map.put("value", resolved(node, "value"))
+    |> Map.put("value", input_display_value(node))
     |> Map.put("placeholder", placeholder)
     |> Map.put_new("aria-label", placeholder)
   end
@@ -661,6 +661,49 @@ defmodule BubbleEx.Frontend.Export.Html do
       nil -> node.exporter_id
       prefix -> Naming.expanded_id(prefix, node)
     end
+  end
+
+  # Static en-US presentation for the frozen Input formats. Preserve the numeric
+  # model value; percentage values are fractions in Bubble (0.25 means 25%).
+  defp input_display_value(%Node{variant: :percent} = node) do
+    case resolved(node, "value") do
+      value when is_number(value) -> compact_number(value * 100) <> "%"
+      value -> value
+    end
+  end
+
+  defp input_display_value(%Node{variant: :currency} = node) do
+    case resolved(node, "value") do
+      value when is_number(value) ->
+        symbol = get_in(node.unmapped, ["properties", "currency_symbol"]) || "$"
+        symbol <> :erlang.float_to_binary(value / 1, decimals: 2)
+
+      value ->
+        value
+    end
+  end
+
+  defp input_display_value(%Node{variant: :phone} = node) do
+    case resolved(node, "value") do
+      <<area::binary-size(3), prefix::binary-size(3), line::binary-size(4)>> = value ->
+        if String.match?(value, ~r/^[0-9]{10}$/),
+          do: "(#{area}) #{prefix}-#{line}",
+          else: value
+
+      value ->
+        value
+    end
+  end
+
+  defp input_display_value(node), do: resolved(node, "value")
+
+  defp compact_number(value) when is_integer(value), do: Integer.to_string(value)
+
+  defp compact_number(value) do
+    value
+    |> :erlang.float_to_binary(decimals: 10)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
   end
 
   defp resolved(%Node{content: content}, slot) when is_map(content) do

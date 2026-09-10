@@ -582,8 +582,8 @@ defmodule BubbleEx.Frontend.ExportTest do
                 "id" => "i1",
                 "type" => "Input",
                 "properties" => %{
-                  "content_format" => "integer",
-                  "content" => "12345",
+                  "content_format" => "int_number",
+                  "content" => 12_345,
                   "placeholder" => "Integer placeholder",
                   "order" => 2
                 }
@@ -617,10 +617,37 @@ defmodule BubbleEx.Frontend.ExportTest do
             "name" => "index",
             "properties" => %{"container_layout" => "column"},
             "elements" => %{
+              "percent" => %{
+                "id" => "pct1",
+                "type" => "Input",
+                "properties" => %{
+                  "content_format" => "percentage",
+                  "content" => 0.25,
+                  "order" => 4
+                }
+              },
+              "currency" => %{
+                "id" => "cur1",
+                "type" => "Input",
+                "properties" => %{
+                  "content_format" => "currency",
+                  "content" => 19.99,
+                  "order" => 5
+                }
+              },
               "decimal" => %{
                 "id" => "d1",
                 "type" => "Input",
-                "properties" => %{"content_format" => "decimal", "content" => 12.5, "order" => 1}
+                "properties" => %{
+                  "background_style" => "bgcolor",
+                  "bgcolor" => "#F4F7FB",
+                  "border_style" => "solid",
+                  "border_width" => 1,
+                  "border_color" => "#8290A8",
+                  "content_format" => "float_number",
+                  "content" => 12.5,
+                  "order" => 1
+                }
               },
               "phone" => %{
                 "id" => "p1",
@@ -634,7 +661,7 @@ defmodule BubbleEx.Frontend.ExportTest do
               "euro" => %{
                 "id" => "e1",
                 "type" => "Input",
-                "properties" => %{"content_format" => "euro_date", "order" => 3}
+                "properties" => %{"content_format" => "date_2", "order" => 3}
               }
             }
           }
@@ -646,7 +673,12 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert html =~ ~s(inputmode="decimal")
       assert html =~ ~s(inputmode="tel")
       assert html =~ ~s(value="12.5")
-      assert html =~ ~s(value="5550101234")
+      assert html =~ ~s(value="25%")
+      assert html =~ ~s(value="$19.99")
+      assert html =~ ~s|value="(555) 010-1234"|
+      css = File.read!(Path.join(out, "styles/pages/index.css"))
+      assert css =~ "border: 1px solid #8290A8"
+      assert css =~ "background: #F4F7FB"
       refute html =~ "data-placeholder-kind"
     end
 
@@ -668,7 +700,7 @@ defmodule BubbleEx.Frontend.ExportTest do
                 "id" => "a1",
                 "type" => "Input",
                 "properties" => %{
-                  "content_format" => "address",
+                  "content_format" => "geographic_address",
                   "placeholder" => "Address placeholder",
                   "order" => 1
                 }
@@ -714,7 +746,7 @@ defmodule BubbleEx.Frontend.ExportTest do
                 "id" => "n1",
                 "type" => "Input",
                 "properties" => %{
-                  "content_format" => "numbers",
+                  "content_format" => "numerical_ref",
                   "placeholder" => "Numbers",
                   "order" => 1
                 }
@@ -723,7 +755,7 @@ defmodule BubbleEx.Frontend.ExportTest do
                 "id" => "dt1",
                 "type" => "DateInput",
                 "properties" => %{
-                  "input_type" => "datetime",
+                  "input_type" => "date_time",
                   "placeholder" => "When",
                   "order" => 2
                 }

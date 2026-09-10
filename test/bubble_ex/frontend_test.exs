@@ -1311,8 +1311,8 @@ defmodule BubbleEx.FrontendTest do
             "id" => "int1",
             "type" => "Input",
             "properties" => %{
-              "content_format" => "integer",
-              "content" => "12345",
+              "content_format" => "int_number",
+              "content" => 12_345,
               "placeholder" => "Integer placeholder"
             }
           }
@@ -1331,7 +1331,24 @@ defmodule BubbleEx.FrontendTest do
       refute integer.placeholder?
       assert integer.attributes["type"] == "text"
       assert integer.attributes["inputmode"] == "numeric"
-      assert integer.content["value"].resolved == "12345"
+      assert integer.content["value"].resolved == 12_345
+    end
+
+    test "invalid friendly Input format names remain unsupported" do
+      for format <- ~w(integer decimal percent euro_date address numbers) do
+        payload =
+          page_with_elements(%{
+            "bad" => %{
+              "id" => "bad",
+              "type" => "Input",
+              "properties" => %{"content_format" => format}
+            }
+          })
+
+        assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+        assert [node] = page.children
+        assert node.placeholder?
+      end
     end
 
     test "lowers remaining static numeric and phone Inputs as native text-typed variants" do
@@ -1340,12 +1357,12 @@ defmodule BubbleEx.FrontendTest do
           "decimal" => %{
             "id" => "dec1",
             "type" => "Input",
-            "properties" => %{"content_format" => "decimal", "content" => 12.5}
+            "properties" => %{"content_format" => "float_number", "content" => 12.5}
           },
           "percent" => %{
             "id" => "pct1",
             "type" => "Input",
-            "properties" => %{"content_format" => "percent", "content" => 25}
+            "properties" => %{"content_format" => "percentage", "content" => 0.25}
           },
           "currency" => %{
             "id" => "cur1",
@@ -1360,7 +1377,7 @@ defmodule BubbleEx.FrontendTest do
           "euro" => %{
             "id" => "eu1",
             "type" => "Input",
-            "properties" => %{"content_format" => "euro_date"}
+            "properties" => %{"content_format" => "date_2"}
           }
         })
 
@@ -1378,6 +1395,7 @@ defmodule BubbleEx.FrontendTest do
       assert decimal.content["value"].resolved == 12.5
 
       assert percent.variant == :percent
+      assert percent.content["value"].resolved == 0.25
       assert percent.attributes["inputmode"] == "decimal"
 
       assert currency.variant == :currency
@@ -1400,7 +1418,7 @@ defmodule BubbleEx.FrontendTest do
             "id" => "addr1",
             "type" => "Input",
             "properties" => %{
-              "content_format" => "address",
+              "content_format" => "geographic_address",
               "placeholder" => "Address placeholder"
             }
           },
@@ -1431,12 +1449,12 @@ defmodule BubbleEx.FrontendTest do
           "numbers" => %{
             "id" => "n1",
             "type" => "Input",
-            "properties" => %{"content_format" => "numbers", "placeholder" => "Numbers"}
+            "properties" => %{"content_format" => "numerical_ref", "placeholder" => "Numbers"}
           },
           "datetime" => %{
             "id" => "dt1",
             "type" => "DateInput",
-            "properties" => %{"input_type" => "datetime", "placeholder" => "When"}
+            "properties" => %{"input_type" => "date_time", "placeholder" => "When"}
           },
           "file" => %{
             "id" => "f1",
