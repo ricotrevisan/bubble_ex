@@ -843,6 +843,7 @@ defmodule BubbleEx.Frontend.Export do
     Enum.reduce(nodes, {0, 0}, fn
       %Node{kind: :page}, acc -> acc
       %Node{kind: :reusable_definition}, acc -> acc
+      %Node{variant: :repeating_cell}, acc -> acc
       %Node{placeholder?: true}, {n, p} -> {n, p + 1}
       %Node{kind: :placeholder}, {n, p} -> {n, p + 1}
       _node, {n, p} -> {n + 1, p}

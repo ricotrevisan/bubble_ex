@@ -37,6 +37,15 @@ defmodule BubbleEx.Frontend.Naming do
       |> Enum.reject(&(&1 in [nil, "", "elements"]))
       |> Enum.join("/")
 
+    suffix =
+      case node_field(node, :occurrence) do
+        indexes when is_list(indexes) and indexes != [] ->
+          suffix <> "/items/" <> Enum.join(indexes, "/")
+
+        _ ->
+          suffix
+      end
+
     if suffix == "", do: prefix, else: prefix <> "/" <> suffix
   end
 

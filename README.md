@@ -138,7 +138,10 @@ two-page fixture with nested static Group-based reusables, a sanitized inline
 Font Awesome 4 icon, an always-visible top-right Floating Group, portable
 internal navigation, and an explicit Repeating Group placeholder. Dynamic
 choices/status, runtime reusable state, and Repeating Group cell data remain
-bindings or dimension-preserving placeholders. Static Material outlined and
+bindings or dimension-preserving placeholders, except bounded literal horizontal
+lists with direct Image/Text/Shape/Icon templates. That slice supports at most
+100 scalar items and 1,000 projected leaves; searches, nested templates, and
+animated scrolling remain unsupported. Static Material outlined and
 Phosphor regular/bold/fill icons
 and a strictly sanitized, path-only SVG subset of HTML elements also export
 locally; other icon libraries and arbitrary HTML remain unsupported. These

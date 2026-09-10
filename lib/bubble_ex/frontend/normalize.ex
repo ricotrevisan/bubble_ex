@@ -176,8 +176,16 @@ defmodule BubbleEx.Frontend.Normalize do
     {pages, diagnostics} = normalize_pages(payload, identity)
     {reusables, reusable_diags} = normalize_reusables(payload, identity)
     breakpoints = BubbleEx.Frontend.Responsive.breakpoints(payload)
-    pages = apply_breakpoints(pages, Payload.pages(payload), breakpoints)
-    reusables = apply_breakpoints(reusables, Payload.reusables(payload), breakpoints)
+
+    pages =
+      pages
+      |> apply_breakpoints(Payload.pages(payload), breakpoints)
+      |> BubbleEx.Frontend.StaticRepeating.expand()
+
+    reusables =
+      reusables
+      |> apply_breakpoints(Payload.reusables(payload), breakpoints)
+      |> BubbleEx.Frontend.StaticRepeating.expand()
 
     %Normalized{
       identity: identity,
@@ -499,7 +507,7 @@ defmodule BubbleEx.Frontend.Normalize do
     case classify(type, raw) do
       {:native, kind, variant} ->
         {children, child_diags} =
-          if kind in [:group, :floating_group] do
+          if kind in [:group, :floating_group, :repeating_group] do
             normalize_children(raw, identity, path, workflows)
           else
             {[], []}
@@ -517,7 +525,7 @@ defmodule BubbleEx.Frontend.Normalize do
           name: Payload.name(raw) || map_key,
           map_key: map_key,
           source: source_ref(raw, path, map_key),
-          layout: layout_from(raw),
+          layout: element_layout(raw, kind),
           box: box_from(raw),
           style: style_from(raw),
           content: slots,
@@ -601,6 +609,11 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  defp element_layout(raw, :repeating_group),
+    do: BubbleEx.Frontend.StaticRepeating.layout(layout_from(raw), raw)
+
+  defp element_layout(raw, _kind), do: layout_from(raw)
+
   # Overlays start closed. Their show/hide actions, positioning, focus, and
   # backdrop depend on Bubble's runtime. Preserve the entire container, including
   # descendants, for consumers without pretending a static dialog is equivalent.
@@ -647,6 +660,14 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("Image", raw), do: classify_image(raw)
   defp classify("Icon", raw), do: classify_icon(raw)
   defp classify("HTML", raw), do: classify_html(raw)
+
+  defp classify("RepeatingGroup", raw) do
+    case BubbleEx.Frontend.StaticRepeating.items(raw) do
+      {:ok, _items} -> {:native, :repeating_group, :static_list}
+      _ -> {:placeholder, :unsupported_kind}
+    end
+  end
+
   defp classify("FloatingGroup", raw), do: classify_floating_group(raw)
 
   defp classify("Shape", _raw), do: {:native, :shape, :decorative}
@@ -1752,6 +1773,14 @@ defmodule BubbleEx.Frontend.Normalize do
   defp primary_slots(:dropdown, raw, id), do: choice_control_slots(raw, id, false)
   defp primary_slots(:radio_buttons, raw, id), do: choice_control_slots(raw, id, true)
   defp primary_slots(:image, raw, id), do: image_slots(raw, id)
+
+  defp primary_slots(:repeating_group, raw, id) do
+    {:ok, items} = BubbleEx.Frontend.StaticRepeating.items(raw)
+    expression = BubbleEx.Frontend.StaticRepeating.data_source(raw)
+    binding = binding(id, "items", :expression, expression)
+    {%{"items" => %{resolved: items, binding_id: binding.id}}, %{"items" => binding}}
+  end
+
   defp primary_slots(_kind, _raw, _id), do: {%{}, %{}}
 
   defp named_map_slot(raw, exporter_id, key, kind) do

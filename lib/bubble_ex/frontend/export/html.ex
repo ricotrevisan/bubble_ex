@@ -96,6 +96,7 @@ defmodule BubbleEx.Frontend.Export.Html do
               :group,
               :floating_group,
               :reusable_definition,
+              :repeating_group,
               :shape,
               :placeholder
             ],
@@ -136,7 +137,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :radio_buttons} = node, opts), do: render_radio_buttons(node, opts)
 
   defp children_html_or_empty(%Node{kind: kind} = node, opts)
-       when kind in [:group, :floating_group, :reusable_definition],
+       when kind in [:group, :floating_group, :reusable_definition, :repeating_group],
        do: children_html(node, opts)
 
   defp children_html_or_empty(_node, _opts), do: ""

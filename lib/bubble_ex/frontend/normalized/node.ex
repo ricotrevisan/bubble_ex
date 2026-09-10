@@ -18,6 +18,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           | :floating_group
           | :reusable_definition
           | :reusable_instance
+          | :repeating_group
           | :placeholder
 
   @type t :: %__MODULE__{
@@ -37,7 +38,8 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           placeholder?: boolean(),
           definition_ref: String.t() | nil,
           attributes: map(),
-          responsive: [map()]
+          responsive: [map()],
+          occurrence: [non_neg_integer()]
         }
 
   @enforce_keys [:exporter_id, :kind, :map_key, :source]
@@ -58,6 +60,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
     unmapped: %{},
     placeholder?: false,
     attributes: %{},
-    responsive: []
+    responsive: [],
+    occurrence: []
   ]
 end
