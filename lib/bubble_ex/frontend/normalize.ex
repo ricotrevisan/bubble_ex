@@ -226,8 +226,12 @@ defmodule BubbleEx.Frontend.Normalize do
             "media" => media,
             "paint" => paint |> Map.merge(lengths) |> Map.merge(hidden) |> Map.merge(alignment)
           }
+          |> Map.merge(BubbleEx.Frontend.ResponsiveImages.source(node, overrides))
         end)
-        |> Enum.reject(&(map_size(&1["paint"]) == 0 or duplicate_collapse?(&1, node.responsive)))
+        |> Enum.reject(fn rule ->
+          not Map.has_key?(rule, "src") and
+            (map_size(rule["paint"]) == 0 or duplicate_collapse?(rule, node.responsive))
+        end)
 
       %{
         node
