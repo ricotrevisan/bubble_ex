@@ -27,6 +27,8 @@ mix bubble.fidelity
 The `:fidelity` tag also runs the generated geometry-style helper's load, resize,
 missing/ambiguous-reference, transform, and feedback regression checks. Those
 checks use a local synthetic export, not another frozen Bubble reference case.
+The same tag checks aspect-ratio Shapes at three viewport sizes in four native
+container layouts; that also uses synthetic exports rather than new references.
 
 ## What a pass means
 

@@ -24,7 +24,7 @@ defines the geometry, typography, collapse, document-size, semantics, and pixel 
 | Text | Paragraph and explicit H1–H4 semantics; literal/resolved text | `bpmkbvvo`, `bpcybc` | Other heading enums and runtime content are not characterized |
 | Text, BBCode subset | Safe `b`, `i`, `u`, `s`, `ul`, `ol`, `li`, `url` markup | `bpwipyqn` | Not full Bubble rich text, automatic link recognition, or arbitrary HTML |
 | Image | Public/resolved Stretch, Rescale, Zoom, Adjust-height; portable assets | `bprkyexk`, `bpgwgmpz` | No authenticated image fetching, PDF thumbnails, or runtime sources |
-| Shape | Decorative paint, border, radius, rotation, dimensions | `bpmkbvvo` | Workflow behavior remains metadata |
+| Shape | Decorative paint, border, radius, rotation, dimensions; valid fixed-height aspect ratios derive height from width | `bpmkbvvo`; aspect sizing has browser tests and landing-page observations | Workflow behavior remains metadata; conditional aspect-ratio changes lack parity evidence |
 | Button | Label; static Font Awesome 4 icon and icon+label; unambiguous single navigation action can lower to a link | `bpmkbvvo`, `bpiordvb` | No general click-workflow execution; other icon families/variants remain unsupported |
 | Link | Text or static Font Awesome 4 icon/icon+label; explicit destination; new tab, nofollow, literal disabled | `bptaixqv`, `bpaupfbj` | Unresolved destinations stay bindings; no inferred navigation |
 | Icon | Static Font Awesome 4, Material outlined, and Phosphor regular/bold/fill SVG bundled locally | `bpgwgmpz` covers FA4; Material/Phosphor have unit and landing-page observations | Other families, spin, and runtime variants remain placeholders |
