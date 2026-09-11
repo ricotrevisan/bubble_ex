@@ -127,6 +127,10 @@ literal `Current Date/Time:formatted as yyyy` uses the recorded UTC snapshot
 time. Expressions remain in the bindings. Exact page-width comparisons against
 configured breakpoints or literal thresholds become CSS media rules for supported
 paint and spacing properties, including conditions on shared styles. Literal
+Image source overrides in these width conditions are exported as local responsive
+images; the last matching authored source wins. Alternate files use the same
+asset checks, and failed downloads remain visible failures. Runtime source
+expressions and compound conditions stay unresolved. Literal
 reusable parameters resolve in their own instance scope, including forwarding
 through nested reusables; original expressions remain bindings. General
 expressions, parameter-driven conditions, and workflows are not executed.

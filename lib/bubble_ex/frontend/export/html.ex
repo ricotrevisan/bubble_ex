@@ -121,7 +121,7 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp do_render(%Node{kind: :link} = node, opts), do: render_link(node, opts)
-  defp do_render(%Node{kind: :image} = node, opts), do: void("img", node, opts)
+  defp do_render(%Node{kind: :image} = node, opts), do: render_image(node, opts)
   defp do_render(%Node{kind: :icon} = node, opts), do: render_icon(node, opts)
 
   defp do_render(%Node{kind: kind} = node, opts) when kind in [:input, :file_input, :slider],
@@ -177,6 +177,36 @@ defmodule BubbleEx.Frontend.Export.Html do
     opts
     |> Keyword.put(:id_prefix, prefixed_id(instance, opts))
     |> Keyword.put(:expansion_stack, MapSet.put(stack, identity))
+  end
+
+  defp render_image(node, opts) do
+    sources =
+      node
+      |> BubbleEx.Frontend.ResponsiveImages.variants()
+      # Bubble's last matching condition wins; picture chooses its first match.
+      |> Enum.reverse()
+      |> Enum.map(fn variant ->
+        src =
+          case Map.get(Keyword.get(opts, :assets, %{}), variant.id) do
+            %{path: path} -> "../../" <> path
+            _ -> "data:,"
+          end
+
+        ["<source media=\"", escape(variant.media), "\" srcset=\"", escape(src), "\">\n"]
+      end)
+
+    case sources do
+      [] ->
+        void("img", node, opts)
+
+      _ ->
+        [
+          "<picture style=\"display: contents\">\n",
+          sources,
+          void("img", node, opts),
+          "</picture>\n"
+        ]
+    end
   end
 
   defp render_icon(%Node{variant: :inline_svg} = node, opts) do

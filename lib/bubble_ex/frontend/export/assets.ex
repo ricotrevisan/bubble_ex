@@ -93,7 +93,8 @@ defmodule BubbleEx.Frontend.Export.Assets do
     %{state | assets: assets, findings: findings}
   end
 
-  defp asset_nodes(%Node{kind: kind} = node) when kind in [:image, :icon], do: [node]
+  defp asset_nodes(%Node{kind: kind} = node) when kind in [:image, :icon],
+    do: [node | BubbleEx.Frontend.ResponsiveImages.asset_nodes(node)]
 
   defp asset_nodes(%Node{kind: kind, attributes: %{"asset_fragment" => fragment}} = node)
        when kind in [:button, :link] and is_binary(fragment) and fragment != "",

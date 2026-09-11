@@ -150,6 +150,17 @@ measured rendering is unchanged. The local frozen run again encountered the
 documented dropdown shift; that case's HTML, page CSS, and shared CSS remain
 byte-identical to the preceding implementation.
 
+Iteration 33 preserves literal image sources in supported page-width conditions.
+The two Bubble hero images now select their mobile artwork at 390 px and desktop
+artwork at 768 / 1440 px. A pinned Chromium probe confirms that both selected
+images load and their boxes are identical to iteration 32. The remaining mobile
+16 px vertical offset is unchanged. Alternate files use the existing asset
+download and credential protections; overlapping sources follow the last matching
+authored condition. Runtime expressions and compound conditions remain unresolved.
+Mochary remains 100 at all widths. Bubble remains 41.12 / 41.60 / 40.12 and the
+combined score remains 70.47: correcting two images does not pass the complete
+visual assertion. No reference, category, or threshold changed.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh
