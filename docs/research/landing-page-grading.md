@@ -225,6 +225,16 @@ or disabled ratios retain ordinary dimensions. The full-page grade remains 70.50
 the spacer's dimensions match, but upstream offsets and other content still fail
 complete assertions. The source captures and rubric are unchanged.
 
+Iteration 44 preserves the authored minimum height of fit-height textareas.
+The generic auto-sizing rule had overwritten a 70 px minimum with zero, making
+the tablet and desktop fields 28 / 25 px too short. The renderer now leaves an
+authored minimum intact, while retaining the zero default for unbounded fields.
+A browser regression checks minimum/maximum bounds, the mobile breakpoint, and
+clearing after content growth. The prompt wrapper and aspect spacer now match
+their complete source boxes on tablet and desktop. Mochary remains 100; Bubble
+scores 41.25 / 41.72 / 40.23, for a combined 70.53. The user's selected next
+direction is a browser-captured snapshot mode; the grading checks remain fixed.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

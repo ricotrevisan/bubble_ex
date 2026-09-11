@@ -905,13 +905,18 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp extra_rule(%Node{kind: :multiline_input, variant: :fit_height} = node, opts) do
     id = prefixed_id(node, opts) |> escape()
+    minimum = if Map.has_key?(box_css(node), "min-height"), do: nil, else: "0"
+
+    declarations =
+      declarations_from_paint(%{
+        "field-sizing" => "content",
+        "min-height" => minimum,
+        "overflow" => "hidden"
+      })
 
     """
     [data-exporter-id="#{id}"] {
-      field-sizing: content;
-      min-height: 0;
-      overflow: hidden;
-    }
+    #{declarations}}
     """ <> extra_rule(%{node | variant: :fixed}, opts)
   end
 
