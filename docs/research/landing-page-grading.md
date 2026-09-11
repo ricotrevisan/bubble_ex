@@ -195,6 +195,16 @@ and hero now start at 80 px, and document height changes from 13,409 to 13,393 p
 Mochary remains 100; Bubble scores 41.24 / 41.60 / 40.12, for a combined 70.49.
 The complete appearance/content and normal-source credential gates still fail.
 
+Iterations 40–41 correct child document order inside positioned containers.
+The captured app cards place each app name before its category, while the export
+used stale flow order and placed the category first. Fixed and align-to-parent
+containers now use an authored layer index; containers without one retain the
+existing order fallback. Row and column ordering is unchanged. A failing export
+regression covers compact and readable layer keys, and all eight name/category
+pairs now match the source sequence at every measured width. The full-page grade
+remains 70.49 because the complete content assertion still fails. No source
+capture, grading rule, or threshold changed.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

@@ -420,7 +420,7 @@ defmodule BubbleEx.Frontend.Normalize do
     parent_mode = layout_mode(parent)
 
     Payload.elements(parent)
-    |> Enum.sort_by(fn {key, node} -> {order_of(node), key} end)
+    |> Enum.sort_by(fn {key, node} -> {order_of(node, parent_mode), key} end)
     |> Enum.reduce({[], []}, fn {key, raw}, {nodes, diags} ->
       if is_map(raw) do
         path = parent_path ++ ["elements", key]
@@ -1306,13 +1306,7 @@ defmodule BubbleEx.Frontend.Normalize do
           Payload.prop(raw, "rotation_angle"),
           sidecar["rotation"]
         ]),
-      z_index:
-        first_truthy([
-          Payload.prop(raw, "zindex"),
-          Payload.prop(raw, "z_index"),
-          Payload.prop(raw, "z-index"),
-          Payload.properties(raw)["%z"]
-        ]),
+      z_index: layer_index(raw),
       align_self:
         first_truthy([Payload.prop(raw, "align-self"), Payload.prop(raw, "align_self")]),
       flex_grow: first_truthy([Payload.prop(raw, "flex-grow"), Payload.prop(raw, "flex_grow")]),
@@ -2661,14 +2655,28 @@ defmodule BubbleEx.Frontend.Normalize do
     %Source{path: path, map_key: map_key, bubble_id: Payload.bubble_id(raw)}
   end
 
-  defp order_of(node) when is_map(node) do
-    case Payload.prop(node, "order") do
+  defp order_of(node, parent_mode) when is_map(node) do
+    order =
+      if parent_mode in [:fixed, :align_to_parent],
+        do: layer_index(node) || Payload.prop(node, "order"),
+        else: Payload.prop(node, "order")
+
+    case order do
       n when is_number(n) -> n
       _ -> 0
     end
   end
 
-  defp order_of(_), do: 0
+  defp order_of(_, _parent_mode), do: 0
+
+  defp layer_index(raw) do
+    first_truthy([
+      Payload.prop(raw, "zindex"),
+      Payload.prop(raw, "z_index"),
+      Payload.prop(raw, "z-index"),
+      Payload.properties(raw)["%z"]
+    ])
+  end
 
   defp consumed_paint_properties(raw) do
     []
