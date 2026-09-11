@@ -4,7 +4,7 @@ defmodule BubbleEx.Frontend.Fetch do
   alias BubbleEx.Apps.Parser
   alias BubbleEx.{Config, Error, HTTP}
   alias BubbleEx.Frontend.{Auth, Naming, Payload, SafeUrl}
-  alias BubbleEx.Frontend.Export.Fonts
+  alias BubbleEx.Frontend.Export.{Fonts, SourceStyles}
 
   @default_max_page_fetches 20
   @max_redirects 5
@@ -12,13 +12,14 @@ defmodule BubbleEx.Frontend.Fetch do
   defmodule Context do
     @moduledoc false
     @enforce_keys [:page_url, :auth]
-    defstruct [:page_url, :auth, :snapshot_at, font_sources: []]
+    defstruct [:page_url, :auth, :snapshot_at, font_sources: [], source_styles: %{}]
 
     @type t :: %__MODULE__{
             page_url: String.t(),
             auth: BubbleEx.Frontend.Auth.t(),
             snapshot_at: DateTime.t() | nil,
-            font_sources: [String.t()]
+            font_sources: [String.t()],
+            source_styles: map()
           }
   end
 
@@ -26,7 +27,7 @@ defmodule BubbleEx.Frontend.Fetch do
           {:ok, map(), Context.t()} | {:error, Error.t()}
   def run(url, %Auth{} = auth, opts \\ []) do
     with {:ok, page_url, scoped_auth} <- resolve_dedicated(url, auth, opts),
-         {:ok, payload, effective_page_url, font_sources} <-
+         {:ok, payload, effective_page_url, font_sources, source_styles} <-
            fetch_page_payload(
              page_url,
              scoped_auth,
@@ -35,12 +36,17 @@ defmodule BubbleEx.Frontend.Fetch do
            ),
          {:ok, effective_auth} <- Auth.rescope(scoped_auth, effective_page_url) do
       {:ok, payload,
-       %Context{page_url: effective_page_url, auth: effective_auth, font_sources: font_sources}}
+       %Context{
+         page_url: effective_page_url,
+         auth: effective_auth,
+         font_sources: font_sources,
+         source_styles: %{SourceStyles.page_name(effective_page_url) => source_styles}
+       }}
     end
   end
 
   @spec hydrate_selected_pages(map(), Context.t(), keyword()) ::
-          {:ok, map()} | {:error, Error.t()}
+          {:ok, map(), Context.t()} | {:error, Error.t()}
   def hydrate_selected_pages(payload, %Context{} = context, opts \\ []) when is_map(payload) do
     with {:ok, max_page_fetches} <- max_page_fetches(opts),
          {:ok, jobs, unhydrated_names} <- hydration_jobs(payload, context, opts),
@@ -55,7 +61,8 @@ defmodule BubbleEx.Frontend.Fetch do
          {:ok, dynamic} <-
            fetch_bubble_page(dynamic_url, auth, auth_state(auth, dynamic_url), opts),
          {:ok, payload} <- parse_payload(dynamic.body) do
-      {:ok, payload, page.url, Fonts.discover(page.body, page.url)}
+      {:ok, payload, page.url, Fonts.discover(page.body, page.url),
+       SourceStyles.discover(page.body)}
     end
   end
 
@@ -273,14 +280,14 @@ defmodule BubbleEx.Frontend.Fetch do
   end
 
   defp fetch_hydration_jobs(payload, jobs, context, opts) do
-    Enum.reduce_while(jobs, {:ok, payload}, fn job, {:ok, merged} ->
-      fetch_hydration_job(job, merged, context, opts)
+    Enum.reduce_while(jobs, {:ok, payload, context}, fn job, {:ok, merged, current_context} ->
+      fetch_hydration_job(job, merged, current_context, opts)
     end)
   end
 
   defp fetch_hydration_job(job, merged, context, opts) do
     if Enum.all?(job.targets, &hydrated_page?(merged, &1.key)) do
-      {:cont, {:ok, merged}}
+      {:cont, {:ok, merged, context}}
     else
       do_fetch_hydration_job(job, merged, context, opts)
     end
@@ -288,14 +295,21 @@ defmodule BubbleEx.Frontend.Fetch do
 
   defp do_fetch_hydration_job(job, merged, context, opts) do
     case fetch_page_payload(job.url, context.auth, :scoped, opts) do
-      {:ok, fetched, _effective_page_url, _font_sources} ->
+      {:ok, fetched, effective_page_url, _font_sources, source_styles} ->
         hydrated =
           merged
           |> merge_reusable_definitions(fetched)
           |> merge_styles(fetched)
           |> merge_job_targets(fetched, job.targets)
 
-        {:cont, {:ok, hydrated}}
+        styles =
+          Map.put(
+            context.source_styles,
+            SourceStyles.page_name(effective_page_url),
+            source_styles
+          )
+
+        {:cont, {:ok, hydrated, %{context | source_styles: styles}}}
 
       {:error, _} = error ->
         {:halt, error}

@@ -1,4 +1,4 @@
-# Usage: mix run scripts/landing/export.exs BASELINE_DIR OUTPUT_DIR
+# Usage: mix run scripts/landing/export.exs BASELINE_DIR OUTPUT_DIR [SOURCE_STYLES_DIR]
 # Only the captured, credential-redacted payload is rendered. Roots are requested
 # once to discover safe font stylesheet URLs; no source application is modified.
 alias BubbleEx.Frontend
@@ -36,7 +36,8 @@ defmodule LandingAssets do
   end
 end
 
-[baseline, output] = System.argv()
+[baseline, output | extra] = System.argv()
+source_styles_dir = List.first(extra)
 File.mkdir_p!(output)
 
 for {site, url} <- [
@@ -61,7 +62,27 @@ for {site, url} <- [
     end
 
   {:ok, _, auth} = Auth.prepare(url, [])
-  context = %Fetch.Context{page_url: url, auth: auth, font_sources: sources}
+
+  source_styles =
+    if source_styles_dir do
+      lock = source_styles_dir |> Path.join("lock.json") |> File.read!() |> Jason.decode!()
+      body = source_styles_dir |> Path.join("#{site}.json") |> File.read!()
+      hash = :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
+      true = hash == lock["#{site}.json"]
+      record = Jason.decode!(body)
+      true = record["url"] == url
+      styles = record["styles"]
+      %{"index" => %{blocks: styles["blocks"], omitted: styles["omitted"]}}
+    else
+      %{}
+    end
+
+  context = %Fetch.Context{
+    page_url: url,
+    auth: auth,
+    font_sources: sources,
+    source_styles: source_styles
+  }
 
   opts = [
     pages: ["index"],

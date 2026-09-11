@@ -133,6 +133,14 @@ expressions, parameter-driven conditions, and workflows are not executed.
 Links to known pages omitted by `--pages` retain their public source
 destinations; selected pages link to their local exports.
 
+Fetched exports also retain simple authored element IDs and a bounded subset of
+inline head CSS: `html`, `body`, and simple ID selectors with supported layout
+and paint declarations. Styles stay with their source page, including pages
+fetched during hydration. Conditional style blocks, nested rules, other selectors,
+and resource-loading CSS are omitted with findings. Retained source CSS is
+secret-scanned before any package files are written. This does not execute HTML
+elements, scripts, or Bubble workflows.
+
 Typed Groups can pass literal text and number data through explicit parent-data
 bindings, including data supplied to a typed reusable. Missing or mismatched
 types and database searches remain unresolved.

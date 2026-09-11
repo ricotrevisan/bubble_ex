@@ -346,6 +346,7 @@ defmodule BubbleEx.Frontend.Normalize do
     workflows = click_workflows(raw)
     {children, child_diags} = normalize_children(raw, identity, path, workflows)
     {content, bindings} = data_source_slot(raw, exporter_id)
+    {html_id, id_bindings} = value_slot(raw, "html_id", exporter_id, ["unique_id"])
 
     node = %Node{
       exporter_id: exporter_id,
@@ -357,8 +358,8 @@ defmodule BubbleEx.Frontend.Normalize do
       layout: layout,
       box: box_from(raw),
       style: style_from(raw),
-      content: content,
-      bindings: bindings,
+      content: Map.merge(content, html_id),
+      bindings: Map.merge(bindings, id_bindings),
       children: children,
       unmapped: unmapped_keys(raw),
       attributes: container_attributes(raw, kind),
@@ -1758,6 +1759,7 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp extract_slots(raw, kind, exporter_id) do
     {resolved, bindings} = primary_slots(kind, raw, exporter_id)
+    {html_id, id_bindings} = value_slot(raw, "html_id", exporter_id, ["unique_id"])
 
     {condition, condition_bindings} = condition_slot(raw, exporter_id)
     {workflow, workflow_bindings} = workflow_slot(raw, exporter_id)
@@ -1766,6 +1768,7 @@ defmodule BubbleEx.Frontend.Normalize do
 
     slots =
       resolved
+      |> Map.merge(html_id)
       |> Map.merge(condition)
       |> Map.merge(workflow)
       |> Map.merge(custom)
@@ -1773,6 +1776,7 @@ defmodule BubbleEx.Frontend.Normalize do
 
     extra =
       condition_bindings
+      |> Map.merge(id_bindings)
       |> Map.merge(workflow_bindings)
       |> Map.merge(custom_bindings)
       |> Map.merge(api_bindings)

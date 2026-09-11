@@ -164,7 +164,11 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp instance_boundary(node, %Node{variant: :runtime_overlay} = definition) do
-    %{node | attributes: Map.merge(node.attributes || %{}, definition.attributes)}
+    %{
+      node
+      | variant: :runtime_overlay,
+        attributes: Map.merge(node.attributes || %{}, definition.attributes)
+    }
   end
 
   defp instance_boundary(node, _definition), do: node
@@ -550,11 +554,32 @@ defmodule BubbleEx.Frontend.Export.Html do
     node
     |> node_attrs(tag, opts)
     |> Map.put("data-exporter-id", id)
+    |> put_authored_id(node)
     |> maybe_put_bubble_id(node)
     |> maybe_put_class(node, opts)
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == false or v == "" end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map(&html_attr/1)
+  end
+
+  defp put_authored_id(attrs, node) do
+    case authored_id(node) do
+      nil -> attrs
+      id -> Map.put(attrs, "id", id)
+    end
+  end
+
+  defp authored_id(%Node{kind: :placeholder}), do: nil
+  defp authored_id(%Node{variant: :runtime_overlay}), do: nil
+
+  defp authored_id(node) do
+    case resolved(node, "html_id") do
+      id when is_binary(id) and byte_size(id) in 1..256 ->
+        if Regex.match?(~r/^[A-Za-z_-][A-Za-z0-9_-]*$/, id), do: id
+
+      _ ->
+        nil
+    end
   end
 
   defp node_attrs(node, "img", opts) do

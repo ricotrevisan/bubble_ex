@@ -5,7 +5,7 @@ defmodule BubbleEx.Frontend.Export do
 
   alias BubbleEx.{Error, Secrets}
   alias BubbleEx.Frontend.{Json, Naming, Payload}
-  alias BubbleEx.Frontend.Export.{Assets, Css, Fonts, Html, Result, Safety, Writer}
+  alias BubbleEx.Frontend.Export.{Assets, Css, Fonts, Html, Result, Safety, SourceStyles, Writer}
   alias BubbleEx.Frontend.Fetch.Context
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
@@ -72,6 +72,21 @@ defmodule BubbleEx.Frontend.Export do
 
   defp scan_secrets(%Normalized{source: source}, opts) do
     payload = source.payload || %{}
+
+    with :ok <- scan_secret_payload(payload, opts) do
+      scan_source_styles(opts)
+    end
+  end
+
+  defp scan_source_styles(opts) do
+    styles = source_styles(opts)
+
+    if Enum.any?(styles, fn {_page, source} -> source[:blocks] not in [nil, []] end),
+      do: scan_secret_payload(%{"source_styles" => styles}, opts),
+      else: :ok
+  end
+
+  defp scan_secret_payload(payload, opts) do
     adapter_opts = scan_opts(opts)
 
     case scan_with_native_fallback(payload, adapter_opts, opts) do
@@ -278,13 +293,18 @@ defmodule BubbleEx.Frontend.Export do
       Fonts.collect(nodes, model.styles, Keyword.put(opts, :font_default, font_default(model)))
 
     bindings = collect_bindings(model)
-    findings = collect_findings(model, selected, plan, opts) ++ asset_findings ++ font_findings
+    {source_css, source_findings} = compile_source_styles(selected, opts)
+
+    findings =
+      collect_findings(model, selected, plan, opts) ++
+        asset_findings ++ font_findings ++ source_findings
+
     coverage = coverage(model, selected, bindings, opts)
 
     entries =
       json_entries(model, bindings, findings, coverage, plan, opts) ++
         html_entries(model, selected, plan, assets, opts) ++
-        css_entries(model, selected, plan, font_css) ++
+        css_entries(model, selected, plan, font_css, source_css) ++
         asset_entries(assets, font_assets)
 
     files = Enum.sort(["MANIFEST.json" | Enum.map(entries, &elem(&1, 0))])
@@ -304,6 +324,39 @@ defmodule BubbleEx.Frontend.Export do
          manifest: manifest
        }}
     end
+  end
+
+  defp source_styles(opts) do
+    case Keyword.get(opts, :fetch_context) do
+      %Context{source_styles: styles} when is_map(styles) -> styles
+      _ -> %{}
+    end
+  end
+
+  defp compile_source_styles(selected, opts) do
+    sources = source_styles(opts)
+
+    Enum.reduce(selected, {%{}, []}, fn page, {styles, findings} ->
+      {css, omitted} = SourceStyles.compile(sources[page.name])
+
+      extra =
+        if omitted > 0 do
+          [
+            %{
+              "severity" => "info",
+              "type" => "unsupported_source_css",
+              "message" =>
+                "some source page styles use unsupported selectors, nested rules or property values",
+              "refs" => [page.exporter_id],
+              "payload" => %{"omitted" => omitted}
+            }
+          ]
+        else
+          []
+        end
+
+      {Map.put(styles, page.exporter_id, css), findings ++ extra}
+    end)
   end
 
   defp plan_names(%Normalized{} = model, selected, opts) do
@@ -407,12 +460,13 @@ defmodule BubbleEx.Frontend.Export do
     [catalog | page_docs ++ fragments]
   end
 
-  defp css_entries(model, _selected, plan, font_css) do
+  defp css_entries(model, _selected, plan, font_css, source_css) do
     shared = {"styles/shared.css", Css.shared(model, font_css)}
 
     page_css =
       Enum.map(plan.pages, fn {page, dir} ->
-        {"styles/pages/#{dir}.css", page_and_instance_css(page, model)}
+        {"styles/pages/#{dir}.css",
+         page_and_instance_css(page, model) <> source_css[page.exporter_id]}
       end)
 
     reusable_css =
