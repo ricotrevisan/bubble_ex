@@ -113,7 +113,18 @@ This iteration also exposed intermittent `bpqqfagk` frozen screenshot failures:
 the dropdown text sometimes shifts down by one pixel. Its exported HTML and CSS
 are identical to the preceding implementation, geometry remains exact, and
 repeated captures of the same package both pass and fail. The failed artifacts
-are retained; the frozen-case release gate is not accepted pending investigation.
+are retained. PR78 subsequently passed every CI job without retries, including
+all nineteen frozen cases, and was deployed. This establishes a passing CI run,
+not repeatability of that case; the [capture investigation](dropdown-capture-instability.md)
+remains open.
+
+Iteration 29 applies minimum-size breakpoint overrides to fixed dimensions and
+their bounds. Bubble's two mobile background images now have the observed
+200 px and 310 px widths, and its app showcase also follows its authored width
+changes. Page height improves from 14,073 to 13,609 px at 390 px and from 12,773
+to 12,605 px at 768 px. The combined score remains 70.47 because complete box
+comparisons still fail on position; no fractional credit was added for improving
+only some coordinates. Mochary remains 100 at all widths.
 
 To repeat a candidate with the private captured inputs:
 
