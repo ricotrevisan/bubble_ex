@@ -87,7 +87,29 @@ defmodule BubbleEx.Frontend.InitialState do
        when not is_map_key(message, "%n") and map_size(format) == 2,
        do: {:ok, Integer.to_string(at.year)}
 
+  defp snapshot_part(
+         %{
+           "%x" => "PageData",
+           "%p" => %{"%nm" => "Current Date/Time"} = properties,
+           "%n" =>
+             %{
+               "%x" => "Message",
+               "%nm" => "extract_from_date",
+               "%p" => %{"component_to_extract" => "year"} = extraction
+             } = message
+         } = expression,
+         at
+       )
+       when map_size(properties) == 1 and map_size(extraction) == 1 do
+    if only_keys?(expression, ~w(%x %p %n is_slidable said)) and
+         only_keys?(message, ~w(%x %nm %p is_slidable said)),
+       do: {:ok, Integer.to_string(at.year)},
+       else: :unknown
+  end
+
   defp snapshot_part(_part, _at), do: :unknown
+
+  defp only_keys?(map, keys), do: Enum.all?(Map.keys(map), &(&1 in keys))
 
   defp apply_visibility(box, states) when is_map(states) do
     states

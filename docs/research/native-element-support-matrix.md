@@ -58,7 +58,7 @@ The landing-page work additionally lowers compact shared styles, user design
 tokens, authored aspect-ratio image borders, floating reusable anchors, and
 exact page-width breakpoint paint/spacing conditions, including shared styles and
 literal thresholds. Fetched exports can apply
-direct logged-out visibility and snapshot a literal formatted year while
+direct logged-out visibility and snapshot a literal formatted or extracted year while
 retaining the original bindings. Material outlined icons also work in static
 icon buttons and links. These are bounded implementations with unit tests and
 private observations; they do not expand the 19 committed cases' parity claims.

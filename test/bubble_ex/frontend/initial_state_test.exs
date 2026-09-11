@@ -118,6 +118,103 @@ defmodule BubbleEx.Frontend.InitialStateTest do
     refute hd(hd(projected.pages).children).content["label"][:resolved]
   end
 
+  @tag :tmp_dir
+  test "fetched reusable copyright extracts the recorded year across a year boundary", %{
+    tmp_dir: tmp
+  } do
+    expression = extracted_year()
+    payload = copyright_payload(expression)
+
+    for {at, expected} <- [
+          {~U[2026-12-31 23:59:59Z], "© 2026 Example"},
+          {~U[2027-01-01 00:00:00Z], "© 2027 Example"}
+        ] do
+      context = %Fetch.Context{
+        page_url: "https://example.test/",
+        auth: %Auth{origin: "https://example.test"},
+        snapshot_at: at
+      }
+
+      assert {:ok, result} =
+               Frontend.export_fetched(
+                 payload,
+                 Path.join(tmp, Integer.to_string(at.year)),
+                 [secret_scan_adapter: FrontendFixtures.clean_scanner()],
+                 context
+               )
+
+      html = File.read!(Path.join(result.out_dir, "pages/index/index.html"))
+      assert Floki.text(Floki.find(Floki.parse_document!(html), "p")) == expected
+      assert result.model.source.payload == payload
+      assert result.manifest["options"]["snapshot_at"] == DateTime.to_iso8601(at)
+      assert Enum.any?(result.bindings, &(&1["payload"] == copyright(expression)))
+    end
+  end
+
+  test "year extraction leaves unknown components, arguments and chains unresolved" do
+    year = extracted_year()
+
+    for expression <- [
+          put_in(year, ["%n", "%p", "component_to_extract"], "month"),
+          put_in(year, ["%n", "%p", "timezone"], "Pacific/Honolulu"),
+          put_in(year, ["%n", "%a"], "unknown"),
+          put_in(year, ["%n", "%n"], %{"%nm" => "plus", "%a" => 1}),
+          put_in(year, ["%p", "%ei"], "unrelated"),
+          Map.put(year, "%a", "unknown")
+        ] do
+      assert {:ok, model} = Frontend.normalize(copyright_payload(expression))
+
+      context = %Fetch.Context{
+        page_url: "https://example.test/",
+        auth: %Auth{origin: "https://example.test"},
+        snapshot_at: ~U[2026-09-10 12:00:00Z]
+      }
+
+      [footer] = InitialState.project(model, context).reusables
+      [text] = footer.children
+      refute text.content["text"][:resolved]
+      assert text.bindings["text"].payload == copyright(expression)
+    end
+  end
+
+  defp extracted_year do
+    %{
+      "%x" => "PageData",
+      "%p" => %{"%nm" => "Current Date/Time"},
+      "%n" => %{
+        "%x" => "Message",
+        "%nm" => "extract_from_date",
+        "%p" => %{"component_to_extract" => "year"},
+        "is_slidable" => true
+      },
+      "is_slidable" => false
+    }
+  end
+
+  defp copyright(year),
+    do: %{"%x" => "TextExpression", "%e" => %{"0" => "© ", "1" => year, "2" => " Example"}}
+
+  defp copyright_payload(year) do
+    %{
+      "_id" => "year-snapshot",
+      "pages" => %{
+        "index" => %{
+          "%x" => "Page",
+          "%nm" => "index",
+          "%p" => %{"container_layout" => "column"},
+          "%el" => %{"footer" => %{"%x" => "CustomElement", "%p" => %{"definition" => "footer"}}}
+        }
+      },
+      "element_definitions" => %{
+        "footer" => %{
+          "%x" => "CustomDefinition",
+          "%p" => %{"container_layout" => "column"},
+          "%el" => %{"copyright" => %{"%x" => "Text", "%p" => %{"%3" => copyright(year)}}}
+        }
+      }
+    }
+  end
+
   defp payload do
     %{
       "_id" => "initial-state",
