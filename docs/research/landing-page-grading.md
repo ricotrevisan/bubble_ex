@@ -215,6 +215,16 @@ The copyright line matches at all three widths. Mochary remains 100; Bubble
 scores 41.25 / 41.62 / 40.14, for a combined 70.50. Runtime content and appearance
 gaps and the original credential gates remain.
 
+Iteration 43 corrects a Shape's aspect-ratio height. The exported 900 px spacer
+had the authored 1000:600 ratio but retained an old 150 px fixed height. Changing
+only the candidate height rule yielded the source's 540 px height; a live
+read-only style observation confirmed that Bubble omits its stale vertical
+bounds. Valid fixed-height aspect Shapes now use width-derived height. Browser
+regressions cover three viewport sizes and four native container layouts; invalid
+or disabled ratios retain ordinary dimensions. The full-page grade remains 70.50:
+the spacer's dimensions match, but upstream offsets and other content still fail
+complete assertions. The source captures and rubric are unchanged.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh
