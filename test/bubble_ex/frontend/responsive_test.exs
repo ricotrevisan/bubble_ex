@@ -92,6 +92,49 @@ defmodule BubbleEx.Frontend.ResponsiveTest do
     end
   end
 
+  test "breakpoint minimum sizes update both bounds and size only on authored fixed axes" do
+    rule =
+      state("less_than", 14)
+      |> put_in(["%p"], %{"min_width_css" => "200px", "min_height_css" => "80px"})
+
+    for fixed? <- [true, false] do
+      payload = %{
+        "_id" => "fixed-responsive",
+        "settings" => %{
+          "client_safe" => %{"responsive_breakpoints" => %{"mobile" => %{"size" => 500}}}
+        },
+        "pages" => %{
+          "index" => %{
+            "%x" => "Page",
+            "%el" => %{
+              "target" => %{
+                "%x" => "Group",
+                "%p" => %{
+                  "container_layout" => "column",
+                  "single_width" => fixed?,
+                  "single_height" => fixed?,
+                  "min_width_css" => "400px",
+                  "min_height_css" => "160px"
+                },
+                "%s" => %{"0" => rule}
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, model} = Frontend.normalize(payload)
+      [_base, media] = String.split(Css.page(hd(model.pages)), "@media", parts: 2)
+      assert media =~ "min-width: 200px;"
+      assert media =~ "min-height: 80px;"
+
+      for property <- ["width", "max-width", "height", "max-height"] do
+        value = if String.ends_with?(property, "width"), do: "200px", else: "80px"
+        assert String.contains?(media, "\n  #{property}: #{value};") == fixed?
+      end
+    end
+  end
+
   test "shared styles retain configured and literal page-width conditions" do
     literal = put_in(state("less_or_equal_than", 18), ["%c", "%n", "%a"], 500)
 

@@ -85,6 +85,21 @@ defmodule BubbleEx.Frontend.Responsive do
     end)
   end
 
+  @spec fixed_lengths(map(), map(), map()) :: map()
+  def fixed_lengths(raw, overrides, lengths) do
+    Enum.reduce(["width", "height"], lengths, fn axis, acc ->
+      flag = "single_" <> axis
+      value = lengths["min-" <> axis]
+
+      if Payload.prop(raw, flag) == true and not Map.has_key?(overrides, flag) and
+           is_binary(value) do
+        acc |> Map.put(axis, value) |> Map.put("max-" <> axis, value)
+      else
+        acc
+      end
+    end)
+  end
+
   @spec hidden_paint(map(), map()) :: map()
   def hidden_paint(raw, overrides) do
     case Payload.prop(%{"properties" => overrides}, "is_visible") do

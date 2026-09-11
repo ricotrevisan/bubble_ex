@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Apply page-width minimum-size overrides to the size and both bounds of an
+  authored fixed axis, instead of retaining its desktop width or height.
+
 - Respect initial hidden states on icon controls and restore the native display
   mode when an exact page-width condition shows a native element.
 - Ignore stale vertical editor bounds on fit-height aspect-ratio images.

@@ -213,7 +213,12 @@ defmodule BubbleEx.Frontend.Normalize do
         |> BubbleEx.Frontend.Responsive.breakpoint_states(breakpoints)
         |> Enum.map(fn %{media: media, overrides: overrides} ->
           paint = local_paint(%{"type" => Payload.type(raw), "properties" => overrides})
-          lengths = BubbleEx.Frontend.Responsive.extra_lengths(overrides)
+
+          lengths =
+            overrides
+            |> BubbleEx.Frontend.Responsive.extra_lengths()
+            |> then(&BubbleEx.Frontend.Responsive.fixed_lengths(raw, overrides, &1))
+
           hidden = BubbleEx.Frontend.Responsive.hidden_paint(raw, overrides)
           alignment = responsive_alignment(overrides, parent_mode)
 
