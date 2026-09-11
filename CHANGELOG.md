@@ -48,6 +48,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Literal text/number data on typed Groups and reusable definitions, with
+  explicit parent-data forwarding. Original data-source expressions remain
+  bindings; missing/mismatched types and database searches stay unresolved.
+
 - Bounded literal horizontal Repeating Groups with leaf templates, scalar
   current-cell values, portable image assets, and unique repeated instance IDs.
   Database searches, nested templates, and runtime scrolling remain unsupported.

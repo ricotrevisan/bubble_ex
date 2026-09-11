@@ -181,11 +181,13 @@ defmodule BubbleEx.Frontend.Normalize do
       pages
       |> apply_breakpoints(Payload.pages(payload), breakpoints)
       |> BubbleEx.Frontend.StaticRepeating.expand()
+      |> BubbleEx.Frontend.StaticGroupData.expand()
 
     reusables =
       reusables
       |> apply_breakpoints(Payload.reusables(payload), breakpoints)
       |> BubbleEx.Frontend.StaticRepeating.expand()
+      |> BubbleEx.Frontend.StaticGroupData.expand()
 
     %Normalized{
       identity: identity,
@@ -338,6 +340,7 @@ defmodule BubbleEx.Frontend.Normalize do
     layout = layout_from(raw)
     workflows = click_workflows(raw)
     {children, child_diags} = normalize_children(raw, identity, path, workflows)
+    {content, bindings} = data_source_slot(raw, exporter_id)
 
     node = %Node{
       exporter_id: exporter_id,
@@ -349,6 +352,8 @@ defmodule BubbleEx.Frontend.Normalize do
       layout: layout,
       box: box_from(raw),
       style: style_from(raw),
+      content: content,
+      bindings: bindings,
       children: children,
       unmapped: unmapped_keys(raw),
       attributes: container_attributes(raw, kind),
@@ -1783,6 +1788,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp primary_slots(:dropdown, raw, id), do: choice_control_slots(raw, id, false)
   defp primary_slots(:radio_buttons, raw, id), do: choice_control_slots(raw, id, true)
   defp primary_slots(:image, raw, id), do: image_slots(raw, id)
+  defp primary_slots(:group, raw, id), do: data_source_slot(raw, id)
 
   defp primary_slots(:repeating_group, raw, id) do
     {:ok, items} = BubbleEx.Frontend.StaticRepeating.items(raw)
@@ -1795,7 +1801,7 @@ defmodule BubbleEx.Frontend.Normalize do
     raw
     |> Payload.properties()
     |> Enum.filter(fn {key, _value} -> String.starts_with?(key, "param_") end)
-    |> Enum.reduce({%{}, %{}}, fn {key, value}, {slots, bindings} ->
+    |> Enum.reduce(data_source_slot(raw, id), fn {key, value}, {slots, bindings} ->
       binding = binding(id, key, :expression, value)
       slot = %{binding_id: binding.id}
 
@@ -1814,6 +1820,25 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp primary_slots(_kind, _raw, _id), do: {%{}, %{}}
+
+  defp data_source_slot(raw, id) do
+    props = Payload.properties(raw)
+
+    value =
+      case Map.fetch(props, "data_source") do
+        {:ok, value} -> value
+        :error -> props["%ds"]
+      end
+
+    slot = %{data_type: props["%gt"]}
+
+    if is_nil(value) do
+      if is_nil(slot.data_type), do: {%{}, %{}}, else: {%{"data_source" => slot}, %{}}
+    else
+      binding = binding(id, "data_source", :expression, value)
+      {%{"data_source" => Map.put(slot, :binding_id, binding.id)}, %{"data_source" => binding}}
+    end
+  end
 
   defp named_map_slot(raw, exporter_id, key, kind) do
     value = raw[key] || Payload.prop(raw, key)

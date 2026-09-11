@@ -107,6 +107,14 @@ The corrected image is 24 × 24 at all three widths, matching fresh source
 observations. Source content generated from group data, database searches, and
 plugins still differs; none of those failures is excluded from the score.
 
+Iteration 28 adds typed literal group data and explicit parent-data forwarding.
+Mochary remains 100; Bubble scores 41.11 / 41.60 / 40.11, for a combined 70.47.
+This iteration also exposed intermittent `bpqqfagk` frozen screenshot failures:
+the dropdown text sometimes shifts down by one pixel. Its exported HTML and CSS
+are identical to the preceding implementation, geometry remains exact, and
+repeated captures of the same package both pass and fail. The failed artifacts
+are retained; the frozen-case release gate is not accepted pending investigation.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

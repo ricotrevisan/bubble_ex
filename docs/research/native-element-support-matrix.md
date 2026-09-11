@@ -20,7 +20,7 @@ defines the geometry, typography, collapse, document-size, semantics, and pixel 
 
 | Element | Current static export | Frozen evidence | Limits |
 |---|---|---|---|
-| Page / Group | `main` / `div`; Fixed, Align to Parent, Row, Column; common box and paint properties | `bpmkbvvo` | Controlled layouts only; no data loading, workflow clicks, or animated collapse |
+| Page / Group | `main` / `div`; Fixed, Align to Parent, Row, Column; common box/paint; literal text/number data with explicit parent forwarding | `bpmkbvvo` layouts; typed literal data has unit tests and landing-page observations | Controlled layouts only; no database loading, workflow clicks, or animated collapse; data requires matching declared type |
 | Text | Paragraph and explicit H1–H4 semantics; literal/resolved text | `bpmkbvvo`, `bpcybc` | Other heading enums and runtime content are not characterized |
 | Text, BBCode subset | Safe `b`, `i`, `u`, `s`, `ul`, `ol`, `li`, `url` markup | `bpwipyqn` | Not full Bubble rich text, automatic link recognition, or arbitrary HTML |
 | Image | Public/resolved Stretch, Rescale, Zoom, Adjust-height; portable assets | `bprkyexk`, `bpgwgmpz` | No authenticated image fetching, PDF thumbnails, or runtime sources |
