@@ -1,0 +1,11 @@
+{
+  "name": "bubble-ex-snapshot-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Optional, pinned browser snapshot backend for BubbleEx",
+  "dependencies": {
+    "playwright": "1.55.1",
+    "parse5": "7.3.0",
+    "css-tree": "3.1.0"
+  }
+}

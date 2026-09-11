@@ -153,3 +153,21 @@ _Avoid_: Unsupported error, skipped node
 **Frozen case**:
 A parity-tested page whose committed Bubble references are the only thing we call visually correct. Case-correct means that case passed the fidelity gates; an app export is never “correct.”
 _Avoid_: Screenshot test, visual regression suite, golden file
+
+
+**Browser capture**:
+Private rendered DOM/resource input for one anonymous URL at a declared viewport,
+locale, DPR, and browser version. It is separate from the normalized app-data
+model and has not passed the publication credential gate.
+
+**Browser snapshot package**:
+An inert HTML/CSS/resource export of a browser capture, with local assets and
+capture provenance. It retains the observed initial appearance; it does not
+reconstruct responsive behavior or Bubble workflows. Snapshot findings describe
+capture/resource omissions rather than unresolved app-data bindings.
+
+**Paired snapshot benchmark**:
+An immutable browser capture and its independently measured DOM/PNG reference,
+locked before export. Passing describes the named page, viewport, browser state,
+and fixed checks; it is not a claim of complete application correctness. The
+historical app-data frozen cases remain separate.

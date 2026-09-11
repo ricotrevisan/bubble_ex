@@ -193,6 +193,12 @@ defmodule BubbleEx do
   `:app_version` is `"live"` (default), `"test"`, or `"development"`. There is
   no `:try_test` fallback.
 
+  Pass `mode: :snapshot` with a full anonymous page URL to capture a rendered
+  initial view at `width: 1440`, `height: 900`, `locale: "en-US"` (defaults).
+  Install its optional browser backend with `mix bubble.snapshot.setup`.
+  Snapshot mode uses `Frontend.Snapshot` and does not accept renderer-only
+  page/version/authentication options or reproduce workflows.
+
   Optional `:username`/`:password` Basic credentials and an imported
   `:session_cookie` are scoped to the exact effective HTTPS app origin. Assets
   remain unauthenticated unless `asset_access: :same_origin` is selected.
@@ -204,8 +210,16 @@ defmodule BubbleEx do
   override the bound.
   """
   @spec export_frontend(String.t(), String.t(), keyword()) ::
-          {:ok, Frontend.Export.Result.t()} | {:error, Error.t()}
+          {:ok, Frontend.Export.Result.t() | Frontend.Snapshot.Result.t()} | {:error, Error.t()}
   def export_frontend(app, out_dir, opts \\ []) when is_binary(app) and is_binary(out_dir) do
+    case Keyword.get(opts, :mode, :renderer) do
+      :snapshot -> Frontend.Snapshot.run(app, out_dir, opts)
+      :renderer -> export_app_frontend(app, out_dir, opts)
+      _ -> {:error, Error.new(:invalid_input, "frontend mode must be renderer or snapshot", %{})}
+    end
+  end
+
+  defp export_app_frontend(app, out_dir, opts) do
     with {:ok, sanitized_app, auth} <- Auth.prepare(app, opts),
          {:ok, url} <-
            frontend_version_url(sanitized_app, Keyword.get(opts, :app_version, "live")),
