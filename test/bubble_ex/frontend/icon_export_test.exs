@@ -51,7 +51,8 @@ defmodule BubbleEx.Frontend.IconExportTest do
     assert button.variant == :label_icon
     html = File.read!(Path.join(result.out_dir, "pages/index/index.html"))
     assert html =~ ~s(data-icon-set="material")
-    assert html =~ ~s(<symbol id="arrow_forward" viewBox="0 0 24 24">)
+    assert html =~ ~s(viewBox="0 0 24 24")
+    assert html =~ ~s(<symbol id="bubbleex-icon-)
     assert html =~ ~r/Continue.*<svg/s
     css = File.read!(Path.join(result.out_dir, "styles/pages/index.css"))
     assert css =~ "--bubble-icon-color: #646464;"
@@ -108,6 +109,115 @@ defmodule BubbleEx.Frontend.IconExportTest do
     assert html =~ ~s(stroke="currentColor")
     assert html =~ ~s(stroke-width="24")
     refute html =~ ~s(<path fill="currentColor" d="M0 0h256)
+  end
+
+  @tag :tmp_dir
+  test "Phosphor circles and rounded rectangles survive the complete export", %{tmp_dir: tmp} do
+    sprite = Path.join(tmp, "phosphor.svg")
+
+    File.write!(sprite, """
+    <svg><symbol id="instagram-logo" viewBox="0 0 256 256"><g class="nc-icon-wrapper">
+    <path fill="none" d="M0 0h256v256H0z"/>
+    <circle cx="128" cy="128" r="36" fill="none" stroke="currentColor" stroke-width="24"/>
+    <rect width="192" height="192" x="32" y="32" rx="48" fill="none" stroke="currentColor" stroke-width="24"/>
+    <circle cx="180" cy="76" r="16"/></g></symbol></svg>
+    """)
+
+    url = "/static/icon_libraries/phosphor-2.1.0-bold.svg"
+
+    assert {:ok, result} =
+             Frontend.export_payload(
+               payload("phosphor bold instagram-logo"),
+               Path.join(tmp, "export"),
+               secret_scan_adapter: FrontendFixtures.clean_scanner(),
+               asset_files: %{url => sprite}
+             )
+
+    assert result.findings == []
+
+    html =
+      Path.join(result.out_dir, "pages/index/index.html")
+      |> File.read!()
+      |> Floki.parse_document!()
+
+    assert length(Floki.find(html, "svg circle")) == 2
+    assert Floki.find(html, "svg rect") |> Floki.attribute("rx") == ["48"]
+    assert Floki.find(html, "svg rect") |> Floki.attribute("stroke") == ["currentColor"]
+  end
+
+  @tag :tmp_dir
+  test "mixed icon weights keep their own symbol references in repeated reusables", %{
+    tmp_dir: tmp
+  } do
+    base =
+      get_in(payload("phosphor regular arrow-right"), ["pages", "index", "elements", "button"])
+
+    icons =
+      Map.new([{"regular", 16}, {"bold", 24}], fn {weight, order} ->
+        node =
+          base
+          |> Map.put("id", weight)
+          |> put_in(["properties", "icon"], "phosphor #{weight} arrow-right")
+          |> put_in(["properties", "order"], order)
+
+        {weight, node}
+      end)
+
+    definition = %{
+      "type" => "CustomDefinition",
+      "id" => "arrows",
+      "elements" => icons,
+      "properties" => %{"container_layout" => "row"}
+    }
+
+    instances =
+      Map.new(["left", "right"], fn id ->
+        {id,
+         %{"type" => "CustomElement", "id" => id, "properties" => %{"definition" => "arrows"}}}
+      end)
+
+    app =
+      payload("unused")
+      |> Map.put("element_definitions", %{"arrows" => definition})
+      |> put_in(["pages", "index", "elements"], instances)
+
+    files =
+      Map.new([{"regular", 16}, {"bold", 24}], fn {weight, stroke} ->
+        file = Path.join(tmp, weight <> ".svg")
+
+        File.write!(
+          file,
+          ~s(<svg><symbol id="arrow-right" viewBox="0 0 256 256"><path d="M40 128h176" stroke="currentColor" stroke-width="#{stroke}"/></symbol></svg>)
+        )
+
+        {"/static/icon_libraries/phosphor-2.1.0-#{weight}.svg", file}
+      end)
+
+    assert {:ok, result} =
+             Frontend.export_payload(app, Path.join(tmp, "export"),
+               secret_scan_adapter: FrontendFixtures.clean_scanner(),
+               asset_files: files
+             )
+
+    assert result.findings == []
+
+    html =
+      Path.join(result.out_dir, "pages/index/index.html")
+      |> File.read!()
+      |> Floki.parse_document!()
+
+    symbols = Floki.find(html, "symbol")
+    ids = Floki.attribute(symbols, "id")
+    assert length(ids) == 4
+    assert length(Enum.uniq(ids)) == 4
+
+    for svg <- Floki.find(html, "svg") do
+      [id] = Floki.find(svg, "symbol") |> Floki.attribute("id")
+      assert Floki.find(svg, "use") |> Floki.attribute("href") == ["#" <> id]
+    end
+
+    assert Enum.sort(Floki.find(html, "symbol path") |> Floki.attribute("stroke-width")) ==
+             ["16", "16", "24", "24"]
   end
 
   test "static icon links retain the authored trailing icon placement" do

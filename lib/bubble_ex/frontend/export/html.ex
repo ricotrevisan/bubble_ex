@@ -238,9 +238,13 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp icon_svg(node, opts) do
     fragment = node.attributes["asset_fragment"]
 
+    symbol_id =
+      "bubbleex-icon-" <>
+        Base.encode16(:crypto.hash(:sha256, prefixed_id(node, opts)), case: :lower)
+
     symbol =
       case Keyword.get(opts, :assets, %{}) |> Map.get(node.exporter_id) do
-        %{bytes: bytes} -> inline_icon_symbol(bytes, fragment)
+        %{bytes: bytes} -> inline_icon_symbol(bytes, fragment, symbol_id)
         _ -> nil
       end
 
@@ -250,14 +254,15 @@ defmodule BubbleEx.Frontend.Export.Html do
       [
         ~s(<svg viewBox="0 0 32 32" data-icon-set="#{icon_set}" aria-hidden="true"><defs>),
         symbol,
-        ~s(</defs><use width="32" height="32" href="##{fragment}"></use></svg>)
+        ~s(</defs><use width="32" height="32" href="##{symbol_id}"></use></svg>)
       ]
     else
       ""
     end
   end
 
-  defp inline_icon_symbol(bytes, fragment) when is_binary(bytes) and is_binary(fragment) do
+  defp inline_icon_symbol(bytes, fragment, symbol_id)
+       when is_binary(bytes) and is_binary(fragment) do
     regex =
       Regex.compile!(
         "<symbol\s+id=\"#{Regex.escape(fragment)}\"[^>]*>.*?</symbol>",
@@ -265,12 +270,15 @@ defmodule BubbleEx.Frontend.Export.Html do
       )
 
     case Regex.run(regex, bytes) do
-      [symbol] -> symbol
-      _ -> nil
+      [symbol] ->
+        String.replace(symbol, ~s(id="#{fragment}"), ~s(id="#{symbol_id}"), global: false)
+
+      _ ->
+        nil
     end
   end
 
-  defp inline_icon_symbol(_bytes, _fragment), do: nil
+  defp inline_icon_symbol(_bytes, _fragment, _symbol_id), do: nil
 
   defp children_html(%Node{kind: :page, children: children}, opts) do
     {floating, flow} = Enum.split_with(children, &floating_boundary?(&1, opts))
