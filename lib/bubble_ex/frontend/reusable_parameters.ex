@@ -17,7 +17,12 @@ defmodule BubbleEx.Frontend.ReusableParameters do
       |> Map.new(fn {key, slot} -> {key, slot[:resolved]} end)
 
     scope = Map.new([definition.map_key, definition.source.bubble_id], &{&1, parameters})
-    project(definition, instance.exporter_id, scope)
+
+    definition
+    |> project(instance.exporter_id, scope)
+    |> BubbleEx.Frontend.StaticGroupData.project(
+      get_in(instance.content || %{}, ["data_source", :resolved]) || :unknown
+    )
   end
 
   defp project(node, prefix, scope) do

@@ -133,6 +133,10 @@ expressions, parameter-driven conditions, and workflows are not executed.
 Links to known pages omitted by `--pages` retain their public source
 destinations; selected pages link to their local exports.
 
+Typed Groups can pass literal text and number data through explicit parent-data
+bindings, including data supplied to a typed reusable. Missing or mismatched
+types and database searches remain unresolved.
+
 Visual correctness is defined only for committed **frozen cases**. The committed
 S2 cases include fixed-height Multiline Input and static
 Checkbox/Dropdown/Radio Buttons. The Issue #42 frozen case pins a controlled
