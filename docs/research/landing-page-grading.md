@@ -126,6 +126,30 @@ to 12,605 px at 768 px. The combined score remains 70.47 because complete box
 comparisons still fail on position; no fractional credit was added for improving
 only some coordinates. Mochary remains 100 at all widths.
 
+Iteration 31 retains authored element IDs and supported inline head CSS. Bubble's
+document widths now match 390 / 768 / 1440 rather than 590 / 1168 / 1980, and its
+document heights become 13,409 / 12,405 / 11,333. Mochary remains 100; Bubble
+scores 41.12 / 41.60 / 40.12, with the combined score still truncated to 70.47.
+The visual category still fails. Its percentage of differing pixels rises as
+the excess canvas width is removed; that percentage alone must not be described
+as a before/after visual improvement. No pixel threshold or reference changed.
+
+The page styles are additional rendering inputs captured from the two authorized
+landing URLs. They are held separately from the reference captures and locked
+by SHA-256; a second fetch reproduced their discovered style blocks exactly.
+The input hashes are `85375431a3416accff5a9f388f5488fa722979e146bd64e204ffe3de02321d90`
+for `mochary.json` and `210bd1f33239dea9d0edb7a72ab4781b25f81c849db2fea66ff788ac41933405`
+for `bubble.json`. No existing reference PNG, DOM audit, payload, or baseline lock
+was edited. Pass the private source-style directory as the optional third
+argument to `scripts/landing/export.exs` to reproduce this iteration; omit it
+to repeat the older app-payload-only export input. The script verifies its
+separate `lock.json` before reading these inputs.
+The final parser hardening was exported again as iteration 32. All 28 Mochary
+and 170 Bubble HTML/CSS/asset files are byte-identical to iteration 31, so the
+measured rendering is unchanged. The local frozen run again encountered the
+documented dropdown shift; that case's HTML, page CSS, and shared CSS remain
+byte-identical to the preceding implementation.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

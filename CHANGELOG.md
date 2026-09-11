@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Preserve simple authored element IDs and supported inline head styles in
+  fetched exports, with per-page scope, bounded parsing, omission findings, and
+  credential checks on the retained CSS. This restores authored section clipping.
+
 - Apply page-width minimum-size overrides to the size and both bounds of an
   authored fixed axis, instead of retaining its desktop width or height.
 

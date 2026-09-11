@@ -211,7 +211,8 @@ defmodule BubbleEx do
            frontend_version_url(sanitized_app, Keyword.get(opts, :app_version, "live")),
          {:ok, auth} <- Auth.rescope(auth, url),
          {:ok, payload, fetch_context} <- Fetch.run(url, auth, opts),
-         {:ok, payload} <- Fetch.hydrate_selected_pages(payload, fetch_context, opts) do
+         {:ok, payload, fetch_context} <-
+           Fetch.hydrate_selected_pages(payload, fetch_context, opts) do
       Frontend.export_fetched(payload, out_dir, export_opts(opts), fetch_context)
     end
   end
