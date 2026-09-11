@@ -619,7 +619,8 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert ids == Enum.uniq(ids)
       assert html =~ "NESTED REUSABLE"
       assert html =~ ~s(href="../bubbleex-complex-detail/index.html")
-      assert html =~ ~s(<symbol id="fa-star")
+      assert html =~ ~s(data-icon-set="fa")
+      assert html =~ ~s(<symbol id="bubbleex-icon-)
 
       css = File.read!(Path.join(out, "styles/pages/bubbleex-complex-demo.css"))
       assert css =~ "position: fixed;"

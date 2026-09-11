@@ -2,6 +2,7 @@ defmodule BubbleEx.Frontend.StaticSvg do
   @moduledoc false
 
   @number ~r/^-?(?:\d+(?:\.\d+)?|\.\d+)$/
+  @nonnegative_number ~r/^(?:\d+(?:\.\d+)?|\.\d+)$/
   @path ~r/^[0-9eE.,+\-\sMmZzLlHhVvCcSsQqTtAa]+$/
 
   @spec parse(term()) :: {:ok, String.t()} | :unsupported
@@ -45,6 +46,14 @@ defmodule BubbleEx.Frontend.StaticSvg do
       safe_attributes?(attributes, :path)
   end
 
+  defp safe_shape?({"circle", attributes, children}, _depth) do
+    nonblank(children) == [] and safe_attributes?(attributes, :circle)
+  end
+
+  defp safe_shape?({"rect", attributes, children}, _depth) do
+    nonblank(children) == [] and safe_attributes?(attributes, :rect)
+  end
+
   defp safe_shape?({"g", attributes, children}, depth) when depth < 16 do
     children = nonblank(children)
 
@@ -60,6 +69,28 @@ defmodule BubbleEx.Frontend.StaticSvg do
 
   defp safe_attribute?("xmlns", "http://www.w3.org/2000/svg", :svg), do: true
   defp safe_attribute?("d", value, :path), do: Regex.match?(@path, value)
+
+  defp safe_attribute?(key, value, :circle) when key in ~w(cx cy),
+    do: Regex.match?(@number, value)
+
+  defp safe_attribute?("r", value, :circle), do: Regex.match?(@nonnegative_number, value)
+
+  defp safe_attribute?(key, value, :rect) when key in ~w(x y),
+    do: Regex.match?(@number, value)
+
+  defp safe_attribute?(key, value, :rect) when key in ~w(width height rx ry),
+    do: Regex.match?(@nonnegative_number, value)
+
+  defp safe_attribute?("transform", value, _kind) when byte_size(value) <= 128 do
+    case Regex.run(~r/^rotate\(([^()]*)\)$/, value) do
+      [_, arguments] ->
+        numbers = arguments |> String.trim() |> String.split(~r/\s*,\s*|\s+/, trim: false)
+        length(numbers) in [1, 3] and Enum.all?(numbers, &Regex.match?(@number, &1))
+
+      _ ->
+        false
+    end
+  end
 
   defp safe_attribute?("viewbox", value, :svg) do
     values = String.split(value, ~r/[\s,]+/, trim: true)

@@ -161,6 +161,22 @@ Mochary remains 100 at all widths. Bubble remains 41.12 / 41.60 / 40.12 and the
 combined score remains 70.47: correcting two images does not pass the complete
 visual assertion. No reference, category, or threshold changed.
 
+Iterations 34–35 restore SVG icon geometry. The sanitizer previously rejected
+circles and rectangles used by thirteen distinct glyph/weight combinations,
+producing 22 asset findings across their occurrences. A local-file reproduction
+failed; replacing only the circle with an equivalent path passed. Numeric circle
+and rectangle geometry and bounded simple rotations are now supported, while
+active content, external references, and other transforms remain rejected.
+The shape definitions follow the [SVG basic-shapes specification](https://www.w3.org/TR/SVG2/shapes.html).
+
+Browser inspection also found five arrow occurrences resolving another weight's
+symbol because inline SVG IDs collided. Iteration 35 gives each rendered icon a
+stable instance-specific symbol ID; the same probe then reports zero conflicts.
+All 22 icon asset findings are gone. Thirteen original/sanitized glyph pairs at
+16 / 24 / 32 px produce 39 byte-identical Chromium screenshots. The full page
+grade remains 70.47 (Mochary 100 at every width; Bubble 41.12 / 41.60 / 40.12).
+These focused corrections do not pass the complete visual or content assertions.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

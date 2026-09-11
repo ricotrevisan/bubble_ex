@@ -52,6 +52,41 @@ defmodule BubbleEx.Frontend.StaticSvgTest do
     end
   end
 
+  test "basic circle and rectangle geometry retain bounded numeric rotations" do
+    for transform <- ["rotate(-45 128 128)", "rotate(90, 128, 128)", "rotate(90)"] do
+      assert {:ok, svg} =
+               BubbleEx.Frontend.StaticSvg.parse("""
+               <svg viewBox="0 0 256 256"><g fill="none" stroke="currentColor">
+               <circle cx="-2" cy="128" r="36"/>
+               <rect x="32" y="32" width="192" height="192" rx="48" ry="24" transform="#{transform}"/>
+               </g></svg>
+               """)
+
+      assert svg =~ ~s(transform="#{transform}")
+      assert svg =~ ~s(cx="-2")
+      assert svg =~ ~s(ry="24")
+    end
+  end
+
+  test "basic shapes cannot introduce active content, resource loads or malformed geometry" do
+    for shape <- [
+          ~s|<circle r="2" onload="alert(1)"/>|,
+          ~s|<circle r="2" style="fill:url(https://example.test/paint)"/>|,
+          ~s|<circle r="2"><animate attributeName="r" values="2;999"/></circle>|,
+          ~s|<circle r="-2"/>|,
+          ~s|<rect width="20" height="20" href="https://example.test/image"/>|,
+          ~s|<rect width="20" height="20" fill="url(#paint)"/>|,
+          ~s|<rect width="20px" height="20"/>|,
+          ~s|<rect width="20" height="-20"/>|,
+          ~s|<rect width="20" height="20" transform="rotate(90) translate(1 2)"/>|,
+          ~s|<rect width="20" height="20" transform="rotate(90,,128,128)"/>|,
+          ~s|<rect width="20" height="20" transform="rotate(90 128)"/>|,
+          ~s|<rect width="20" height="20" transform="url(https://example.test/transform)"/>|
+        ] do
+      assert BubbleEx.Frontend.StaticSvg.parse("<svg>#{shape}</svg>") == :unsupported
+    end
+  end
+
   defp payload(svg) do
     %{
       "_id" => "svg",

@@ -161,8 +161,11 @@ lists with direct Image/Text/Shape/Icon templates. That slice supports at most
 100 scalar items and 1,000 projected leaves; searches, nested templates, and
 animated scrolling remain unsupported. Static Material outlined and
 Phosphor regular/bold/fill icons
-and a strictly sanitized, path-only SVG subset of HTML elements also export
-locally; other icon libraries and arbitrary HTML remain unsupported. These
+and a strictly sanitized SVG subset of HTML elements also export
+locally. That subset includes paths, circles, rectangles, groups, and simple
+numeric rotations. Icon symbols are scoped to each rendered instance so different
+weights of the same glyph cannot replace each other. Other icon libraries and
+arbitrary HTML remain unsupported. These
 additional lowerings have unit tests and landing-page observations, not a new
 claim of complete frozen-case coverage.
 `mix bubble.fidelity` exports every committed case and compares it to Bubble
