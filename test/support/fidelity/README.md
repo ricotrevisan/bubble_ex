@@ -24,6 +24,10 @@ mix bubble.fidelity
 
 `mix quality` does not run the browser gate (no Playwright required locally).
 
+The `:fidelity` tag also runs the generated geometry-style helper's load, resize,
+missing/ambiguous-reference, transform, and feedback regression checks. Those
+checks use a local synthetic export, not another frozen Bubble reference case.
+
 ## What a pass means
 
 Under the pinned browser (Playwright 1.55.1, Chromium 140.0.7339.186, DPR 1,

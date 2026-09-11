@@ -27,6 +27,7 @@ defmodule BubbleEx.Frontend.Export.Html do
       "</head>\n",
       "<body>\n",
       indent(markup, 1),
+      BubbleEx.Frontend.GeometryStyles.runtime_tag(markup),
       "</body>\n",
       "</html>\n"
     ]
@@ -68,11 +69,14 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   @spec fragment(Node.t(), keyword()) :: String.t()
   def fragment(node, opts \\ []) do
-    node
-    |> render_node(opts)
-    |> IO.iodata_to_binary()
-    |> String.trim_trailing()
-    |> Kernel.<>("\n")
+    markup =
+      node
+      |> render_node(opts)
+      |> IO.iodata_to_binary()
+      |> String.trim_trailing()
+      |> Kernel.<>("\n")
+
+    markup <> BubbleEx.Frontend.GeometryStyles.runtime_tag(markup)
   end
 
   @spec render_node(Node.t(), keyword()) :: iodata()
@@ -90,6 +94,28 @@ defmodule BubbleEx.Frontend.Export.Html do
 
   defp do_render(%Node{kind: :page} = node, opts),
     do: wrap("main", node, children_html(node, opts), opts)
+
+  defp do_render(%Node{kind: :html_style} = node, opts) do
+    inner =
+      case get_in(node.content, ["html_style", :inline_style]) do
+        %{css: css, refs: []} ->
+          ["<style>", css, "</style>"]
+
+        %{css: css, refs: refs} ->
+          [
+            "<style data-bubbleex-geometry=\"",
+            escape(Jason.encode!(refs)),
+            "\" media=\"not all\">",
+            css,
+            "</style>"
+          ]
+
+        _ ->
+          ""
+      end
+
+    wrap("div", node, inner, opts)
+  end
 
   defp do_render(%Node{kind: kind} = node, opts)
        when kind in [

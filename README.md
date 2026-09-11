@@ -145,6 +145,16 @@ and resource-loading CSS are omitted with findings. Retained source CSS is
 secret-scanned before any package files are written. This does not execute HTML
 elements, scripts, or Bubble workflows.
 
+Literal HTML elements containing a single supported `<style>` block can also
+export. Numeric reusable parameters and direct element width/height references
+are supported in simple pixel-valued declarations, including forwarded parameters.
+For measured references, a small local helper waits for fonts and page load and
+remeasures on viewport resize. It activates a style only when every referenced
+Bubble ID identifies one untransformed native exported element; missing, ambiguous,
+or self-resizing references keep the style inactive. General Bubble expressions,
+arbitrary scripts, content mutations, and workflow-driven measurements are not
+executed. The original bindings and credential gate remain in place.
+
 Typed Groups can pass literal text and number data through explicit parent-data
 bindings, including data supplied to a typed reusable. Missing or mismatched
 types and database searches remain unresolved.

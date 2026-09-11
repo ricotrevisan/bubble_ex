@@ -307,6 +307,8 @@ defmodule BubbleEx.Frontend.Export do
         css_entries(model, selected, plan, font_css, source_css) ++
         asset_entries(assets, font_assets)
 
+    entries = entries ++ BubbleEx.Frontend.GeometryStyles.runtime_entries(entries)
+
     files = Enum.sort(["MANIFEST.json" | Enum.map(entries, &elem(&1, 0))])
     manifest = manifest(model, files, opts)
     entries = [{"MANIFEST.json", encode_manifest(manifest)} | entries]
