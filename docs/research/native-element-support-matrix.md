@@ -29,7 +29,7 @@ defines the geometry, typography, collapse, document-size, semantics, and pixel 
 | Link | Text or static Font Awesome 4 icon/icon+label; explicit destination; new tab, nofollow, literal disabled | `bptaixqv`, `bpaupfbj` | Unresolved destinations stay bindings; no inferred navigation |
 | Icon | Static Font Awesome 4, Material outlined, and Phosphor regular/bold/fill SVG bundled locally | `bpgwgmpz` covers FA4; Material/Phosphor have unit and landing-page observations | Other families, spin, and runtime variants remain placeholders |
 | Floating Group | Always-visible, top-right, Column container | `bpgwgmpz` | Other anchors, reusable bases, and show/hide states lack parity evidence |
-| Multiline Input | Fixed-height or static fit-height `textarea` | `bpqqfagk`, `bpuzekut` | Fit-height is the captured initial content; Bubble autosize/validation is not executed |
+| Multiline Input | Fixed-height or static fit-height `textarea`; authored minimum/maximum bounds and supported breakpoint minima | `bpqqfagk`, `bpuzekut`; bounds have browser tests and landing-page observations | Bubble autosize/validation is not executed |
 | Checkbox | Literal checked/unchecked native checkbox | `bpqqfagk` | Dynamic state, binding, and workflows are not executed |
 | Dropdown / Radio Buttons | Literal/static choices as native controls | `bpqqfagk` | Dynamic choices remain placeholders; native interaction is not Bubble workflow behavior |
 | Input: Text / Email / Password | Native input type, literal value/placeholder | `bpmkbvvo`, `bpewigqu` | No auto-binding or Bubble validation/masking engine |

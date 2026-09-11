@@ -29,6 +29,8 @@ missing/ambiguous-reference, transform, and feedback regression checks. Those
 checks use a local synthetic export, not another frozen Bubble reference case.
 The same tag checks aspect-ratio Shapes at three viewport sizes in four native
 container layouts; that also uses synthetic exports rather than new references.
+A synthetic fit-height textarea check covers authored minimum/maximum bounds,
+a breakpoint minimum, and clearing its contents after growth.
 
 ## What a pass means
 
