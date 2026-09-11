@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Add an optional browser snapshot mode for one anonymous page at a declared
+  viewport, with separate capture and offline export APIs, pinned Chromium,
+  retained rendered content/shadow CSS/canvas visuals, frozen CSS animation
+  state, local resources, inert source controls, and decoded credential checks.
+  The default app-data renderer remains available. Install the optional backend
+  with `mix bubble.snapshot.setup` and export with `mode: :snapshot` or
+  `mix bubble.export_frontend URL --mode snapshot -o DIR`.
+
 ### Fixed
 
 - Preserve simple authored element IDs and supported inline head styles in

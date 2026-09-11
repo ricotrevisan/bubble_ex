@@ -56,6 +56,11 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
+      - name: Install optional snapshot parsers and pinned browser API
+        run: |
+          mkdir -p _build/snapshot-runtime
+          cp lib/bubble_ex/frontend/snapshot/runtime/package*.json _build/snapshot-runtime/
+          npm ci --ignore-scripts --prefix _build/snapshot-runtime
       - run: mix test --only fidelity
         env:
           MIX_ENV: test

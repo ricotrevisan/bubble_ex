@@ -66,6 +66,45 @@ config :bubble_ex,
   ]
 ```
 
+## Browser snapshot export
+
+Capture the rendered initial view of one anonymous page, including loaded
+content and plugin visuals, as local HTML/CSS/assets:
+
+```sh
+mix bubble.snapshot.setup
+mix bubble.export_frontend https://example.bubbleapps.io/ -o out/snapshot --mode snapshot --width 390
+```
+
+```elixir
+{:ok, result} = BubbleEx.export_frontend("https://example.bubbleapps.io/", "out/snapshot",
+  mode: :snapshot, width: 390, height: 900, locale: "en-US")
+
+# Separate capture from offline export when retaining a reproducible input:
+{:ok, capture} = BubbleEx.Frontend.Snapshot.capture("https://example.bubbleapps.io/", width: 390)
+{:ok, result} = BubbleEx.Frontend.Snapshot.export(capture, "out/snapshot")
+```
+
+The optional backend pins Playwright 1.55.1 / Chromium 140. Node 18+ and npm are
+required for setup; the existing app-data renderer needs neither. Runtime files
+live in the user cache, configurable with `BUBBLE_EX_SNAPSHOT_RUNTIME`.
+
+A snapshot belongs to its capture viewport (default 1440×900, en-US, DPR 1).
+Capture separate views for mobile/tablet/desktop. It freezes the observed initial
+state and removes source scripts and form submission; links retain their public
+destinations. It does not reproduce Bubble workflows, login, or responsive app
+behavior. CSS animation state, open shadow-root CSS, and readable canvas output
+are retained. Unsupported resources and capture errors appear in `MANIFEST.json`;
+closed shadow roots, unreadable canvases, embedded frames, and unsupported
+animation mechanisms may need further support.
+
+Capture data is private, unscanned browser input: keep it out of source control.
+Export scans decoded markup, CSS, SVG, resource bytes, and provenance using the
+native credential detectors before writing the output. It blocks potential
+credentials without publishing their values. The HTML applies a restrictive CSP
+and requires no external requests to display its retained assets. This credential
+check does not use live provider verification.
+
 ## Frontend export
 
 Export one modern-responsive app version as a portable HTML/CSS package.
