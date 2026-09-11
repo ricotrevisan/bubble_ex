@@ -5,6 +5,10 @@ portable initial-page appearance, including rendered database content and plugin
 output. The existing app-data renderer remains available and keeps its own
 benchmarks. Neither mode promises Bubble workflow execution.
 
+Follow-up coverage for BetterLegal, Voicediq, Assistra and Kroki is recorded in
+[the four-site test report](four-site-snapshot-tests.md), including capture fixes,
+retained failures, and the unchanged grading checks.
+
 ## Intended contract
 
 - Capture one explicitly requested anonymous page at a declared viewport, locale,

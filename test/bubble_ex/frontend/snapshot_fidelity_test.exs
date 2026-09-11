@@ -14,13 +14,22 @@ defmodule BubbleEx.Frontend.SnapshotFidelityTest do
   end
 
   @tag timeout: 150_000
-  test "browser capture preserves rendered data, shadow CSS, canvas and frozen initial pixels", %{
-    tmp_dir: tmp
-  } do
+  test "browser capture preserves state, stylesheet order, local frames and frozen initial pixels",
+       %{
+         tmp_dir: tmp
+       } do
     {output, status} =
       System.cmd("node", ["test/support/snapshot/browser.cjs", Path.expand(tmp)],
         stderr_to_stdout: true
       )
+
+    assert status == 0, output
+  end
+
+  @tag timeout: 150_000
+  test "stopping scripts keeps noscript fallbacks out of the reference pixels" do
+    {output, status} =
+      System.cmd("node", ["test/support/snapshot/noscript.cjs"], stderr_to_stdout: true)
 
     assert status == 0, output
   end

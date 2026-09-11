@@ -16,6 +16,13 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Preserve snapshot stylesheet cascade order, adopted styles, embedded frame
+  state and local frame assets. Restore captured scroll offsets with a fixed,
+  CSP-hashed initializer while continuing to remove source execution. Keep
+  inactive `noscript` fallbacks out of frozen screenshots, and escape CSS raw-text
+  terminators before embedding restored styles. Report malformed source links
+  instead of allowing MHTML to turn them into homepage links.
+
 - Preserve simple authored element IDs and supported inline head styles in
   fetched exports, with per-page scope, bounded parsing, omission findings, and
   credential checks on the retained CSS. This restores authored section clipping.

@@ -93,10 +93,12 @@ A snapshot belongs to its capture viewport (default 1440×900, en-US, DPR 1).
 Capture separate views for mobile/tablet/desktop. It freezes the observed initial
 state and removes source scripts and form submission; links retain their public
 destinations. It does not reproduce Bubble workflows, login, or responsive app
-behavior. CSS animation state, open shadow-root CSS, and readable canvas output
-are retained. Unsupported resources and capture errors appear in `MANIFEST.json`;
-closed shadow roots, unreadable canvases, embedded frames, and unsupported
-animation mechanisms may need further support.
+behavior. Stylesheet order, adopted/open shadow-root CSS, readable canvas output,
+and embedded frame presentation are retained. A fixed local initializer restores
+captured scroll positions when needed; CSP permits only that exact script hash.
+Unsupported resources and capture errors appear in `MANIFEST.json`; closed
+shadow roots, unreadable canvases, and unsupported animation mechanisms may need
+further support.
 
 Capture data is private, unscanned browser input: keep it out of source control.
 Export scans decoded markup, CSS, SVG, resource bytes, and provenance using the

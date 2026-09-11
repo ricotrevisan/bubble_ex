@@ -11,8 +11,8 @@ const original = JSON.parse(fs.readFileSync(path.join(baseline, 'comparison.json
 const source = original.results.filter(r => r.mode === 'source');
 const lockPath = path.join(baseline, 'grading-baseline-lock.json');
 const snapshot = original.mode === 'snapshot';
-const files = ['comparison.json', ...(snapshot ? source.map(s => `${s.site}-${s.width}-snapshot.json`) : ['mochary', 'bubble'].map(s => `${s}-redacted-payload.json`)),
-  ...source.map(r => `comparison/${r.site}/source-${r.width}.png`)];
+const files = ['comparison.json', ...(snapshot ? source.filter(s => !s.error).map(s => `${s.site}-${s.width}-snapshot.json`) : ['mochary', 'bubble'].map(s => `${s}-redacted-payload.json`)),
+  ...source.filter(r => !r.error).map(r => `comparison/${r.site}/source-${r.width}.png`)];
 const revisionPath = path.join(baseline, 'benchmark-revision.json');
 const benchmarkRevision = fs.existsSync(revisionPath) ? JSON.parse(fs.readFileSync(revisionPath)) : {revision: 1};
 if (fs.existsSync(revisionPath)) files.push('benchmark-revision.json');
@@ -59,7 +59,8 @@ const categories = ['visual', 'layout', 'content', 'typography', 'assets', 'navi
     const c = candidate.results.find(r => r.site === s.site && r.width === s.width && r.mode !== 'source' && r.audit);
     const checks = Object.fromEntries(categories.map(k => [k, []]));
     const add = (category, name, pass, detail) => checks[category].push({name, pass: !!pass, ...(pass ? {} : {detail})});
-    if (!c) { for(const k of categories) add(k,'capture exists',false,'missing candidate capture'); }
+    if (s.error || !s.audit) { for(const k of categories) add(k,'stable source capture exists',false,s.error || 'missing source audit'); }
+    else if (!c) { for(const k of categories) add(k,'capture exists',false,'missing candidate capture'); }
     else {
       const a = s.audit, b = c.audit;
       const imageA = PNG.sync.read(fs.readFileSync(path.join(baseline, `comparison/${s.site}/source-${s.width}.png`)));
@@ -100,10 +101,11 @@ const categories = ['visual', 'layout', 'content', 'typography', 'assets', 'navi
     report.results.push({site:s.site,width:s.width,pixelDifference,score:Math.floor(score*10000)/100,accepted:Object.values(checks).flat().every(c=>c.pass),scores,checks});
   }
   report.score = Math.floor(report.results.reduce((a,b)=>a+b.score,0)/report.results.length*100)/100;
-  report.pageTestsAccepted = report.results.length === 6 && report.results.every(r=>r.accepted);
+  const expectedViews = snapshot ? source.length : 6;
+  report.pageTestsAccepted = expectedViews > 0 && report.results.length === expectedViews && report.results.every(r=>r.accepted);
   if (snapshot) {
-    report.offlineAccepted = candidate.results.length === 6 && candidate.results.every(r => Array.isArray(r.externalRequests) && r.externalRequests.length === 0);
-    report.credentialGateAccepted = report.normalExportGate.length === 6 && report.normalExportGate.every(r => r.accepted);
+    report.offlineAccepted = candidate.results.length === expectedViews && candidate.results.every(r => Array.isArray(r.externalRequests) && r.externalRequests.length === 0);
+    report.credentialGateAccepted = report.normalExportGate.length === expectedViews && report.normalExportGate.every(r => r.accepted);
     report.snapshotAccepted = report.pageTestsAccepted && report.offlineAccepted && report.credentialGateAccepted;
   }
   fs.writeFileSync(outputArg,JSON.stringify(report,null,2));
