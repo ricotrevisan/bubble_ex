@@ -177,6 +177,24 @@ All 22 icon asset findings are gone. Thirteen original/sanitized glyph pairs at
 grade remains 70.47 (Mochary 100 at every width; Bubble 41.12 / 41.60 / 40.12).
 These focused corrections do not pass the complete visual or content assertions.
 
+Iterations 38–39 resolve the header spacer's supported geometry style. Its source
+template reads the header's height through a reusable parameter. The export's
+header was already 80 px at 390 px, but the unresolved style left its spacer at
+96 px. Applying only the authored rule to the preceding candidate corrected the
+spacer and hero position. The renderer now supports one sanitized style block
+with simple numeric pixel declarations and unique-element dimension references,
+including parameter forwarding. A local helper measures after fonts/load and on
+viewport resize; these bindings remain separate from general Bubble execution.
+
+The first browser regression exposed CSS variable fallback semantics: an unset
+variable in an important declaration does not restore the lower-priority default.
+Dependent styles therefore start inactive and activate only with valid references.
+Missing, ambiguous, transformed, placeholder, or self-resizing measurements leave
+them inactive. Tests cover those cases and viewport changes. The mobile spacer
+and hero now start at 80 px, and document height changes from 13,409 to 13,393 px.
+Mochary remains 100; Bubble scores 41.24 / 41.60 / 40.12, for a combined 70.49.
+The complete appearance/content and normal-source credential gates still fail.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

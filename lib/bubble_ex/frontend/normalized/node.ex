@@ -6,6 +6,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           | :group
           | :text
           | :image
+          | :html_style
           | :icon
           | :shape
           | :button

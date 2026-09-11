@@ -720,8 +720,13 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp classify_html(raw) do
     case static_svg(raw) do
-      {:ok, _svg} -> {:native, :icon, :inline_svg}
-      _ -> {:placeholder, :unsupported_kind}
+      {:ok, _svg} ->
+        {:native, :icon, :inline_svg}
+
+      _ ->
+        if BubbleEx.Frontend.GeometryStyles.candidate?(raw),
+          do: {:native, :html_style, :inline_style},
+          else: {:placeholder, :unsupported_kind}
     end
   end
 
@@ -1801,6 +1806,14 @@ defmodule BubbleEx.Frontend.Normalize do
   defp primary_slots(:dropdown, raw, id), do: choice_control_slots(raw, id, false)
   defp primary_slots(:radio_buttons, raw, id), do: choice_control_slots(raw, id, true)
   defp primary_slots(:image, raw, id), do: image_slots(raw, id)
+
+  defp primary_slots(:html_style, raw, id) do
+    expression = BubbleEx.Frontend.GeometryStyles.expression(raw)
+    binding = binding(id, "html_style", :expression, expression)
+    slot = BubbleEx.Frontend.GeometryStyles.project(%{binding_id: binding.id}, binding, %{})
+    {%{"html_style" => slot}, %{"html_style" => binding}}
+  end
+
   defp primary_slots(:group, raw, id), do: data_source_slot(raw, id)
 
   defp primary_slots(:repeating_group, raw, id) do
