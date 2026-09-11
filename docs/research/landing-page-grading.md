@@ -205,6 +205,16 @@ pairs now match the source sequence at every measured width. The full-page grade
 remains 70.49 because the complete content assertion still fails. No source
 capture, grading rule, or threshold changed.
 
+Iteration 42 restores the footer copyright line. Its direct current-date year
+extraction was unresolved, although formatted-year snapshots were already
+supported. Substituting only the supported operation in a private probe restored
+the text. Direct year extraction now uses the recorded snapshot time, retains
+the original binding, and rejects additional arguments, timezone overrides, and
+operation chains. A fetched reusable export test covers the UTC year boundary.
+The copyright line matches at all three widths. Mochary remains 100; Bubble
+scores 41.25 / 41.62 / 40.14, for a combined 70.50. Runtime content and appearance
+gaps and the original credential gates remain.
+
 To repeat a candidate with the private captured inputs:
 
 ```sh

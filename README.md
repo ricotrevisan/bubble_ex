@@ -123,9 +123,10 @@ raw secret material from its error, and writes nothing.
 
 Fetched exports capture an initial snapshot: direct logged-out visibility
 conditions are applied when no application-user session was supplied, and a
-literal `Current Date/Time:formatted as yyyy` uses the recorded UTC snapshot
-time. Expressions remain in the bindings. Exact page-width comparisons against
-configured breakpoints or literal thresholds become CSS media rules for supported
+literal `Current Date/Time:formatted as yyyy` or direct year extraction uses the
+recorded UTC snapshot time. Timezone overrides and further extraction operations
+remain unresolved. Expressions remain in the bindings. Exact page-width comparisons
+against configured breakpoints or literal thresholds become CSS media rules for supported
 paint and spacing properties, including conditions on shared styles. Literal
 Image source overrides in these width conditions are exported as local responsive
 images; the last matching authored source wins. Alternate files use the same
