@@ -75,3 +75,26 @@ test('text scan excludes recognized raster encodings, but includes SVG and decod
  assert(result.scan.some(s=>s.includes('AIza'+'b'.repeat(35))));
  assert(!result.scan.some(s=>s.includes(png)));
 });
+test('restored CSS cannot terminate a style element and introduce active HTML', () => {
+ const input=capture([['text/html','https://example.test/','<p>Content</p>']]);
+ input.stylesheets=[{css:'.a::after{content:"</style><meta http-equiv=refresh content=0>"}',base:input.url}];
+ const output=text(build(input,modules));
+ const html=require(path.join(modules,'node_modules/parse5'));
+ const nodes=[];const walk=n=>{nodes.push(n);for(const c of n.childNodes||[])walk(c);};walk(html.parse(output));
+ assert.equal(nodes.filter(n=>n.tagName==='meta').length,1,'only the generated CSP meta may exist');
+});
+test('restored stylesheet order, base URLs and removed content remain within the scan boundary', () => {
+ const token='xoxb-'+'123456789012-123456789012-abcdefghijklmnopqrstuvwx';
+ const input=capture([
+  ['text/html','https://example.test/','<link rel=stylesheet href=/hoisted.css><p>Content</p>'],
+  ['text/css','https://example.test/hoisted.css','body{color:red}'],
+  ['text/css','https://example.test/reset.css','body{color:black}'],
+  ['image/png','https://example.test/nested/image.png',Buffer.from([137,80,78,71])]
+ ]);
+ input.stylesheets=[{href:'https://example.test/reset.css'},
+  {base:'https://example.test/nested/',css:`/* ${token} */body{color:red;background:url(image.png)}`}];
+ const result=build(input,modules),output=text(result);
+ assert(output.indexOf('<link')<output.indexOf('<style>'));
+ assert(output.includes('background:url(assets/')); assert(output.includes('.png)'));
+ assert(result.scan.some(s=>s.includes(token)));
+});

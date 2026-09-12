@@ -4,7 +4,7 @@ defmodule BubbleEx.Frontend.Snapshot.Runtime do
 
   @runtime_dir Path.join(__DIR__, "runtime")
   @sources (for name <-
-                  ~w(archive.cjs data.cjs capture.cjs package.cjs runner.cjs package.json package-lock.json) do
+                  ~w(archive.cjs data.cjs capture.cjs scroll.cjs package.cjs runner.cjs package.json package-lock.json) do
               path = Path.join(@runtime_dir, name)
               @external_resource path
               {name, File.read!(path)}
