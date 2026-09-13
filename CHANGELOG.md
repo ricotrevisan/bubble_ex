@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Add a static workflow inventory through `BubbleEx.Workflows`,
+  `BubbleEx.workflow_inventory/1`, `BubbleEx.export_workflows/2`, and
+  `mix bubble.workflows`. JSON and Markdown exports retain source records,
+  conditions, action ordering, supported references and explicit diagnostics.
+  Missing data differs from empty collections. App-tree exports now include
+  `workflow-inventory.json` and a root `WORKFLOWS.md`. No workflows are executed.
+
 - Add an optional browser snapshot mode for one anonymous page at a declared
   viewport, with separate capture and offline export APIs, pinned Chromium,
   retained rendered content/shadow CSS/canvas visuals, frozen CSS animation
