@@ -186,6 +186,14 @@ defmodule BubbleEx do
     Server.cancel_scan(ref)
   end
 
+  @doc "Inventories supplied workflow data without fetching or executing anything. See `BubbleEx.Workflows`."
+  @spec workflow_inventory(term()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
+  def workflow_inventory(payload), do: BubbleEx.Workflows.inventory(payload)
+
+  @doc "Exports supplied workflow data to JSON and Markdown in an empty output directory."
+  @spec export_workflows(term(), String.t()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
+  def export_workflows(payload, out_dir), do: BubbleEx.Workflows.export(payload, out_dir)
+
   @doc """
   Fetches one named app version and writes a portable frontend package.
 

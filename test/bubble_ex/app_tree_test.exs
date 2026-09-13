@@ -35,6 +35,9 @@ defmodule BubbleEx.AppTreeTest do
       assert File.exists?(Path.join(out, "README.md"))
       assert File.exists?(Path.join(out, "AGENTS.md"))
       assert File.exists?(Path.join(out, "MANIFEST.json"))
+      assert File.exists?(Path.join(out, "WORKFLOWS.md"))
+      inventory = out |> Path.join("workflow-inventory.json") |> File.read!() |> Jason.decode!()
+      assert inventory["coverage"]["workflow_entries"] == 4
 
       # honest coverage: fixture has plugin + unknown actions (unrendered);
       # all four fixture expressions render fully (amended during execution —

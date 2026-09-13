@@ -66,6 +66,28 @@ config :bubble_ex,
   ]
 ```
 
+## Workflow inventory
+
+Inspect workflows without executing them, using a local decoded app payload or
+Bubble editor export:
+
+```sh
+mix bubble.workflows app.bubble.json -o private/workflows
+```
+
+```elixir
+{:ok, inventory} = BubbleEx.workflow_inventory(payload)
+{:ok, result} = BubbleEx.export_workflows(payload, "private/workflows")
+```
+
+Exports machine-readable `inventory.json` and readable `WORKFLOWS.md`, preserving
+workflow/action source values, conditions, ordering and supported references.
+Missing data, unknown types, unresolved expressions and malformed entries are
+explicitly reported. This inventories available definitions; it does not claim
+complete Bubble runtime or backend support. Reports retain private source values.
+App-tree exports also include the inventory and a root workflow report.
+See [the input/output contract and verification](docs/workflows.md).
+
 ## Browser snapshot export
 
 Capture the rendered initial view of one anonymous page, including loaded

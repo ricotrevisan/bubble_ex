@@ -42,7 +42,17 @@ defmodule BubbleEx.AppTree do
     {views, coverage, schema?} = render_views(app, manifest)
     root = Render.Readme.render(app, manifest, coverage, schema: schema?)
 
-    entries = layer1 ++ views ++ root
+    {:ok, workflows} = BubbleEx.Workflows.render(app)
+
+    entries =
+      layer1 ++
+        views ++
+        root ++
+        [
+          {"workflow-inventory.json", {:text, workflows.json}},
+          {"WORKFLOWS.md", {:text, workflows.markdown}}
+        ]
+
     do_write(out_dir, entries, coverage, opts)
   rescue
     e ->
