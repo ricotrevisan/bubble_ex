@@ -43,7 +43,9 @@ defmodule BubbleEx.Workflows do
 
     {:ok,
      %{
-       schema_version: 1,
+       explanation_coverage: explanation_coverage(workflows),
+       schema_version: 2,
+       explanation_vocabulary_version: 1,
        scope: "supplied_data_only",
        execution: "never",
        source_sha256: hash(payload),
@@ -67,6 +69,19 @@ defmodule BubbleEx.Workflows do
          diagnostics: length(diagnostics)
        }
      }}
+  end
+
+  defp explanation_coverage(workflows) do
+    nodes = Enum.flat_map(workflows, &[&1.event | &1.actions])
+
+    %{
+      nodes: Enum.frequencies_by(nodes, & &1.description.status),
+      conditions: nodes |> Enum.flat_map(& &1.conditions) |> Enum.frequencies_by(& &1.status),
+      data_actions:
+        nodes
+        |> Enum.filter(&(&1.type in ["NewThing", "ChangeThing"]))
+        |> Enum.frequencies_by(& &1.description.status)
+    }
   end
 
   defp workflow_entries(%{single: true} = collection, index) do

@@ -61,7 +61,7 @@ defmodule BubbleEx.WorkflowsTest do
     assert [%{status: "resolved"}] = w.event.references
     assert [%{kind: "data_type", status: "resolved"}] = Enum.at(w.actions, 1).references
     assert [%{kind: "action", status: "resolved"}] = Enum.at(w.actions, 2).references
-    assert [%{raw: false, status: "literal"}] = Enum.at(w.actions, 1).conditions
+    assert [%{raw: false, status: "fully_supported"}] = Enum.at(w.actions, 1).conditions
     assert w.raw == workflow
   end
 

@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Workflow inventory schema v2 explains bounded conditions and create/change-data
+  assignments in JSON and Markdown, with grouped operators, scoped source-backed
+  names, literal/dynamic values, disabled flags, support states and separate
+  explanation coverage. Unknown source remains lossless. See `docs/workflows.md`
+  for migration and the controlled-editor / authorized-payload verification record.
+
 - Add a static workflow inventory through `BubbleEx.Workflows`,
   `BubbleEx.workflow_inventory/1`, `BubbleEx.export_workflows/2`, and
   `mix bubble.workflows`. JSON and Markdown exports retain source records,
