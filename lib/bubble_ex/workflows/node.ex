@@ -1,8 +1,7 @@
 defmodule BubbleEx.Workflows.Node do
   @moduledoc false
 
-  alias BubbleEx.AppTree.Expr
-  alias BubbleEx.Workflows.Source
+  alias BubbleEx.Workflows.{Explanation, ExplanationContext, Source}
 
   @events %{
     "ButtonClicked" => "When an element is clicked",
@@ -33,19 +32,21 @@ defmodule BubbleEx.Workflows.Node do
     "element_id" => "element",
     "%ei" => "element",
     "action_id" => "action",
+    "%ai" => "action",
     "custom_event" => "workflow",
     "custom_event_id" => "workflow",
     "event_id" => "workflow",
     "internal_page" => "page",
     "%pa" => "page",
     "type_to_create" => "data_type",
+    "thing_type" => "data_type",
     "%tt" => "data_type",
     "api_event" => "backend_workflow"
   }
-  @structural ~w(type %x id %id name %nm properties %p actions condition only_when %c)
+  @structural ~w(type %x id %id name %nm properties %p actions condition only_when %c workflow_disabled action_disabled disabled)
 
   @spec index(map()) :: map()
-  def index(payload), do: index_nodes(payload, [], %{})
+  def index(payload), do: index_nodes(payload, [], %{}) |> Map.put(:payload, payload)
 
   defp index_nodes(map, path, acc) when is_map(map) do
     acc = register(map, path, acc)
@@ -74,13 +75,22 @@ defmodule BubbleEx.Workflows.Node do
         ref = %{
           kind: kind,
           path: Source.pointer(path),
-          name: Source.value(node, ["name", "%nm", "default_name", "display"])
+          name: reference_name(node)
         }
 
         Enum.reduce(ids, acc, fn id, index ->
           Map.update(index, {kind, id}, [ref], &[ref | &1])
         end)
     end
+  end
+
+  defp reference_name(node) do
+    collision? =
+      Enum.any?([~w(name %nm), ~w(display %d)], fn keys ->
+        Enum.count(keys, &Map.has_key?(node, &1)) > 1
+      end)
+
+    if collision?, do: nil, else: Source.value(node, ~w(name %nm default_name display %d))
   end
 
   defp entity_kind(path) do
@@ -174,7 +184,8 @@ defmodule BubbleEx.Workflows.Node do
     explanation = Map.get(vocabulary, type)
     props = Source.value(value, ["properties", "%p"])
     refs = references(value, path, {path, type}, index)
-    conditions = conditions(value, path)
+    description = Explanation.describe(value, path, ExplanationContext.new(index, path))
+    conditions = description.conditions
 
     findings =
       unsupported(explanation, path) ++
@@ -198,8 +209,14 @@ defmodule BubbleEx.Workflows.Node do
       path: Source.pointer(path),
       id: Source.value(value, ["id", "%id"]),
       type: type,
-      explanation: explanation || "Unsupported construct; inspect the retained source",
-      interpretation: if(findings == [], do: "label_only", else: "partial"),
+      description: description,
+      explanation:
+        if(description.intent.kind == "unknown",
+          do: explanation || "Unsupported construct; inspect the retained source",
+          else: description.intent.text
+        ),
+      label: explanation || "Unsupported construct; inspect the retained source",
+      interpretation: description.status,
       properties: props,
       conditions: conditions,
       references: refs,
@@ -214,6 +231,7 @@ defmodule BubbleEx.Workflows.Node do
       id: nil,
       type: nil,
       explanation: "Malformed construct; source value retained",
+      description: Explanation.describe(value, path, %{}),
       interpretation: "malformed",
       properties: nil,
       conditions: [],
@@ -286,53 +304,6 @@ defmodule BubbleEx.Workflows.Node do
     end)
   end
 
-  defp conditions(value, path) do
-    own_conditions(value, path) ++
-      Enum.flat_map(["properties", "%p"], fn key ->
-        case Map.get(value, key) do
-          props when is_map(props) -> own_conditions(props, path ++ [key])
-          _ -> []
-        end
-      end)
-  end
-
-  defp own_conditions(value, path) do
-    ~w(condition only_when %c)
-    |> Enum.filter(&Map.has_key?(value, &1))
-    |> Enum.map(fn key ->
-      raw = Map.fetch!(value, key)
-      {status, text} = condition_text(raw)
-
-      %{
-        path: Source.pointer(path ++ [key]),
-        raw: raw,
-        status: status,
-        text: text,
-        diagnostics:
-          if(status == "unresolved",
-            do: [
-              Source.diagnostic(
-                "unresolved_condition",
-                path ++ [key],
-                "Condition retained; no evaluation or guessed meaning."
-              )
-            ],
-            else: []
-          )
-      }
-    end)
-  end
-
-  defp condition_text(true), do: {"literal", "true"}
-  defp condition_text(false), do: {"literal", "false"}
-
-  defp condition_text(raw) do
-    case Expr.render_condition(raw) do
-      {:ok, text} -> {"unresolved", "Partial display: " <> text}
-      :fallback -> {"unresolved", "Unresolved condition"}
-    end
-  end
-
   defp references(value, path, origin, index) when is_map(value) do
     value
     |> Enum.sort_by(&elem(&1, 0))
@@ -357,6 +328,10 @@ defmodule BubbleEx.Workflows.Node do
   end
 
   defp references(_, _, _, _), do: []
+
+  @spec resolve_reference(String.t(), term(), list(), list(), map()) :: map()
+  def resolve_reference(kind, raw, path, origin, index),
+    do: reference(kind, raw, path, {origin, nil}, index)
 
   defp reference(kind, raw, path, {origin, type}, index) do
     kind = if kind == "element" and type == "ChangePage", do: "page", else: kind

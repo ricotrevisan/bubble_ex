@@ -1,0 +1,234 @@
+{
+  "pages": {
+    "bubbleex_explain_91": {
+      "elements": {
+        "bpesktkz": {
+          "properties": {
+            "text": "Save",
+            "height": 40,
+            "width": 120,
+            "border_roundness": 0,
+            "boxshadow_style": "none",
+            "background_style": "none",
+            "border_style": "none",
+            "order": 1,
+            "opacity": 100,
+            "margin_top": 0,
+            "margin_left": 0,
+            "padding_top": 0,
+            "margin_right": 0,
+            "padding_left": 0,
+            "single_width": true,
+            "margin_bottom": 0,
+            "min_width_css": "120px",
+            "padding_right": 0,
+            "single_height": true,
+            "min_height_css": "40px",
+            "padding_bottom": 0,
+            "elevation_level": "none",
+            "boxshadow_enable": false,
+            "collapse_when_hidden": true
+          },
+          "type": "Button",
+          "id": "bpomiamg",
+          "name": "Save"
+        }
+      },
+      "workflows": {
+        "bphznajk": {
+          "properties": {
+            "condition": {
+              "next": {
+                "next": {
+                  "args": {
+                    "type": "CurrentUser"
+                  },
+                  "next": {
+                    "args": {
+                      "next": {
+                        "next": {
+                          "args": {
+                            "next": {
+                              "next": {
+                                "args": 0,
+                                "type": "Message",
+                                "name": "greater_than"
+                              },
+                              "type": "Message",
+                              "name": "count_number"
+                            },
+                            "type": "CurrentPageItem"
+                          },
+                          "type": "Message",
+                          "name": "or_"
+                        },
+                        "type": "Message",
+                        "name": "logged_in"
+                      },
+                      "type": "CurrentUser"
+                    },
+                    "type": "Message",
+                    "name": "and_"
+                  },
+                  "type": "Message",
+                  "name": "equals"
+                },
+                "type": "Message",
+                "name": "owner_user"
+              },
+              "type": "CurrentPageItem"
+            },
+            "element_id": "bpomiamg",
+            "workflow_disabled": true
+          },
+          "type": "ButtonClicked",
+          "id": "bpomiamh",
+          "actions": {
+            "0": {
+              "properties": {
+                "initial_values": {
+                  "0": {
+                    "key": "status_text",
+                    "value": "Draft"
+                  },
+                  "1": {
+                    "key": "owner_user",
+                    "value": {
+                      "type": "CurrentUser"
+                    }
+                  },
+                  "2": {
+                    "key": "count_number",
+                    "value": 0
+                  },
+                  "3": {
+                    "key": "enabled_boolean",
+                    "value": false
+                  }
+                },
+                "thing_type": "custom.explanation_task_91"
+              },
+              "type": "NewThing",
+              "id": "bpomiami"
+            },
+            "1": {
+              "properties": {
+                "condition": {
+                  "next": {
+                    "next": {
+                      "args": "Draft",
+                      "type": "Message",
+                      "name": "equals"
+                    },
+                    "type": "Message",
+                    "name": "status_text"
+                  },
+                  "type": "CurrentPageItem"
+                },
+                "changes": {
+                  "0": {
+                    "key": "status_text",
+                    "value": "Done"
+                  },
+                  "1": {
+                    "key": "count_number",
+                    "value": 0
+                  },
+                  "2": {
+                    "key": "enabled_boolean",
+                    "value": false
+                  }
+                },
+                "to_change": {
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "ChangeThing",
+              "id": "bpomiamj"
+            },
+            "2": {
+              "properties": {
+                "condition": false,
+                "changes": {
+                  "0": {
+                    "key": "status_text",
+                    "value": ""
+                  },
+                  "1": {
+                    "key": "owner_user",
+                    "value": {
+                      "type": "CurrentUser"
+                    }
+                  }
+                },
+                "to_change": {
+                  "properties": {
+                    "action_id": "bpomiami"
+                  },
+                  "type": "PreviousStep"
+                },
+                "action_disabled": true
+              },
+              "type": "ChangeThing",
+              "id": "bpomiamk"
+            }
+          }
+        }
+      },
+      "properties": {
+        "width": 1200,
+        "border_roundness": 0,
+        "title": "My Page",
+        "border_style": "none",
+        "page_item_type": "custom.explanation_task_91",
+        "opacity": 100,
+        "fit_width": false,
+        "fit_height": false,
+        "padding_top": 0,
+        "padding_left": 0,
+        "single_width": false,
+        "padding_right": 0,
+        "single_height": false,
+        "new_responsive": true,
+        "padding_bottom": 0,
+        "element_version": 5,
+        "container_layout": "column",
+        "responsive_version": 1,
+        "container_vert_alignment": "flex-start"
+      },
+      "type": "Page",
+      "id": "bpomiamf",
+      "name": "bubbleex-explain-91"
+    }
+  },
+  "user_types": {
+    "explanation_task_91": {
+      "display": "Explanation Task 91",
+      "fields": {
+        "owner_user": {
+          "display": "owner",
+          "value": "user"
+        },
+        "status_text": {
+          "display": "status",
+          "value": "text"
+        },
+        "count_number": {
+          "display": "count",
+          "value": "number"
+        },
+        "enabled_boolean": {
+          "display": "enabled",
+          "value": "boolean"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {}
+    }
+  },
+  "element_definitions": {},
+  "api": {},
+  "mobile_views": {}
+}

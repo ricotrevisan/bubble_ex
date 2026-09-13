@@ -9,6 +9,10 @@ defmodule BubbleEx.AppTree.Expr do
   `:fallback`) — callers keep a pointer to the lossless raw JSON.
   """
 
+  @doc false
+  @spec explain(term(), list(), map()) :: map()
+  defdelegate explain(raw, path, context), to: BubbleEx.AppTree.Expr.Explanation
+
   @placeholder "[⟨expr⟩]"
 
   @spec render_text(term()) :: {:ok, String.t()} | {:partial, String.t()} | :fallback

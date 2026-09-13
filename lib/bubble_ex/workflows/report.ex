@@ -13,6 +13,8 @@ defmodule BubbleEx.Workflows.Report do
     Action entries: **#{inventory.coverage.action_entries}**. Diagnostics: **#{inventory.coverage.diagnostics}**.
     Source SHA-256 (canonical JSON): `#{inventory.source_sha256}`.
 
+    Explanation coverage (supplied definitions only): #{escape(inspect(inventory.explanation_coverage))}.
+
     ## Supplied scopes
 
     #{Enum.map_join(inventory.scopes, "\n", fn s -> "- #{escape(s.path)}: #{s.status} (#{inspect(s.count)} entries)" end)}
@@ -47,9 +49,9 @@ defmodule BubbleEx.Workflows.Report do
     #{escape(w.event.explanation)} — type #{escape(inspect(w.event.type))}.
     Discovery: #{w.discovery}. Interpretation: #{w.event.interpretation}. Action ordering: **#{w.ordering}**.
 
-    #{conditions(w.event.conditions)}
+    #{description(w.event, "Event")}
     #{references(w.event.references)}
-    #{Enum.map_join(w.actions, "\n", fn a -> "- Source key #{escape(inspect(a.source_key))}: #{escape(a.explanation)} (#{escape(inspect(a.type))})\n" <> conditions(a.conditions) <> references(a.references) end)}
+    #{Enum.map_join(w.actions, "\n", fn a -> "- Source key #{escape(inspect(a.source_key))}: #{escape(a.explanation)} (#{escape(inspect(a.type))})\n" <> description(a, "Action") <> references(a.references) end)}
 
     Retained source (all properties, unknown constructs and conditions):
 
@@ -57,10 +59,35 @@ defmodule BubbleEx.Workflows.Report do
     """
   end
 
-  defp conditions(items),
+  defp description(node, scope) do
+    d = node.description
+    flags = Enum.map_join(Map.get(d, :flags, []), "; ", & &1.text)
+
+    "#{scope} explanation: **#{d.status}**. #{escape(flags)}\n" <>
+      conditions(node.conditions, scope) <>
+      explanation_sources(d) <>
+      Enum.map_join(Map.get(d, :uninterpreted, []), "\n", &escape(&1.text)) <> "\n"
+  end
+
+  defp explanation_sources(description) do
+    description
+    |> source_evidence()
+    |> Enum.uniq()
+    |> Enum.map_join("\n", fn {source, target} ->
+      "Explanation source #{escape(source)} → definition #{escape(target)}."
+    end)
+    |> Kernel.<>("\n")
+  end
+
+  defp source_evidence(node) do
+    own = Enum.map(Map.get(node, :evidence, []), &{node.path, &1.path})
+    own ++ Enum.flat_map(Map.get(node, :children, []), &source_evidence/1)
+  end
+
+  defp conditions(items, scope),
     do:
       Enum.map_join(items, "\n", fn c ->
-        "Condition at #{escape(c.path)}: #{escape(c.text)} (#{c.status}).\n"
+        "#{scope} only when at #{escape(c.path)}: #{escape(c.text)} (#{c.status}).\n"
       end)
 
   defp references(items) do
