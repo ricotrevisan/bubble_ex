@@ -1,0 +1,139 @@
+{
+  "plugin_group": "1787127143284x497506916809310200_current",
+  "page_key": "wtf_271_cli_demo",
+  "page": {
+    "%x": "Page",
+    "id": "wtf271page0001",
+    "%nm": "wtf-271-cli-demo",
+    "%p": {
+      "%t1": "BubbleEx editor CLI demo",
+      "container_layout": "column",
+      "new_responsive": true,
+      "responsive_version": 1,
+      "row_gap": 28,
+      "padding_top": 32,
+      "padding_right": 20,
+      "padding_bottom": 96,
+      "padding_left": 20,
+      "backdrop_bgcolor": "#F1F5F9",
+      "unknown_editor_default": "preserve-me"
+    },
+    "%el": {
+      "demo_one": {
+        "%x": "CustomElement",
+        "id": "wtf271instance01",
+        "%nm": "CLI demo 1",
+        "%p": {
+          "%ci": "wtf271reuse001",
+          "order": 1,
+          "fit_width": false,
+          "fit_height": true,
+          "max_width_css": "960px",
+          "min_width_css": "0px"
+        }
+      },
+      "demo_two": {
+        "%x": "CustomElement",
+        "id": "wtf271instance02",
+        "%nm": "CLI demo 2",
+        "%p": {
+          "%ci": "wtf271reuse001",
+          "order": 2,
+          "fit_width": false,
+          "fit_height": true,
+          "max_width_css": "960px",
+          "min_width_css": "0px"
+        }
+      }
+    }
+  },
+  "reusable_key": "wtf_271_cli_reusable",
+  "reusable": {
+    "%x": "CustomDefinition",
+    "id": "wtf271reuse001",
+    "%nm": "wtf-271-cli-reusable",
+    "%p": {
+      "%et": "Group",
+      "container_layout": "column",
+      "row_gap": 12,
+      "min_width_px": 0
+    },
+    "custom_states": {
+      "last_event": {
+        "%d": "last event",
+        "%v": "text",
+        "rank": 0,
+        "default_val": "Ready",
+        "make_static": true
+      }
+    },
+    "%el": {
+      "controller": {
+        "%x": "1787127143284x497506916809310200_current-AEA",
+        "id": "wtf271plugin001",
+        "%nm": "Popover CLI",
+        "%p": {
+          "instance_key": "cli-demo",
+          "mode": "Anchored",
+          "placement": "bottom span-left",
+          "width": 260,
+          "close_on_escape": true,
+          "close_on_outside": true
+        }
+      },
+      "trigger": {
+        "%x": "Button",
+        "id": "wtf271button001",
+        "%nm": "Open menu",
+        "%p": {"%3": "Open menu", "order": 1}
+      }
+    },
+    "%wf": {
+      "trigger_clicked": {
+        "%x": "ButtonClicked",
+        "id": "wtf271workflow1",
+        "%p": {"%ei": "wtf271button001"},
+        "actions": {
+          "0": {
+            "%x": "1787127143284x497506916809310200_current-AED",
+            "id": "wtf271action001",
+            "%p": {"%ei": "wtf271plugin001"}
+          },
+          "1": {
+            "%x": "SetCustomState",
+            "id": "wtf271action002",
+            "%p": {
+              "%ei": "wtf271reuse001",
+              "custom_state": "custom.last_event",
+              "%v": "Opened"
+            }
+          }
+        }
+      },
+      "plugin_opened": {
+        "%x": "1787127143284x497506916809310200_current-AEG",
+        "id": "wtf271workflow2",
+        "%p": {"%ei": "wtf271plugin001"},
+        "actions": {
+          "0": {
+            "%x": "SetCustomState",
+            "id": "wtf271action003",
+            "%p": {
+              "%ei": "wtf271reuse001",
+              "custom_state": "custom.last_event",
+              "%v": {
+                "%x": "ArbitraryText",
+                "%p": {
+                  "arbitrary_text": {
+                    "%x": "TextExpression",
+                    "%e": {"0": "Plugin opened"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

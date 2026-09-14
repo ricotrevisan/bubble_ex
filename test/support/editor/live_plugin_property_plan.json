@@ -1,0 +1,26 @@
+{
+  "appname": "tiptap-plugin",
+  "version": "43jvs",
+  "base_last_change": 65050263219,
+  "plugin_types": ["1787127143284x497506916809310200_current"],
+  "operations": [
+    {
+      "op": "set",
+      "path": [
+        "%ed",
+        "modern_popover_row_actions",
+        "%el",
+        "demo_scope3",
+        "%el",
+        "popover_controllers4",
+        "%el",
+        "popover_row0",
+        "%p",
+        "AFU"
+      ],
+      "expected": "Row actions",
+      "value": "WTF-271 CLI property proof",
+      "plugin_type": "1787127143284x497506916809310200_current-AEA"
+    }
+  ]
+}

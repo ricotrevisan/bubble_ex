@@ -1,0 +1,40 @@
+{
+  "appname": "tiptap-plugin",
+  "version": "43jvs",
+  "base_last_change": 65050255970,
+  "operations": [
+    {
+      "op": "remove",
+      "path": ["%p3", "wtf_271_cli_demo", "%el", "description"],
+      "expected": {
+        "%nm": "CLI demo description",
+        "%p": {
+          "%3": "Two independently owned reusable instances below exercise installed-plugin actions, plugin events, custom state updates, and responsive layout. Created and maintained without Buildprint.",
+          "%bos": "none",
+          "%fc": "#475569",
+          "%fs": 16,
+          "%lh": 1.5,
+          "fit_height": true,
+          "fit_width": false,
+          "font_family": "Inter",
+          "font_weight": "400",
+          "horiz_alignment": "center",
+          "max_width_css": "960px",
+          "min_width_css": "0px",
+          "order": 2,
+          "single_height": false,
+          "single_width": false
+        },
+        "%x": "Text",
+        "id": "bpwtf271body"
+      },
+      "owner_id": "bpwtf271clipage",
+      "owner_issue_ids": [
+        "bpwtf271heading",
+        "bpwtf271reuse01",
+        "bpwtf271reuse02",
+        "bpwtf271body"
+      ]
+    }
+  ]
+}

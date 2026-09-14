@@ -18,7 +18,13 @@ defmodule BubbleEx.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       docs: [
         main: "readme",
-        extras: ["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md"]
+        extras: [
+          "README.md",
+          "CHANGELOG.md",
+          "CONTRIBUTING.md",
+          "SECURITY.md",
+          "docs/editor-cli.md"
+        ]
       ]
     ]
   end

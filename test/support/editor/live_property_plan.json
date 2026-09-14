@@ -1,0 +1,13 @@
+{
+  "appname": "tiptap-plugin",
+  "version": "43jvs",
+  "base_last_change": 65049763350,
+  "operations": [
+    {
+      "op": "set",
+      "path": ["%p3", "modern_popover_reuse_check", "%el", "row_actions_1", "%nm"],
+      "expected": "row-actions 1",
+      "value": "WTF271 CLI property proof"
+    }
+  ]
+}
