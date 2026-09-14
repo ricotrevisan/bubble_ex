@@ -1,0 +1,13 @@
+{
+  "appname": "tiptap-plugin",
+  "version": "43jvs",
+  "base_last_change": 65050192231,
+  "operations": [
+    {
+      "op": "set",
+      "path": ["%p3", "wtf_271_cli_demo", "%el", "description", "%p", "%3"],
+      "expected": "Two independently owned reusable instances below exercise installed-plugin actions, plugin events, custom state updates, and responsive layout.",
+      "value": "Two independently owned reusable instances below exercise installed-plugin actions, plugin events, custom state updates, and responsive layout. Created and maintained without Buildprint."
+    }
+  ]
+}

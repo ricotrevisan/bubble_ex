@@ -9,6 +9,7 @@ BubbleEx is a set of utilities that scans bubble.io apps. It can:
 - query application logs for monitoring and debugging
 - deep search through nested data structures to find specific values
 - export a modern-responsive frontend as portable HTML, CSS, assets, and manifests
+- guard and apply a bounded set of native web-editor changes on isolated Bubble branches
 
 > **Responsible use:** BubbleEx must only be used on apps you own or are explicitly
 > authorized to test. See [SECURITY.md](SECURITY.md) for details.
@@ -42,6 +43,14 @@ end
 Documentation is available at <https://hexdocs.pm/bubble_ex>.
 
 If using with Phoenix, you will likely have an error with `floki`. You will have to remove the `only: test` restriction so that it works.
+
+## Experimental editor CLI
+
+`mix bubble.editor` can freshly read, validate, apply, verify, and roll back a
+bounded set of page, reusable, element, responsive-layout, installed-plugin,
+custom-state, and frontend-workflow definitions on an isolated child branch.
+It refuses test/live writes and never retries an ambiguous write. See the
+[supported-operation matrix and recovery model](docs/editor-cli.md).
 
 ## Configuration
 

@@ -1,0 +1,135 @@
+{
+  "appname": "tiptap-plugin",
+  "version": "43jvs",
+  "base_last_change": 65050186379,
+  "references": {
+    "bpre1ddfb5e4a82": "%ed.modern_popover_row_actions"
+  },
+  "operations": [
+    {
+      "op": "put",
+      "path": ["%p3", "wtf_271_cli_demo"],
+      "expected": null,
+      "value": {
+        "%x": "Page",
+        "id": "bpwtf271clipage",
+        "%nm": "wtf-271-cli-demo",
+        "%p": {
+          "%w": 1200,
+          "%br": 0,
+          "%t1": "BubbleEx editor CLI demo",
+          "%bos": "none",
+          "opacity": 100,
+          "row_gap": 28,
+          "use_gap": true,
+          "fit_width": false,
+          "fit_height": false,
+          "padding_top": 32,
+          "min_width_px": 0,
+          "padding_left": 20,
+          "single_width": false,
+          "padding_right": 20,
+          "single_height": false,
+          "new_responsive": true,
+          "padding_bottom": 96,
+          "element_version": 5,
+          "backdrop_bgcolor": "#F1F5F9",
+          "container_layout": "column",
+          "responsive_version": 1,
+          "container_vert_alignment": "flex-start",
+          "backdrop_background_style": "bgcolor"
+        },
+        "%el": {
+          "heading": {
+            "%x": "Text",
+            "id": "bpwtf271heading",
+            "%nm": "CLI demo heading",
+            "%p": {
+              "%3": "BubbleEx native editor CLI",
+              "%fc": "#0F172A",
+              "%fs": 36,
+              "%lh": 1.15,
+              "%bos": "none",
+              "order": 1,
+              "fit_width": false,
+              "fit_height": true,
+              "font_family": "Inter",
+              "font_weight": "800",
+              "single_width": false,
+              "single_height": false,
+              "max_width_css": "960px",
+              "min_width_css": "0px",
+              "horiz_alignment": "center"
+            }
+          },
+          "description": {
+            "%x": "Text",
+            "id": "bpwtf271body",
+            "%nm": "CLI demo description",
+            "%p": {
+              "%3": "Two independently owned reusable instances below exercise installed-plugin actions, plugin events, custom state updates, and responsive layout.",
+              "%fc": "#475569",
+              "%fs": 16,
+              "%lh": 1.5,
+              "%bos": "none",
+              "order": 2,
+              "fit_width": false,
+              "fit_height": true,
+              "font_family": "Inter",
+              "font_weight": "400",
+              "single_width": false,
+              "single_height": false,
+              "max_width_css": "960px",
+              "min_width_css": "0px",
+              "horiz_alignment": "center"
+            }
+          },
+          "row_actions_one": {
+            "%x": "CustomElement",
+            "id": "bpwtf271reuse01",
+            "%nm": "CLI row actions 1",
+            "%p": {
+              "%ci": "bpre1ddfb5e4a82",
+              "%bas": "none",
+              "order": 3,
+              "fit_width": false,
+              "fit_height": true,
+              "margin_top": 0,
+              "margin_left": 0,
+              "margin_right": 0,
+              "single_width": false,
+              "margin_bottom": 0,
+              "max_width_css": "960px",
+              "min_width_css": "0px",
+              "single_height": false,
+              "horiz_alignment": "center",
+              "collapse_when_hidden": true
+            }
+          },
+          "row_actions_two": {
+            "%x": "CustomElement",
+            "id": "bpwtf271reuse02",
+            "%nm": "CLI row actions 2",
+            "%p": {
+              "%ci": "bpre1ddfb5e4a82",
+              "%bas": "none",
+              "order": 4,
+              "fit_width": false,
+              "fit_height": true,
+              "margin_top": 0,
+              "margin_left": 0,
+              "margin_right": 0,
+              "single_width": false,
+              "margin_bottom": 0,
+              "max_width_css": "960px",
+              "min_width_css": "0px",
+              "single_height": false,
+              "horiz_alignment": "center",
+              "collapse_when_hidden": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}
