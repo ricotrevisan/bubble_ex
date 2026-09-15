@@ -24,6 +24,7 @@ exact version and requires an active child whose `parent_version` is `test`.
 
 ```text
 mix bubble.editor schema
+mix bubble.editor schema APP VERSION [PLUGIN_GROUP ...]
 mix bubble.editor generate-ids COUNT
 mix bubble.editor versions APP VERSION
 mix bubble.editor savepoint-list APP VERSION
@@ -54,7 +55,6 @@ value.
   "appname": "my-app",
   "version": "child-version-id",
   "base_last_change": 123456,
-  "plugin_types": ["1787127143284x497506916809310200_current"],
   "references": {
     "existing-reusable-id": "%ed.existing_reusable"
   },
@@ -97,22 +97,43 @@ decoded descendant-ID order:
 This guards Bubble's owner-level `issues_sub` index. Receipts also retain the
 exact post-edit order so rollback restores the serialized index value.
 
-An installed-plugin property edit adds `plugin_type`. The current first-release
-registry supports the Modern Popover element type ending in `-AEA` and property
-codes `AFA` through `AFU`, event suffixes `AEG`/`AEH`, and action suffixes
-`AEC`/`AED`, as enumerated by `mix bubble.editor schema`. The plan automatically
-guards the node's `%x` discriminator.
+### Installed plugins: discover, do not inventory
+
+`schema APP VERSION [PLUGIN_GROUP ...]` reads the branch's installed plugin
+versions and fetches their native editor definitions. Its output contains names,
+field IDs/types/options, element-owned actions/events/states, and a schema hash.
+No plugin source code is executed or emitted. Boolean built-in plugin entries
+are skipped; inaccessible or malformed selected contracts fail closed.
+
+For plugin edits, add `plugin_types: [GROUP]` and
+`plugin_schema_hashes: {GROUP: HASH}` to the JSON plan, using the discovered
+values. A plugin property `set` also supplies `plugin_type: GROUP-NODE_ID`.
+Check/apply independently rediscover the declared installed contracts, verify
+the hashes, and validate field IDs and values. A supplied plan cannot authorize
+an invented field. The node discriminator and installed version are guarded in
+the fresh state read. Rollback retains the schema pins, so an intervening plugin
+update requires a reviewed new plan, not a blind inverse replay.
+
+Supported plugin field editors: StaticText, Color, Dropdown with declared
+options, StaticNumber, Checkbox, and literal DynamicValue text/number/boolean
+(including declared lists). Unknown editor types, informational fields and
+dynamic expression bindings without result-type validation fail explicitly.
+Global/server plugin actions are not enabled. Discovery is extensible across
+plugin identities; support is bounded by field and expression semantics, not a
+catalogue of plugin IDs. There is no atomic lock against concurrent plugin
+definition changes; keep editor/plugin development quiet during apply and verify
+runtime behavior afterward.
 
 ## Supported operations
 
 | Area | First-release support |
 | --- | --- |
 | Owners | `%p3` web pages and `%ed` reusable definitions |
-| Elements | `Page`, `CustomDefinition`, `Group`, `Text`, `Button`, `Popup`, `CustomElement`, and allowlisted installed-plugin types |
-| Properties | Name; bounded text, paint, typography, size, spacing, order, visibility, and responsive/container-layout fields; registered plugin properties |
+| Elements | `Page`, `CustomDefinition`, `Group`, `Text`, `Button`, `Popup`, `CustomElement`, and discovered installed-plugin types |
+| Properties | Name; bounded text, paint, typography, size, spacing, order, visibility, and responsive/container-layout fields; discovered plugin fields with supported value types |
 | Expressions | `TextExpression`, `GetElement`, `Message`, `ArbitraryText`, `PageData`, and `State` wherever a supported value contains typed expression nodes |
-| Workflows | `ButtonClicked` and allowlisted installed-plugin event nodes |
-| Actions | `ShowElement`, `HideElement`, `SetCustomState`, and allowlisted installed-plugin action nodes; map order is preserved |
+| Workflows | `ButtonClicked` and discovered element-owned plugin event nodes |
+| Actions | `ShowElement`, `HideElement`, `SetCustomState`, and discovered element-owned plugin action nodes; map order is preserved |
 | Structure | Whole-root creation/removal, nested creation/removal with owner index guards, and same-owner moves |
 
 Unknown node types and typed expressions fail before a write. Unknown fields

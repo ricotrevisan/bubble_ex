@@ -43,14 +43,14 @@ version `43jvs` (`wtf-271-editor-diff`). Main/test and live are excluded.
 
 - Owners: web pages (`%p3`) and reusable definitions (`%ed`).
 - Elements: `Page`, `CustomDefinition`, `Group`, `Text`, `Button`, `Popup`,
-  `CustomElement`, plus explicitly allowlisted installed plugin element type IDs.
+  `CustomElement`, plus installed plugin element types from freshly discovered contracts.
 - Leaf properties: names; literal text; responsive size/min/max, padding, margin,
   gap, order, visibility/collapse, alignment/container layout; bounded paint and
-  typography fields; the registered Modern Popover `AEA` property codes.
+  typography fields; discovered plugin fields with supported literal value types.
 - Expressions: literal JSON values plus `TextExpression`, `GetElement`,
   `Message`, `ArbitraryText`, `PageData`, and `State` typed nodes.
 - Frontend events/actions: element click, installed plugin event, show/hide
-  element, set custom state, and explicitly allowlisted installed plugin
+  element, set custom state, and discovered element-owned installed plugin
   actions. Action order is preserved.
 - Moves: reorder and same-owner reparent only. Cross-owner moves are rejected.
 

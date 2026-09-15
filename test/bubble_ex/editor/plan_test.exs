@@ -178,7 +178,7 @@ defmodule BubbleEx.Editor.PlanTest do
       operation("set", path, "Before", "After")
       |> Map.put("plugin_type", plugin_type)
 
-    assert {:ok, checked} = Plan.new(plan([operation], [plugin_group]))
+    assert {:ok, checked} = Plan.new(plan([operation], [plugin_group]), plugin_schemas())
 
     assert Enum.any?(checked.operations, fn item ->
              item.op == :guard and
@@ -197,7 +197,7 @@ defmodule BubbleEx.Editor.PlanTest do
       |> Map.put("plugin_type", plugin_type)
 
     assert {:error, %BubbleEx.Error{context: %{reason: :unsupported_edit}}} =
-             Plan.new(plan([unsupported], [plugin_group]))
+             Plan.new(plan([unsupported], [plugin_group]), plugin_schemas())
   end
 
   test "plugin node suffixes and workflow action roles are bounded" do
@@ -210,7 +210,8 @@ defmodule BubbleEx.Editor.PlanTest do
                plan(
                  [operation("put", ["%p3", "page", "%el", "plugin"], nil, unknown_plugin)],
                  [plugin_group]
-               )
+               ),
+               plugin_schemas()
              )
 
     workflow = %{
@@ -347,6 +348,13 @@ defmodule BubbleEx.Editor.PlanTest do
 
   defp page_with(child) do
     %{"%x" => "Page", "id" => "page-id", "%el" => %{"child" => child}}
+  end
+
+  defp plugin_schemas do
+    raw = File.read!("test/support/editor/discovered_plugin_contracts.json") |> Jason.decode!()
+    group = "1787127143284x497506916809310200_current"
+    {:ok, schema} = BubbleEx.Editor.PluginSchema.normalize(group, "current", raw["popover"])
+    %{group => schema}
   end
 
   defp snapshot(revision, values) do

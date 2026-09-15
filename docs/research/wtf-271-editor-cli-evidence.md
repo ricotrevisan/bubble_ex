@@ -110,8 +110,65 @@ copy of the existing reusable.
   existing isolated child; branch merge and deployment remain prohibited.
 - This is not a full BubbleScript compiler. Conditions beyond the explicitly
   typed nodes, backend workflows, schema/privacy edits, API Connector, runtime
-  records/files/logs, mobile/global roots, and unregistered plugins fail or are
+  records/files/logs, mobile/global roots, and unsupported plugin field types fail or are
   outside the command surface.
 - No full before/after `bubble.json` export diff was taken. Safety instead rests
   on leaf-only updates, exact path readback, generated index guards, editor
   reload, and runtime exercise.
+
+## Installed-plugin discovery follow-up (2026-09-16)
+
+Replaced the product-specific `plugin_property_keys` / `plugin_node_suffixes`
+registries with `BubbleEx.Editor.PluginSchema`. Read the selected branch's
+`settings.client_safe.plugins`, then fetch each selected installed version via
+native `GET /appeditor/get_raw_plugin?plugin_id=ID&version=VERSION`. The editor
+bundle and authenticated browser requests corroborated this route. Independent
+CLI GET requires an Origin/Referer header; without it Bubble returns 400
+`No origin`. Cookies remain process-local and absent from fixtures/receipts.
+
+Live CLI discovery at revision `65050278876` returned:
+
+- Modern Dropdown/Popover: 25 web element/event/action nodes; schema hash
+  `f8d4f63073245aa683a1299cb86a908e8bd73bfe92265e0061f09b7a1e71e9d4`.
+- Tiptap: 76 nodes, including descriptive `toc_element` / `heading_clicked`
+  IDs; schema hash
+  `7001d6e01f8752cdcbdbca3dd2589da48f8ae30ea0bf31621e46e66b371b9272`.
+
+The actual Popover actions are AEB Open, AEC Close, AED Toggle. The earlier
+manual interpretation of AED as Open was incorrect. Definitions provide names,
+typed fields, states, event/action ownership and options without executing code.
+Fixtures retain sampled declarative metadata only, not headers or plugin JS.
+
+Plans now pin schema hashes; check/apply refetch authoritative definitions and
+reject missing/stale pins, unknown fields, unsupported types and wrong node
+roles. Installed version and instance discriminator are fresh-read guards.
+Mutable `current` versions are not assumed stable. Reconciliation was corrected
+so unchanged guards do not misclassify timeout-before-commit as ambiguous.
+
+Controlled acceptance: CLI check passed; AFU on the existing Popover instance
+was edited at `65063665952`, independently read from the authenticated browser,
+then rolled back at `65063669467`. A second browser read verified `Row actions`
+restored. No Main/test/live writes, merges, deployment or Buildprint were used.
+This follow-up did not repeat the entire demo runtime exercise recorded above.
+
+Reproduction: run `mix bubble.editor schema tiptap-plugin 43jvs` with the two
+plugin groups from `live_plugin_property_plan.json` and the Tiptap group
+`1670612027178x122079323974008830_current`. Refresh the plan's base revision and
+schema pin from fresh reads before check/apply; the checked-in live fixture is
+historical and deliberately stale after rollback. Retain an apply receipt and
+use `rollback RECEIPT --receipt NEW_RECEIPT` to restore. Temporary receipts for
+this run are in `/tmp/bubbleex-schema-acceptance.husZoB/` (not durable storage).
+
+Validation: `mix quality` passed (836 tests, 6 doctests, 47 excluded). Coverage
+includes arbitrary plugin identities, string node IDs, schema/version changes,
+type/enum validation, mobile exclusion, sanitized transport failures, no-write
+schema/field rejection, receipt pins and guarded timeout recovery.
+
+Boundaries: support remains semantic, not universal. Literal DynamicValue
+text/number/boolean, static text/number/color/dropdown/checkbox fields and their
+declared lists are validated. Dynamic plugin expression bindings without result
+type proof, unsupported field editors, global/server actions and mobile nodes
+are rejected. Native expression handling is unchanged. No atomic schema lock
+is claimed: concurrent plugin changes during a write remain a race requiring
+quiet development and runtime verification. Boolean built-in plugins are skipped
+by discovery; selected inaccessible/malformed schemas fail closed.

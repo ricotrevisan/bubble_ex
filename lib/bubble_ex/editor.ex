@@ -7,7 +7,7 @@ defmodule BubbleEx.Editor do
   retries, and edits outside the documented support matrix.
   """
 
-  alias BubbleEx.Editor.{Client, Plan, Snapshot, Target}
+  alias BubbleEx.Editor.{Client, Plan, PluginSchema, Snapshot, Target}
   alias BubbleEx.Error
 
   @type receipt :: map()
@@ -16,6 +16,7 @@ defmodule BubbleEx.Editor do
   def check(plan, cookie, opts \\ []) do
     with {:ok, target} <- target(plan, cookie, opts),
          {:ok, version} <- Client.resolve_child(target, opts),
+         {:ok, plan} <- prepare_plugins(plan, target, opts),
          {:ok, snapshot} <- Client.read(target, Plan.paths(plan), opts),
          :ok <- Plan.check(plan, snapshot) do
       {:ok,
@@ -35,6 +36,7 @@ defmodule BubbleEx.Editor do
   def apply(plan, cookie, opts \\ []) do
     with {:ok, target} <- target(plan, cookie, opts),
          {:ok, version} <- Client.resolve_child(target, opts),
+         {:ok, plan} <- prepare_plugins(plan, target, opts),
          {:ok, before} <- Client.read(target, Plan.paths(plan), opts),
          :ok <- Plan.check(plan, before) do
       session_id = Keyword.get_lazy(opts, :session_id, &session_id/0)
@@ -60,6 +62,50 @@ defmodule BubbleEx.Editor do
 
   @spec versions(Target.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def versions(target, opts \\ []), do: Client.versions(target, opts)
+
+  @spec plugin_schemas(Target.t(), [String.t()] | :all, keyword()) ::
+          {:ok, map()} | {:error, Error.t()}
+  def plugin_schemas(target, groups \\ :all, opts \\ []) do
+    with {:ok, _version} <- Client.resolve_child(target, opts) do
+      PluginSchema.discover(target, groups, opts)
+    end
+  end
+
+  defp prepare_plugins(%{plugin_types: []} = plan, _target, _opts), do: Plan.new(plan.source, %{})
+
+  defp prepare_plugins(plan, target, opts) do
+    with {:ok, discovered} <- PluginSchema.discover(target, plan.plugin_types, opts),
+         :ok <- verify_schema_hashes(plan, discovered.schemas),
+         {:ok, validated} <- Plan.new(plan.source, discovered.schemas) do
+      guards =
+        Enum.map(discovered.schemas, fn {group, schema} ->
+          %{
+            op: :guard,
+            internal: true,
+            path: ["settings", "client_safe", "plugins", group],
+            expected: schema.version,
+            value: schema.version
+          }
+        end)
+
+      {:ok, %{validated | operations: validated.operations ++ guards}}
+    end
+  end
+
+  defp verify_schema_hashes(plan, schemas) do
+    expected = Map.get(plan.source, "plugin_schema_hashes", %{})
+    actual = Map.new(schemas, fn {group, schema} -> {group, schema.hash} end)
+
+    if is_map(expected) and Map.take(expected, Map.keys(actual)) == actual do
+      :ok
+    else
+      {:error,
+       Error.new(:invalid_input, "plugin schema is missing or stale; rediscover and replan", %{
+         reason: :stale_plugin_schema,
+         actual_hashes: actual
+       })}
+    end
+  end
 
   @spec savepoints(Target.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def savepoints(target, opts \\ []) do
@@ -191,7 +237,10 @@ defmodule BubbleEx.Editor do
                "write_error_kind" => to_string(write_error.kind)
              })}
 
-          Enum.all?(intended, &(&1 == :prior)) ->
+          Enum.zip(plan.operations, intended)
+          |> Enum.all?(fn {operation, state} ->
+            state == :prior or (operation.op == :guard and state == :intended)
+          end) ->
             {:error,
              Error.new(:request_failed, "editor write outcome reconciled as not applied", %{
                reason: :not_applied,

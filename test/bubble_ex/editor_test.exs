@@ -183,6 +183,126 @@ defmodule BubbleEx.EditorTest do
            end) == 1
   end
 
+  test "fresh installed schema gates writes and adds version guards" do
+    {source, raw, group} = plugin_plan()
+    {:ok, plan} = Plan.new(source)
+    type = group <> "-AEA"
+
+    {post_fun, calls} =
+      queued([
+        ok_versions(),
+        read(100, [%{group => "current"}]),
+        read(100, ["Before", type, "current"]),
+        {:ok, %{"last_change" => 101}},
+        read(101, ["After", type, "current"])
+      ])
+
+    get_fun = plugin_get(raw, group)
+    assert {:ok, receipt} = Editor.apply(plan, "secret", post_fun: post_fun, get_fun: get_fun)
+    assert receipt["inverse_plan"]["plugin_schema_hashes"] == source["plugin_schema_hashes"]
+
+    assert Enum.count(
+             Agent.get(calls, & &1.calls),
+             &String.ends_with?(&1.url, "/appeditor/write")
+           ) == 1
+  end
+
+  test "changed mutable schema and unknown properties cause no write" do
+    {source, raw, group} = plugin_plan()
+    changed = put_in(raw, ["plugin_elements", "AEA", "fields", "AFU", "value"], "number")
+    {:ok, plan} = Plan.new(source)
+    {post_fun, calls} = queued([ok_versions(), read(100, [%{group => "current"}])])
+
+    assert {:error, %Error{context: %{reason: :stale_plugin_schema}}} =
+             Editor.apply(plan, "secret", post_fun: post_fun, get_fun: plugin_get(changed, group))
+
+    refute Enum.any?(Agent.get(calls, & &1.calls), &String.ends_with?(&1.url, "/appeditor/write"))
+
+    source =
+      put_in(source, ["operations", Access.at(0), "path"], [
+        "%p3",
+        "page",
+        "%el",
+        "text",
+        "%p",
+        "unknown"
+      ])
+
+    {:ok, plan} = Plan.new(source)
+    {post_fun, calls} = queued([ok_versions(), read(100, [%{group => "current"}])])
+
+    assert {:error, %Error{kind: :invalid_input}} =
+             Editor.apply(plan, "secret", post_fun: post_fun, get_fun: plugin_get(raw, group))
+
+    refute Enum.any?(Agent.get(calls, & &1.calls), &String.ends_with?(&1.url, "/appeditor/write"))
+  end
+
+  test "plugin guards do not make an unchanged timeout outcome ambiguous" do
+    {source, raw, group} = plugin_plan()
+    {:ok, plan} = Plan.new(source)
+    type = group <> "-AEA"
+
+    {post_fun, calls} =
+      queued([
+        ok_versions(),
+        read(100, [%{group => "current"}]),
+        read(100, ["Before", type, "current"]),
+        {:error, Error.new(:request_failed, "timeout")},
+        read(100, ["Before", type, "current"])
+      ])
+
+    assert {:error, %Error{context: %{reason: :not_applied}}} =
+             Editor.apply(plan, "secret", post_fun: post_fun, get_fun: plugin_get(raw, group))
+
+    assert Enum.count(
+             Agent.get(calls, & &1.calls),
+             &String.ends_with?(&1.url, "/appeditor/write")
+           ) == 1
+  end
+
+  defp plugin_plan do
+    group = "123x456_current"
+
+    raw =
+      Jason.decode!(File.read!("test/support/editor/discovered_plugin_contracts.json"))["popover"]
+
+    {:ok, schema} = BubbleEx.Editor.PluginSchema.normalize(group, "current", raw)
+
+    operation =
+      op(["%p3", "page", "%el", "text", "%p", "AFU"], "Before", "After")
+      |> Map.put("plugin_type", group <> "-AEA")
+
+    source =
+      plan([operation])
+      |> Map.merge(%{
+        "plugin_types" => [group],
+        "plugin_schema_hashes" => %{group => schema.hash}
+      })
+
+    {source, raw, group}
+  end
+
+  defp plugin_get(raw, group) do
+    fn url, headers, opts ->
+      assert URI.decode_query(URI.parse(url).query) == %{
+               "plugin_id" => String.replace_suffix(group, "_current", ""),
+               "version" => "current"
+             }
+
+      assert {"origin", "https://bubble.io"} in headers
+      assert opts[:retry] == false
+      assert opts[:follow_redirect] == false
+
+      {:ok,
+       %BubbleEx.HTTP.Response{
+         status_code: 200,
+         body: Jason.encode!(raw),
+         headers: [],
+         request_url: url
+       }}
+    end
+  end
+
   defp plan(operations) do
     %{
       "appname" => "tiptap-plugin",
