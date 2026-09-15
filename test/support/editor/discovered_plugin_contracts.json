@@ -1,0 +1,136 @@
+{
+  "popover": {
+    "human": "Modern Dropdown",
+    "plugin_elements": {
+      "AEA": {
+        "display": "Modern Popover",
+        "platform_type": "web",
+        "fields": {
+          "AFU": {
+            "name": "label",
+            "caption": "Accessible label",
+            "editor": "DynamicValue",
+            "value": "text",
+            "optional": true,
+            "default_val": "Popover"
+          },
+          "AFJ": {
+            "name": "gap",
+            "caption": "Gap",
+            "editor": "DynamicValue",
+            "value": "number",
+            "optional": true,
+            "default_val": 8
+          },
+          "AFG": {
+            "name": "modal",
+            "caption": "Modal",
+            "editor": "Checkbox",
+            "value": "boolean",
+            "optional": true,
+            "default_val": false
+          },
+          "AFF": {
+            "name": "mode",
+            "caption": "Display mode",
+            "editor": "Dropdown",
+            "value": "text",
+            "optional": true,
+            "default_val": "Anchored",
+            "options": "Anchored,Bottom drawer,Right drawer,Responsive drawer"
+          },
+          "AFV": {
+            "name": "placement_info",
+            "caption": "Anchored mode only. Position the Group relative to its trigger: bottom span-right = below, left edges aligned; bottom span-left = below, right edges aligned; right span-top = right side, bottom edges aligned. Enter the value only (no CSS property name or semicolon). Reference and diagrams: https://developer.mozilla.org/en-US/docs/Web/CSS/position-area",
+            "editor": "Label"
+          }
+        },
+        "events": {
+          "AEG": {
+            "name": "opened",
+            "caption": "Opened"
+          },
+          "AEH": {
+            "name": "closed",
+            "caption": "Closed"
+          },
+          "AEI": {
+            "name": "configuration_error",
+            "caption": "Configuration error"
+          }
+        },
+        "states": {
+          "AEE": {
+            "name": "is_open",
+            "caption": "Is open",
+            "value": "boolean"
+          },
+          "AEF": {
+            "name": "error_message",
+            "caption": "Error message",
+            "value": "text"
+          }
+        },
+        "actions": {
+          "AEB": {
+            "caption": "Open",
+            "fields": {}
+          },
+          "AEC": {
+            "caption": "Close",
+            "fields": {}
+          },
+          "AED": {
+            "caption": "Toggle",
+            "fields": {}
+          }
+        }
+      }
+    }
+  },
+  "tiptap": {
+    "human": "🤌 Rich text editor (Tiptap.dev)",
+    "plugin_elements": {
+      "toc_element": {
+        "display": "Tiptap Table of Contents",
+        "platform_type": "web",
+        "fields": {
+          "accessible_label": {
+            "name": "accessible_label",
+            "caption": "Accessible label",
+            "editor": "DynamicValue",
+            "value": "text",
+            "default_val": "Table of contents"
+          },
+          "active_background": {
+            "name": "active_background",
+            "caption": "Active heading background",
+            "editor": "Color",
+            "default_val": "rgba(79,70,229,0.12)"
+          },
+          "active_font_weight": {
+            "name": "active_font_weight",
+            "caption": "Active heading weight",
+            "editor": "Dropdown",
+            "default_val": "600",
+            "options": "400,500,600,700,800,900"
+          }
+        },
+        "events": {
+          "heading_clicked": {
+            "name": "heading_clicked",
+            "caption": "Heading clicked"
+          }
+        },
+        "states": {
+          "clicked_heading_id": {
+            "name": "clicked_heading_id",
+            "caption": "Clicked heading ID",
+            "value": "text"
+          }
+        },
+        "actions": {}
+      }
+    }
+  }
+}

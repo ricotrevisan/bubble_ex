@@ -5,6 +5,7 @@ defmodule Mix.Tasks.Bubble.Editor do
   Experimental Bubble editor CLI.
 
       mix bubble.editor schema
+      mix bubble.editor schema APP VERSION [PLUGIN_GROUP ...]
       mix bubble.editor generate-ids COUNT
       mix bubble.editor versions APP VERSION
       mix bubble.editor savepoint-list APP VERSION
@@ -47,6 +48,17 @@ defmodule Mix.Tasks.Bubble.Editor do
       _ ->
         Mix.raise("COUNT must be an integer between 1 and 1000")
     end
+  end
+
+  def run(["schema", appname, version | groups]) do
+    with_cookie(fn cookie ->
+      selection = if groups == [], do: :all, else: groups
+
+      with {:ok, target} <- Target.new(appname, version, cookie),
+           {:ok, result} <- Editor.plugin_schemas(target, selection) do
+        output(result)
+      end
+    end)
   end
 
   def run(["versions", appname, version]) do

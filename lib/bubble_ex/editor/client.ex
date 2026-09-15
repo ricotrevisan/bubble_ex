@@ -8,6 +8,39 @@ defmodule BubbleEx.Editor.Client do
           (String.t(), iodata(), HTTP.headers(), keyword() ->
              {:ok, map()} | {:error, Error.t()})
 
+  @spec plugin(Target.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, Error.t()}
+  def plugin(target, id, version, opts \\ []) do
+    query = URI.encode_query(%{"plugin_id" => id, "version" => version})
+    url = target.origin <> "/appeditor/get_raw_plugin?" <> query
+    get = Keyword.get(opts, :get_fun, &HTTP.get/3)
+
+    case get.(
+           url,
+           [
+             {"cookie", target.cookie},
+             {"referer", target.origin <> "/"},
+             {"origin", target.origin}
+           ],
+           retry: false,
+           follow_redirect: false,
+           redact_values: [target.cookie]
+         ) do
+      {:ok, %HTTP.Response{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, decoded} when is_map(decoded) -> {:ok, decoded}
+          _ -> {:error, Error.new(:parse_failed, "plugin definition is not a JSON object")}
+        end
+
+      {:ok, %HTTP.Response{status_code: status}} ->
+        {:error,
+         Error.new(:request_failed, "plugin definition request failed", %{status: status})}
+
+      {:error, _error} ->
+        {:error, Error.new(:request_failed, "plugin definition request failed")}
+    end
+  end
+
   @spec versions(Target.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def versions(%Target{} = target, opts \\ []) do
     post(target, "/appeditor/get_versions", %{"appname" => target.appname}, opts)

@@ -7,24 +7,13 @@ defmodule BubbleEx.Editor.Plan do
   Bubble's ID-path and issue-index maintenance operations internally.
   """
 
-  alias BubbleEx.Editor.Snapshot
+  alias BubbleEx.Editor.{PluginSchema, Snapshot}
   alias BubbleEx.Error
 
   @element_types ~w(Page CustomDefinition Group Text Button Popup CustomElement)
   @workflow_types ~w(ButtonClicked)
   @action_types ~w(ShowElement HideElement SetCustomState)
   @expression_types ~w(TextExpression GetElement Message ArbitraryText PageData State)
-  @plugin_property_keys %{
-    "1787127143284x497506916809310200_current-AEA" =>
-      ~w(AFA AFB AFC AFD AFE AFF AFG AFH AFI AFJ AFK AFL AFM AFN AFO AFP AFQ AFR AFS AFT AFU)
-  }
-  @plugin_node_suffixes %{
-    "1787127143284x497506916809310200_current" => %{
-      elements: ~w(AEA),
-      workflows: ~w(AEG AEH),
-      actions: ~w(AEC AED)
-    }
-  }
 
   @property_keys ~w(
     %3 %br %bs %bw %bc %fc %fs %lh %ls %bas %bgc %bos %iv %h %w %l %t %z
@@ -43,7 +32,8 @@ defmodule BubbleEx.Editor.Plan do
           plugin_types: [String.t()],
           references: %{optional(String.t()) => String.t()},
           semantic_operations: [map()],
-          operations: [map()]
+          operations: [map()],
+          source: map()
         }
 
   @spec schema() :: map()
@@ -52,11 +42,10 @@ defmodule BubbleEx.Editor.Plan do
       owners: ["%p3 web pages", "%ed reusable definitions"],
       elements: @element_types,
       properties: @property_keys,
-      plugin_properties: @plugin_property_keys,
-      plugin_nodes: @plugin_node_suffixes,
+      plugins: "Discover installed contracts with schema APP VERSION [PLUGIN_GROUP ...]",
       expressions: @expression_types,
-      workflows: @workflow_types ++ ["allowlisted installed plugin events"],
-      actions: @action_types ++ ["allowlisted installed plugin actions"]
+      workflows: @workflow_types ++ ["discovered installed plugin events"],
+      actions: @action_types ++ ["discovered installed plugin actions"]
     }
   end
 
@@ -81,14 +70,17 @@ defmodule BubbleEx.Editor.Plan do
     end
   end
 
-  @spec new(map()) :: {:ok, t()} | {:error, Error.t()}
-  def new(plan) when is_map(plan) do
+  @spec new(map(), map() | nil) :: {:ok, t()} | {:error, Error.t()}
+  def new(plan, schemas \\ nil)
+
+  def new(plan, schemas) when is_map(plan) do
     with {:ok, appname} <- required_string(plan, "appname"),
          {:ok, version} <- required_string(plan, "version"),
          {:ok, revision} <- revision(Map.get(plan, "base_last_change")),
          {:ok, plugin_types} <- plugin_types(Map.get(plan, "plugin_types", [])),
          {:ok, references} <- references(Map.get(plan, "references", %{})),
-         {:ok, operations} <- operations(Map.get(plan, "operations"), plugin_types),
+         context = %{groups: plugin_types, schemas: schemas},
+         {:ok, operations} <- operations(Map.get(plan, "operations"), context),
          :ok <- validate_created_ids_and_references(operations, references) do
       {:ok,
        %{
@@ -97,13 +89,14 @@ defmodule BubbleEx.Editor.Plan do
          base_last_change: revision,
          plugin_types: plugin_types,
          references: references,
+         source: plan,
          semantic_operations: operations,
          operations: expand_operations(operations) ++ reference_guards(references, operations)
        }}
     end
   end
 
-  def new(_plan), do: invalid("editor plan must be a JSON object")
+  def new(_plan, _schemas), do: invalid("editor plan must be a JSON object")
 
   @spec paths(t()) :: [Snapshot.path()]
   def paths(plan), do: plan.operations |> Enum.map(& &1.path) |> Enum.uniq()
@@ -150,6 +143,7 @@ defmodule BubbleEx.Editor.Plan do
       "version" => plan.version,
       "base_last_change" => revision,
       "plugin_types" => plan.plugin_types,
+      "plugin_schema_hashes" => Map.get(plan.source, "plugin_schema_hashes", %{}),
       "references" => plan.references,
       "operations" =>
         plan.semantic_operations
@@ -271,10 +265,15 @@ defmodule BubbleEx.Editor.Plan do
     do: Enum.reject(before_ids, &(&1 in changed_ids))
 
   defp supported_operation("set", path, value, plugin_types, operation) do
-    if supported_leaf?(path) or supported_plugin_leaf?(path, plugin_types, operation) do
-      validate_leaf_value(path, value, plugin_types)
-    else
-      unsupported(path, "unsupported property path or value")
+    cond do
+      supported_plugin_leaf?(path, plugin_types, operation) ->
+        validate_plugin_value(plugin_types, operation["plugin_type"], List.last(path), value)
+
+      supported_leaf?(path) ->
+        validate_leaf_value(path, value, plugin_types)
+
+      true ->
+        unsupported(path, "unsupported property path or value")
     end
   end
 
@@ -336,7 +335,18 @@ defmodule BubbleEx.Editor.Plan do
     match?(["%p", _property], Enum.take(path, -2)) and
       is_binary(plugin_type) and
       plugin_type?(plugin_type, plugin_types) and
-      property in Map.get(@plugin_property_keys, plugin_type, [])
+      (is_nil(plugin_types.schemas) or
+         not is_nil(PluginSchema.field(plugin_types.schemas, plugin_type, property))) and
+      Enum.take(path, 1) in [["%p3"], ["%ed"]]
+  end
+
+  defp validate_plugin_value(%{schemas: nil}, _type, _key, _value), do: :ok
+
+  defp validate_plugin_value(context, type, key, value) do
+    case PluginSchema.field(context.schemas, type, key) do
+      nil -> invalid("unknown plugin property", %{node_type: type, property: key})
+      field -> PluginSchema.validate_value(field, value)
+    end
   end
 
   defp creatable_node_path?(["%p3", _key]), do: true
@@ -398,11 +408,8 @@ defmodule BubbleEx.Editor.Plan do
       type in @expression_types ->
         validate_children(node, plugin_types)
 
-      type in plugin_types ->
-        validate_children(node, plugin_types)
-
       plugin_type?(type, plugin_types) ->
-        validate_children(node, plugin_types)
+        validate_plugin_node(node, plugin_types)
 
       true ->
         invalid("unsupported Bubble node type", %{node_type: type, reason: :unsupported_node})
@@ -411,6 +418,30 @@ defmodule BubbleEx.Editor.Plan do
 
   defp validate_node(_node, _plugin_types),
     do: invalid("created nodes must contain a supported %x discriminator")
+
+  defp validate_plugin_node(node, context) do
+    with :ok <- validate_plugin_properties(node, context) do
+      if plugin_role?(node["%x"], context, :workflows),
+        do: validate_workflow(node, context),
+        else: validate_children(node, context)
+    end
+  end
+
+  defp validate_plugin_properties(_node, %{schemas: nil}), do: :ok
+
+  defp validate_plugin_properties(%{"%x" => type} = node, context) do
+    Enum.reduce_while(Map.get(node, "%p", %{}), :ok, fn {key, value}, :ok ->
+      result =
+        if key in @property_keys or key == "%ei",
+          do: :ok,
+          else: validate_plugin_value(context, type, key, value)
+
+      case result do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   defp validate_workflow(node, plugin_types) do
     actions = Map.get(node, "actions", %{})
@@ -478,10 +509,12 @@ defmodule BubbleEx.Editor.Plan do
   end
 
   defp plugin_role?(type, plugin_types, role) when is_binary(type) do
-    Enum.any?(plugin_types, fn group ->
-      suffixes = get_in(@plugin_node_suffixes, [group, role]) || []
-      Enum.any?(suffixes, &(type == group <> "-" <> &1))
-    end)
+    declared? = Enum.any?(plugin_types.groups, &String.starts_with?(type, &1 <> "-"))
+
+    case plugin_types.schemas do
+      nil -> declared?
+      schemas -> declared? and match?(%{role: ^role}, PluginSchema.node(schemas, type))
+    end
   end
 
   defp expand_operations(operations) do
