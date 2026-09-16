@@ -342,7 +342,7 @@ defmodule BubbleEx.HTTP do
 
       state =
         if too_large?,
-          do: %{state | size: size, too_large?: true},
+          do: %{state | chunks: [], size: size, too_large?: true},
           else: %{state | chunks: [data | state.chunks], size: size}
 
       response = %{response | private: Map.put(response.private, :bubble_ex_body, state)}
@@ -352,8 +352,11 @@ defmodule BubbleEx.HTTP do
 
   defp streamed_body(response) do
     case Map.get(response.private, :bubble_ex_body) do
-      %{chunks: chunks, too_large?: too_large?} ->
-        {chunks |> Enum.reverse() |> IO.iodata_to_binary(), too_large?, true}
+      %{too_large?: true} ->
+        {"", true, true}
+
+      %{chunks: chunks, too_large?: false} ->
+        {chunks |> Enum.reverse() |> IO.iodata_to_binary(), false, true}
 
       _ ->
         {response.body, false, false}
@@ -549,7 +552,8 @@ defmodule BubbleEx.HTTP do
       timeout: BubbleEx.Config.apps_timeout(opts),
       recv_timeout: Keyword.get(opts, :recv_timeout, @default_recv_timeout),
       follow_redirect: Keyword.get(opts, :follow_redirect, true),
-      max_body_length: BubbleEx.Config.apps_max_body_length(opts)
+      max_body_length: BubbleEx.Config.apps_max_body_length(opts),
+      bounded_body: true
     ]
 
     # Carry a per-call :finch through to the low-level request so the high-level
@@ -608,6 +612,10 @@ defmodule BubbleEx.HTTP do
 
   defp retryable_result?({:ok, %Response{status_code: status_code}}),
     do: status_code in @transient_status_codes
+
+  defp retryable_result?({:error, %Error{reason: reason}})
+       when reason in [:body_too_large, :unsupported_content_encoding],
+       do: false
 
   defp retryable_result?({:error, %Error{}}), do: true
   defp retryable_result?(_result), do: false

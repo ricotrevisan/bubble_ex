@@ -11,8 +11,8 @@ defmodule BubbleEx.Secrets.Trufflehog do
 
   @behaviour BubbleEx.Secrets
 
-  require Logger
-  alias BubbleEx.Error
+  alias BubbleEx.{Error, PayloadFile}
+  alias BubbleEx.Secrets.Output
 
   @doc """
   Scans a payload for exposed secrets.
@@ -27,9 +27,37 @@ defmodule BubbleEx.Secrets.Trufflehog do
   @impl true
   @spec scan(map() | String.t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
   def scan(payload, opts \\ []) do
-    with {:ok, id} <- extract_id(payload),
+    with {:ok, _id} <- extract_id(payload),
          {:ok, cli} <- find_cli() do
-      run_scan(payload, id, cli, opts)
+      PayloadFile.with_file(payload, opts, &run_file(&1, cli, opts))
+    end
+  end
+
+  @doc """
+  Scans an existing `PayloadFile` without decoding or re-encoding its JSON.
+  The caller owns the artifact lifetime. Input is bounded to 32 MB by default;
+  stdout to 8 MB, each finding line to 1 MB, and execution to 120 seconds.
+  Limits can be set with `:max_input_bytes`, `:max_output_bytes`,
+  `:max_line_bytes`, `:max_findings`, and `:timeout_ms`.
+  """
+  @spec scan_file(PayloadFile.t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
+  def scan_file(%PayloadFile{} = file, opts \\ []) do
+    limit = Keyword.get(opts, :max_input_bytes, 32_000_000)
+
+    with true <- is_integer(limit) and limit > 0,
+         {:ok, cli} <- find_cli(),
+         {:ok, stat} <- File.stat(file.path),
+         true <- stat.type == :regular and stat.size <= limit do
+      run_file(file, cli, opts)
+    else
+      {:error, %Error{}} = error ->
+        error
+
+      _ ->
+        {:error,
+         Error.new(:invalid_input, "scan artifact unavailable or too large", %{
+           reason: :input_limit
+         })}
     end
   end
 
@@ -77,154 +105,118 @@ defmodule BubbleEx.Secrets.Trufflehog do
     {:error, Error.new(:invalid_input, ~s(payload must contain a string "_id" field), %{})}
   end
 
-  defp run_scan(payload, id, cli, opts) do
-    case create_temp_file(payload) do
-      {:ok, temp} -> run_scan_with_temp(temp, id, cli, opts)
-      {:error, %Error{}} = error -> error
+  defp run_file(file, cli, opts) do
+    output = Output.new(opts)
+    timeout = Keyword.get(opts, :timeout_ms, 120_000)
+
+    if Enum.all?(
+         [timeout, output.max_bytes, output.max_line, output.max_findings],
+         &(is_integer(&1) and &1 > 0)
+       ) do
+      case System.find_executable("kill") do
+        nil ->
+          {:error,
+           Error.new(:cli_missing, "scan cancellation requires the POSIX kill utility", %{})}
+
+        kill ->
+          run_port(file, cli, Keyword.put(opts, :kill_executable, kill), output, timeout)
+      end
+    else
+      {:error, Error.new(:invalid_input, "scan budgets must be positive integers", %{})}
     end
   end
 
-  defp run_scan_with_temp(temp, id, cli, opts) do
-    ref = Keyword.get(opts, :ref)
-    server_pid = Keyword.get(opts, :server_pid)
-    log_level = Keyword.get(opts, :log_level, "5")
+  defp run_port(file, cli, opts, output, timeout) do
+    args = [
+      "filesystem",
+      file.path,
+      "--json",
+      "--log-level=#{Keyword.get(opts, :log_level, "5")}",
+      "--results=verified,unknown",
+      "--no-update"
+    ]
+
+    port =
+      Port.open({:spawn_executable, cli}, [:binary, :exit_status, :stderr_to_stdout, args: args])
 
     try do
-      Logger.info("Starting Trufflehog scan")
-      stream(server_pid, ref, "Starting Trufflehog scan for payload with ID: #{id}")
-
-      # `:spawn_executable` with an explicit argv avoids shell interpolation of
-      # the (untrusted) temp path / id — no command-injection surface.
-      args = [
-        "filesystem",
-        temp.path,
-        "--json",
-        "--log-level=#{log_level}",
-        "--results=verified,unknown",
-        "--no-update"
-      ]
-
-      port = Port.open({:spawn_executable, cli}, [:binary, :exit_status, args: args])
-      {terminal_output, status} = collect_output(port, "", ref, server_pid)
-      findings = parse_findings(terminal_output, temp.payload_json)
-
-      handle_status(status, findings, ref, server_pid)
-    rescue
-      _error ->
-        {:error, Error.new(:cli_failed, "trufflehog scan failed safely", %{})}
+      deadline = System.monotonic_time(:millisecond) + timeout
+      collect_findings(port, output, file, opts, deadline)
     after
-      File.rm_rf(temp.dir)
-    end
-  end
-
-  defp handle_status(0, findings, ref, server_pid) do
-    if server_pid && ref, do: send(server_pid, {:scan_completed, ref, findings})
-    {:ok, findings}
-  end
-
-  defp handle_status(exit_code, _findings, _ref, _server_pid) do
-    {:error,
-     Error.new(:cli_failed, "trufflehog exited with status #{exit_code}", %{status: exit_code})}
-  end
-
-  defp parse_findings(terminal_output, payload_json) do
-    terminal_output
-    |> String.split("\n")
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.flat_map(fn line ->
-      case Jason.decode(line) do
-        {:ok, data} -> [enhance_result(data, payload_json)]
-        {:error, _reason} -> []
-      end
-    end)
-    |> Enum.reject(&Map.get(&1, "InvalidResult", false))
-  end
-
-  defp create_temp_file(payload) do
-    with {:ok, payload_json, file_contents} <- encode_payload(payload),
-         {:ok, temp_dir} <- create_private_temp_dir(3) do
-      write_private_temp_file(temp_dir, payload_json, file_contents)
+      terminate_port(port, opts[:kill_executable])
     end
   rescue
-    _ -> temp_setup_error(:setup_failed)
+    _ -> {:error, Error.new(:cli_failed, "trufflehog scan failed safely", %{})}
+  catch
+    :throw, {:scan_budget, reason} -> budget_error(reason)
   end
 
-  defp write_private_temp_file(temp_dir, payload_json, file_contents) do
-    temp_file = Path.join(temp_dir, "payload.json")
+  defp collect_findings(port, output, file, opts, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+    enhance = &enhance_result(&1, file, deadline)
 
-    case File.write(temp_file, file_contents, [:exclusive]) do
-      :ok ->
-        {:ok, %{path: temp_file, dir: temp_dir, payload_json: payload_json}}
-
-      {:error, reason} ->
-        File.rm_rf(temp_dir)
-        temp_setup_error(reason)
-    end
-  end
-
-  defp encode_payload(payload) when is_map(payload) do
-    with {:ok, payload_json} <- Jason.encode(payload),
-         {:ok, file_contents} <- Jason.encode(payload, pretty: true) do
-      {:ok, payload_json, file_contents}
+    if remaining == 0 do
+      budget_error(:scan_timeout)
     else
-      {:error, reason} -> temp_setup_error(reason)
+      receive do
+        {^port, {:data, data}} ->
+          case Output.push(output, data, enhance) do
+            {:ok, next} ->
+              stream(Keyword.get(opts, :server_pid), Keyword.get(opts, :ref), data)
+              collect_findings(port, next, file, opts, deadline)
+
+            {:error, reason} ->
+              budget_error(reason)
+          end
+
+        {^port, {:exit_status, 0}} ->
+          case Output.finish(output, enhance) do
+            {:ok, findings} = result ->
+              if opts[:server_pid] && opts[:ref],
+                do: send(opts[:server_pid], {:scan_completed, opts[:ref], findings})
+
+              result
+
+            {:error, reason} ->
+              budget_error(reason)
+          end
+
+        {^port, {:exit_status, status}} ->
+          {:error,
+           Error.new(:cli_failed, "trufflehog exited with status #{status}", %{status: status})}
+      after
+        remaining -> budget_error(:scan_timeout)
+      end
     end
   end
 
-  defp encode_payload(payload) when is_binary(payload), do: {:ok, payload, payload}
+  defp budget_error(reason),
+    do: {:error, Error.new(:invalid_input, "scan resource budget exceeded", %{reason: reason})}
 
-  defp create_private_temp_dir(attempts) when attempts > 0 do
-    case System.tmp_dir() do
-      temp_root when is_binary(temp_root) -> create_named_temp_dir(temp_root, attempts)
-      _ -> temp_setup_error(:temp_dir_unavailable)
+  # Close the OS process as well as the port: a closed stdout pipe alone is not
+  # a cancellation mechanism for a scanner blocked on network verification.
+  defp terminate_port(port, kill) do
+    case Port.info(port, :os_pid) do
+      {:os_pid, pid} ->
+        System.cmd(kill, ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
+        if Port.info(port), do: Port.close(port)
+
+      nil ->
+        :ok
     end
   end
 
-  defp create_private_temp_dir(_attempts), do: temp_setup_error(:name_collision)
+  defp enhance_result(%{"DecoderName" => "BASE64", "Raw" => raw} = finding, file, deadline)
+       when is_binary(raw) do
+    encoded = Base.encode64(raw)
 
-  defp create_named_temp_dir(temp_root, attempts) do
-    random = Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
-    temp_dir = Path.join(temp_root, "bubble_ex_trufflehog_#{random}")
-    secure_temp_dir(temp_dir, attempts)
+    if PayloadFile.contains?(file, encoded, deadline),
+      do: Map.put(finding, "Encoded", encoded),
+      else: nil
   end
 
-  defp secure_temp_dir(temp_dir, attempts) do
-    case File.mkdir(temp_dir) do
-      :ok -> restrict_temp_dir(temp_dir)
-      {:error, :eexist} -> create_private_temp_dir(attempts - 1)
-      {:error, reason} -> temp_setup_error(reason)
-    end
-  end
-
-  defp restrict_temp_dir(temp_dir) do
-    case File.chmod(temp_dir, 0o700) do
-      :ok ->
-        {:ok, temp_dir}
-
-      {:error, reason} ->
-        File.rm_rf(temp_dir)
-        temp_setup_error(reason)
-    end
-  end
-
-  defp temp_setup_error(_reason) do
-    {:error, Error.new(:cli_failed, "could not prepare private trufflehog input", %{})}
-  end
-
-  # Adds an "Encoded" field for BASE64 findings so the original encoded value can
-  # be located in the source payload; marks the finding invalid if it cannot.
-  defp enhance_result(%{"DecoderName" => "BASE64", "Raw" => raw_value} = result, payload_json) do
-    encoded_value = Base.encode64(raw_value)
-    result = Map.put(result, "Encoded", encoded_value)
-
-    if String.contains?(payload_json, encoded_value) do
-      result
-    else
-      Map.put(result, "InvalidResult", true)
-    end
-  end
-
-  defp enhance_result(result, _payload_json), do: result
+  defp enhance_result(%{"InvalidResult" => true}, _file, _deadline), do: nil
+  defp enhance_result(finding, _file, _deadline), do: finding
 
   defp stream(nil, _ref, _data), do: :ok
   defp stream(_pid, nil, _data), do: :ok
