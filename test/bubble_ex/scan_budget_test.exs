@@ -23,6 +23,21 @@ defmodule BubbleEx.ScanBudgetTest do
     File.chmod!(path, 0o700)
   end
 
+  test "NDJSON parser handles every byte boundary and enforces finding count" do
+    finding = %{"DecoderName" => "PLAIN", "Raw" => "synthetic"}
+    line = Jason.encode!(finding) <> "\n"
+
+    state =
+      for <<byte <- line>>, reduce: BubbleEx.Secrets.Output.new(max_findings: 1) do
+        state ->
+          assert {:ok, next} = BubbleEx.Secrets.Output.push(state, <<byte>>, & &1)
+          next
+      end
+
+    assert {:ok, [^finding]} = BubbleEx.Secrets.Output.finish(state, & &1)
+    assert {:error, :findings_limit} = BubbleEx.Secrets.Output.push(state, line, & &1)
+  end
+
   test "file adapter preserves valid findings across fragments and final unterminated line", %{
     root: root
   } do
@@ -30,7 +45,7 @@ defmodule BubbleEx.ScanBudgetTest do
     printf '%s' '{"DecoderName":"PLAIN",'
     printf '%s\n' '"Raw":"synthetic"}'
     printf '%s\n' 'not-json' '{"level":"info","msg":"scanner log"}' '{"DecoderName":"BASE64","Raw":"hello"}'
-    printf '%s\n' '{"DecoderName":"BASE64","Raw":"absent"}'
+    printf '%s\n' '{"DecoderName":"BASE64","Raw":"absent"}' '{"DecoderName":"BASE64","Raw":"hello","InvalidResult":true}'
     printf '%s' '{"DecoderName":"PLAIN","Raw":"last"}'
     """)
 

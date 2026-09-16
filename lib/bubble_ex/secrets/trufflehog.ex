@@ -206,6 +206,8 @@ defmodule BubbleEx.Secrets.Trufflehog do
     end
   end
 
+  defp enhance_result(%{"InvalidResult" => true}, _file, _deadline), do: nil
+
   defp enhance_result(%{"DecoderName" => "BASE64", "Raw" => raw} = finding, file, deadline)
        when is_binary(raw) do
     encoded = Base.encode64(raw)
@@ -215,7 +217,6 @@ defmodule BubbleEx.Secrets.Trufflehog do
       else: nil
   end
 
-  defp enhance_result(%{"InvalidResult" => true}, _file, _deadline), do: nil
   defp enhance_result(finding, _file, _deadline), do: finding
 
   defp stream(nil, _ref, _data), do: :ok
