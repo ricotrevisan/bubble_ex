@@ -752,17 +752,28 @@ defmodule BubbleEx.HTTP do
     headers
     |> header_values("retry-after")
     |> List.first()
-    |> case do
-      nil ->
-        nil
+    |> parse_retry_after()
+  end
 
-      value ->
+  # Bound work before integer/date parsing, including hostile digit strings.
+  # IMF-fixdate is 29 bytes; 64 also accommodates ample delta-seconds precision.
+  defp parse_retry_after(value) when is_binary(value) and byte_size(value) <= 64 do
+    case value do
+      <<first, _::binary>> when first in ?0..?9 ->
         case Integer.parse(value) do
-          {seconds, ""} when seconds >= 0 -> seconds * 1000
+          {seconds, ""} -> seconds * 1000
+          _ -> nil
+        end
+
+      _ ->
+        case Req.Utils.parse_http_date(value) do
+          {:ok, date} -> max(DateTime.diff(date, DateTime.utc_now(), :millisecond), 0)
           _ -> nil
         end
     end
   end
+
+  defp parse_retry_after(_value), do: nil
 
   defp exponential_delay(base_delay, attempt) do
     trunc(base_delay * :math.pow(2, attempt)) + :rand.uniform(max(base_delay, 1))

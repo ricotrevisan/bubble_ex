@@ -44,6 +44,15 @@ exceeding the cap or remaining budget is **not slept or retried**: the original
 error/status is returned for the caller to schedule later. Body/encoding/deadline
 errors are never retried in-process. No sleep occurs with `max_retries: 0`.
 
+`Retry-After` accepts unsigned decimal seconds or an IMF-fixdate HTTP date,
+using Req's documented non-raising `Req.Utils.parse_http_date/1` parser.
+Past dates mean zero delay. Values over 64 bytes are ignored **before parsing**;
+malformed values (including negative/signed seconds and invalid dates) use the
+existing exponential backoff, still subject to the same delay/deadline caps.
+Valid huge numeric/date delays return the original result without sleeping;
+HTTP dates are compared to UTC wall time only to derive a delay, while the
+remaining request budget continues to use monotonic time.
+
 The streaming deadline is cooperative, not a hard wall-clock interrupt: a stalled
 read, connection setup, redirects or custom adapter can overrun it until the
 finite transport wait returns. Queue consumers must also use an outer execution
@@ -71,7 +80,8 @@ proxy routing and the next public-destination transport policy.
 `test/bubble_ex/http_budget_test.exs` covers independent HTML/script ceilings,
 real chunked TCP early closure, compressed-response rejection, named pools,
 slow trickles, rejected 302/307 destinations, oversized JSON (GET/POST), dedicated
-instance failure classification, oversized Retry-After values and retry delays
-beyond the remaining deadline. No production traffic or memory
+instance failure classification, numeric/date Retry-After (past, future, malformed,
+overlong and huge values), zero-retry behavior and retry delays beyond the remaining
+deadline. No production traffic or memory
 benchmark was used. The streaming release changes reuse only the HTTP portion of
 `9a34f18`; scanner and parser-memory changes from that branch are not included.
