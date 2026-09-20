@@ -153,6 +153,88 @@ defmodule BubbleEx.HTTPBudgetTest do
     refute_received :budget_requested
   end
 
+  test "numeric zero and past HTTP dates retry immediately instead of using backoff" do
+    for value <- ["0", "Sun, 06 Nov 1994 08:49:37 GMT"] do
+      assert_retry_after(value, :retried, retry_base_delay: 10_000, max_retry_delay: 0)
+    end
+  end
+
+  @tag timeout: 5000
+  test "a future HTTP date within both budgets is honored" do
+    value = Req.Utils.format_http_date(DateTime.add(DateTime.utc_now(), 2, :second))
+    started = System.monotonic_time(:millisecond)
+    assert_retry_after(value, :retried, max_retry_delay: 3000, total_timeout: 4000)
+    assert System.monotonic_time(:millisecond) - started >= 900
+  end
+
+  @tag timeout: 1000
+  test "future dates and huge numeric delays exceeding either budget never sleep or retry" do
+    future = Req.Utils.format_http_date(DateTime.add(DateTime.utc_now(), 60, :second))
+
+    for {value, opts} <- [
+          {future, [max_retry_delay: 10]},
+          {future, [max_retry_delay: 120_000, total_timeout: 500]},
+          {"999999999999999999999999999999", [max_retry_delay: 10]},
+          {"Fri, 31 Dec 9999 23:59:59 GMT", [max_retry_delay: 10]}
+        ] do
+      started = System.monotonic_time(:millisecond)
+      assert_retry_after(value, :not_retried, opts)
+      assert System.monotonic_time(:millisecond) - started < 500
+    end
+  end
+
+  test "malformed and overlong Retry-After values use bounded fallback backoff" do
+    for value <- [
+          "",
+          "garbage",
+          "-1",
+          "+1",
+          "1.5",
+          "1junk",
+          "Sun, 31 Feb 2026 08:49:37 GMT",
+          "Sun, 06 Nov 1994 25:49:37 GMT",
+          String.duplicate("9", 100_000),
+          "Sun, 06 Nov 1994 08:49:37 GMT" <> String.duplicate(" ", 100_000)
+        ] do
+      assert_retry_after(value, :not_retried, retry_base_delay: 1000, max_retry_delay: 0)
+      assert_retry_after(value, :retried, retry_base_delay: 0, max_retry_delay: 10)
+    end
+  end
+
+  test "zero retries never sleeps for numeric or date Retry-After" do
+    for value <- ["1", Req.Utils.format_http_date(DateTime.add(DateTime.utc_now(), 60, :second))] do
+      started = System.monotonic_time(:millisecond)
+      assert_retry_after(value, :not_retried, max_retries: 0, max_retry_delay: 120_000)
+      assert System.monotonic_time(:millisecond) - started < 500
+    end
+  end
+
+  defp assert_retry_after(value, expected, opts) do
+    BubbleEx.HTTP.put_process_options(plug: {Req.Test, __MODULE__})
+    on_exit(fn -> BubbleEx.HTTP.delete_process_options() end)
+    marker = make_ref()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(self(), {:retry_after_request, marker})
+      conn |> Plug.Conn.put_resp_header("retry-after", value) |> Plug.Conn.send_resp(429, "wait")
+    end)
+
+    assert {:error, %BubbleEx.Error{context: %{status: 429}}} =
+             BubbleEx.HTTP.fetch_page(
+               "https://example.com",
+               Keyword.put_new(opts, :max_retries, 1)
+             )
+
+    assert_received {:retry_after_request, ^marker}
+
+    case expected do
+      :retried -> assert_received {:retry_after_request, ^marker}
+      :not_retried -> refute_received {:retry_after_request, ^marker}
+    end
+
+    refute_received {:retry_after_request, ^marker}
+  end
+
   test "HTML and scripts have independent streaming budgets" do
     BubbleEx.HTTP.put_process_options(plug: {Req.Test, __MODULE__})
     on_exit(fn -> BubbleEx.HTTP.delete_process_options() end)
