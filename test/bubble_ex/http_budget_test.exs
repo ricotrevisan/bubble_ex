@@ -1,6 +1,158 @@
 defmodule BubbleEx.HTTPBudgetTest do
   use ExUnit.Case, async: true
 
+  test "rejected redirect bodies never reach their destination" do
+    for status <- [302, 307],
+        {reason, headers, delay, opts} <- [
+          {:body_too_large, "", 0, [max_body_length: 4]},
+          {:unsupported_content_encoding, "Content-Encoding: gzip\r\n", 0, []},
+          {:total_timeout, "", 100, [total_timeout: 50, recv_timeout: 500]}
+        ] do
+      {listener, port} = listen()
+      {destination, destination_port} = listen()
+      parent = self()
+      marker = make_ref()
+
+      target =
+        Task.async(fn ->
+          case :gen_tcp.accept(destination, 300) do
+            {:ok, socket} ->
+              send(parent, {:destination_requested, marker})
+              {:ok, _} = :gen_tcp.recv(socket, 0, 1000)
+
+              :gen_tcp.send(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nx-bubble-app: yes\r\n\r\nok"
+              )
+
+              :gen_tcp.close(socket)
+
+            {:error, :timeout} ->
+              :ok
+          end
+        end)
+
+      source =
+        Task.async(fn ->
+          {:ok, socket} = :gen_tcp.accept(listener, 1000)
+          {:ok, _} = :gen_tcp.recv(socket, 0, 1000)
+
+          :gen_tcp.send(
+            socket,
+            "HTTP/1.1 #{status} Redirect\r\nLocation: http://127.0.0.1:#{destination_port}/\r\nContent-Length: 8\r\n#{headers}\r\n"
+          )
+
+          for chunk <- ["re", "je", "ct", "ed"] do
+            Process.sleep(div(delay, 4))
+            :gen_tcp.send(socket, chunk)
+          end
+
+          :gen_tcp.close(socket)
+        end)
+
+      result = BubbleEx.HTTP.fetch_page("http://127.0.0.1:#{port}/", opts ++ [max_retries: 0])
+      Task.await(source)
+      Task.await(target)
+      refute_received {:destination_requested, ^marker}
+
+      assert {:error, %BubbleEx.Error{kind: :request_failed, context: %{reason: ^reason}}} =
+               result
+    end
+  end
+
+  defp listen do
+    {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+    {:ok, {_, port}} = :inet.sockname(listener)
+    on_exit(fn -> :gen_tcp.close(listener) end)
+    {listener, port}
+  end
+
+  test "dedicated instance checks preserve transport and resource failures" do
+    BubbleEx.HTTP.put_process_options(plug: {Req.Test, __MODULE__})
+    on_exit(fn -> BubbleEx.HTTP.delete_process_options() end)
+
+    for reason <- [:body_too_large, :unsupported_content_encoding, :timeout] do
+      Req.Test.stub(__MODULE__, fn conn ->
+        case reason do
+          :body_too_large ->
+            Plug.Conn.send_resp(conn, 200, String.duplicate("x", 5_000_001))
+
+          :unsupported_content_encoding ->
+            conn
+            |> Plug.Conn.put_resp_header("content-encoding", "gzip")
+            |> Plug.Conn.send_resp(200, "encoded")
+
+          transport ->
+            Req.Test.transport_error(conn, transport)
+        end
+      end)
+
+      assert {:error, %BubbleEx.Error{kind: :request_failed, context: %{reason: ^reason}}} =
+               BubbleEx.HTTP.check_redirect("valid-app", "live")
+
+      assert {:error, %BubbleEx.Error{kind: :request_failed, context: %{reason: ^reason}}} =
+               BubbleEx.Apps.dedicated?("valid-app", "live")
+    end
+  end
+
+  test "GET and POST JSON reject oversized streams before JSON decoding" do
+    for method <- [:get, :post] do
+      {listener, port} = listen()
+      parent = self()
+
+      server =
+        Task.async(fn ->
+          {:ok, socket} = :gen_tcp.accept(listener, 2000)
+          {:ok, _} = :gen_tcp.recv(socket, 0, 2000)
+
+          :gen_tcp.send(
+            socket,
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\n12345\r\n"
+          )
+
+          send(parent, {:json_closed, :gen_tcp.recv(socket, 0, 2000)})
+          :gen_tcp.close(socket)
+        end)
+
+      url = "http://127.0.0.1:#{port}/"
+
+      result =
+        case method do
+          :get -> BubbleEx.HTTP.fetch_json(url, max_body_length: 4)
+          :post -> BubbleEx.HTTP.post_json(url, "{}", [], max_body_length: 4)
+        end
+
+      assert {:error, %BubbleEx.Error{kind: :request_failed, context: %{reason: :body_too_large}}} =
+               result
+
+      assert_receive {:json_closed, {:error, :closed}}, 2000
+      Task.await(server)
+    end
+  end
+
+  @tag timeout: 1000
+  test "a retry delay within the delay cap but beyond the remaining deadline is not slept" do
+    BubbleEx.HTTP.put_process_options(plug: {Req.Test, __MODULE__})
+    on_exit(fn -> BubbleEx.HTTP.delete_process_options() end)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(self(), :budget_requested)
+      conn |> Plug.Conn.put_resp_header("retry-after", "1") |> Plug.Conn.send_resp(429, "wait")
+    end)
+
+    started = System.monotonic_time(:millisecond)
+
+    assert {:error, %BubbleEx.Error{context: %{status: 429}}} =
+             BubbleEx.HTTP.fetch_page("https://example.com",
+               max_retry_delay: 10_000,
+               total_timeout: 500
+             )
+
+    assert System.monotonic_time(:millisecond) - started < 500
+    assert_received :budget_requested
+    refute_received :budget_requested
+  end
+
   test "HTML and scripts have independent streaming budgets" do
     BubbleEx.HTTP.put_process_options(plug: {Req.Test, __MODULE__})
     on_exit(fn -> BubbleEx.HTTP.delete_process_options() end)

@@ -124,7 +124,14 @@ defmodule BubbleEx.HTTP do
       end
 
     try do
-      case Req.run(req_options) do
+      request =
+        req_options
+        |> Req.new()
+        |> Req.Request.prepend_response_steps(
+          bubble_ex_budget: &check_response_budget(&1, control_options)
+        )
+
+      case Req.run(request) do
         {%Req.Request{} = request, %Req.Response{} = response} ->
           build_response(request, response, control_options)
 
@@ -293,6 +300,38 @@ defmodule BubbleEx.HTTP do
     Process.delete({__MODULE__, :options})
     :ok
   end
+
+  # Finch's stream halt alone does not halt Req's response pipeline. Reject
+  # before redirect/retry steps can discard stream state or contact another URL.
+  # Also check headers-only responses, which never invoke the data callback.
+  defp check_response_budget({request, response}, %{bounded_body?: true} = limits) do
+    reason =
+      response.private[:bubble_ex_error] ||
+        cond do
+          expired?(limits.deadline) ->
+            :total_timeout
+
+          encoded_response?(response) ->
+            :unsupported_content_encoding
+
+          declared_too_large?(response, limits.max_body_length) ->
+            :body_too_large
+
+          is_binary(response.body) and byte_size(response.body) > limits.max_body_length ->
+            :body_too_large
+
+          true ->
+            nil
+        end
+
+    if reason do
+      Req.Request.halt(request, %Req.TransportError{reason: reason})
+    else
+      {request, response}
+    end
+  end
+
+  defp check_response_budget(result, _limits), do: result
 
   defp build_response(request, response, control_options) do
     {body, streamed_too_large?, streamed?} = streamed_body(response)
@@ -545,6 +584,9 @@ defmodule BubbleEx.HTTP do
 
       {:ok, %Response{status_code: 200}} ->
         {:ok, %{is_redirect: false, location: nil}}
+
+      {:error, %Error{reason: reason}} ->
+        {:error, request_failed(url, reason)}
 
       _ ->
         {:error,

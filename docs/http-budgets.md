@@ -4,7 +4,12 @@ High-level `BubbleEx.HTTP.fetch_page/2`, `fetch_json/2`, `post_json/4` and
 `check_redirect/2` now use the bounded streaming path, including discovered dynamic
 bundles in `BubbleEx.fetch_app/2`. A rejection drops accumulated chunks, halts the
 stream, and never flattens the rejected body. Successful bodies are materialized
-only after the byte check. These are wire/body limits, not bounds on decoded JSON,
+only after the byte check. A response-budget step runs **before Req redirects**:
+halting Finch alone is insufficient, because Req could otherwise discard a
+rejected redirect body's stream error and request its destination. Headers-only
+responses are checked at that same boundary. `check_redirect`/`dedicated?` preserve
+transport/resource failures as `:request_failed`, not evidence of an invalid app.
+These are wire/body limits, not bounds on decoded JSON,
 parser memory or total VM memory.
 
 ## Defaults and configuration
@@ -65,6 +70,8 @@ proxy routing and the next public-destination transport policy.
 
 `test/bubble_ex/http_budget_test.exs` covers independent HTML/script ceilings,
 real chunked TCP early closure, compressed-response rejection, named pools,
-slow trickles and oversized Retry-After values. No production traffic or memory
+slow trickles, rejected 302/307 destinations, oversized JSON (GET/POST), dedicated
+instance failure classification, oversized Retry-After values and retry delays
+beyond the remaining deadline. No production traffic or memory
 benchmark was used. The streaming release changes reuse only the HTTP portion of
 `9a34f18`; scanner and parser-memory changes from that branch are not included.
