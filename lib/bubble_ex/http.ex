@@ -344,8 +344,7 @@ defmodule BubbleEx.HTTP do
       expired?(Map.get(control_options, :deadline)) ->
         {:error, %Error{reason: :total_timeout}}
 
-      streamed_too_large? or
-          (max_body_length && is_binary(body) && byte_size(body) > max_body_length) ->
+      streamed_too_large? or body_too_large?(body, max_body_length) ->
         {:error, %Error{reason: :body_too_large, original: :body_too_large}}
 
       streamed? and encoded_response?(response) ->
@@ -360,6 +359,10 @@ defmodule BubbleEx.HTTP do
            request_url: URI.to_string(request.url)
          }}
     end
+  end
+
+  defp body_too_large?(body, max_body_length) do
+    max_body_length && is_binary(body) && byte_size(body) > max_body_length
   end
 
   defp maybe_put_bounded_into(req_options, %{
