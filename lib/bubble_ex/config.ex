@@ -237,6 +237,22 @@ defmodule BubbleEx.Config do
       100_000_000
   end
 
+  @doc "Maximum HTML bytes; independent from the larger dynamic bundle budget."
+  @spec apps_html_max_body_length(keyword()) :: pos_integer()
+  def apps_html_max_body_length(opts \\ []) do
+    Keyword.get(opts, :max_body_length) ||
+      Keyword.get(opts, :html_max_body_length) ||
+      get(:apps, :html_max_body_length) || 5_000_000
+  end
+
+  @doc "Maximum dynamic bundle bytes; the legacy body limit remains a fallback."
+  @spec apps_script_max_body_length(keyword()) :: pos_integer()
+  def apps_script_max_body_length(opts \\ []) do
+    Keyword.get(opts, :max_body_length) ||
+      Keyword.get(opts, :script_max_body_length) ||
+      get(:apps, :script_max_body_length) || apps_max_body_length(opts)
+  end
+
   @doc """
   Timeout in milliseconds for public frontend asset downloads.
   """

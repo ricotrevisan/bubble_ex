@@ -118,11 +118,20 @@ defmodule BubbleEx.HTTP do
     req_options =
       case resolve_finch(effective_options) do
         nil -> req_options
-        finch -> Keyword.put(req_options, :finch, finch)
+        # Connection options belong to the owner of a named pool. Req rejects
+        # them per request; receive/pool timeouts and body budgets still apply.
+        finch -> req_options |> Keyword.delete(:connect_options) |> Keyword.put(:finch, finch)
       end
 
     try do
-      case Req.run(req_options) do
+      request =
+        req_options
+        |> Req.new()
+        |> Req.Request.prepend_response_steps(
+          bubble_ex_budget: &check_response_budget(&1, control_options)
+        )
+
+      case Req.run(request) do
         {%Req.Request{} = request, %Req.Response{} = response} ->
           build_response(request, response, control_options)
 
@@ -160,7 +169,11 @@ defmodule BubbleEx.HTTP do
 
     control_options =
       if max_body_length do
-        %{max_body_length: max_body_length, bounded_body?: bounded_body?}
+        %{
+          max_body_length: max_body_length,
+          bounded_body?: bounded_body?,
+          deadline: Keyword.get(options, :deadline)
+        }
       else
         %{}
       end
@@ -214,6 +227,9 @@ defmodule BubbleEx.HTTP do
   defp maybe_put_proxy_headers(opts, _auth), do: opts
 
   defp maybe_put_pool_timeout(opts, nil), do: opts
+  # Req/Finch already default to 5s. Avoid passing this deprecated option on
+  # newer Req versions for every ordinary request, while supporting Req 0.5.
+  defp maybe_put_pool_timeout(opts, 5_000), do: opts
 
   defp maybe_put_pool_timeout(opts, timeout) do
     Keyword.put(opts, :pool_timeout, timeout)
@@ -226,6 +242,7 @@ defmodule BubbleEx.HTTP do
       :recv_timeout,
       :max_body_length,
       :bounded_body,
+      :deadline,
       :redact_values,
       :proxy,
       :proxy_auth,
@@ -284,13 +301,50 @@ defmodule BubbleEx.HTTP do
     :ok
   end
 
+  # Finch's stream halt alone does not halt Req's response pipeline. Reject
+  # before redirect/retry steps can discard stream state or contact another URL.
+  # Also check headers-only responses, which never invoke the data callback.
+  defp check_response_budget({request, response}, %{bounded_body?: true} = limits) do
+    reason =
+      response.private[:bubble_ex_error] ||
+        cond do
+          expired?(limits.deadline) ->
+            :total_timeout
+
+          encoded_response?(response) ->
+            :unsupported_content_encoding
+
+          declared_too_large?(response, limits.max_body_length) ->
+            :body_too_large
+
+          is_binary(response.body) and byte_size(response.body) > limits.max_body_length ->
+            :body_too_large
+
+          true ->
+            nil
+        end
+
+    if reason do
+      Req.Request.halt(request, %Req.TransportError{reason: reason})
+    else
+      {request, response}
+    end
+  end
+
+  defp check_response_budget(result, _limits), do: result
+
   defp build_response(request, response, control_options) do
     {body, streamed_too_large?, streamed?} = streamed_body(response)
     max_body_length = Map.get(control_options, :max_body_length)
 
     cond do
-      streamed_too_large? or
-          (max_body_length && is_binary(body) && byte_size(body) > max_body_length) ->
+      reason = response.private[:bubble_ex_error] ->
+        {:error, %Error{reason: reason}}
+
+      expired?(Map.get(control_options, :deadline)) ->
+        {:error, %Error{reason: :total_timeout}}
+
+      streamed_too_large? or body_too_large?(body, max_body_length) ->
         {:error, %Error{reason: :body_too_large, original: :body_too_large}}
 
       streamed? and encoded_response?(response) ->
@@ -307,11 +361,19 @@ defmodule BubbleEx.HTTP do
     end
   end
 
+  defp body_too_large?(body, max_body_length) do
+    max_body_length && is_binary(body) && byte_size(body) > max_body_length
+  end
+
   defp maybe_put_bounded_into(req_options, %{
          max_body_length: max_bytes,
-         bounded_body?: true
+         bounded_body?: true,
+         deadline: deadline
        }) do
-    Keyword.put(req_options, :into, bounded_into(max_bytes))
+    req_options
+    |> Keyword.put(:raw, true)
+    |> Keyword.put(:compressed, false)
+    |> Keyword.put(:into, bounded_into(max_bytes, deadline))
   end
 
   defp maybe_put_bounded_into(req_options, _control_options), do: req_options
@@ -330,7 +392,7 @@ defmodule BubbleEx.HTTP do
     Enum.any?(headers, fn {key, _} -> String.downcase(to_string(key)) == name end)
   end
 
-  defp bounded_into(max_bytes) do
+  defp bounded_into(max_bytes, deadline) do
     fn {:data, data}, {request, response} ->
       state =
         Map.get(response.private, :bubble_ex_body, %{chunks: [], size: 0, too_large?: false})
@@ -340,20 +402,39 @@ defmodule BubbleEx.HTTP do
       too_large? =
         state.too_large? or size > max_bytes or declared_too_large?(response, max_bytes)
 
+      error =
+        cond do
+          expired?(deadline) -> :total_timeout
+          encoded_response?(response) -> :unsupported_content_encoding
+          too_large? -> :body_too_large
+          true -> nil
+        end
+
       state =
-        if too_large?,
-          do: %{state | size: size, too_large?: true},
+        if error,
+          do: %{state | chunks: [], size: size, too_large?: true},
           else: %{state | chunks: [data | state.chunks], size: size}
 
-      response = %{response | private: Map.put(response.private, :bubble_ex_body, state)}
-      if too_large?, do: {:halt, {request, response}}, else: {:cont, {request, response}}
+      private =
+        response.private
+        |> Map.put(:bubble_ex_body, state)
+        |> Map.put(:bubble_ex_error, error)
+
+      response = %{response | private: private}
+      if error, do: {:halt, {request, response}}, else: {:cont, {request, response}}
     end
   end
 
+  defp expired?(nil), do: false
+  defp expired?(deadline), do: System.monotonic_time(:millisecond) >= deadline
+
   defp streamed_body(response) do
     case Map.get(response.private, :bubble_ex_body) do
-      %{chunks: chunks, too_large?: too_large?} ->
-        {chunks |> Enum.reverse() |> IO.iodata_to_binary(), too_large?, true}
+      %{too_large?: true} ->
+        {"", true, true}
+
+      %{chunks: chunks, too_large?: false} ->
+        {chunks |> Enum.reverse() |> IO.iodata_to_binary(), false, true}
 
       _ ->
         {response.body, false, false}
@@ -449,7 +530,10 @@ defmodule BubbleEx.HTTP do
   """
   @spec fetch_json(String.t(), keyword()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
   def fetch_json(url, opts \\ []) do
-    http_opts = build_http_options(opts)
+    http_opts =
+      build_http_options(
+        Keyword.put_new(opts, :max_body_length, BubbleEx.Config.apps_max_body_length(opts))
+      )
 
     case request_with_retry(:get, url, nil, [], http_opts, opts) do
       {:ok, %Response{status_code: 200, body: body}} ->
@@ -469,7 +553,10 @@ defmodule BubbleEx.HTTP do
   @spec post_json(String.t(), iodata(), headers(), keyword()) ::
           {:ok, map()} | {:error, BubbleEx.Error.t()}
   def post_json(url, body, headers \\ [], opts \\ []) do
-    http_opts = build_http_options(opts)
+    http_opts =
+      build_http_options(
+        Keyword.put_new(opts, :max_body_length, BubbleEx.Config.apps_max_body_length(opts))
+      )
 
     case request_with_retry(:post, url, body, headers, http_opts, opts) do
       {:ok, %Response{status_code: 200, body: response_body}} ->
@@ -500,6 +587,9 @@ defmodule BubbleEx.HTTP do
 
       {:ok, %Response{status_code: 200}} ->
         {:ok, %{is_redirect: false, location: nil}}
+
+      {:error, %Error{reason: reason}} ->
+        {:error, request_failed(url, reason)}
 
       _ ->
         {:error,
@@ -548,8 +638,13 @@ defmodule BubbleEx.HTTP do
     base = [
       timeout: BubbleEx.Config.apps_timeout(opts),
       recv_timeout: Keyword.get(opts, :recv_timeout, @default_recv_timeout),
+      pool_timeout: Keyword.get(opts, :pool_timeout, 5_000),
+      deadline:
+        System.monotonic_time(:millisecond) +
+          Keyword.get(opts, :total_timeout, BubbleEx.Config.get(:apps, :total_timeout, 30_000)),
       follow_redirect: Keyword.get(opts, :follow_redirect, true),
-      max_body_length: BubbleEx.Config.apps_max_body_length(opts)
+      max_body_length: BubbleEx.Config.apps_html_max_body_length(opts),
+      bounded_body: true
     ]
 
     # Carry a per-call :finch through to the low-level request so the high-level
@@ -561,9 +656,28 @@ defmodule BubbleEx.HTTP do
   end
 
   defp request_with_retry(method, url, body, headers, http_opts, opts) do
-    max_retries = Keyword.get(opts, :max_retries, @default_max_retries)
+    max_retries =
+      Keyword.get(
+        opts,
+        :max_retries,
+        BubbleEx.Config.get(:apps, :max_retries, @default_max_retries)
+      )
+
     base_delay = Keyword.get(opts, :retry_base_delay, @default_retry_base_delay)
-    do_request_with_retry(method, url, body, headers, http_opts, max_retries, base_delay, 0)
+
+    max_delay =
+      Keyword.get(opts, :max_retry_delay, BubbleEx.Config.get(:apps, :max_retry_delay, 1_000))
+
+    do_request_with_retry(
+      method,
+      url,
+      body,
+      headers,
+      http_opts,
+      max_retries,
+      {base_delay, max_delay},
+      0
+    )
   end
 
   defp do_request_with_retry(
@@ -573,41 +687,54 @@ defmodule BubbleEx.HTTP do
          headers,
          http_opts,
          max_retries,
-         base_delay,
+         {base_delay, max_delay} = delays,
          attempt
        ) do
-    result =
-      case method do
-        :get -> get(url, headers, http_opts)
-        :post -> post(url, body, headers, http_opts)
-      end
+    remaining = http_opts[:deadline] - System.monotonic_time(:millisecond)
 
-    if retryable_result?(result) and attempt < max_retries do
+    if remaining <= 0 do
+      {:error, %Error{reason: :total_timeout}}
+    else
+      # Keep connection options stable: Req creates a distinct pool per set
+      # of connection options, so elapsed-time values must never become keys.
+      bounded_opts =
+        Enum.reduce([:recv_timeout, :pool_timeout], http_opts, fn key, acc ->
+          Keyword.update!(acc, key, &min(&1, remaining))
+        end)
+
+      result = request(method, url, body, headers, bounded_opts)
       delay = retry_delay(result, base_delay, attempt)
 
-      Logger.debug(
-        "Retrying #{method} #{SafeUrl.safe(url)} in #{delay}ms after attempt #{attempt + 1}"
-      )
+      if retryable_result?(result) and attempt < max_retries and delay <= max_delay and
+           System.monotonic_time(:millisecond) + delay < http_opts[:deadline] do
+        Logger.debug(
+          "Retrying #{method} #{SafeUrl.safe(url)} in #{delay}ms after attempt #{attempt + 1}"
+        )
 
-      Process.sleep(delay)
+        Process.sleep(delay)
 
-      do_request_with_retry(
-        method,
-        url,
-        body,
-        headers,
-        http_opts,
-        max_retries,
-        base_delay,
-        attempt + 1
-      )
-    else
-      result
+        do_request_with_retry(
+          method,
+          url,
+          body,
+          headers,
+          http_opts,
+          max_retries,
+          delays,
+          attempt + 1
+        )
+      else
+        result
+      end
     end
   end
 
   defp retryable_result?({:ok, %Response{status_code: status_code}}),
     do: status_code in @transient_status_codes
+
+  defp retryable_result?({:error, %Error{reason: reason}})
+       when reason in [:body_too_large, :unsupported_content_encoding, :total_timeout],
+       do: false
 
   defp retryable_result?({:error, %Error{}}), do: true
   defp retryable_result?(_result), do: false

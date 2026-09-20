@@ -23,6 +23,11 @@ defmodule BubbleEx.Apps do
           | {:format, atom()}
           | {:external_types, :preserve | :opaque | :legacy}
           | {:external_type_capabilities, %{optional(atom()) => [atom()]}}
+          | {:html_max_body_length, pos_integer()}
+          | {:script_max_body_length, pos_integer()}
+          | {:max_body_length, pos_integer()}
+          | {:total_timeout, pos_integer()}
+          | {:max_retry_delay, non_neg_integer()}
           | {:max_retries, non_neg_integer()}
           | {:retry_base_delay, pos_integer()}
 
@@ -133,6 +138,13 @@ defmodule BubbleEx.Apps do
     * `:format` - Schema format to render; output lands in the `:schema` key. Defaults to none.
       One of `:dbml`, `:postgres`, `:sqlite`, `:tsql`, `:ecto`, `:zod`, `:xano`, `:convex`.
     * `:naming` - Naming strategy (`:proper` or `:id`).
+    * `:html_max_body_length` - Landing HTML streaming limit (default 5 MB).
+    * `:script_max_body_length` - Dynamic bundle streaming limit (default 100 MB).
+    * `:max_body_length` - Legacy explicit override for both size limits.
+    * `:total_timeout` - Per-response streaming/retry budget in milliseconds (default 30,000).
+      This is cooperative; queue consumers should also set an outer job timeout.
+    * `:max_retry_delay` - Largest delay allowed inside the caller (default 1,000 ms).
+    * `:max_retries` - HTTP retries (default 2); queue consumers should use 0.
   """
   @spec fetch_app(String.t(), [fetch_option()]) ::
           {:ok, app_attrs()} | {:error, term()}
@@ -170,7 +182,15 @@ defmodule BubbleEx.Apps do
   defp fetch_app_from_url(url, opts) do
     with {:ok, initial_payload} <- HTTP.fetch_page(url, opts),
          {:ok, dynamic_js_url} <- Parser.extract_dynamic_js_url(initial_payload),
-         {:ok, app_payload} <- HTTP.fetch_page(dynamic_js_url, opts),
+         {:ok, app_payload} <-
+           HTTP.fetch_page(
+             dynamic_js_url,
+             Keyword.put(
+               opts,
+               :max_body_length,
+               BubbleEx.Config.apps_script_max_body_length(opts)
+             )
+           ),
          {:ok, app_data} <- Parser.parse_app_json(app_payload.body) do
       attrs = build_app_attrs(app_data, initial_payload, url, opts)
       {:ok, attrs}
