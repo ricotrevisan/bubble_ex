@@ -15,11 +15,15 @@ Arbitrary public custom domains and CDNs are allowed. DNS errors are distinct
 from policy errors; high-level retries remain bounded by the shared deadline.
 The conservative classifier follows the IANA IPv4/IPv6 Special-Purpose Address
 Registries (https://www.iana.org/assignments/iana-ipv4-special-registry/ and
-https://www.iana.org/assignments/iana-ipv6-special-registry/): IPv4 special-use
-ranges are denied, including globally-reachable exceptions within those ranges;
+https://www.iana.org/assignments/iana-ipv6-special-registry/; CSVs checked during
+implementation): non-global IPv4 special-use ranges are denied, including
+globally-reachable exceptions within those ranges;
 IPv6 requires native 2000::/3 and excludes 2001::/23, documentation and 6to4.
 Mapped/compatible, NAT64, Teredo, ULA, link-local and multicast are denied.
 Update these explicit ranges when IANA allocates new special-use space.
+
+The locked library suite exercises Req 0.5.15 / Mint 1.10.1; the consumer suite
+exercises Req 0.7.4 / Mint 1.10.0. Both adapter interfaces are supported.
 
 Req's redirect step is replaced by a guarded step. The existing body/deadline
 check runs first, followed by syntax validation, downgrade credential rejection,

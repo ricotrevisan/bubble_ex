@@ -12,8 +12,10 @@ defmodule BubbleEx.HTTP.Transport do
     resolver = Keyword.get(opts, :resolver, resolver(request, opts))
 
     with true <- timeout > 0,
+         :ok <- socket_policy(opts),
          {:ok, {ip, host}} <- Destination.pin(URI.to_string(request.url), timeout, resolver),
          {:ok, profile} <- profile(opts),
+         :ok <- socket_policy(connect_options: profile),
          :ok <- proxy_policy(request.url, profile),
          true <- remaining(deadline) > 0 do
       request =
@@ -87,14 +89,22 @@ defmodule BubbleEx.HTTP.Transport do
     end
   end
 
+  defp socket_policy(opts) do
+    if opts[:unix_socket] || Keyword.get(opts, :connect_options, [])[:unix_socket],
+      do: {:error, :unsafe_destination},
+      else: :ok
+  end
+
   defp proxy_policy(%URI{scheme: "http"}, opts) do
-    if opts[:proxy], do: {:error, :unsafe_proxy}, else: :ok
+    if opts[:proxy] || opts[:proxy_headers] not in [nil, []],
+      do: {:error, :unsafe_proxy},
+      else: :ok
   end
 
   defp proxy_policy(_, opts) do
     case opts[:proxy] do
       nil ->
-        :ok
+        if opts[:proxy_headers] in [nil, []], do: :ok, else: {:error, :unsafe_proxy}
 
       {scheme, host, port, proxy_opts}
       when scheme in [:http, :https] and is_binary(host) and is_integer(port) and
