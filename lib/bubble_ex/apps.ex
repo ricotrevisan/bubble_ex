@@ -70,9 +70,11 @@ defmodule BubbleEx.Apps do
       #=> %{valid: false, bubble_id: nil, url: "https://theverge.com"}
   """
   @spec check(String.t()) :: check_result()
-  def check(url_or_bubble_id) do
+  def check(url_or_bubble_id), do: check_with_options(url_or_bubble_id, [])
+
+  defp check_with_options(url_or_bubble_id, opts) do
     with {:ok, url} <- Validator.validate_input(url_or_bubble_id),
-         {:ok, payload} <- HTTP.fetch_page(url) do
+         {:ok, payload} <- HTTP.fetch_page(url, opts) do
       %{
         valid: true,
         bubble_id: payload.bubble_id,
@@ -289,15 +291,16 @@ defmodule BubbleEx.Apps do
   end
 
   defp check_authenticated_versions(bubble_id, username, password) do
-    base_url = "https://#{username}:#{password}@#{bubble_id}.bubbleapps.io/"
+    base_url = "https://#{bubble_id}.bubbleapps.io/"
+    opts = [username: username, password: password]
 
     versions =
-      case check(base_url) do
+      case check_with_options(base_url, opts) do
         %{valid: true} -> ["live"]
         _ -> []
       end
 
-    case check(base_url <> "version-test") do
+    case check_with_options(base_url <> "version-test", opts) do
       %{valid: true} -> versions ++ ["test"]
       _ -> versions
     end
