@@ -1,5 +1,5 @@
 defmodule BubbleEx.HTTPBudgetTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   test "rejected redirect bodies never reach their destination" do
     for status <- [302, 307],
@@ -50,7 +50,7 @@ defmodule BubbleEx.HTTPBudgetTest do
           :gen_tcp.close(socket)
         end)
 
-      result = BubbleEx.HTTP.fetch_page("http://127.0.0.1:#{port}/", opts ++ [max_retries: 0])
+      result = BubbleEx.HTTP.fetch_page(public_url(port), opts ++ [max_retries: 0])
       Task.await(source)
       Task.await(target)
       refute_received {:destination_requested, ^marker}
@@ -58,6 +58,19 @@ defmodule BubbleEx.HTTPBudgetTest do
       assert {:error, %BubbleEx.Error{kind: :request_failed, context: %{reason: ^reason}}} =
                result
     end
+  end
+
+  # Only the test connector translates the already-validated address to a local
+  # fixture. Production classification and the real Mint socket path both run.
+  defp public_url(port) do
+    BubbleEx.HTTP.put_process_options(
+      resolver: fn _, _ -> {:ok, [{8, 8, 8, 8}]} end,
+      connect: fn scheme, {8, 8, 8, 8}, 80, options ->
+        Mint.HTTP.connect(scheme, {127, 0, 0, 1}, port, options)
+      end
+    )
+
+    "http://budget.example/"
   end
 
   defp listen do
@@ -114,7 +127,7 @@ defmodule BubbleEx.HTTPBudgetTest do
           :gen_tcp.close(socket)
         end)
 
-      url = "http://127.0.0.1:#{port}/"
+      url = public_url(port)
 
       result =
         case method do
@@ -283,7 +296,7 @@ defmodule BubbleEx.HTTPBudgetTest do
       end)
 
     assert {:error, %BubbleEx.Error{context: %{reason: :unsupported_content_encoding}}} =
-             BubbleEx.HTTP.fetch_page("http://127.0.0.1:#{port}/")
+             BubbleEx.HTTP.fetch_page(public_url(port))
 
     assert_receive {:request, request}
     assert request =~ "accept-encoding: identity"
@@ -291,10 +304,10 @@ defmodule BubbleEx.HTTPBudgetTest do
     Task.await(server)
   end
 
-  test "a named Finch pool supports the bounded high-level transport" do
-    start_supervised!(
-      {Finch, name: __MODULE__, pools: %{default: [conn_opts: [transport_opts: [timeout: 1000]]]}}
-    )
+  test "an explicitly registered named profile supports the bounded transport without a pool" do
+    previous = Application.get_env(:bubble_ex, :http_profiles, %{})
+    Application.put_env(:bubble_ex, :http_profiles, %{__MODULE__ => []})
+    on_exit(fn -> Application.put_env(:bubble_ex, :http_profiles, previous) end)
 
     {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
     {:ok, {_, port}} = :inet.sockname(listener)
@@ -314,7 +327,7 @@ defmodule BubbleEx.HTTPBudgetTest do
       end)
 
     assert {:ok, %{body: "ok"}} =
-             BubbleEx.HTTP.fetch_page("http://127.0.0.1:#{port}/",
+             BubbleEx.HTTP.fetch_page(public_url(port),
                finch: __MODULE__,
                max_retries: 0
              )
@@ -355,7 +368,7 @@ defmodule BubbleEx.HTTPBudgetTest do
     started = System.monotonic_time(:millisecond)
 
     assert {:error, %BubbleEx.Error{context: %{reason: :total_timeout}}} =
-             BubbleEx.HTTP.fetch_page("http://127.0.0.1:#{port}/",
+             BubbleEx.HTTP.fetch_page(public_url(port),
                total_timeout: 100,
                recv_timeout: 500,
                max_retries: 0
@@ -413,7 +426,7 @@ defmodule BubbleEx.HTTPBudgetTest do
       end)
 
     assert {:error, %BubbleEx.Error{context: %{reason: :body_too_large}}} =
-             BubbleEx.HTTP.fetch_page("http://127.0.0.1:#{port}/",
+             BubbleEx.HTTP.fetch_page(public_url(port),
                max_body_length: 4
              )
 

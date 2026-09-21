@@ -218,7 +218,15 @@ defmodule BubbleEx.Frontend.Export.Assets do
     end
   end
 
-  defp fetch_public(url, opts), do: do_fetch_public(url, opts, MapSet.new(), 0)
+  defp fetch_public(url, opts), do: do_fetch_public(url, with_deadline(opts), MapSet.new(), 0)
+
+  defp with_deadline(opts),
+    do:
+      Keyword.put_new(
+        opts,
+        :deadline,
+        System.monotonic_time(:millisecond) + Config.frontend_asset_timeout(opts)
+      )
 
   defp do_fetch_public(_url, _opts, _visited, hops) when hops > @max_redirects do
     {:error, asset_finding(nil, "asset redirect limit exceeded")}
@@ -238,56 +246,32 @@ defmodule BubbleEx.Frontend.Export.Assets do
     timeout = Config.frontend_asset_timeout(opts)
     max_bytes = Config.frontend_max_asset_bytes(opts)
 
-    case public_request(url, opts, timeout) do
-      {:ok, {request_url, headers, connection_options}} ->
-        response =
-          HTTP.get(
-            request_url,
-            headers,
-            [
-              follow_redirect: false,
-              recv_timeout: timeout,
-              timeout: timeout,
-              max_body_length: max_bytes,
-              bounded_body: true,
-              redact_values: credential_taints(opts)
-            ] ++ connection_options
-          )
+    # HTTP owns destination policy for same-origin and third-party assets alike.
+    # Keep the logical URL here for redirects, TLS identity and export evidence.
+    response =
+      HTTP.get(url, [],
+        follow_redirect: false,
+        deadline: opts[:deadline],
+        recv_timeout: timeout,
+        timeout: timeout,
+        max_body_length: max_bytes,
+        bounded_body: true,
+        redact_values: credential_taints(opts)
+      )
 
-        handle_public_response(response, url, opts, visited, normalized, hops, max_bytes)
-
-      {:error, _} ->
-        {:error, asset_finding(url, "asset destination did not resolve to a public address")}
-    end
+    handle_public_response(response, url, opts, visited, normalized, hops, max_bytes)
   end
 
-  defp public_request(url, opts, timeout) do
-    if same_origin_asset?(url, opts) do
-      {:ok, {url, [], []}}
-    else
-      case SafeUrl.pin_public_http_destination(url, min(timeout, 5_000)) do
-        {:ok, {request_url, hostname}} ->
-          {:ok,
-           {request_url, [{"host", hostname}],
-            [connect_options: [hostname: hostname, timeout: timeout]]}}
-
-        {:error, _} = error ->
-          error
-      end
-    end
-  end
-
-  defp same_origin_asset?(url, opts) do
-    case Keyword.get(opts, :fetch_context) do
-      %Context{page_url: page_url} ->
-        case SafeUrl.origin(page_url) do
-          {:ok, origin} -> SafeUrl.same_origin?(origin, url)
-          _ -> false
-        end
-
-      _ ->
-        false
-    end
+  defp handle_public_response(
+         {:error, %HTTP.Error{reason: :unsafe_destination}},
+         url,
+         _opts,
+         _visited,
+         _normalized,
+         _hops,
+         _max_bytes
+       ) do
+    {:error, asset_finding(url, "asset destination did not resolve to a public address")}
   end
 
   defp handle_public_response(
@@ -350,7 +334,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
   defp fetch_protected(url, opts) do
     %Context{auth: auth} = Keyword.fetch!(opts, :fetch_context)
-    do_fetch_protected(url, auth, opts, MapSet.new(), 0)
+    do_fetch_protected(url, auth, with_deadline(opts), MapSet.new(), 0)
   end
 
   defp do_fetch_protected(_url, _auth, _opts, _visited, hops) when hops > @max_redirects do
@@ -368,6 +352,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
       case HTTP.get(url, Auth.headers(auth, url),
              follow_redirect: false,
+             deadline: opts[:deadline],
              recv_timeout: timeout,
              timeout: timeout,
              max_body_length: max_bytes,

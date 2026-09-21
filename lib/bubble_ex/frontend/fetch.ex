@@ -432,6 +432,13 @@ defmodule BubbleEx.Frontend.Fetch do
   end
 
   defp fetch_redirects(url, auth, state, opts) do
+    opts =
+      Keyword.put_new(
+        opts,
+        :deadline,
+        System.monotonic_time(:millisecond) + Config.apps_timeout(opts)
+      )
+
     do_fetch_redirects(url, auth, state, opts, MapSet.new(), 0)
   end
 
@@ -504,6 +511,7 @@ defmodule BubbleEx.Frontend.Fetch do
 
     HTTP.get(url, headers,
       follow_redirect: false,
+      deadline: Keyword.get(opts, :deadline, System.monotonic_time(:millisecond) + timeout),
       timeout: timeout,
       recv_timeout: timeout,
       max_body_length: Config.apps_max_body_length(opts),
