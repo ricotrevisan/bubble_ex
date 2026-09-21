@@ -140,7 +140,13 @@ defmodule BubbleEx.HTTP do
         |> Req.new()
         |> Req.Request.append_request_steps(
           public_destination: fn request ->
-            %{request | adapter: &BubbleEx.HTTP.Transport.run(&1, transport_options)}
+            adapter =
+              if function_exported?(Req.Steps, :run_plug, 1),
+                do: &BubbleEx.HTTP.Transport.run/1,
+                else: BubbleEx.HTTP.Transport
+
+            request = Req.Request.put_private(request, :bubble_ex_transport, transport_options)
+            %{request | adapter: adapter}
           end
         )
         |> then(fn request ->

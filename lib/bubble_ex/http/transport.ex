@@ -4,8 +4,9 @@ defmodule BubbleEx.HTTP.Transport do
 
   # A request owns its socket. No per-host atoms, pools, registries or background
   # connections. The URL remains logical; only Mint's socket address is numeric.
-  @spec run(Req.Request.t(), keyword()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
-  def run(request, opts) do
+  @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
+  def run(request) do
+    opts = Req.Request.get_private(request, :bubble_ex_transport)
     deadline = Keyword.fetch!(opts, :deadline)
     timeout = min(Keyword.get(opts, :timeout, 5_000), remaining(deadline))
     resolver = Keyword.get(opts, :resolver, resolver(request, opts))
@@ -25,7 +26,7 @@ defmodule BubbleEx.HTTP.Transport do
         )
 
       cond do
-        request.options[:plug] -> Req.Steps.run_plug(request)
+        request.options[:plug] -> run_plug(request)
         opts[:test_adapter] -> opts[:test_adapter].(request)
         true -> owned_connection(request, ip, host, profile, opts)
       end
@@ -33,6 +34,12 @@ defmodule BubbleEx.HTTP.Transport do
       false -> {request, %Req.TransportError{reason: :total_timeout}}
       {:error, reason} -> {request, %Req.TransportError{reason: reason}}
     end
+  end
+
+  defp run_plug(request) do
+    if function_exported?(Req.Steps, :run_plug, 1),
+      do: apply(Req.Steps, :run_plug, [request]),
+      else: apply(Req.Plug, :run, [request])
   end
 
   # Req.Test is an in-memory transport, not an egress escape hatch. Domain names
