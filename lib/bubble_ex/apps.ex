@@ -133,7 +133,8 @@ defmodule BubbleEx.Apps do
     * `:include_db_diagram` - Include database diagram. Defaults to `false`.
     * `:try_test` - Try test version if live fails. Defaults to `true`.
     * `:username` - Username for authentication.
-    * `:password` - Password for authentication.
+    * `:password` - Password for authentication. Credentials are restricted to the
+      original logical origin, including independently fetched dynamic scripts.
     * `:dbml` - Generate DBML output. Defaults to `false`.
     * `:format` - Schema format to render; output lands in the `:schema` key. Defaults to none.
       One of `:dbml`, `:postgres`, `:sqlite`, `:tsql`, `:ecto`, `:zod`, `:xano`, `:convex`.
@@ -166,6 +167,10 @@ defmodule BubbleEx.Apps do
     do: %{bubble_id: nil, valid?: false, error: error}
 
   defp fetch_app_url(url_or_bubble_id, url, opts) do
+    # A discovered bundle is a new request, not an HTTP redirect. Keep the
+    # original origin even if the landing page itself redirects elsewhere.
+    opts = Keyword.put(opts, :credential_origin, url)
+
     case fetch_app_from_url(url, opts) do
       {:ok, attrs} ->
         {:ok, attrs}

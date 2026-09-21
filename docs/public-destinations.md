@@ -28,7 +28,11 @@ exercises Req 0.7.4 / Mint 1.10.0. Both adapter interfaces are supported.
 Req's redirect step is replaced by a guarded step. The existing body/deadline
 check runs first, followed by syntax validation, downgrade credential rejection,
 cross-origin cookie/auth removal and Req's established 301/302/303 vs 307/308
-method semantics. At most ten redirects are permitted; the adapter resolves and
+method semantics. Independently discovered Apps scripts retain the **original
+logical origin** as their credential scope, even after landing-page redirects.
+The transport strips authorization and cookies off-origin after Req auth steps,
+including HTTPS-to-HTTP scripts and configured Req auth; same-origin credentials
+remain intact. At most ten redirects are permitted; the adapter resolves and
 pins every hop anew, with the original deadline. Frontend manual redirect loops
 also retain one deadline. `Frontend.SafeUrl.pin_public_http_destination/3`
 delegates to this classifier; asset export no longer substitutes the logical URL
@@ -68,6 +72,22 @@ fetch/export assets and fonts. They all call `BubbleEx.HTTP`; no dependency
 sources are patched. Public HTTP tuple results and high-level budget contracts
 are retained. Production topology, token rotation and duplicate landing fetch
 removal are not included.
+
+`apps.total_timeout` remains **per response**, including that response's redirect
+and retry chain. Independent landing/script requests get fresh deadlines; queue
+workers, not a shorter HTTP-wide deadline, bound the complete operation.
+
+### Explicit resource follow-up (not fixed here)
+
+`Frontend.Fetch.request_once/4` still downloads before checking its size limit.
+Enabling `bounded_body: true` currently also rejects encoded responses, breaking
+the established authenticated gzip HTML/bundle contract (covered by
+`PrivateFrontendExportTest`'s decompression regression). Merely adding the flag is
+therefore not a compatible fix. Track a resource-audit follow-up for bounded
+streaming decompression, with both compressed-input and decoded-output caps,
+socket cancellation and real streaming gzip/identity regressions. Do not claim
+that frontend fetch has a streaming memory bound until that follow-up lands.
+Destination validation and finite request deadlines still apply to it.
 
 Offline verification: `mix test` includes policy matrices, mixed-family DNS,
 resolver cancellation, rebind pinning, redirect/auth/method rules, discovered
