@@ -211,35 +211,42 @@ defmodule BubbleEx.HTTP do
 
     if request.options[:redirect] != false and response.status in [301, 302, 303, 307, 308] and
          location do
-      with {:ok, uri} <- BubbleEx.HTTP.Destination.redirect(request.url, location) do
-        credentials? =
-          Enum.any?(["authorization", "cookie"], &(Req.Request.get_header(request, &1) != [])) or
-            not is_nil(request.body)
-
-        cond do
-          request.url.scheme == "https" and uri.scheme == "http" and credentials? ->
-            Req.Request.halt(request, %Req.TransportError{reason: :unsafe_redirect})
-
-          {request.url.scheme, request.url.host, request.url.port} !=
-              {uri.scheme, uri.host, uri.port} ->
-            request =
-              request
-              |> Req.Request.delete_header("cookie")
-              |> Req.Request.delete_header("authorization")
-              |> Req.Request.delete_option(:auth)
-              |> Req.Request.delete_option(:params)
-              |> Req.Request.put_option(:redirect_trusted, false)
-
-            Req.Steps.redirect({request, response})
-
-          true ->
-            Req.Steps.redirect(result)
-        end
-      else
-        _ -> Req.Request.halt(request, %Req.TransportError{reason: :unsafe_destination})
-      end
+      validate_redirect(request, response, location)
     else
       result
+    end
+  end
+
+  defp validate_redirect(request, response, location) do
+    case BubbleEx.HTTP.Destination.redirect(request.url, location) do
+      {:ok, uri} -> follow_safe_redirect(request, response, uri)
+      _ -> Req.Request.halt(request, %Req.TransportError{reason: :unsafe_destination})
+    end
+  end
+
+  defp follow_safe_redirect(request, response, uri) do
+    credentials? =
+      Enum.any?(["authorization", "cookie"], &(Req.Request.get_header(request, &1) != [])) or
+        not is_nil(request.body)
+
+    cond do
+      request.url.scheme == "https" and uri.scheme == "http" and credentials? ->
+        Req.Request.halt(request, %Req.TransportError{reason: :unsafe_redirect})
+
+      {request.url.scheme, request.url.host, request.url.port} !=
+          {uri.scheme, uri.host, uri.port} ->
+        request =
+          request
+          |> Req.Request.delete_header("cookie")
+          |> Req.Request.delete_header("authorization")
+          |> Req.Request.delete_option(:auth)
+          |> Req.Request.delete_option(:params)
+          |> Req.Request.put_option(:redirect_trusted, false)
+
+        Req.Steps.redirect({request, response})
+
+      true ->
+        Req.Steps.redirect({request, response})
     end
   end
 
@@ -370,30 +377,31 @@ defmodule BubbleEx.HTTP do
   # before redirect/retry steps can discard stream state or contact another URL.
   # Also check headers-only responses, which never invoke the data callback.
   defp check_response_budget({request, response}, limits) do
-    reason =
-      response.private[:bubble_ex_error] ||
-        cond do
-          expired?(limits.deadline) ->
-            :total_timeout
-
-          limits.bounded_body? and encoded_response?(response) ->
-            :unsupported_content_encoding
-
-          limits.max_body_length && declared_too_large?(response, limits.max_body_length) ->
-            :body_too_large
-
-          not is_nil(limits.max_body_length) and is_binary(response.body) and
-              byte_size(response.body) > limits.max_body_length ->
-            :body_too_large
-
-          true ->
-            nil
-        end
+    reason = response.private[:bubble_ex_error] || response_budget_error(response, limits)
 
     if reason do
       Req.Request.halt(request, %Req.TransportError{reason: reason})
     else
       {request, response}
+    end
+  end
+
+  defp response_budget_error(response, limits) do
+    cond do
+      expired?(limits.deadline) ->
+        :total_timeout
+
+      limits.bounded_body? and encoded_response?(response) ->
+        :unsupported_content_encoding
+
+      limits.max_body_length && declared_too_large?(response, limits.max_body_length) ->
+        :body_too_large
+
+      body_too_large?(response.body, limits.max_body_length) ->
+        :body_too_large
+
+      true ->
+        nil
     end
   end
 

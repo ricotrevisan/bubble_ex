@@ -81,11 +81,12 @@ defmodule BubbleEx.Frontend.SafeUrl do
           {:ok, {String.t(), String.t()}} | {:error, Error.t()}
   def pin_public_http_destination(url, timeout, resolver)
       when is_binary(url) and is_integer(timeout) and is_function(resolver, 2) do
-    with {:ok, {address, host}} <- BubbleEx.HTTP.Destination.pin(url, timeout, resolver) do
-      uri = URI.parse(url)
-      pinned_host = address |> :inet.ntoa() |> to_string()
-      {:ok, {URI.to_string(%{uri | host: pinned_host}), host}}
-    else
+    case BubbleEx.HTTP.Destination.pin(url, timeout, resolver) do
+      {:ok, {address, host}} ->
+        uri = URI.parse(url)
+        pinned_host = address |> :inet.ntoa() |> to_string()
+        {:ok, {URI.to_string(%{uri | host: pinned_host}), host}}
+
       _ ->
         {:error,
          Error.new(:invalid_input, "URL is not a public network destination", %{url: safe(url)})}

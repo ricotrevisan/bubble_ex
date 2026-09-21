@@ -92,17 +92,21 @@ defmodule BubbleEx.HTTP.Transport do
         {:ok, Keyword.get(opts, :connect_options, [])}
 
       name ->
-        case Map.fetch(Application.get_env(:bubble_ex, :http_profiles, %{}), name) do
-          {:ok, profile} ->
-            requested_proxy = Keyword.get(opts, :connect_options, [])[:proxy]
+        named_profile(name, opts)
+    end
+  end
 
-            if requested_proxy && requested_proxy != profile[:proxy],
-              do: {:error, :unsafe_proxy},
-              else: {:ok, profile}
+  defp named_profile(name, opts) do
+    case Map.fetch(Application.get_env(:bubble_ex, :http_profiles, %{}), name) do
+      {:ok, profile} ->
+        requested_proxy = Keyword.get(opts, :connect_options, [])[:proxy]
 
-          :error ->
-            {:error, :unknown_http_profile}
-        end
+        if requested_proxy && requested_proxy != profile[:proxy],
+          do: {:error, :unsafe_proxy},
+          else: {:ok, profile}
+
+      :error ->
+        {:error, :unknown_http_profile}
     end
   end
 
@@ -212,17 +216,23 @@ defmodule BubbleEx.HTTP.Transport do
     else
       case Mint.HTTP.recv(conn, 0, timeout) do
         {:ok, conn, events} ->
-          case events(events, ref, acc) do
-            {:cont, acc} -> receive_response(conn, ref, acc, opts)
-            {:halt, acc} -> acc
-          end
+          continue_response(events(events, ref, acc), conn, ref, opts)
 
         {:error, _conn, reason, _events} ->
-          error = if remaining(opts[:deadline]) <= 0, do: :total_timeout, else: reason
-          {request, transport_error(error)}
+          {request, receive_error(reason, opts[:deadline])}
       end
     end
   end
+
+  defp receive_error(reason, deadline) do
+    error = if remaining(deadline) <= 0, do: :total_timeout, else: reason
+    transport_error(error)
+  end
+
+  defp continue_response({:cont, acc}, conn, ref, opts),
+    do: receive_response(conn, ref, acc, opts)
+
+  defp continue_response({:halt, acc}, _conn, _ref, _opts), do: acc
 
   defp events([], _, acc), do: {:cont, acc}
 
