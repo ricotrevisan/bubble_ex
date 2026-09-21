@@ -61,6 +61,8 @@ defmodule BubbleEx.MixProject do
     # The BubbleEx.Secrets.Native adapter requires no external CLI.
     [
       {:req, "~> 0.5"},
+      # 1.10 CONNECT uses the numeric address, independently of TLS hostname.
+      {:mint, "~> 1.10"},
       {:jason, ">= 0.0.0"},
       {:floki, ">= 0.0.0"},
       {:telemetry, "~> 1.0"},

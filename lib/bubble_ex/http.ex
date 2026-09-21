@@ -6,9 +6,10 @@ defmodule BubbleEx.HTTP do
   `{:ok, %Response{}}` or `{:error, %Error{}}`, mirroring the shape used when
   the project depended on HTTPoison.
 
-  Requests are pooled by Req's underlying Finch adapter by default. To use a
-  dedicated pool, start a named `Finch` instance in your supervision tree and set
-  `config :bubble_ex, :finch, MyApp.Finch` (or pass `finch: MyApp.Finch` per call).
+  Every network hop resolves all addresses, rejects non-public destinations,
+  and owns a finite Mint connection pinned to a validated numeric address.
+  `finch:` names select explicitly registered `:http_profiles` connection options;
+  unknown names fail closed. No external Finch pool can override destination identity.
   """
 
   require Logger
@@ -71,7 +72,12 @@ defmodule BubbleEx.HTTP do
       [:http, :request],
       %{method: method, url: safe_request_url(url, options)},
       fn ->
-        result = do_request(method, url, body, headers, options)
+        result =
+          case BubbleEx.HTTP.Destination.parse(url) do
+            {:ok, _} -> do_request(method, url, body, headers, options)
+            {:error, reason} -> {:error, %Error{reason: reason}}
+          end
+
         {result, request_stop_metadata(result)}
       end
     )
@@ -102,6 +108,11 @@ defmodule BubbleEx.HTTP do
       |> merge_options(process_options)
       |> merge_options(options)
 
+    effective_options =
+      effective_options
+      |> Keyword.put_new(:deadline, System.monotonic_time(:millisecond) + 30_000)
+      |> Keyword.put(:finch, resolve_finch(effective_options))
+
     {req_options, header_overrides, control_options} = build_request_options(effective_options)
 
     req_options =
@@ -112,21 +123,38 @@ defmodule BubbleEx.HTTP do
       |> maybe_put_identity_encoding(control_options)
       |> maybe_put_body(method, body)
       |> Keyword.put_new(:decode_body, false)
-      |> Keyword.put_new(:retry, false)
+      |> Keyword.put(:retry, false)
+      |> Keyword.put(:max_redirects, min(Keyword.get(effective_options, :max_redirects, 10), 10))
       |> maybe_put_bounded_into(control_options)
 
-    req_options =
-      case resolve_finch(effective_options) do
-        nil -> req_options
-        # Connection options belong to the owner of a named pool. Req rejects
-        # them per request; receive/pool timeouts and body budgets still apply.
-        finch -> req_options |> Keyword.delete(:connect_options) |> Keyword.put(:finch, finch)
-      end
+    transport_options =
+      effective_options
+      |> Keyword.put(:connect_options, Keyword.get(req_options, :connect_options, []))
+      |> Keyword.put(:test_adapter, Keyword.get(process_options, :adapter))
+
+    req_options = Keyword.delete(req_options, :connect_options)
 
     try do
       request =
         req_options
         |> Req.new()
+        |> Req.Request.append_request_steps(
+          public_destination: fn request ->
+            adapter =
+              if function_exported?(Req.Steps, :run_plug, 1),
+                do: &BubbleEx.HTTP.Transport.run/1,
+                else: BubbleEx.HTTP.Transport
+
+            request = Req.Request.put_private(request, :bubble_ex_transport, transport_options)
+            %{request | adapter: adapter}
+          end
+        )
+        |> then(fn request ->
+          %{
+            request
+            | response_steps: Keyword.put(request.response_steps, :redirect, &safe_redirect/1)
+          }
+        end)
         |> Req.Request.prepend_response_steps(
           bubble_ex_budget: &check_response_budget(&1, control_options)
         )
@@ -167,18 +195,59 @@ defmodule BubbleEx.HTTP do
 
     req_options = merge_remaining_options(req_options, options)
 
-    control_options =
-      if max_body_length do
-        %{
-          max_body_length: max_body_length,
-          bounded_body?: bounded_body?,
-          deadline: Keyword.get(options, :deadline)
-        }
-      else
-        %{}
-      end
+    control_options = %{
+      max_body_length: max_body_length,
+      bounded_body?: bounded_body?,
+      deadline: Keyword.get(options, :deadline)
+    }
 
     {req_options, header_overrides, control_options}
+  end
+
+  # This replaces Req's unchecked redirect step. The adapter validates DNS anew
+  # for each hop; the prepended budget step runs before this can issue a redirect.
+  defp safe_redirect({request, response} = result) do
+    location = List.first(Req.Response.get_header(response, "location"))
+
+    if request.options[:redirect] != false and response.status in [301, 302, 303, 307, 308] and
+         location do
+      validate_redirect(request, response, location)
+    else
+      result
+    end
+  end
+
+  defp validate_redirect(request, response, location) do
+    case BubbleEx.HTTP.Destination.redirect(request.url, location) do
+      {:ok, uri} -> follow_safe_redirect(request, response, uri)
+      _ -> Req.Request.halt(request, %Req.TransportError{reason: :unsafe_destination})
+    end
+  end
+
+  defp follow_safe_redirect(request, response, uri) do
+    credentials? =
+      Enum.any?(["authorization", "cookie"], &(Req.Request.get_header(request, &1) != [])) or
+        not is_nil(request.body)
+
+    cond do
+      request.url.scheme == "https" and uri.scheme == "http" and credentials? ->
+        Req.Request.halt(request, %Req.TransportError{reason: :unsafe_redirect})
+
+      {request.url.scheme, request.url.host, request.url.port} !=
+          {uri.scheme, uri.host, uri.port} ->
+        request =
+          request
+          |> Req.Request.delete_header("cookie")
+          |> Req.Request.delete_header("authorization")
+          |> Req.Request.delete_option(:auth)
+          |> Req.Request.delete_option(:params)
+          |> Req.Request.put_option(:redirect_trusted, false)
+
+        Req.Steps.redirect({request, response})
+
+      true ->
+        Req.Steps.redirect({request, response})
+    end
   end
 
   defp maybe_put_body(opts, :get, _body), do: opts
@@ -210,7 +279,7 @@ defmodule BubbleEx.HTTP do
     maybe_put_connect_option(opts, :proxy, proxy)
   end
 
-  defp maybe_put_proxy(opts, _proxy), do: opts
+  defp maybe_put_proxy(opts, _proxy), do: maybe_put_connect_option(opts, :proxy, :unsupported)
 
   defp maybe_put_proxy_headers(opts, nil), do: opts
 
@@ -238,6 +307,9 @@ defmodule BubbleEx.HTTP do
   defp merge_remaining_options(req_options, options) do
     recognized = [
       :follow_redirect,
+      :credential_origin,
+      :resolver,
+      :connect,
       :timeout,
       :recv_timeout,
       :max_body_length,
@@ -301,28 +373,11 @@ defmodule BubbleEx.HTTP do
     :ok
   end
 
-  # Finch's stream halt alone does not halt Req's response pipeline. Reject
+  # A transport stream halt alone does not halt Req's response pipeline. Reject
   # before redirect/retry steps can discard stream state or contact another URL.
   # Also check headers-only responses, which never invoke the data callback.
-  defp check_response_budget({request, response}, %{bounded_body?: true} = limits) do
-    reason =
-      response.private[:bubble_ex_error] ||
-        cond do
-          expired?(limits.deadline) ->
-            :total_timeout
-
-          encoded_response?(response) ->
-            :unsupported_content_encoding
-
-          declared_too_large?(response, limits.max_body_length) ->
-            :body_too_large
-
-          is_binary(response.body) and byte_size(response.body) > limits.max_body_length ->
-            :body_too_large
-
-          true ->
-            nil
-        end
+  defp check_response_budget({request, response}, limits) do
+    reason = response.private[:bubble_ex_error] || response_budget_error(response, limits)
 
     if reason do
       Req.Request.halt(request, %Req.TransportError{reason: reason})
@@ -331,7 +386,24 @@ defmodule BubbleEx.HTTP do
     end
   end
 
-  defp check_response_budget(result, _limits), do: result
+  defp response_budget_error(response, limits) do
+    cond do
+      expired?(limits.deadline) ->
+        :total_timeout
+
+      limits.bounded_body? and encoded_response?(response) ->
+        :unsupported_content_encoding
+
+      limits.max_body_length && declared_too_large?(response, limits.max_body_length) ->
+        :body_too_large
+
+      body_too_large?(response.body, limits.max_body_length) ->
+        :body_too_large
+
+      true ->
+        nil
+    end
+  end
 
   defp build_response(request, response, control_options) do
     {body, streamed_too_large?, streamed?} = streamed_body(response)
@@ -462,6 +534,9 @@ defmodule BubbleEx.HTTP do
         end
     end
   end
+
+  defp build_error(%Req.TooManyRedirectsError{} = exception),
+    do: %Error{reason: :too_many_redirects, original: exception}
 
   defp build_error(exception) do
     reason =
@@ -640,19 +715,21 @@ defmodule BubbleEx.HTTP do
       recv_timeout: Keyword.get(opts, :recv_timeout, @default_recv_timeout),
       pool_timeout: Keyword.get(opts, :pool_timeout, 5_000),
       deadline:
-        System.monotonic_time(:millisecond) +
-          Keyword.get(opts, :total_timeout, BubbleEx.Config.get(:apps, :total_timeout, 30_000)),
+        Keyword.get_lazy(opts, :deadline, fn ->
+          System.monotonic_time(:millisecond) +
+            Keyword.get(opts, :total_timeout, BubbleEx.Config.get(:apps, :total_timeout, 30_000))
+        end),
       follow_redirect: Keyword.get(opts, :follow_redirect, true),
       max_body_length: BubbleEx.Config.apps_html_max_body_length(opts),
       bounded_body: true
     ]
 
-    # Carry a per-call :finch through to the low-level request so the high-level
-    # helpers honour `fetch_page(url, finch: MyApp.Finch)` and friends.
-    case Keyword.get(opts, :finch) do
-      nil -> base
-      finch -> Keyword.put(base, :finch, finch)
-    end
+    # Carry routing and the originating credential scope across independently
+    # fetched pages/scripts. The transport applies the scope after Req auth steps.
+    Enum.reduce(Keyword.take(opts, [:finch, :credential_origin]), base, fn
+      {_key, nil}, acc -> acc
+      {key, value}, acc -> Keyword.put(acc, key, value)
+    end)
   end
 
   defp request_with_retry(method, url, body, headers, http_opts, opts) do
@@ -733,7 +810,16 @@ defmodule BubbleEx.HTTP do
     do: status_code in @transient_status_codes
 
   defp retryable_result?({:error, %Error{reason: reason}})
-       when reason in [:body_too_large, :unsupported_content_encoding, :total_timeout],
+       when reason in [
+              :body_too_large,
+              :unsupported_content_encoding,
+              :total_timeout,
+              :unsafe_destination,
+              :unsafe_redirect,
+              :unsafe_proxy,
+              :unknown_http_profile,
+              :too_many_redirects
+            ],
        do: false
 
   defp retryable_result?({:error, %Error{}}), do: true

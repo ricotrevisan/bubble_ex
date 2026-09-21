@@ -70,9 +70,11 @@ defmodule BubbleEx.Apps do
       #=> %{valid: false, bubble_id: nil, url: "https://theverge.com"}
   """
   @spec check(String.t()) :: check_result()
-  def check(url_or_bubble_id) do
+  def check(url_or_bubble_id), do: check_with_options(url_or_bubble_id, [])
+
+  defp check_with_options(url_or_bubble_id, opts) do
     with {:ok, url} <- Validator.validate_input(url_or_bubble_id),
-         {:ok, payload} <- HTTP.fetch_page(url) do
+         {:ok, payload} <- HTTP.fetch_page(url, opts) do
       %{
         valid: true,
         bubble_id: payload.bubble_id,
@@ -133,7 +135,8 @@ defmodule BubbleEx.Apps do
     * `:include_db_diagram` - Include database diagram. Defaults to `false`.
     * `:try_test` - Try test version if live fails. Defaults to `true`.
     * `:username` - Username for authentication.
-    * `:password` - Password for authentication.
+    * `:password` - Password for authentication. Credentials are restricted to the
+      original logical origin, including independently fetched dynamic scripts.
     * `:dbml` - Generate DBML output. Defaults to `false`.
     * `:format` - Schema format to render; output lands in the `:schema` key. Defaults to none.
       One of `:dbml`, `:postgres`, `:sqlite`, `:tsql`, `:ecto`, `:zod`, `:xano`, `:convex`.
@@ -166,6 +169,10 @@ defmodule BubbleEx.Apps do
     do: %{bubble_id: nil, valid?: false, error: error}
 
   defp fetch_app_url(url_or_bubble_id, url, opts) do
+    # A discovered bundle is a new request, not an HTTP redirect. Keep the
+    # original origin even if the landing page itself redirects elsewhere.
+    opts = Keyword.put(opts, :credential_origin, url)
+
     case fetch_app_from_url(url, opts) do
       {:ok, attrs} ->
         {:ok, attrs}
@@ -284,15 +291,16 @@ defmodule BubbleEx.Apps do
   end
 
   defp check_authenticated_versions(bubble_id, username, password) do
-    base_url = "https://#{username}:#{password}@#{bubble_id}.bubbleapps.io/"
+    base_url = "https://#{bubble_id}.bubbleapps.io/"
+    opts = [username: username, password: password]
 
     versions =
-      case check(base_url) do
+      case check_with_options(base_url, opts) do
         %{valid: true} -> ["live"]
         _ -> []
       end
 
-    case check(base_url <> "version-test") do
+    case check_with_options(base_url <> "version-test", opts) do
       %{valid: true} -> versions ++ ["test"]
       _ -> versions
     end
