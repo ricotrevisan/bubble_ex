@@ -300,6 +300,7 @@ defmodule BubbleEx.HTTP do
   defp merge_remaining_options(req_options, options) do
     recognized = [
       :follow_redirect,
+      :credential_origin,
       :resolver,
       :connect,
       :timeout,
@@ -715,12 +716,12 @@ defmodule BubbleEx.HTTP do
       bounded_body: true
     ]
 
-    # Carry a per-call :finch through to the low-level request so the high-level
-    # helpers honour `fetch_page(url, finch: MyApp.Finch)` and friends.
-    case Keyword.get(opts, :finch) do
-      nil -> base
-      finch -> Keyword.put(base, :finch, finch)
-    end
+    # Carry routing and the originating credential scope across independently
+    # fetched pages/scripts. The transport applies the scope after Req auth steps.
+    Enum.reduce(Keyword.take(opts, [:finch, :credential_origin]), base, fn
+      {_key, nil}, acc -> acc
+      {key, value}, acc -> Keyword.put(acc, key, value)
+    end)
   end
 
   defp request_with_retry(method, url, body, headers, http_opts, opts) do

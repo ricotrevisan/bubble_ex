@@ -1,6 +1,7 @@
 defmodule BubbleEx.HTTP.Transport do
   @moduledoc false
   alias BubbleEx.HTTP.Destination
+  alias BubbleEx.Frontend.SafeUrl
 
   # A request owns its socket. No per-host atoms, pools, registries or background
   # connections. The URL remains logical; only Mint's socket address is numeric.
@@ -20,6 +21,7 @@ defmodule BubbleEx.HTTP.Transport do
          true <- remaining(deadline) > 0 do
       request =
         request
+        |> scope_credentials(opts[:credential_origin])
         |> Req.Request.delete_header("host")
         |> Req.Request.delete_header("proxy-authorization")
         |> Req.Request.put_header(
@@ -35,6 +37,21 @@ defmodule BubbleEx.HTTP.Transport do
     else
       false -> {request, %Req.TransportError{reason: :total_timeout}}
       {:error, reason} -> {request, %Req.TransportError{reason: reason}}
+    end
+  end
+
+  defp scope_credentials(request, nil), do: request
+
+  defp scope_credentials(request, original_url) do
+    with {:ok, origin} <- SafeUrl.origin(original_url),
+         true <- SafeUrl.same_origin?(origin, URI.to_string(request.url)) do
+      request
+    else
+      _ ->
+        request
+        |> Req.Request.delete_header("authorization")
+        |> Req.Request.delete_header("cookie")
+        |> Req.Request.delete_option(:auth)
     end
   end
 
