@@ -12,6 +12,29 @@ defmodule BubbleEx.AppsCredentialsTest do
     :ok
   end
 
+  test "authenticated version checks use explicit credentials without URL userinfo" do
+    username = "fixture-user"
+    password = "fixture:p@ss/word"
+    authorization = "Basic " <> Base.encode64("#{username}:#{password}")
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.host == "protected-app.bubbleapps.io"
+      assert conn.request_path in ["/", "/version-test"]
+
+      if Conn.get_req_header(conn, "authorization") == [authorization] do
+        send(self(), {:authenticated_version, conn.request_path})
+        bubble_response(conn, "protected page")
+      else
+        assert Conn.get_req_header(conn, "authorization") == []
+        Conn.send_resp(conn, 401, "authentication required")
+      end
+    end)
+
+    assert BubbleEx.Apps.check_versions("protected-app", username, password) == ["live", "test"]
+    assert_received {:authenticated_version, "/"}
+    assert_received {:authenticated_version, "/version-test"}
+  end
+
   test "same-origin discovered scripts retain original authentication" do
     stub_script("/package/dynamic_js", [@basic])
     assert {:ok, %{valid?: true}} = BubbleEx.fetch_app(@origin, @credentials)
