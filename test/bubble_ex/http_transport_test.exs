@@ -45,6 +45,33 @@ defmodule BubbleEx.HTTPTransportTest do
     refute_received {:origin, _}
   end
 
+  test "native IPv6 answers reach the connector as a numeric IPv6 address" do
+    loopback = {0, 0, 0, 0, 0, 0, 0, 1}
+    public = {0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111}
+    {:ok, listener} = :gen_tcp.listen(0, [:inet6, :binary, active: false, ip: loopback])
+    {:ok, {_, port}} = :inet.sockname(listener)
+    on_exit(fn -> :gen_tcp.close(listener) end)
+
+    server =
+      Task.async(fn ->
+        {:ok, socket} = :gen_tcp.accept(listener, 2000)
+        {:ok, request} = :gen_tcp.recv(socket, 0, 2000)
+        assert request =~ "host: public.example"
+        :gen_tcp.send(socket, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        :gen_tcp.close(socket)
+      end)
+
+    HTTP.put_process_options(
+      resolver: fn _, _ -> {:ok, [public]} end,
+      connect: fn :http, ^public, 80, options ->
+        Mint.HTTP.connect(:http, loopback, port, options)
+      end
+    )
+
+    assert {:ok, %{body: "ok"}} = HTTP.get("http://public.example/")
+    Task.await(server)
+  end
+
   test "wrong certificate fails even when caller requests verify_none" do
     {listener, port} = tls_listener("wrong")
 

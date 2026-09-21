@@ -140,6 +140,7 @@ defmodule BubbleEx.HTTPDestinationTest do
           {"file:///etc/passwd", :unsafe_destination},
           {"https://u:p@custom.example", :unsafe_destination},
           {"https://custom.example:444", :unsafe_destination},
+          {"//custom.example:0443/", :unsafe_destination},
           {"http://custom.example/", :unsafe_redirect}
         ] do
       Req.Test.stub(__MODULE__, fn conn ->
@@ -158,6 +159,69 @@ defmodule BubbleEx.HTTPDestinationTest do
     assert {:error, _} = HTTP.get("https://custom.example", [], max_redirects: 2)
     for _ <- 1..3, do: assert_received(:hop)
     refute_received :hop
+  end
+
+  test "each redirect revalidates DNS and policy rejection never retries" do
+    {:ok, count} = Agent.start_link(fn -> 0 end)
+
+    HTTP.put_process_options(
+      plug: {Req.Test, __MODULE__},
+      resolver: fn _, _ ->
+        attempt = Agent.get_and_update(count, &{&1, &1 + 1})
+        {:ok, [if(attempt == 0, do: {8, 8, 8, 8}, else: {127, 0, 0, 1})]}
+      end
+    )
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(self(), :public_hop)
+      conn |> Plug.Conn.put_resp_header("location", "/next") |> Plug.Conn.send_resp(302, "")
+    end)
+
+    assert {:error, %{context: %{reason: :unsafe_destination}}} =
+             HTTP.fetch_page("https://custom.example", retry_base_delay: 0)
+
+    assert Agent.get(count, & &1) == 2
+    assert_received :public_hop
+    refute_received :public_hop
+  end
+
+  test "DNS transient retries remain finite" do
+    {:ok, count} = Agent.start_link(fn -> 0 end)
+
+    HTTP.put_process_options(
+      resolver: fn _, _ ->
+        Agent.update(count, &(&1 + 1))
+        {:error, :dns_error}
+      end
+    )
+
+    assert {:error, %{context: %{reason: :dns_error}}} =
+             HTTP.fetch_page("https://custom.example", max_retries: 2, retry_base_delay: 0)
+
+    assert Agent.get(count, & &1) == 3
+  end
+
+  test "non-streamed size and deadline failures also halt before redirects" do
+    for kind <- [:size, :deadline] do
+      opts =
+        if kind == :size,
+          do: [max_body_length: 1],
+          else: [deadline: System.monotonic_time(:millisecond) + 100]
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(self(), :budget_hop)
+        if opts[:deadline], do: Process.sleep(125)
+
+        conn
+        |> Plug.Conn.put_resp_header("location", "/next")
+        |> Plug.Conn.send_resp(302, "large")
+      end)
+
+      assert {:error, %{reason: reason}} = HTTP.get("https://custom.example", [], opts)
+      assert reason in [:total_timeout, :body_too_large]
+      assert_received :budget_hop
+      refute_received :budget_hop
+    end
   end
 
   test "POST redirect semantics preserve only 307/308 bodies" do
