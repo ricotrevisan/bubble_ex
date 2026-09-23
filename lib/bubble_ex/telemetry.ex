@@ -48,8 +48,10 @@ defmodule BubbleEx.Telemetry do
     * stop metadata: adds `%{file_count, error}`
 
   Metadata is sanitized by `BubbleEx.SafeMetadata` before every emission:
-  URLs become origins, unknown strings and nested exception messages are redacted,
-  and exception events omit stacktraces (which may contain request arguments).
+  URLs become origins, unknown strings (including character lists/iodata) and
+  nested exception messages are redacted. Numeric arrays are conservatively
+  redacted because they can be Erlang character data; scalar numbers remain.
+  Exception events omit stacktraces (which may contain request arguments).
   Results and raised/thrown terms returned to the caller are unchanged. Monitoring
   metadata is not a fetch address and must never be used to retry a request.
 

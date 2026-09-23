@@ -40,7 +40,55 @@ defmodule BubbleEx.TelemetryHygieneTest do
     end
   end
 
+  test "charlist and iodata secrets are redacted in start stop and exception metadata" do
+    raw = %{
+      reason: ~c"token=synthetic-secret",
+      context: [~c"synthetic-secret", [?s, ?e, [?c, ?r], "et"]]
+    }
+
+    assert :ok = BubbleEx.Telemetry.span([:demo], raw, fn -> {:ok, raw} end)
+    assert_receive {[:bubble_ex, :demo, :start], start}
+    assert_receive {[:bubble_ex, :demo, :stop], stop}
+    refute inspect({start, stop}) =~ "synthetic-secret"
+    refute start.reason == raw.reason
+    assert catch_throw(BubbleEx.Telemetry.span([:demo], %{}, fn -> throw(raw) end)) == raw
+    assert_receive {[:bubble_ex, :demo, :exception], exception}
+    refute inspect(exception) =~ "synthetic-secret"
+    refute exception.reason.reason == raw.reason
+  end
+
+  test "tuples at the depth boundary preserve start, stop and exception semantics" do
+    for depth <- 0..10 do
+      nested =
+        Enum.reduce(1..depth//1, {:error, "synthetic-secret"}, fn _, acc -> %{nested: acc} end)
+
+      assert :result =
+               BubbleEx.Telemetry.span([:demo], %{nested: nested}, fn ->
+                 {:result, %{nested: nested}}
+               end)
+
+      assert_receive {[:bubble_ex, :demo, :start], start}
+      assert_receive {[:bubble_ex, :demo, :stop], stop}
+      refute inspect({start, stop}) =~ "synthetic-secret"
+      assert catch_throw(BubbleEx.Telemetry.span([:demo], %{}, fn -> throw(nested) end)) == nested
+      assert_receive {[:bubble_ex, :demo, :start], _}
+      assert_receive {[:bubble_ex, :demo, :exception], exception}
+      refute inspect(exception) =~ "synthetic-secret"
+    end
+  end
+
   test "deep structs and large metadata are bounded without failing emission" do
+    assert BubbleEx.SafeMetadata.sanitize(["synthetic-secret" | :tail]) == [
+             "[redacted]",
+             "[redacted]"
+           ]
+
+    assert %{__struct__: :unknown_struct, message: "[redacted]"} =
+             BubbleEx.SafeMetadata.sanitize(%{
+               __struct__: :unknown_struct,
+               message: "synthetic-secret"
+             })
+
     error =
       Enum.reduce(1..20, %RuntimeError{message: "synthetic-secret"}, fn _, acc ->
         %BubbleEx.Error{
