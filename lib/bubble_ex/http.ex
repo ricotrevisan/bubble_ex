@@ -124,6 +124,8 @@ defmodule BubbleEx.HTTP do
       |> maybe_put_body(method, body)
       |> Keyword.put_new(:decode_body, false)
       |> Keyword.put(:retry, false)
+      # Req's redirect message contains the raw upstream Location query.
+      |> Keyword.put(:redirect_log_level, false)
       |> Keyword.put(:max_redirects, min(Keyword.get(effective_options, :max_redirects, 10), 10))
       |> maybe_put_bounded_into(control_options)
 
@@ -785,7 +787,7 @@ defmodule BubbleEx.HTTP do
       if retryable_result?(result) and attempt < max_retries and delay <= max_delay and
            System.monotonic_time(:millisecond) + delay < http_opts[:deadline] do
         Logger.debug(
-          "Retrying #{method} #{SafeUrl.safe(url)} in #{delay}ms after attempt #{attempt + 1}"
+          "Retrying #{method} #{BubbleEx.SafeMetadata.identity(url)} in #{delay}ms after attempt #{attempt + 1}"
         )
 
         Process.sleep(delay)

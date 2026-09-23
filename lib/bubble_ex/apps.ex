@@ -243,7 +243,7 @@ defmodule BubbleEx.Apps do
     limit = Keyword.get(opts, :limit)
     url = build_obj_url(bubble_id, obj, limit)
 
-    Logger.info("Fetching obj endpoint: #{obj}")
+    Logger.info("Fetching obj endpoint")
     HTTP.fetch_json(url)
   end
 
@@ -260,7 +260,7 @@ defmodule BubbleEx.Apps do
   def fetch_wf_endpoint(bubble_id, workflow) do
     url = build_api_url(bubble_id, "wf/#{workflow}")
 
-    Logger.info("Fetching workflow endpoint: #{bubble_id}/#{workflow}")
+    Logger.info("Fetching workflow endpoint")
     HTTP.fetch_json(url)
   end
 
