@@ -47,6 +47,12 @@ defmodule BubbleEx.Telemetry do
     * start metadata: `%{out_dir}`
     * stop metadata: adds `%{file_count, error}`
 
+  Metadata is sanitized by `BubbleEx.SafeMetadata` before every emission:
+  URLs become origins, unknown strings and nested exception messages are redacted,
+  and exception events omit stacktraces (which may contain request arguments).
+  Results and raised/thrown terms returned to the caller are unchanged. Monitoring
+  metadata is not a fetch address and must never be used to retry a request.
+
   ## Measurements
 
     * `:start` → `%{system_time, monotonic_time}`
@@ -63,9 +69,49 @@ defmodule BubbleEx.Telemetry do
   """
   @spec span([atom()], map(), (-> {term(), map()})) :: term()
   def span(suffix, metadata, fun) when is_list(suffix) and is_map(metadata) do
-    :telemetry.span([:bubble_ex | suffix], metadata, fn ->
+    event = [:bubble_ex | suffix]
+    metadata = BubbleEx.SafeMetadata.sanitize(metadata)
+    started = System.monotonic_time()
+
+    :telemetry.execute(
+      event ++ [:start],
+      %{system_time: System.system_time(), monotonic_time: started},
+      metadata
+    )
+
+    try do
       {result, stop_metadata} = fun.()
-      {result, Map.merge(metadata, stop_metadata)}
-    end)
+
+      emit_finish(
+        event,
+        :stop,
+        started,
+        Map.merge(metadata, BubbleEx.SafeMetadata.sanitize(stop_metadata))
+      )
+
+      result
+    catch
+      kind, reason ->
+        # telemetry.span/3 would emit the raw exception and stack arguments before
+        # a caller can sanitize them. Preserve raising semantics, not that payload.
+        emit_finish(
+          event,
+          :exception,
+          started,
+          Map.merge(metadata, %{kind: kind, reason: BubbleEx.SafeMetadata.sanitize(reason)})
+        )
+
+        :erlang.raise(kind, reason, __STACKTRACE__)
+    end
+  end
+
+  defp emit_finish(event, phase, started, metadata) do
+    now = System.monotonic_time()
+
+    :telemetry.execute(
+      event ++ [phase],
+      %{duration: now - started, monotonic_time: now},
+      metadata
+    )
   end
 end
