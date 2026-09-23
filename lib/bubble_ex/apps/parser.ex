@@ -169,7 +169,7 @@ defmodule BubbleEx.Apps.Parser do
   def extract_plugins(app_data) do
     case get_in(app_data, ["settings", "client_safe", "plugins"]) do
       nil ->
-        Logger.info("No plugins found for app: #{app_data["_id"]}")
+        Logger.info("No plugins found for app")
         {:ok, :no_plugins}
 
       plugins when is_map(plugins) ->

@@ -9,6 +9,37 @@ defmodule BubbleEx.HTTPHygieneTest do
     :ok
   end
 
+  test "endpoint errors and labels never log nested bodies or query strings" do
+    for status <- [200, 403] do
+      Req.Test.stub(__MODULE__, fn conn ->
+        Conn.resp(conn, status, "https://example.com/?code=synthetic-secret")
+      end)
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert [] =
+                   BubbleEx.Apps.Enricher.enrich_obj_endpoints(%{
+                     "get" => ["records?code=synthetic-secret"],
+                     "app_data" => %{"appname" => "public-app"}
+                   })
+
+          BubbleEx.Apps.Enricher.add_workflow_samples(
+            %{public: %{get: [%{"name" => "workflow?code=synthetic-secret"}]}},
+            "public-app"
+          )
+
+          assert {:error, _} =
+                   BubbleEx.Apps.fetch_obj_endpoint("public-app", "records?code=synthetic-secret")
+
+          assert {:error, _} =
+                   BubbleEx.Apps.fetch_wf_endpoint("public-app", "workflow?code=synthetic-secret")
+        end)
+
+      assert log =~ "Failed to fetch obj endpoint"
+      refute log =~ "synthetic-secret"
+    end
+  end
+
   test "upstream bundle queries survive requests but not retry or redirect logs" do
     Req.Test.expect(__MODULE__, fn conn ->
       conn

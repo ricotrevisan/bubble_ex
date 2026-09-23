@@ -108,7 +108,10 @@ defmodule BubbleEx.Apps.Enricher do
         ]
 
       {:error, reason} ->
-        Logger.warning("Failed to fetch obj endpoint #{endpoint}: #{inspect(reason)}")
+        Logger.warning(
+          "Failed to fetch obj endpoint: #{inspect(BubbleEx.SafeMetadata.sanitize(reason))}"
+        )
+
         []
     end
   end
@@ -164,7 +167,7 @@ defmodule BubbleEx.Apps.Enricher do
 
           {:error, reason} ->
             Logger.warning(
-              "Failed to fetch workflow sample for #{workflow_name}: #{inspect(reason)}"
+              "Failed to fetch workflow sample: #{inspect(BubbleEx.SafeMetadata.sanitize(reason))}"
             )
 
             Map.put(endpoint, "sample_error", inspect(reason))
@@ -185,7 +188,10 @@ defmodule BubbleEx.Apps.Enricher do
   rescue
     error ->
       message = "Error parsing database diagram: #{Exception.message(error)}"
-      Logger.warning(message)
+
+      Logger.warning(
+        "Error parsing database diagram: #{inspect(BubbleEx.SafeMetadata.sanitize(error))}"
+      )
 
       if legacy?,
         do: attrs |> Map.put(:dbdiagram, message) |> Map.put(:dbml, message),
@@ -207,7 +213,7 @@ defmodule BubbleEx.Apps.Enricher do
 
       {:error, error} ->
         message = "Error generating DBML: #{inspect(error)}"
-        Logger.warning(message)
+        Logger.warning("Error generating DBML: #{inspect(BubbleEx.SafeMetadata.sanitize(error))}")
         attrs |> Map.put(:dbdiagram, message) |> Map.put(:dbml, message)
     end
   end
@@ -226,7 +232,10 @@ defmodule BubbleEx.Apps.Enricher do
         |> maybe_put_warnings(:schema_warnings, result.warnings)
 
       {:error, error} ->
-        Logger.warning("Could not render #{inspect(format)} schema: #{inspect(error)}")
+        Logger.warning(
+          "Could not render schema: #{inspect(BubbleEx.SafeMetadata.sanitize(error))}"
+        )
+
         attrs
     end
   end
