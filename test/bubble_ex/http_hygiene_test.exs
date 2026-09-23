@@ -1,0 +1,57 @@
+defmodule BubbleEx.HTTPHygieneTest do
+  use ExUnit.Case, async: false
+  import ExUnit.CaptureLog
+  alias Plug.Conn
+
+  setup do
+    BubbleEx.HTTP.put_process_options(plug: {Req.Test, __MODULE__})
+    on_exit(fn -> BubbleEx.HTTP.delete_process_options() end)
+    :ok
+  end
+
+  test "upstream bundle queries survive requests but not retry or redirect logs" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      conn
+      |> Conn.put_resp_header("x-bubble-test", "true")
+      |> Conn.resp(
+        200,
+        "<script src='/package/dynamic_js/d.js?code=synthetic-secret'></script>"
+      )
+    end)
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.query_string == "code=synthetic-secret"
+      Conn.resp(conn, 503, "busy")
+    end)
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.query_string == "code=synthetic-secret"
+
+      conn
+      |> Conn.put_resp_header("location", "https://cdn.example.com/bundle?code=synthetic-secret")
+      |> Conn.resp(302, "")
+    end)
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.host == "cdn.example.com"
+      assert conn.query_string == "code=synthetic-secret"
+
+      conn
+      |> Conn.put_resp_header("x-bubble-test", "true")
+      |> Conn.resp(
+        200,
+        ~S|const app = JSON.parse('{"_id":"public-app","settings":{"client_safe":{"plugins":{}}}}');|
+      )
+    end)
+
+    log =
+      capture_log([level: :debug], fn ->
+        assert {:ok, %{bubble_id: "public-app"}} =
+                 BubbleEx.Apps.fetch_app("public-app", retry_base_delay: 1)
+      end)
+
+    Req.Test.verify!(__MODULE__)
+    assert log =~ "Retrying"
+    refute log =~ "synthetic-secret"
+  end
+end

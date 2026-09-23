@@ -18,7 +18,7 @@ defmodule BubbleEx.SafeMetadata do
         {key, sanitize_field(key, item, depth + 1)}
       end)
 
-    struct(module, fields)
+    Map.put(fields, :__struct__, module)
   end
 
   defp sanitize(value, depth) when is_map(value) do
@@ -27,13 +27,31 @@ defmodule BubbleEx.SafeMetadata do
     |> Map.new(fn {key, item} -> {safe_key(key), sanitize_field(key, item, depth + 1)} end)
   end
 
-  defp sanitize(value, depth) when is_list(value),
-    do: value |> Enum.take(50) |> Enum.map(&sanitize(&1, depth + 1))
+  defp sanitize(value, depth) when is_list(value), do: sanitize_list(value, depth + 1, 50)
 
   defp sanitize(value, depth) when is_tuple(value),
-    do: value |> Tuple.to_list() |> sanitize(depth + 1) |> List.to_tuple()
+    do:
+      value
+      |> Tuple.to_list()
+      |> Enum.take(50)
+      |> Enum.map(&sanitize(&1, depth + 1))
+      |> List.to_tuple()
 
   defp sanitize(_value, _depth), do: "[redacted]"
+
+  # Exception reasons may contain improper lists; Enum cannot safely traverse them.
+  defp sanitize_list([], _depth, _remaining), do: []
+  defp sanitize_list(_value, _depth, 0), do: []
+
+  # Integers in lists may be Erlang character data (including nested iodata).
+  # Only scalar numeric measurements are retained; numeric arrays are redacted.
+  defp sanitize_list([head | tail], depth, remaining) when is_integer(head),
+    do: ["[redacted]" | sanitize_list(tail, depth, remaining - 1)]
+
+  defp sanitize_list([head | tail], depth, remaining),
+    do: [sanitize(head, depth) | sanitize_list(tail, depth, remaining - 1)]
+
+  defp sanitize_list(_tail, _depth, _remaining), do: ["[redacted]"]
 
   defp sanitize_field(key, value, _depth) when key in @identity_keys, do: identity(value)
 
