@@ -70,7 +70,10 @@ defmodule BubbleEx.Telemetry do
   @spec span([atom()], map(), (-> {term(), map()})) :: term()
   def span(suffix, metadata, fun) when is_list(suffix) and is_map(metadata) do
     event = [:bubble_ex | suffix]
-    metadata = BubbleEx.SafeMetadata.sanitize(metadata)
+
+    metadata =
+      metadata |> BubbleEx.SafeMetadata.sanitize() |> Map.put(:telemetry_span_context, make_ref())
+
     started = System.monotonic_time()
 
     :telemetry.execute(
@@ -86,7 +89,10 @@ defmodule BubbleEx.Telemetry do
         event,
         :stop,
         started,
-        Map.merge(metadata, BubbleEx.SafeMetadata.sanitize(stop_metadata))
+        Map.merge(
+          metadata,
+          BubbleEx.SafeMetadata.sanitize(Map.delete(stop_metadata, :telemetry_span_context))
+        )
       )
 
       result

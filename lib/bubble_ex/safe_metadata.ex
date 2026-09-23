@@ -13,7 +13,12 @@ defmodule BubbleEx.SafeMetadata do
   defp sanitize(value, _depth) when is_binary(value), do: "[redacted]"
 
   defp sanitize(%module{} = value, depth) do
-    struct(module, sanitize(Map.from_struct(value), depth + 1))
+    fields =
+      Map.new(Map.from_struct(value), fn {key, item} ->
+        {key, sanitize_field(key, item, depth + 1)}
+      end)
+
+    struct(module, fields)
   end
 
   defp sanitize(value, depth) when is_map(value) do

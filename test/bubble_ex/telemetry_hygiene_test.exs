@@ -40,6 +40,29 @@ defmodule BubbleEx.TelemetryHygieneTest do
     end
   end
 
+  test "deep structs and large metadata are bounded without failing emission" do
+    error =
+      Enum.reduce(1..20, %RuntimeError{message: "synthetic-secret"}, fn _, acc ->
+        %BubbleEx.Error{
+          kind: :request_failed,
+          message: "synthetic-secret",
+          context: %{error: acc}
+        }
+      end)
+
+    sanitized =
+      BubbleEx.SafeMetadata.sanitize(%{
+        error: error,
+        values: List.duplicate("synthetic-secret", 1000)
+      })
+
+    refute inspect(sanitized) =~ "synthetic-secret"
+    assert length(sanitized.values) == 50
+    assert :ok = BubbleEx.Telemetry.span([:demo], %{}, fn -> {:ok, sanitized} end)
+    assert_receive {[:bubble_ex, :demo, :start], %{telemetry_span_context: ref}}
+    assert_receive {[:bubble_ex, :demo, :stop], %{telemetry_span_context: ^ref}}
+  end
+
   test "nested stop errors and thrown exception metadata are safe without changing results" do
     raw = %{
       context: %{
