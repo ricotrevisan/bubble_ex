@@ -6,7 +6,7 @@ defmodule BubbleEx.Workflows do
   """
 
   alias BubbleEx.AppTree.Writer
-  alias BubbleEx.Error
+  alias BubbleEx.{CanonicalJson, Error}
   alias BubbleEx.Workflows.{Node, Report, Source}
 
   @doc """
@@ -188,7 +188,7 @@ defmodule BubbleEx.Workflows do
     with {:ok, inventory} <- inventory(payload) do
       {:ok,
        %{
-         json: Jason.encode!(ordered(inventory), pretty: true) <> "\n",
+         json: Jason.encode!(CanonicalJson.ordered(inventory), pretty: true) <> "\n",
          markdown: Report.render(inventory),
          inventory: inventory
        }}
@@ -227,21 +227,5 @@ defmodule BubbleEx.Workflows do
   defp json_list?(_), do: false
 
   # Unlike the frontend serializer, preserve explicit null values.
-  defp ordered(map) when is_map(map) do
-    map
-    |> Enum.map(fn {k, v} -> {to_string(k), ordered(v)} end)
-    |> Enum.sort_by(&elem(&1, 0))
-    |> Jason.OrderedObject.new()
-  end
-
-  defp ordered(list) when is_list(list), do: Enum.map(list, &ordered/1)
-  defp ordered(v), do: v
-
-  defp hash(payload),
-    do:
-      payload
-      |> ordered()
-      |> Jason.encode!()
-      |> then(&:crypto.hash(:sha256, &1))
-      |> Base.encode16(case: :lower)
+  defp hash(payload), do: CanonicalJson.sha256(payload)
 end

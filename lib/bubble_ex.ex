@@ -190,6 +190,10 @@ defmodule BubbleEx do
   @spec workflow_inventory(term()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
   def workflow_inventory(payload), do: BubbleEx.Workflows.inventory(payload)
 
+  @doc "Parses data-type privacy rules from decoded app JSON. See `BubbleEx.Privacy`."
+  @spec privacy_rules(term()) :: {:ok, BubbleEx.Privacy.t()} | {:error, BubbleEx.Error.t()}
+  def privacy_rules(app), do: BubbleEx.Privacy.parse(app)
+
   @doc "Exports supplied workflow data to JSON and Markdown in an empty output directory."
   @spec export_workflows(term(), String.t()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
   def export_workflows(payload, out_dir), do: BubbleEx.Workflows.export(payload, out_dir)

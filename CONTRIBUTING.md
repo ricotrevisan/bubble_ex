@@ -46,6 +46,14 @@ mix test --only fidelity
 # or: mix bubble.fidelity
 ```
 
+Real-app privacy/expression acceptance (tagged `:private_fixture`) reads a
+private local export and is also excluded by default. Never commit real-app
+captures:
+
+```bash
+BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
+```
+
 To run integration tests explicitly:
 
 ```bash

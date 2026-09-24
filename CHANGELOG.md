@@ -6,6 +6,14 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Parse data-type privacy rules through `BubbleEx.Privacy` /
+  `BubbleEx.privacy_rules/1`: conditions, permissions and per-field visibility.
+  Conditions and other Bubble expressions parse into a typed, stack-neutral AST
+  (`BubbleEx.Expression`) from both export and live-payload key forms, with raw
+  preservation and diagnostics for unmodeled pieces, source re-emission, and a
+  canonical hash for round-trip checks. `BubbleEx.CanonicalJson` now provides the
+  workflow inventory's canonical hash.
+
 - Workflow inventory schema v2 explains bounded conditions and create/change-data
   assignments in JSON and Markdown, with grouped operators, scoped source-backed
   names, literal/dynamic values, disabled flags, support states and separate

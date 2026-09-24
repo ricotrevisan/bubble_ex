@@ -84,6 +84,18 @@ _Avoid_: Association, foreign key
 A DBML representation of an app's data schema, including its data types, fields, and relationships.
 _Avoid_: Data schema, payload
 
+**Privacy rule**:
+A data type's condition-scoped grant of view, search, attachment, auto-binding and per-field visibility permissions. The `everyone` rule applies when no other rule matches.
+_Avoid_: Policy, RLS rule, permission
+
+**Expression AST**:
+The typed, stack-neutral tree of a Bubble expression (sources, field chains, operators). It describes Bubble semantics only; target stacks compile from it.
+_Avoid_: Rendered text, binding, Ash expression
+
+**Expression diagnostic**:
+A structured note, keyed by JSON pointer, about part of an expression or privacy rule that is unmodeled, malformed or unresolved. The unmodeled source is always kept verbatim in a raw node.
+_Avoid_: Error, finding
+
 ## Ecosystem
 
 **Plugin**:

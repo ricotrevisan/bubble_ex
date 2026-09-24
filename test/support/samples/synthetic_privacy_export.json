@@ -1,0 +1,400 @@
+{
+  "_id": "synthprivacy",
+  "user_types": {
+    "note": {
+      "deleted": true,
+      "display": "Note",
+      "fields": {
+        "body_text": {
+          "display": "Body",
+          "value": "text"
+        }
+      }
+    },
+    "role": {
+      "display": "Role",
+      "fields": {
+        "role_option_os_role": {
+          "display": "Role",
+          "value": "option.os_role"
+        },
+        "workspace_custom_workspace": {
+          "display": "Workspace",
+          "value": "custom.workspace"
+        }
+      }
+    },
+    "task": {
+      "comment": "Work items",
+      "display": "Task",
+      "exposed_api": true,
+      "fields": {
+        "public_boolean": {
+          "display": "Public",
+          "value": "boolean"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "watchers_list_user": {
+          "display": "Watchers",
+          "value": "list.user"
+        },
+        "workspace_custom_workspace": {
+          "display": "Workspace",
+          "value": "custom.workspace"
+        }
+      },
+      "privacy_role": {
+        "admins_": {
+          "comment": null,
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "is_slidable": false,
+              "name": "current_role_custom_role",
+              "next": {
+                "is_slidable": false,
+                "name": "role_option_os_role",
+                "next": {
+                  "args": {
+                    "is_slidable": false,
+                    "properties": {
+                      "option_set": "option.os_role",
+                      "option_value": "admin"
+                    },
+                    "type": "OneOptionValue"
+                  },
+                  "is_slidable": false,
+                  "name": "equals",
+                  "next": {
+                    "args": {
+                      "is_slidable": false,
+                      "next": {
+                        "is_slidable": false,
+                        "name": "admin_boolean",
+                        "next": {
+                          "is_slidable": false,
+                          "name": "is_true",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    },
+                    "is_slidable": false,
+                    "name": "or_",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Admins",
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": {
+              "0": "title_text"
+            },
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "everyone": {
+          "comment": null,
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "owner_": {
+          "comment": null,
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "is_slidable": false,
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "is_slidable": false,
+                  "type": "CurrentUser"
+                },
+                "is_slidable": false,
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": {
+              "0": "title_text",
+              "1": "public_boolean"
+            },
+            "create_api": true,
+            "delete_api": false,
+            "modify_api": true,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "unassigned_": {
+          "comment": null,
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "is_slidable": false,
+              "name": "workspace_custom_workspace",
+              "next": {
+                "is_slidable": false,
+                "name": "is_empty",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Unassigned",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "watchers_": {
+          "comment": null,
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "is_slidable": false,
+              "name": "logged_in",
+              "next": {
+                "args": {
+                  "is_slidable": false,
+                  "next": {
+                    "is_slidable": false,
+                    "name": "watchers_list_user",
+                    "next": {
+                      "args": {
+                        "is_slidable": false,
+                        "type": "CurrentUser"
+                      },
+                      "is_slidable": false,
+                      "name": "contains",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "is_slidable": false,
+                "name": "and_",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Watchers",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        },
+        "workspace_public_": {
+          "comment": null,
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "is_slidable": false,
+              "name": "current_role_custom_role",
+              "next": {
+                "is_slidable": false,
+                "name": "workspace_custom_workspace",
+                "next": {
+                  "args": {
+                    "is_slidable": false,
+                    "next": {
+                      "is_slidable": false,
+                      "name": "workspace_custom_workspace",
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "is_slidable": false,
+                  "name": "equals",
+                  "next": {
+                    "args": {
+                      "is_slidable": false,
+                      "next": {
+                        "is_slidable": false,
+                        "name": "public_boolean",
+                        "next": {
+                          "is_slidable": false,
+                          "name": "is_true",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "InjectedValue"
+                    },
+                    "is_slidable": false,
+                    "name": "and_",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "said": "c3ludGhwcml2YWN5",
+            "type": "CurrentUser"
+          },
+          "display": "Workspace public",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": true,
+            "view_fields": {
+              "0": "title_text",
+              "1": "workspace_custom_workspace"
+            }
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "admin_boolean": {
+          "display": "Admin",
+          "value": "boolean"
+        },
+        "current_role_custom_role": {
+          "display": "Current Role",
+          "value": "custom.role"
+        },
+        "workspaces_list_custom_workspace": {
+          "display": "Workspaces",
+          "value": "list.custom.workspace"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "comment": null,
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "workspaces_list_custom_workspace"
+            }
+          }
+        },
+        "self_": {
+          "comment": null,
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "args": {
+                "is_slidable": false,
+                "type": "InjectedValue"
+              },
+              "is_slidable": false,
+              "name": "equals",
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Self",
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": {
+              "0": "current_role_custom_role"
+            },
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "workspace": {
+      "display": "Workspace",
+      "exposed_api": false,
+      "fields": {
+        "members_list_user": {
+          "display": "Members",
+          "value": "list.user"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "comment": null,
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "name_text"
+            }
+          }
+        },
+        "members_": {
+          "comment": "Members see everything",
+          "condition": {
+            "is_slidable": false,
+            "next": {
+              "is_slidable": false,
+              "name": "members_list_user",
+              "next": {
+                "args": {
+                  "is_slidable": false,
+                  "type": "CurrentUser"
+                },
+                "is_slidable": false,
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Members",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    }
+  }
+}
