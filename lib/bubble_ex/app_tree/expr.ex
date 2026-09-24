@@ -7,6 +7,9 @@ defmodule BubbleEx.AppTree.Expr do
   where the subject node carries a `"next"` Message (operator) whose `"args"`
   is the operand. Everything unrecognized degrades explicitly (`:partial` /
   `:fallback`) — callers keep a pointer to the lossless raw JSON.
+
+  These are legacy text views. The typed source of truth for an expression is
+  `BubbleEx.Expression`.
   """
 
   @doc false

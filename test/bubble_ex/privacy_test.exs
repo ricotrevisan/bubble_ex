@@ -262,6 +262,10 @@ defmodule BubbleEx.PrivacyTest do
     assert hashes.(parse!()) == hashes.(parse!(@app |> Jason.encode!() |> Jason.decode!()))
   end
 
+  test "is exposed on the BubbleEx facade" do
+    assert BubbleEx.privacy_rules(@app) == Privacy.parse(@app)
+  end
+
   test "input errors" do
     assert {:error, %Error{kind: :invalid_input}} = Privacy.parse(%{"pages" => %{}})
     assert {:error, %Error{kind: :invalid_input}} = Privacy.parse(%{"user_types" => []})

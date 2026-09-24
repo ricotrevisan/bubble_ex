@@ -34,6 +34,8 @@ The codebase follows a modular architecture with clear separation of concerns:
   - `Apps.Validator` - Input validation and sanitization
   - `Apps.Enricher` - Data enhancement and transformation
 - **BubbleEx.Db** - Database structure analysis (`Db.Reader`) and schema encoders behind the `Db.Encoder` behaviour: `Db.Dbml` (DBML) and `Db.Sql.Postgres` (PostgreSQL DDL). New targets (SQLite, Convex) register in `Db.Encoder`.
+- **BubbleEx.Expression** - Typed, stack-neutral Bubble expression AST (both key forms), raw nodes + diagnostics for unmodeled pieces, source re-emission and canonical hashing
+- **BubbleEx.Privacy** - Data-type privacy rules (conditions as expression ASTs, permissions, per-field visibility)
 - **BubbleEx.Logs** - Log querying and filtering functionality
 - **BubbleEx.Server** - Asynchronous scan processing (GenServer on top of `Task.Supervisor`)
 - **BubbleEx.Frontend** - Modern-responsive frontend export: normalize a decoded

@@ -97,6 +97,30 @@ complete Bubble runtime or backend support. Reports retain private source values
 App-tree exports also include the inventory and a root workflow report.
 See [the input/output contract and verification](docs/workflows.md).
 
+## Privacy rules and expressions
+
+Parse data-type privacy rules from a decoded `.bubble` export:
+
+```elixir
+{:ok, %BubbleEx.Privacy{data_types: types, diagnostics: diagnostics}} =
+  BubbleEx.privacy_rules(app)
+```
+
+Each rule has its permissions (`view_all`, `search_for`, `auto_binding`,
+`view_attachments`, Data API flags, visible and auto-binding fields) and its
+condition as a typed, stack-neutral expression AST (`BubbleEx.Expression`).
+Expressions parse from both the export's readable keys and the live payload's
+compact keys; unmodeled pieces are kept verbatim and itemized as diagnostics.
+The live payload does not contain privacy rules, so its data types are reported
+as unavailable rather than rule-free.
+
+```elixir
+{:ok, %{ast: ast, diagnostics: []}} = BubbleEx.Expression.parse(condition)
+{:ok, text} = BubbleEx.Expression.render(ast)
+{:ok, json} = BubbleEx.Expression.to_bubble(ast)   # same canonical JSON as the source
+{:ok, hash} = BubbleEx.Expression.sha256(ast)      # independent of key spelling
+```
+
 ## Browser snapshot export
 
 Capture the rendered initial view of one anonymous page, including loaded
