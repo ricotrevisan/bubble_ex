@@ -118,7 +118,7 @@ as unavailable rather than rule-free.
 {:ok, %{ast: ast, diagnostics: []}} = BubbleEx.Expression.parse(condition)
 {:ok, text} = BubbleEx.Expression.render(ast)
 {:ok, json} = BubbleEx.Expression.to_bubble(ast)   # same canonical JSON as the source
-{:ok, hash} = BubbleEx.Expression.sha256(ast)      # independent of key spelling
+{:ok, hash} = BubbleEx.Expression.sha256(ast)      # ignores key spelling and schema captions
 ```
 
 ## Browser snapshot export

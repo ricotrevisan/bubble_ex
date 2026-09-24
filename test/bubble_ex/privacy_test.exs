@@ -42,6 +42,52 @@ defmodule BubbleEx.PrivacyTest do
       assert privacy.diagnostics == []
     end
 
+    test "type-level API switch, deleted flag and comment" do
+      privacy = parse!()
+
+      assert %DataType{exposed_api: true, comment: "Work items", deleted: nil} =
+               type!(privacy, "task")
+
+      assert %DataType{exposed_api: false} = type!(privacy, "workspace")
+      assert %DataType{deleted: true, exposed_api: nil} = type!(privacy, "note")
+    end
+
+    test "unknown or ill-typed type-level members are kept and diagnosed" do
+      app =
+        @app
+        |> put_in(["user_types", "task", "exposed_api"], "yes")
+        |> put_in(["user_types", "task", "mystery"], 1)
+
+      privacy = parse!(app)
+
+      assert %DataType{exposed_api: nil, extra: %{"exposed_api" => "yes", "mystery" => 1}} =
+               type!(privacy, "task")
+
+      assert Enum.map(privacy.diagnostics, &{&1.code, &1.path}) == [
+               {:uninterpreted_field, "/user_types/task/exposed_api"},
+               {:uninterpreted_field, "/user_types/task/mystery"}
+             ]
+    end
+
+    test "an empty privacy_role is the same as none" do
+      app = put_in(@app, ["user_types", "task", "privacy_role"], %{})
+      assert %DataType{availability: :none, rules: []} = type!(parse!(app), "task")
+      assert parse!(app).diagnostics == []
+    end
+
+    test "a rule set without the everyone rule is diagnosed" do
+      app = update_in(@app, ["user_types", "task", "privacy_role"], &Map.delete(&1, "everyone"))
+
+      assert [
+               %Diagnostic{
+                 code: :missing_default_rule,
+                 severity: :warning,
+                 path: "/user_types/task/privacy_role"
+               }
+             ] =
+               parse!(app).diagnostics
+    end
+
     test "live payload types (compact keys) are unavailable, not rule-free" do
       app = %{"user_types" => %{"task" => %{"%d" => "Task", "%f3" => %{}}}}
       assert %DataType{availability: :unavailable, name: "Task"} = type!(parse!(app), "task")
@@ -98,7 +144,8 @@ defmodule BubbleEx.PrivacyTest do
              } =
                rule!(privacy, "task", "admins_").condition
 
-      assert %Compare{right: %ThisThing{type: "user"}} = rule!(privacy, "user", "self_").condition
+      assert %Compare{right: %ThisThing{type: "user", binder: :rule_record}} =
+               rule!(privacy, "user", "self_").condition
     end
 
     test "every condition round-trips to its source JSON" do

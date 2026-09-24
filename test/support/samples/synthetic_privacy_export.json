@@ -2,6 +2,7 @@
   "_id": "synthprivacy",
   "user_types": {
     "note": {
+      "deleted": true,
       "display": "Note",
       "fields": {
         "body_text": {
@@ -24,7 +25,9 @@
       }
     },
     "task": {
+      "comment": "Work items",
       "display": "Task",
+      "exposed_api": true,
       "fields": {
         "public_boolean": {
           "display": "Public",
@@ -338,6 +341,7 @@
     },
     "workspace": {
       "display": "Workspace",
+      "exposed_api": false,
       "fields": {
         "members_list_user": {
           "display": "Members",

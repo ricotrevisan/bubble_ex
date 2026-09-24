@@ -14,8 +14,14 @@ defmodule BubbleEx.Expression do
 
   Unmodeled operators and sources are kept verbatim as `Ast.Raw` nodes and
   itemized in `diagnostics`; parsing never drops input. `to_bubble/1`
-  re-emits the source JSON, and `canonical/1` / `sha256/1` give a key-order-
-  and spelling-independent identity for fidelity checks.
+  re-emits the source JSON (its canonical JSON equals the source's).
+
+  `canonical/1` / `sha256/1` identify what an expression says. They ignore
+  key order, the readable/compact spelling of every key in the alias table
+  (also inside verbatim payloads such as raw operators and scope references),
+  editor metadata, schema captions and inferred types, and `1` vs `1.0`
+  (JavaScript has one number type). Compact keys outside the alias table
+  inside verbatim payloads are compared as supplied.
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -29,6 +35,7 @@ defmodule BubbleEx.Expression do
   @type parse_option ::
           {:schema, Schema.t()}
           | {:this_type, String.t() | nil}
+          | {:this_binder, Ast.ThisThing.binder()}
           | {:path, [String.t() | integer()]}
 
   @doc """
@@ -40,12 +47,20 @@ defmodule BubbleEx.Expression do
       used to type field chains. Without it, accessors on records are kept as
       diagnosed `Ast.Property` nodes.
     * `:this_type` - Bubble type of `This Thing` (e.g. `"custom.task"`).
+    * `:this_binder` - what `This Thing` refers to at the top level:
+      `:rule_record` or `:context` (default). Search and filter constraints
+      always re-bind it to `:filter_item`.
     * `:path` - source path of the expression, prefixed to diagnostic pointers.
   """
   @spec parse(term(), [parse_option()]) :: {:ok, t()} | {:error, Error.t()}
   def parse(raw, opts \\ []) do
     if json?(raw) do
-      ctx = %{schema: Keyword.get(opts, :schema, %{}), this_type: Keyword.get(opts, :this_type)}
+      ctx = %{
+        schema: Keyword.get(opts, :schema, %{}),
+        this_type: Keyword.get(opts, :this_type),
+        this_binder: Keyword.get(opts, :this_binder, :context)
+      }
+
       {ast, diagnostics} = Parser.parse(raw, Keyword.get(opts, :path, []), ctx)
       {:ok, %__MODULE__{ast: ast, diagnostics: diagnostics}}
     else
@@ -55,7 +70,13 @@ defmodule BubbleEx.Expression do
 
   @doc "Re-emits Bubble JSON for an AST, in the key form it was parsed from."
   @spec to_bubble(Ast.t()) :: {:ok, term()} | {:error, Error.t()}
-  def to_bubble(ast), do: with_node(ast, &Encoder.encode/1)
+  def to_bubble(ast) do
+    case with_node(ast, &Encoder.validate/1) do
+      {:ok, :ok} -> {:ok, Encoder.encode(ast)}
+      {:ok, {:error, message}} -> {:error, Error.new(:invalid_input, message)}
+      {:error, _} = error -> error
+    end
+  end
 
   @doc "Readable text for an AST."
   @spec render(Ast.t()) :: {:ok, String.t()} | {:error, Error.t()}
@@ -65,7 +86,7 @@ defmodule BubbleEx.Expression do
   @spec to_map(Ast.t()) :: {:ok, map()} | {:error, Error.t()}
   def to_map(ast), do: with_node(ast, &Semantic.to_map/1)
 
-  @doc "Canonical JSON of `to_map/1` (sorted keys, preserved nulls)."
+  @doc "Canonical JSON of `to_map/1` (sorted keys, preserved nulls). See the moduledoc for what it ignores."
   @spec canonical(Ast.t()) :: {:ok, String.t()} | {:error, Error.t()}
   def canonical(ast), do: with_node(ast, &(&1 |> Semantic.to_map() |> CanonicalJson.encode()))
 

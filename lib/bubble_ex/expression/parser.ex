@@ -32,7 +32,11 @@ defmodule BubbleEx.Expression.Parser do
 
   @node_keys [:type, :properties, :next, :name, :args, :entries]
 
-  @type ctx :: %{schema: Schema.t(), this_type: String.t() | nil}
+  @type ctx :: %{
+          schema: Schema.t(),
+          this_type: String.t() | nil,
+          this_binder: ThisThing.binder()
+        }
   @type result :: {Ast.t(), [Diagnostic.t()]}
 
   @spec parse(term(), list(), ctx()) :: result()
@@ -59,7 +63,7 @@ defmodule BubbleEx.Expression.Parser do
   defp source("CurrentUser", raw, path, _), do: simple(%CurrentUser{}, raw, path)
 
   defp source("InjectedValue", raw, path, ctx),
-    do: simple(%ThisThing{type: ctx.this_type}, raw, path)
+    do: simple(%ThisThing{type: ctx.this_type, binder: ctx.this_binder}, raw, path)
 
   defp source("Empty", raw, path, _), do: simple(%Empty{}, raw, path)
   defp source("TextExpression", raw, path, ctx), do: text(raw, path, ctx)
@@ -255,7 +259,8 @@ defmodule BubbleEx.Expression.Parser do
 
     Constraints.filter(props, path ++ [meta.keys.properties], subject, meta, %{
       ctx
-      | this_type: item_type
+      | this_type: item_type,
+        this_binder: :filter_item
     })
   end
 

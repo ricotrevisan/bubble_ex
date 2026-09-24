@@ -4,6 +4,10 @@ defmodule BubbleEx.Privacy.Rule do
   `permissions`; the `everyone` rule (`default?: true`) has no condition and
   applies to users no other rule matches. `path` is the rule's JSON pointer in
   the supplied app JSON.
+
+  Rules are not ordered or exclusive: a user receives the union (logical OR)
+  of the permissions of every rule whose condition they match, including the
+  union of their visible and auto-binding field lists.
   """
 
   alias BubbleEx.Expression.{Ast, Diagnostic}

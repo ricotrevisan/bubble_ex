@@ -17,7 +17,7 @@ defmodule BubbleEx.Expression.Constraints do
          {prop_keys, options} = Keys.split(props, [:constraints, :type_to_find]),
          data_type = Keys.value(props, :type_to_find),
          true <- is_binary(data_type) or is_nil(data_type),
-         item_ctx = %{ctx | this_type: data_type},
+         item_ctx = %{ctx | this_type: data_type, this_binder: :filter_item},
          {:ok, constraints, meta, diags} <- collection(props, path ++ [pkey], item_ctx) do
       node = %Search{
         data_type: data_type,

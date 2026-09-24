@@ -52,43 +52,100 @@ defmodule BubbleEx.Privacy do
 
   def parse(_), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
 
-  defp data_type(id, type, schema) do
+  defp data_type(id, type, schema) when is_map(type) do
     path = ["user_types", id]
-    base = %DataType{id: id, availability: :unavailable, path: Diagnostic.pointer(path)}
+    {attrs, diags} = attributes(type, path)
 
-    case type do
-      %{"privacy_role" => rules} when is_map(rules) ->
-        rules =
-          rules
-          |> Enum.sort_by(fn {rid, _} -> {rid == "everyone", rid} end)
-          |> Enum.map(fn {rid, rule} ->
-            rule(rid, rule, path ++ ["privacy_role", rid], id, schema)
-          end)
+    base =
+      struct!(
+        DataType,
+        [id: id, availability: :unavailable, path: Diagnostic.pointer(path)] ++ attrs
+      )
 
-        %{base | name: name(type), availability: :present, rules: rules}
+    {base, more} = rules(Map.get(type, "privacy_role", :absent), type, base, path, schema)
+    %{base | diagnostics: diags ++ more}
+  end
 
-      %{"privacy_role" => other} ->
-        diag =
-          Diagnostic.new(
-            :malformed_node,
-            path ++ ["privacy_role"],
-            "privacy_role must be an object: #{inspect(other)}"
-          )
+  defp data_type(id, _type, _schema) do
+    path = ["user_types", id]
 
-        %{base | name: name(type), diagnostics: [diag]}
+    %DataType{
+      id: id,
+      availability: :unavailable,
+      path: Diagnostic.pointer(path),
+      diagnostics: [Diagnostic.new(:malformed_node, path, "data type must be an object")]
+    }
+  end
 
-      %{} ->
-        %{
-          base
-          | name: name(type),
-            availability: if(export_shape?(type), do: :none, else: :unavailable)
-        }
+  # An export lists a rule-free type without `privacy_role` (or with an empty
+  # one); a compact live-payload type never carries rules at all.
+  defp rules(rules, type, base, _path, _schema) when rules == :absent or rules == %{},
+    do: {%{base | availability: if(export_shape?(type), do: :none, else: :unavailable)}, []}
 
-      _ ->
-        %{
-          base
-          | diagnostics: [Diagnostic.new(:malformed_node, path, "data type must be an object")]
-        }
+  defp rules(rules, _type, base, path, schema) when is_map(rules) do
+    parsed =
+      rules
+      |> Enum.sort_by(fn {rid, _} -> {rid == "everyone", rid} end)
+      |> Enum.map(fn {rid, rule} ->
+        rule(rid, rule, path ++ ["privacy_role", rid], base.id, schema)
+      end)
+
+    missing_default =
+      if Map.has_key?(rules, "everyone"),
+        do: [],
+        else: [
+          Diagnostic.new(:missing_default_rule, path ++ ["privacy_role"], "no everyone rule")
+        ]
+
+    {%{base | availability: :present, rules: parsed}, missing_default}
+  end
+
+  defp rules(other, _type, base, path, _schema) do
+    message = "privacy_role must be an object: #{inspect(other)}"
+    {base, [Diagnostic.new(:malformed_node, path ++ ["privacy_role"], message)]}
+  end
+
+  @type_members ~w(display %d fields %f3 privacy_role comment exposed_api deleted %del)
+
+  # Type-level members other than fields and rules. Unknown or ill-typed ones
+  # are kept in `extra` with a diagnostic.
+  defp attributes(type, path) do
+    {flags, flag_diags, extra} =
+      Enum.reduce([exposed_api: ["exposed_api"], deleted: ["deleted", "%del"]], {[], [], %{}}, fn
+        {field, keys}, acc -> flag(type, field, keys, path, acc)
+      end)
+
+    unknown = type |> Map.drop(@type_members) |> Enum.sort()
+
+    unknown_diags =
+      for {key, _} <- unknown,
+          do:
+            Diagnostic.new(
+              :uninterpreted_field,
+              path ++ [key],
+              "unexpected data type member #{inspect(key)}"
+            )
+
+    attrs = [
+      name: name(type),
+      comment: text(type["comment"]),
+      extra: Map.merge(extra, Map.new(unknown))
+    ]
+
+    {attrs ++ flags, flag_diags ++ unknown_diags}
+  end
+
+  defp flag(type, field, keys, path, {flags, diags, extra}) do
+    case Enum.find(keys, &Map.has_key?(type, &1)) do
+      nil ->
+        {flags, diags, extra}
+
+      key when is_boolean(:erlang.map_get(key, type)) ->
+        {[{field, Map.fetch!(type, key)} | flags], diags, extra}
+
+      key ->
+        diag = Diagnostic.new(:uninterpreted_field, path ++ [key], "expected a boolean")
+        {flags, [diag | diags], Map.put(extra, key, Map.fetch!(type, key))}
     end
   end
 
@@ -118,7 +175,12 @@ defmodule BubbleEx.Privacy do
   end
 
   defp condition(%{"condition" => raw}, path, type_id, schema, _id) when not is_nil(raw) do
-    opts = [schema: schema, this_type: Schema.thing_type(type_id), path: path ++ ["condition"]]
+    opts = [
+      schema: schema,
+      this_type: Schema.thing_type(type_id),
+      this_binder: :rule_record,
+      path: path ++ ["condition"]
+    ]
 
     case Expression.parse(raw, opts) do
       {:ok, %Expression{ast: ast, diagnostics: diags}} ->

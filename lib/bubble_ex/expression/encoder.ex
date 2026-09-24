@@ -31,6 +31,48 @@ defmodule BubbleEx.Expression.Encoder do
     ThisThing
   }
 
+  @doc """
+  Checks that every operator applies to a subject that encodes to an object:
+  Bubble chains operators through the subject's `next` link, so an operator
+  on a literal (or on a raw non-object) cannot be represented.
+  """
+  @spec validate(struct()) :: :ok | {:error, String.t()}
+  def validate(node) do
+    case unencodable(node) do
+      nil ->
+        :ok
+
+      %module{} ->
+        {:error, "#{inspect(module)} applies to a subject that is not an expression object"}
+    end
+  end
+
+  defp unencodable(%_{} = node) do
+    subject = chain_subject(node)
+
+    if subject && not chainable?(subject),
+      do: node,
+      else: node |> children() |> Enum.find_value(&unencodable/1)
+  end
+
+  defp chain_subject(%module{left: left}) when module in [Compare, Logical, Arithmetic], do: left
+  defp chain_subject(%Raw{subject: subject}), do: subject
+  defp chain_subject(%{subject: subject}), do: subject
+  defp chain_subject(_), do: nil
+
+  defp chainable?(%Literal{}), do: false
+  defp chainable?(%Raw{raw: raw}), do: is_map(raw)
+  defp chainable?(_), do: true
+
+  defp children(node) do
+    node
+    |> Map.from_struct()
+    |> Map.drop([:meta, :raw, :ref, :options])
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.filter(&is_struct/1)
+  end
+
   @spec encode(struct()) :: term()
   def encode(%Literal{value: value}), do: value
   def encode(%Raw{subject: nil, raw: raw}), do: raw

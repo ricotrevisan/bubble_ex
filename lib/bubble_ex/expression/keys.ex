@@ -20,6 +20,14 @@ defmodule BubbleEx.Expression.Keys do
     value: ["value", "%v"]
   }
 
+  # Compact -> readable spellings, including aliases that only occur inside
+  # verbatim payloads (scope references, raw operators), used to normalize
+  # them for the canonical form.
+  @readable Map.merge(
+              Map.new(@aliases, fn {_, [readable, compact]} -> {compact, readable} end),
+              %{"%ei" => "element_id", "%ai" => "action_id", "%ft" => "formatting_type"}
+            )
+
   @type logical ::
           :type
           | :properties
@@ -77,4 +85,19 @@ defmodule BubbleEx.Expression.Keys do
   @doc "The key to write for `logical`, honoring the spelling recorded at parse time."
   @spec key(map(), logical()) :: String.t()
   def key(used, logical), do: Map.get(used, logical) || hd(spellings(logical))
+
+  @doc """
+  Recursively rewrites known compact keys to their readable spelling. An
+  object where that would merge two members (both spellings present) keeps
+  its keys as they are; only its values are normalized.
+  """
+  @spec normalize(term()) :: term()
+  def normalize(map) when is_map(map) and not is_struct(map) do
+    values = Map.new(map, fn {k, v} -> {k, normalize(v)} end)
+    renamed = Map.new(values, fn {k, v} -> {Map.get(@readable, k, k), v} end)
+    if map_size(renamed) == map_size(values), do: renamed, else: values
+  end
+
+  def normalize(list) when is_list(list), do: Enum.map(list, &normalize/1)
+  def normalize(value), do: value
 end

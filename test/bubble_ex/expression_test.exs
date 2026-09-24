@@ -540,6 +540,160 @@ defmodule BubbleEx.ExpressionTest do
     end
   end
 
+  describe "canonical hash" do
+    defp hash(raw, opts \\ []) do
+      {:ok, parsed} =
+        Expression.parse(raw, Keyword.merge([schema: @schema, this_type: "custom.task"], opts))
+
+      {:ok, hash} = Expression.sha256(parsed.ast)
+      hash
+    end
+
+    test "does not depend on schema captions or inferred types" do
+      raw = this([msg("owner_user"), msg("equals", %{"args" => src("CurrentUser")})])
+      renamed = put_in(@schema, ["task", :fields, "owner_user", :display], "Assignee")
+      retyped = put_in(@schema, ["task", :fields, "owner_user", :value], "custom.member")
+
+      assert hash(raw) == hash(raw, schema: renamed)
+      assert hash(raw) == hash(raw, schema: retyped)
+
+      refute hash(raw) ==
+               hash(this([msg("points_number"), msg("equals", %{"args" => src("CurrentUser")})]))
+    end
+
+    test "normalizes known compact keys inside verbatim payloads" do
+      readable =
+        user([
+          msg("format_date", %{
+            "properties" => %{"formatting_type" => "custom", "x" => %{"type" => "Empty"}}
+          })
+        ])
+
+      compact = %{
+        "%x" => "CurrentUser",
+        "%n" => %{
+          "%x" => "Message",
+          "%nm" => "format_date",
+          "%p" => %{"%ft" => "custom", "x" => %{"%x" => "Empty"}}
+        }
+      }
+
+      assert %Raw{reason: :unknown_operator} = parse!(compact).ast
+      assert hash(readable) == hash(compact)
+
+      assert hash(src("GetElement", %{"properties" => %{"element_id" => "e1"}})) ==
+               hash(%{"%x" => "GetElement", "%p" => %{"%ei" => "e1"}})
+    end
+
+    test "keeps both members when a payload spells a key both ways" do
+      both = user([msg("mystery", %{"properties" => %{"type" => "a", "%x" => "b"}})])
+      one = user([msg("mystery", %{"properties" => %{"type" => "a"}})])
+      refute hash(both) == hash(one)
+    end
+
+    test "treats integral floats as the same JavaScript number" do
+      eq = fn n -> this([msg("points_number"), msg("equals", %{"args" => n})]) end
+      assert hash(eq.(1)) == hash(eq.(1.0))
+      refute hash(eq.(1)) == hash(eq.(1.5))
+      # The source value itself is still re-emitted exactly.
+      assert {:ok, %{"next" => %{"next" => %{"args" => 1.0}}}} =
+               Expression.to_bubble(parse!(eq.(1.0)).ast)
+    end
+  end
+
+  describe "This Thing binding" do
+    test "defaults to the caller's context and follows the top-level option" do
+      assert %{ast: %ThisThing{binder: :context}} = parse!(src("InjectedValue"))
+
+      assert %{ast: %ThisThing{binder: :rule_record}} =
+               parse!(src("InjectedValue"), this_binder: :rule_record)
+    end
+
+    test "search and filter constraints re-bind it, including nested ones" do
+      advanced = fn value ->
+        %{
+          "0" => %{
+            "key" => "_advanced_search_constraint",
+            "constraint_type" => %{"type" => "Empty"},
+            "value" => value
+          }
+        }
+      end
+
+      inner_search =
+        src("Search", %{
+          "properties" => %{
+            "type_to_find" => "custom.role",
+            "constraints" => advanced.(this([msg("workspace_text"), msg("is_not_empty")]))
+          }
+        })
+
+      raw =
+        this([
+          msg("owner_user"),
+          msg("tasks_list_custom_task"),
+          msg("filtered", %{
+            "properties" => %{
+              "constraints" =>
+                advanced.(
+                  this([
+                    msg("owner_user"),
+                    msg("role_custom_role"),
+                    msg("contains", %{"args" => inner_search})
+                  ])
+                )
+            }
+          }),
+          msg("count"),
+          msg("greater_than", %{"args" => this([msg("points_number")])})
+        ])
+
+      parsed = parse!(raw, this_binder: :rule_record)
+      assert parsed.diagnostics == []
+
+      assert %Compare{
+               left: %ListOp{
+                 subject: %Filter{
+                   subject: %Field{
+                     subject: %Field{
+                       subject: %ThisThing{binder: :rule_record, type: "custom.task"}
+                     }
+                   },
+                   constraints: [
+                     %Constraint{
+                       value: %ListOp{
+                         subject: %Field{
+                           subject: %Field{
+                             subject: %ThisThing{binder: :filter_item, type: "custom.task"}
+                           }
+                         },
+                         arg: %Search{
+                           constraints: [
+                             %Constraint{
+                               value: %Check{
+                                 subject: %Field{
+                                   subject: %ThisThing{binder: :filter_item, type: "custom.role"}
+                                 }
+                               }
+                             }
+                           ]
+                         }
+                       }
+                     }
+                   ]
+                 }
+               },
+               right: %Field{subject: %ThisThing{binder: :rule_record}}
+             } = parsed.ast
+    end
+
+    test "binding is part of the canonical form" do
+      {:ok, a} = Expression.parse(src("InjectedValue"), this_binder: :rule_record)
+      {:ok, b} = Expression.parse(src("InjectedValue"))
+      refute Expression.sha256(a.ast) == Expression.sha256(b.ast)
+    end
+  end
+
   describe "diagnostic paths" do
     test "are prefixed with the caller's source path" do
       {:ok, parsed} = Expression.parse(user([msg("nope", %{"args" => 1})]), path: ["a", "b/c"])
@@ -567,8 +721,7 @@ defmodule BubbleEx.ExpressionTest do
       assert map == %{
                "node" => "check",
                "op" => "logged_in",
-               "type" => "boolean",
-               "subject" => %{"node" => "current_user", "type" => "user"}
+               "subject" => %{"node" => "current_user"}
              }
     end
 
@@ -585,6 +738,21 @@ defmodule BubbleEx.ExpressionTest do
     test "non-JSON input" do
       assert {:error, %Error{kind: :invalid_input}} = Expression.parse(%{a: 1})
       assert {:error, %Error{kind: :invalid_input}} = Expression.parse({:tuple})
+    end
+
+    test "operators on a subject that cannot carry a chain" do
+      for subject <- [%Literal{value: "x"}, %Raw{raw: 42, reason: :malformed_node}] do
+        assert {:error, %Error{kind: :invalid_input}} =
+                 Expression.to_bubble(%Check{op: :is_empty, subject: subject})
+      end
+
+      nested = %Compare{
+        op: :equals,
+        left: %CurrentUser{},
+        right: %Check{op: :is_empty, subject: %Literal{value: 1}}
+      }
+
+      assert {:error, %Error{kind: :invalid_input}} = Expression.to_bubble(nested)
     end
 
     test "non-AST input" do

@@ -78,11 +78,18 @@ defmodule BubbleEx.Expression.Ast do
 
   defmodule ThisThing do
     @moduledoc """
-    The record being evaluated: `This <Type>` in a privacy rule, or the item
-    under test in a search/filter constraint (Bubble's `InjectedValue`).
+    The record being evaluated (Bubble's `InjectedValue`). `binder` states
+    which record that is, following the innermost enclosing scope:
+
+      * `:rule_record` - the record a privacy rule is evaluated against
+      * `:filter_item` - the list item under test in a search or `:filtered`
+        constraint (re-bound in each nested search/filter)
+      * `:context` - supplied by the caller's context (the default)
     """
-    defstruct type: nil, meta: %{}
-    @type t :: %__MODULE__{type: String.t() | nil, meta: map()}
+    defstruct binder: :context, type: nil, meta: %{}
+
+    @type binder :: :rule_record | :filter_item | :context
+    @type t :: %__MODULE__{binder: binder(), type: String.t() | nil, meta: map()}
   end
 
   defmodule Scope do

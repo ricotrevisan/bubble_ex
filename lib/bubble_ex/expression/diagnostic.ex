@@ -20,6 +20,7 @@ defmodule BubbleEx.Expression.Diagnostic do
     * `:unknown_permission` / `:invalid_permission` — privacy-rule permissions
       that are unmodeled or not booleans/field lists
     * `:missing_condition` — a non-default privacy rule without a condition
+    * `:missing_default_rule` — a privacy rule set without an `everyone` rule
   """
 
   @type severity :: :error | :warning | :info
@@ -46,6 +47,7 @@ defmodule BubbleEx.Expression.Diagnostic do
     unknown_constraint: :warning,
     unknown_permission: :warning,
     missing_condition: :warning,
+    missing_default_rule: :warning,
     unresolved_property: :info
   }
 
