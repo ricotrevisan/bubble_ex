@@ -158,6 +158,26 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Typed expression compiler (WTF-368). `BubbleEx.Expression.Typing` resolves
+  the type of every expression node from the Model and the app's element tree
+  (`BubbleEx.Expression.Tree`): parent groups, repeating-group cells, page
+  things, element states, reusable parameters, custom states, previous steps
+  and trigger records. `BubbleEx.Expression.Compiler` lowers a typed AST to a
+  stack-neutral `BubbleEx.Expression.IR`. Two backends consume it:
+  `BubbleEx.Target.Ash.Expressions` (filters as `%BubbleEx.Target.Ash.Expr{}`
+  data, printed by `BubbleEx.Target.Ash.Source.expr/1`; `privacy/2` compiles
+  every privacy-rule condition, and `search/3` compiles searches) and
+  `BubbleEx.Target.Elixir` (value expressions as Elixir source over a runtime
+  module). `BubbleEx.Expression.Sites` finds every page, reusable and
+  workflow expression with its context, and `BubbleEx.Target.CompileReport`
+  counts what compiles. New diagnostic codes: `expr_untyped_scope`,
+  `expr_unresolved_accessor`, `expr_uncompiled` (stage `:model`),
+  `ash_expr_unsupported`, `ash_expr_unmapped_reference` (`{:target, :ash}`)
+  and `elixir_expr_unsupported` (`{:target, :elixir}`).
+  `scripts/ash_compile_check.sh` now also compiles every fixture's privacy
+  filters, builds their AshPostgres queries and, with a database, runs them
+  and compares the result with Ash's in-memory evaluation.
+
 - `BubbleEx.Target.Ash` (WTF-362): maps a `BubbleEx.Model` to a
   `BubbleEx.Target.Ash.Project` describing Ash resources, attributes,
   `belongs_to` relationships, enums and typed structs as data, with the

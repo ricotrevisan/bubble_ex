@@ -103,6 +103,13 @@ defmodule BubbleEx.DiagnosticTest do
       ash_codes = Enum.filter(Codes.all(), &String.starts_with?(Atom.to_string(&1), "ash_"))
       assert ash_codes != []
       assert ash_codes -- MapSet.to_list(covered) == []
+
+      # ... and the expression compiler's (WTF-368), over its fixture.
+      expr_codes =
+        Enum.filter(Codes.all(), &String.starts_with?(Atom.to_string(&1), ["expr_", "elixir_"]))
+
+      assert expr_codes != []
+      assert expr_codes -- MapSet.to_list(covered) == []
     end
 
     defp sweep do
@@ -130,7 +137,42 @@ defmodule BubbleEx.DiagnosticTest do
         Enum.flat_map(apps ++ model_apps, &model_diagnostics/1) ++
         Enum.flat_map(apps ++ model_apps, &ash_diagnostics/1) ++
         Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
-        Enum.flat_map(expression_samples(), &expression_diagnostics/1)
+        Enum.flat_map(expression_samples(), &expression_diagnostics/1) ++
+        Enum.flat_map(expression_apps(), &compile_diagnostics/1)
+    end
+
+    defp expression_apps do
+      "test/support/expression/*.json"
+      |> Path.wildcard()
+      |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
+    end
+
+    # Typing, IR, Ash and Elixir diagnostics of every privacy condition and
+    # page, reusable and workflow expression.
+    defp compile_diagnostics(app) do
+      {:ok, model} = BubbleEx.Model.build(app)
+      {:ok, project} = BubbleEx.Target.Ash.map(model)
+      {:ok, privacy} = BubbleEx.Target.Ash.Expressions.privacy(model, project)
+      {:ok, sites} = BubbleEx.Expression.Sites.collect(app, model)
+
+      sites =
+        for site <- sites do
+          {:ok, %{ast: ast}} = Expression.parse(site.raw, schema: site.env.schema)
+          {:ok, result} = BubbleEx.Expression.Compiler.compile(ast, site.env)
+
+          target =
+            case result.ir do
+              nil ->
+                []
+
+              ir ->
+                ir |> BubbleEx.Target.Elixir.compile(project) |> elem(1) |> Map.get(:diagnostics)
+            end
+
+          result.diagnostics ++ target
+        end
+
+      Enum.flat_map(privacy, & &1.diagnostics) ++ List.flatten(sites)
     end
 
     defp app_diagnostics(app) do

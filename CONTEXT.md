@@ -108,6 +108,14 @@ _Avoid_: Policy, RLS rule, permission
 The typed, stack-neutral tree of a Bubble expression (sources, field chains, operators). It describes Bubble semantics only; target stacks compile from it.
 _Avoid_: Rendered text, binding, Ash expression
 
+**Expression IR**:
+The compiled, stack-neutral form of a typed expression AST (`BubbleEx.Expression.IR`): a small closed vocabulary (comparisons, boolean operators, field paths, list membership, context inputs, …) with Bubble semantics and Bubble IDs. Target stacks compile it to their own code, or report a diagnostic.
+_Avoid_: Ash expression, compiled code, AST
+
+**Context input**:
+A value an expression reads from where it runs rather than from data: an element's state, a parent group's or cell's thing, a page's thing, a workflow parameter or a previous step's result. Typed from the element tree and workflow; a target binds it (an argument, an assign).
+_Avoid_: Scope, variable, binding
+
 **Diagnostic**:
 BubbleEx's own report that it could not read, parse, model or render part of an app faithfully (`BubbleEx.Diagnostic`). It has a registered code, a severity (how much the owner should care), an outcome (the data was preserved, degraded or unresolved), a stage, a subject of Bubble IDs and a JSON pointer into the source. It disappears as the tool improves; it is not a statement about the app. In expressions, the unmodeled source is always kept verbatim in a raw node.
 _Avoid_: Error, model finding, warning
