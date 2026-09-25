@@ -108,6 +108,10 @@ _Avoid_: Node, entity, name
 A directed edge from one symbol to another that it reads, writes, calls, types or grants access to.
 _Avoid_: Dependency (the inverse view), link, relationship (reserved for data-schema relationships)
 
+**Model finding**:
+A proposed improvement to an app's data model, found by a deterministic analyzer from the symbol index (`BubbleEx.Finding`), e.g. a denormalized sort field that could be derived. It has a registered kind, a subject of Bubble IDs, evidence, a stack-neutral proposal, a confidence and a stable ID, and it waits for the owner's decision. Unlike a diagnostic it is a statement about the app, not about the tool.
+_Avoid_: Diagnostic, secret-scan finding, recommendation
+
 **Execution class**:
 Where a workflow's actions run: client only, server backed, or mixed.
 _Avoid_: Workflow type, backend/frontend

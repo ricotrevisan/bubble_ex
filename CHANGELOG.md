@@ -48,6 +48,15 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Deterministic model-refinement analyzers through `BubbleEx.Findings.analyze/2`
+  / `BubbleEx.model_findings/2`. They emit `BubbleEx.Finding`s, a type separate
+  from diagnostics: a registered `kind` (`BubbleEx.Finding.Kinds`), a subject of
+  Bubble IDs, evidence (index symbol IDs and references), a stack-neutral
+  `proposal`, a confidence with its reason, the workflows, pages, reusables and
+  privacy rules affected, and a stable ID hashed from kind and subject. Kinds:
+  redundant reverse lists, denormalized (copied or counted) fields, lists of
+  things, privacy-access lists, IDs stored in text, search-driven indexes and
+  integer number fields.
 - Build a deterministic symbol and reference index through `BubbleEx.Index` /
   `BubbleEx.symbol_index/1`. Symbols (data types, fields, option sets and
   values, pages, reusables, elements, workflows, actions, API Connector calls,

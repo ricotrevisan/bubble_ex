@@ -198,6 +198,11 @@ defmodule BubbleEx do
   @spec symbol_index(term()) :: {:ok, BubbleEx.Index.t()} | {:error, BubbleEx.Error.t()}
   def symbol_index(app), do: BubbleEx.Index.build(app)
 
+  @doc "Runs the model-refinement analyzers over decoded app JSON. See `BubbleEx.Findings`."
+  @spec model_findings(term(), [BubbleEx.Findings.option()]) ::
+          {:ok, BubbleEx.Findings.t()} | {:error, BubbleEx.Error.t()}
+  def model_findings(app, opts \\ []), do: BubbleEx.Findings.analyze(app, opts)
+
   @doc "Exports supplied workflow data to JSON and Markdown in an empty output directory."
   @spec export_workflows(term(), String.t()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
   def export_workflows(payload, out_dir), do: BubbleEx.Workflows.export(payload, out_dir)
