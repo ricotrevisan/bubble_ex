@@ -760,6 +760,15 @@ defmodule BubbleEx.IndexTest do
 
       assert {:error, %Error{kind: :invalid_input}} = Index.build(@app, model: other)
       assert {:error, %Error{kind: :invalid_input}} = Index.build(@app, model: :nope)
+
+      # A stale Model of the same app (one field's type changed since).
+      [type | _] = @app["user_types"] |> Map.keys() |> Enum.sort()
+      [field | _] = @app["user_types"][type]["fields"] |> Map.keys() |> Enum.sort()
+      edited = put_in(@app, ["user_types", type, "fields", field, "value"], "number")
+      assert {:error, %Error{kind: :invalid_input}} = Index.build(edited, model: model)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               BubbleEx.Workflows.inventory(edited, model: model)
     end
   end
 

@@ -203,14 +203,15 @@ defmodule BubbleEx.Index do
   ## Options
 
     * `:model` - a `BubbleEx.Model` already built from the same app (checked
-      with `BubbleEx.Model.matches?/2`; otherwise `:invalid_input`). Without
+      with `BubbleEx.Model.matches?/3` against the app's canonical hash, which
+      the index computes once anyway; otherwise `:invalid_input`). Without
       it the Model is built here. Either way the index keeps it in `model`
       (not part of `to_map/1`), so `BubbleEx.Findings` reuses it.
   """
   @spec build(term(), [{:model, Model.t()}]) :: {:ok, t()} | {:error, Error.t()}
   def build(app, opts \\ []) do
-    with {:ok, model} <- Model.for_app(app, Keyword.get(opts, :model)),
-         {:ok, inventory} <- BubbleEx.Workflows.inventory(app, model: model) do
+    with {:ok, inventory, model} <-
+           BubbleEx.Workflows.inventory_and_model(app, model: Keyword.get(opts, :model)) do
       structure = Structure.build(app)
 
       {model_symbols, model_refs} = DataModel.build(model)

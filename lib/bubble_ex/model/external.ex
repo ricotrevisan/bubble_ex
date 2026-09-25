@@ -9,14 +9,14 @@ defmodule BubbleEx.Model.External do
   alias BubbleEx.Model.{DataType, ExternalField, ExternalType, OptionSet, Type}
   alias BubbleEx.Model.External.Resolver
 
-  @spec resolve([DataType.t()], [OptionSet.t()], map()) ::
+  @spec resolve([DataType.t()], [OptionSet.t()], map(), [BubbleEx.Model.Connector.t()]) ::
           {[DataType.t()], [OptionSet.t()], [ExternalType.t()], [BubbleEx.Diagnostic.t()]}
-  def resolve(data_types, option_sets, app) do
+  def resolve(data_types, option_sets, app, connectors) do
     roots =
       Enum.flat_map(data_types, &roots(:custom, &1.id, &1.fields)) ++
         Enum.flat_map(option_sets, &roots(:option, &1.id, &1.attributes))
 
-    {values, nodes, diagnostics} = Resolver.resolve(roots, resolver_source(app))
+    {values, nodes, diagnostics} = Resolver.resolve(roots, resolver_source(app), connectors)
 
     external_types = nodes |> Enum.map(&external_type/1) |> mark_cycles()
     known = for t <- external_types, ExternalType.known?(t), into: MapSet.new(), do: t.id
@@ -48,20 +48,16 @@ defmodule BubbleEx.Model.External do
   # descriptor).
   defp patch(field, type), do: %{field | type: %{type | cardinality: field.type.cardinality}}
 
-  # The resolver reads only these members; everything else is left out so a
-  # malformed section elsewhere in the app cannot reach it.
+  # The resolver reads only these members (to point diagnostics at field
+  # descriptors); everything else is left out so a malformed section
+  # elsewhere in the app cannot reach it. API Connector calls come from the
+  # Model's connectors.
   defp resolver_source(app) do
     %{
       "user_types" => objects(Map.get(app, "user_types")),
-      "option_sets" => objects(Map.get(app, "option_sets")),
-      "settings" => %{"client_safe" => %{"apiconnector2" => connectors(app)}}
+      "option_sets" => objects(Map.get(app, "option_sets"))
     }
   end
-
-  defp connectors(%{"settings" => %{"client_safe" => %{"apiconnector2" => c}}}) when is_map(c),
-    do: c
-
-  defp connectors(_), do: nil
 
   defp objects(map) when is_map(map), do: Map.filter(map, fn {_, v} -> is_map(v) end)
   defp objects(_), do: %{}

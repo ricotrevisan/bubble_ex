@@ -38,6 +38,10 @@ defmodule BubbleEx.Model do
   diagnostics from `BubbleEx.Privacy`. `BubbleEx.Db.Reader`'s tables are a
   projection of it.
 
+  `source_sha256` is the canonical-JSON hash of the app it was built from
+  (`BubbleEx.CanonicalJson.sha256/1`); entry points that take a prebuilt
+  Model check it with `matches?/3`. It is not part of `to_map/1`.
+
   ## Order
 
   Output is identical across runs and independent of input map order.
@@ -67,6 +71,7 @@ defmodule BubbleEx.Model do
   defstruct [
     :schema_version,
     :bubble_id,
+    :source_sha256,
     data_types: [],
     option_sets: [],
     external_types: [],
@@ -78,6 +83,7 @@ defmodule BubbleEx.Model do
   @type t :: %__MODULE__{
           schema_version: pos_integer(),
           bubble_id: String.t() | nil,
+          source_sha256: String.t() | nil,
           data_types: [DataType.t()],
           option_sets: [OptionSet.t()],
           external_types: [ExternalType.t()],
@@ -94,14 +100,17 @@ defmodule BubbleEx.Model do
   Builds the Model from decoded app JSON. Top-level `user_types` or
   `option_sets` that are not objects are kept in `extra` and diagnosed.
   """
-  @spec build(term()) :: {:ok, t()} | {:error, Error.t()}
-  def build(app) when is_map(app) and not is_struct(app) do
+  @spec build(term(), [{:source_sha256, String.t()}]) :: {:ok, t()} | {:error, Error.t()}
+  def build(app, opts \\ [])
+
+  def build(app, opts) when is_map(app) and not is_struct(app) do
     result = Builder.build(app)
 
     {:ok,
      %__MODULE__{
        schema_version: @schema_version,
        bubble_id: if(is_binary(app["_id"]), do: app["_id"]),
+       source_sha256: Keyword.get_lazy(opts, :source_sha256, fn -> source_sha256(app) end),
        data_types: result.data_types,
        option_sets: result.option_sets,
        external_types: result.external_types,
@@ -111,48 +120,56 @@ defmodule BubbleEx.Model do
      }}
   end
 
-  def build(_), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
+  def build(_, _), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
 
   @doc """
-  Whether `model` was built from `app`, for callers that take a prebuilt
-  Model: the same Bubble app ID and the same data type and option set IDs. A
-  cheap identity check (no content hash): a Model of an edited copy of the
-  same app passes.
+  The canonical-JSON SHA-256 of `app` (`BubbleEx.CanonicalJson.sha256/1`),
+  as recorded in `source_sha256`; nil when `app` is not JSON-encodable.
   """
-  @spec matches?(t(), term()) :: boolean()
-  def matches?(%__MODULE__{} = model, app) when is_map(app) and not is_struct(app) do
-    defined = for %DataType{synthesized: false, id: id} <- model.data_types, do: id
-
-    model.bubble_id == if(is_binary(app["_id"]), do: app["_id"]) and
-      defined == ids(app["user_types"]) and
-      Enum.map(model.option_sets, & &1.id) == ids(app["option_sets"])
+  @spec source_sha256(term()) :: String.t() | nil
+  def source_sha256(app) do
+    CanonicalJson.sha256(app)
+  rescue
+    _ -> nil
   end
 
-  def matches?(_, _), do: false
+  @doc """
+  Whether `model` was built from exactly `app`: its `source_sha256` is the
+  canonical hash of `app`. Pass `source_sha256:` when that hash is already
+  known, so it is not computed again.
+  """
+  @spec matches?(t(), term(), [{:source_sha256, String.t()}]) :: boolean()
+  def matches?(model, app, opts \\ [])
+
+  def matches?(%__MODULE__{source_sha256: sha}, app, opts)
+      when is_binary(sha) and is_map(app) and not is_struct(app),
+      do: sha == Keyword.get_lazy(opts, :source_sha256, fn -> source_sha256(app) end)
+
+  def matches?(_, _, _), do: false
 
   @doc """
-  The Model for work on `app`: `model` when it is one built from `app`
-  (`matches?/2`), or a new one when `model` is nil. For entry points that
-  take an optional prebuilt Model, so it is built once.
+  The Model for work on `app`: `model` when it was built from exactly `app`
+  (`matches?/3`), or a new one when `model` is nil. For entry points that
+  take an optional prebuilt Model, so it is built once. Pass
+  `source_sha256:` (the canonical hash of `app`) when already known.
   """
-  @spec for_app(term(), t() | nil) :: {:ok, t()} | {:error, Error.t()}
-  def for_app(app, nil), do: build(app)
+  @spec for_app(term(), t() | nil, [{:source_sha256, String.t()}]) ::
+          {:ok, t()} | {:error, Error.t()}
+  def for_app(app, model, opts \\ [])
 
-  def for_app(app, %__MODULE__{} = model) when is_map(app) and not is_struct(app) do
-    if matches?(model, app),
+  def for_app(app, nil, opts), do: build(app, opts)
+
+  def for_app(app, %__MODULE__{} = model, opts) when is_map(app) and not is_struct(app) do
+    if matches?(model, app, opts),
       do: {:ok, model},
       else: {:error, Error.new(:invalid_input, "model was built from a different app")}
   end
 
-  def for_app(app, _) when is_map(app) and not is_struct(app),
+  def for_app(app, _, _) when is_map(app) and not is_struct(app),
     do: {:error, Error.new(:invalid_input, "model must be a BubbleEx.Model")}
 
-  def for_app(_, _), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
-
-  defp ids(map) when is_map(map),
-    do: map |> Map.keys() |> Enum.filter(&is_binary/1) |> Enum.sort()
-
-  defp ids(_), do: []
+  def for_app(_, _, _),
+    do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
 
   # --- lookups -----------------------------------------------------------------
 
@@ -207,10 +224,12 @@ defmodule BubbleEx.Model do
   JSON form: string keys and JSON values only, so it encodes and decodes back
   to the same shape. Atoms become strings; privacy-rule conditions use the
   expression's canonical form (`BubbleEx.Expression.to_map/1`); per-rule
-  diagnostics are omitted (the Model's `diagnostics` include them).
+  diagnostics are omitted (the Model's `diagnostics` include them), and so
+  is `source_sha256` (it identifies the input, not the Model).
   """
   @spec to_map(t()) :: map()
-  def to_map(%__MODULE__{} = model), do: json(model)
+  def to_map(%__MODULE__{} = model),
+    do: model |> Map.from_struct() |> Map.delete(:source_sha256) |> json()
 
   @doc "Canonical JSON text of `to_map/1`: byte-identical for the same Model."
   @spec to_json(t()) :: String.t()

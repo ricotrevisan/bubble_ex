@@ -62,14 +62,16 @@ defmodule BubbleEx.Model.Builder do
     {option_sets, set_diags} =
       sets |> sorted() |> Enum.map(&option_set(&1, known)) |> unzip()
 
+    connectors = connectors(app)
+
     {data_types, option_sets, external_types, read_diags} =
-      External.resolve(data_types, option_sets, app)
+      External.resolve(data_types, option_sets, app, connectors)
 
     %{
       data_types: data_types,
       option_sets: option_sets,
       external_types: external_types,
-      connectors: connectors(app),
+      connectors: connectors,
       extra: Map.merge(types_extra, sets_extra),
       diagnostics:
         Diagnostic.normalize(
@@ -357,13 +359,22 @@ defmodule BubbleEx.Model.Builder do
 
   defp connectors(_app), do: []
 
+  # Members that make a member of the group itself a call.
+  @call_members ~w(types ret_value publish_as method url)
+
   defp connector(id, group) do
     path = @connectors ++ [id]
 
-    calls =
+    direct =
+      for {cid, call} <- entries(group),
+          cid != "calls",
+          is_map(call) and Enum.any?(@call_members, &Map.has_key?(call, &1)),
+          do: call(cid, call, :direct, path ++ [cid])
+
+    nested =
       case member(group, ["calls"]) do
         {key, calls} when is_map(calls) ->
-          for {cid, call} <- entries(calls), do: call(cid, call, path ++ [key, cid])
+          for {cid, call} <- entries(calls), do: call(cid, call, :nested, path ++ [key, cid])
 
         _ ->
           []
@@ -374,19 +385,38 @@ defmodule BubbleEx.Model.Builder do
       name: first_text(group, ~w(human name)),
       auth: first_text(group, ["auth"]),
       path: pointer(path),
-      calls: calls
+      calls: Enum.sort_by(direct ++ nested, &{&1.id, &1.placement})
     }
   end
 
-  defp call(id, call, path) do
+  defp call(id, call, placement, path) when is_map(call) do
+    registry = registry(Map.get(call, "types"))
+
     %ConnectorCall{
       id: id,
       name: first_text(call, ["name"]),
       method: first_text(call, ["method"]),
       publish_as: first_text(call, ["publish_as"]),
+      returns: Map.get(call, "ret_value"),
+      registry: registry,
+      types: if(is_nil(registry), do: Map.get(call, "types")),
+      placement: placement,
       path: pointer(path)
     }
   end
+
+  defp call(id, call, placement, path),
+    do: %ConnectorCall{id: id, placement: placement, path: pointer(path), raw: call}
+
+  # A types registry is the JSON text of an object.
+  defp registry(types) when is_binary(types) do
+    case Jason.decode(types) do
+      {:ok, registry} when is_map(registry) -> registry
+      _ -> nil
+    end
+  end
+
+  defp registry(_), do: nil
 
   defp entries(map), do: map |> Map.filter(fn {k, _} -> is_binary(k) end) |> sorted()
 

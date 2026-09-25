@@ -19,23 +19,35 @@ defmodule BubbleEx.Workflows do
 
   Data types and fields named in explanations are read through
   `BubbleEx.Model`. Option `:model` passes one already built from the same
-  payload (checked with `BubbleEx.Model.matches?/2`), so it is built once.
+  payload (checked with `BubbleEx.Model.matches?/3`), so it is built once; the payload is hashed once.
   """
   @spec inventory(term(), [{:model, BubbleEx.Model.t()}]) :: {:ok, map()} | {:error, Error.t()}
-  def inventory(payload, opts \\ [])
+  def inventory(payload, opts \\ []) do
+    with {:ok, inventory, _model} <- inventory_and_model(payload, opts), do: {:ok, inventory}
+  end
 
-  def inventory(payload, opts) when is_map(payload) and not is_struct(payload) do
+  @doc false
+  # The inventory and the Model it read, hashing the payload once (the
+  # inventory's `source_sha256` is the Model's).
+  @spec inventory_and_model(term(), keyword()) ::
+          {:ok, map(), BubbleEx.Model.t()} | {:error, Error.t()}
+  def inventory_and_model(payload, opts) when is_map(payload) and not is_struct(payload) do
     if json?(payload) do
-      with {:ok, model} <- BubbleEx.Model.for_app(payload, Keyword.get(opts, :model)),
-           do: build(payload, model)
+      sha = hash(payload)
+
+      with {:ok, model} <-
+             BubbleEx.Model.for_app(payload, Keyword.get(opts, :model), source_sha256: sha),
+           {:ok, inventory} <- build(payload, model, sha),
+           do: {:ok, inventory, model}
     else
       {:error, Error.new(:invalid_input, "expected JSON data with string map keys")}
     end
   end
 
-  def inventory(_, _), do: {:error, Error.new(:invalid_input, "expected an app JSON object")}
+  def inventory_and_model(_, _),
+    do: {:error, Error.new(:invalid_input, "expected an app JSON object")}
 
-  defp build(payload, model) do
+  defp build(payload, model, sha) do
     collections = Source.collections(payload)
     index = payload |> Node.index() |> Map.put(:model, model)
     scopes = Enum.map(collections, &scope/1)
@@ -56,7 +68,7 @@ defmodule BubbleEx.Workflows do
        explanation_vocabulary_version: 1,
        scope: "supplied_data_only",
        execution: "never",
-       source_sha256: hash(payload),
+       source_sha256: sha,
        availability: availability(scopes, workflows),
        scopes: scopes,
        workflows: workflows,

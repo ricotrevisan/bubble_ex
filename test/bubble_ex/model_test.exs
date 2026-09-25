@@ -756,6 +756,17 @@ defmodule BubbleEx.ModelTest do
       assert path1 == "/settings/client_safe/apiconnector2/g1/calls/c1"
       assert c2.publish_as == "action"
     end
+
+    test "calls placed directly in the group are read too, and resolve types" do
+      model = build!("external_types")
+      geo = Enum.find(model.connectors, &(&1.id == "geo"))
+
+      assert %Model.ConnectorCall{placement: :direct, registry: %{}, types: nil} =
+               Model.Connector.call(geo, "lookup")
+
+      assert Model.external_type(model, "api.apiconnector2.geo.lookup.Address").resolution ==
+               :resolved
+    end
   end
 
   describe "matches?/2" do
@@ -765,6 +776,16 @@ defmodule BubbleEx.ModelTest do
       assert Model.matches?(model, app)
       refute Model.matches?(model, load("option_sets"))
       refute Model.matches?(model, Map.put(app, "_id", "another"))
+
+      # A stale Model: same IDs, one field's type changed since.
+      [type | _] = app["user_types"] |> Map.keys() |> Enum.sort()
+      [field | _] = app["user_types"][type]["fields"] |> Map.keys() |> Enum.sort()
+      edited = put_in(app, ["user_types", type, "fields", field, "value"], "number")
+      refute edited == app
+      refute Model.matches?(model, edited)
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Model.for_app(edited, model)
+      assert model.source_sha256 == BubbleEx.CanonicalJson.sha256(app)
+      refute Map.has_key?(Model.to_map(model), "source_sha256")
       assert Model.for_app(app, model) == {:ok, model}
       assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Model.for_app(app, :nope)
     end

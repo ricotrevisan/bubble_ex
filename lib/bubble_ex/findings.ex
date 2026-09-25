@@ -42,7 +42,7 @@ defmodule BubbleEx.Findings do
       `source_sha256` must match the app; otherwise `:invalid_input`). Its
       Model is reused.
     * `:model` - a `BubbleEx.Model` already built from the same app
-      (checked with `BubbleEx.Model.matches?/2`; otherwise `:invalid_input`),
+      (checked with `BubbleEx.Model.matches?/3`; otherwise `:invalid_input`),
       used for the index when none is given and for typing expressions.
       Without either, the Model is built once, here.
     * `:kinds` - only these kinds (default: all, see `BubbleEx.Finding.Kinds`).
@@ -79,9 +79,9 @@ defmodule BubbleEx.Findings do
   @spec analyze(term(), [option()]) :: {:ok, t()} | {:error, Error.t()}
   def analyze(app, opts \\ []) do
     with {:ok, kinds} <- kinds(Keyword.get(opts, :kinds, Kinds.all())),
-         {:ok, model} <- model(app, Keyword.get(opts, :model), Keyword.get(opts, :index)),
-         {:ok, index} <- index(app, Keyword.get(opts, :index), model) do
-      ctx = Context.build(app, index, model || index.model)
+         {:ok, index} <- index(app, Keyword.get(opts, :index), Keyword.get(opts, :model)),
+         {:ok, model} <- model(app, Keyword.get(opts, :model), index) do
+      ctx = Context.build(app, index, model)
       findings = ctx |> all_findings() |> Enum.filter(&(&1.kind in kinds)) |> Finding.normalize()
 
       {:ok,
@@ -132,12 +132,17 @@ defmodule BubbleEx.Findings do
   defp kinds(other),
     do: {:error, Error.new(:invalid_input, "kinds must be a list", %{kinds: other})}
 
-  # A given model is checked; else the given index's (already checked
-  # through the index's source hash); else none yet (the index builds it).
-  defp model(app, nil, %Index{model: %Model{} = model}) when is_map(app), do: {:ok, model}
-  defp model(app, nil, %Index{}) when is_map(app), do: Model.for_app(app, nil)
-  defp model(_app, nil, _index), do: {:ok, nil}
-  defp model(app, model, _index), do: Model.for_app(app, model)
+  # With an index (already checked against the app's hash), a given model is
+  # checked against that hash, else the index's Model is reused. Without
+  # one, the index checks or builds the Model.
+  defp model(app, model, %Index{source_sha256: sha} = index) when is_map(app) do
+    case {model, index.model} do
+      {nil, %Model{} = own} -> {:ok, own}
+      _ -> Model.for_app(app, model, source_sha256: sha)
+    end
+  end
+
+  defp model(_app, model, _index), do: {:ok, model}
 
   defp index(app, nil, model) when is_map(app), do: Index.build(app, model: model)
 

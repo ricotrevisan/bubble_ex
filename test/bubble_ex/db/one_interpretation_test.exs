@@ -53,6 +53,14 @@ defmodule BubbleEx.Db.OneInterpretationTest do
 
   defp allowed?(file), do: Enum.any?(Map.keys(@allowed), &String.starts_with?(file, &1))
 
+  # Known blind spots (the patterns below miss them): whole literal
+  # descriptors (`"list.text"`), `String.replace_prefix(x, "custom.", …)` and
+  # descriptors built by interpolation (`"api.apiconnector2.#{g}.#{c}"`). As
+  # of WTF-380 they occur in lib/bubble_ex/findings/id_in_text.ex (`"list.text"`),
+  # lib/bubble_ex/index/subject.ex (interpolation), lib/bubble_ex/db/dbml.ex
+  # and lib/bubble_ex/workflows/node.ex (`replace_prefix`), besides
+  # lib/bubble_ex/expression/ (allowlisted) and comments. Widening the check
+  # to them means routing those through `BubbleEx.Model.Type` first.
   defp patterns do
     keys = Enum.map_join(@keys, "|", &Regex.escape/1)
 
