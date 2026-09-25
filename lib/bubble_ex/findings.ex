@@ -82,7 +82,13 @@ defmodule BubbleEx.Findings do
          {:ok, index} <- index(app, Keyword.get(opts, :index), Keyword.get(opts, :model)),
          {:ok, model} <- model(app, Keyword.get(opts, :model), index) do
       ctx = Context.build(app, index, model)
-      findings = ctx |> all_findings() |> Enum.filter(&(&1.kind in kinds)) |> Finding.normalize()
+
+      findings =
+        ctx
+        |> all_findings()
+        |> Enum.filter(&(&1.kind in kinds))
+        |> Enum.map(&Finding.put_basis(&1, index))
+        |> Finding.normalize()
 
       {:ok,
        %__MODULE__{

@@ -15,6 +15,12 @@ defmodule BubbleEx.Finding do
       evidence symbols and evidence references without source paths
       (`proposal_sha256/1`). A decision recorded against one value is stale
       when the finding with the same `id` comes back with another.
+    * `basis_sha256` - hash of the content of the symbols the finding is
+      about: its subject and evidence symbols, without source paths or
+      display names (`basis_sha256/2`, set by `BubbleEx.Findings.analyze/2`;
+      `nil` on a finding built without an index). It changes when one of
+      them changes (e.g. a copied field's type), which `proposal_sha256`
+      does not see, and not on caption edits.
     * `kind` - stable atom, listed in `BubbleEx.Finding.Kinds`
     * `category` - `:decision` (an owner decision) or `:hint` (a performance
       hint), fixed by the kind
@@ -43,7 +49,8 @@ defmodule BubbleEx.Finding do
 
   alias BubbleEx.{CanonicalJson, Diagnostic}
   alias BubbleEx.Finding.Kinds
-  alias BubbleEx.Index.Reference
+  alias BubbleEx.Index
+  alias BubbleEx.Index.{Reference, Subject}
 
   @type confidence :: :high | :medium | :low
   @type evidence :: %{
@@ -62,6 +69,7 @@ defmodule BubbleEx.Finding do
   @type t :: %__MODULE__{
           id: String.t(),
           proposal_sha256: String.t(),
+          basis_sha256: String.t() | nil,
           kind: atom(),
           category: Kinds.category(),
           subject: Diagnostic.subject(),
@@ -87,6 +95,7 @@ defmodule BubbleEx.Finding do
     :proposal,
     :confidence,
     :message,
+    :basis_sha256,
     confidence_reason: "",
     evidence: %{symbols: [], references: []},
     affects: %{readers: %{}, maintainers: %{}},
@@ -217,6 +226,46 @@ defmodule BubbleEx.Finding do
     })
   end
 
+  @doc """
+  The index symbol IDs a finding is about: its subject's symbols (see
+  `BubbleEx.Index.Subject`) and the data-model symbols among its evidence
+  (data types, fields, option sets, option values and attributes, privacy
+  rules), sorted. Pages, elements, workflows and actions in the evidence
+  (e.g. the hosts of a `:search_index` hint's searches) are left out: the
+  references they make are in `proposal_sha256`, and unrelated edits to
+  them must not invalidate a decision.
+  """
+  @spec basis_symbols(t()) :: [String.t()]
+  def basis_symbols(%__MODULE__{} = f) do
+    evidence = Enum.filter(f.evidence.symbols, &data_model_symbol?/1)
+    sorted(Subject.symbol_ids(f.subject) ++ evidence)
+  end
+
+  @data_model ~w(data_type field option_set option_value option_attribute privacy_rule)
+
+  defp data_model_symbol?(id) do
+    case String.split(id, ":", parts: 2) do
+      [kind, _] -> kind in @data_model
+      _ -> false
+    end
+  end
+
+  @doc """
+  SHA-256 of the content of the finding's `basis_symbols/1` in `index`
+  (`BubbleEx.Index.subject_sha256/2`): their kinds, Bubble IDs, parents and
+  attributes, without source paths or display names. A decision recorded
+  against one value is stale when the finding comes back with another, even
+  if its `proposal_sha256` is unchanged.
+  """
+  @spec basis_sha256(t(), Index.t()) :: String.t()
+  def basis_sha256(%__MODULE__{} = f, %Index{} = index),
+    do: Index.subject_sha256(index, basis_symbols(f))
+
+  @doc "Sets `basis_sha256` from `index` (not part of `id` or `proposal_sha256`)."
+  @spec put_basis(t(), Index.t()) :: t()
+  def put_basis(%__MODULE__{} = f, %Index{} = index),
+    do: %{f | basis_sha256: basis_sha256(f, index)}
+
   @doc "Sets the related finding IDs (not part of `proposal_sha256`)."
   @spec put_related(t(), [String.t()]) :: t()
   def put_related(%__MODULE__{} = f, ids), do: %{f | related: sorted(ids)}
@@ -252,6 +301,7 @@ defmodule BubbleEx.Finding do
     %{
       "id" => f.id,
       "proposal_sha256" => f.proposal_sha256,
+      "basis_sha256" => f.basis_sha256,
       "kind" => Atom.to_string(f.kind),
       "category" => Atom.to_string(f.category),
       "subject" => json(f.subject),
