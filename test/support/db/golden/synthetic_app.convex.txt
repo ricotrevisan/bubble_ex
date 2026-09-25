@@ -13,11 +13,6 @@ export default defineSchema({
     score: v.float64(),
   }),
 
-  statusType: defineTable({
-    color: v.string(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
   surveyResponse: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
     answer: v.string(),
@@ -25,5 +20,16 @@ export default defineSchema({
     rating: v.float64(),
     status: v.string(), // enum -> option set (member values not in IR)
   }),
+
+  user: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+  }),
+
+  statusType: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+    display: v.string(),
+    color: v.string(),
+  }),
 });
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

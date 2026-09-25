@@ -1,61 +1,4 @@
 # schema module
-defmodule MyApp.Item do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:_id, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "item" do
-
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateItem do
-  use Ecto.Migration
-
-  def change do
-    create table("item", primary_key: false) do
-      add :_id, :string, primary_key: true
-    end
-  end
-end
-
-# schema module
-defmodule MyApp.Kind do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "kind" do
-    field :code, :float
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:code]) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateKind do
-  use Ecto.Migration
-
-  def change do
-    create table("kind", primary_key: false) do
-      add :display, :string, primary_key: true
-      add :code, :float
-    end
-  end
-end
-
-# schema module
 defmodule MyApp.Order do
   use Ecto.Schema
   import Ecto.Changeset
@@ -66,7 +9,7 @@ defmodule MyApp.Order do
   schema "order" do
     belongs_to :buyer, MyApp.User, foreign_key: :buyer_id, references: :_id, type: :string
     field :items, {:array, :string}
-    belongs_to :kind, MyApp.Kind, foreign_key: :kind_id, references: :display, type: :string
+    belongs_to :kind, MyApp.Kind, foreign_key: :kind_id, references: :db_value, type: :string
   end
 
   def changeset(rec, attrs) do
@@ -115,6 +58,37 @@ defmodule MyApp.Repo.Migrations.CreateUser do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
       add :name, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Kind do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "kind" do
+    field :display, :string
+    field :code, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :code]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateKind do
+  use Ecto.Migration
+
+  def change do
+    create table("kind", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :code, :float
     end
   end
 end

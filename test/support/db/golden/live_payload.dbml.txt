@@ -5,28 +5,24 @@ Project "synthetic-live" {
   '''
 }
 
-Table custom."Item" {
-	"_id" varchar [pk]
-
-}
-Table option."Kind" {
-	"Code" float
-	"Display" varchar [pk]
-
-}
 Table custom."Order" {
+	"_id" varchar [pk]
 	"Buyer" user.id
 	"Items" item.id[]
 	"Kind" kind.id
-	"_id" varchar [pk]
 
 }
 Table custom."User" {
-	"Name" varchar
 	"_id" varchar [pk]
+	"Name" varchar
+
+}
+Table option."Kind" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"Code" float
 
 }
 
 Ref: custom."Order"."Buyer" > custom."User"."_id"
-Ref: custom."Order"."Items" <> custom."Item"."_id"
-Ref: custom."Order"."Kind" > option."Kind"."Display"--- diagnostics ---
+Ref: custom."Order"."Kind" > option."Kind"."db_value"--- diagnostics ---

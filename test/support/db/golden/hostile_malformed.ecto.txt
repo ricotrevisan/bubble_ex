@@ -1,0 +1,190 @@
+defmodule MyApp.External.T do
+  use Ecto.Schema
+  import Ecto.Changeset
+  @primary_key false
+
+  embedded_schema do
+    field :fine, :string
+    field :odd, :map
+  end
+
+  def changeset(value, attrs), do: value |> cast(attrs, [:fine, :odd])
+end
+
+# schema module
+defmodule MyApp.Listy do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "listy" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateListy do
+  use Ecto.Migration
+
+  def change do
+    create table("listy", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Task do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "task" do
+    field :empty_custom, :string
+    field :extra_member, :string
+    field :nested_list, :string
+    field :numeric_type, :string
+    embeds_one :odd_api, MyApp.External.T, on_replace: :delete
+    field :ok, :string
+    field :quantum, :string
+    field :untyped, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:empty_custom, :extra_member, :nested_list, :numeric_type, :ok, :quantum, :untyped]) |> cast_embed(:odd_api) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTask do
+  use Ecto.Migration
+
+  def change do
+    create table("task", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :empty_custom, :string
+      add :extra_member, :string
+      add :nested_list, :string
+      add :numeric_type, :string
+      add :odd_api, :map
+      add :ok, :string
+      add :quantum, :string
+      add :untyped, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.BadValue do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "bad_value" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateBadValue do
+  use Ecto.Migration
+
+  def change do
+    create table("bad_value", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.BadValues do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "bad_values" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateBadValues do
+  use Ecto.Migration
+
+  def change do
+    create table("bad_values", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+--- diagnostics ---
+model_malformed_node /option_sets/bad_set
+model_malformed_node /option_sets/bad_value/values/v1
+model_malformed_node /option_sets/bad_values/attributes
+model_malformed_node /option_sets/bad_values/values
+malformed_node /user_types/broken
+malformed_node /user_types/counted
+model_malformed_node /user_types/listy/fields
+model_malformed_node /user_types/task/fields/bad
+field_type_malformed /settings/client_safe/apiconnector2/bad/defs/types
+model_option_key_missing /option_sets/bad_value/values/v2
+uninterpreted_field /user_types/task/surprise
+model_unsupported_field_type /user_types/task/fields/empty_custom/value
+model_unsupported_field_type /user_types/task/fields/nested_list/value
+model_malformed_field_type /user_types/task/fields/numeric_type/value
+model_unsupported_field_type /user_types/task/fields/quantum/value
+model_malformed_field_type /user_types/task/fields/untyped
+incomplete_field_metadata /settings/client_safe/apiconnector2/bad/defs/types
+model_uninterpreted_member /option_sets/bad_value/flavor
+model_uninterpreted_member /user_types/task/fields/extra_member/secret_sauce
+model_synthesized_user_type /user_types/user

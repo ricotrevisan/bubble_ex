@@ -33,7 +33,7 @@ The codebase follows a modular architecture with clear separation of concerns:
   - `Apps.Parser` - Data parsing and JSON extraction
   - `Apps.Validator` - Input validation and sanitization
   - `Apps.Enricher` - Data enhancement and transformation
-- **BubbleEx.Db** - Database structure analysis (`Db.Reader`) and schema encoders behind the `Db.Encoder` behaviour: `Db.Dbml` (DBML) and `Db.Sql.Postgres` (PostgreSQL DDL). New targets (SQLite, Convex) register in `Db.Encoder`. Ash is not an encoder: see `BubbleEx.Target.Ash`.
+- **BubbleEx.Db** - Table view of the Model (`Db.Reader`, a projection of `BubbleEx.Model`; it parses nothing itself, test-enforced) and schema encoders behind the `Db.Encoder` behaviour: `Db.Dbml` (DBML) and `Db.Sql.Postgres` (PostgreSQL DDL). New targets (SQLite, Convex) register in `Db.Encoder`. Ash is not an encoder: see `BubbleEx.Target.Ash`.
 - **BubbleEx.Expression** - Typed, stack-neutral Bubble expression AST (both key forms), raw nodes + diagnostics for unmodeled pieces, source re-emission and canonical hashing
 - **BubbleEx.Privacy** - Data-type privacy rules (conditions as expression ASTs, permissions, per-field visibility)
 - **BubbleEx.Model** - Typed, stack-neutral model of an app's data (data types, fields with content types, built-in fields, option sets with stable keys, API Connector types with cycle cuts, privacy rules), keyed by Bubble IDs with no target-language names; built from app JSON (it owns API Connector resolution, `Model.External.Resolver`) and `Privacy`. Target stacks map from it

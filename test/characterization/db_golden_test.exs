@@ -17,11 +17,8 @@ defmodule BubbleEx.Characterization.DbGoldenTest do
   @golden "test/support/db/golden"
   @formats ~w(dbml postgres sqlite tsql ecto zod xano convex)a
 
-  # The Reader still raises on these two (WTF-365 fixes it).
-  @crashing ~w(test/support/model/hostile_malformed.json test/support/model/hostile_malformed_collections.json)
-
   @fixtures Enum.sort(
-              (Path.wildcard("test/support/model/*.json") -- @crashing) ++
+              Path.wildcard("test/support/model/*.json") ++
                 ~w(test/support/samples/synthetic_app.json test/support/samples/synthetic_export.json)
             )
 

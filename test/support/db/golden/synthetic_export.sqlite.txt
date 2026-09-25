@@ -5,26 +5,31 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Project" (
+  "_id" TEXT NOT NULL,
   "Name" TEXT,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__Task" (
+  "_id" TEXT NOT NULL,
+  "Done?" INTEGER,
+  "Project" TEXT,
+  "Status" TEXT,
+  "Title" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Project") REFERENCES "custom__Project" ("_id"),
+  FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Status" (
-  "Display" TEXT NOT NULL,
-  "db_value" TEXT,
-  "sort_factor" REAL,
-  PRIMARY KEY ("Display")
-);
-
-CREATE TABLE IF NOT EXISTS "custom__Task" (
-  "Done?" INTEGER,
-  "Project" TEXT,
-  "Status" TEXT,
-  "Title" TEXT,
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Project") REFERENCES "custom__Project" ("_id"),
-  FOREIGN KEY ("Status") REFERENCES "option__Status" ("Display")
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
 );
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

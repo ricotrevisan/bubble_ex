@@ -6,15 +6,15 @@
     "name": "a",
     "fields": [
       {
-        "name": "b",
-        "type": "text",
-        "description": "ref:b._id (link manually in Xano)",
-        "style": "single"
-      },
-      {
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "b",
+        "type": "text",
+        "description": "ref:b._id (link manually in Xano)",
         "style": "single"
       }
     ]
@@ -23,16 +23,16 @@
     "name": "b",
     "fields": [
       {
-        "name": "c",
-        "type": "text",
-        "description": "ref:c._id (link manually in Xano)",
-        "style": "list"
-      },
-      {
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
         "style": "single"
+      },
+      {
+        "name": "c",
+        "type": "text",
+        "description": "ref:c._id (link manually in Xano)",
+        "style": "list"
       }
     ]
   },
@@ -40,11 +40,22 @@
     "name": "c",
     "fields": [
       {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
         "name": "a",
         "type": "text",
         "description": "ref:a._id (link manually in Xano)",
         "style": "single"
-      },
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
       {
         "name": "_id",
         "type": "text",
@@ -55,3 +66,4 @@
   }
 ]
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -7,22 +7,26 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  l: defineTable({
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-    dbValue: v.string(),
-    sortFactor: v.float64(),
-  }),
-
   veryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameEnd: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
     slashAndTilde: v.string(),
+    field: v.string(), // reference -> re-key to v.id(...)
     xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx: v.string(),
     nCD: v.string(),
-    field: v.string(), // reference -> re-key to v.id(...)
+  }),
+
+  user: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 
   field: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
+
+  l: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+    display: v.string(),
+  }),
 });
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -1,49 +1,56 @@
-CREATE SCHEMA [option];
-GO
 CREATE SCHEMA [custom];
 GO
+CREATE SCHEMA [option];
+GO
 
-CREATE TABLE [option].[Channel] (
-  [Display] NVARCHAR(450),
-  [db_value] NVARCHAR(MAX),
-  [sort_factor] FLOAT,
-  CONSTRAINT [PK_channel] PRIMARY KEY ([Display])
+CREATE TABLE [custom].[Ticket] (
+  [_id] NVARCHAR(450),
+  [Channels] NVARCHAR(MAX)  -- list<enum>: consider a junction table,
+  [Priority] NVARCHAR(450),
+  CONSTRAINT [PK_ticket] PRIMARY KEY ([_id])
 );
 
-CREATE TABLE [option].[Legacy] (
-  [Display] NVARCHAR(450),
-  CONSTRAINT [PK_legacy] PRIMARY KEY ([Display])
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Channel] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  CONSTRAINT [PK_channel] PRIMARY KEY ([db_value])
 );
 
 CREATE TABLE [option].[Orphan] (
-  [Display] NVARCHAR(450),
-  CONSTRAINT [PK_orphan] PRIMARY KEY ([Display])
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  [Parent] NVARCHAR(450),
+  CONSTRAINT [PK_orphan] PRIMARY KEY ([db_value])
 );
 
 CREATE TABLE [option].[Priority] (
-  [Display] NVARCHAR(450),
-  [channels] NVARCHAR(MAX),
-  [color] NVARCHAR(MAX),
-  [db_value] NVARCHAR(MAX),
-  [deleted] NVARCHAR(MAX),
-  [escalates_to] NVARCHAR(MAX),
-  [icon] NVARCHAR(MAX),
-  [sort_factor] FLOAT,
-  [tooltip] NVARCHAR(MAX),
-  [urgent] NVARCHAR(MAX),
-  [weight] FLOAT,
-  CONSTRAINT [PK_priority] PRIMARY KEY ([Display])
-);
-
-CREATE TABLE [custom].[Ticket] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
   [Channels] NVARCHAR(MAX)  -- list<enum>: consider a junction table,
-  [Priority] NVARCHAR(450),
-  [_id] NVARCHAR(450),
-  CONSTRAINT [PK_ticket] PRIMARY KEY ([_id])
+  [Color] NVARCHAR(MAX),
+  [Escalates to] NVARCHAR(450),
+  [Icon] NVARCHAR(MAX),
+  [Urgent] BIT,
+  [Weight] FLOAT,
+  CONSTRAINT [PK_priority] PRIMARY KEY ([db_value])
 );
 
 ALTER TABLE [custom].[Ticket]
   ADD CONSTRAINT [FK_ticket_priority]
   FOREIGN KEY ([Priority])
-  REFERENCES [option].[Priority] ([Display]);
+  REFERENCES [option].[Priority] ([db_value]);
+ALTER TABLE [option].[Priority]
+  ADD CONSTRAINT [FK_priority_escalates_to]
+  FOREIGN KEY ([Escalates to])
+  REFERENCES [option].[Priority] ([db_value]);
 --- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

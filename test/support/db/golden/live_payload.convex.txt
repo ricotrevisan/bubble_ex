@@ -7,25 +7,22 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  item: defineTable({
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
-  kind: defineTable({
-    code: v.float64(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
   order: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     buyer: v.string(), // reference -> re-key to v.id(...)
     items: v.array(v.string()), // reference -> re-key to v.id(...)
     kind: v.string(), // enum -> option set (member values not in IR)
-    bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 
   user: defineTable({
-    name: v.string(),
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    name: v.string(),
+  }),
+
+  kind: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+    display: v.string(),
+    code: v.float64(),
   }),
 });
 --- diagnostics ---

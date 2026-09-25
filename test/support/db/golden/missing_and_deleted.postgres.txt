@@ -1,31 +1,22 @@
 CREATE SCHEMA IF NOT EXISTS "custom";
-CREATE SCHEMA IF NOT EXISTS "option";
-
-CREATE TABLE "custom"."Archive" (
-  "Label" text,
-  "_id" text,
-  PRIMARY KEY ("_id")
-);
 
 CREATE TABLE "custom"."Invoice" (
+  "_id" text,
   "Archive" text,
   "Customer" text,
   "Lines" text[],
-  "Old ref" text,
-  "Old total" double precision,
   "State" text,
   "Total" double precision,
-  "_id" text,
   PRIMARY KEY ("_id")
 );
 
-CREATE TABLE "option"."Retired" (
-  "Display" text,
-  "db_value" text,
-  "deleted" text,
-  "sort_factor" double precision,
-  PRIMARY KEY ("Display")
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  PRIMARY KEY ("_id")
 );
-
-ALTER TABLE "custom"."Invoice" ADD FOREIGN KEY ("Archive") REFERENCES "custom"."Archive" ("_id");
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

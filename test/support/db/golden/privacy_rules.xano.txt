@@ -17,6 +17,12 @@
     "name": "note",
     "fields": [
       {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
         "name": "body",
         "type": "text",
         "style": "single"
@@ -25,12 +31,6 @@
         "name": "secret",
         "type": "text",
         "style": "single"
-      },
-      {
-        "name": "_id",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
       }
     ]
   },
@@ -38,14 +38,14 @@
     "name": "public_page",
     "fields": [
       {
-        "name": "slug_text",
-        "type": "text",
-        "style": "single"
-      },
-      {
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug_text",
+        "type": "text",
         "style": "single"
       }
     ]
@@ -54,17 +54,18 @@
     "name": "user",
     "fields": [
       {
-        "name": "admin",
-        "type": "bool",
-        "style": "single"
-      },
-      {
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "admin",
+        "type": "bool",
         "style": "single"
       }
     ]
   }
 ]
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

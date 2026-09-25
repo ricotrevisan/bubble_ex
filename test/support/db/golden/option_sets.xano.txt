@@ -3,112 +3,14 @@
     "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
   },
   {
-    "name": "channel",
-    "fields": [
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      },
-      {
-        "name": "db_value",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "sort_factor",
-        "type": "decimal",
-        "style": "single"
-      }
-    ]
-  },
-  {
-    "name": "legacy",
-    "fields": [
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      }
-    ]
-  },
-  {
-    "name": "orphan",
-    "fields": [
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      }
-    ]
-  },
-  {
-    "name": "priority",
-    "fields": [
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      },
-      {
-        "name": "channels",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "color",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "db_value",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "deleted",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "escalates_to",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "icon",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "sort_factor",
-        "type": "decimal",
-        "style": "single"
-      },
-      {
-        "name": "tooltip",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "urgent",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "weight",
-        "type": "decimal",
-        "style": "single"
-      }
-    ]
-  },
-  {
     "name": "ticket",
     "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
       {
         "name": "channels",
         "type": "enum",
@@ -122,7 +24,12 @@
         "values": [],
         "description": "enum:priority (option values not in IR)",
         "style": "single"
-      },
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
       {
         "name": "_id",
         "type": "text",
@@ -130,6 +37,100 @@
         "style": "single"
       }
     ]
+  },
+  {
+    "name": "channel",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "orphan",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "parent",
+        "type": "enum",
+        "values": [],
+        "description": "enum:ghost_set (option values not in IR)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "priority",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "channels",
+        "type": "enum",
+        "values": [],
+        "description": "enum:channel (option values not in IR)",
+        "style": "list"
+      },
+      {
+        "name": "color",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "escalates_to",
+        "type": "enum",
+        "values": [],
+        "description": "enum:priority (option values not in IR)",
+        "style": "single"
+      },
+      {
+        "name": "icon",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "urgent",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "weight",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
   }
 ]
 --- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

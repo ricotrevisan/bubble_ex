@@ -17,7 +17,7 @@ defmodule BubbleEx.Db.Ecto do
     * `:boolean` -> `:boolean`
     * `:utc_datetime_usec` -> `:utc_datetime_usec`
     * `:reference` / `:enum` -> `belongs_to` with `type: :string` (Bubble PKs are
-      text `_id` / `display`, not integer/UUID). The association keeps the Bubble
+      text `_id` / `db_value`, not integer/UUID). The association keeps the Bubble
       field name, but Ecto requires a distinct foreign key, so the FK column is
       `<field>_id` and `references:` points at the target schema's real primary
       key (`:_id` for user tables, the option-set's PK field for enums) since

@@ -6,6 +6,12 @@
     "name": "shipment",
     "fields": [
       {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
         "name": "address",
         "type": "object",
         "children": [
@@ -63,38 +69,6 @@
         "style": "single"
       },
       {
-        "name": "old",
-        "type": "object",
-        "children": [
-          {
-            "name": "latitude",
-            "type": "decimal",
-            "style": "single"
-          },
-          {
-            "name": "lines",
-            "type": "text",
-            "style": "single"
-          },
-          {
-            "name": "seen",
-            "type": "int",
-            "style": "single"
-          },
-          {
-            "name": "street",
-            "type": "text",
-            "style": "single"
-          },
-          {
-            "name": "verified",
-            "type": "bool",
-            "style": "single"
-          }
-        ],
-        "style": "single"
-      },
-      {
         "name": "pings",
         "type": "object",
         "children": [
@@ -139,7 +113,12 @@
           }
         ],
         "style": "single"
-      },
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
       {
         "name": "_id",
         "type": "text",
@@ -164,3 +143,4 @@ external_type_cycle_edge /settings/client_safe/apiconnector2/graph/pong/types
 incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
 empty_definition /settings/client_safe/apiconnector2/misc/blank/types
 external_type_cycle_edge /settings/client_safe/apiconnector2/tree/walk/types
+model_synthesized_user_type /user_types/user

@@ -6,21 +6,22 @@ CREATE TABLE "custom"."Draft" (
 );
 
 CREATE TABLE "custom"."Note" (
+  "_id" text,
   "Body" text,
   "Secret" text,
-  "_id" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."Public page" (
-  "Slug text" text,
   "_id" text,
+  "Slug text" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
-  "Admin" boolean,
   "_id" text,
+  "Admin" boolean,
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

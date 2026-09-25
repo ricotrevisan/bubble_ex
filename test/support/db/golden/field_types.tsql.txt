@@ -4,20 +4,13 @@ CREATE SCHEMA [option];
 GO
 
 CREATE TABLE [custom].[Project] (
-  [Name] NVARCHAR(MAX),
   [_id] NVARCHAR(450),
+  [Name] NVARCHAR(MAX),
   CONSTRAINT [PK_project] PRIMARY KEY ([_id])
 );
 
-CREATE TABLE [option].[Status] (
-  [Display] NVARCHAR(450),
-  [color] NVARCHAR(MAX),
-  [db_value] NVARCHAR(MAX),
-  [sort_factor] FLOAT,
-  CONSTRAINT [PK_status] PRIMARY KEY ([Display])
-);
-
 CREATE TABLE [custom].[Task] (
+  [_id] NVARCHAR(450),
   [Attachment] NVARCHAR(MAX),
   [Budget] NVARCHAR(MAX),
   [Checks] NVARCHAR(MAX)  -- list<bit>: consider a junction table,
@@ -42,14 +35,20 @@ CREATE TABLE [custom].[Task] (
   [Title] NVARCHAR(MAX),
   [Watchers] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
   [Window] NVARCHAR(MAX),
-  [_id] NVARCHAR(450),
   CONSTRAINT [PK_task] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[User] (
-  [Nickname] NVARCHAR(MAX),
   [_id] NVARCHAR(450),
+  [Nickname] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Status] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  [Color] NVARCHAR(MAX),
+  CONSTRAINT [PK_status] PRIMARY KEY ([db_value])
 );
 
 ALTER TABLE [custom].[Task]
@@ -63,5 +62,5 @@ ALTER TABLE [custom].[Task]
 ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_status]
   FOREIGN KEY ([Status])
-  REFERENCES [option].[Status] ([Display]);
+  REFERENCES [option].[Status] ([db_value]);
 --- diagnostics ---

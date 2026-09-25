@@ -119,7 +119,7 @@ defmodule BubbleEx.Db.Convex do
   defp table_name(table, opts), do: by_naming(opts, table.name, table.id)
 
   # The injected primary key is surfaced under a stable, descriptive name so the
-  # generated schema reads cleanly regardless of the source id ("_id"/"Display").
+  # generated schema reads cleanly regardless of the source id ("_id"/"db_value").
   defp field_name(%{primary_key: true}, _opts), do: "bubbleId"
   defp field_name(column, opts), do: by_naming(opts, column.name, column.id)
 

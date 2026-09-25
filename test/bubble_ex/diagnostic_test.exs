@@ -486,7 +486,9 @@ defmodule BubbleEx.DiagnosticTest do
                  subject: %{option_set: "status", field: "x"},
                  path: "/option_sets/status/attributes/x/%v",
                  details: %{descriptor: "api."}
-               }
+               },
+               # The Reader's diagnostics are the Model's, from every stage.
+               %Diagnostic{code: :model_synthesized_user_type, stage: :model}
              ] = db.diagnostics
     end
 

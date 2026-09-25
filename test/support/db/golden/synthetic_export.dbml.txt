@@ -6,24 +6,28 @@ Project "synthexport" {
 }
 
 Table custom."Project" {
-	"Name" varchar
 	"_id" varchar [pk]
-
-}
-Table option."Status" {
-	"Display" varchar [pk]
-	"db_value" varchar
-	"sort_factor" float
+	"Name" varchar
 
 }
 Table custom."Task" {
+	"_id" varchar [pk]
 	"Done?" bool
 	"Project" project.id
 	"Status" status.id
 	"Title" varchar
+
+}
+Table custom."User" {
 	"_id" varchar [pk]
+
+}
+Table option."Status" {
+	"db_value" varchar [pk]
+	"Display" varchar
 
 }
 
 Ref: custom."Task"."Project" > custom."Project"."_id"
-Ref: custom."Task"."Status" > option."Status"."Display"--- diagnostics ---
+Ref: custom."Task"."Status" > option."Status"."db_value"--- diagnostics ---
+model_synthesized_user_type /user_types/user

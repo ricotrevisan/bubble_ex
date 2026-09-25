@@ -8,18 +8,12 @@ import { v } from "convex/values";
 
 export default defineSchema({
   project: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     name: v.string(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
-  status: defineTable({
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-    color: v.string(),
-    dbValue: v.string(),
-    sortFactor: v.float64(),
   }),
 
   task: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     attachment: v.string(),
     budget: v.any(),
     checks: v.array(v.boolean()),
@@ -44,12 +38,17 @@ export default defineSchema({
     title: v.string(),
     watchers: v.array(v.string()), // reference -> re-key to v.id(...)
     window: v.any(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 
   user: defineTable({
-    nickname: v.string(),
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    nickname: v.string(),
+  }),
+
+  status: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+    display: v.string(),
+    color: v.string(),
   }),
 });
 --- diagnostics ---

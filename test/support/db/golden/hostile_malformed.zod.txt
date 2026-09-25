@@ -1,0 +1,72 @@
+import { z } from 'zod';
+
+export const TSchema = z.looseObject({
+  Fine: z.string().nullish(),
+  odd: z.json().nullish(),
+});
+
+// Listy
+export const ListySchema = z.object({
+  _id: z.string(),
+});
+
+export type Listy = z.infer<typeof ListySchema>;
+
+// Task
+export const TaskSchema = z.object({
+  _id: z.string(),
+  'Empty custom': z.string().nullish(),
+  'Extra member': z.string().nullish(),
+  'Nested list': z.string().nullish(),
+  'Numeric type': z.string().nullish(),
+  'Odd API': TSchema.nullish(),
+  OK: z.string().nullish(),
+  Quantum: z.string().nullish(),
+  Untyped: z.string().nullish(),
+});
+
+export type Task = z.infer<typeof TaskSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Bad value
+export const BadValueSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type BadValue = z.infer<typeof BadValueSchema>;
+
+// Bad values
+export const BadValuesSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type BadValues = z.infer<typeof BadValuesSchema>;
+--- diagnostics ---
+model_malformed_node /option_sets/bad_set
+model_malformed_node /option_sets/bad_value/values/v1
+model_malformed_node /option_sets/bad_values/attributes
+model_malformed_node /option_sets/bad_values/values
+malformed_node /user_types/broken
+malformed_node /user_types/counted
+model_malformed_node /user_types/listy/fields
+model_malformed_node /user_types/task/fields/bad
+field_type_malformed /settings/client_safe/apiconnector2/bad/defs/types
+model_option_key_missing /option_sets/bad_value/values/v2
+uninterpreted_field /user_types/task/surprise
+model_unsupported_field_type /user_types/task/fields/empty_custom/value
+model_unsupported_field_type /user_types/task/fields/nested_list/value
+model_malformed_field_type /user_types/task/fields/numeric_type/value
+model_unsupported_field_type /user_types/task/fields/quantum/value
+model_malformed_field_type /user_types/task/fields/untyped
+incomplete_field_metadata /settings/client_safe/apiconnector2/bad/defs/types
+model_uninterpreted_member /option_sets/bad_value/flavor
+model_uninterpreted_member /user_types/task/fields/extra_member/secret_sauce
+model_synthesized_user_type /user_types/user

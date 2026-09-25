@@ -10,19 +10,20 @@ Table custom."Draft" {
 
 }
 Table custom."Note" {
+	"_id" varchar [pk]
 	"Body" varchar
 	"Secret" varchar
-	"_id" varchar [pk]
 
 }
 Table custom."Public page" {
-	"Slug text" varchar
 	"_id" varchar [pk]
+	"Slug text" varchar
 
 }
 Table custom."User" {
-	"Admin" bool
 	"_id" varchar [pk]
+	"Admin" bool
 
 }
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

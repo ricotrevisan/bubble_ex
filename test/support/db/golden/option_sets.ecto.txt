@@ -1,138 +1,4 @@
 # schema module
-defmodule MyApp.Channel do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "channel" do
-    field :db_value, :string
-    field :sort_factor, :float
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:db_value, :sort_factor]) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateChannel do
-  use Ecto.Migration
-
-  def change do
-    create table("channel", primary_key: false) do
-      add :display, :string, primary_key: true
-      add :db_value, :string
-      add :sort_factor, :float
-    end
-  end
-end
-
-# schema module
-defmodule MyApp.Legacy do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "legacy" do
-
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateLegacy do
-  use Ecto.Migration
-
-  def change do
-    create table("legacy", primary_key: false) do
-      add :display, :string, primary_key: true
-    end
-  end
-end
-
-# schema module
-defmodule MyApp.Orphan do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "orphan" do
-
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateOrphan do
-  use Ecto.Migration
-
-  def change do
-    create table("orphan", primary_key: false) do
-      add :display, :string, primary_key: true
-    end
-  end
-end
-
-# schema module
-defmodule MyApp.Priority do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "priority" do
-    field :channels, :string
-    field :color, :string
-    field :db_value, :string
-    field :deleted, :string
-    field :escalates_to, :string
-    field :icon, :string
-    field :sort_factor, :float
-    field :tooltip, :string
-    field :urgent, :string
-    field :weight, :float
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:channels, :color, :db_value, :deleted, :escalates_to, :icon, :sort_factor, :tooltip, :urgent, :weight]) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreatePriority do
-  use Ecto.Migration
-
-  def change do
-    create table("priority", primary_key: false) do
-      add :display, :string, primary_key: true
-      add :channels, :string
-      add :color, :string
-      add :db_value, :string
-      add :deleted, :string
-      add :escalates_to, :string
-      add :icon, :string
-      add :sort_factor, :float
-      add :tooltip, :string
-      add :urgent, :string
-      add :weight, :float
-    end
-  end
-end
-
-# schema module
 defmodule MyApp.Ticket do
   use Ecto.Schema
   import Ecto.Changeset
@@ -142,7 +8,7 @@ defmodule MyApp.Ticket do
 
   schema "ticket" do
     field :channels, {:array, :string}
-    belongs_to :priority, MyApp.Priority, foreign_key: :priority_id, references: :display, type: :string
+    belongs_to :priority, MyApp.Priority, foreign_key: :priority_id, references: :db_value, type: :string
   end
 
   def changeset(rec, attrs) do
@@ -163,4 +29,139 @@ defmodule MyApp.Repo.Migrations.CreateTicket do
     create index("ticket", [:priority_id])
   end
 end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Channel do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "channel" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateChannel do
+  use Ecto.Migration
+
+  def change do
+    create table("channel", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Orphan do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "orphan" do
+    field :display, :string
+    field :parent, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :parent]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateOrphan do
+  use Ecto.Migration
+
+  def change do
+    create table("orphan", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :parent, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Priority do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "priority" do
+    field :display, :string
+    field :channels, {:array, :string}
+    field :color, :string
+    belongs_to :escalates_to, MyApp.Priority, foreign_key: :escalates_to_id, references: :db_value, type: :string
+    field :icon, :string
+    field :urgent, :boolean
+    field :weight, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :channels, :color, :escalates_to_id, :icon, :urgent, :weight]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreatePriority do
+  use Ecto.Migration
+
+  def change do
+    create table("priority", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :channels, {:array, :string}
+      add :color, :string
+      add :escalates_to_id, :string
+      add :icon, :string
+      add :urgent, :boolean
+      add :weight, :float
+    end
+    create index("priority", [:escalates_to_id])
+  end
+end
 --- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

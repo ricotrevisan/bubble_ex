@@ -10,21 +10,22 @@ CREATE TABLE IF NOT EXISTS "custom__Draft" (
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Note" (
+  "_id" TEXT NOT NULL,
   "Body" TEXT,
   "Secret" TEXT,
-  "_id" TEXT NOT NULL,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Public page" (
-  "Slug text" TEXT,
   "_id" TEXT NOT NULL,
+  "Slug text" TEXT,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
-  "Admin" INTEGER,
   "_id" TEXT NOT NULL,
+  "Admin" INTEGER,
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

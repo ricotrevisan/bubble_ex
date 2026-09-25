@@ -3,29 +3,25 @@ GO
 CREATE SCHEMA [option];
 GO
 
-CREATE TABLE [custom].[Item] (
-  [_id] NVARCHAR(450),
-  CONSTRAINT [PK_item] PRIMARY KEY ([_id])
-);
-
-CREATE TABLE [option].[Kind] (
-  [Code] FLOAT,
-  [Display] NVARCHAR(450),
-  CONSTRAINT [PK_kind] PRIMARY KEY ([Display])
-);
-
 CREATE TABLE [custom].[Order] (
+  [_id] NVARCHAR(450),
   [Buyer] NVARCHAR(450),
   [Items] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
   [Kind] NVARCHAR(450),
-  [_id] NVARCHAR(450),
   CONSTRAINT [PK_order] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[User] (
-  [Name] NVARCHAR(MAX),
   [_id] NVARCHAR(450),
+  [Name] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Kind] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  [Code] FLOAT,
+  CONSTRAINT [PK_kind] PRIMARY KEY ([db_value])
 );
 
 ALTER TABLE [custom].[Order]
@@ -35,5 +31,5 @@ ALTER TABLE [custom].[Order]
 ALTER TABLE [custom].[Order]
   ADD CONSTRAINT [FK_order_kind]
   FOREIGN KEY ([Kind])
-  REFERENCES [option].[Kind] ([Display]);
+  REFERENCES [option].[Kind] ([db_value]);
 --- diagnostics ---

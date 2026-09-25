@@ -7,27 +7,22 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  archive: defineTable({
-    label: v.string(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
   invoice: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     archive: v.string(), // reference -> re-key to v.id(...)
     customer: v.string(), // reference -> re-key to v.id(...)
     lines: v.array(v.string()), // reference -> re-key to v.id(...)
-    oldRef: v.string(), // reference -> re-key to v.id(...)
-    oldTotal: v.float64(),
     state: v.string(), // enum -> option set (member values not in IR)
     total: v.float64(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 
-  retired: defineTable({
+  user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
-    dbValue: v.string(),
-    deleted: v.string(),
-    sortFactor: v.float64(),
   }),
 });
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

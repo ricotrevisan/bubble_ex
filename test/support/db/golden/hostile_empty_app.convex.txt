@@ -7,5 +7,9 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  user: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+  }),
 });
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

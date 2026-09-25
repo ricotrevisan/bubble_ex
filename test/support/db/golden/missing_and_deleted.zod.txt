@@ -1,34 +1,26 @@
 import { z } from 'zod';
 
-// Archive
-export const ArchiveSchema = z.object({
-  Label: z.string().nullish(),
-  _id: z.string(),
-});
-
-export type Archive = z.infer<typeof ArchiveSchema>;
-
 // Invoice
 export const InvoiceSchema = z.object({
+  _id: z.string(),
   Archive: z.string().nullish(), // reference -> archive
   Customer: z.string().nullish(), // reference -> ghost
   Lines: z.array(z.string()).nullish(), // reference -> ghost_line
-  'Old ref': z.string().nullish(), // reference -> ghost
-  'Old total': z.number().nullish(),
   State: z.string().nullish(), // enum -> ghost_state option set (values not in IR)
   Total: z.number().nullish(),
-  _id: z.string(),
 });
 
 export type Invoice = z.infer<typeof InvoiceSchema>;
 
-// Retired
-export const RetiredSchema = z.object({
-  Display: z.string(),
-  db_value: z.string().nullish(),
-  deleted: z.string().nullish(),
-  sort_factor: z.number().nullish(),
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
 });
 
-export type Retired = z.infer<typeof RetiredSchema>;
+export type User = z.infer<typeof UserSchema>;
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

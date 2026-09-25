@@ -5,15 +5,19 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Shipment" (
+  "_id" TEXT NOT NULL,
   "Address" TEXT CHECK ("Address" IS NULL OR json_valid("Address")),
   "Blank" TEXT CHECK ("Blank" IS NULL OR json_valid("Blank")),
   "Invalid" TEXT CHECK ("Invalid" IS NULL OR json_valid("Invalid")),
   "Invalid list" TEXT CHECK ("Invalid list" IS NULL OR json_valid("Invalid list")),
   "Missing" TEXT CHECK ("Missing" IS NULL OR json_valid("Missing")),
   "Nowhere" TEXT CHECK ("Nowhere" IS NULL OR json_valid("Nowhere")),
-  "Old" TEXT CHECK ("Old" IS NULL OR json_valid("Old")),
   "Pings" TEXT CHECK ("Pings" IS NULL OR json_valid("Pings")),
   "Tree" TEXT CHECK ("Tree" IS NULL OR json_valid("Tree")),
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
   PRIMARY KEY ("_id")
 );
@@ -31,6 +35,6 @@ external_type_target_opaque /user_types/shipment/fields/address_api/value
 external_type_target_opaque /user_types/shipment/fields/blank_api/value
 external_type_target_opaque /user_types/shipment/fields/missing_api/value
 external_type_target_opaque /user_types/shipment/fields/nowhere_api/value
-external_type_target_opaque /user_types/shipment/fields/old_api/value
 external_type_target_opaque /user_types/shipment/fields/pings_list_api/value
 external_type_target_opaque /user_types/shipment/fields/tree_api/value
+model_synthesized_user_type /user_types/user

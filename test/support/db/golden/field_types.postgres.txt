@@ -2,20 +2,13 @@ CREATE SCHEMA IF NOT EXISTS "custom";
 CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Project" (
-  "Name" text,
   "_id" text,
+  "Name" text,
   PRIMARY KEY ("_id")
 );
 
-CREATE TABLE "option"."Status" (
-  "Display" text,
-  "color" text,
-  "db_value" text,
-  "sort_factor" double precision,
-  PRIMARY KEY ("Display")
-);
-
 CREATE TABLE "custom"."Task" (
+  "_id" text,
   "Attachment" text,
   "Budget" jsonb,
   "Checks" boolean[],
@@ -40,17 +33,23 @@ CREATE TABLE "custom"."Task" (
   "Title" text,
   "Watchers" text[],
   "Window" jsonb,
-  "_id" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
-  "Nickname" text,
   "_id" text,
+  "Nickname" text,
   PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status" (
+  "db_value" text,
+  "Display" text,
+  "Color" text,
+  PRIMARY KEY ("db_value")
 );
 
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Owner") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("Display");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
 --- diagnostics ---

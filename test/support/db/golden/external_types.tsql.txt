@@ -2,17 +2,21 @@ CREATE SCHEMA [custom];
 GO
 
 CREATE TABLE [custom].[Shipment] (
+  [_id] NVARCHAR(450),
   [Address] NVARCHAR(MAX) CHECK ([Address] IS NULL OR ISJSON([Address]) = 1),
   [Blank] NVARCHAR(MAX) CHECK ([Blank] IS NULL OR ISJSON([Blank]) = 1),
   [Invalid] NVARCHAR(MAX) CHECK ([Invalid] IS NULL OR ISJSON([Invalid]) = 1),
   [Invalid list] NVARCHAR(MAX) CHECK ([Invalid list] IS NULL OR ISJSON([Invalid list]) = 1),
   [Missing] NVARCHAR(MAX) CHECK ([Missing] IS NULL OR ISJSON([Missing]) = 1),
   [Nowhere] NVARCHAR(MAX) CHECK ([Nowhere] IS NULL OR ISJSON([Nowhere]) = 1),
-  [Old] NVARCHAR(MAX) CHECK ([Old] IS NULL OR ISJSON([Old]) = 1),
   [Pings] NVARCHAR(MAX) CHECK ([Pings] IS NULL OR ISJSON([Pings]) = 1),
   [Tree] NVARCHAR(MAX) CHECK ([Tree] IS NULL OR ISJSON([Tree]) = 1),
-  [_id] NVARCHAR(450),
   CONSTRAINT [PK_shipment] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 --- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
@@ -28,6 +32,6 @@ external_type_target_opaque /user_types/shipment/fields/address_api/value
 external_type_target_opaque /user_types/shipment/fields/blank_api/value
 external_type_target_opaque /user_types/shipment/fields/missing_api/value
 external_type_target_opaque /user_types/shipment/fields/nowhere_api/value
-external_type_target_opaque /user_types/shipment/fields/old_api/value
 external_type_target_opaque /user_types/shipment/fields/pings_list_api/value
 external_type_target_opaque /user_types/shipment/fields/tree_api/value
+model_synthesized_user_type /user_types/user

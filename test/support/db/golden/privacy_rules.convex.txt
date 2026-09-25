@@ -12,19 +12,20 @@ export default defineSchema({
   }),
 
   note: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     body: v.string(),
     secret: v.string(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 
   publicPage: defineTable({
-    slugText: v.string(),
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    slugText: v.string(),
   }),
 
   user: defineTable({
-    admin: v.boolean(),
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    admin: v.boolean(),
   }),
 });
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

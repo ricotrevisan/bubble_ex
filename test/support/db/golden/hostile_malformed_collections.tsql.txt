@@ -1,0 +1,11 @@
+CREATE SCHEMA [custom];
+GO
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+--- diagnostics ---
+model_malformed_node /option_sets
+model_malformed_node /user_types
+model_synthesized_user_type /user_types/user

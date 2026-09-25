@@ -1,4 +1,10 @@
 import { z } from 'zod';
 
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
 
+export type User = z.infer<typeof UserSchema>;
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

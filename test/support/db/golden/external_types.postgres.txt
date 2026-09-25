@@ -21,15 +21,19 @@ CREATE TYPE "Node" AS (
 );
 
 CREATE TABLE "custom"."Shipment" (
+  "_id" text,
   "Address" "Address",
   "Blank" jsonb,
   "Invalid" jsonb,
   "Invalid list" jsonb,
   "Missing" jsonb,
   "Nowhere" jsonb,
-  "Old" "Address",
   "Pings" "A"[],
   "Tree" "Node",
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
   "_id" text,
   PRIMARY KEY ("_id")
 );
@@ -48,3 +52,4 @@ external_type_cycle_edge /settings/client_safe/apiconnector2/graph/pong/types
 incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
 empty_definition /settings/client_safe/apiconnector2/misc/blank/types
 external_type_cycle_edge /settings/client_safe/apiconnector2/tree/walk/types
+model_synthesized_user_type /user_types/user

@@ -30,9 +30,10 @@ defmodule BubbleEx.Characterization.DbSqlPostgresTest do
     assert sql =~ ~s[PRIMARY KEY ("_id")]
   end
 
-  test "emits the option-set table keyed on Display", %{sql: sql} do
+  test "emits the option-set table keyed on its db_value", %{sql: sql} do
     assert sql =~ ~s[CREATE TABLE "option"."Status Type" (]
-    assert sql =~ ~s[PRIMARY KEY ("Display")]
+    assert sql =~ ~s("Display" text)
+    assert sql =~ ~s[PRIMARY KEY ("db_value")]
   end
 
   test "emits a foreign key for the scalar custom reference", %{sql: sql} do
@@ -40,8 +41,8 @@ defmodule BubbleEx.Characterization.DbSqlPostgresTest do
              ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("onboarding answer") REFERENCES "custom"."Onboarding Answer" ("_id");]
   end
 
-  test "emits a foreign key for the option-set reference to Display", %{sql: sql} do
+  test "emits a foreign key for the option-set reference to db_value", %{sql: sql} do
     assert sql =~
-             ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("Display");]
+             ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");]
   end
 end

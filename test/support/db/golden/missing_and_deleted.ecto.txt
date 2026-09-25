@@ -1,33 +1,4 @@
 # schema module
-defmodule MyApp.Archive do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:_id, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "archive" do
-    field :label, :string
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:label]) |> validate_required([:_id])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateArchive do
-  use Ecto.Migration
-
-  def change do
-    create table("archive", primary_key: false) do
-      add :_id, :string, primary_key: true
-      add :label, :string
-    end
-  end
-end
-
-# schema module
 defmodule MyApp.Invoice do
   use Ecto.Schema
   import Ecto.Changeset
@@ -36,17 +7,15 @@ defmodule MyApp.Invoice do
   @foreign_key_type :string
 
   schema "invoice" do
-    belongs_to :archive, MyApp.Archive, foreign_key: :archive_id, references: :_id, type: :string
+    field :archive, :string
     field :customer, :string
     field :lines, {:array, :string}
-    field :old_ref, :string
-    field :old_total, :float
     field :state, :string
     field :total, :float
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:archive_id, :customer, :lines, :old_ref, :old_total, :state, :total]) |> validate_required([:_id])
+    rec |> cast(attrs, [:archive, :customer, :lines, :state, :total]) |> validate_required([:_id])
   end
 end
 
@@ -57,48 +26,45 @@ defmodule MyApp.Repo.Migrations.CreateInvoice do
   def change do
     create table("invoice", primary_key: false) do
       add :_id, :string, primary_key: true
-      add :archive_id, :string
+      add :archive, :string
       add :customer, :string
       add :lines, {:array, :string}
-      add :old_ref, :string
-      add :old_total, :float
       add :state, :string
       add :total, :float
     end
-    create index("invoice", [:archive_id])
   end
 end
 
 # schema module
-defmodule MyApp.Retired do
+defmodule MyApp.User do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @primary_key {:display, :string, autogenerate: false}
+  @primary_key {:_id, :string, autogenerate: false}
   @foreign_key_type :string
 
-  schema "retired" do
-    field :db_value, :string
-    field :deleted, :string
-    field :sort_factor, :float
+  schema "user" do
+
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:db_value, :deleted, :sort_factor]) |> validate_required([:display])
+    rec |> cast(attrs, []) |> validate_required([:_id])
   end
 end
 
 # migration
-defmodule MyApp.Repo.Migrations.CreateRetired do
+defmodule MyApp.Repo.Migrations.CreateUser do
   use Ecto.Migration
 
   def change do
-    create table("retired", primary_key: false) do
-      add :display, :string, primary_key: true
-      add :db_value, :string
-      add :deleted, :string
-      add :sort_factor, :float
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
     end
   end
 end
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

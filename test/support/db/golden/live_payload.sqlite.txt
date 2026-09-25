@@ -4,30 +4,26 @@
 
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS "custom__Item" (
+CREATE TABLE IF NOT EXISTS "custom__Order" (
   "_id" TEXT NOT NULL,
+  "Buyer" TEXT,
+  "Items" TEXT,  -- list<TEXT>; store as JSON
+  "Kind" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Buyer") REFERENCES "custom__User" ("_id"),
+  FOREIGN KEY ("Kind") REFERENCES "option__Kind" ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  "Name" TEXT,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Kind" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
   "Code" REAL,
-  "Display" TEXT NOT NULL,
-  PRIMARY KEY ("Display")
-);
-
-CREATE TABLE IF NOT EXISTS "custom__Order" (
-  "Buyer" TEXT,
-  "Items" TEXT,  -- list<TEXT>; store as JSON
-  "Kind" TEXT,
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Buyer") REFERENCES "custom__User" ("_id"),
-  FOREIGN KEY ("Kind") REFERENCES "option__Kind" ("Display")
-);
-
-CREATE TABLE IF NOT EXISTS "custom__User" (
-  "Name" TEXT,
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  PRIMARY KEY ("db_value")
 );
 --- diagnostics ---

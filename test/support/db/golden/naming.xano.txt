@@ -6,6 +6,12 @@
     "name": "00_thing_join",
     "fields": [
       {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
         "name": "11_done",
         "type": "bool",
         "style": "single"
@@ -16,24 +22,8 @@
         "style": "single"
       },
       {
-        "name": "title",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "title",
-        "type": "text",
-        "style": "single"
-      },
-      {
         "name": "_struct",
         "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "_id",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
         "style": "single"
       },
       {
@@ -47,6 +37,16 @@
         "style": "single"
       },
       {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      },
+      {
         "name": "type",
         "type": "text",
         "style": "single"
@@ -54,56 +54,8 @@
     ]
   },
   {
-    "name": "40_levels",
-    "fields": [
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      },
-      {
-        "name": "db_value",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "sort_factor",
-        "type": "decimal",
-        "style": "single"
-      }
-    ]
-  },
-  {
-    "name": "thing",
-    "fields": [
-      {
-        "name": "_id",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      }
-    ]
-  },
-  {
-    "name": "thing",
-    "fields": [
-      {
-        "name": "_id",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      }
-    ]
-  },
-  {
     "name": "_launch",
     "fields": [
-      {
-        "name": "name",
-        "type": "text",
-        "style": "single"
-      },
       {
         "name": "_id",
         "type": "text",
@@ -114,8 +66,63 @@
         "name": "_",
         "type": "text",
         "style": "single"
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "thing",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "thing",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "40_levels",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
       }
     ]
   }
 ]
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

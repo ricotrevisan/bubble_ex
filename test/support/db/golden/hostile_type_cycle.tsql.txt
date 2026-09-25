@@ -2,21 +2,26 @@ CREATE SCHEMA [custom];
 GO
 
 CREATE TABLE [custom].[A] (
-  [B] NVARCHAR(450),
   [_id] NVARCHAR(450),
+  [B] NVARCHAR(450),
   CONSTRAINT [PK_a] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[B] (
-  [C] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
   [_id] NVARCHAR(450),
+  [C] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
   CONSTRAINT [PK_b] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[C] (
-  [A] NVARCHAR(450),
   [_id] NVARCHAR(450),
+  [A] NVARCHAR(450),
   CONSTRAINT [PK_c] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 
 ALTER TABLE [custom].[A]
@@ -28,3 +33,4 @@ ALTER TABLE [custom].[C]
   FOREIGN KEY ([A])
   REFERENCES [custom].[A] ([_id]);
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

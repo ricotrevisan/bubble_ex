@@ -5,39 +5,44 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__00. Thing - Join" (
+  "_id" TEXT NOT NULL,
   "11. Done" INTEGER,
   "40. Sort: Thing Title" TEXT,
-  "Title" TEXT,
-  "Title" TEXT,
   "__struct__" TEXT,
-  "_id" TEXT NOT NULL,
   "id" TEXT,
   "inserted_at" TEXT,
+  "Title" TEXT,
+  "Title" TEXT,
   "type" TEXT,
   PRIMARY KEY ("_id")
 );
 
-CREATE TABLE IF NOT EXISTS "option__40. Levels" (
-  "Display" TEXT NOT NULL,
-  "db_value" TEXT,
-  "sort_factor" REAL,
-  PRIMARY KEY ("Display")
-);
-
-CREATE TABLE IF NOT EXISTS "custom__Thing" (
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
-);
-
-CREATE TABLE IF NOT EXISTS "custom__Thing" (
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
-);
-
 CREATE TABLE IF NOT EXISTS "custom__🚀 Launch" (
-  "Name ✨" TEXT,
   "_id" TEXT NOT NULL,
   "🔥" TEXT,
+  "Name ✨" TEXT,
   PRIMARY KEY ("_id")
 );
+
+CREATE TABLE IF NOT EXISTS "custom__Thing" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__Thing" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__40. Levels" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
+);
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

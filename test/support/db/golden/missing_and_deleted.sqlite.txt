@@ -4,30 +4,23 @@
 
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS "custom__Archive" (
-  "Label" TEXT,
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
-);
-
 CREATE TABLE IF NOT EXISTS "custom__Invoice" (
+  "_id" TEXT NOT NULL,
   "Archive" TEXT,
   "Customer" TEXT,
   "Lines" TEXT,  -- list<TEXT>; store as JSON
-  "Old ref" TEXT,
-  "Old total" REAL,
   "State" TEXT,
   "Total" REAL,
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Archive") REFERENCES "custom__Archive" ("_id")
+  PRIMARY KEY ("_id")
 );
 
-CREATE TABLE IF NOT EXISTS "option__Retired" (
-  "Display" TEXT NOT NULL,
-  "db_value" TEXT,
-  "deleted" TEXT,
-  "sort_factor" REAL,
-  PRIMARY KEY ("Display")
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
 );
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

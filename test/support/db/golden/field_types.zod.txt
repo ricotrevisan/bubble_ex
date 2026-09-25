@@ -2,24 +2,15 @@ import { z } from 'zod';
 
 // Project
 export const ProjectSchema = z.object({
-  Name: z.string().nullish(),
   _id: z.string(),
+  Name: z.string().nullish(),
 });
 
 export type Project = z.infer<typeof ProjectSchema>;
 
-// Status
-export const StatusSchema = z.object({
-  Display: z.string(),
-  color: z.string().nullish(),
-  db_value: z.string().nullish(),
-  sort_factor: z.number().nullish(),
-});
-
-export type Status = z.infer<typeof StatusSchema>;
-
 // Task
 export const TaskSchema = z.object({
+  _id: z.string(),
   Attachment: z.string().nullish(),
   Budget: z.object({}).passthrough().nullish(), // bubble_number_range (structured Bubble type)
   Checks: z.array(z.boolean()).nullish(),
@@ -44,16 +35,24 @@ export const TaskSchema = z.object({
   Title: z.string().nullish(),
   Watchers: z.array(z.string()).nullish(), // reference -> user
   Window: z.object({}).passthrough().nullish(), // bubble_date_range (structured Bubble type)
-  _id: z.string(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;
 
 // User
 export const UserSchema = z.object({
-  Nickname: z.string().nullish(),
   _id: z.string(),
+  Nickname: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;
+
+// Status
+export const StatusSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  Color: z.string().nullish(),
+});
+
+export type Status = z.infer<typeof StatusSchema>;
 --- diagnostics ---

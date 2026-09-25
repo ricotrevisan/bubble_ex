@@ -5,20 +5,13 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Project" (
-  "Name" TEXT,
   "_id" TEXT NOT NULL,
+  "Name" TEXT,
   PRIMARY KEY ("_id")
 );
 
-CREATE TABLE IF NOT EXISTS "option__Status" (
-  "Display" TEXT NOT NULL,
-  "color" TEXT,
-  "db_value" TEXT,
-  "sort_factor" REAL,
-  PRIMARY KEY ("Display")
-);
-
 CREATE TABLE IF NOT EXISTS "custom__Task" (
+  "_id" TEXT NOT NULL,
   "Attachment" TEXT,
   "Budget" TEXT,
   "Checks" TEXT,  -- list<INTEGER>; store as JSON
@@ -43,16 +36,22 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "Title" TEXT,
   "Watchers" TEXT,  -- list<TEXT>; store as JSON
   "Window" TEXT,
-  "_id" TEXT NOT NULL,
   PRIMARY KEY ("_id"),
   FOREIGN KEY ("Owner") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Project") REFERENCES "custom__Project" ("_id"),
-  FOREIGN KEY ("Status") REFERENCES "option__Status" ("Display")
+  FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
-  "Nickname" TEXT,
   "_id" TEXT NOT NULL,
+  "Nickname" TEXT,
   PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Status" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  "Color" TEXT,
+  PRIMARY KEY ("db_value")
 );
 --- diagnostics ---

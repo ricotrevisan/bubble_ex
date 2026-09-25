@@ -150,7 +150,9 @@ defmodule BubbleEx.Apps.EnricherTest do
     end
 
     test "omits diagnostic keys for clean artifacts" do
-      attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres)
+      # An app that defines User (otherwise the Model diagnoses its synthesized one).
+      app = put_in(@app_data, ["user_types", "user"], %{"%d" => "User", "%f3" => %{}})
+      attrs = Enricher.maybe_add_db_diagram(%{}, app, format: :postgres)
       refute Map.has_key?(attrs, :schema_diagnostics)
       refute Map.has_key?(attrs, :dbml_diagnostics)
     end

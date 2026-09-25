@@ -9,26 +9,27 @@ export type Draft = z.infer<typeof DraftSchema>;
 
 // Note
 export const NoteSchema = z.object({
+  _id: z.string(),
   Body: z.string().nullish(),
   Secret: z.string().nullish(),
-  _id: z.string(),
 });
 
 export type Note = z.infer<typeof NoteSchema>;
 
 // Public page
 export const PublicPageSchema = z.object({
-  'Slug text': z.string().nullish(),
   _id: z.string(),
+  'Slug text': z.string().nullish(),
 });
 
 export type PublicPage = z.infer<typeof PublicPageSchema>;
 
 // User
 export const UserSchema = z.object({
-  Admin: z.boolean().nullish(),
   _id: z.string(),
+  Admin: z.boolean().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

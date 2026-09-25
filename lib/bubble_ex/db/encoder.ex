@@ -2,8 +2,8 @@ defmodule BubbleEx.Db.Encoder do
   @moduledoc """
   Behaviour shared by every database-schema renderer (DBML, SQL dialects, ...).
 
-  An encoder turns the universal `db_map` produced by `BubbleEx.Db.Reader.parse/1`
-  into a textual schema for one target format. `module_for/1` resolves a format
+  An encoder turns the table view produced by `BubbleEx.Db.Reader.parse/1` (a
+  projection of `BubbleEx.Model`) into a textual schema for one target format. `module_for/1` resolves a format
   atom to its encoder module.
 
   Ash is not an encoder: it maps from `BubbleEx.Model` through
@@ -14,8 +14,9 @@ defmodule BubbleEx.Db.Encoder do
 
   defmodule Result do
     @moduledoc """
-    Detailed schema-rendering result. `diagnostics` are the Reader's
-    diagnostics plus this target's (stage `{:target, format}`), normalized.
+    Detailed schema-rendering result. `diagnostics` are the Reader's (the
+    Model's) diagnostics plus this target's (stage `{:target, format}`),
+    normalized.
     """
     @enforce_keys [:format, :content, :diagnostics]
     defstruct [:format, :content, :diagnostics]

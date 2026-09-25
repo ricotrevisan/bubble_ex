@@ -8,18 +8,23 @@ import { v } from "convex/values";
 
 export default defineSchema({
   a: defineTable({
-    b: v.string(), // reference -> re-key to v.id(...)
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    b: v.string(), // reference -> re-key to v.id(...)
   }),
 
   b: defineTable({
-    c: v.array(v.string()), // reference -> re-key to v.id(...)
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    c: v.array(v.string()), // reference -> re-key to v.id(...)
   }),
 
   c: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     a: v.string(), // reference -> re-key to v.id(...)
+  }),
+
+  user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 });
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

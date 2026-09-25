@@ -25,19 +25,25 @@ export const NodeSchema = z.looseObject({
 
 // Shipment
 export const ShipmentSchema = z.object({
+  _id: z.string(),
   Address: AddressSchema.nullish(),
   Blank: z.json().nullish(),
   Invalid: z.json().nullish(),
-  'Invalid list': z.json().nullish(),
+  'Invalid list': z.array(z.json()).nullish(),
   Missing: z.json().nullish(),
   Nowhere: z.json().nullish(),
-  Old: AddressSchema.nullish(),
   Pings: z.array(ASchema).nullish(),
   Tree: NodeSchema.nullish(),
-  _id: z.string(),
 });
 
 export type Shipment = z.infer<typeof ShipmentSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
 --- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
 external_type_unresolved_root /user_types/shipment/fields/blank_api/value
@@ -51,3 +57,4 @@ connector_missing /user_types/shipment/fields/nowhere_api/value
 external_type_unresolved_root /user_types/shipment/fields/nowhere_api/value
 incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
 empty_definition /settings/client_safe/apiconnector2/misc/blank/types
+model_synthesized_user_type /user_types/user

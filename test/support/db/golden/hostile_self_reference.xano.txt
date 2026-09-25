@@ -6,6 +6,12 @@
     "name": "node",
     "fields": [
       {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
         "name": "children",
         "type": "text",
         "description": "ref:node._id (link manually in Xano)",
@@ -16,7 +22,12 @@
         "type": "text",
         "description": "ref:node._id (link manually in Xano)",
         "style": "single"
-      },
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
       {
         "name": "_id",
         "type": "text",
@@ -27,3 +38,4 @@
   }
 ]
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

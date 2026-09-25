@@ -11,11 +11,6 @@ Table custom."Onboarding Answer" {
 	"score" float
 
 }
-Table option."Status Type" {
-	"Color" varchar
-	"Display" varchar [pk]
-
-}
 Table custom."Survey Response" {
 	"_id" varchar [pk]
 	"answer" varchar
@@ -24,6 +19,17 @@ Table custom."Survey Response" {
 	"status" status_type.id
 
 }
+Table custom."User" {
+	"_id" varchar [pk]
+
+}
+Table option."Status Type" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"Color" varchar
+
+}
 
 Ref: custom."Survey Response"."onboarding answer" > custom."Onboarding Answer"."_id"
-Ref: custom."Survey Response"."status" > option."Status Type"."Display"--- diagnostics ---
+Ref: custom."Survey Response"."status" > option."Status Type"."db_value"--- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -2,10 +2,18 @@ import { z } from 'zod';
 
 // Node
 export const NodeSchema = z.object({
+  _id: z.string(),
   Children: z.array(z.string()).nullish(), // reference -> node
   Parent: z.string().nullish(), // reference -> node
-  _id: z.string(),
 });
 
 export type Node = z.infer<typeof NodeSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

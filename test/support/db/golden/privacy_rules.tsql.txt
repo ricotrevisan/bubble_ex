@@ -7,21 +7,22 @@ CREATE TABLE [custom].[Draft] (
 );
 
 CREATE TABLE [custom].[Note] (
+  [_id] NVARCHAR(450),
   [Body] NVARCHAR(MAX),
   [Secret] NVARCHAR(MAX),
-  [_id] NVARCHAR(450),
   CONSTRAINT [PK_note] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[Public page] (
-  [Slug text] NVARCHAR(MAX),
   [_id] NVARCHAR(450),
+  [Slug text] NVARCHAR(MAX),
   CONSTRAINT [PK_public_page] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[User] (
-  [Admin] BIT,
   [_id] NVARCHAR(450),
+  [Admin] BIT,
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 --- diagnostics ---
+missing_default_rule /user_types/draft/privacy_role

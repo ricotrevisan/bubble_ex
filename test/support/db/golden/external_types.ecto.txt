@@ -68,13 +68,12 @@ defmodule MyApp.Shipment do
     field :invalid_list, :map
     field :missing, :map
     field :nowhere, :map
-    embeds_one :old, MyApp.External.Address, on_replace: :delete
     embeds_many :pings, MyApp.External.A, on_replace: :delete
     embeds_one :tree, MyApp.External.Node, on_replace: :delete
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:blank, :invalid, :invalid_list, :missing, :nowhere]) |> cast_embed(:address) |> cast_embed(:old) |> cast_embed(:pings) |> cast_embed(:tree) |> validate_required([:_id])
+    rec |> cast(attrs, [:blank, :invalid, :invalid_list, :missing, :nowhere]) |> cast_embed(:address) |> cast_embed(:pings) |> cast_embed(:tree) |> validate_required([:_id])
   end
 end
 
@@ -91,9 +90,36 @@ defmodule MyApp.Repo.Migrations.CreateShipment do
       add :invalid_list, :map
       add :missing, :map
       add :nowhere, :map
-      add :old, :map
       add :pings, :map
       add :tree, :map
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
     end
   end
 end
@@ -112,3 +138,4 @@ external_type_cycle_edge /settings/client_safe/apiconnector2/graph/pong/types
 incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
 empty_definition /settings/client_safe/apiconnector2/misc/blank/types
 external_type_cycle_edge /settings/client_safe/apiconnector2/tree/walk/types
+model_synthesized_user_type /user_types/user

@@ -8,8 +8,8 @@ defmodule BubbleEx.Db.Zod do
   Scalars map directly (`:string` -> `z.string()`, `:float` -> `z.number()`,
   `:boolean` -> `z.boolean()`, `:utc_datetime_usec` -> `z.string().datetime()`).
   List fields (`is_array: true`) wrap their inner schema in `z.array(...)`.
-  References and enums become `z.string()` (Bubble stores text ids / display
-  values) with a `// reference ->` / `// enum ->` comment naming the target;
+  References and enums become `z.string()` (Bubble stores text ids / option
+  keys) with a `// reference ->` / `// enum ->` comment naming the target;
   foreign-key direction and option-set member values are not expressible in the
   IR and are therefore lost. Every non-primary-key field is `.nullish()` since
   any Bubble field can be empty. `:api` group tables (external placeholders) are

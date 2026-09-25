@@ -6,11 +6,16 @@ Project "" {
 }
 
 Table custom."Node" {
+	"_id" varchar [pk]
 	"Children" node.id[]
 	"Parent" node.id
+
+}
+Table custom."User" {
 	"_id" varchar [pk]
 
 }
 
 Ref: custom."Node"."Children" <> custom."Node"."_id"
 Ref: custom."Node"."Parent" > custom."Node"."_id"--- diagnostics ---
+model_synthesized_user_type /user_types/user

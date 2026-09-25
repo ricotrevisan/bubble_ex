@@ -28,15 +28,18 @@ const nodeValidator = v.object({
 
 export default defineSchema({
   shipment: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     address: addressValidator,
     blank: v.any(),
     invalid: v.any(),
     invalidList: v.any(),
     missing: v.any(),
     nowhere: v.any(),
-    old: addressValidator,
     pings: aValidator,
     tree: nodeValidator,
+  }),
+
+  user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 });
@@ -55,3 +58,4 @@ external_type_cycle_edge /settings/client_safe/apiconnector2/graph/pong/types
 incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
 empty_definition /settings/client_safe/apiconnector2/misc/blank/types
 external_type_cycle_edge /settings/client_safe/apiconnector2/tree/walk/types
+model_synthesized_user_type /user_types/user

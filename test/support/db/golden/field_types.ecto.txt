@@ -28,39 +28,6 @@ defmodule MyApp.Repo.Migrations.CreateProject do
 end
 
 # schema module
-defmodule MyApp.Status do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "status" do
-    field :color, :string
-    field :db_value, :string
-    field :sort_factor, :float
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:color, :db_value, :sort_factor]) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateStatus do
-  use Ecto.Migration
-
-  def change do
-    create table("status", primary_key: false) do
-      add :display, :string, primary_key: true
-      add :color, :string
-      add :db_value, :string
-      add :sort_factor, :float
-    end
-  end
-end
-
-# schema module
 defmodule MyApp.Task do
   use Ecto.Schema
   import Ecto.Changeset
@@ -88,7 +55,7 @@ defmodule MyApp.Task do
     belongs_to :project, MyApp.Project, foreign_key: :project_id, references: :_id, type: :string
     field :ranges, {:array, :map}
     field :scores, {:array, :float}
-    belongs_to :status, MyApp.Status, foreign_key: :status_id, references: :display, type: :string
+    belongs_to :status, MyApp.Status, foreign_key: :status_id, references: :db_value, type: :string
     field :subtasks, {:array, :string}
     field :title, :string
     field :watchers, {:array, :string}
@@ -163,6 +130,37 @@ defmodule MyApp.Repo.Migrations.CreateUser do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
       add :nickname, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Status do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "status" do
+    field :display, :string
+    field :color, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :color]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateStatus do
+  use Ecto.Migration
+
+  def change do
+    create table("status", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :color, :string
     end
   end
 end

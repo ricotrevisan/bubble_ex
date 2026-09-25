@@ -8,35 +8,39 @@ import { v } from "convex/values";
 
 export default defineSchema({
   field00ThingJoin: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
     field11Done: v.boolean(),
     field40SortThingTitle: v.string(),
-    title: v.string(),
-    title: v.string(),
     struct: v.string(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
     id: v.string(),
     insertedAt: v.float64(),
+    title: v.string(),
+    title: v.string(),
     type: v.string(),
+  }),
+
+  launch: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+    field: v.string(),
+    name: v.string(),
+  }),
+
+  thing: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+  }),
+
+  thing: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+  }),
+
+  user: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
   }),
 
   field40Levels: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
-    dbValue: v.string(),
-    sortFactor: v.float64(),
-  }),
-
-  thing: defineTable({
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
-  thing: defineTable({
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-  }),
-
-  launch: defineTable({
-    name: v.string(),
-    bubbleId: v.string(), // primary key (Bubble _id, text)
-    field: v.string(),
+    display: v.string(),
   }),
 });
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

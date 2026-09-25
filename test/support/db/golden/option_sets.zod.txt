@@ -1,51 +1,54 @@
 import { z } from 'zod';
 
+// Ticket
+export const TicketSchema = z.object({
+  _id: z.string(),
+  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not in IR)
+  Priority: z.string().nullish(), // enum -> priority option set (values not in IR)
+});
+
+export type Ticket = z.infer<typeof TicketSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
 // Channel
 export const ChannelSchema = z.object({
-  Display: z.string(),
-  db_value: z.string().nullish(),
-  sort_factor: z.number().nullish(),
+  db_value: z.string(),
+  Display: z.string().nullish(),
 });
 
 export type Channel = z.infer<typeof ChannelSchema>;
 
-// Legacy
-export const LegacySchema = z.object({
-  Display: z.string(),
-});
-
-export type Legacy = z.infer<typeof LegacySchema>;
-
 // Orphan
 export const OrphanSchema = z.object({
-  Display: z.string(),
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  Parent: z.string().nullish(), // enum -> ghost_set option set (values not in IR)
 });
 
 export type Orphan = z.infer<typeof OrphanSchema>;
 
 // Priority
 export const PrioritySchema = z.object({
-  Display: z.string(),
-  channels: z.string().nullish(),
-  color: z.string().nullish(),
-  db_value: z.string().nullish(),
-  deleted: z.string().nullish(),
-  escalates_to: z.string().nullish(),
-  icon: z.string().nullish(),
-  sort_factor: z.number().nullish(),
-  tooltip: z.string().nullish(),
-  urgent: z.string().nullish(),
-  weight: z.number().nullish(),
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not in IR)
+  Color: z.string().nullish(),
+  'Escalates to': z.string().nullish(), // enum -> priority option set (values not in IR)
+  Icon: z.string().nullish(),
+  Urgent: z.boolean().nullish(),
+  Weight: z.number().nullish(),
 });
 
 export type Priority = z.infer<typeof PrioritySchema>;
-
-// Ticket
-export const TicketSchema = z.object({
-  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not in IR)
-  Priority: z.string().nullish(), // enum -> priority option set (values not in IR)
-  _id: z.string(),
-});
-
-export type Ticket = z.infer<typeof TicketSchema>;
 --- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

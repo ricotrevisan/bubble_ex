@@ -1,19 +1,24 @@
 CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."A" (
-  "B" text,
   "_id" text,
+  "B" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."B" (
-  "C" text[],
   "_id" text,
+  "C" text[],
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."C" (
+  "_id" text,
   "A" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
   "_id" text,
   PRIMARY KEY ("_id")
 );
@@ -21,3 +26,4 @@ CREATE TABLE "custom"."C" (
 ALTER TABLE "custom"."A" ADD FOREIGN KEY ("B") REFERENCES "custom"."B" ("_id");
 ALTER TABLE "custom"."C" ADD FOREIGN KEY ("A") REFERENCES "custom"."A" ("_id");
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

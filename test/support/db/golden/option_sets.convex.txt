@@ -7,38 +7,41 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  channel: defineTable({
+  ticket: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
-    dbValue: v.string(),
-    sortFactor: v.float64(),
+    channels: v.array(v.string()), // enum -> option set (member values not in IR)
+    priority: v.string(), // enum -> option set (member values not in IR)
   }),
 
-  legacy: defineTable({
+  user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+  }),
+
+  channel: defineTable({
+    bubbleId: v.string(), // primary key (Bubble _id, text)
+    display: v.string(),
   }),
 
   orphan: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    display: v.string(),
+    parent: v.string(), // enum -> option set (member values not in IR)
   }),
 
   priority: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
-    channels: v.string(),
-    color: v.string(),
-    dbValue: v.string(),
-    deleted: v.string(),
-    escalatesTo: v.string(),
-    icon: v.string(),
-    sortFactor: v.float64(),
-    tooltip: v.string(),
-    urgent: v.string(),
-    weight: v.float64(),
-  }),
-
-  ticket: defineTable({
+    display: v.string(),
     channels: v.array(v.string()), // enum -> option set (member values not in IR)
-    priority: v.string(), // enum -> option set (member values not in IR)
-    bubbleId: v.string(), // primary key (Bubble _id, text)
+    color: v.string(),
+    escalatesTo: v.string(), // enum -> option set (member values not in IR)
+    icon: v.string(),
+    urgent: v.boolean(),
+    weight: v.float64(),
   }),
 });
 --- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

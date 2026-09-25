@@ -1,11 +1,17 @@
 CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."Node" (
+  "_id" text,
   "Children" text[],
   "Parent" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
   "_id" text,
   PRIMARY KEY ("_id")
 );
 
 ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Parent") REFERENCES "custom"."Node" ("_id");
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

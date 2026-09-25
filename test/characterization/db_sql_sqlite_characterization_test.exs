@@ -35,9 +35,9 @@ defmodule BubbleEx.Characterization.DbSqlSqliteTest do
     assert sql =~ ~s[PRIMARY KEY ("_id")]
   end
 
-  test "keys the option-set table on Display with a NOT NULL column", %{sql: sql} do
-    assert sql =~ ~s("Display" TEXT NOT NULL)
-    assert sql =~ ~s[PRIMARY KEY ("Display")]
+  test "keys the option-set table on db_value with a NOT NULL column", %{sql: sql} do
+    assert sql =~ ~s("db_value" TEXT NOT NULL)
+    assert sql =~ ~s[PRIMARY KEY ("db_value")]
   end
 
   test "declares the scalar custom reference as an inline foreign key", %{sql: sql} do
@@ -45,8 +45,8 @@ defmodule BubbleEx.Characterization.DbSqlSqliteTest do
              ~s[FOREIGN KEY ("onboarding answer") REFERENCES "custom__Onboarding Answer" ("_id")]
   end
 
-  test "declares the option-set reference to Display as an inline foreign key", %{sql: sql} do
+  test "declares the option-set reference to db_value as an inline foreign key", %{sql: sql} do
     assert sql =~
-             ~s[FOREIGN KEY ("status") REFERENCES "option__Status Type" ("Display")]
+             ~s[FOREIGN KEY ("status") REFERENCES "option__Status Type" ("db_value")]
   end
 end

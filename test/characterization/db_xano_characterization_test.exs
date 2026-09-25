@@ -35,7 +35,8 @@ defmodule BubbleEx.Characterization.DbXanoTest do
       |> Enum.map(& &1["name"])
       |> Enum.sort()
 
-    assert names == ["onboarding_answer", "status_type", "survey_response"]
+    # User is built into every Bubble app (the Model synthesizes it).
+    assert names == ["onboarding_answer", "status_type", "survey_response", "user"]
   end
 
   test "maps scalar columns to their Xano types", %{decoded: decoded} do
@@ -60,14 +61,20 @@ defmodule BubbleEx.Characterization.DbXanoTest do
            }
   end
 
-  test "describes the option-set table's display key", %{decoded: decoded} do
+  test "describes the option-set table's db_value key", %{decoded: decoded} do
     status = table(decoded, "status_type")
+
+    assert field(status, "db_value") == %{
+             "name" => "db_value",
+             "type" => "text",
+             "style" => "single",
+             "description" => "Bubble primary key (link manually in Xano)"
+           }
 
     assert field(status, "display") == %{
              "name" => "display",
              "type" => "text",
-             "style" => "single",
-             "description" => "Bubble primary key (link manually in Xano)"
+             "style" => "single"
            }
   end
 

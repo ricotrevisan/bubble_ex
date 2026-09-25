@@ -5,40 +5,45 @@ Project "synthetic-option-sets" {
   '''
 }
 
-Table option."Channel" {
-	"Display" varchar [pk]
-	"db_value" varchar
-	"sort_factor" float
-
-}
-Table option."Legacy" {
-	"Display" varchar [pk]
-
-}
-Table option."Orphan" {
-	"Display" varchar [pk]
-
-}
-Table option."Priority" {
-	"Display" varchar [pk]
-	"channels" varchar
-	"color" varchar
-	"db_value" varchar
-	"deleted" varchar
-	"escalates_to" varchar
-	"icon" varchar
-	"sort_factor" float
-	"tooltip" varchar
-	"urgent" varchar
-	"weight" float
-
-}
 Table custom."Ticket" {
+	"_id" varchar [pk]
 	"Channels" channel.id[]
 	"Priority" priority.id
+
+}
+Table custom."User" {
 	"_id" varchar [pk]
 
 }
+Table option."Channel" {
+	"db_value" varchar [pk]
+	"Display" varchar
 
-Ref: custom."Ticket"."Channels" <> option."Channel"."Display"
-Ref: custom."Ticket"."Priority" > option."Priority"."Display"--- diagnostics ---
+}
+Table option."Orphan" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"Parent" ghost_set.id
+
+}
+Table option."Priority" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"Channels" channel.id[]
+	"Color" varchar
+	"Escalates to" priority.id
+	"Icon" bubble_image
+	"Urgent" bool
+	"Weight" float
+
+}
+
+Ref: custom."Ticket"."Channels" <> option."Channel"."db_value"
+Ref: custom."Ticket"."Priority" > option."Priority"."db_value"
+Ref: option."Priority"."Channels" <> option."Channel"."db_value"
+Ref: option."Priority"."Escalates to" > option."Priority"."db_value"--- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

@@ -4,43 +4,47 @@
 
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS "option__Channel" (
-  "Display" TEXT NOT NULL,
-  "db_value" TEXT,
-  "sort_factor" REAL,
-  PRIMARY KEY ("Display")
+CREATE TABLE IF NOT EXISTS "custom__Ticket" (
+  "_id" TEXT NOT NULL,
+  "Channels" TEXT,  -- list<TEXT>; store as JSON
+  "Priority" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Priority") REFERENCES "option__Priority" ("db_value")
 );
 
-CREATE TABLE IF NOT EXISTS "option__Legacy" (
-  "Display" TEXT NOT NULL,
-  PRIMARY KEY ("Display")
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Channel" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Orphan" (
-  "Display" TEXT NOT NULL,
-  PRIMARY KEY ("Display")
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  "Parent" TEXT,
+  PRIMARY KEY ("db_value")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Priority" (
-  "Display" TEXT NOT NULL,
-  "channels" TEXT,
-  "color" TEXT,
-  "db_value" TEXT,
-  "deleted" TEXT,
-  "escalates_to" TEXT,
-  "icon" TEXT,
-  "sort_factor" REAL,
-  "tooltip" TEXT,
-  "urgent" TEXT,
-  "weight" REAL,
-  PRIMARY KEY ("Display")
-);
-
-CREATE TABLE IF NOT EXISTS "custom__Ticket" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
   "Channels" TEXT,  -- list<TEXT>; store as JSON
-  "Priority" TEXT,
-  "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Priority") REFERENCES "option__Priority" ("Display")
+  "Color" TEXT,
+  "Escalates to" TEXT,
+  "Icon" TEXT,
+  "Urgent" INTEGER,
+  "Weight" REAL,
+  PRIMARY KEY ("db_value"),
+  FOREIGN KEY ("Escalates to") REFERENCES "option__Priority" ("db_value")
 );
 --- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

@@ -9,14 +9,6 @@ export const OnboardingAnswerSchema = z.object({
 
 export type OnboardingAnswer = z.infer<typeof OnboardingAnswerSchema>;
 
-// Status Type
-export const StatusTypeSchema = z.object({
-  Color: z.string().nullish(),
-  Display: z.string(),
-});
-
-export type StatusType = z.infer<typeof StatusTypeSchema>;
-
 // Survey Response
 export const SurveyResponseSchema = z.object({
   _id: z.string(),
@@ -27,4 +19,21 @@ export const SurveyResponseSchema = z.object({
 });
 
 export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Status Type
+export const StatusTypeSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  Color: z.string().nullish(),
+});
+
+export type StatusType = z.infer<typeof StatusTypeSchema>;
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

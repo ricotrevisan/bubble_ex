@@ -3,28 +3,18 @@
     "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
   },
   {
-    "name": "archive",
+    "name": "invoice",
     "fields": [
-      {
-        "name": "label",
-        "type": "text",
-        "style": "single"
-      },
       {
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
         "style": "single"
-      }
-    ]
-  },
-  {
-    "name": "invoice",
-    "fields": [
+      },
       {
         "name": "archive",
         "type": "text",
-        "description": "ref:archive._id (link manually in Xano)",
+        "description": "ref:archive (link manually in Xano)",
         "style": "single"
       },
       {
@@ -40,17 +30,6 @@
         "style": "list"
       },
       {
-        "name": "old_ref",
-        "type": "text",
-        "description": "ref:ghost (link manually in Xano)",
-        "style": "single"
-      },
-      {
-        "name": "old_total",
-        "type": "decimal",
-        "style": "single"
-      },
-      {
         "name": "state",
         "type": "enum",
         "values": [],
@@ -61,7 +40,12 @@
         "name": "total",
         "type": "decimal",
         "style": "single"
-      },
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
       {
         "name": "_id",
         "type": "text",
@@ -69,32 +53,11 @@
         "style": "single"
       }
     ]
-  },
-  {
-    "name": "retired",
-    "fields": [
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      },
-      {
-        "name": "db_value",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "deleted",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "sort_factor",
-        "type": "decimal",
-        "style": "single"
-      }
-    ]
   }
 ]
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

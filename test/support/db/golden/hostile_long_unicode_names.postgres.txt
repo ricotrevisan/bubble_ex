@@ -1,19 +1,17 @@
-CREATE SCHEMA IF NOT EXISTS "option";
 CREATE SCHEMA IF NOT EXISTS "custom";
-
-CREATE TABLE "option"."Ölçü" (
-  "Display" text,
-  "db_value" text,
-  "sort_factor" double precision,
-  PRIMARY KEY ("Display")
-);
+CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end" (
   "_id" text,
   "slash/and~tilde" text,
+  "🧪" text,
   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" text,
   "名前 — ✓ ünïcödé" text,
-  "🧪" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
   PRIMARY KEY ("_id")
 );
 
@@ -22,5 +20,12 @@ CREATE TABLE "custom"."类型 🏷️" (
   PRIMARY KEY ("_id")
 );
 
+CREATE TABLE "option"."Ölçü" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
 ALTER TABLE "custom"."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end" ADD FOREIGN KEY ("🧪") REFERENCES "custom"."类型 🏷️" ("_id");
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

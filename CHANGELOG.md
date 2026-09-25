@@ -6,6 +6,43 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **`BubbleEx.Db.Reader`'s tables are a projection of `BubbleEx.Model`**
+  (WTF-365). The Reader no longer reads data types, fields or option sets
+  itself (a test forbids it), so DBML, PostgreSQL, SQLite, T-SQL, Ecto, Zod,
+  Xano and Convex output now agree with the Model and `:ash`. API Connector
+  type resolution moved from the Reader to the Model
+  (`BubbleEx.Model.External.Resolver`); `Reader.field_pointer/4` is gone.
+  `Reader.project/2` projects an already-built Model. Where the two readings
+  differed, the Model's wins:
+
+  | Drift | Before | Now |
+  |---|---|---|
+  | Option-set key | primary key `display` ("Display"); references point at it | primary key `db_value` (the value's stable key, `OptionValue.key`); references point at it; `display` ("Display") is an ordinary column |
+  | Option-set columns in exports | derived from the values' keys (`db_value`, `sort_factor`, `comment`, `deleted`, attribute values), types guessed text/number | the declared `attributes`, with their declared types (references to data types and option sets now produce relationships) |
+  | Option values (`table.values`) | always empty for exports; live form ordered by display name, `db_value` as supplied (may be nil) | both key forms; Model order (`sort_factor`, then ID); `db_value` is the stable key (the value's ID when it has none) |
+  | Deleted fields in exports | kept (only the live form's `%del` was honoured) | dropped in both key forms |
+  | Deleted data types / option sets | kept as tables | dropped (references to them keep their column but lose the relationship) |
+  | Defaults in exports | `default` always nil | `default_val` kept |
+  | `list.list.x`, `custom.` (empty target) | a list / a reference to `""` | `:unsupported` with the descriptor in `raw`, diagnosed |
+  | Invalid `list.api.…` descriptor | cardinality `:unknown` | `:many` (the `list.` prefix is certain), so e.g. Zod renders `z.array(z.json())` |
+  | User | a table only if the source defines it | always a table (Bubble's built-in User, synthesized when absent), so `user` references resolve |
+  | Order | tables and columns by display name, `_id` wherever it sorted | data types then option sets, each by Bubble ID; injected columns (`_id`, or `db_value` and `display`) first, then fields by Bubble ID; relationships follow column order |
+  | Missing display name | `nil` | the Bubble ID |
+  | Malformed input | could raise | preserved and diagnosed by the Model; `parse/1` returns an `:invalid_input` error only for a non-object |
+  | External types | those reached from non-deleted fields | those reached from projected columns |
+  | `diagnostics` | the API Connector (`:read`) diagnostics | the Model's, every stage (`:read`, `:parse`, `:model`), so `Encoder.Result.diagnostics`, `:schema_diagnostics` and `:dbml_diagnostics` gain `model_*` and privacy codes |
+
+  Per encoder, beyond order: **DBML** refs to option sets end in `."db_value"`;
+  option tables show `db_value [pk]` and `Display`. **PostgreSQL / SQLite /
+  T-SQL** option tables' primary key and every option foreign key use
+  `db_value`; a `Display` column is added; option attributes that reference
+  data types or option sets get foreign keys. **Ecto** option-set schemas use
+  `@primary_key {:db_value, …}`, gain `field :display`, and `belongs_to …
+  references: :db_value`. **Zod** option schemas require `db_value` and make
+  `Display` nullish. **Xano** describes `db_value` as the primary key.
+  **Convex** option tables gain a `display` field (the primary key stays
+  `bubbleId`). All formats: a `User` table, no deleted definitions, and
+  declared option attributes in exports.
 - **`BubbleEx.Db.Ash` is deleted** (no alias, no compatibility layer; WTF-362).
   Ash output now comes from the Model: `BubbleEx.Model.build/1` →
   `BubbleEx.Target.Ash.map/3` (a `%BubbleEx.Target.Ash.Project{}` of plain

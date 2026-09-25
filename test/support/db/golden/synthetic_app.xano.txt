@@ -24,22 +24,6 @@
     ]
   },
   {
-    "name": "status_type",
-    "fields": [
-      {
-        "name": "color",
-        "type": "text",
-        "style": "single"
-      },
-      {
-        "name": "display",
-        "type": "text",
-        "description": "Bubble primary key (link manually in Xano)",
-        "style": "single"
-      }
-    ]
-  },
-  {
     "name": "survey_response",
     "fields": [
       {
@@ -72,6 +56,39 @@
         "style": "single"
       }
     ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status_type",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "color",
+        "type": "text",
+        "style": "single"
+      }
+    ]
   }
 ]
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

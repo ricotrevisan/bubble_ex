@@ -1,0 +1,61 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Listy] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_listy] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[Task] (
+  [_id] NVARCHAR(450),
+  [Empty custom] NVARCHAR(MAX),
+  [Extra member] NVARCHAR(MAX),
+  [Nested list] NVARCHAR(MAX),
+  [Numeric type] NVARCHAR(MAX),
+  [Odd API] NVARCHAR(MAX) CHECK ([Odd API] IS NULL OR ISJSON([Odd API]) = 1),
+  [OK] NVARCHAR(MAX),
+  [Quantum] NVARCHAR(MAX),
+  [Untyped] NVARCHAR(MAX),
+  CONSTRAINT [PK_task] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Bad value] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  CONSTRAINT [PK_bad_value] PRIMARY KEY ([db_value])
+);
+
+CREATE TABLE [option].[Bad values] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  CONSTRAINT [PK_bad_values] PRIMARY KEY ([db_value])
+);
+--- diagnostics ---
+model_malformed_node /option_sets/bad_set
+model_malformed_node /option_sets/bad_value/values/v1
+model_malformed_node /option_sets/bad_values/attributes
+model_malformed_node /option_sets/bad_values/values
+malformed_node /user_types/broken
+malformed_node /user_types/counted
+model_malformed_node /user_types/listy/fields
+model_malformed_node /user_types/task/fields/bad
+field_type_malformed /settings/client_safe/apiconnector2/bad/defs/types
+model_option_key_missing /option_sets/bad_value/values/v2
+uninterpreted_field /user_types/task/surprise
+model_unsupported_field_type /user_types/task/fields/empty_custom/value
+model_unsupported_field_type /user_types/task/fields/nested_list/value
+model_malformed_field_type /user_types/task/fields/numeric_type/value
+model_unsupported_field_type /user_types/task/fields/quantum/value
+model_malformed_field_type /user_types/task/fields/untyped
+incomplete_field_metadata /settings/client_safe/apiconnector2/bad/defs/types
+model_uninterpreted_member /option_sets/bad_value/flavor
+model_uninterpreted_member /user_types/task/fields/extra_member/secret_sauce
+external_type_target_opaque /user_types/task/fields/odd_api/value
+model_synthesized_user_type /user_types/user

@@ -26,7 +26,8 @@ defmodule BubbleEx.Db.DbmlTest do
       {:ok, dbml} = Dbml.encode(db)
 
       assert dbml =~ ~s("_id" varchar [pk])
-      assert dbml =~ ~s("Display" varchar [pk])
+      assert dbml =~ ~s("db_value" varchar [pk])
+      assert dbml =~ ~s(\t"Display" varchar\n)
     end
   end
 

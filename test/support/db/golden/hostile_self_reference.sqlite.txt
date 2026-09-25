@@ -5,10 +5,16 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Node" (
+  "_id" TEXT NOT NULL,
   "Children" TEXT,  -- list<TEXT>; store as JSON
   "Parent" TEXT,
-  "_id" TEXT NOT NULL,
   PRIMARY KEY ("_id"),
   FOREIGN KEY ("Parent") REFERENCES "custom__Node" ("_id")
 );
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

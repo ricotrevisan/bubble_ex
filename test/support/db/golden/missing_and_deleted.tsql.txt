@@ -1,36 +1,23 @@
 CREATE SCHEMA [custom];
 GO
-CREATE SCHEMA [option];
-GO
-
-CREATE TABLE [custom].[Archive] (
-  [Label] NVARCHAR(MAX),
-  [_id] NVARCHAR(450),
-  CONSTRAINT [PK_archive] PRIMARY KEY ([_id])
-);
 
 CREATE TABLE [custom].[Invoice] (
+  [_id] NVARCHAR(450),
   [Archive] NVARCHAR(450),
   [Customer] NVARCHAR(450),
   [Lines] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
-  [Old ref] NVARCHAR(450),
-  [Old total] FLOAT,
   [State] NVARCHAR(450),
   [Total] FLOAT,
-  [_id] NVARCHAR(450),
   CONSTRAINT [PK_invoice] PRIMARY KEY ([_id])
 );
 
-CREATE TABLE [option].[Retired] (
-  [Display] NVARCHAR(450),
-  [db_value] NVARCHAR(MAX),
-  [deleted] NVARCHAR(MAX),
-  [sort_factor] FLOAT,
-  CONSTRAINT [PK_retired] PRIMARY KEY ([Display])
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
-
-ALTER TABLE [custom].[Invoice]
-  ADD CONSTRAINT [FK_invoice_archive]
-  FOREIGN KEY ([Archive])
-  REFERENCES [custom].[Archive] ([_id]);
 --- diagnostics ---
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

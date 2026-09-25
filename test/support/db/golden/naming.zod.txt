@@ -2,48 +2,55 @@ import { z } from 'zod';
 
 // 00. Thing - Join
 export const _00ThingJoinSchema = z.object({
+  _id: z.string(),
   '11. Done': z.boolean().nullish(),
   '40. Sort: Thing Title': z.string().nullish(),
-  Title: z.string().nullish(),
-  Title: z.string().nullish(),
   __struct__: z.string().nullish(),
-  _id: z.string(),
   id: z.string().nullish(),
   inserted_at: z.string().datetime().nullish(),
+  Title: z.string().nullish(),
+  Title: z.string().nullish(),
   type: z.string().nullish(),
 });
 
 export type _00ThingJoin = z.infer<typeof _00ThingJoinSchema>;
 
-// 40. Levels
-export const _40LevelsSchema = z.object({
-  Display: z.string(),
-  db_value: z.string().nullish(),
-  sort_factor: z.number().nullish(),
-});
-
-export type _40Levels = z.infer<typeof _40LevelsSchema>;
-
-// Thing
-export const ThingSchema = z.object({
-  _id: z.string(),
-});
-
-export type Thing = z.infer<typeof ThingSchema>;
-
-// Thing
-export const ThingSchema = z.object({
-  _id: z.string(),
-});
-
-export type Thing = z.infer<typeof ThingSchema>;
-
 // 🚀 Launch
 export const LaunchSchema = z.object({
-  'Name ✨': z.string().nullish(),
   _id: z.string(),
   '🔥': z.string().nullish(),
+  'Name ✨': z.string().nullish(),
 });
 
 export type Launch = z.infer<typeof LaunchSchema>;
+
+// Thing
+export const ThingSchema = z.object({
+  _id: z.string(),
+});
+
+export type Thing = z.infer<typeof ThingSchema>;
+
+// Thing
+export const ThingSchema = z.object({
+  _id: z.string(),
+});
+
+export type Thing = z.infer<typeof ThingSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// 40. Levels
+export const _40LevelsSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type _40Levels = z.infer<typeof _40LevelsSchema>;
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

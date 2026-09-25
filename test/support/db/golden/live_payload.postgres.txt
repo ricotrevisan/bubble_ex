@@ -1,31 +1,27 @@
 CREATE SCHEMA IF NOT EXISTS "custom";
 CREATE SCHEMA IF NOT EXISTS "option";
 
-CREATE TABLE "custom"."Item" (
-  "_id" text,
-  PRIMARY KEY ("_id")
-);
-
-CREATE TABLE "option"."Kind" (
-  "Code" double precision,
-  "Display" text,
-  PRIMARY KEY ("Display")
-);
-
 CREATE TABLE "custom"."Order" (
+  "_id" text,
   "Buyer" text,
   "Items" text[],
   "Kind" text,
-  "_id" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
-  "Name" text,
   "_id" text,
+  "Name" text,
   PRIMARY KEY ("_id")
 );
 
+CREATE TABLE "option"."Kind" (
+  "db_value" text,
+  "Display" text,
+  "Code" double precision,
+  PRIMARY KEY ("db_value")
+);
+
 ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Buyer") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Kind") REFERENCES "option"."Kind" ("Display");
+ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Kind") REFERENCES "option"."Kind" ("db_value");
 --- diagnostics ---

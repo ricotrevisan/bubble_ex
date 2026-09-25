@@ -6,15 +6,18 @@ Project "synthetic-external-types" {
 }
 
 Table custom."Shipment" {
+	"_id" varchar [pk]
 	"Address" json [note: 'External API type api.apiconnector2.geo.lookup.Address (one)']
 	"Blank" json [note: 'External API type api.apiconnector2.misc.blank.Empty (one)']
-	"Invalid" json [note: 'External API type api.not_a_connector (unknown)']
-	"Invalid list" json [note: 'External API type list.api.not_a_connector (unknown)']
+	"Invalid" json [note: 'External API type api.not_a_connector (one)']
+	"Invalid list" json [note: 'External API type list.api.not_a_connector (many)']
 	"Missing" json [note: 'External API type api.apiconnector2.geo.lookup.Missing (one)']
 	"Nowhere" json [note: 'External API type api.apiconnector2.absent.call.Thing (one)']
-	"Old" json [note: 'External API type api.apiconnector2.geo.lookup.Address (one)']
 	"Pings" json [note: 'External API type api.apiconnector2.graph.ping.A (many)']
 	"Tree" json [note: 'External API type api.apiconnector2.tree.walk.Node (one)']
+
+}
+Table custom."User" {
 	"_id" varchar [pk]
 
 }
@@ -32,6 +35,6 @@ external_type_target_opaque /user_types/shipment/fields/address_api/value
 external_type_target_opaque /user_types/shipment/fields/blank_api/value
 external_type_target_opaque /user_types/shipment/fields/missing_api/value
 external_type_target_opaque /user_types/shipment/fields/nowhere_api/value
-external_type_target_opaque /user_types/shipment/fields/old_api/value
 external_type_target_opaque /user_types/shipment/fields/pings_list_api/value
 external_type_target_opaque /user_types/shipment/fields/tree_api/value
+model_synthesized_user_type /user_types/user

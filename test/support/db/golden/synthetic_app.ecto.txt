@@ -30,35 +30,6 @@ defmodule MyApp.Repo.Migrations.CreateOnboardingAnswer do
 end
 
 # schema module
-defmodule MyApp.StatusType do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:display, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "status_type" do
-    field :color, :string
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:color]) |> validate_required([:display])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateStatusType do
-  use Ecto.Migration
-
-  def change do
-    create table("status_type", primary_key: false) do
-      add :display, :string, primary_key: true
-      add :color, :string
-    end
-  end
-end
-
-# schema module
 defmodule MyApp.SurveyResponse do
   use Ecto.Schema
   import Ecto.Changeset
@@ -70,7 +41,7 @@ defmodule MyApp.SurveyResponse do
     field :answer, :string
     belongs_to :onboarding_answer, MyApp.OnboardingAnswer, foreign_key: :onboarding_answer_id, references: :_id, type: :string
     field :rating, :float
-    belongs_to :status, MyApp.StatusType, foreign_key: :status_id, references: :display, type: :string
+    belongs_to :status, MyApp.StatusType, foreign_key: :status_id, references: :db_value, type: :string
   end
 
   def changeset(rec, attrs) do
@@ -94,4 +65,64 @@ defmodule MyApp.Repo.Migrations.CreateSurveyResponse do
     create index("survey_response", [:status_id])
   end
 end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.StatusType do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "status_type" do
+    field :display, :string
+    field :color, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :color]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateStatusType do
+  use Ecto.Migration
+
+  def change do
+    create table("status_type", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :color, :string
+    end
+  end
+end
 --- diagnostics ---
+model_synthesized_user_type /user_types/user

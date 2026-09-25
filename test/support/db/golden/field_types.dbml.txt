@@ -6,18 +6,12 @@ Project "synthetic-field-types" {
 }
 
 Table custom."Project" {
-	"Name" varchar
 	"_id" varchar [pk]
-
-}
-Table option."Status" {
-	"Display" varchar [pk]
-	"color" varchar
-	"db_value" varchar
-	"sort_factor" float
+	"Name" varchar
 
 }
 Table custom."Task" {
+	"_id" varchar [pk]
 	"Attachment" bubble_file
 	"Budget" bubble_number_range
 	"Checks" bool[]
@@ -42,18 +36,23 @@ Table custom."Task" {
 	"Title" varchar
 	"Watchers" user.id[]
 	"Window" bubble_date_range
-	"_id" varchar [pk]
 
 }
 Table custom."User" {
-	"Nickname" varchar
 	"_id" varchar [pk]
+	"Nickname" varchar
+
+}
+Table option."Status" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"Color" varchar
 
 }
 
-Ref: custom."Task"."Labels" <> option."Status"."Display"
+Ref: custom."Task"."Labels" <> option."Status"."db_value"
 Ref: custom."Task"."Owner" > custom."User"."_id"
 Ref: custom."Task"."Project" > custom."Project"."_id"
-Ref: custom."Task"."Status" > option."Status"."Display"
+Ref: custom."Task"."Status" > option."Status"."db_value"
 Ref: custom."Task"."Subtasks" <> custom."Task"."_id"
 Ref: custom."Task"."Watchers" <> custom."User"."_id"--- diagnostics ---

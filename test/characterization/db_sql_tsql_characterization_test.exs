@@ -31,9 +31,9 @@ defmodule BubbleEx.Characterization.DbSqlTsqlTest do
     assert sql =~ "CONSTRAINT [PK_onboarding_answer] PRIMARY KEY ([_id])"
   end
 
-  test "emits the option-set table keyed on Display", %{sql: sql} do
+  test "emits the option-set table keyed on db_value", %{sql: sql} do
     assert sql =~ "CREATE TABLE [option].[Status Type] ("
-    assert sql =~ "CONSTRAINT [PK_status_type] PRIMARY KEY ([Display])"
+    assert sql =~ "CONSTRAINT [PK_status_type] PRIMARY KEY ([db_value])"
   end
 
   test "keyed reference and enum columns use NVARCHAR(450)", %{sql: sql} do
@@ -50,11 +50,11 @@ defmodule BubbleEx.Characterization.DbSqlTsqlTest do
                "  REFERENCES [custom].[Onboarding Answer] ([_id]);"
   end
 
-  test "emits a named foreign key for the option-set reference to Display", %{sql: sql} do
+  test "emits a named foreign key for the option-set reference to db_value", %{sql: sql} do
     assert sql =~
              "ALTER TABLE [custom].[Survey Response]\n" <>
                "  ADD CONSTRAINT [FK_survey_response_status]\n" <>
                "  FOREIGN KEY ([status])\n" <>
-               "  REFERENCES [option].[Status Type] ([Display]);"
+               "  REFERENCES [option].[Status Type] ([db_value]);"
   end
 end
