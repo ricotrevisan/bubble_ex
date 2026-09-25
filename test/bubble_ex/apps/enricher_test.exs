@@ -91,9 +91,15 @@ defmodule BubbleEx.Apps.EnricherTest do
 
       assert {:ok, attrs[:schema]} == BubbleEx.Target.Ash.Source.render(project)
       assert attrs[:schema] =~ "use Ash.Resource, domain: MyApp"
+      assert project.diagnostics != []
+      assert attrs[:schema_diagnostics] == project.diagnostics
+    end
 
-      if project.diagnostics != [],
-        do: assert(attrs[:schema_diagnostics] == project.diagnostics)
+    test "format: :ash leaves out :schema_diagnostics when there are none" do
+      app = %{"user_types" => %{"user" => %{"display" => "User", "fields" => %{}}}}
+      attrs = Enricher.maybe_add_db_diagram(%{}, app, format: :ash)
+      assert attrs[:schema] =~ "defmodule MyApp.User do"
+      refute Map.has_key?(attrs, :schema_diagnostics)
     end
 
     test "legacy dbml: true still fills :dbml and :dbdiagram" do

@@ -212,6 +212,7 @@
       "bubble_name": "Draft",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "Draft",
       "relationships": [
         {
@@ -415,6 +416,7 @@
       "bubble_name": "Note",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "Note",
       "relationships": [
         {
@@ -593,6 +595,7 @@
       "bubble_name": "Public page",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "PublicPage",
       "relationships": [
         {
@@ -787,6 +790,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -814,5 +818,6 @@
     }
   ],
   "schema_version": 1,
-  "typed_structs": []
+  "typed_structs": [],
+  "types": []
 }

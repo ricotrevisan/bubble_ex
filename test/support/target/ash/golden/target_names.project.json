@@ -295,6 +295,7 @@
       "bubble_name": "Domain",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "DomainResource",
       "relationships": [
         {
@@ -761,6 +762,7 @@
       "bubble_name": "3D Gadget",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "N3dGadget",
       "relationships": [
         {
@@ -946,6 +948,7 @@
       "bubble_name": "Repo",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "RepoResource",
       "relationships": [
         {
@@ -1124,6 +1127,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -1151,5 +1155,6 @@
     }
   ],
   "schema_version": 1,
-  "typed_structs": []
+  "typed_structs": [],
+  "types": []
 }

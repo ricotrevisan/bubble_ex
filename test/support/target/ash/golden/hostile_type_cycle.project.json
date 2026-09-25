@@ -241,6 +241,7 @@
       "bubble_name": "A",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "A",
       "relationships": [
         {
@@ -446,6 +447,7 @@
       "bubble_name": "B",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "B",
       "relationships": [
         {
@@ -627,6 +629,7 @@
       "bubble_name": "C",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "C",
       "relationships": [
         {
@@ -821,6 +824,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -848,5 +852,6 @@
     }
   ],
   "schema_version": 1,
-  "typed_structs": []
+  "typed_structs": [],
+  "types": []
 }

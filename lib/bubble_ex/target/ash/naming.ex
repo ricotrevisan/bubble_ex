@@ -18,8 +18,8 @@ defmodule BubbleEx.Target.Ash.Naming do
       (`N` for modules) prefix, since Elixir identifiers cannot.
     * **Length.** A name keeps whole words up to 50 characters, so a
       suffixed name stays within PostgreSQL's 63-byte identifier limit.
-    * **Reserved words** get a suffix (`_field` for attributes, `Resource`
-      for modules): see `reserved/1`.
+    * **Reserved words** get a suffix (`_field` for attributes and fields,
+      `_table` for tables, `Resource` for modules): see `reserved/1`.
     * **Collisions** in one scope get a numeric suffix (`title_2`,
       `Thing2`) assigned in claim order, which callers make Bubble ID order.
 
@@ -33,6 +33,7 @@ defmodule BubbleEx.Target.Ash.Naming do
     attribute:
       ~w(id type inserted_at updated_at nil true false aggregates calculations __meta__ __metadata__ __struct__ __order__ __lateral_join_source__),
     field: ~w(nil true false __struct__),
+    table: ~w(schema_migrations),
     module: ~w(Repo Domain Enums Types External Application)
   }
 
@@ -62,7 +63,7 @@ defmodule BubbleEx.Target.Ash.Naming do
   @pascal ~r/^[A-Z][A-Za-z0-9]*$/
 
   @type style :: :snake | :pascal
-  @type scope :: :attribute | :field | :module | :none
+  @type scope :: :attribute | :field | :table | :module | :none
 
   @doc """
   The words of a display name after cleanup, lowercase ASCII. Empty when
@@ -166,7 +167,7 @@ defmodule BubbleEx.Target.Ash.Naming do
   """
   @spec claim(String.t(), MapSet.t(), style(), scope()) :: {String.t(), MapSet.t()}
   def claim(base, used, style, scope) do
-    name = if base in reserved(scope), do: base <> reserved_suffix(style), else: base
+    name = if base in reserved(scope), do: base <> reserved_suffix(scope), else: base
 
     name =
       if MapSet.member?(used, name),
@@ -184,6 +185,7 @@ defmodule BubbleEx.Target.Ash.Naming do
   defp suffixed(name, n, :snake), do: "#{name}_#{n}"
   defp suffixed(name, n, :pascal), do: "#{name}#{n}"
 
-  defp reserved_suffix(:snake), do: "_field"
-  defp reserved_suffix(:pascal), do: "Resource"
+  defp reserved_suffix(:table), do: "_table"
+  defp reserved_suffix(:module), do: "Resource"
+  defp reserved_suffix(_scope), do: "_field"
 end

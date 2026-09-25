@@ -1,0 +1,36 @@
+{
+  "_id": "synthetic-target-values",
+  "option_sets": {
+    "phase": {
+      "display": "Phase",
+      "values": {
+        "p1": {"db_value": "Plan", "display": "Plan", "sort_factor": 1},
+        "p2": {"db_value": "in progress", "display": "In progress", "sort_factor": 2}
+      }
+    }
+  },
+  "user_types": {
+    "event": {
+      "display": "Event",
+      "fields": {
+        "at_list_date": {"display": "Occurrences", "value": "list.date"},
+        "gap_dateinterval": {"display": "Gap", "value": "dateinterval"},
+        "gaps_list_dateinterval": {"display": "Gaps", "value": "list.dateinterval"},
+        "host_custom_venue": {"default_val": "1700000000000x1", "display": "Host", "value": "custom.venue"},
+        "odd_value": {"display": "Odd", "value": "something.new"},
+        "phase_option_phase": {"default_val": "in progress", "display": "Phase", "value": "option.phase"},
+        "phases_list_option_phase": {"display": "Phases", "value": "list.option.phase"},
+        "place_geographic_address": {"display": "Place", "value": "geographic_address"},
+        "span_date_range": {"display": "Span", "value": "date_range"},
+        "starts_date": {"default_val": "2024-01-02T03:04:05.123Z", "display": "Starts", "value": "date"},
+        "venues_list_custom_venue": {"display": "Venues", "value": "list.custom.venue"}
+      }
+    },
+    "venue": {
+      "display": "Venue",
+      "fields": {
+        "name_text": {"display": "Name", "value": "text"}
+      }
+    }
+  }
+}

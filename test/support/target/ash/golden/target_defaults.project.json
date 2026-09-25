@@ -4,22 +4,6 @@
     {
       "code": "ash_default_unmapped",
       "details": {
-        "default": "2024-01-01T00:00:00Z",
-        "source": "date"
-      },
-      "message": "card.due_date: the default \"2024-01-01T00:00:00Z\" has no Ash equivalent and is omitted",
-      "outcome": "degraded",
-      "path": "/user_types/card/fields/due_date",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "field": "due_date",
-        "type": "card"
-      }
-    },
-    {
-      "code": "ash_default_unmapped",
-      "details": {
         "default": "green",
         "source": "option.color"
       },
@@ -351,7 +335,10 @@
           "allow_nil?": true,
           "bubble_type": "date",
           "constraints": [],
-          "default": null,
+          "default": [
+            "value",
+            "2024-01-01T00:00:00.000000Z"
+          ],
           "name": "due",
           "primary_key?": false,
           "public?": true,
@@ -528,6 +515,7 @@
       "bubble_name": "Card",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "Card",
       "relationships": [
         {
@@ -706,6 +694,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -733,5 +722,6 @@
     }
   ],
   "schema_version": 1,
-  "typed_structs": []
+  "typed_structs": [],
+  "types": []
 }

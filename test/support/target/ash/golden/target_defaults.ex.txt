@@ -54,7 +54,12 @@ defmodule MyApp.Card do
       default: "blue"
 
     attribute :count, :float, allow_nil?: true, writable?: true, public?: true, default: 3.0
-    attribute :due, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+
+    attribute :due, :utc_datetime_usec,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      default: ~U[2024-01-01 00:00:00.000000Z]
 
     attribute :empty, :string,
       allow_nil?: true,

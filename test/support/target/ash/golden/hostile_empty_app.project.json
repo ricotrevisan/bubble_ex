@@ -191,6 +191,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -218,5 +219,6 @@
     }
   ],
   "schema_version": 1,
-  "typed_structs": []
+  "typed_structs": [],
+  "types": []
 }

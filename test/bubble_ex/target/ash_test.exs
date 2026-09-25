@@ -25,7 +25,7 @@ defmodule BubbleEx.Target.AshTest do
                 Path.wildcard("test/support/target/ash/*.json"),
                 &{"target_" <> Path.basename(&1, ".json"), &1}
               )
-  @sources ~w(field_types option_sets external_types naming target_names target_defaults)
+  @sources ~w(field_types option_sets external_types naming target_names target_defaults target_values)
 
   defp load(path), do: path |> File.read!() |> Jason.decode!()
 
@@ -253,9 +253,35 @@ defmodule BubbleEx.Target.AshTest do
       assert by_module["Types.GeographicAddress"].metadata == %{}
     end
 
-    test "a date interval has no modeled shape: :map, diagnosed", %{project: p} do
-      assert %{type: :map} = attribute(p, "Task", "duration")
-      assert :ash_opaque_value in codes(p, %{type: "task", field: "duration_dateinterval"})
+    test "a date interval is a :float of milliseconds, diagnosed (info)", %{project: p} do
+      assert %{type: :float} = attribute(p, "Task", "duration")
+
+      assert codes(p, %{type: "task", field: "duration_dateinterval"}) == [
+               :ash_date_interval_as_number
+             ]
+
+      v = project!(fixture("target_values"))
+      assert %{type: {:array, :float}} = field(v, "event", "gaps_list_dateinterval")
+    end
+
+    test "a list of dates is migrated at microsecond precision", %{project: p} do
+      task = Enum.find(p.resources, &(&1.module == "Task"))
+      assert task.migration_types == [{"dates", {:array, :utc_datetime_usec}}]
+      {:ok, source} = Source.render(p)
+      assert source =~ "migration_types dates: {:array, :utc_datetime_usec}"
+    end
+
+    test "values with no usable shape are any JSON value (Types.JsonValue)" do
+      v = project!(fixture("target_values"))
+      assert %{type: {:module, "Types.JsonValue"}} = field(v, "event", "odd_value")
+      assert codes(v, %{type: "event", field: "odd_value"}) == [:ash_opaque_value]
+      assert [%{module: "Types.JsonValue", kind: :json_value}] = v.types
+
+      assert [%{outcome: :preserved}] =
+               for(d <- v.diagnostics, d.code == :ash_opaque_value, do: d)
+
+      # Not generated when nothing uses it.
+      assert project!(fixture("option_sets")).types == []
     end
 
     test "missing and deleted targets, deleted fields and types" do
@@ -283,18 +309,25 @@ defmodule BubbleEx.Target.AshTest do
       assert p.enums == []
     end
 
-    test "API types: known shapes are typed structs, unknown ones and cycle edges :map" do
+    test "API types: known shapes are typed structs, unknown ones and cycle edges JSON" do
       p = project!(fixture("external_types"))
-      modules = Enum.map(p.typed_structs, & &1.module)
+      modules = Enum.map(p.types ++ p.typed_structs, & &1.module)
+      offset = length(p.types)
 
       # Every struct follows the structs its fields use.
       for {struct, i} <- Enum.with_index(p.typed_structs),
           f <- struct.fields,
           {:module, used} <- [unwrap(f.type)] do
-        assert Enum.find_index(modules, &(&1 == used)) < i
+        assert Enum.find_index(modules, &(&1 == used)) < i + offset
       end
 
-      assert %{type: :map} = field(p, "shipment", "missing_api")
+      assert %{type: {:module, "Types.JsonValue"}} = field(p, "shipment", "missing_api")
+      assert %{type: {:module, "Types.JsonValue"}} = field(p, "shipment", "invalid_list_api")
+
+      node = Enum.find(p.typed_structs, &(&1.module == "External.Node"))
+
+      assert %{type: {:module, "Types.JsonValue"}} =
+               Enum.find(node.fields, &(&1.name == "children"))
 
       assert :external_type_unresolved_root in codes(p, %{
                type: "shipment",
@@ -322,14 +355,27 @@ defmodule BubbleEx.Target.AshTest do
                "active" => {:value, true},
                "color" => {:value, "blue"},
                "count" => {:value, 3.0},
+               "due" => {:value, ~U[2024-01-01 00:00:00.000000Z]},
                "empty" => {:value, ""},
                "icon" => {:value, "https://example.invalid/icon.png"},
                "title" => {:value, "Untitled"}
              }
 
-      for f <- ~w(due_date hue_option_color tags_list_text weird_text) do
+      for f <- ~w(hue_option_color tags_list_text weird_text) do
         assert codes(p, %{type: "card", field: f}) == [:ash_default_unmapped]
       end
+    end
+
+    test "fixed dates and option keys are defaults; reference defaults are diagnosed" do
+      v = project!(fixture("target_values"))
+      assert %{default: {:value, starts}} = field(v, "event", "starts_date")
+      assert starts == ~U[2024-01-02 03:04:05.123000Z]
+      assert %{default: {:value, "in progress"}} = field(v, "event", "phase_option_phase")
+      assert %{default: nil} = field(v, "event", "host_custom_venue")
+      assert codes(v, %{type: "event", field: "host_custom_venue"}) == [:ash_default_unmapped]
+
+      {:ok, source} = Source.render(v)
+      assert source =~ "default: ~U[2024-01-02 03:04:05.123000Z]"
     end
 
     test "duplicate option keys keep the first value" do
@@ -476,7 +522,15 @@ defmodule BubbleEx.Target.AshTest do
             %{"version" => 2},
             %{"resources" => []},
             %{"resources" => %{"task" => %{"module" => "not a module"}}},
-            %{"resources" => %{"task" => %{"attributes" => %{"title_text" => "Bad Name"}}}}
+            %{"resources" => %{"task" => %{"attributes" => %{"title_text" => "Bad Name"}}}},
+            # Reserved words are refused in supplied names too.
+            %{"resources" => %{"task" => %{"attributes" => %{"title_text" => "calculations"}}}},
+            %{"resources" => %{"task" => %{"attributes" => %{"title_text" => "id"}}}},
+            %{"resources" => %{"task" => %{"relationships" => %{"owner_user" => "aggregates"}}}},
+            %{"resources" => %{"task" => %{"module" => "Repo"}}},
+            %{"resources" => %{"task" => %{"table" => "schema_migrations"}}},
+            %{"enums" => %{"status" => %{"attributes" => %{"color" => "nil"}}}},
+            %{"external_types" => %{"x" => %{"fields" => %{"f" => "__struct__"}}}}
           ] do
         assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Ash.map(model, [], names: names)
       end
@@ -489,6 +543,16 @@ defmodule BubbleEx.Target.AshTest do
 
       clash = put_in(project.names, ["resources", "project", "module"], "Task")
       assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Ash.map(model, [], names: clash)
+
+      # The primary key keeps its `id`.
+      assert get_in(project.names, ["resources", "task", "attributes", "_id"]) == "id"
+      assert {:ok, _} = Ash.map(model, [], names: project.names)
+    end
+
+    test "a table named like Ecto's migrations table gets a suffix" do
+      app = %{"user_types" => %{"sm" => %{"display" => "Schema Migrations", "fields" => %{}}}}
+      p = project!(app)
+      assert %{module: "SchemaMigrations", table: "schema_migrations_table"} = hd(p.resources)
     end
   end
 
@@ -516,6 +580,20 @@ defmodule BubbleEx.Target.AshTest do
       end
 
       assert {:error, %BubbleEx.Error{}} = Source.render(%{})
+    end
+
+    test "versions/0 pins what the compile check's lock resolves" do
+      {lock, _} =
+        "scripts/ash_compile_check/mix.lock"
+        |> File.read!()
+        |> Code.string_to_quoted!(emit_warnings: false)
+        |> Code.eval_quoted()
+
+      for {app, "== " <> version} <- Ash.versions() do
+        assert elem(lock[app], 2) == version, "#{app}"
+      end
+
+      assert Keyword.keys(Ash.versions()) == [:ash, :ash_postgres]
     end
 
     test "summary counts" do

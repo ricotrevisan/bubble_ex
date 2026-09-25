@@ -4,12 +4,11 @@
     "attributes_by_type": {
       "array enum": 19,
       "array float": 1,
-      "array map": 4,
       "array string": 106,
       "boolean": 162,
       "enum": 109,
       "float": 67,
-      "map": 8,
+      "json_value": 12,
       "string": 935,
       "typed_struct": 4,
       "utc_datetime_usec": 278

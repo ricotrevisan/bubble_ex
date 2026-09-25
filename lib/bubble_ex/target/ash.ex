@@ -22,21 +22,22 @@ defmodule BubbleEx.Target.Ash do
   | text | `:string`, `trim?: false, allow_empty?: true` (empty kept distinct from nil) |
   | number | `:float` |
   | yes / no | `:boolean` |
-  | date | `:utc_datetime_usec` |
+  | date | `:utc_datetime_usec` (a list of dates also migrates at microsecond precision: `migration_types`) |
   | file, image | `:string` (the URL), no trim |
   | geographic address, date range, number range | a generated `Ash.TypedStruct` (`Types.*`) with the parts in `BubbleEx.Model.Structured`; a range's unverified bounds are kept in `metadata` |
-  | date interval | `:map` (Bubble's shape is not modeled), diagnosed |
+  | date interval | `:float` milliseconds (Bubble: "the difference between two dates, expressed as milliseconds"), diagnosed (info) |
   | a thing (scalar reference) | `belongs_to` with a writable `:string` `<name>_id` attribute and no database foreign key (`db_reference: :ignore`) |
   | list of things | `{:array, :string}` of Bubble IDs, order preserved |
   | reference to a missing or omitted type | `:string` / `{:array, :string}` of IDs, diagnosed |
   | option set | a generated `Ash.Type.Enum` (`Enums.*`) whose values are the stable keys (`db_value`), stored as a string, with the set's attributes as lookup data |
   | API type, known shape | a generated `Ash.TypedStruct` (`External.*`) |
-  | API type, unknown shape; opaque or unknown value | `:map` (`{:array, :map}` for a list), diagnosed |
-  | recursive API types | the edge closing a cycle becomes `:map`, diagnosed |
+  | API type, unknown shape; opaque or unknown value | the generated `Types.JsonValue`: any JSON value (a list is a JSON array), stored as jsonb and kept verbatim, diagnosed |
+  | recursive API types | the edge closing a cycle becomes `Types.JsonValue`, diagnosed |
   | Created Date, Modified Date, Slug (and User's email) | writable attributes `created_date`, `modified_date`, `slug`, `email` |
   | Created By | `belongs_to :creator` (User) with a writable `creator_id` |
   | deleted type, field, option set, value or attribute | omitted, diagnosed (info) |
-  | nullability | every attribute allows nil (except the primary key); supported defaults are kept, others diagnosed |
+  | nullability | every attribute allows nil (except the primary key) |
+  | defaults | text, number (as a float), yes/no, file, a fixed ISO 8601 date and an option key are kept; others (lists, references, mismatched values) are omitted and diagnosed |
 
   Bubble's built-in User is always a resource: when the source does not
   define it, the Model's synthesized User (built-in fields only) is used.
@@ -70,6 +71,7 @@ defmodule BubbleEx.Target.Ash do
 
   alias BubbleEx.Target.Ash.{
     Attribute,
+    CustomType,
     EnumAttribute,
     EnumValue,
     Naming,
@@ -82,6 +84,11 @@ defmodule BubbleEx.Target.Ash do
   alias BubbleEx.Target.Ash.Enum, as: AshEnum
 
   @text [trim?: false, allow_empty?: true]
+  @json {:module, "Types.JsonValue"}
+
+  # Dependency pins for a project using the generated source: the versions
+  # scripts/ash_compile_check.sh compiles and runs it against.
+  @versions [ash: "3.31.3", ash_postgres: "2.11.0"]
   @names_version 1
 
   # Built-in fields: fixed names, claimed before the defined fields.
@@ -95,6 +102,16 @@ defmodule BubbleEx.Target.Ash do
   }
 
   @type option :: {:names, map()}
+
+  @doc """
+  Dependency pins for a project that compiles the generated source, as Mix
+  dependency tuples: `[{:ash, "== 3.31.3"}, {:ash_postgres, "== 2.11.0"}]`.
+  The generated modules need nothing else (Ecto and Postgrex come with
+  AshPostgres). `scripts/ash_compile_check.sh` compiles and runs the
+  generated source against exactly these versions.
+  """
+  @spec versions() :: [{atom(), String.t()}]
+  def versions, do: Enum.map(@versions, fn {app, version} -> {app, "== " <> version} end)
 
   @doc """
   Maps `model` to a `BubbleEx.Target.Ash.Project`.
@@ -153,12 +170,15 @@ defmodule BubbleEx.Target.Ash do
     {resources, resource_diags, ctx} = map_all(types, ctx, &resource/2)
     {externals, external_diags, ctx} = map_all(ctx.external_order, ctx, &external/2)
 
+    typed_structs = structured(resources) ++ externals
+
     %Project{
       schema_version: Project.schema_version(),
       bubble_id: model.bubble_id,
       resources: resources,
       enums: enums,
-      typed_structs: structured(resources) ++ externals,
+      types: custom_types(resources, typed_structs),
+      typed_structs: typed_structs,
       names: ctx.names,
       diagnostics:
         Diagnostic.normalize(
@@ -221,7 +241,7 @@ defmodule BubbleEx.Target.Ash do
 
   defp assign_modules(ctx, types, sets) do
     ctx = assign_section(ctx, "resources", "module", types, &resource_base/1, :pascal, :module)
-    ctx = assign_section(ctx, "resources", "table", types, &table_base(&1, ctx), :snake, :none)
+    ctx = assign_section(ctx, "resources", "table", types, &table_base(&1, ctx), :snake, :table)
 
     ctx = assign_section(ctx, "enums", "module", sets, &enum_base/1, :pascal, :none)
     order = external_order(ctx)
@@ -356,18 +376,50 @@ defmodule BubbleEx.Target.Ash do
     attributes = for {:attribute, a} <- items, do: a
     relationships = for {:relationship, r} <- items, do: r
 
+    attributes = primary_key(attributes, type, ctx) ++ attributes
+
     resource = %Resource{
       module: Map.fetch!(entry, "module"),
       table: Map.fetch!(entry, "table"),
       source: %{type: type.id},
       bubble_name: type.name,
       synthesized: type.synthesized,
-      attributes: primary_key(attributes, type, ctx) ++ attributes,
-      relationships: relationships
+      attributes: attributes,
+      relationships: relationships,
+      migration_types: migration_types(attributes)
     }
 
     names = put_in(ctx.names, ["resources", type.id], entry)
     {resource, Enum.reverse(diags), %{ctx | names: names}}
+  end
+
+  # AshPostgres migrates `{:array, :utc_datetime_usec}` as `{:array,
+  # :utc_datetime}` (timestamp(0)[]), losing microseconds: state the type.
+  defp migration_types(attributes) do
+    for %Attribute{type: {:array, :utc_datetime_usec} = type, name: name} <- attributes,
+        do: {name, type}
+  end
+
+  # The generated custom types the attributes use.
+  defp custom_types(resources, typed_structs) do
+    types =
+      for r <- resources, a <- r.attributes, do: a.type
+
+    types = types ++ for(t <- typed_structs, f <- t.fields, do: f.type)
+
+    if Enum.any?(types, &(unwrap(&1) == @json)) do
+      [
+        %CustomType{
+          module: elem(@json, 1),
+          kind: :json_value,
+          description:
+            "Any JSON value (object, array, string, number, boolean or null), stored as jsonb. " <>
+              "Holds Bubble values whose shape is not known, verbatim."
+        }
+      ]
+    else
+      []
+    end
   end
 
   # The locked attribute and relationship names of a resource, and every
@@ -449,7 +501,10 @@ defmodule BubbleEx.Target.Ash do
       source: subject
     }
 
-    {[{:attribute, attribute}, {:relationship, relationship}], {diags, used, entry}}
+    # A reference's default is not mapped: diagnosed, never dropped silently.
+    {_default, default_diags} = default(field, ctx, subject)
+    items = [{:attribute, attribute}, {:relationship, relationship}]
+    {items, {Enum.reverse(default_diags) ++ diags, used, entry}}
   end
 
   defp field_item(%Field{} = field, type, ctx, {diags, used, entry}) do
@@ -500,12 +555,18 @@ defmodule BubbleEx.Target.Ash do
   # The Ash type and constraints for a Model content type, and diagnostics
   # for what is lost.
   defp content(%Type{cardinality: :unknown} = type, _ctx, subject, path),
-    do: {:map, [], [opaque(type, subject, path, "its list-ness is unknown")]}
+    do: {@json, [], [opaque(type, subject, path, "its list-ness is unknown")]}
 
+  # A list of values with no usable type is one JSON value (a JSON array).
   defp content(%Type{cardinality: :many} = type, ctx, subject, path) do
-    {base, constraints, diags} = content(%{type | cardinality: :one}, ctx, subject, path)
-    constraints = if constraints == [], do: [], else: [items: constraints]
-    {{:array, base}, constraints, diags}
+    case content(%{type | cardinality: :one}, ctx, subject, path) do
+      {@json, [], diags} ->
+        {@json, [], diags}
+
+      {base, constraints, diags} ->
+        constraints = if constraints == [], do: [], else: [items: constraints]
+        {{:array, base}, constraints, diags}
+    end
   end
 
   defp content(%Type{kind: :scalar, base: base}, _ctx, _subject, _path),
@@ -513,9 +574,15 @@ defmodule BubbleEx.Target.Ash do
 
   defp content(%Type{kind: :file_ref}, _ctx, _subject, _path), do: {:string, @text, []}
 
+  # Bubble documents a date interval as "the difference between two dates,
+  # expressed as milliseconds"
+  # (https://manual.bubble.io/help-guides/data/the-database/data-types-and-fields.md).
+  defp content(%Type{kind: :structured, base: :date_interval} = type, _ctx, subject, path),
+    do: {:float, [], [date_interval(type, subject, path)]}
+
   defp content(%Type{kind: :structured, base: base} = type, _ctx, subject, path) do
     case Type.components(type) do
-      [] -> {:map, [], [opaque(type, subject, path, "Bubble's #{base} shape is not modeled")]}
+      [] -> {@json, [], [opaque(type, subject, path, "Bubble's #{base} shape is not modeled")]}
       _ -> {{:module, structured_module(base)}, [], []}
     end
   end
@@ -535,10 +602,10 @@ defmodule BubbleEx.Target.Ash do
   defp content(%Type{kind: :external} = type, ctx, subject, path) do
     case module_of(ctx, "external_types", type.target) do
       nil when is_map_key(subject, :external_type) ->
-        {:map, [], [external_diag(:external_type_unresolved_nested, type, subject, path)]}
+        {@json, [], [external_diag(:external_type_unresolved_nested, type, subject, path)]}
 
       nil ->
-        {:map, [], [external_diag(:external_type_unresolved_root, type, subject, path)]}
+        {@json, [], [external_diag(:external_type_unresolved_root, type, subject, path)]}
 
       module ->
         {{:module, "External." <> module}, [], []}
@@ -546,7 +613,7 @@ defmodule BubbleEx.Target.Ash do
   end
 
   defp content(%Type{} = type, _ctx, subject, path),
-    do: {:map, [], [opaque(type, subject, path, "the value has no usable type")]}
+    do: {@json, [], [opaque(type, subject, path, "the value has no usable type")]}
 
   defp scalar(:text), do: :string
   defp scalar(:number), do: :float
@@ -560,7 +627,7 @@ defmodule BubbleEx.Target.Ash do
     Diagnostic.new(
       :ash_opaque_value,
       path,
-      "#{describe(subject)} is mapped to :map: #{why}",
+      "#{describe(subject)} is kept as any JSON value (#{elem(@json, 1)}): #{why}",
       target: :ash,
       subject: subject,
       details: %{
@@ -568,8 +635,19 @@ defmodule BubbleEx.Target.Ash do
         base: type.base,
         cardinality: type.cardinality,
         source: source_text(type.source),
-        fallback: :map
+        fallback: :json
       }
+    )
+  end
+
+  defp date_interval(type, subject, path) do
+    Diagnostic.new(
+      :ash_date_interval_as_number,
+      path,
+      "#{describe(subject)} is a date interval, mapped to :float milliseconds",
+      target: :ash,
+      subject: subject,
+      details: %{cardinality: type.cardinality, unit: :millisecond, fallback: :float}
     )
   end
 
@@ -641,11 +719,14 @@ defmodule BubbleEx.Target.Ash do
     end
   end
 
+  defp default_value(%Type{kind: :ref}, _value, _ctx), do: :error
+
   defp default_value(%Type{cardinality: :one} = type, value, ctx) do
     case {type.kind, type.base, value} do
       {:scalar, :text, v} when is_binary(v) -> {:ok, v}
       {:scalar, :number, v} when is_number(v) -> {:ok, v * 1.0}
       {:scalar, :boolean, v} when is_boolean(v) -> {:ok, v}
+      {:scalar, :date, v} when is_binary(v) -> iso_datetime(v)
       {:file_ref, _, v} when is_binary(v) -> {:ok, v}
       {:option, _, v} when is_binary(v) -> enum_default(ctx, type.target, v)
       _ -> :error
@@ -653,6 +734,18 @@ defmodule BubbleEx.Target.Ash do
   end
 
   defp default_value(_type, _value, _ctx), do: :error
+
+  # A fixed ISO 8601 timestamp with an offset, at microsecond precision.
+  defp iso_datetime(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, datetime, _offset} ->
+        {us, _precision} = datetime.microsecond
+        {:ok, %{datetime | microsecond: {us, 6}}}
+
+      {:error, _} ->
+        :error
+    end
+  end
 
   defp enum_default(ctx, set, value) do
     if MapSet.member?(Map.get(ctx.enum_values, set, MapSet.new()), value),
@@ -837,23 +930,24 @@ defmodule BubbleEx.Target.Ash do
         }
       )
 
-    type = if field.type.cardinality == :many, do: {:array, :map}, else: :map
-    {type, [], [diag]}
+    {@json, [], [diag]}
   end
 
   defp external_field(field, ctx, subject, path), do: content(field.type, ctx, subject, path)
 
   # --- the name map --------------------------------------------------------------
 
+  # Each member: its key, style (or `:names` for a map of snake names) and
+  # naming scope, whose reserved words a supplied name may not use.
   @sections %{
     "resources" => [
-      {"module", :pascal},
-      {"table", :snake},
-      {"attributes", :names},
-      {"relationships", :names}
+      {"module", :pascal, :module},
+      {"table", :snake, :table},
+      {"attributes", :names, :attribute},
+      {"relationships", :names, :attribute}
     ],
-    "enums" => [{"module", :pascal}, {"attributes", :names}],
-    "external_types" => [{"module", :pascal}, {"fields", :names}]
+    "enums" => [{"module", :pascal, :none}, {"attributes", :names, :field}],
+    "external_types" => [{"module", :pascal, :none}, {"fields", :names, :field}]
   }
 
   defp validate_names(names) when is_map(names) and not is_struct(names) do
@@ -892,15 +986,23 @@ defmodule BubbleEx.Target.Ash do
 
   defp valid_entry?(_entry, _keys), do: false
 
-  defp valid_member?(entry, {key, :names}), do: valid_names?(Map.get(entry, key, %{}))
+  defp valid_member?(entry, {key, :names, scope}),
+    do: valid_names?(Map.get(entry, key, %{}), scope)
 
-  defp valid_member?(entry, {key, style}),
-    do: not Map.has_key?(entry, key) or Naming.valid?(style, entry[key])
+  defp valid_member?(entry, {key, style, scope}),
+    do: not Map.has_key?(entry, key) or valid_name?(style, entry[key], scope)
 
-  defp valid_names?(map) when is_map(map),
-    do: Enum.all?(map, fn {k, v} -> is_binary(k) and Naming.valid?(:snake, v) end)
+  defp valid_names?(map, scope) when is_map(map),
+    do: Enum.all?(map, fn {k, v} -> is_binary(k) and valid_locked?(k, v, scope) end)
 
-  defp valid_names?(_), do: false
+  defp valid_names?(_, _scope), do: false
+
+  # The primary key (Bubble `_id`) is the one attribute named `id`.
+  defp valid_locked?("_id", "id", :attribute), do: true
+  defp valid_locked?(_id, name, scope), do: valid_name?(:snake, name, scope)
+
+  defp valid_name?(style, name, scope),
+    do: Naming.valid?(style, name) and name not in Naming.reserved(scope)
 
   defp invalid_names(message), do: {:error, Error.new(:invalid_input, message)}
 end

@@ -139,10 +139,12 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a data type, field, option set, option value or attribute that is malformed in the source (`raw`); not mapped"},
     {:ash_unresolved_reference, :warning, :degraded, :target,
      "a reference to a data type or option set that is missing or omitted; its Bubble IDs are kept as `:string` (or an array of them)"},
-    {:ash_opaque_value, :warning, :degraded, :target,
-     "a value with no usable type (opaque, unknown, a date interval, or of unknown list-ness); mapped to `:map`"},
+    {:ash_opaque_value, :warning, :preserved, :target,
+     "a value with no usable type (opaque, unknown, or of unknown list-ness); kept verbatim as any JSON value (the generated `Types.JsonValue`, jsonb) but not modeled"},
+    {:ash_date_interval_as_number, :info, :degraded, :target,
+     "a date interval (Bubble: the difference between two dates in milliseconds); mapped to `:float` milliseconds, not a duration type"},
     {:ash_default_unmapped, :warning, :degraded, :target,
-     "a field default with no Ash equivalent (e.g. a list or a date); omitted"},
+     "a field default with no Ash equivalent (e.g. a list, a reference, or a value of the wrong type); omitted"},
     {:ash_duplicate_enum_value, :warning, :degraded, :target,
      "an option value repeating an earlier value's stable key; omitted from the enum"}
   ]

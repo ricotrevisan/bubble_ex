@@ -8,6 +8,8 @@ defmodule BubbleEx.Target.Ash.Project do
       Bubble ID order
     * `enums` - `BubbleEx.Target.Ash.Enum`s (one per option set), in Bubble
       ID order
+    * `types` - `BubbleEx.Target.Ash.CustomType`s: generated Ash types
+      such as `Types.JsonValue` (any JSON value), present when used
     * `typed_structs` - `BubbleEx.Target.Ash.TypedStruct`s (structured
       Bubble values, then API Connector types), ordered so every struct
       follows the structs its fields use
@@ -48,7 +50,7 @@ defmodule BubbleEx.Target.Ash.Project do
   """
 
   alias BubbleEx.{CanonicalJson, Diagnostic}
-  alias BubbleEx.Target.Ash.{Resource, TypedStruct}
+  alias BubbleEx.Target.Ash.{CustomType, Resource, TypedStruct}
 
   @schema_version 1
 
@@ -58,6 +60,7 @@ defmodule BubbleEx.Target.Ash.Project do
     :bubble_id,
     resources: [],
     enums: [],
+    types: [],
     typed_structs: [],
     names: %{},
     diagnostics: []
@@ -70,6 +73,7 @@ defmodule BubbleEx.Target.Ash.Project do
           bubble_id: String.t() | nil,
           resources: [Resource.t()],
           enums: [BubbleEx.Target.Ash.Enum.t()],
+          types: [CustomType.t()],
           typed_structs: [TypedStruct.t()],
           names: map(),
           diagnostics: [Diagnostic.t()]
@@ -80,8 +84,9 @@ defmodule BubbleEx.Target.Ash.Project do
   def schema_version, do: @schema_version
 
   @doc """
-  JSON form: string keys and JSON values only. Atoms become strings and
-  tuples lists (`{:array, :string}` is `["array", "string"]`).
+  JSON form: string keys and JSON values only. Atoms become strings, tuples
+  lists (`{:array, :string}` is `["array", "string"]`) and a `DateTime` its
+  ISO 8601 text.
   """
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = project), do: json(project)
@@ -91,6 +96,7 @@ defmodule BubbleEx.Target.Ash.Project do
   def to_json(%__MODULE__{} = project), do: project |> to_map() |> CanonicalJson.encode()
 
   defp json(%Diagnostic{} = d), do: Diagnostic.to_map(d)
+  defp json(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
   defp json(%_{} = struct), do: struct |> Map.from_struct() |> json()
   defp json(map) when is_map(map), do: Map.new(map, fn {k, v} -> {key(k), json(v)} end)
   defp json(list) when is_list(list), do: Enum.map(list, &json/1)
@@ -104,8 +110,8 @@ defmodule BubbleEx.Target.Ash.Project do
 
   @doc """
   Aggregate counts, with string keys (for reports and count snapshots):
-  resources, attributes by Ash type (`enum` and `typed_struct` for
-  generated modules), relationships by kind, database references by mode,
+  resources, attributes by Ash type (`enum`, `typed_struct` and `json_value`
+  for generated modules), relationships by kind, database references by mode,
   enums and their values, typed structs by source, and diagnostics by code.
   """
   @spec summary(t()) :: map()
@@ -130,6 +136,7 @@ defmodule BubbleEx.Target.Ash.Project do
 
   defp module_kinds(project) do
     Map.new(project.enums, &{&1.module, "enum"})
+    |> Map.merge(Map.new(project.types, &{&1.module, Atom.to_string(&1.kind)}))
     |> Map.merge(Map.new(project.typed_structs, &{&1.module, "typed_struct"}))
   end
 
@@ -156,6 +163,10 @@ defmodule BubbleEx.Target.Ash.Resource do
       order)
     * `relationships` - `BubbleEx.Target.Ash.Relationship`s
     * `identities` - `BubbleEx.Target.Ash.Identity`s
+    * `migration_types` - `{attribute_name, type}` overrides of the
+      AshPostgres migration type (`postgres do migration_types …`), e.g.
+      `{:array, :utc_datetime_usec}`, which AshPostgres would otherwise
+      migrate at second precision
     * `actions` - the `defaults` action list, e.g.
       `[:read, :destroy, create: :*, update: :*]`
     * `description` - text for the module's documentation, or nil
@@ -174,6 +185,7 @@ defmodule BubbleEx.Target.Ash.Resource do
     attributes: [],
     relationships: [],
     identities: [],
+    migration_types: [],
     actions: [:read, :destroy, create: :*, update: :*]
   ]
 
@@ -187,6 +199,7 @@ defmodule BubbleEx.Target.Ash.Resource do
           attributes: [Attribute.t()],
           relationships: [Relationship.t()],
           identities: [Identity.t()],
+          migration_types: [{String.t(), BubbleEx.Target.Ash.Project.type()}],
           actions: keyword() | [atom() | {atom(), term()}]
         }
 end
@@ -398,4 +411,21 @@ defmodule BubbleEx.Target.Ash.TypedStruct do
           fields: [Attribute.t()],
           metadata: map()
         }
+end
+
+defmodule BubbleEx.Target.Ash.CustomType do
+  @moduledoc """
+  A generated Ash type module (not a typed struct or an enum).
+
+    * `module` - relative module name, e.g. `"Types.JsonValue"`
+    * `kind` - `:json_value`: any JSON value (object, array, string, number,
+      boolean or null), stored as jsonb. `Ash.Type.Map` accepts only
+      objects, so values whose shape is unknown use this to be kept verbatim
+    * `description` - text for the module's documentation
+  """
+
+  @enforce_keys [:module, :kind]
+  defstruct [:module, :kind, :description]
+
+  @type t :: %__MODULE__{module: String.t(), kind: :json_value, description: String.t() | nil}
 end

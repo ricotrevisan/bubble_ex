@@ -2,18 +2,16 @@
   "bubble_id": "synthetic-field-types",
   "diagnostics": [
     {
-      "code": "ash_opaque_value",
+      "code": "ash_date_interval_as_number",
       "details": {
-        "base": "date_interval",
         "cardinality": "one",
-        "fallback": "map",
-        "kind": "structured",
-        "source": "dateinterval"
+        "fallback": "float",
+        "unit": "millisecond"
       },
-      "message": "task.duration_dateinterval is mapped to :map: Bubble's date_interval shape is not modeled",
+      "message": "task.duration_dateinterval is a date interval, mapped to :float milliseconds",
       "outcome": "degraded",
       "path": "/user_types/task/fields/duration_dateinterval",
-      "severity": "warning",
+      "severity": "info",
       "stage": "target:ash",
       "subject": {
         "field": "duration_dateinterval",
@@ -304,6 +302,7 @@
       "bubble_name": "Project",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "Project",
       "relationships": [
         {
@@ -608,7 +607,7 @@
             "field": "duration_dateinterval",
             "type": "task"
           },
-          "type": "map",
+          "type": "float",
           "writable?": true
         },
         {
@@ -1031,6 +1030,15 @@
       "bubble_name": "Task",
       "description": null,
       "identities": [],
+      "migration_types": [
+        [
+          "dates",
+          [
+            "array",
+            "utc_datetime_usec"
+          ]
+        ]
+      ],
       "module": "Task",
       "relationships": [
         {
@@ -1266,6 +1274,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -1461,5 +1470,6 @@
         "structured": "number_range"
       }
     }
-  ]
+  ],
+  "types": []
 }

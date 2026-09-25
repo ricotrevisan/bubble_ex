@@ -22,7 +22,15 @@ defmodule BubbleEx.Target.Ash.Source do
   """
 
   alias BubbleEx.Error
-  alias BubbleEx.Target.Ash.{Attribute, Project, Relationship, Resource, TypedStruct}
+
+  alias BubbleEx.Target.Ash.{
+    Attribute,
+    CustomType,
+    Project,
+    Relationship,
+    Resource,
+    TypedStruct
+  }
 
   @alias ~r/^[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*$/
   @identifier ~r/^[a-z_][A-Za-z0-9_]*[?!]?$/
@@ -39,6 +47,7 @@ defmodule BubbleEx.Target.Ash.Source do
     destination_attribute: 1,
     attribute_type: 1,
     define_attribute?: 1,
+    migration_types: 1,
     allow_nil?: 1,
     public?: 1,
     identity: 2,
@@ -76,7 +85,8 @@ defmodule BubbleEx.Target.Ash.Source do
       ctx = %{namespace: namespace, domain: domain, repo: repo}
 
       modules =
-        Enum.map(project.enums, &enum(&1, ctx)) ++
+        Enum.map(project.types, &custom_type(&1, ctx)) ++
+          Enum.map(project.enums, &enum(&1, ctx)) ++
           Enum.map(project.typed_structs, &typed_struct(&1, ctx)) ++
           Enum.map(project.resources, &resource(&1, ctx)) ++
           [domain_module(project, ctx)]
@@ -103,6 +113,38 @@ defmodule BubbleEx.Target.Ash.Source do
   end
 
   # --- modules -------------------------------------------------------------------
+
+  # Any JSON value, stored as jsonb. Its storage type is `:map` (jsonb), but
+  # unlike `Ash.Type.Map` it accepts every JSON value, not only objects.
+  defp custom_type(%CustomType{kind: :json_value} = type, ctx) do
+    """
+    defmodule #{module(type.module, ctx)} do
+      #{moduledoc(type.description)}use Ash.Type
+
+      @impl Ash.Type
+      def storage_type(_constraints), do: :map
+
+      @impl Ash.Type
+      def cast_input(value, _constraints), do: if(json?(value), do: {:ok, value}, else: :error)
+
+      @impl Ash.Type
+      def cast_stored(value, _constraints), do: {:ok, value}
+
+      @impl Ash.Type
+      def dump_to_native(value, _constraints),
+        do: if(json?(value), do: {:ok, value}, else: :error)
+
+      defp json?(value) when is_nil(value) or is_boolean(value) or is_number(value), do: true
+      defp json?(value) when is_binary(value), do: String.valid?(value)
+      defp json?(value) when is_list(value), do: Enum.all?(value, &json?/1)
+
+      defp json?(value) when is_map(value) and not is_struct(value),
+        do: Enum.all?(value, fn {k, v} -> (is_binary(k) or is_atom(k)) and json?(v) end)
+
+      defp json?(_value), do: false
+    end
+    """
+  end
 
   defp enum(enum, ctx) do
     values = Enum.map_join(enum.values, ", ", &enum_value/1)
@@ -172,7 +214,7 @@ defmodule BubbleEx.Target.Ash.Source do
       postgres do
         table #{literal(resource.table)}
         repo #{ctx.repo}
-    #{references(resource.relationships)}
+    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships)}
       end
 
       attributes do
@@ -205,6 +247,13 @@ defmodule BubbleEx.Target.Ash.Source do
   defp constraints(%Attribute{constraints: c}), do: [{"constraints", literal(c)}]
 
   defp options(options), do: Enum.map_join(options, ", ", fn {k, v} -> "#{k}: #{v}" end)
+
+  defp migration_types([], _ctx), do: ""
+
+  defp migration_types(types, ctx) do
+    entries = Enum.map_join(types, ", ", fn {name, type} -> key(name) <> type(type, ctx) end)
+    "\nmigration_types #{entries}\n"
+  end
 
   defp references(relationships) do
     case Enum.filter(relationships, &(&1.db_reference == :ignore)) do

@@ -105,12 +105,12 @@
       "details": {
         "base": null,
         "cardinality": "unknown",
-        "fallback": "map",
+        "fallback": "json",
         "kind": "opaque",
         "source": "nil"
       },
-      "message": "api.apiconnector2.bad.defs.T.odd is mapped to :map: its list-ness is unknown",
-      "outcome": "degraded",
+      "message": "api.apiconnector2.bad.defs.T.odd is kept as any JSON value (Types.JsonValue): its list-ness is unknown",
+      "outcome": "preserved",
       "path": "/settings/client_safe/apiconnector2/bad/defs/types",
       "severity": "warning",
       "stage": "target:ash",
@@ -249,12 +249,12 @@
       "details": {
         "base": null,
         "cardinality": "one",
-        "fallback": "map",
+        "fallback": "json",
         "kind": "unknown",
         "source": "custom."
       },
-      "message": "task.empty_custom is mapped to :map: the value has no usable type",
-      "outcome": "degraded",
+      "message": "task.empty_custom is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
       "path": "/user_types/task/fields/empty_custom",
       "severity": "warning",
       "stage": "target:ash",
@@ -283,12 +283,12 @@
       "details": {
         "base": null,
         "cardinality": "one",
-        "fallback": "map",
+        "fallback": "json",
         "kind": "unknown",
         "source": "list.list.text"
       },
-      "message": "task.nested_list is mapped to :map: the value has no usable type",
-      "outcome": "degraded",
+      "message": "task.nested_list is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
       "path": "/user_types/task/fields/nested_list",
       "severity": "warning",
       "stage": "target:ash",
@@ -317,12 +317,12 @@
       "details": {
         "base": null,
         "cardinality": "one",
-        "fallback": "map",
+        "fallback": "json",
         "kind": "unknown",
         "source": "7"
       },
-      "message": "task.numeric_type is mapped to :map: the value has no usable type",
-      "outcome": "degraded",
+      "message": "task.numeric_type is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
       "path": "/user_types/task/fields/numeric_type",
       "severity": "warning",
       "stage": "target:ash",
@@ -349,12 +349,12 @@
       "details": {
         "base": null,
         "cardinality": "one",
-        "fallback": "map",
+        "fallback": "json",
         "kind": "unknown",
         "source": "quantum_state"
       },
-      "message": "task.quantum is mapped to :map: the value has no usable type",
-      "outcome": "degraded",
+      "message": "task.quantum is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
       "path": "/user_types/task/fields/quantum",
       "severity": "warning",
       "stage": "target:ash",
@@ -383,12 +383,12 @@
       "details": {
         "base": null,
         "cardinality": "one",
-        "fallback": "map",
+        "fallback": "json",
         "kind": "unknown",
         "source": "nil"
       },
-      "message": "task.untyped is mapped to :map: the value has no usable type",
-      "outcome": "degraded",
+      "message": "task.untyped is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
       "path": "/user_types/task/fields/untyped",
       "severity": "warning",
       "stage": "target:ash",
@@ -708,6 +708,7 @@
       "bubble_name": "Listy",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "Listy",
       "relationships": [
         {
@@ -870,7 +871,10 @@
             "field": "empty_custom",
             "type": "task"
           },
-          "type": "map",
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
           "writable?": true
         },
         {
@@ -911,7 +915,10 @@
             "field": "nested_list",
             "type": "task"
           },
-          "type": "map",
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
           "writable?": true
         },
         {
@@ -927,7 +934,10 @@
             "field": "numeric_type",
             "type": "task"
           },
-          "type": "map",
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
           "writable?": true
         },
         {
@@ -987,7 +997,10 @@
             "field": "quantum",
             "type": "task"
           },
-          "type": "map",
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
           "writable?": true
         },
         {
@@ -1003,13 +1016,17 @@
             "field": "untyped",
             "type": "task"
           },
-          "type": "map",
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
           "writable?": true
         }
       ],
       "bubble_name": "Task",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "Task",
       "relationships": [
         {
@@ -1188,6 +1205,7 @@
       "bubble_name": "User",
       "description": null,
       "identities": [],
+      "migration_types": [],
       "module": "User",
       "relationships": [
         {
@@ -1258,7 +1276,10 @@
             "external_type": "api.apiconnector2.bad.defs.T",
             "field": "odd"
           },
-          "type": "map",
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
           "writable?": true
         }
       ],
@@ -1268,6 +1289,13 @@
       "source": {
         "external_type": "api.apiconnector2.bad.defs.T"
       }
+    }
+  ],
+  "types": [
+    {
+      "description": "Any JSON value (object, array, string, number, boolean or null), stored as jsonb. Holds Bubble values whose shape is not known, verbatim.",
+      "kind": "json_value",
+      "module": "Types.JsonValue"
     }
   ]
 }

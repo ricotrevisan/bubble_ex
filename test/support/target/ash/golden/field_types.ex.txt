@@ -117,6 +117,8 @@ defmodule MyApp.Task do
     table "task"
     repo MyApp.Repo
 
+    migration_types dates: {:array, :utc_datetime_usec}
+
     references do
       reference :creator, ignore?: true
       reference :owner, ignore?: true
@@ -169,7 +171,7 @@ defmodule MyApp.Task do
 
     attribute :done, :boolean, allow_nil?: true, writable?: true, public?: true, default: false
     attribute :due, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-    attribute :duration, :map, allow_nil?: true, writable?: true, public?: true
+    attribute :duration, :float, allow_nil?: true, writable?: true, public?: true
     attribute :estimate, :float, allow_nil?: true, writable?: true, public?: true, default: 1.0
 
     attribute :files, {:array, :string},
