@@ -34,8 +34,8 @@ defmodule MyApp.Repo.Migrations.CreateTicket do
       add :channels, {:array, :string}
       add :priority_id, :string
     end
-    create index("ticket", [:created_by_id])
-    create index("ticket", [:priority_id])
+    create index("ticket", [:created_by_id], name: "ticket_created_by_id_index")
+    create index("ticket", [:priority_id], name: "ticket_priority_id_index")
   end
 end
 
@@ -73,7 +73,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 
@@ -175,7 +175,7 @@ defmodule MyApp.Repo.Migrations.CreatePriority do
       add :urgent, :boolean
       add :weight, :float
     end
-    create index("priority", [:escalates_to_id])
+    create index("priority", [:escalates_to_id], name: "priority_escalates_to_id_index")
   end
 end
 --- diagnostics ---

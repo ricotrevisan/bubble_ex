@@ -3,7 +3,9 @@
 # model and target fixture into a scratch Ash project whose dependencies are
 # BubbleEx.Target.Ash.versions/0 (mix.lock pins the rest), then
 #
-#   * mix compile --warnings-as-errors
+#   * mix compile --warnings-as-errors, which also compiles the
+#     BubbleEx.Db.Ecto schemas and migrations of every schema golden fixture
+#     (WTF-391: no repeated field, association or foreign key)
 #   * mix ash.codegen --dry-run: migration generation needs no database; it
 #     must create no foreign keys and store lists of dates at microsecond
 #     precision
@@ -18,7 +20,9 @@
 #     runs every privacy filter against them for each actor; then it seeds
 #     the expression fixture's discriminating rows and requires every privacy
 #     filter to select exactly the records in its hand-authored expectation
-#     table (test/support/expression/expectations/privacy.json)
+#     table (test/support/expression/expectations/privacy.json); and
+#     scripts/ash_compile_check/ecto_migrate.exs runs the Db.Ecto
+#     migrations in one database per fixture and naming
 #
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
 # mm-137). The scratch project lives in _build/ash_compile_check (or
@@ -30,7 +34,8 @@ scratch="${ASH_COMPILE_CHECK_DIR:-$root/_build/ash_compile_check}"
 
 mkdir -p "$scratch"
 cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
-  "$root/scripts/ash_compile_check/filters.exs" "$scratch/"
+  "$root/scripts/ash_compile_check/filters.exs" \
+  "$root/scripts/ash_compile_check/ecto_migrate.exs" "$scratch/"
 cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectations.json"
 
 cd "$root"
@@ -79,6 +84,7 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix ecto.create --quiet
   mix ecto.migrate --quiet
   mix run runtime.exs
+  mix run ecto_migrate.exs
 else
   echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
 fi

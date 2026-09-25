@@ -14,9 +14,18 @@ defmodule BubbleEx.Db.Zod do
   `table.values`) are not rendered as a `z.enum`. Every non-primary-key field is `.nullish()` since
   any Bubble field can be empty. `:api` group tables (external placeholders) are
   skipped, as are deleted columns.
+
+  Field keys are the Reader's names (unique per table), quoted when they are
+  not identifiers. Schema consts and types are PascalCased, and unique after
+  conversion (`names/2`, `BubbleEx.Db.Encoder.Names`): a table repeating an
+  earlier table's (`Foo Bar` and `Foo-Bar`) or an API Connector type's const
+  takes the next free `2`, `3`, ... (`FooBar2Schema`).
   """
 
   @behaviour BubbleEx.Db.Encoder
+
+  alias BubbleEx.Db.Encoder.Names
+  alias BubbleEx.Db.Naming
 
   @type opts :: [naming: :proper | :id | nil, external_types: :preserve | :opaque | :legacy]
 
@@ -28,7 +37,10 @@ defmodule BubbleEx.Db.Zod do
         BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
       end)
 
-    opts = Keyword.put(opts, :_external_plan, plan)
+    opts =
+      opts
+      |> Keyword.put(:_external_plan, plan)
+      |> Keyword.put(:_names, names(parsed_map, opts))
 
     tables =
       parsed_map
@@ -41,6 +53,41 @@ defmodule BubbleEx.Db.Zod do
 
     body = Enum.reject([external, blocks], &(&1 == "")) |> Enum.join("\n\n")
     {:ok, header() <> body <> "\n"}
+  end
+
+  @doc """
+  The table names after conversion, unique across the schema (see the
+  moduledoc and `BubbleEx.Db.Encoder.Names`): `[{:const, schema}, {:type,
+  type}]`. Field keys are not converted.
+  """
+  @impl true
+  @spec names(map(), keyword()) :: Names.t()
+  def names(parsed_map, opts \\ []) do
+    plan =
+      Keyword.get_lazy(opts, :_external_plan, fn ->
+        BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
+      end)
+
+    reserved =
+      if Keyword.get(opts, :external_types, :legacy) == :preserve,
+        do:
+          for(id <- plan.order, do: {:const, BubbleEx.Db.Encoder.Plan.name(plan, id) <> "Schema"}),
+        else: []
+
+    parsed_map
+    |> Map.get(:tables, [])
+    |> Enum.reject(&(&1.group == :api))
+    |> Names.build(
+      reserved: reserved,
+      table: fn table ->
+        type = pascal_case(by_naming(opts, table.name, table.id))
+
+        fn n ->
+          type = Naming.variant(type, n, "")
+          [{:const, type <> "Schema"}, {:type, type}]
+        end
+      end
+    )
   end
 
   defp header, do: "import { z } from 'zod';\n\n"
@@ -124,10 +171,16 @@ defmodule BubbleEx.Db.Zod do
   # Naming -----------------------------------------------------------------------
 
   # :proper (default) uses display names; :id uses the Bubble ids.
-  defp schema_const(table, opts),
-    do: pascal_case(by_naming(opts, table.name, table.id)) <> "Schema"
+  defp schema_const(table, opts) do
+    [{:const, const}, _type] = Names.table(Keyword.fetch!(opts, :_names), table)
+    const
+  end
 
-  defp type_name(table, opts), do: pascal_case(by_naming(opts, table.name, table.id))
+  defp type_name(table, opts) do
+    [_const, {:type, type}] = Names.table(Keyword.fetch!(opts, :_names), table)
+    type
+  end
+
   defp field_name(column, opts), do: by_naming(opts, column.name, column.id)
 
   defp by_naming(opts, proper, id) do

@@ -349,6 +349,16 @@ Pass `naming: :id` to use Bubble's internal identifiers instead:
 {:ok, app} = BubbleEx.fetch_app("my-app", format: :ecto, naming: :id)
 ```
 
+Names stay unique after each format's case conversion. Ecto, Convex, Xano and
+Zod convert names (`created_date`, `createdDate`, `CreatedDateSchema`), which
+can merge names that differ only by case or punctuation (`Created Date` and a
+field `created_date`), or a field and a foreign key (`created_by_id` and the
+built-in `Created By`'s key). The built-in field keeps its name, and a later
+name, in Bubble ID order, gets the next free suffix (`created_date_2`,
+`createdDate2`), reported as `db_converted_name_suffixed`. Ecto names, index
+names included, are cut to 63 characters, PostgreSQL's identifier limit
+(`db_converted_name_truncated`).
+
 ### What is and isn't preserved
 
 Every encoder renders the same reading of the app: `BubbleEx.Db.Reader` projects

@@ -1,104 +1,12 @@
 # schema module
-defmodule MyApp.N00ThingJoin do
+defmodule MyApp.BlogPost do
   use Ecto.Schema
   import Ecto.Changeset
 
   @primary_key {:_id, :string, autogenerate: false}
   @foreign_key_type :string
 
-  schema "n00_thing_join" do
-    field :created_date, :utc_datetime_usec
-    field :modified_date, :utc_datetime_usec
-    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
-    field :slug, :string
-    field :n11_done, :boolean
-    field :n40_sort_thing_title, :string
-    field :_struct, :string
-    field :id, :string
-    field :inserted_at, :utc_datetime_usec
-    field :title, :string
-    field :title_2, :string
-    field :type, :string
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :n11_done, :n40_sort_thing_title, :_struct, :id, :inserted_at, :title, :title_2, :type]) |> validate_required([:_id])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateN00ThingJoin do
-  use Ecto.Migration
-
-  def change do
-    create table("n00_thing_join", primary_key: false) do
-      add :_id, :string, primary_key: true
-      add :created_date, :utc_datetime_usec
-      add :modified_date, :utc_datetime_usec
-      add :created_by_id, :string
-      add :slug, :string
-      add :n11_done, :boolean
-      add :n40_sort_thing_title, :string
-      add :_struct, :string
-      add :id, :string
-      add :inserted_at, :utc_datetime_usec
-      add :title, :string
-      add :title_2, :string
-      add :type, :string
-    end
-    create index("n00_thing_join", [:created_by_id], name: "n00_thing_join_created_by_id_index")
-  end
-end
-
-# schema module
-defmodule MyApp.Launch do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:_id, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "launch" do
-    field :created_date, :utc_datetime_usec
-    field :modified_date, :utc_datetime_usec
-    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
-    field :slug, :string
-    field :field, :string
-    field :name, :string
-  end
-
-  def changeset(rec, attrs) do
-    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :field, :name]) |> validate_required([:_id])
-  end
-end
-
-# migration
-defmodule MyApp.Repo.Migrations.CreateLaunch do
-  use Ecto.Migration
-
-  def change do
-    create table("launch", primary_key: false) do
-      add :_id, :string, primary_key: true
-      add :created_date, :utc_datetime_usec
-      add :modified_date, :utc_datetime_usec
-      add :created_by_id, :string
-      add :slug, :string
-      add :field, :string
-      add :name, :string
-    end
-    create index("launch", [:created_by_id], name: "launch_created_by_id_index")
-  end
-end
-
-# schema module
-defmodule MyApp.Thing do
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:_id, :string, autogenerate: false}
-  @foreign_key_type :string
-
-  schema "thing" do
+  schema "blog_post" do
     field :created_date, :utc_datetime_usec
     field :modified_date, :utc_datetime_usec
     belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
@@ -111,30 +19,84 @@ defmodule MyApp.Thing do
 end
 
 # migration
-defmodule MyApp.Repo.Migrations.CreateThing do
+defmodule MyApp.Repo.Migrations.CreateBlogPost do
   use Ecto.Migration
 
   def change do
-    create table("thing", primary_key: false) do
+    create table("blog_post", primary_key: false) do
       add :_id, :string, primary_key: true
       add :created_date, :utc_datetime_usec
       add :modified_date, :utc_datetime_usec
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("thing", [:created_by_id], name: "thing_created_by_id_index")
+    create index("blog_post", [:created_by_id], name: "blog_post_created_by_id_index")
   end
 end
 
 # schema module
-defmodule MyApp.Thing2 do
+defmodule MyApp.Post do
   use Ecto.Schema
   import Ecto.Changeset
 
   @primary_key {:_id, :string, autogenerate: false}
   @foreign_key_type :string
 
-  schema "thing_2" do
+  schema "post" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :created_date_2, :utc_datetime_usec
+    belongs_to :created_by_2, MyApp.User, foreign_key: :created_by_2_id, references: :_id, type: :string
+    field :created_by_id_2, :string
+    field :foo_bar, :string
+    field :foo_bar_2, :float
+    field :owner_id, :string
+    belongs_to :owner_2, MyApp.User, foreign_key: :owner_2_id, references: :_id, type: :string
+    field :bubble_id, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :created_date_2, :created_by_2_id, :created_by_id_2, :foo_bar, :foo_bar_2, :owner_id, :owner_2_id, :bubble_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreatePost do
+  use Ecto.Migration
+
+  def change do
+    create table("post", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :created_date_2, :utc_datetime_usec
+      add :created_by_2_id, :string
+      add :created_by_id_2, :string
+      add :foo_bar, :string
+      add :foo_bar_2, :float
+      add :owner_id, :string
+      add :owner_2_id, :string
+      add :bubble_id, :string
+    end
+    create index("post", [:created_by_id], name: "post_created_by_id_index")
+    create index("post", [:created_by_2_id], name: "post_created_by_2_id_index")
+    create index("post", [:owner_2_id], name: "post_owner_2_id_index")
+  end
+end
+
+# schema module
+defmodule MyApp.Repo2 do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "repo_2" do
     field :created_date, :utc_datetime_usec
     field :modified_date, :utc_datetime_usec
     belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
@@ -147,18 +109,18 @@ defmodule MyApp.Thing2 do
 end
 
 # migration
-defmodule MyApp.Repo.Migrations.CreateThing2 do
+defmodule MyApp.Repo.Migrations.CreateRepo2 do
   use Ecto.Migration
 
   def change do
-    create table("thing_2", primary_key: false) do
+    create table("repo_2", primary_key: false) do
       add :_id, :string, primary_key: true
       add :created_date, :utc_datetime_usec
       add :modified_date, :utc_datetime_usec
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("thing_2", [:created_by_id], name: "thing_2_created_by_id_index")
+    create index("repo_2", [:created_by_id], name: "repo_2_created_by_id_index")
   end
 end
 
@@ -201,14 +163,14 @@ defmodule MyApp.Repo.Migrations.CreateUser do
 end
 
 # schema module
-defmodule MyApp.N40Levels do
+defmodule MyApp.BlogPost2 do
   use Ecto.Schema
   import Ecto.Changeset
 
   @primary_key {:db_value, :string, autogenerate: false}
   @foreign_key_type :string
 
-  schema "n40_levels" do
+  schema "blog_post_2" do
     field :display, :string
   end
 
@@ -218,17 +180,22 @@ defmodule MyApp.N40Levels do
 end
 
 # migration
-defmodule MyApp.Repo.Migrations.CreateN40Levels do
+defmodule MyApp.Repo.Migrations.CreateBlogPost2 do
   use Ecto.Migration
 
   def change do
-    create table("n40_levels", primary_key: false) do
+    create table("blog_post_2", primary_key: false) do
       add :db_value, :string, primary_key: true
       add :display, :string
     end
   end
 end
 --- diagnostics ---
-db_name_suffixed /user_types/00__thing___join/fields/title_text1
-db_name_suffixed /user_types/thing0
+db_converted_name_suffixed /option_sets/blog_post_os
+db_converted_name_suffixed /user_types/post/fields/a_created_date_date/value
+db_converted_name_suffixed /user_types/post/fields/b_created_by_user/value
+db_converted_name_suffixed /user_types/post/fields/c_created_by_id_text/value
+db_converted_name_suffixed /user_types/post/fields/e_foo_bar_number/value
+db_converted_name_suffixed /user_types/post/fields/g_owner_user/value
+db_converted_name_suffixed /user_types/repo
 model_synthesized_user_type /user_types/user

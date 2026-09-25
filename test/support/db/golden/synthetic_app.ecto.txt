@@ -34,7 +34,7 @@ defmodule MyApp.Repo.Migrations.CreateOnboardingAnswer do
       add :label, :string
       add :score, :float
     end
-    create index("onboarding_answer", [:created_by_id])
+    create index("onboarding_answer", [:created_by_id], name: "onboarding_answer_created_by_id_index")
   end
 end
 
@@ -78,9 +78,9 @@ defmodule MyApp.Repo.Migrations.CreateSurveyResponse do
       add :rating, :float
       add :status_id, :string
     end
-    create index("survey_response", [:created_by_id])
-    create index("survey_response", [:onboarding_answer_id])
-    create index("survey_response", [:status_id])
+    create index("survey_response", [:created_by_id], name: "survey_response_created_by_id_index")
+    create index("survey_response", [:onboarding_answer_id], name: "survey_response_onboarding_answer_id_index")
+    create index("survey_response", [:status_id], name: "survey_response_status_id_index")
   end
 end
 
@@ -118,7 +118,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 

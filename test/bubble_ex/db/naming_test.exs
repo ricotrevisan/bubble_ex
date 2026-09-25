@@ -76,4 +76,57 @@ defmodule BubbleEx.Db.NamingTest do
                %{"a" => "field", "b" => "field_2"}
     end
   end
+
+  describe "variant/4" do
+    test "is the name itself first, then the name with a numbered suffix" do
+      assert Naming.variant("title", 1) == "title"
+      assert Naming.variant("title", 2) == "title_2"
+      assert Naming.variant("createdBy", 3, "") == "createdBy3"
+    end
+
+    test "shortens the name, not the suffix, to fit a maximum length" do
+      long = String.duplicate("ab_", 30)
+
+      assert Naming.variant(long, 1, "_", 10) == "ab_ab_ab_a"
+      assert Naming.variant(long, 2, "_", 10) == "ab_ab_ab_2"
+      assert String.length(Naming.variant(long, 12, "_", 10)) == 10
+      assert Naming.variant("short", 2, "_", 10) == "short_2"
+    end
+  end
+
+  describe "dedupe/2" do
+    test "first come first served; later items take the next free variant" do
+      items = [
+        {:builtin,
+         &[Naming.variant("created_by", &1), Naming.variant("created_by", &1) <> "_id"]},
+        {:field, &[Naming.variant("created_by_id", &1)]},
+        {:reference,
+         &[Naming.variant("created_by", &1), Naming.variant("created_by", &1) <> "_id"]}
+      ]
+
+      assert {names, suffixed} = Naming.dedupe(items)
+
+      assert names == %{
+               builtin: ["created_by", "created_by_id"],
+               field: ["created_by_id_2"],
+               reference: ["created_by_2", "created_by_2_id"]
+             }
+
+      assert suffixed == [
+               {:field, ["created_by_id"], ["created_by_id_2"]},
+               {:reference, ["created_by", "created_by_id"], ["created_by_2", "created_by_2_id"]}
+             ]
+    end
+
+    test "skips a variant any of whose names is taken, and reserved names" do
+      items = [
+        {:a, &[Naming.variant("x", &1)]},
+        {:b, &[Naming.variant("x_2", &1)]},
+        {:c, &[Naming.variant("x", &1), Naming.variant("x", &1) <> "_id"]}
+      ]
+
+      assert {names, _} = Naming.dedupe(items, ["x_3_id"])
+      assert names == %{a: ["x"], b: ["x_2"], c: ["x_4", "x_4_id"]}
+    end
+  end
 end

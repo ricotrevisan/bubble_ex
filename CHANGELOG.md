@@ -273,6 +273,38 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Ecto, Convex, Xano and Zod names are unique after case conversion**
+  (WTF-391). The Reader's names are unique case-insensitively, but the
+  converting encoders could merge them again: a type with `created_date`,
+  `Created-By` and `created_by_id` gave Ecto two `field :created_date`, two
+  `belongs_to :created_by` and `created_by_id` three times (it did not
+  compile), Convex repeated `createdDate` / `createdBy` keys (TS1117), and
+  Xano repeated field names; tables differing only by punctuation (`Blog
+  Post`, `Blog-Post`) shared an Ecto module and table, a Convex table key, a
+  Xano table and a Zod schema const. One decision point,
+  `BubbleEx.Db.Encoder.Names` (each converting encoder's `names/2`), now
+  assigns every converted name per scope: tables across the schema, columns
+  per table. The primary key and the built-in fields claim first, so they
+  keep their names; later names, in Bubble ID order, take the next free
+  `_2`, `_3`, ... (`2`, `3`, ... in camelCase and PascalCase). An Ecto
+  reference claims its association and foreign key together
+  (`created_by_2` / `created_by_2_id`), so a field named `created_by_id`
+  becomes `created_by_id_2`; a data type named `Repo` becomes `Repo2` (not
+  the app's repo); a Convex field that converts to `bubbleId` takes
+  `bubbleId2`; a Zod table const does not take an API Connector type's.
+  Ecto names are cut to 63 characters (PostgreSQL's identifier limit), which
+  also keeps module atoms under the VM's 255, so the long-name fixture now
+  compiles; each cut name is a `db_converted_name_truncated` diagnostic. Every
+  Ecto `create index` now has an explicit `name:` (Ecto's default
+  `<table>_<fk>_index`, cut to 63 characters and claimed beside the table
+  names, since PostgreSQL keeps tables and indexes in one namespace: a cut
+  index name could otherwise repeat its own table's). Each suffix is a
+  `db_converted_name_suffixed` diagnostic (stage `{:target, format}`). The
+  SQL formats, DBML and Zod field keys keep display names and are
+  unchanged. `scripts/ash_compile_check.sh` also compiles the Ecto output
+  of every schema fixture and, with `ASH_COMPILE_CHECK_DB`, runs its
+  migrations.
+
 - Preserve snapshot stylesheet cascade order, adopted styles, embedded frame
   state and local frame assets. Restore captured scroll offsets with a fixed,
   CSP-hashed initializer while continuing to remove source execution. Keep
