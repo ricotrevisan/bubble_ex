@@ -34,6 +34,28 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **`BubbleEx.Target.Ash.map/3` no longer generates privacy policies by
+  default** (WTF-356 follow-up, WTF-398). The new `:privacy` option is
+  `:omit` (the default) or `:unverified` (any other value is
+  `:invalid_input`). `:omit` emits no policy machinery at all: no
+  `Ash.Policy.Authorizer`, policies, field policies, privacy calculations,
+  `*_for_privacy` relationships, relationship filters, keyed read,
+  `:search`/`:auto_bind` actions, `<namespace>.Privacy` module, actor loads
+  or authorization bypasses; resources keep the default actions and
+  sortable relationships, so the rendered source is the pre-WTF-356 source
+  (byte-identical on the `field_types` and `naming` goldens). The Project
+  notes the rules it did not compile with the new info diagnostic
+  `:ash_privacy_omitted` (outcome `:degraded`). `:unverified` is the
+  WTF-356 output, unchanged. The default follows the ship gate recorded on
+  WTF-356: generated policies must not reach an owner until WTF-397,
+  WTF-384/385 and an aggregate lowering rule are done. `Project` gains
+  `privacy` (the mode) and `Project.schema_version/0` is 3. The renderer
+  prints `sortable?` only when false and the `Privacy` module only when a
+  resource has policies. `Target.Ash.versions/0` becomes `versions/1`
+  (`privacy:`, default `:omit`): PicoSAT is pinned only for
+  `:unverified`. `scripts/ash_compile_check.sh` checks both modes: the
+  `:omit` output compiles, migrates and round-trips in its own scratch
+  project without PicoSAT, and every resource reads with authorization on.
 - **The Index, Findings, Workflows explanations and expression schema read
   the data model only through `BubbleEx.Model`** (WTF-380).
   `Expression.Schema.from_app/1` and `from_user_types/1` are removed: use

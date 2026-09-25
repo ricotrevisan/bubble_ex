@@ -28,7 +28,7 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
 
   defp project!(app, opts \\ []) do
     {:ok, model} = Model.build(app)
-    {:ok, project} = Ash.map(model, [], opts)
+    {:ok, project} = Ash.map(model, [], Keyword.put_new(opts, :privacy, :unverified))
     project
   end
 

@@ -35,7 +35,10 @@ defmodule BubbleEx.Target.AshPrivateFixtureTest do
     app = SplitExport.load(path)
     {:ok, model} = Model.build(app)
     {:ok, index} = BubbleEx.Index.build(app)
-    {micros, {:ok, project}} = :timer.tc(fn -> Ash.map(model, [], index: index) end)
+
+    {micros, {:ok, project}} =
+      :timer.tc(fn -> Ash.map(model, [], index: index, privacy: :unverified) end)
+
     %{app: app, model: model, index: index, project: project, map_ms: div(micros, 1000)}
   end
 
@@ -68,17 +71,17 @@ defmodule BubbleEx.Target.AshPrivateFixtureTest do
   test "is deterministic across runs, permuted input and the name map",
        %{app: app, model: model, index: index, project: project} do
     {:ok, source} = Source.render(project)
-    {:ok, again} = Ash.map(model, [], index: index)
+    {:ok, again} = Ash.map(model, [], index: index, privacy: :unverified)
     assert Project.to_json(again) == Project.to_json(project)
     assert Source.render(again) == {:ok, source}
 
     :rand.seed(:exsss, {1, 2, 3})
     {:ok, permuted_model} = app |> PermutedJson.encode() |> Jason.decode!() |> Model.build()
-    {:ok, permuted} = Ash.map(permuted_model, [], index: index)
+    {:ok, permuted} = Ash.map(permuted_model, [], index: index, privacy: :unverified)
     assert Project.to_json(permuted) == Project.to_json(project)
 
     names = project.names |> Jason.encode!() |> Jason.decode!()
-    {:ok, locked} = Ash.map(model, [], names: names, index: index)
+    {:ok, locked} = Ash.map(model, [], names: names, index: index, privacy: :unverified)
     assert Project.to_json(locked) == Project.to_json(project)
   end
 

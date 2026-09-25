@@ -15,6 +15,11 @@ defmodule BubbleEx.Target.Ash.Project do
       follows the structs its fields use
     * `names` - the per-app name map (see "Name map"), updated with every
       name this mapping derived
+    * `privacy` - the privacy mode it was mapped with (`:omit`, the
+      default, or `:unverified`; see `BubbleEx.Target.Ash`, "Privacy
+      modes"). With `:omit` no resource has policies, field policies,
+      privacy calculations, extra actions or `privacy_relationships`, and
+      `actor_loads` and `authorization_bypasses` are empty
     * `policies_verified` - always `false`: the generated policies (each
       resource's `policies`, `field_policies` and privacy `calculations`)
       are **not verified against Bubble**. They must not be shipped to an
@@ -68,7 +73,7 @@ defmodule BubbleEx.Target.Ash.Project do
   alias BubbleEx.{CanonicalJson, Diagnostic}
   alias BubbleEx.Target.Ash.{Bypass, CustomType, Resource, TypedStruct}
 
-  @schema_version 2
+  @schema_version 3
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -79,6 +84,7 @@ defmodule BubbleEx.Target.Ash.Project do
     types: [],
     typed_structs: [],
     names: %{},
+    privacy: :omit,
     policies_verified: false,
     actor_loads: [],
     authorization_bypasses: [],
@@ -95,6 +101,7 @@ defmodule BubbleEx.Target.Ash.Project do
           types: [CustomType.t()],
           typed_structs: [TypedStruct.t()],
           names: map(),
+          privacy: :omit | :unverified,
           policies_verified: false,
           actor_loads: [[String.t()]],
           authorization_bypasses: [Bypass.t()],

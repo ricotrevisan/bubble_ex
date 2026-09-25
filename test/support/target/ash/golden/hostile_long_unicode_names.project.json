@@ -143,6 +143,7 @@
     "version": 1
   },
   "policies_verified": false,
+  "privacy": "unverified",
   "resources": [
     {
       "actions": [
@@ -1090,7 +1091,7 @@
       "table": "resource"
     }
   ],
-  "schema_version": 2,
+  "schema_version": 3,
   "typed_structs": [],
   "types": []
 }

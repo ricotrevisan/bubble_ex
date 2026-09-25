@@ -26,6 +26,8 @@ defmodule BubbleEx.Target.AshTest do
                 &{"target_" <> Path.basename(&1, ".json"), &1}
               )
   @sources ~w(field_types option_sets external_types naming target_names target_defaults target_values target_policies target_valueless)
+  # `privacy: :omit` goldens (golden/omit/): Project and source.
+  @omit_goldens ~w(field_types naming target_policies live_payload)
 
   defp load(path), do: path |> File.read!() |> Jason.decode!()
 
@@ -36,7 +38,9 @@ defmodule BubbleEx.Target.AshTest do
 
   defp project!(app, opts \\ []) do
     {:ok, model} = Model.build(app)
-    {:ok, project} = Ash.map(model, [], opts)
+    # The policy goldens and checks map with privacy: :unverified; the
+    # :omit goldens pass privacy: :omit.
+    {:ok, project} = Ash.map(model, [], Keyword.put_new(opts, :privacy, :unverified))
     project
   end
 
@@ -78,6 +82,21 @@ defmodule BubbleEx.Target.AshTest do
       test "#{name} renders its golden source" do
         {:ok, source} = @name |> fixture() |> project!() |> Source.render()
         check_golden(Path.join(@golden, @name <> ".ex.txt"), source)
+      end
+    end
+
+    for name <- @omit_goldens do
+      @name name
+      test "#{name} matches its privacy: :omit golden Project and source" do
+        project = @name |> fixture() |> project!(privacy: :omit)
+
+        check_golden(
+          Path.join([@golden, "omit", @name <> ".project.json"]),
+          golden_json(project) <> "\n"
+        )
+
+        {:ok, source} = Source.render(project)
+        check_golden(Path.join([@golden, "omit", @name <> ".ex.txt"]), source)
       end
     end
 
@@ -593,18 +612,36 @@ defmodule BubbleEx.Target.AshTest do
       assert {:error, %BubbleEx.Error{}} = Source.render(%{})
     end
 
-    test "versions/0 pins what the compile check's lock resolves" do
+    test "versions/1 pins what the compile check's lock resolves, per privacy mode" do
       {lock, _} =
         "scripts/ash_compile_check/mix.lock"
         |> File.read!()
         |> Code.string_to_quoted!(emit_warnings: false)
         |> Code.eval_quoted()
 
-      for {app, "== " <> version} <- Ash.versions() do
+      for {app, "== " <> version} <- Ash.versions(privacy: :unverified) do
         assert elem(lock[app], 2) == version, "#{app}"
       end
 
-      assert Keyword.keys(Ash.versions()) == [:ash, :ash_postgres, :picosat_elixir]
+      # PicoSAT is only for the policies' SAT solver.
+      assert Keyword.keys(Ash.versions()) == [:ash, :ash_postgres]
+      assert Ash.versions() == Ash.versions(privacy: :omit)
+
+      assert Keyword.keys(Ash.versions(privacy: :unverified)) ==
+               [:ash, :ash_postgres, :picosat_elixir]
+
+      assert_raise ArgumentError, fn -> Ash.versions(privacy: :verified) end
+    end
+
+    test "the privacy option is :omit (default) or :unverified" do
+      {:ok, model} = Model.build(fixture("target_policies"))
+      assert {:ok, %Project{privacy: :omit} = default} = Ash.map(model)
+      assert {:ok, ^default} = Ash.map(model, [], privacy: :omit)
+      assert {:ok, %Project{privacy: :unverified}} = Ash.map(model, [], privacy: :unverified)
+
+      for bad <- [:verified, "omit", nil, true] do
+        assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Ash.map(model, [], privacy: bad)
+      end
     end
 
     test "summary counts" do
@@ -625,5 +662,102 @@ defmodule BubbleEx.Target.AshTest do
     {for(r <- project.resources, do: {r.module, r.table, Enum.map(r.attributes, & &1.name)}),
      for(e <- project.enums, do: {e.module, Enum.map(e.attributes, & &1.name)}),
      Enum.map(project.typed_structs, & &1.module)}
+  end
+
+  describe "privacy: :omit" do
+    # Everything WTF-356 adds for policies; none of it may appear.
+    @policy_source ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr|calculations do|authorize_if|forbid_if|verified\?|:search|auto_bind|NOT VERIFIED|privacy_rule_/
+
+    # The :unverified Project with every policy member reset: what :omit
+    # must equal.
+    defp strip_policies(%Project{} = p) do
+      resources =
+        Enum.map(p.resources, fn r ->
+          %{
+            r
+            | actions: [:read, :destroy, create: :*, update: :*],
+              extra_actions: [],
+              calculations: [],
+              policies: [],
+              field_policies: [],
+              privacy_relationships: [],
+              privacy: nil,
+              relationships: Enum.map(r.relationships, &%{&1 | sortable?: true, gate: nil})
+          }
+        end)
+
+      names =
+        Map.update(p.names, "resources", %{}, fn entries ->
+          Map.new(entries, fn {id, e} ->
+            {id, Map.drop(e, ["privacy_rules", "privacy_relationships"])}
+          end)
+        end)
+
+      %{p | resources: resources, names: names, actor_loads: [], authorization_bypasses: []}
+    end
+
+    for {name, path} <- @fixtures do
+      @name name
+      @path path
+      test "#{name}: no policy machinery, otherwise the :unverified mapping" do
+        app = load(@path)
+        {:ok, model} = Model.build(app)
+        {:ok, index} = BubbleEx.Index.build(app)
+        {:ok, omit} = Ash.map(model, [], privacy: :omit, index: index)
+        {:ok, unverified} = Ash.map(model, [], privacy: :unverified, index: index)
+
+        assert omit.privacy == :omit
+        assert omit.actor_loads == [] and omit.authorization_bypasses == []
+
+        for r <- omit.resources do
+          assert {r.policies, r.field_policies, r.calculations} == {[], [], []}
+          assert {r.extra_actions, r.privacy_relationships, r.privacy} == {[], [], nil}
+          assert r.actions == [:read, :destroy, create: :*, update: :*]
+          assert Enum.all?(r.relationships, &(&1.sortable? and is_nil(&1.gate)))
+        end
+
+        expected = strip_policies(unverified)
+
+        for key <- [:resources, :enums, :types, :typed_structs, :names, :bubble_id] do
+          assert Map.fetch!(omit, key) == Map.fetch!(expected, key), "#{key}"
+        end
+
+        # Diagnostics: the :unverified ones minus the policies' and their
+        # compiled conditions' (`expr_*`), plus the note.
+        policy_codes =
+          for code <- BubbleEx.Diagnostic.Codes.all(),
+              String.starts_with?(Atom.to_string(code), ["ash_polic", "ash_privacy", "expr_"]),
+              do: code
+
+        omit_codes = Enum.map(omit.diagnostics, & &1.code)
+
+        assert Enum.reject(omit_codes, &(&1 == :ash_privacy_omitted)) ==
+                 Enum.reject(Enum.map(unverified.diagnostics, & &1.code), &(&1 in policy_codes))
+
+        {:ok, source} = Source.render(omit)
+        refute source =~ @policy_source
+      end
+    end
+
+    test "notes the privacy rules it does not compile" do
+      p = project!(fixture("target_policies"), privacy: :omit)
+      [d] = Enum.filter(p.diagnostics, &(&1.code == :ash_privacy_omitted))
+      assert {d.severity, d.outcome} == {:info, :degraded}
+      assert d.details.rules > 0 and d.details.types != []
+      assert d.message =~ "no authorization"
+
+      live = project!(fixture("live_payload"), privacy: :omit)
+
+      assert [%{details: %{unavailable: [_ | _]}}] =
+               Enum.filter(live.diagnostics, &(&1.code == :ash_privacy_omitted))
+
+      # Public defaults only (no rules): nothing was left out.
+      app = %{"user_types" => %{"user" => %{"display" => "User", "fields" => %{}}}}
+
+      refute :ash_privacy_omitted in Enum.map(
+               project!(app, privacy: :omit).diagnostics,
+               & &1.code
+             )
+    end
   end
 end

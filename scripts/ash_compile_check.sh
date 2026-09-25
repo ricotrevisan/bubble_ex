@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compile and runtime check for BubbleEx.Target.Ash (WTF-342): renders every
 # model and target fixture into a scratch Ash project whose dependencies are
-# BubbleEx.Target.Ash.versions/0 (mix.lock pins the rest), then
+# BubbleEx.Target.Ash.versions(privacy: :unverified) (mix.lock pins the rest), then
 #
 #   * mix compile --warnings-as-errors, which also compiles the
 #     BubbleEx.Db.Ecto schemas and migrations of every schema golden fixture
@@ -29,9 +29,21 @@
 #     scripts/ash_compile_check/ecto_migrate.exs runs the Db.Ecto
 #     migrations in one database per fixture and naming
 #
+# All of the above maps with privacy: :unverified (the policies). Then the
+# same fixtures are rendered with privacy: :omit (Target.Ash's default, what
+# an owner downloads) into a second scratch project pinned to
+# versions(privacy: :omit) (no PicoSAT): render.exs fails on any policy
+# machinery in the source; it must compile with --warnings-as-errors and
+# generate migrations without foreign keys, and with ASH_COMPILE_CHECK_DB
+# its migrations run, runtime.exs round-trips the sample rows and
+# scripts/ash_compile_check/omit.exs checks that no resource has an
+# authorizer, policies or private relationships and that every row reads
+# back with authorization on and no actor.
+#
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
-# mm-137). The scratch project lives in _build/ash_compile_check (or
-# $ASH_COMPILE_CHECK_DIR) and is never committed.
+# mm-137). The scratch projects live in _build/ash_compile_check and
+# _build/ash_compile_check_omit (or $ASH_COMPILE_CHECK_DIR and
+# $ASH_COMPILE_CHECK_DIR_omit) and are never committed.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,7 +58,7 @@ cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectati
 cp "$root/test/support/target/ash/expectations/policies.json" "$scratch/policy_expectations.json"
 
 cd "$root"
-MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch"
+MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch" unverified
 
 cd "$scratch"
 mix deps.get
@@ -61,11 +73,15 @@ codegen="$(mix ash.codegen --dry-run compile_check 2>&1)" || {
 }
 
 # Scalar references carry no database foreign key (WTF-338).
-if grep -q "references(" <<<"$codegen"; then
-  grep -n "references(" <<<"$codegen" | head -20
-  echo "generated migrations contain foreign keys" >&2
-  exit 1
-fi
+no_foreign_keys() {
+  if grep -q "references(" <<<"$1"; then
+    grep -n "references(" <<<"$1" | head -20
+    echo "generated migrations contain foreign keys" >&2
+    exit 1
+  fi
+}
+
+no_foreign_keys "$codegen"
 
 # Lists of dates keep microseconds (timestamp(6)[], not timestamp(0)[]).
 if grep -q "{:array, :utc_datetime}" <<<"$codegen"; then
@@ -95,4 +111,45 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix run ecto_migrate.exs
 else
   echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
+fi
+
+# privacy: :omit, the default: the same fixtures without policies, in a
+# project without PicoSAT.
+omit="${scratch}_omit"
+mkdir -p "$omit"
+cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
+  "$root/scripts/ash_compile_check/omit.exs" "$omit/"
+
+cd "$root"
+MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$omit" omit
+
+cd "$omit"
+mix deps.get
+
+if [[ -d deps/picosat_elixir ]] || mix deps | grep -q picosat_elixir; then
+  echo "the privacy: :omit project depends on picosat_elixir" >&2
+  exit 1
+fi
+
+mix compile --warnings-as-errors --force
+rm -rf priv
+codegen="$(mix ash.codegen --dry-run compile_check 2>&1)" || {
+  echo "$codegen"
+  echo "ash.codegen failed (privacy: :omit)" >&2
+  exit 1
+}
+
+no_foreign_keys "$codegen"
+tables="$(grep -c "create table(" <<<"$codegen" || true)"
+echo "ash compile check passed (privacy: :omit): generated migrations create $tables tables"
+
+if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
+  mix ash.codegen compile_check >/dev/null
+  mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
+  mix ecto.create --quiet
+  mix ecto.migrate --quiet
+  mix run runtime.exs
+  mix run omit.exs
+else
+  echo "runtime check skipped (privacy: :omit): set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
 fi

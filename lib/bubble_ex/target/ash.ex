@@ -42,7 +42,29 @@ defmodule BubbleEx.Target.Ash do
   Bubble's built-in User is always a resource: when the source does not
   define it, the Model's synthesized User (built-in fields only) is used.
 
-  ## Privacy rules (WTF-356)
+  ## Privacy modes
+
+  The `:privacy` option chooses whether privacy rules are compiled:
+
+    * `:omit` (the default) - no policy machinery at all: no authorizer,
+      policies, field policies, privacy calculations, `*_for_privacy`
+      relationships, relationship filters, keyed read, `Privacy` module or
+      actor loads, and relationships stay sortable. Every resource has the
+      default `:read`, `:create`, `:update` and `:destroy` actions and no
+      authorization: any caller reads and writes every record and field.
+      When the source has privacy rules (or cannot say what they are) the
+      Project carries `:ash_privacy_omitted`. `Project.privacy` is `:omit`.
+    * `:unverified` - the policies below are generated. They are **not
+      verified against Bubble** ("Not verified" below): opt in only to
+      inspect or test them, never to ship them to an app's users.
+
+  `:omit` is the default because of the ship gate recorded on WTF-356:
+  generated policies must not reach an app owner until the Ash policy
+  advisories are cleared (WTF-397), the replay verification confirms the
+  semantics they rest on (WTF-384/385) and aggregates have a lowering
+  rule. A caller that forgets the option gets output without them.
+
+  ## Privacy rules (WTF-356, `privacy: :unverified`)
 
   Each resource gets Ash policies (`Ash.Policy.Authorizer`) derived from
   its data type's privacy rules (`BubbleEx.Privacy`), as data in the
@@ -174,7 +196,9 @@ defmodule BubbleEx.Target.Ash do
   # Dependency pins for a project using the generated source: the versions
   # scripts/ash_compile_check.sh compiles and runs it against.
   # Ash policies need a SAT solver: PicoSAT, as Ash recommends.
-  @versions [ash: "3.33.11", ash_postgres: "2.13.1", picosat_elixir: "0.2.3"]
+  @versions [ash: "3.33.11", ash_postgres: "2.13.1"]
+  @policy_versions [picosat_elixir: "0.2.3"]
+  @privacy_modes [:omit, :unverified]
   @names_version 1
 
   # Built-in fields: fixed names, claimed before the defined fields.
@@ -187,23 +211,36 @@ defmodule BubbleEx.Target.Ash do
     email: "email"
   }
 
-  @type option :: {:names, map()} | {:index, BubbleEx.Index.t()}
+  @type privacy :: :omit | :unverified
+  @type option :: {:names, map()} | {:index, BubbleEx.Index.t()} | {:privacy, privacy()}
 
   @doc """
   Dependency pins for a project that compiles the generated source, as Mix
-  dependency tuples: `[{:ash, "== 3.33.11"}, {:ash_postgres, "== 2.13.1"},
-  {:picosat_elixir, "== 0.2.3"}]`. The generated modules need nothing else
-  (Ecto and Postgrex come with AshPostgres; the policies need Ash's SAT
-  solver, PicoSAT). `scripts/ash_compile_check.sh` compiles and runs the
-  generated source against exactly these versions.
+  dependency tuples. With `privacy: :omit` (the default, as in `map/3`):
+  `[{:ash, "== 3.33.11"}, {:ash_postgres, "== 2.13.1"}]`; with
+  `privacy: :unverified` the policies also need Ash's SAT solver, PicoSAT:
+  `{:picosat_elixir, "== 0.2.3"}` is appended. The generated modules need
+  nothing else (Ecto and Postgrex come with AshPostgres).
+  `scripts/ash_compile_check.sh` compiles and runs the generated source of
+  each mode against exactly its versions. Any other `:privacy` value
+  raises `ArgumentError`.
 
   Ash 3.33 refuses to compile a resource until the project sets
   `config :ash, default_string_length_count: :codepoints` (or `:mixed`).
   The generated source sets no string length constraints, so either
   choice leaves it unchanged; `:codepoints` is Ash's recommendation.
   """
-  @spec versions() :: [{atom(), String.t()}]
-  def versions, do: Enum.map(@versions, fn {app, version} -> {app, "== " <> version} end)
+  @spec versions([{:privacy, privacy()}]) :: [{atom(), String.t()}]
+  def versions(opts \\ []) when is_list(opts) do
+    pins =
+      case Keyword.get(opts, :privacy, :omit) do
+        :omit -> @versions
+        :unverified -> @versions ++ @policy_versions
+        other -> raise ArgumentError, "unknown privacy mode #{inspect(other)}"
+      end
+
+    Enum.map(pins, fn {app, version} -> {app, "== " <> version} end)
+  end
 
   @doc """
   Maps `model` to a `BubbleEx.Target.Ash.Project`.
@@ -212,19 +249,24 @@ defmodule BubbleEx.Target.Ash do
 
   ## Options
 
+    * `:privacy` - `:omit` (default) or `:unverified`; see "Privacy modes".
+      Any other value is an `:invalid_input` error.
     * `:names` - a name map from an earlier mapping (`project.names`); its
       names are kept. An invalid map, or one giving two definitions in the
       same scope the same name, is an `:invalid_input` error.
-    * `:index` - a `BubbleEx.Index` of the same app: its workflows that run
-      ignoring privacy rules become `authorization_bypasses`
+    * `:index` - a `BubbleEx.Index` of the same app: with
+      `privacy: :unverified`, its workflows that run ignoring privacy rules
+      become `authorization_bypasses` (with `:omit` nothing is authorized,
+      so there is nothing to bypass)
   """
   @spec map(Model.t(), list(), [option()]) :: {:ok, Project.t()} | {:error, Error.t()}
   def map(model, decisions \\ [], opts \\ [])
 
   def map(%Model{} = model, [], opts) when is_list(opts) do
-    with {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})),
+    with {:ok, privacy} <- validate_privacy(Keyword.get(opts, :privacy, :omit)),
+         {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})),
          {:ok, index} <- validate_index(Keyword.get(opts, :index)) do
-      {:ok, build(model, names, index)}
+      {:ok, build(model, names, index, privacy)}
     end
   catch
     {:name_conflict, error} -> {:error, error}
@@ -244,13 +286,24 @@ defmodule BubbleEx.Target.Ash do
 
   # --- build ---------------------------------------------------------------------
 
+  defp validate_privacy(mode) when mode in @privacy_modes, do: {:ok, mode}
+
+  defp validate_privacy(mode) do
+    {:error,
+     Error.new(
+       :invalid_input,
+       "the :privacy option must be :omit or :unverified, got #{inspect(mode)}",
+       %{privacy: inspect(mode)}
+     )}
+  end
+
   defp validate_index(nil), do: {:ok, nil}
   defp validate_index(%BubbleEx.Index{} = index), do: {:ok, index}
 
   defp validate_index(_),
     do: {:error, Error.new(:invalid_input, "the :index option must be a BubbleEx.Index")}
 
-  defp build(model, names, index) do
+  defp build(model, names, index, privacy) do
     {types, type_diags} = live(model.data_types, &type_subject/1, "data_type")
     {sets, set_diags} = live(model.option_sets, &%{option_set: &1.id}, "option_set")
 
@@ -280,23 +333,63 @@ defmodule BubbleEx.Target.Ash do
       enums: enums,
       types: custom_types(resources, typed_structs),
       typed_structs: typed_structs,
-      names: ctx.names
+      names: ctx.names,
+      privacy: privacy
     }
 
-    {project, policy_diags} = Policies.apply(project, model)
-    {bypasses, bypass_diags} = if index, do: Policies.bypasses(index), else: {[], []}
+    {project, privacy_diags} = privacy(privacy, project, model, types, index)
 
     %{
       project
-      | authorization_bypasses: bypasses,
-        diagnostics:
+      | diagnostics:
           Diagnostic.normalize(
             model.diagnostics ++
               type_diags ++
               set_diags ++
-              enum_diags ++ resource_diags ++ external_diags ++ policy_diags ++ bypass_diags
+              enum_diags ++ resource_diags ++ external_diags ++ privacy_diags
           )
     }
+  end
+
+  defp privacy(:unverified, project, model, _types, index) do
+    {project, policy_diags} = Policies.apply(project, model)
+    {bypasses, bypass_diags} = if index, do: Policies.bypasses(index), else: {[], []}
+    {%{project | authorization_bypasses: bypasses}, policy_diags ++ bypass_diags}
+  end
+
+  # No policy machinery: the Project is the plain mapping. The rules the
+  # source has (or may have) are noted, never silently dropped.
+  defp privacy(:omit, project, _model, types, _index) do
+    with_rules = for t <- types, t.privacy == :present, t.rules != [], do: t
+    unavailable = for t <- types, t.privacy == :unavailable, do: t.id
+
+    if with_rules == [] and unavailable == [] do
+      {project, []}
+    else
+      rules = with_rules |> Enum.map(&length(&1.rules)) |> Enum.sum()
+
+      diag =
+        Diagnostic.new(
+          :ash_privacy_omitted,
+          "",
+          "privacy rules were not compiled (privacy: :omit): #{rules} rules on " <>
+            "#{length(with_rules)} data types" <>
+            if(unavailable == [],
+              do: "",
+              else:
+                ", and #{length(unavailable)} data types whose rules the source does not include"
+            ) <>
+            "; the generated resources have no authorization",
+          target: :ash,
+          details: %{
+            types: Enum.map(with_rules, & &1.id),
+            rules: rules,
+            unavailable: unavailable
+          }
+        )
+
+      {project, [diag]}
+    end
   end
 
   defp map_all(items, ctx, fun) do

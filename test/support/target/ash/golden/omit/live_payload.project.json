@@ -4,50 +4,6 @@
   "bubble_id": "synthetic-live",
   "diagnostics": [
     {
-      "code": "ash_policies_unverified",
-      "details": {},
-      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
-      "outcome": "degraded",
-      "path": "",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {}
-    },
-    {
-      "code": "ash_policy_aggregates_unguarded",
-      "details": {
-        "fields": [
-          "created_date",
-          "modified_date",
-          "creator_id",
-          "slug",
-          "buyer_id",
-          "items",
-          "kind"
-        ]
-      },
-      "message": "order: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, buyer_id, items, kind reads values some users may not view",
-      "outcome": "degraded",
-      "path": "/user_types/order",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "type": "order"
-      }
-    },
-    {
-      "code": "ash_privacy_rules_unavailable",
-      "details": {},
-      "message": "the source does not include order's privacy rules; every read is denied",
-      "outcome": "degraded",
-      "path": "/user_types/order",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "type": "order"
-      }
-    },
-    {
       "code": "ash_unresolved_reference",
       "details": {
         "cardinality": "one",
@@ -67,37 +23,21 @@
       }
     },
     {
-      "code": "ash_policy_aggregates_unguarded",
+      "code": "ash_privacy_omitted",
       "details": {
-        "fields": [
-          "created_date",
-          "modified_date",
-          "creator_id",
-          "slug",
-          "email",
-          "name"
+        "rules": 0,
+        "types": [],
+        "unavailable": [
+          "order",
+          "user"
         ]
       },
-      "message": "user: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, email, name reads values some users may not view",
+      "message": "privacy rules were not compiled (privacy: :omit): 0 rules on 0 data types, and 2 data types whose rules the source does not include; the generated resources have no authorization",
       "outcome": "degraded",
-      "path": "/user_types/user",
-      "severity": "warning",
+      "path": "",
+      "severity": "info",
       "stage": "target:ash",
-      "subject": {
-        "type": "user"
-      }
-    },
-    {
-      "code": "ash_privacy_rules_unavailable",
-      "details": {},
-      "message": "the source does not include user's privacy rules; every read is denied",
-      "outcome": "degraded",
-      "path": "/user_types/user",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "type": "user"
-      }
+      "subject": {}
     },
     {
       "code": "ash_deleted_omitted",
@@ -196,10 +136,6 @@
           "kind_option_kind": "kind"
         },
         "module": "Order",
-        "privacy_relationships": {
-          "Created By": "creator_for_privacy",
-          "buyer_user": "buyer_for_privacy"
-        },
         "relationships": {
           "Created By": "creator",
           "buyer_user": "buyer"
@@ -217,9 +153,6 @@
           "name_text": "name"
         },
         "module": "User",
-        "privacy_relationships": {
-          "Created By": "creator_for_privacy"
-        },
         "relationships": {
           "Created By": "creator"
         },
@@ -229,10 +162,11 @@
     "version": 1
   },
   "policies_verified": false,
-  "privacy": "unverified",
+  "privacy": "omit",
   "resources": [
     {
       "actions": [
+        "read",
         "destroy",
         [
           "create",
@@ -441,146 +375,14 @@
       "bubble_name": "Order",
       "calculations": [],
       "description": null,
-      "extra_actions": [
-        {
-          "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
-          "keyed?": true,
-          "name": "read",
-          "primary?": true,
-          "type": "read"
-        },
-        {
-          "accept": [],
-          "description": "Bubble \"Do a search for\": the records the user may find in searches",
-          "keyed?": false,
-          "name": "search",
-          "primary?": false,
-          "type": "read"
-        }
-      ],
-      "field_policies": [
-        {
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": null,
-          "fields": [
-            "created_date",
-            "modified_date",
-            "creator_id",
-            "slug",
-            "buyer_id",
-            "items",
-            "kind"
-          ]
-        }
-      ],
+      "extra_actions": [],
+      "field_policies": [],
       "identities": [],
       "migration_types": [],
       "module": "Order",
-      "policies": [
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {},
-              "test": "keyed"
-            }
-          ],
-          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
-          "permission": "keyed"
-        },
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
-          "permission": "view"
-        },
-        {
-          "action": "search",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": "Searches: the user may find the record in searches",
-          "permission": "search_for"
-        }
-      ],
-      "privacy": {
-        "attachments": [
-          {
-            "kind": "forbid_if",
-            "source": {},
-            "test": "always"
-          }
-        ],
-        "compiled_rules": [],
-        "data_api": {
-          "create": [],
-          "delete": [],
-          "exposed": null,
-          "modify": []
-        },
-        "denied_rules": [],
-        "file_fields": [],
-        "source": "unavailable"
-      },
-      "privacy_relationships": [
-        {
-          "allow_nil?": true,
-          "attribute_type": "string",
-          "db_reference": "ignore",
-          "define_attribute?": false,
-          "destination": "User",
-          "destination_attribute": "id",
-          "gate": null,
-          "kind": "belongs_to",
-          "name": "creator_for_privacy",
-          "public?": false,
-          "sortable?": false,
-          "source": {
-            "field": "Created By",
-            "type": "order"
-          },
-          "source_attribute": "creator_id"
-        },
-        {
-          "allow_nil?": true,
-          "attribute_type": "string",
-          "db_reference": "ignore",
-          "define_attribute?": false,
-          "destination": "User",
-          "destination_attribute": "id",
-          "gate": null,
-          "kind": "belongs_to",
-          "name": "buyer_for_privacy",
-          "public?": false,
-          "sortable?": false,
-          "source": {
-            "field": "buyer_user",
-            "type": "order"
-          },
-          "source_attribute": "buyer_id"
-        }
-      ],
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -589,11 +391,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
-          "gate": "never",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "order"
@@ -607,11 +409,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
-          "gate": "never",
+          "gate": null,
           "kind": "belongs_to",
           "name": "buyer",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "buyer_user",
             "type": "order"
@@ -627,6 +429,7 @@
     },
     {
       "actions": [
+        "read",
         "destroy",
         [
           "create",
@@ -802,108 +605,15 @@
       "bubble_name": "User",
       "calculations": [],
       "description": null,
-      "extra_actions": [
-        {
-          "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
-          "keyed?": true,
-          "name": "read",
-          "primary?": true,
-          "type": "read"
-        },
-        {
-          "accept": [],
-          "description": "Bubble \"Do a search for\": the records the user may find in searches",
-          "keyed?": false,
-          "name": "search",
-          "primary?": false,
-          "type": "read"
-        }
-      ],
-      "field_policies": [
-        {
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": null,
-          "fields": [
-            "created_date",
-            "modified_date",
-            "creator_id",
-            "slug",
-            "email",
-            "name"
-          ]
-        }
-      ],
+      "extra_actions": [],
+      "field_policies": [],
       "identities": [],
       "migration_types": [],
       "module": "User",
-      "policies": [
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {},
-              "test": "keyed"
-            }
-          ],
-          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
-          "permission": "keyed"
-        },
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
-          "permission": "view"
-        },
-        {
-          "action": "search",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": "Searches: the user may find the record in searches",
-          "permission": "search_for"
-        }
-      ],
-      "privacy": {
-        "attachments": [
-          {
-            "kind": "forbid_if",
-            "source": {},
-            "test": "always"
-          }
-        ],
-        "compiled_rules": [],
-        "data_api": {
-          "create": [],
-          "delete": [],
-          "exposed": null,
-          "modify": []
-        },
-        "denied_rules": [],
-        "file_fields": [],
-        "source": "unavailable"
-      },
-      "privacy_relationships": [
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
         {
           "allow_nil?": true,
           "attribute_type": "string",
@@ -913,29 +623,9 @@
           "destination_attribute": "id",
           "gate": null,
           "kind": "belongs_to",
-          "name": "creator_for_privacy",
-          "public?": false,
-          "sortable?": false,
-          "source": {
-            "field": "Created By",
-            "type": "user"
-          },
-          "source_attribute": "creator_id"
-        }
-      ],
-      "relationships": [
-        {
-          "allow_nil?": true,
-          "attribute_type": "string",
-          "db_reference": "ignore",
-          "define_attribute?": false,
-          "destination": "User",
-          "destination_attribute": "id",
-          "gate": "never",
-          "kind": "belongs_to",
           "name": "creator",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"

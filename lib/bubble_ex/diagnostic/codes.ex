@@ -185,6 +185,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "an option value repeating an earlier value's stable key; omitted from the enum"},
 
     # --- target:ash — BubbleEx.Target.Ash privacy policies (WTF-356) ----------
+    {:ash_privacy_omitted, :info, :degraded, :target,
+     "privacy rules the source has (or may have) that were not compiled (`privacy: :omit`, the default); the generated resources have no authorization"},
     {:ash_policies_unverified, :warning, :degraded, :target,
      "the generated Ash policies rest on Bubble semantics not yet verified against Bubble (WTF-384/385); not to be shipped to users until they are"},
     {:ash_policy_rule_denied, :warning, :degraded, :target,

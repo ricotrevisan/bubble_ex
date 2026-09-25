@@ -151,7 +151,7 @@ defmodule BubbleEx.DiagnosticTest do
     # page, reusable and workflow expression.
     defp compile_diagnostics(app) do
       {:ok, model} = BubbleEx.Model.build(app)
-      {:ok, project} = BubbleEx.Target.Ash.map(model)
+      {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :unverified)
       {:ok, privacy} = BubbleEx.Target.Ash.Expressions.privacy(model, project)
       {:ok, sites} = BubbleEx.Expression.Sites.collect(app, model)
 
@@ -204,8 +204,12 @@ defmodule BubbleEx.DiagnosticTest do
     defp ash_diagnostics(app) do
       {:ok, model} = BubbleEx.Model.build(app)
       {:ok, index} = BubbleEx.Index.build(app)
-      {:ok, project} = BubbleEx.Target.Ash.map(model, [], index: index)
-      Enum.filter(project.diagnostics, &(&1.stage == {:target, :ash}))
+      # Both privacy modes: :omit (the default) and :unverified (policies).
+      for privacy <- [:omit, :unverified],
+          {:ok, project} = BubbleEx.Target.Ash.map(model, [], index: index, privacy: privacy),
+          d <- project.diagnostics,
+          d.stage == {:target, :ash},
+          do: d
     end
 
     defp index_diagnostics(app) do
