@@ -116,6 +116,25 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:model_duplicate_option_key, :warning, :degraded, :model,
      "an option value (not deleted) repeating the stable key of an earlier value in the same set"},
 
+    # --- WTF-368 expression compiler -----------------------------------------
+    # :model — BubbleEx.Expression.Typing / Compiler (stack-neutral IR)
+    {:expr_untyped_scope, :warning, :unresolved, :model,
+     "a context value (element, parent group, cell, page thing, previous step, …) whose type the element tree and workflow do not determine; it stays untyped"},
+    {:expr_unresolved_accessor, :warning, :unresolved, :model,
+     "an accessor that is neither a field of its subject's type, an element state nor a known operator; it stays untyped"},
+    {:expr_option_by_id, :info, :degraded, :model,
+     "an option value named by its Bubble ID rather than its stored key (`db_value`); read as that option, which is not verified against Bubble"},
+    {:expr_uncompiled, :warning, :unresolved, :model,
+     "an expression construct with no stack-neutral IR (a raw node, an unmodeled operator or constraint, an untyped operand); the expression is not compiled"},
+    # target:ash — BubbleEx.Target.Ash.Expressions
+    {:ash_expr_unsupported, :warning, :unresolved, :target,
+     "an expression IR construct with no `Ash.Expr` mapping (e.g. a path through a list of things, a context input in a privacy rule); the expression is not compiled"},
+    {:ash_expr_unmapped_reference, :warning, :unresolved, :target,
+     "an expression reading a data type, field or option value the Ash project does not map (deleted, malformed or missing); the expression is not compiled"},
+    # target:elixir — BubbleEx.Target.Elixir
+    {:elixir_expr_unsupported, :warning, :unresolved, :target,
+     "an expression IR construct with no Elixir mapping yet (e.g. a search); the expression is not compiled"},
+
     # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
     {:external_type_unresolved_root, :warning, :degraded, :target,
      "an external field whose type did not resolve; rendered as JSON"},

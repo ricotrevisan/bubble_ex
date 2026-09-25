@@ -1,0 +1,1774 @@
+{
+  "_id": "expression-fixture",
+  "api": {
+    "bW8": {
+      "actions": {},
+      "id": "bW8",
+      "properties": {
+        "condition": {
+          "next": {
+            "name": "status_option_status",
+            "next": {
+              "args": {
+                "next": {
+                  "name": "status_option_status",
+                  "type": "Message"
+                },
+                "type": "CurrentDataItem"
+              },
+              "name": "not_equals",
+              "type": "Message"
+            },
+            "type": "Message"
+          },
+          "type": "OldDataItem"
+        },
+        "data_trigger_type": "custom.task"
+      },
+      "type": "DatabaseTriggerEvent"
+    },
+    "bW9": {
+      "actions": {
+        "0": {
+          "id": "bA9",
+          "properties": {
+            "changes": {
+              "0": {
+                "key": "status_option_status",
+                "value": {
+                  "properties": {
+                    "option_set": "option.status",
+                    "option_value": "done"
+                  },
+                  "type": "OneOptionValue"
+                }
+              }
+            },
+            "condition": {
+              "next": {
+                "name": "status_option_status",
+                "next": {
+                  "args": {
+                    "properties": {
+                      "option_set": "option.status",
+                      "option_value": "done"
+                    },
+                    "type": "OneOptionValue"
+                  },
+                  "name": "not_equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "properties": {
+                "btype_id": "custom.task",
+                "param_key": "task"
+              },
+              "type": "APIEventParameter"
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.task",
+                "param_key": "task"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "bW9",
+      "properties": {
+        "parameters": {
+          "0": {
+            "key": "task",
+            "value": "custom.task"
+          }
+        },
+        "wf_name": "close_task"
+      },
+      "type": "APIEvent"
+    }
+  },
+  "element_definitions": {
+    "team_card": {
+      "custom_states": {
+        "open_": {
+          "display": "Open",
+          "value": "boolean"
+        }
+      },
+      "elements": {
+        "bT9": {
+          "id": "bT9",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": "Name: ",
+                "1": {
+                  "next": {
+                    "name": "name_text",
+                    "type": "Message"
+                  },
+                  "type": "ElementParent"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bU1",
+      "name": "Team card",
+      "properties": {
+        "group_type": "custom.team",
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "bPa",
+            "param_name": "Label"
+          }
+        }
+      },
+      "type": "CustomDefinition"
+    }
+  },
+  "option_sets": {
+    "feature": {
+      "display": "Feature",
+      "values": {
+        "bBa": {
+          "db_value": "early_access",
+          "display": "Early access",
+          "sort_factor": 1
+        }
+      }
+    },
+    "status": {
+      "attributes": {
+        "color": {
+          "display": "Color",
+          "value": "text"
+        },
+        "urgent": {
+          "display": "Urgent",
+          "value": "boolean"
+        }
+      },
+      "display": "Status",
+      "values": {
+        "bSa": {
+          "color": "grey",
+          "db_value": "open",
+          "display": "Open",
+          "sort_factor": 1,
+          "urgent": false
+        },
+        "bSb": {
+          "color": "green",
+          "db_value": "done",
+          "display": "Done",
+          "sort_factor": 2,
+          "urgent": true
+        }
+      }
+    },
+    "tier": {
+      "display": "Tier",
+      "values": {
+        "bRa": {
+          "db_value": "gold",
+          "display": "Gold",
+          "sort_factor": 1
+        },
+        "bRb": {
+          "db_value": "retired",
+          "display": "Retired",
+          "sort_factor": 2
+        }
+      }
+    }
+  },
+  "pages": {
+    "task": {
+      "custom_states": {
+        "flag_": {
+          "display": "Flag",
+          "value": "boolean"
+        }
+      },
+      "elements": {
+        "bC1": {
+          "id": "bC1",
+          "properties": {
+            "custom_id": "bU1"
+          },
+          "type": "CustomElement"
+        },
+        "bG1": {
+          "elements": {
+            "bB1": {
+              "id": "bB1",
+              "properties": {
+                "text": {
+                  "entries": {
+                    "0": "Save"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "Button"
+            },
+            "bI1": {
+              "id": "bI1",
+              "properties": {
+                "content_format": "int_number"
+              },
+              "type": "Input"
+            },
+            "bT1": {
+              "id": "bT1",
+              "properties": {
+                "text": {
+                  "entries": {
+                    "0": "Title: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "Text"
+            },
+            "bT2": {
+              "id": "bT2",
+              "properties": {
+                "text": {
+                  "entries": {
+                    "0": "Total: ",
+                    "1": {
+                      "next": {
+                        "name": "get_data",
+                        "next": {
+                          "args": 1,
+                          "name": "plus",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bI1"
+                      },
+                      "type": "GetElement"
+                    }
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bG1",
+          "properties": {
+            "group_type": "custom.task"
+          },
+          "type": "Group"
+        },
+        "bR1": {
+          "elements": {
+            "bT3": {
+              "id": "bT3",
+              "properties": {
+                "text": {
+                  "entries": {
+                    "0": {
+                      "next": {
+                        "name": "title_text",
+                        "next": {
+                          "name": "to_uppercase",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "next": {
+                      "name": "assignee_user",
+                      "next": {
+                        "args": {
+                          "type": "CurrentUser"
+                        },
+                        "name": "equals",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "CurrentDataItem"
+                  },
+                  "properties": {
+                    "bgcolor": "#eee"
+                  }
+                }
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bR1",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "count",
+                "next": {
+                  "args": 0,
+                  "name": "greater_than",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "status_option_status",
+                    "value": {
+                      "properties": {
+                        "option_set": "option.status",
+                        "option_value": "done"
+                      },
+                      "type": "OneOptionValue"
+                    }
+                  }
+                },
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task"
+          },
+          "type": "RepeatingGroup"
+        },
+        "bT10": {
+          "id": "bT10",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "status_option_status",
+                    "next": {
+                      "name": "display",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                },
+                "1": " ",
+                "2": {
+                  "next": {
+                    "name": "status_option_status",
+                    "next": {
+                      "name": "color",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
+        "bT4": {
+          "id": "bT4",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": "Page: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                },
+                "2": " flag: ",
+                "3": {
+                  "next": {
+                    "name": "custom.flag_",
+                    "next": {
+                      "name": "is_true",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bP1"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
+        "bT5": {
+          "id": "bT5",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "count",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "greater than",
+                        "key": "estimate_number",
+                        "value": {
+                          "next": {
+                            "name": "get_data",
+                            "type": "Message"
+                          },
+                          "properties": {
+                            "element_id": "bI1"
+                          },
+                          "type": "GetElement"
+                        }
+                      }
+                    },
+                    "type_to_find": "custom.task"
+                  },
+                  "type": "Search"
+                },
+                "1": " / ",
+                "2": {
+                  "next": {
+                    "name": "count",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "greater than",
+                        "key": "estimate_number",
+                        "value": {
+                          "next": {
+                            "name": "get_data",
+                            "type": "Message"
+                          },
+                          "properties": {
+                            "element_id": "bI1"
+                          },
+                          "type": "GetElement"
+                        }
+                      }
+                    },
+                    "ignore_empty_constraints": true,
+                    "type_to_find": "custom.task"
+                  },
+                  "type": "Search"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
+        "bT6": {
+          "id": "bT6",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "param_bPa",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bC1"
+                  },
+                  "type": "GetElement"
+                },
+                "1": " open: ",
+                "2": {
+                  "next": {
+                    "name": "custom.open_",
+                    "next": {
+                      "name": "is_true",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bC1"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
+        "bT7": {
+          "id": "bT7",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "due_date",
+                    "next": {
+                      "name": "format_date",
+                      "properties": {
+                        "formatting_type": "mmm d"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
+        "bT8": {
+          "id": "bT8",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "get_AAB",
+                    "next": {
+                      "name": "is_empty",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bX1"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
+        "bX1": {
+          "id": "bX1",
+          "properties": {},
+          "type": "1234x5678-AAA"
+        }
+      },
+      "id": "bP1",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task"
+      },
+      "type": "Page",
+      "workflows": {
+        "bW1": {
+          "actions": {
+            "0": {
+              "id": "bA1",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "entries": {
+                        "0": {
+                          "next": {
+                            "name": "title_text",
+                            "type": "Message"
+                          },
+                          "type": "ElementParent"
+                        },
+                        "1": " copy"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                },
+                "thing_type": "custom.task"
+              },
+              "type": "NewThing"
+            },
+            "1": {
+              "id": "bA2",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "key": "estimate_number",
+                    "value": {
+                      "next": {
+                        "name": "estimate_number",
+                        "next": {
+                          "args": 2,
+                          "name": "times",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "action_id": "bA1"
+                      },
+                      "type": "PreviousStep"
+                    }
+                  }
+                },
+                "to_change": {
+                  "properties": {
+                    "action_id": "bA1"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "ChangeThing"
+            },
+            "2": {
+              "id": "bA3",
+              "properties": {
+                "custom_event": "bW2"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "3": {
+              "id": "bA4",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "entries": {
+                        "0": {
+                          "next": {
+                            "name": "answer_text",
+                            "next": {
+                              "name": "to_lowercase",
+                              "type": "Message"
+                            },
+                            "type": "Message"
+                          },
+                          "properties": {
+                            "action_id": "bA3"
+                          },
+                          "type": "PreviousStep"
+                        }
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                },
+                "to_change": {
+                  "properties": {
+                    "action_id": "bA1"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "ChangeThing"
+            }
+          },
+          "id": "bW1",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "public_boolean",
+                "next": {
+                  "name": "is_true",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "ElementParent"
+            },
+            "element_id": "bB1"
+          },
+          "type": "ButtonClicked"
+        },
+        "bW2": {
+          "actions": {},
+          "id": "bW2",
+          "properties": {
+            "event_name": "answer"
+          },
+          "type": "CustomEvent"
+        }
+      }
+    }
+  },
+  "user_types": {
+    "archived_thing": {
+      "deleted": true,
+      "display": "Archived thing",
+      "fields": {},
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "old_": {
+          "condition": {
+            "next": {
+              "name": "logged_in",
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Old",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "membership": {
+      "display": "Membership",
+      "fields": {
+        "member_user": {
+          "display": "Member",
+          "value": "user"
+        },
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
+        },
+        "tier_option_tier": {
+          "display": "Tier",
+          "value": "option.tier"
+        }
+      },
+      "privacy_role": {
+        "account_": {
+          "condition": {
+            "next": {
+              "name": "member_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Account",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "mine_": {
+          "condition": {
+            "next": {
+              "name": "active_membership_custom_membership",
+              "next": {
+                "args": {
+                  "type": "InjectedValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Mine",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "access_list_user": {
+          "display": "Access",
+          "value": "list.user"
+        },
+        "assignee_user": {
+          "display": "Assignee",
+          "value": "user"
+        },
+        "due_date": {
+          "display": "Due",
+          "value": "date"
+        },
+        "estimate_number": {
+          "display": "Estimate",
+          "value": "number"
+        },
+        "parent_custom_task": {
+          "display": "Parent",
+          "value": "custom.task"
+        },
+        "public_boolean": {
+          "display": "Public",
+          "value": "boolean"
+        },
+        "status_option_status": {
+          "display": "Status",
+          "value": "option.status"
+        },
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "a_owner_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "b_team_": {
+          "condition": {
+            "next": {
+              "name": "active_membership_custom_membership",
+              "next": {
+                "name": "team_custom_team",
+                "next": {
+                  "args": {
+                    "next": {
+                      "name": "team_custom_team",
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Team",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "c_admin_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Admin",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "d_public_": {
+          "condition": {
+            "next": {
+              "name": "logged_in",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "public_boolean",
+                    "next": {
+                      "name": "is_true",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "and_",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Public",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "e_access_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "f_done_": {
+          "condition": {
+            "next": {
+              "name": "status_option_status",
+              "next": {
+                "args": {
+                  "properties": {
+                    "option_set": "option.status",
+                    "option_value": "done"
+                  },
+                  "type": "OneOptionValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Done",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "g_active_": {
+          "condition": {
+            "next": {
+              "name": "active_membership_custom_membership",
+              "next": {
+                "name": "tier_option_tier",
+                "next": {
+                  "args": {
+                    "properties": {
+                      "option_set": "option.tier",
+                      "option_value": "retired"
+                    },
+                    "type": "OneOptionValue"
+                  },
+                  "name": "not_equals",
+                  "next": {
+                    "args": {
+                      "next": {
+                        "name": "coach_boolean",
+                        "next": {
+                          "name": "is_true",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    },
+                    "name": "or_",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Active tier",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "h_parent_": {
+          "condition": {
+            "next": {
+              "name": "parent_custom_task",
+              "next": {
+                "name": "assignee_user",
+                "next": {
+                  "args": {
+                    "type": "CurrentUser"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Parent assignee",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "i_unfiled_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "name": "is_empty",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Unfiled",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "j_feature_": {
+          "condition": {
+            "next": {
+              "name": "active_membership_custom_membership",
+              "next": {
+                "name": "team_custom_team",
+                "next": {
+                  "name": "features_list_option_feature",
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "option_set": "option.feature",
+                        "option_value": "early_access"
+                      },
+                      "type": "OneOptionValue"
+                    },
+                    "name": "contains",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Feature",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "k_listed_": {
+          "condition": {
+            "next": {
+              "name": "teams_list_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Listed team",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "l_first_": {
+          "condition": {
+            "next": {
+              "name": "teams_list_custom_team",
+              "next": {
+                "name": "first_element",
+                "next": {
+                  "name": "name_text",
+                  "next": {
+                    "args": "Main",
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "First team (unsupported)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "m_raw_": {
+          "condition": {
+            "next": {
+              "name": "name_text",
+              "next": {
+                "args": "x",
+                "name": "mystery_operator",
+                "next": {
+                  "name": "is_not_empty",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Raw operator (unsupported)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "n_estimate_": {
+          "condition": {
+            "next": {
+              "name": "estimate_number",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "parent_custom_task",
+                    "next": {
+                      "name": "estimate_number",
+                      "next": {
+                        "args": 1,
+                        "name": "plus",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "greater_than",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Estimate",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "o_no_access_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "No access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "p_not_owner_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Not owner",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "q_filed_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "name": "is_not_empty",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Filed",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "r_done_by_id_": {
+          "condition": {
+            "next": {
+              "name": "status_option_status",
+              "next": {
+                "args": {
+                  "properties": {
+                    "option_set": "option.status",
+                    "option_value": "bSb"
+                  },
+                  "type": "OneOptionValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Done (option by Bubble ID)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "s_same_team_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "parent_custom_task",
+                    "next": {
+                      "name": "team_custom_team",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Same team as parent",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "t_access_no_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_contains",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "No-access is no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "u_not_owner_no_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Not-owner is no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "v_public_is_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "access_list_user",
+                    "next": {
+                      "args": {
+                        "type": "CurrentUser"
+                      },
+                      "name": "not_contains",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public is no-access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "w_public_is_not_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "access_list_user",
+                    "next": {
+                      "args": {
+                        "type": "CurrentUser"
+                      },
+                      "name": "not_contains",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public is not no-access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "x_not_listed_": {
+          "condition": {
+            "next": {
+              "name": "teams_list_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "not_contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Team not listed",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "y_title_not_name_no_": {
+          "condition": {
+            "next": {
+              "name": "title_text",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "name_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Title is not the actor's name) is no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "z_title_not_name_": {
+          "condition": {
+            "next": {
+              "name": "title_text",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "name_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Title is not the actor's name",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "za_team_not_contained_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "teams_list_custom_team",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "is_not_contained_by_list",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Team is not contained by the actor's teams",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "team": {
+      "display": "Team",
+      "fields": {
+        "features_list_option_feature": {
+          "display": "Features",
+          "value": "list.option.feature"
+        },
+        "members_list_user": {
+          "display": "Members",
+          "value": "list.user"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "listed_": {
+          "condition": {
+            "next": {
+              "name": "teams_list_custom_team",
+              "next": {
+                "args": {
+                  "type": "InjectedValue"
+                },
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Listed",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "members_": {
+          "condition": {
+            "next": {
+              "name": "members_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Members",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "active_membership_custom_membership": {
+          "display": "Active membership",
+          "value": "custom.membership"
+        },
+        "admin_boolean": {
+          "display": "Admin",
+          "value": "boolean"
+        },
+        "coach_boolean": {
+          "display": "Coach",
+          "value": "boolean"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "teams_list_custom_team": {
+          "display": "Teams",
+          "value": "list.custom.team"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "me_": {
+          "condition": {
+            "next": {
+              "args": {
+                "type": "CurrentUser"
+              },
+              "name": "equals",
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Me",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    }
+  }
+}

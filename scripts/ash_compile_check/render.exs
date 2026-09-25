@@ -1,21 +1,75 @@
-# Renders every BubbleEx.Model fixture (test/support/model/*.json) and
-# every target fixture (test/support/target/ash/*.json) through
-# BubbleEx.Target.Ash and BubbleEx.Target.Ash.Source into a scratch Mix
-# project: one namespace, domain, repo and database per fixture. The
-# project's dependencies are BubbleEx.Target.Ash.versions/0. With
-# BUBBLE_EX_PRIVATE_EXPORT set, a private app export is rendered too (as
-# `Private.App`); the scratch project is never committed. The BubbleEx.Db.Ecto
-# output of the same fixtures (and the schema golden fixtures) is written
-# beside it, so the compile step checks it too.
+# Renders every BubbleEx.Model fixture (test/support/model/*.json), every
+# target fixture (test/support/target/ash/*.json) and every expression
+# fixture (test/support/expression/*.json) through BubbleEx.Target.Ash and
+# BubbleEx.Target.Ash.Source into a scratch Mix project: one namespace,
+# domain, repo and database per fixture. The project's dependencies are
+# BubbleEx.Target.Ash.versions/0. With BUBBLE_EX_PRIVATE_EXPORT set, a
+# private app export is rendered too (as `Private.App`); the scratch project
+# is never committed. The BubbleEx.Db.Ecto output of the same fixtures (and
+# the schema golden fixtures) is written beside it, so the compile step
+# checks it too.
+#
+# Each fixture's compiled privacy-rule conditions
+# (BubbleEx.Target.Ash.Expressions.privacy/2) are printed with
+# BubbleEx.Target.Ash.Source.expr/1 into a `<namespace>.PrivacyFilters`
+# module, as a policy's `authorize_if expr(...)` would hold them, so
+# `mix compile` checks them too; filters.exs and runtime.exs use them.
 #
 #     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir>
 
 [dir] = System.argv()
 
+defmodule PrivacyFilters do
+  # `<namespace>.PrivacyFilters.all/0`: one entry per compiled privacy-rule
+  # condition, with the relationships its actor templates need loaded.
+  def module(_namespace, _actor, []), do: ""
+
+  def module(namespace, actor, filters) do
+    entries =
+      Enum.map_join(filters, ",\n", fn %{type: type, rule: rule, expr: expr} ->
+        """
+        %{
+          resource: #{namespace}.#{expr.resource},
+          actor: #{namespace}.#{actor},
+          type: #{inspect(type)},
+          rule: #{inspect(rule)},
+          actor_loads: #{inspect(loads(expr.actor_loads))},
+          filter: #{BubbleEx.Target.Ash.Source.expr(expr)}
+        }\
+        """
+      end)
+
+    """
+    defmodule #{namespace}.PrivacyFilters do
+      @moduledoc false
+      import Ash.Expr
+
+      def all do
+        [
+    #{entries}
+        ]
+      end
+    end
+    """
+  end
+
+  # [["current_role", "workspace"]] -> [current_role: [workspace: []]]
+  defp loads(paths) do
+    Enum.reduce(paths, [], fn path, acc -> put_path(acc, Enum.map(path, &String.to_atom/1)) end)
+  end
+
+  defp put_path(keyword, []), do: keyword
+
+  defp put_path(keyword, [key | rest]) do
+    Keyword.update(keyword, key, put_path([], rest), &put_path(&1, rest))
+  end
+end
+
 fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
-        {"test/support/target/ash/*.json", "target_"}
+        {"test/support/target/ash/*.json", "target_"},
+        {"test/support/expression/*.json", "expr_"}
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort() do
     name = prefix <> Path.basename(path, ".json")
@@ -52,8 +106,20 @@ rendered =
     end
     """
 
-    File.write!(Path.join(lib, name <> ".ex"), source <> "\n" <> repo_module)
-    IO.puts("rendered #{name} as #{namespace} (#{length(project.resources)} resources)")
+    user = Enum.find(project.resources, &(&1.source.type == "user")).module
+
+    {:ok, privacy} = BubbleEx.Target.Ash.Expressions.privacy(model, project)
+    filters = Enum.filter(privacy, & &1.expr)
+
+    File.write!(
+      Path.join(lib, name <> ".ex"),
+      source <> "\n" <> repo_module <> "\n" <> PrivacyFilters.module(namespace, user, filters)
+    )
+
+    IO.puts(
+      "rendered #{name} as #{namespace} (#{length(project.resources)} resources, " <>
+        "#{length(filters)} privacy filters)"
+    )
     {namespace, repo, name}
   end
 
