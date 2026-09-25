@@ -1,0 +1,835 @@
+{
+  "bubble_id": "synthetic-external-types",
+  "data_types": [
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "address_api",
+          "name": "Address",
+          "path": "/user_types/shipment/fields/address_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.geo.lookup.Address",
+            "target": "api.apiconnector2.geo.lookup.Address"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "blank_api",
+          "name": "Blank",
+          "path": "/user_types/shipment/fields/blank_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.misc.blank.Empty",
+            "target": "api.apiconnector2.misc.blank.Empty"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "invalid_api",
+          "name": "Invalid",
+          "path": "/user_types/shipment/fields/invalid_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "opaque",
+            "resolved": null,
+            "source": "api.not_a_connector",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "invalid_list_api",
+          "name": "Invalid list",
+          "path": "/user_types/shipment/fields/invalid_list_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "opaque",
+            "resolved": null,
+            "source": "list.api.not_a_connector",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "missing_api",
+          "name": "Missing",
+          "path": "/user_types/shipment/fields/missing_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": false,
+            "source": "api.apiconnector2.geo.lookup.Missing",
+            "target": "api.apiconnector2.geo.lookup.Missing"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "nowhere_api",
+          "name": "Nowhere",
+          "path": "/user_types/shipment/fields/nowhere_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": false,
+            "source": "api.apiconnector2.absent.call.Thing",
+            "target": "api.apiconnector2.absent.call.Thing"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": true,
+          "extra": {},
+          "id": "old_api",
+          "name": "Old",
+          "path": "/user_types/shipment/fields/old_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.geo.lookup.Address",
+            "target": "api.apiconnector2.geo.lookup.Address"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "pings_list_api",
+          "name": "Pings",
+          "path": "/user_types/shipment/fields/pings_list_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "external",
+            "resolved": true,
+            "source": "list.api.apiconnector2.graph.ping.A",
+            "target": "api.apiconnector2.graph.ping.A"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "tree_api",
+          "name": "Tree",
+          "path": "/user_types/shipment/fields/tree_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.tree.walk.Node",
+            "target": "api.apiconnector2.tree.walk.Node"
+          }
+        }
+      ],
+      "id": "shipment",
+      "name": "Shipment",
+      "path": "/user_types/shipment",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/shipment",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/shipment",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/shipment",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/shipment",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/shipment",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "user",
+      "name": "User",
+      "path": "/user_types/user",
+      "privacy": "unavailable",
+      "raw": null,
+      "rules": [],
+      "synthesized": true,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "name": "email",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "email",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "field_type_unsupported",
+      "details": {
+        "descriptor": "mystery",
+        "embedded_path": "/api.apiconnector2.graph.pong.B/fields/blob",
+        "root": {
+          "field": "pings_list_api",
+          "type": "shipment"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.graph.ping.A",
+            "field": "b"
+          },
+          {
+            "external_type": "api.apiconnector2.graph.pong.B",
+            "field": "blob"
+          }
+        ]
+      },
+      "message": "unsupported external field type: \"mystery\"",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "field": "blob"
+      }
+    },
+    {
+      "code": "invalid_descriptor",
+      "details": {
+        "descriptor": "api.not_a_connector"
+      },
+      "message": "invalid API Connector type descriptor: \"api.not_a_connector\"",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/invalid_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "invalid_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "invalid_descriptor",
+      "details": {
+        "descriptor": "list.api.not_a_connector"
+      },
+      "message": "invalid API Connector type descriptor: \"list.api.not_a_connector\"",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/invalid_list_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "invalid_list_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "exact_type_definition_missing",
+      "details": {
+        "external_type": "api.apiconnector2.geo.lookup.Missing"
+      },
+      "message": "API Connector type definition is missing: api.apiconnector2.geo.lookup.Missing",
+      "outcome": "unresolved",
+      "path": "/user_types/shipment/fields/missing_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "missing_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "connector_missing",
+      "details": {
+        "external_type": "api.apiconnector2.absent.call.Thing"
+      },
+      "message": "API Connector is missing: api.apiconnector2.absent.call.Thing",
+      "outcome": "unresolved",
+      "path": "/user_types/shipment/fields/nowhere_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "nowhere_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "incomplete_field_metadata",
+      "details": {
+        "embedded_path": "/api.apiconnector2.graph.pong.B/fields/blob",
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "root": {
+          "field": "pings_list_api",
+          "type": "shipment"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.graph.ping.A",
+            "field": "b"
+          },
+          {
+            "external_type": "api.apiconnector2.graph.pong.B",
+            "field": "blob"
+          }
+        ]
+      },
+      "message": "external type field lacks a caption or path: api.apiconnector2.graph.pong.B",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "severity": "info",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "field": "blob"
+      }
+    },
+    {
+      "code": "empty_definition",
+      "details": {
+        "embedded_path": "/api.apiconnector2.misc.blank.Empty",
+        "external_type": "api.apiconnector2.misc.blank.Empty"
+      },
+      "message": "API Connector type has no fields: api.apiconnector2.misc.blank.Empty",
+      "outcome": "preserved",
+      "path": "/settings/client_safe/apiconnector2/misc/blank/types",
+      "severity": "info",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.misc.blank.Empty"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "external_types": [
+    {
+      "call": "call",
+      "connector": "absent",
+      "fields": [],
+      "id": "api.apiconnector2.absent.call.Thing",
+      "name": null,
+      "path": null,
+      "resolution": "opaque"
+    },
+    {
+      "call": "lookup",
+      "connector": "geo",
+      "fields": [
+        {
+          "cycle": false,
+          "id": "lat",
+          "name": "Latitude",
+          "response_path": [
+            "lat"
+          ],
+          "type": {
+            "base": "number",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "number",
+            "target": null
+          }
+        },
+        {
+          "cycle": false,
+          "id": "lines",
+          "name": "Lines",
+          "response_path": [
+            "lines"
+          ],
+          "type": {
+            "base": "text",
+            "cardinality": "many",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "list.text",
+            "target": null
+          }
+        },
+        {
+          "cycle": false,
+          "id": "seen",
+          "name": "Seen",
+          "response_path": [
+            "seen"
+          ],
+          "type": {
+            "base": "date_unix",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date_unix",
+            "target": null
+          }
+        },
+        {
+          "cycle": false,
+          "id": "street",
+          "name": "Street",
+          "response_path": [
+            "street"
+          ],
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "cycle": false,
+          "id": "verified",
+          "name": "Verified",
+          "response_path": [
+            "verified"
+          ],
+          "type": {
+            "base": "boolean",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "boolean",
+            "target": null
+          }
+        }
+      ],
+      "id": "api.apiconnector2.geo.lookup.Address",
+      "name": "Address",
+      "path": "/settings/client_safe/apiconnector2/geo/lookup/types",
+      "resolution": "resolved"
+    },
+    {
+      "call": "lookup",
+      "connector": "geo",
+      "fields": [],
+      "id": "api.apiconnector2.geo.lookup.Missing",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/geo/lookup/types",
+      "resolution": "opaque"
+    },
+    {
+      "call": "ping",
+      "connector": "graph",
+      "fields": [
+        {
+          "cycle": false,
+          "id": "at",
+          "name": "At",
+          "response_path": [
+            "at"
+          ],
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "cycle": false,
+          "id": "b",
+          "name": "B",
+          "response_path": [
+            "b"
+          ],
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.graph.pong.B",
+            "target": "api.apiconnector2.graph.pong.B"
+          }
+        }
+      ],
+      "id": "api.apiconnector2.graph.ping.A",
+      "name": "A",
+      "path": "/settings/client_safe/apiconnector2/graph/ping/types",
+      "resolution": "resolved"
+    },
+    {
+      "call": "pong",
+      "connector": "graph",
+      "fields": [
+        {
+          "cycle": true,
+          "id": "a",
+          "name": "A",
+          "response_path": [
+            "a"
+          ],
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.graph.ping.A",
+            "target": "api.apiconnector2.graph.ping.A"
+          }
+        },
+        {
+          "cycle": false,
+          "id": "blob",
+          "name": null,
+          "response_path": [
+            "blob"
+          ],
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "opaque",
+            "resolved": null,
+            "source": "mystery",
+            "target": null
+          }
+        }
+      ],
+      "id": "api.apiconnector2.graph.pong.B",
+      "name": "B",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "resolution": "resolved"
+    },
+    {
+      "call": "blank",
+      "connector": "misc",
+      "fields": [],
+      "id": "api.apiconnector2.misc.blank.Empty",
+      "name": "Empty",
+      "path": "/settings/client_safe/apiconnector2/misc/blank/types",
+      "resolution": "resolved_empty"
+    },
+    {
+      "call": "walk",
+      "connector": "tree",
+      "fields": [
+        {
+          "cycle": true,
+          "id": "children",
+          "name": "Children",
+          "response_path": [
+            "children"
+          ],
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "external",
+            "resolved": true,
+            "source": "list.api.apiconnector2.tree.walk.Node",
+            "target": "api.apiconnector2.tree.walk.Node"
+          }
+        },
+        {
+          "cycle": false,
+          "id": "label",
+          "name": "Label",
+          "response_path": [
+            "label"
+          ],
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "id": "api.apiconnector2.tree.walk.Node",
+      "name": "Node",
+      "path": "/settings/client_safe/apiconnector2/tree/walk/types",
+      "resolution": "resolved"
+    }
+  ],
+  "extra": {},
+  "option_sets": [],
+  "schema_version": 1
+}

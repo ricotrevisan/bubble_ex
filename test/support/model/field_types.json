@@ -1,0 +1,152 @@
+{
+  "_id": "synthetic-field-types",
+  "option_sets": {
+    "status": {
+      "attributes": {
+        "color": {
+          "display": "Color",
+          "value": "text"
+        }
+      },
+      "display": "Status",
+      "values": {
+        "closed": {
+          "color": "#aa0000",
+          "db_value": "closed",
+          "display": "Closed",
+          "sort_factor": 2
+        },
+        "open": {
+          "color": "#00aa00",
+          "db_value": "open",
+          "display": "Open",
+          "sort_factor": 1
+        }
+      }
+    }
+  },
+  "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "attachment_file": {
+          "display": "Attachment",
+          "value": "file"
+        },
+        "budget_number_range": {
+          "display": "Budget",
+          "value": "number_range"
+        },
+        "checks_list_boolean": {
+          "display": "Checks",
+          "value": "list.boolean"
+        },
+        "cover_image": {
+          "display": "Cover",
+          "value": "image"
+        },
+        "dates_list_date": {
+          "display": "Dates",
+          "value": "list.date"
+        },
+        "done_boolean": {
+          "default_val": false,
+          "display": "Done",
+          "value": "boolean"
+        },
+        "due_date": {
+          "display": "Due",
+          "value": "date"
+        },
+        "duration_dateinterval": {
+          "display": "Duration",
+          "value": "dateinterval"
+        },
+        "estimate_number": {
+          "default_val": 1,
+          "display": "Estimate",
+          "value": "number"
+        },
+        "files_list_file": {
+          "display": "Files",
+          "value": "list.file"
+        },
+        "images_list_image": {
+          "display": "Images",
+          "value": "list.image"
+        },
+        "labels_list_option_status": {
+          "display": "Labels",
+          "value": "list.option.status"
+        },
+        "notes_list_text": {
+          "display": "Notes",
+          "value": "list.text"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        },
+        "place_geographic_address": {
+          "display": "Place",
+          "value": "geographic_address"
+        },
+        "places_list_geographic_address": {
+          "display": "Places",
+          "value": "list.geographic_address"
+        },
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
+        },
+        "ranges_list_date_range": {
+          "display": "Ranges",
+          "value": "list.date_range"
+        },
+        "scores_list_number": {
+          "display": "Scores",
+          "value": "list.number"
+        },
+        "status_option_status": {
+          "display": "Status",
+          "value": "option.status"
+        },
+        "subtasks_list_custom_task": {
+          "display": "Subtasks",
+          "value": "list.custom.task"
+        },
+        "title_text": {
+          "default_val": "Untitled",
+          "display": "Title",
+          "value": "text"
+        },
+        "watchers_list_user": {
+          "display": "Watchers",
+          "value": "list.user"
+        },
+        "window_date_range": {
+          "display": "Window",
+          "value": "date_range"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "nickname_text": {
+          "display": "Nickname",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

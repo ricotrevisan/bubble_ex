@@ -1,0 +1,56 @@
+{
+  "counts": {
+    "cycle_cuts": 0,
+    "data_types": 97,
+    "deleted_data_types": 4,
+    "deleted_fields": 14,
+    "deleted_option_sets": 4,
+    "deleted_option_values": 8,
+    "diagnostics": {
+      "exact_type_definition_missing": 7,
+      "invalid_descriptor": 8,
+      "model_option_key_missing": 9,
+      "model_undeclared_option_attribute_value": 40,
+      "model_unresolved_target": 4
+    },
+    "external_fields": 0,
+    "external_types": {
+      "opaque": 5
+    },
+    "fields": 1257,
+    "fields_by_kind": {
+      "external": 3,
+      "file_ref": 9,
+      "list external": 4,
+      "list opaque": 1,
+      "list option": 19,
+      "list ref": 100,
+      "list scalar": 9,
+      "opaque": 7,
+      "option": 114,
+      "ref": 304,
+      "scalar": 683,
+      "structured": 4
+    },
+    "malformed_data_types": 0,
+    "option_attributes": 328,
+    "option_attributes_by_kind": {
+      "file_ref": 5,
+      "list option": 14,
+      "list scalar": 1,
+      "option": 19,
+      "scalar": 289
+    },
+    "option_sets": 145,
+    "option_values": 694,
+    "privacy_rules": 125,
+    "relationships": {
+      "many": 99,
+      "one": 298,
+      "unresolved": 4
+    },
+    "synthesized_data_types": 0,
+    "system_fields": 486
+  },
+  "schema_version": 1
+}

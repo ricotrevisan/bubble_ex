@@ -1,0 +1,17 @@
+{
+  "user_types": {
+    "node": {
+      "display": "Node",
+      "fields": {
+        "children_list_custom_node": {
+          "display": "Children",
+          "value": "list.custom.node"
+        },
+        "parent_custom_node": {
+          "display": "Parent",
+          "value": "custom.node"
+        }
+      }
+    }
+  }
+}

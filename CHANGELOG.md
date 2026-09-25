@@ -48,6 +48,18 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Build the stack-neutral data model through `BubbleEx.Model.build/1` /
+  `BubbleEx.data_model/1`: data types with fields (content type, cardinality,
+  resolved or unresolved target, default, `deleted`), Bubble's built-in fields,
+  option sets (stable value keys, values in `sort_factor` order, typed
+  attributes), API Connector types (known, empty, opaque, conflicted; cycle
+  edges marked) and privacy rules (`BubbleEx.Privacy`), all keyed by Bubble IDs
+  with no target-language names. Malformed nodes are kept raw and diagnosed with
+  new `:model` codes (`model_*` in `BubbleEx.Diagnostic.Codes`). `to_json/1` is
+  canonical and independent of input member order; `summary/1` gives aggregate
+  counts; `schema/1` gives the expression-typing schema from the model.
+- `Db.Reader`: an API Connector registry field definition that is not an object
+  is now opaque with a diagnostic instead of crashing.
 - Build a deterministic symbol and reference index through `BubbleEx.Index` /
   `BubbleEx.symbol_index/1`. Symbols (data types, fields, option sets and
   values, pages, reusables, elements, workflows, actions, API Connector calls,

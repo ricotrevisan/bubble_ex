@@ -1,0 +1,95 @@
+{
+  "_id": "synthetic-malformed",
+  "option_sets": {
+    "bad_set": "nope",
+    "bad_value": {
+      "display": "Bad value",
+      "flavor": "mint",
+      "values": {
+        "v1": 5,
+        "v2": {
+          "db_value": "",
+          "display": "Two",
+          "sort_factor": "second"
+        }
+      }
+    },
+    "bad_values": {
+      "attributes": [
+        "x"
+      ],
+      "display": "Bad values",
+      "values": "oops"
+    }
+  },
+  "settings": {
+    "client_safe": {
+      "apiconnector2": {
+        "bad": {
+          "defs": {
+            "ret_value": "api.apiconnector2.bad.defs.T",
+            "types": "{\"api.apiconnector2.bad.defs.T\": {\"caption\": \"T\", \"fields\": {\"odd\": \"not a field\", \"fine\": {\"caption\": \"Fine\", \"path\": [\"fine\"], \"ret_btype\": \"text\"}}}}"
+          }
+        }
+      }
+    }
+  },
+  "user_types": {
+    "broken": "not a type",
+    "counted": 42,
+    "listy": {
+      "display": "Listy",
+      "fields": [
+        "not",
+        "a",
+        "map"
+      ]
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "bad": "not a field",
+        "empty_custom": {
+          "display": "Empty custom",
+          "value": "custom."
+        },
+        "extra_member": {
+          "display": "Extra member",
+          "secret_sauce": {
+            "k": [
+              1,
+              2
+            ]
+          },
+          "value": "text"
+        },
+        "nested_list": {
+          "display": "Nested list",
+          "value": "list.list.text"
+        },
+        "numeric_type": {
+          "display": "Numeric type",
+          "value": 7
+        },
+        "odd_api": {
+          "display": "Odd API",
+          "value": "api.apiconnector2.bad.defs.T"
+        },
+        "ok_text": {
+          "display": "OK",
+          "value": "text"
+        },
+        "quantum": {
+          "display": "Quantum",
+          "value": "quantum_state"
+        },
+        "untyped": {
+          "display": "Untyped"
+        }
+      },
+      "surprise": {
+        "x": 1
+      }
+    }
+  }
+}

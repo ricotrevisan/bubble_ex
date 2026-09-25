@@ -1,0 +1,964 @@
+{
+  "bubble_id": "synthetic-field-types",
+  "data_types": [
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "name_text",
+          "name": "Name",
+          "path": "/user_types/project/fields/name_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "id": "project",
+      "name": "Project",
+      "path": "/user_types/project",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/project",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/project",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/project",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/project",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/project",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "attachment_file",
+          "name": "Attachment",
+          "path": "/user_types/task/fields/attachment_file",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "file",
+            "cardinality": "one",
+            "kind": "file_ref",
+            "resolved": null,
+            "source": "file",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "budget_number_range",
+          "name": "Budget",
+          "path": "/user_types/task/fields/budget_number_range",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "number_range",
+            "cardinality": "one",
+            "kind": "structured",
+            "resolved": null,
+            "source": "number_range",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "checks_list_boolean",
+          "name": "Checks",
+          "path": "/user_types/task/fields/checks_list_boolean",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "boolean",
+            "cardinality": "many",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "list.boolean",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "cover_image",
+          "name": "Cover",
+          "path": "/user_types/task/fields/cover_image",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "image",
+            "cardinality": "one",
+            "kind": "file_ref",
+            "resolved": null,
+            "source": "image",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "dates_list_date",
+          "name": "Dates",
+          "path": "/user_types/task/fields/dates_list_date",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "date",
+            "cardinality": "many",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "list.date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": false,
+          "deleted": false,
+          "extra": {},
+          "id": "done_boolean",
+          "name": "Done",
+          "path": "/user_types/task/fields/done_boolean",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "boolean",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "boolean",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "due_date",
+          "name": "Due",
+          "path": "/user_types/task/fields/due_date",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "duration_dateinterval",
+          "name": "Duration",
+          "path": "/user_types/task/fields/duration_dateinterval",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "date_interval",
+            "cardinality": "one",
+            "kind": "structured",
+            "resolved": null,
+            "source": "dateinterval",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": 1,
+          "deleted": false,
+          "extra": {},
+          "id": "estimate_number",
+          "name": "Estimate",
+          "path": "/user_types/task/fields/estimate_number",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "number",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "number",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "files_list_file",
+          "name": "Files",
+          "path": "/user_types/task/fields/files_list_file",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "file",
+            "cardinality": "many",
+            "kind": "file_ref",
+            "resolved": null,
+            "source": "list.file",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "images_list_image",
+          "name": "Images",
+          "path": "/user_types/task/fields/images_list_image",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "image",
+            "cardinality": "many",
+            "kind": "file_ref",
+            "resolved": null,
+            "source": "list.image",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "labels_list_option_status",
+          "name": "Labels",
+          "path": "/user_types/task/fields/labels_list_option_status",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "option",
+            "resolved": true,
+            "source": "list.option.status",
+            "target": "status"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "notes_list_text",
+          "name": "Notes",
+          "path": "/user_types/task/fields/notes_list_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "many",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "list.text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "owner_user",
+          "name": "Owner",
+          "path": "/user_types/task/fields/owner_user",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "place_geographic_address",
+          "name": "Place",
+          "path": "/user_types/task/fields/place_geographic_address",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "geographic_address",
+            "cardinality": "one",
+            "kind": "structured",
+            "resolved": null,
+            "source": "geographic_address",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "places_list_geographic_address",
+          "name": "Places",
+          "path": "/user_types/task/fields/places_list_geographic_address",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "geographic_address",
+            "cardinality": "many",
+            "kind": "structured",
+            "resolved": null,
+            "source": "list.geographic_address",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "project_custom_project",
+          "name": "Project",
+          "path": "/user_types/task/fields/project_custom_project",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "custom.project",
+            "target": "project"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "ranges_list_date_range",
+          "name": "Ranges",
+          "path": "/user_types/task/fields/ranges_list_date_range",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "date_range",
+            "cardinality": "many",
+            "kind": "structured",
+            "resolved": null,
+            "source": "list.date_range",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "scores_list_number",
+          "name": "Scores",
+          "path": "/user_types/task/fields/scores_list_number",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "number",
+            "cardinality": "many",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "list.number",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "status_option_status",
+          "name": "Status",
+          "path": "/user_types/task/fields/status_option_status",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "option",
+            "resolved": true,
+            "source": "option.status",
+            "target": "status"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "subtasks_list_custom_task",
+          "name": "Subtasks",
+          "path": "/user_types/task/fields/subtasks_list_custom_task",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "ref",
+            "resolved": true,
+            "source": "list.custom.task",
+            "target": "task"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": "Untitled",
+          "deleted": false,
+          "extra": {},
+          "id": "title_text",
+          "name": "Title",
+          "path": "/user_types/task/fields/title_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "watchers_list_user",
+          "name": "Watchers",
+          "path": "/user_types/task/fields/watchers_list_user",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "ref",
+            "resolved": true,
+            "source": "list.user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "window_date_range",
+          "name": "Window",
+          "path": "/user_types/task/fields/window_date_range",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "date_range",
+            "cardinality": "one",
+            "kind": "structured",
+            "resolved": null,
+            "source": "date_range",
+            "target": null
+          }
+        }
+      ],
+      "id": "task",
+      "name": "Task",
+      "path": "/user_types/task",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "nickname_text",
+          "name": "Nickname",
+          "path": "/user_types/user/fields/nickname_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "id": "user",
+      "name": "User",
+      "path": "/user_types/user",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "name": "email",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "email",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": [],
+  "external_types": [],
+  "extra": {},
+  "option_sets": [
+    {
+      "attributes": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "color",
+          "name": "Color",
+          "path": "/option_sets/status/attributes/color",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {},
+      "id": "status",
+      "name": "Status",
+      "path": "/option_sets/status",
+      "raw": null,
+      "values": [
+        {
+          "attributes": {
+            "color": "#00aa00"
+          },
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "open",
+          "key": "open",
+          "name": "Open",
+          "path": "/option_sets/status/values/open",
+          "raw": null,
+          "sort_factor": 1
+        },
+        {
+          "attributes": {
+            "color": "#aa0000"
+          },
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "closed",
+          "key": "closed",
+          "name": "Closed",
+          "path": "/option_sets/status/values/closed",
+          "raw": null,
+          "sort_factor": 2
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

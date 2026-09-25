@@ -1,0 +1,863 @@
+{
+  "bubble_id": "synthetic-naming",
+  "data_types": [
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "11__done_boolean",
+          "name": "11. Done",
+          "path": "/user_types/00__thing___join/fields/11__done_boolean",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "boolean",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "boolean",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "40__sort__thing_title_text",
+          "name": "40. Sort: Thing Title",
+          "path": "/user_types/00__thing___join/fields/40__sort__thing_title_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "__struct___text",
+          "name": "__struct__",
+          "path": "/user_types/00__thing___join/fields/__struct___text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "id_text",
+          "name": "id",
+          "path": "/user_types/00__thing___join/fields/id_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "inserted_at_date",
+          "name": "inserted_at",
+          "path": "/user_types/00__thing___join/fields/inserted_at_date",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "title_text",
+          "name": "Title",
+          "path": "/user_types/00__thing___join/fields/title_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "title_text1",
+          "name": "Title",
+          "path": "/user_types/00__thing___join/fields/title_text1",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "type_text",
+          "name": "type",
+          "path": "/user_types/00__thing___join/fields/type_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "id": "00__thing___join",
+      "name": "00. Thing - Join",
+      "path": "/user_types/00__thing___join",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/00__thing___join",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/00__thing___join",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/00__thing___join",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/00__thing___join",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/00__thing___join",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_text",
+          "name": "🔥",
+          "path": "/user_types/launch/fields/_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "name_text",
+          "name": "Name ✨",
+          "path": "/user_types/launch/fields/name_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "id": "launch",
+      "name": "🚀 Launch",
+      "path": "/user_types/launch",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/launch",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/launch",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/launch",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/launch",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/launch",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "thing",
+      "name": "Thing",
+      "path": "/user_types/thing",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/thing",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/thing",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/thing",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/thing",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/thing",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "thing0",
+      "name": "Thing",
+      "path": "/user_types/thing0",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/thing0",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/thing0",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/thing0",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/thing0",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/thing0",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "user",
+      "name": "User",
+      "path": "/user_types/user",
+      "privacy": "unavailable",
+      "raw": null,
+      "rules": [],
+      "synthesized": true,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "name": "email",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "email",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "external_types": [],
+  "extra": {},
+  "option_sets": [
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {},
+      "id": "os__40__levels",
+      "name": "40. Levels",
+      "path": "/option_sets/os__40__levels",
+      "raw": null,
+      "values": [
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "a",
+          "key": "id",
+          "name": "id",
+          "path": "/option_sets/os__40__levels/values/a",
+          "raw": null,
+          "sort_factor": 1
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "b",
+          "key": "type",
+          "name": "type",
+          "path": "/option_sets/os__40__levels/values/b",
+          "raw": null,
+          "sort_factor": 2
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,643 @@
+{
+  "bubble_id": "synthetic-missing-deleted",
+  "data_types": [
+    {
+      "comment": null,
+      "deleted": true,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "label_text",
+          "name": "Label",
+          "path": "/user_types/archive/fields/label_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ],
+      "id": "archive",
+      "name": "Archive",
+      "path": "/user_types/archive",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/archive",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/archive",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/archive",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/archive",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/archive",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "archive_custom_archive",
+          "name": "Archive",
+          "path": "/user_types/invoice/fields/archive_custom_archive",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "custom.archive",
+            "target": "archive"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "customer_custom_ghost",
+          "name": "Customer",
+          "path": "/user_types/invoice/fields/customer_custom_ghost",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": false,
+            "source": "custom.ghost",
+            "target": "ghost"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "lines_list_custom_ghost_line",
+          "name": "Lines",
+          "path": "/user_types/invoice/fields/lines_list_custom_ghost_line",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "ref",
+            "resolved": false,
+            "source": "list.custom.ghost_line",
+            "target": "ghost_line"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": true,
+          "extra": {},
+          "id": "old_ref_custom_ghost",
+          "name": "Old ref",
+          "path": "/user_types/invoice/fields/old_ref_custom_ghost",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": false,
+            "source": "custom.ghost",
+            "target": "ghost"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": true,
+          "extra": {},
+          "id": "old_total_number",
+          "name": "Old total",
+          "path": "/user_types/invoice/fields/old_total_number",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "number",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "number",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "state_option_ghost_state",
+          "name": "State",
+          "path": "/user_types/invoice/fields/state_option_ghost_state",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "option",
+            "resolved": false,
+            "source": "option.ghost_state",
+            "target": "ghost_state"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "total_number",
+          "name": "Total",
+          "path": "/user_types/invoice/fields/total_number",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "number",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "number",
+            "target": null
+          }
+        }
+      ],
+      "id": "invoice",
+      "name": "Invoice",
+      "path": "/user_types/invoice",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/invoice",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/invoice",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/invoice",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/invoice",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/invoice",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "user",
+      "name": "User",
+      "path": "/user_types/user",
+      "privacy": "unavailable",
+      "raw": null,
+      "rules": [],
+      "synthesized": true,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "name": "email",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "email",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost",
+        "target_kind": "data_type"
+      },
+      "message": "data type \"ghost\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/customer_custom_ghost/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "customer_custom_ghost",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost_line",
+        "target_kind": "data_type"
+      },
+      "message": "data type \"ghost_line\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/lines_list_custom_ghost_line/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "lines_list_custom_ghost_line",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost",
+        "target_kind": "data_type"
+      },
+      "message": "data type \"ghost\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/old_ref_custom_ghost/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "old_ref_custom_ghost",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost_state",
+        "target_kind": "option_set"
+      },
+      "message": "option set \"ghost_state\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/state_option_ghost_state/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "state_option_ghost_state",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "external_types": [],
+  "extra": {},
+  "option_sets": [
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": true,
+      "extra": {},
+      "id": "retired",
+      "name": "Retired",
+      "path": "/option_sets/retired",
+      "raw": null,
+      "values": [
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": true,
+          "extra": {},
+          "id": "x",
+          "key": "x",
+          "name": "X",
+          "path": "/option_sets/retired/values/x",
+          "raw": null,
+          "sort_factor": 1
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

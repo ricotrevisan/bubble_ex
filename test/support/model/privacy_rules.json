@@ -1,0 +1,123 @@
+{
+  "_id": "synthetic-privacy",
+  "user_types": {
+    "draft": {
+      "display": "Draft",
+      "fields": {},
+      "privacy_role": {
+        "reviewers_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "next": {
+                "name": "is_true",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Reviewers",
+          "permissions": {
+            "view_all": true
+          }
+        }
+      }
+    },
+    "note": {
+      "display": "Note",
+      "exposed_api": true,
+      "fields": {
+        "body_text": {
+          "display": "Body",
+          "value": "text"
+        },
+        "secret_text": {
+          "display": "Secret",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "admins_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "next": {
+                "name": "is_true",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Admins",
+          "permissions": {
+            "auto_binding": false,
+            "delete_api": true,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "body_text"
+            }
+          }
+        },
+        "owner_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": {
+              "0": "body_text",
+              "1": "secret_text"
+            },
+            "modify_api": true,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "public_page": {
+      "display": "Public page",
+      "fields": {
+        "slug_text": {
+          "display": "Slug text",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "admin_boolean": {
+          "display": "Admin",
+          "value": "boolean"
+        }
+      }
+    }
+  }
+}

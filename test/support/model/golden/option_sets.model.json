@@ -1,0 +1,732 @@
+{
+  "bubble_id": "synthetic-option-sets",
+  "data_types": [
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "channels_list_option_channel",
+          "name": "Channels",
+          "path": "/user_types/ticket/fields/channels_list_option_channel",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "option",
+            "resolved": true,
+            "source": "list.option.channel",
+            "target": "channel"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "priority_option_priority",
+          "name": "Priority",
+          "path": "/user_types/ticket/fields/priority_option_priority",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "option",
+            "resolved": true,
+            "source": "option.priority",
+            "target": "priority"
+          }
+        }
+      ],
+      "id": "ticket",
+      "name": "Ticket",
+      "path": "/user_types/ticket",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/ticket",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/ticket",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/ticket",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/ticket",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/ticket",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "user",
+      "name": "User",
+      "path": "/user_types/user",
+      "privacy": "unavailable",
+      "raw": null,
+      "rules": [],
+      "synthesized": true,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "name": "email",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "email",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost_set",
+        "target_kind": "option_set"
+      },
+      "message": "option set \"ghost_set\" is not defined",
+      "outcome": "unresolved",
+      "path": "/option_sets/orphan/attributes/parent/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "parent",
+        "option_set": "orphan"
+      }
+    },
+    {
+      "code": "model_duplicate_option_key",
+      "details": {
+        "first": "bAb",
+        "key": "high",
+        "value": "bAg"
+      },
+      "message": "option value \"bAg\" repeats the key \"high\"",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/values/bAg",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_option_key_missing",
+      "details": {
+        "db_value": null,
+        "value": "bAf"
+      },
+      "message": "option value has no db_value; its Bubble ID \"bAf\" is used",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/values/bAf",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_undeclared_option_attribute_value",
+      "details": {
+        "attribute": "tooltip",
+        "value": "bAh"
+      },
+      "message": "option value member \"tooltip\" names no declared attribute",
+      "outcome": "preserved",
+      "path": "/option_sets/priority/values/bAh/tooltip",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "external_types": [],
+  "extra": {},
+  "option_sets": [
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {},
+      "id": "channel",
+      "name": "Channel",
+      "path": "/option_sets/channel",
+      "raw": null,
+      "values": [
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "key": "email",
+          "name": "Email",
+          "path": "/option_sets/channel/values/email",
+          "raw": null,
+          "sort_factor": 1
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "sms",
+          "key": "sms",
+          "name": "SMS",
+          "path": "/option_sets/channel/values/sms",
+          "raw": null,
+          "sort_factor": 1
+        }
+      ]
+    },
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": true,
+      "extra": {},
+      "id": "legacy",
+      "name": "Legacy",
+      "path": "/option_sets/legacy",
+      "raw": null,
+      "values": []
+    },
+    {
+      "attributes": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "parent",
+          "name": "Parent",
+          "path": "/option_sets/orphan/attributes/parent",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "option",
+            "resolved": false,
+            "source": "option.ghost_set",
+            "target": "ghost_set"
+          }
+        }
+      ],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {},
+      "id": "orphan",
+      "name": "Orphan",
+      "path": "/option_sets/orphan",
+      "raw": null,
+      "values": []
+    },
+    {
+      "attributes": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "channels",
+          "name": "Channels",
+          "path": "/option_sets/priority/attributes/channels",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "many",
+            "kind": "option",
+            "resolved": true,
+            "source": "list.option.channel",
+            "target": "channel"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": "editor",
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "color",
+          "name": "Color",
+          "path": "/option_sets/priority/attributes/color",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "escalates_to",
+          "name": "Escalates to",
+          "path": "/option_sets/priority/attributes/escalates_to",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "option",
+            "resolved": true,
+            "source": "option.priority",
+            "target": "priority"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "icon",
+          "name": "Icon",
+          "path": "/option_sets/priority/attributes/icon",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "image",
+            "cardinality": "one",
+            "kind": "file_ref",
+            "resolved": null,
+            "source": "image",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": true,
+          "extra": {},
+          "id": "retired",
+          "name": "Retired",
+          "path": "/option_sets/priority/attributes/retired",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "urgent",
+          "name": "Urgent",
+          "path": "/option_sets/priority/attributes/urgent",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "boolean",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "boolean",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "weight",
+          "name": "Weight",
+          "path": "/option_sets/priority/attributes/weight",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "number",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "number",
+            "target": null
+          }
+        }
+      ],
+      "comment": "How urgent a ticket is",
+      "creation_source": "editor",
+      "deleted": false,
+      "extra": {},
+      "id": "priority",
+      "name": "Priority",
+      "path": "/option_sets/priority",
+      "raw": null,
+      "values": [
+        {
+          "attributes": {
+            "icon": "//cdn.example.invalid/critical.png",
+            "urgent": true
+          },
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bAd",
+          "key": "critical",
+          "name": "Critical",
+          "path": "/option_sets/priority/values/bAd",
+          "raw": null,
+          "sort_factor": 0
+        },
+        {
+          "attributes": {
+            "channels": [
+              "email",
+              "sms"
+            ],
+            "color": "red",
+            "escalates_to": "critical",
+            "urgent": true,
+            "weight": 10
+          },
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bAb",
+          "key": "high",
+          "name": "High",
+          "path": "/option_sets/priority/values/bAb",
+          "raw": null,
+          "sort_factor": 1
+        },
+        {
+          "attributes": {
+            "color": "amber",
+            "weight": 5.5
+          },
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bAc",
+          "key": "medium",
+          "name": "Medium",
+          "path": "/option_sets/priority/values/bAc",
+          "raw": null,
+          "sort_factor": 2
+        },
+        {
+          "attributes": {
+            "color": "grey",
+            "urgent": false,
+            "weight": 1
+          },
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bAa",
+          "key": "low",
+          "name": "Low",
+          "path": "/option_sets/priority/values/bAa",
+          "raw": null,
+          "sort_factor": 3
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": true,
+          "extra": {},
+          "id": "bAe",
+          "key": "old",
+          "name": "Old",
+          "path": "/option_sets/priority/values/bAe",
+          "raw": null,
+          "sort_factor": 4
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bAf",
+          "key": "bAf",
+          "name": "Unkeyed",
+          "path": "/option_sets/priority/values/bAf",
+          "raw": null,
+          "sort_factor": 5
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bAg",
+          "key": "high",
+          "name": "High again",
+          "path": "/option_sets/priority/values/bAg",
+          "raw": null,
+          "sort_factor": 6
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {
+            "tooltip": "attribute no longer declared"
+          },
+          "id": "bAh",
+          "key": "stale",
+          "name": "Stale",
+          "path": "/option_sets/priority/values/bAh",
+          "raw": null,
+          "sort_factor": 7
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

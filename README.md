@@ -97,6 +97,24 @@ complete Bubble runtime or backend support. Reports retain private source values
 App-tree exports also include the inventory and a root workflow report.
 See [the input/output contract and verification](docs/workflows.md).
 
+## Data model
+
+Build the typed, stack-neutral model of an app's data from a decoded `.bubble`
+export or live payload:
+
+```elixir
+{:ok, model} = BubbleEx.data_model(app)
+{:ok, field} = BubbleEx.Model.field(model, "task", "title_text")
+field.type   # %BubbleEx.Model.Type{kind: :scalar, base: :text, cardinality: :one, ...}
+```
+
+It holds data types (fields, built-in fields, privacy rules), option sets
+(stable value keys, values, attributes) and API Connector types, keyed by Bubble
+IDs. Display names are kept verbatim and deleted definitions are flagged, not
+dropped; the model contains no target-language names. Anything it does not
+model is kept verbatim and reported as a diagnostic. `BubbleEx.Model.to_json/1`
+is byte-identical for the same app.
+
 ## Privacy rules and expressions
 
 Parse data-type privacy rules from a decoded `.bubble` export:
