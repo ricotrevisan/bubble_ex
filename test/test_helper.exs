@@ -1,1 +1,1 @@
-ExUnit.start(exclude: [:integration, :fidelity, :private_fixture])
+ExUnit.start(exclude: [:integration, :fidelity, :private_fixture, :ddl_postgres])
