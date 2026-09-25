@@ -1,7 +1,9 @@
 {
   "counts": {
-    "applied": {},
-    "attributes": 1693,
+    "applied": {
+      "derive_from_related": 1
+    },
+    "attributes": 1692,
     "attributes_by_type": {
       "array enum": 19,
       "array float": 1,
@@ -10,15 +12,16 @@
       "enum": 109,
       "float": 67,
       "json_value": 12,
-      "string": 935,
+      "string": 934,
       "typed_struct": 4,
       "utc_datetime_usec": 278
     },
     "db_references": {
       "ignore": 386
     },
-    "derived_calculations": 0,
+    "derived_calculations": 1,
     "diagnostics": {
+      "ash_decision_applied": 1,
       "ash_deleted_omitted": 24,
       "ash_expr_unmapped_reference": 1,
       "ash_opaque_value": 6,
@@ -71,5 +74,7 @@
       "structured": 3
     }
   },
+  "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
+  "project_sha256": "d37a13f03efd7b7c1b3d05501d28913bd49ff74af76a361fa7308b77a7b64f64",
   "schema_version": 4
 }

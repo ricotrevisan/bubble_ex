@@ -184,6 +184,12 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:ash_duplicate_enum_value, :warning, :degraded, :target,
      "an option value repeating an earlier value's stable key; omitted from the enum"},
 
+    # --- target:ash — BubbleEx.Target.Ash owner decisions (WTF-352, WTF-401) ---
+    {:ash_decision_applied, :info, :degraded, :target,
+     "an owner decision changed how a field is mapped (a number stored as an integer or decimal, a copied field derived as a calculation); the project departs from the source-faithful mapping on purpose"},
+    {:ash_name_overridden, :info, :preserved, :target,
+     "an owner rename decision set a generated name; after the name lock only Elixir names change, and a renamed attribute keeps its column (`source:`)"},
+
     # --- target:ash — BubbleEx.Target.Ash privacy policies (WTF-356) ----------
     {:ash_privacy_omitted, :info, :degraded, :target,
      "privacy rules the source has (or may have) that were not compiled (`privacy: :omit`, the default); the generated resources have no authorization"},

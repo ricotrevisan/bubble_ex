@@ -16,6 +16,20 @@ defmodule BubbleEx.Decision.Applied do
     * `proposal` - the finding's proposal with the `modify` parameters
       merged in (`BubbleEx.Decision.Params.apply/2`); `%{}` for a rename
     * `params` - the decision's parameters as recorded
+    * `proposal_sha256`, `basis_sha256` - the finding's current hashes
+      (finding kinds only)
+    * `basis` - the hashes the decision was recorded against
+      (`%{proposal_sha256, basis_sha256}`); `nil` for a hint applied by
+      default and for a rename. `applicable/2` only lists active decisions,
+      so they equal the finding's; a generator rejects an entry where they
+      differ (a stale decision)
+
+  ## Input contract of a generator
+
+  A list of these, exactly as `BubbleEx.Decision.applicable/2` returns
+  them, is what a target generator (`BubbleEx.Target.Ash.map/3`) takes.
+  Raw `BubbleEx.Decision` records are not generation input: they must be
+  resolved first, so stale, orphaned and superseded ones never apply.
   """
 
   @type t :: %__MODULE__{
@@ -28,7 +42,10 @@ defmodule BubbleEx.Decision.Applied do
           subject: map(),
           target: String.t() | nil,
           proposal: map(),
-          params: map()
+          params: map(),
+          proposal_sha256: String.t() | nil,
+          basis_sha256: String.t() | nil,
+          basis: %{proposal_sha256: String.t(), basis_sha256: String.t()} | nil
         }
 
   @enforce_keys [:key, :kind, :transform, :subject]
@@ -40,6 +57,9 @@ defmodule BubbleEx.Decision.Applied do
     :transform,
     :subject,
     :target,
+    :proposal_sha256,
+    :basis_sha256,
+    :basis,
     automatic: false,
     proposal: %{},
     params: %{}

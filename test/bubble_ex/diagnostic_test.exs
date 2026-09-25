@@ -138,7 +138,17 @@ defmodule BubbleEx.DiagnosticTest do
         Enum.flat_map(apps ++ model_apps, &ash_diagnostics/1) ++
         Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
         Enum.flat_map(expression_samples(), &expression_diagnostics/1) ++
-        Enum.flat_map(expression_apps(), &compile_diagnostics/1)
+        Enum.flat_map(expression_apps(), &compile_diagnostics/1) ++
+        decided_diagnostics()
+    end
+
+    # Target.Ash applying owner decisions (WTF-401).
+    defp decided_diagnostics do
+      for set <- BubbleEx.Test.DecidedFixture.sets(),
+          privacy <- [:omit, :unverified],
+          {:ok, project} = BubbleEx.Test.DecidedFixture.project(set, privacy: privacy),
+          d <- project.diagnostics,
+          do: d
     end
 
     defp expression_apps do

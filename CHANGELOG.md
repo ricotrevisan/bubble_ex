@@ -6,6 +6,35 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`Target.Ash.map/3` applies owner decisions, cut 1** (WTF-401, D-2 of
+  WTF-352). `decisions` is the output of `Decision.applicable/2` (a list of
+  `Decision.Applied`); raw decision records, stale entries (recorded basis
+  differs from the finding's hashes), inconsistent keys, subjects missing
+  from the Model, proposals that no longer fit it, two transforms of one
+  field and unsupported transforms (cut 2/3, including `add_indexes` hints
+  applied by default) are `:invalid_input`. `refine_number_type` stores
+  `:integer` or `:decimal`; `derive_from_related` replaces the attribute
+  by a public calculation of the same (locked) name over the relationship
+  path; `rename` overrides a name-map slot with kind/subject, validity,
+  reserved-name and collision checks; after the name lock a renamed
+  attribute keeps its column (name map `columns`, rendered `source:`) and
+  a table rename is an error; `endpoint_path` is an error. New
+  `project.applied` (key, transform, subject, decision and finding IDs,
+  hashes) and `project.decisions_sha256` (required option with
+  decisions); diagnostics `:ash_decision_applied` and
+  `:ash_name_overridden`. `Decision.Applied` gains the finding's
+  `proposal_sha256` / `basis_sha256` and the decision's `basis`;
+  `Decision.reserved_module?/1` is public. `Calculation` gains `kind`,
+  `type`, `constraints` and `public?`; `Attribute` gains `column`;
+  `Project.schema_version/0` is 4 and `Project.summary/1` counts
+  `applied` and `derived_calculations` (privacy `calculations` counts
+  privacy calculations only; `summary/1` no longer fails on an `:omit`
+  project). With `privacy: :unverified` a derived field keeps its field's
+  field policies, reads through the ungated twin of a gated relationship
+  and is never auto-bound. `scripts/ash_compile_check.sh` renders two
+  decided fixtures and (`decisions.exs`) checks in PostgreSQL that derived
+  fields have no column and read back, and that refined numbers are
+  bigint / numeric columns.
 - **Owner decisions: `BubbleEx.Decision`** (WTF-400, D-1 of WTF-352). One
   stack-neutral envelope with kinds `finding` (accept / reject / modify a
   finding's proposal, or acknowledge a stale or orphaned decision),

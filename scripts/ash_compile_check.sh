@@ -27,7 +27,12 @@
 #     updates to match its hand-authored expectation table
 #     (test/support/target/ash/expectations/policies.json); and
 #     scripts/ash_compile_check/ecto_migrate.exs runs the Db.Ecto
-#     migrations in one database per fixture and naming
+#     migrations in one database per fixture and naming; and
+#     scripts/ash_compile_check/decisions.exs checks the owner decision
+#     fixtures (BubbleEx.Test.DecidedFixture, WTF-401): a derived field is
+#     a calculation with no column that PostgreSQL reads back through its
+#     relationship, refined numbers are bigint/numeric columns, and an
+#     attribute renamed after the name lock keeps its column
 #
 # All of the above maps with privacy: :unverified (the policies). Then the
 # same fixtures are rendered with privacy: :omit (Target.Ash's default, what
@@ -35,10 +40,11 @@
 # versions(privacy: :omit) (no PicoSAT): render.exs fails on any policy
 # machinery in the source; it must compile with --warnings-as-errors and
 # generate migrations without foreign keys, and with ASH_COMPILE_CHECK_DB
-# its migrations run, runtime.exs round-trips the sample rows and
+# its migrations run, runtime.exs round-trips the sample rows,
 # scripts/ash_compile_check/omit.exs checks that no resource has an
 # authorizer, policies or private relationships and that every row reads
-# back with authorization on and no actor.
+# back with authorization on and no actor; then decisions.exs checks the
+# decided fixtures.
 #
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
 # mm-137). The scratch projects live in _build/ash_compile_check and
@@ -53,7 +59,8 @@ mkdir -p "$scratch"
 cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
   "$root/scripts/ash_compile_check/filters.exs" \
   "$root/scripts/ash_compile_check/policies.exs" \
-  "$root/scripts/ash_compile_check/ecto_migrate.exs" "$scratch/"
+  "$root/scripts/ash_compile_check/ecto_migrate.exs" \
+  "$root/scripts/ash_compile_check/decisions.exs" "$scratch/"
 cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectations.json"
 cp "$root/test/support/target/ash/expectations/policies.json" "$scratch/policy_expectations.json"
 
@@ -109,6 +116,7 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix run runtime.exs
   mix run policies.exs
   mix run ecto_migrate.exs
+  mix run decisions.exs
 else
   echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
 fi
@@ -118,7 +126,7 @@ fi
 omit="${scratch}_omit"
 mkdir -p "$omit"
 cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
-  "$root/scripts/ash_compile_check/omit.exs" "$omit/"
+  "$root/scripts/ash_compile_check/omit.exs" "$root/scripts/ash_compile_check/decisions.exs" "$omit/"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$omit" omit
@@ -150,6 +158,7 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix ecto.migrate --quiet
   mix run runtime.exs
   mix run omit.exs
+  mix run decisions.exs
 else
   echo "runtime check skipped (privacy: :omit): set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
 fi

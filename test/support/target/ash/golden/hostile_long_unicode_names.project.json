@@ -1,7 +1,9 @@
 {
   "actor_loads": [],
+  "applied": [],
   "authorization_bypasses": [],
   "bubble_id": null,
+  "decisions_sha256": null,
   "diagnostics": [
     {
       "code": "ash_policies_unverified",
@@ -161,6 +163,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -186,6 +189,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -202,6 +206,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -218,6 +223,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -246,6 +252,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -271,6 +278,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -296,6 +304,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "custom.类型",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -324,6 +333,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -349,6 +359,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -547,6 +558,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -572,6 +584,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -588,6 +601,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -604,6 +618,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -632,6 +647,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -657,6 +673,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -845,6 +862,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -870,6 +888,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -886,6 +905,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -902,6 +922,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -930,6 +951,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1091,7 +1113,7 @@
       "table": "resource"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "typed_structs": [],
   "types": []
 }

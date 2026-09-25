@@ -34,6 +34,13 @@ defmodule BubbleEx.Target.Ash.Project do
       that run ignoring privacy rules in Bubble and so need an explicit
       authorization bypass (`authorize?: false`) when they are lowered;
       empty unless an index was given to `BubbleEx.Target.Ash.map/3`
+    * `applied` - the owner decisions applied (see `BubbleEx.Target.Ash`,
+      "Decisions"), sorted by key: `%{key, kind, transform, subject, target,
+      decision_id, finding_id, automatic, params, proposal_sha256,
+      basis_sha256}`, so a manifest, plan or verification can cite them
+    * `decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
+      decision set the applied decisions come from, as passed to
+      `BubbleEx.Target.Ash.map/3`; nil when mapped without decisions
     * `diagnostics` - the Model's diagnostics plus the mapping's (stage
       `{:target, :ash}`), normalized
 
@@ -53,6 +60,10 @@ defmodule BubbleEx.Target.Ash.Project do
   get new names that avoid the locked ones. Entries whose definition is gone
   are kept.
 
+  `columns` lists the attributes whose column is not their name: an
+  attribute renamed after the name lock (an owner `rename` decision) keeps
+  its column, rendered as the attribute's `source:`.
+
       %{
         "version" => 1,
         "resources" => %{
@@ -62,7 +73,8 @@ defmodule BubbleEx.Target.Ash.Project do
             "attributes" => %{"_id" => "id", "title_text" => "title", "project_custom_project" => "project_id"},
             "relationships" => %{"project_custom_project" => "project"},
             "privacy_rules" => %{"owner_" => "privacy_rule_owner"},
-            "privacy_relationships" => %{"project_custom_project" => "project_for_privacy"}
+            "privacy_relationships" => %{"project_custom_project" => "project_for_privacy"},
+            "columns" => %{"title_text" => "name"}
           }
         },
         "enums" => %{"status" => %{"module" => "Status", "attributes" => %{"color" => "color"}}},
@@ -73,7 +85,7 @@ defmodule BubbleEx.Target.Ash.Project do
   alias BubbleEx.{CanonicalJson, Diagnostic}
   alias BubbleEx.Target.Ash.{Bypass, CustomType, Resource, TypedStruct}
 
-  @schema_version 3
+  @schema_version 4
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -88,6 +100,8 @@ defmodule BubbleEx.Target.Ash.Project do
     policies_verified: false,
     actor_loads: [],
     authorization_bypasses: [],
+    applied: [],
+    decisions_sha256: nil,
     diagnostics: []
   ]
 
@@ -105,6 +119,8 @@ defmodule BubbleEx.Target.Ash.Project do
           policies_verified: false,
           actor_loads: [[String.t()]],
           authorization_bypasses: [Bypass.t()],
+          applied: [map()],
+          decisions_sha256: String.t() | nil,
           diagnostics: [Diagnostic.t()]
         }
 
@@ -141,8 +157,9 @@ defmodule BubbleEx.Target.Ash.Project do
   Aggregate counts, with string keys (for reports and count snapshots):
   resources, attributes by Ash type (`enum`, `typed_struct` and `json_value`
   for generated modules), relationships by kind, database references by mode,
-  enums and their values, typed structs by source, privacy (see
-  `privacy_summary/1`) and diagnostics by code.
+  enums and their values, typed structs by source, derived calculations,
+  applied decisions by transform, privacy (see `privacy_summary/1`) and
+  diagnostics by code.
   """
   @spec summary(t()) :: map()
   def summary(%__MODULE__{} = project) do
@@ -160,6 +177,11 @@ defmodule BubbleEx.Target.Ash.Project do
       "enums" => length(project.enums),
       "enum_values" => project.enums |> Enum.map(&length(&1.values)) |> Enum.sum(),
       "typed_structs" => frequencies(project.typed_structs, &source_key(&1.source)),
+      "derived_calculations" =>
+        project.resources
+        |> Enum.flat_map(& &1.calculations)
+        |> Enum.count(&(&1.kind == :derived)),
+      "applied" => frequencies(project.applied, &Atom.to_string(&1.transform)),
       "privacy" => privacy_summary(project),
       "diagnostics" => frequencies(project.diagnostics, &Atom.to_string(&1.code))
     }
@@ -175,7 +197,8 @@ defmodule BubbleEx.Target.Ash.Project do
   """
   @spec privacy_summary(t()) :: map()
   def privacy_summary(%__MODULE__{} = project) do
-    privacy = Enum.map(project.resources, & &1.privacy)
+    # nil with privacy: :omit
+    privacy = for r <- project.resources, r.privacy, do: r.privacy
     policies = Enum.flat_map(project.resources, & &1.policies)
     field_policies = Enum.flat_map(project.resources, & &1.field_policies)
     checks = Enum.flat_map(policies ++ field_policies, & &1.checks)
@@ -189,7 +212,10 @@ defmodule BubbleEx.Target.Ash.Project do
       "policies" => length(policies),
       "field_policies" => length(field_policies),
       "checks" => frequencies(checks, &check_key/1),
-      "calculations" => project.resources |> Enum.map(&length(&1.calculations)) |> Enum.sum(),
+      "calculations" =>
+        project.resources
+        |> Enum.flat_map(& &1.calculations)
+        |> Enum.count(&(&1.kind == :privacy)),
       "gated_relationships" =>
         project.resources |> Enum.map(&length(&1.privacy_relationships)) |> Enum.sum(),
       "auto_bind_actions" =>
@@ -242,7 +268,8 @@ defmodule BubbleEx.Target.Ash.Resource do
       `[:read, :destroy, create: :*, update: :*]`
     * `extra_actions` - `BubbleEx.Target.Ash.Action`s beyond the defaults
       (the `:search` read and the `:auto_bind` update of privacy rules)
-    * `calculations` - `BubbleEx.Target.Ash.Calculation`s: the private
+    * `calculations` - `BubbleEx.Target.Ash.Calculation`s: fields derived
+      by an owner decision (public, in attribute order), then the private
       boolean calculations the policies test (one per privacy rule, one
       per "everyone else" grant)
     * `policies` - `BubbleEx.Target.Ash.Policy`s (`policies do`); with
@@ -341,25 +368,46 @@ end
 
 defmodule BubbleEx.Target.Ash.Calculation do
   @moduledoc """
-  A private boolean expression calculation (`calculate name, :boolean,
-  expr(...), public?: false`) that a policy or field policy tests.
+  An expression calculation (`calculate name, type, expr(...), public?:
+  ...`).
 
     * `name` - the calculation name
+    * `kind` - `:privacy`: a private boolean calculation a policy or field
+      policy tests; `:derived`: a field an owner decision derives from a
+      related record (`derive_from_related`), public, named like the
+      attribute it replaces
+    * `type`, `constraints` - its Ash type (`:boolean` for `:privacy`) and
+      type constraints
+    * `public?` - as in Ash
     * `expr` - the `BubbleEx.Target.Ash.Expr` it computes; `^actor(...)`
       templates read the query's actor
-    * `source` - `%{type: _, rule: _}` for a privacy rule's condition, or
+    * `source` - `%{type: _, rule: _}` for a privacy rule's condition,
       `%{type: _, except_rules: [...]}` for "no rule in the list matches"
-      (the `everyone` rule's grants, see `BubbleEx.Target.Ash`)
+      (the `everyone` rule's grants, see `BubbleEx.Target.Ash`), or
+      `%{type: _, field: _}` for a derived field
     * `description` - the calculation's description
   """
 
   alias BubbleEx.Target.Ash.Expr
 
   @enforce_keys [:name, :expr, :source]
-  defstruct [:name, :expr, :source, :description]
+  defstruct [
+    :name,
+    :expr,
+    :source,
+    :description,
+    kind: :privacy,
+    type: :boolean,
+    constraints: [],
+    public?: false
+  ]
 
   @type t :: %__MODULE__{
           name: String.t(),
+          kind: :privacy | :derived,
+          type: BubbleEx.Target.Ash.Project.type(),
+          constraints: keyword(),
+          public?: boolean(),
           expr: Expr.t(),
           source: map(),
           description: String.t() | nil
@@ -511,7 +559,11 @@ defmodule BubbleEx.Target.Ash.Attribute do
     * `constraints` - Ash type constraints, e.g.
       `[trim?: false, allow_empty?: true]` or `[items: [...]]` for arrays
     * `primary_key?`, `allow_nil?`, `writable?`, `public?` - as in Ash
-    * `default` - `{:value, term}` for a static default, or nil for none
+    * `column` - the column name when it is not `name` (an attribute
+      renamed after the name lock keeps its column; rendered as
+      `source:`), else nil
+    * `default` - `{:value, term}` for a static default (`{:value,
+      {:decimal, "1.5"}}` for a decimal), or nil for none
     * `source` - the Bubble IDs it maps (`%{type: _, field: _}`,
       `%{external_type: _, field: _}` or `%{structured: _, component: _}`)
     * `bubble_type` - the Bubble type descriptor as supplied, or nil
@@ -527,6 +579,7 @@ defmodule BubbleEx.Target.Ash.Attribute do
     :bubble_type,
     :default,
     :references,
+    :column,
     constraints: [],
     primary_key?: false,
     allow_nil?: true,
@@ -543,6 +596,7 @@ defmodule BubbleEx.Target.Ash.Attribute do
           writable?: boolean(),
           public?: boolean(),
           default: {:value, term()} | nil,
+          column: String.t() | nil,
           source: map(),
           bubble_type: term(),
           references: %{target: String.t(), cardinality: :one | :many} | nil

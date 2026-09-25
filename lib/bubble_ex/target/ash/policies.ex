@@ -28,6 +28,7 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   alias BubbleEx.Target.Ash.{
     Action,
+    Attribute,
     Bypass,
     Calculation,
     Expressions,
@@ -123,6 +124,9 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     modules = Map.new(resources, &{&1.module, &1})
 
+    # A field derived by an owner decision reads through the twins too: it
+    # stands for a stored copy, which the related record's visibility did
+    # not hide, and its own field policy guards it like that copy.
     resources =
       Enum.map(resources, fn resource ->
         calculations =
@@ -277,10 +281,21 @@ defmodule BubbleEx.Target.Ash.Policies do
     end
   end
 
-  # Non-key attributes by Bubble field ID, in attribute order.
+  # Non-key attributes by Bubble field ID, in attribute order, then the
+  # fields derived by an owner decision (calculations): a derived field is
+  # guarded like the field it replaces.
   defp fields(resource) do
-    for a <- resource.attributes, not a.primary_key?, a.source[:field], do: {a.source.field, a}
+    attributes =
+      for a <- resource.attributes, not a.primary_key?, a.source[:field], do: {a.source.field, a}
+
+    derived =
+      for %Calculation{kind: :derived} = c <- resource.calculations, do: {c.source.field, c}
+
+    attributes ++ derived
   end
+
+  # What auto-binding may write: stored attributes only.
+  defp stored_fields(fields), do: Enum.filter(fields, &match?({_, %Attribute{}}, &1))
 
   defp file_fields(type, fields) do
     files =
@@ -373,7 +388,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         {{a.name, checks}, ctx}
       end)
 
-    {auto_bind, ctx} = auto_binding(ctx, fields)
+    {auto_bind, ctx} = auto_binding(ctx, stored_fields(fields))
     {attachments, ctx} = checks(ctx, :view_attachments, &(&1.view_attachments == true))
 
     {api, ctx} =
@@ -401,7 +416,9 @@ defmodule BubbleEx.Target.Ash.Policies do
       resource
       | actions: @write_defaults,
         extra_actions: [read_action(), search_action()] ++ auto_bind.actions,
-        calculations: ctx.order |> Enum.reverse() |> Enum.map(&Map.fetch!(ctx.calculations, &1)),
+        calculations:
+          resource.calculations ++
+            (ctx.order |> Enum.reverse() |> Enum.map(&Map.fetch!(ctx.calculations, &1))),
         policies:
           [keyed_policy(), read_policy(read), search_policy(search)] ++ auto_bind.policies,
         field_policies: field_policies(field_checks),
@@ -425,7 +442,9 @@ defmodule BubbleEx.Target.Ash.Policies do
     MapSet.new(
       Enum.map(resource.attributes, & &1.name) ++
         Enum.map(resource.relationships, & &1.name) ++
-        Map.values(Map.get(entry, "privacy_rules", %{}))
+        Enum.map(resource.calculations, & &1.name) ++
+        Map.values(Map.get(entry, "privacy_rules", %{})) ++
+        Map.values(Map.get(entry, "columns", %{}))
     )
   end
 

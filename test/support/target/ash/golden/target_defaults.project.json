@@ -1,7 +1,9 @@
 {
   "actor_loads": [],
+  "applied": [],
   "authorization_bypasses": [],
   "bubble_id": "synthetic-target-defaults",
+  "decisions_sha256": null,
   "diagnostics": [
     {
       "code": "ash_policies_unverified",
@@ -212,6 +214,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -237,6 +240,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -253,6 +257,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -269,6 +274,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -297,6 +303,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -322,6 +329,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "boolean",
+          "column": null,
           "constraints": [],
           "default": [
             "value",
@@ -341,6 +349,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "option.color",
+          "column": null,
           "constraints": [],
           "default": [
             "value",
@@ -363,6 +372,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "number",
+          "column": null,
           "constraints": [],
           "default": [
             "value",
@@ -382,6 +392,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": [
             "value",
@@ -401,6 +412,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -429,6 +441,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "option.color",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "hue",
@@ -448,6 +461,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "image",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -476,6 +490,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.text",
+          "column": null,
           "constraints": [
             [
               "items",
@@ -509,6 +524,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -537,6 +553,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -725,6 +742,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -750,6 +768,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -766,6 +785,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -782,6 +802,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -810,6 +831,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -835,6 +857,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1008,7 +1031,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "typed_structs": [],
   "types": []
 }

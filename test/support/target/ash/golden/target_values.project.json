@@ -1,7 +1,9 @@
 {
   "actor_loads": [],
+  "applied": [],
   "authorization_bypasses": [],
   "bubble_id": "synthetic-target-values",
+  "decisions_sha256": null,
   "diagnostics": [
     {
       "code": "ash_policies_unverified",
@@ -262,6 +264,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -287,6 +290,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -303,6 +307,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -319,6 +324,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -347,6 +353,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -372,6 +379,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "occurrences",
@@ -391,6 +399,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "dateinterval",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "gap",
@@ -407,6 +416,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.dateinterval",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "gaps",
@@ -426,6 +436,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "custom.venue",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -454,6 +465,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "something.new",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "odd",
@@ -473,6 +485,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "option.phase",
+          "column": null,
           "constraints": [],
           "default": [
             "value",
@@ -495,6 +508,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.option.phase",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "phases",
@@ -517,6 +531,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "geographic_address",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "place",
@@ -536,6 +551,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date_range",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "span",
@@ -555,6 +571,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": [
             "value",
@@ -574,6 +591,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.custom.venue",
+          "column": null,
           "constraints": [
             [
               "items",
@@ -798,6 +816,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -823,6 +842,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -839,6 +859,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -855,6 +876,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -883,6 +905,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -908,6 +931,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1096,6 +1120,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1121,6 +1146,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -1137,6 +1163,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -1153,6 +1180,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1181,6 +1209,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1206,6 +1235,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1368,7 +1398,7 @@
       "table": "venue"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "typed_structs": [
     {
       "bubble_name": null,
@@ -1377,6 +1407,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "start",
@@ -1393,6 +1424,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "end",
@@ -1426,6 +1458,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1451,6 +1484,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "number",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "lat",
@@ -1467,6 +1501,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "number",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "lng",

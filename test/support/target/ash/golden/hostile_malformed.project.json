@@ -1,7 +1,9 @@
 {
   "actor_loads": [],
+  "applied": [],
   "authorization_bypasses": [],
   "bubble_id": "synthetic-malformed",
+  "decisions_sha256": null,
   "diagnostics": [
     {
       "code": "model_malformed_node",
@@ -645,6 +647,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -670,6 +673,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -686,6 +690,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -702,6 +707,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -730,6 +736,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -906,6 +913,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -931,6 +939,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -947,6 +956,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -963,6 +973,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -991,6 +1002,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1016,6 +1028,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "custom.",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "empty_custom",
@@ -1035,6 +1048,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1060,6 +1074,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.list.text",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "nested_list",
@@ -1079,6 +1094,7 @@
         {
           "allow_nil?": true,
           "bubble_type": 7,
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "numeric_type",
@@ -1098,6 +1114,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.bad.defs.T",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "odd_api",
@@ -1117,6 +1134,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1142,6 +1160,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "quantum_state",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "quantum",
@@ -1161,6 +1180,7 @@
         {
           "allow_nil?": true,
           "bubble_type": null,
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "untyped",
@@ -1339,6 +1359,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1364,6 +1385,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -1380,6 +1402,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -1396,6 +1419,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1424,6 +1448,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1449,6 +1474,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1622,7 +1648,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "typed_structs": [
     {
       "bubble_name": "T",
@@ -1631,6 +1657,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1656,6 +1683,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "nil",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "odd",
