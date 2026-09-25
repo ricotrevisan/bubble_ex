@@ -80,6 +80,36 @@ defmodule BubbleEx.Db.Encoder do
       Map.get(from, :system) != :created_by
   end
 
+  @sql_formats [:postgres, :sqlite, :tsql]
+
+  @doc """
+  Reads and validates the `:foreign_keys` option (see `foreign_key?/2`):
+  `{:ok, :none | :enforced}`, or an `:invalid_input` error for any other
+  value. Every SQL encoder's `encode/2` calls it first.
+  """
+  @spec foreign_keys_mode(keyword()) :: {:ok, :none | :enforced} | {:error, Error.t()}
+  def foreign_keys_mode(opts) do
+    case Keyword.get(opts, :foreign_keys, :none) do
+      mode when mode in [:none, :enforced] ->
+        {:ok, mode}
+
+      mode ->
+        {:error, Error.new(:invalid_input, "invalid foreign_keys mode", %{mode: mode})}
+    end
+  end
+
+  @doc """
+  Validates the rendering options that apply to `format` before any work is
+  done: `:foreign_keys` for the SQL formats (PostgreSQL, SQLite, T-SQL),
+  ignored by every other format. `nil` (no format) is always `:ok`.
+  """
+  @spec validate_options(atom() | nil, keyword()) :: :ok | {:error, Error.t()}
+  def validate_options(format, opts) when format in @sql_formats do
+    with {:ok, _mode} <- foreign_keys_mode(opts), do: :ok
+  end
+
+  def validate_options(_format, _opts), do: :ok
+
   @doc """
   The scalar references (`scalar_reference?/1`) a SQL encoder keeps without
   a foreign key under `opts` (see `foreign_key?/2`), in Reader order.
@@ -95,7 +125,8 @@ defmodule BubbleEx.Db.Encoder do
   without a foreign key (`unconstrained_references/2`), one
   `-- <from> -> <to>` line each, or `""` when there are none. `describe`
   renders a `{from, to}` column pair in the dialect's quoting. Line breaks in
-  names are escaped so they cannot end the comment and run as SQL.
+  names (CR, LF, VT, FF, NEL, LS, PS) are escaped so they cannot end the
+  comment and run as SQL.
   """
   @spec reference_comments(
           [BubbleEx.Db.Reader.relationship()],
@@ -121,11 +152,24 @@ defmodule BubbleEx.Db.Encoder do
     end
   end
 
+  # Backslash first, so the escapes below stay unambiguous. Besides CR/LF
+  # (which end a SQL line comment), the other line terminators some tools
+  # split on (VT, FF, NEL, LS, PS) are escaped too.
+  @comment_escapes [
+    {"\\", "\\\\"},
+    {"\r", "\\r"},
+    {"\n", "\\n"},
+    {"\v", "\\v"},
+    {"\f", "\\f"},
+    {"\u0085", "\\u0085"},
+    {"\u2028", "\\u2028"},
+    {"\u2029", "\\u2029"}
+  ]
+
   defp comment_safe(text) do
-    text
-    |> String.replace("\\", "\\\\")
-    |> String.replace("\r", "\\r")
-    |> String.replace("\n", "\\n")
+    Enum.reduce(@comment_escapes, text, fn {char, escape}, acc ->
+      String.replace(acc, char, escape)
+    end)
   end
 
   @doc """
@@ -153,7 +197,7 @@ defmodule BubbleEx.Db.Encoder do
 
     with {:ok, module} <- module_for(format),
          {:ok, mode} <- external_type_mode(db_map, opts),
-         :ok <- validate_foreign_keys(opts),
+         :ok <- validate_options(format, opts),
          :ok <- validate_capabilities(format, opts),
          {:ok, content} <-
            module.encode(
@@ -183,13 +227,6 @@ defmodule BubbleEx.Db.Encoder do
     case Keyword.get(opts, :external_types, default) do
       mode when mode in [:preserve, :opaque, :legacy] -> {:ok, mode}
       mode -> {:error, Error.new(:invalid_input, "invalid external_types mode", %{mode: mode})}
-    end
-  end
-
-  defp validate_foreign_keys(opts) do
-    case Keyword.get(opts, :foreign_keys, :none) do
-      mode when mode in [:none, :enforced] -> :ok
-      mode -> {:error, Error.new(:invalid_input, "invalid foreign_keys mode", %{mode: mode})}
     end
   end
 

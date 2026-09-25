@@ -194,4 +194,11 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
     assert {:ok, legacy} = Sqlite.encode(db, external_types: :legacy)
     refute legacy =~ "json_valid"
   end
+
+  test "encode/2 rejects an unknown foreign_keys mode" do
+    for mode <- [:bogus, "enforced", nil] do
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+               Sqlite.encode(thing_db([]), foreign_keys: mode)
+    end
+  end
 end

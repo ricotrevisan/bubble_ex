@@ -858,9 +858,18 @@ defmodule BubbleEx.Db.ReaderTest do
       end
     end
 
-    test "Encoder.render rejects an unknown foreign_keys mode", %{db: db} do
-      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
-               BubbleEx.Db.Encoder.render(:postgres, db, foreign_keys: :deferred)
+    test "Encoder.render rejects an unknown foreign_keys mode for the SQL formats only",
+         %{db: db} do
+      for format <- [:postgres, :sqlite, :tsql] do
+        assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+                 BubbleEx.Db.Encoder.render(format, db, foreign_keys: :deferred)
+      end
+
+      for format <- [:dbml, :ecto, :zod, :xano, :convex] do
+        assert {:ok, bogus} = BubbleEx.Db.Encoder.render(format, db, foreign_keys: :deferred)
+        assert {:ok, default} = BubbleEx.Db.Encoder.render(format, db)
+        assert bogus == default, "#{format}"
+      end
     end
 
     test "Encoder.render emits the projection's diagnostics for its target", %{db: db} do

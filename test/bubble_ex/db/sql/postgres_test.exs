@@ -72,12 +72,16 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     assert sql =~ ~s[-- "custom"."Thing"."owner" -> "custom"."User"."_id"]
   end
 
-  test "escapes line breaks in names inside the reference comment" do
-    {db, _from} = owner_db("own\nDROP TABLE x;\r--")
+  test "escapes line terminators in names inside the reference comment" do
+    name = "own\nA\rB\vC\fD\u0085E\u2028F\u2029G\\H"
+    {db, _from} = owner_db(name)
     assert {:ok, sql} = Postgres.encode(db)
 
-    assert sql =~ ~s[-- "custom"."Thing"."own\\nDROP TABLE x;\\r--" -> "custom"."User"."_id"]
+    assert sql =~
+             ~S[-- "custom"."Thing"."own\nA\rB\vC\fD\u0085E\u2028F\u2029G\\H" -> "custom"."User"."_id"]
+
     [_tables, comments] = String.split(sql, "-- References")
+    refute comments =~ ~r/[\x{0D}\x{0B}\x{0C}\x{0085}\x{2028}\x{2029}]/u
     assert comments |> String.split("\n", trim: true) |> length() == 2
   end
 
@@ -175,5 +179,12 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     assert sql =~ ~s("payload" "Shape")
     assert {:ok, legacy} = Postgres.encode(db, external_types: :legacy)
     assert legacy =~ ~s("payload" text)
+  end
+
+  test "encode/2 rejects an unknown foreign_keys mode" do
+    for mode <- [:bogus, "enforced", nil] do
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+               Postgres.encode(thing_db([]), foreign_keys: mode)
+    end
   end
 end

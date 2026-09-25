@@ -43,8 +43,13 @@ defmodule BubbleEx.Db.Sql.Sqlite do
   """
 
   @impl true
-  @spec encode(map(), opts()) :: {:ok, String.t()}
+  @spec encode(map(), opts()) :: {:ok, String.t()} | {:error, BubbleEx.Error.t()}
   def encode(parsed_map, opts \\ []) do
+    with {:ok, _mode} <- BubbleEx.Db.Encoder.foreign_keys_mode(opts),
+         do: render(parsed_map, opts)
+  end
+
+  defp render(parsed_map, opts) do
     tables =
       parsed_map
       |> Map.get(:tables, [])

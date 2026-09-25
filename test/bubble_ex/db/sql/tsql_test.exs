@@ -196,4 +196,11 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
     assert {:ok, legacy} = Tsql.encode(db, external_types: :legacy)
     refute legacy =~ "ISJSON"
   end
+
+  test "encode/2 rejects an unknown foreign_keys mode" do
+    for mode <- [:bogus, "enforced", nil] do
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+               Tsql.encode(thing_db([]), foreign_keys: mode)
+    end
+  end
 end

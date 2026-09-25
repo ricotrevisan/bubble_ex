@@ -22,8 +22,13 @@ defmodule BubbleEx.Db.Sql.Postgres do
   @type opts :: [naming: :proper | :id | nil, foreign_keys: :none | :enforced]
 
   @impl true
-  @spec encode(map(), opts()) :: {:ok, String.t()}
+  @spec encode(map(), opts()) :: {:ok, String.t()} | {:error, BubbleEx.Error.t()}
   def encode(parsed_map, opts \\ []) do
+    with {:ok, _mode} <- BubbleEx.Db.Encoder.foreign_keys_mode(opts),
+         do: render(parsed_map, opts)
+  end
+
+  defp render(parsed_map, opts) do
     plan =
       Keyword.get_lazy(opts, :_external_plan, fn ->
         BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
