@@ -1,0 +1,65 @@
+import { z } from 'zod';
+
+// Blog Post
+export const BlogPostSchema = z.object({
+  _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+});
+
+export type BlogPost = z.infer<typeof BlogPostSchema>;
+
+// Post
+export const PostSchema = z.object({
+  _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  created_date: z.string().datetime().nullish(),
+  'Created-By': z.string().nullish(), // reference -> user
+  created_by_id: z.string().nullish(),
+  'Foo Bar': z.string().nullish(),
+  'foo-bar': z.number().nullish(),
+  'Owner ID': z.string().nullish(),
+  Owner: z.string().nullish(), // reference -> user
+  bubble_id: z.string().nullish(),
+});
+
+export type Post = z.infer<typeof PostSchema>;
+
+// Repo
+export const RepoSchema = z.object({
+  _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+});
+
+export type Repo = z.infer<typeof RepoSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Blog-Post
+export const BlogPost2Schema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type BlogPost2 = z.infer<typeof BlogPost2Schema>;
+--- diagnostics ---
+db_converted_name_suffixed /option_sets/blog_post_os
+model_synthesized_user_type /user_types/user

@@ -9,6 +9,8 @@ defmodule BubbleEx.Db.Naming do
   every emitted name is a legal identifier and that no two names in the same
   scope collide. `tokens/1`, `pascal_case/2`, and `snake_case/2` carry the
   sanitization; `claim/3` and `unique_names/4` carry the scope guarantees.
+  `variant/4` and `dedupe/2` guarantee them for names derived after case
+  conversion (`BubbleEx.Db.Encoder.Names`, WTF-391).
   """
 
   @doc """
@@ -98,4 +100,75 @@ defmodule BubbleEx.Db.Naming do
 
     map
   end
+
+  @doc """
+  The `n`th variant of a converted `name`: the name itself for `n == 1`,
+  otherwise the name followed by `separator` and `n` (`"title_2"` with `"_"`,
+  `"title2"` with `""`). With a `max` length the name is shortened first so
+  the variant, suffix included, fits (trailing underscores left by the cut
+  are dropped), keeping the suffix that makes it unique.
+  """
+  @spec variant(String.t(), pos_integer(), String.t(), pos_integer() | :infinity) :: String.t()
+  def variant(name, n, separator \\ "_", max \\ :infinity)
+
+  def variant(name, 1, _separator, max), do: fit(name, max)
+
+  def variant(name, n, separator, max) when is_integer(n) and n > 1 do
+    suffix = separator <> Integer.to_string(n)
+    limit = if max == :infinity, do: :infinity, else: max - String.length(suffix)
+    fit(name, limit) <> suffix
+  end
+
+  defp fit(name, :infinity), do: name
+
+  defp fit(name, max) do
+    if String.length(name) <= max do
+      name
+    else
+      cut = String.slice(name, 0, max)
+
+      case String.trim_trailing(cut, "_") do
+        "" -> cut
+        trimmed -> trimmed
+      end
+    end
+  end
+
+  @doc """
+  Gives every item names that are unique within one scope, first come first
+  served. Each item is `{key, variants}`, where `variants.(n)` returns the
+  names the item needs for its `n`th variant (usually built with
+  `variant/4`; one item can need several names, e.g. an association and its
+  foreign key). An item takes its first variant (`n` = 1, 2, ...) whose
+  names are all free, then those names are taken; names in `reserved` are
+  taken from the start. Names are any terms, so separate namespaces can
+  share one scope as tagged tuples.
+
+  Returns `{names, suffixed}`: `key => names` for every item, and the
+  `{key, first_variant_names, names}` of each item that did not get its
+  first variant, in item order.
+  """
+  @spec dedupe([{term(), (pos_integer() -> [term()])}], Enumerable.t()) ::
+          {%{term() => [term()]}, [{term(), [term()], [term()]}]}
+  def dedupe(items, reserved \\ []) do
+    {names, _used, suffixed} =
+      Enum.reduce(items, {%{}, MapSet.new(reserved), []}, fn {key, variants},
+                                                             {names, used, suffixed} ->
+        first = variants.(1)
+
+        chosen =
+          1
+          |> Stream.iterate(&(&1 + 1))
+          |> Stream.map(variants)
+          |> Enum.find(&free?(&1, used))
+
+        suffixed = if chosen == first, do: suffixed, else: [{key, first, chosen} | suffixed]
+        {Map.put(names, key, chosen), Enum.into(chosen, used), suffixed}
+      end)
+
+    {names, Enum.reverse(suffixed)}
+  end
+
+  defp free?(names, used),
+    do: Enum.uniq(names) == names and not Enum.any?(names, &MapSet.member?(used, &1))
 end

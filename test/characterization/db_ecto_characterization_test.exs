@@ -66,8 +66,11 @@ defmodule BubbleEx.Characterization.DbEctoTest do
   end
 
   test "emits an index per scalar foreign key", %{code: code} do
-    assert code =~ "create index(\"survey_response\", [:onboarding_answer_id])"
-    assert code =~ "create index(\"survey_response\", [:status_id])"
+    assert code =~
+             ~s{create index("survey_response", [:onboarding_answer_id], name: "survey_response_onboarding_answer_id_index")}
+
+    assert code =~
+             ~s{create index("survey_response", [:status_id], name: "survey_response_status_id_index")}
   end
 
   test "emits a changeset casting value fields and requiring the primary key", %{code: code} do

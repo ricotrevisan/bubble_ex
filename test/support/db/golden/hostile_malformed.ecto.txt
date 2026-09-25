@@ -43,7 +43,7 @@ defmodule MyApp.Repo.Migrations.CreateListy do
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("listy", [:created_by_id])
+    create index("listy", [:created_by_id], name: "listy_created_by_id_index")
   end
 end
 
@@ -95,7 +95,7 @@ defmodule MyApp.Repo.Migrations.CreateTask do
       add :quantum, :string
       add :untyped, :string
     end
-    create index("task", [:created_by_id])
+    create index("task", [:created_by_id], name: "task_created_by_id_index")
   end
 end
 
@@ -133,7 +133,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 

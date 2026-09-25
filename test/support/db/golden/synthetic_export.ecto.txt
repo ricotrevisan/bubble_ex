@@ -32,7 +32,7 @@ defmodule MyApp.Repo.Migrations.CreateProject do
       add :slug, :string
       add :name, :string
     end
-    create index("project", [:created_by_id])
+    create index("project", [:created_by_id], name: "project_created_by_id_index")
   end
 end
 
@@ -76,9 +76,9 @@ defmodule MyApp.Repo.Migrations.CreateTask do
       add :status_id, :string
       add :title, :string
     end
-    create index("task", [:created_by_id])
-    create index("task", [:project_id])
-    create index("task", [:status_id])
+    create index("task", [:created_by_id], name: "task_created_by_id_index")
+    create index("task", [:project_id], name: "task_project_id_index")
+    create index("task", [:status_id], name: "task_status_id_index")
   end
 end
 
@@ -116,7 +116,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 

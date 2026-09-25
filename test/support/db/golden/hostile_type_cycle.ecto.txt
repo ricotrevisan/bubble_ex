@@ -32,8 +32,8 @@ defmodule MyApp.Repo.Migrations.CreateA do
       add :slug, :string
       add :b_id, :string
     end
-    create index("a", [:created_by_id])
-    create index("a", [:b_id])
+    create index("a", [:created_by_id], name: "a_created_by_id_index")
+    create index("a", [:b_id], name: "a_b_id_index")
   end
 end
 
@@ -71,7 +71,7 @@ defmodule MyApp.Repo.Migrations.CreateB do
       add :slug, :string
       add :c, {:array, :string}
     end
-    create index("b", [:created_by_id])
+    create index("b", [:created_by_id], name: "b_created_by_id_index")
   end
 end
 
@@ -109,8 +109,8 @@ defmodule MyApp.Repo.Migrations.CreateC do
       add :slug, :string
       add :a_id, :string
     end
-    create index("c", [:created_by_id])
-    create index("c", [:a_id])
+    create index("c", [:created_by_id], name: "c_created_by_id_index")
+    create index("c", [:a_id], name: "c_a_id_index")
   end
 end
 
@@ -148,7 +148,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 --- diagnostics ---

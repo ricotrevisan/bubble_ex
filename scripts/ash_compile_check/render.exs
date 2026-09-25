@@ -4,7 +4,9 @@
 # project: one namespace, domain, repo and database per fixture. The
 # project's dependencies are BubbleEx.Target.Ash.versions/0. With
 # BUBBLE_EX_PRIVATE_EXPORT set, a private app export is rendered too (as
-# `Private.App`); the scratch project is never committed.
+# `Private.App`); the scratch project is never committed. The BubbleEx.Db.Ecto
+# output of the same fixtures (and the schema golden fixtures) is written
+# beside it, so the compile step checks it too.
 #
 #     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir>
 
@@ -54,6 +56,40 @@ rendered =
     IO.puts("rendered #{name} as #{namespace} (#{length(project.resources)} resources)")
     {namespace, repo, name}
   end
+
+# The Db.Ecto output of every schema golden fixture (and the private export)
+# compiles in the same project (WTF-391): Ecto rejects a repeated field,
+# association or foreign key at compile time. One namespace per fixture.
+ecto_lib = Path.join(dir, "lib/ecto_generated")
+File.rm_rf!(ecto_lib)
+File.mkdir_p!(ecto_lib)
+
+ecto_fixtures =
+  (Path.wildcard("test/support/model/*.json") ++
+     Path.wildcard("test/support/db/fixtures/*.json") ++
+     ~w(test/support/samples/synthetic_app.json test/support/samples/synthetic_export.json))
+  |> Enum.sort()
+  |> Enum.map(&{Path.basename(&1, ".json"), &1 |> File.read!() |> Jason.decode!()})
+
+ecto_private =
+  Enum.map(private, fn {_namespace, name, app} -> {name, app} end)
+
+for {name, app} <- ecto_fixtures ++ ecto_private, naming <- [:proper, :id] do
+  {:ok, db} = BubbleEx.Db.Reader.parse(app)
+  namespace = "EctoCheck.#{Macro.camelize(name)}.#{Macro.camelize(Atom.to_string(naming))}"
+  {:ok, result} = BubbleEx.Db.Encoder.render(:ecto, db, naming: naming, namespace: namespace)
+  File.write!(Path.join(ecto_lib, "#{name}_#{naming}.ex"), result.content)
+end
+
+# The repo ecto_migrate.exs runs those migrations with (not in ecto_repos:
+# it is started per database).
+File.write!(Path.join(ecto_lib, "repo.ex"), """
+defmodule EctoCheck.Repo do
+  use Ecto.Repo, otp_app: :ash_compile_check, adapter: Ecto.Adapters.Postgres
+end
+""")
+
+IO.puts("rendered #{2 * length(ecto_fixtures ++ ecto_private)} Db.Ecto schemas")
 
 deps = Enum.map_join(BubbleEx.Target.Ash.versions(), ", ", &inspect/1)
 

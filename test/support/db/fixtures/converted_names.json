@@ -1,0 +1,26 @@
+{
+  "_id": "synthetic-converted-names",
+  "user_types": {
+    "post": {
+      "display": "Post",
+      "fields": {
+        "a_created_date_date": {"display": "created_date", "value": "date"},
+        "b_created_by_user": {"display": "Created-By", "value": "user"},
+        "c_created_by_id_text": {"display": "created_by_id", "value": "text"},
+        "d_foo_bar_text": {"display": "Foo Bar", "value": "text"},
+        "e_foo_bar_number": {"display": "foo-bar", "value": "number"},
+        "f_owner_id_text": {"display": "Owner ID", "value": "text"},
+        "g_owner_user": {"display": "Owner", "value": "user"},
+        "h_bubble_id_text": {"display": "bubble_id", "value": "text"}
+      }
+    },
+    "blog_post": {"display": "Blog Post", "fields": {}},
+    "repo": {"display": "Repo", "fields": {}}
+  },
+  "option_sets": {
+    "blog_post_os": {
+      "display": "Blog-Post",
+      "values": {"v1": {"display": "Draft", "db_value": "draft"}}
+    }
+  }
+}

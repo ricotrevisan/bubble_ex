@@ -26,11 +26,18 @@ defmodule BubbleEx.Db.Xano do
   adapt to the Metadata API import shape, not a turnkey import file. A leading
   `_note` object in the array records the same caveat in-band.
 
-  Table and field names are snake_cased. `:api`-group placeholder tables are
-  skipped and `deleted` columns are dropped, mirroring `BubbleEx.Db.Sql.Postgres`.
+  Table and field names are snake_cased, and unique after conversion
+  (`names/2`, `BubbleEx.Db.Encoder.Names`): table names across the schema,
+  field names per table, where the primary key and the built-in fields keep
+  theirs and a later repeat takes the next free `_2`, `_3`, ...
+  `:api`-group placeholder tables are skipped and `deleted` columns are
+  dropped, mirroring `BubbleEx.Db.Sql.Postgres`.
   """
 
   @behaviour BubbleEx.Db.Encoder
+
+  alias BubbleEx.Db.Encoder.Names
+  alias BubbleEx.Db.Naming
 
   @type opts :: [naming: :proper | :id, external_types: :preserve | :opaque | :legacy]
 
@@ -49,7 +56,11 @@ defmodule BubbleEx.Db.Xano do
         BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
       end)
 
-    opts = Keyword.put(opts, :_external_plan, plan)
+    opts =
+      opts
+      |> Keyword.put(:_external_plan, plan)
+      |> Keyword.put(:_names, names(parsed_map, opts))
+
     rel_index = relationship_index(parsed_map)
 
     external_index =
@@ -65,6 +76,40 @@ defmodule BubbleEx.Db.Xano do
       |> Enum.map(&encode_table(&1, rel_index, external_index, opts))
 
     {:ok, Jason.encode!([@note | Enum.map(tables, &ordered/1)], pretty: true) <> "\n"}
+  end
+
+  @doc """
+  The table and field names after conversion, unique per scope (see the
+  moduledoc and `BubbleEx.Db.Encoder.Names`), each `[name]`.
+  """
+  @impl true
+  @spec names(map(), keyword()) :: Names.t()
+  def names(parsed_map, opts \\ []) do
+    parsed_map
+    |> Map.get(:tables, [])
+    |> Enum.reject(&(&1.group == :api))
+    |> Names.build(
+      table: &variants(snake(table_name(&1, opts))),
+      column: &variants(snake(column_name(&1, opts)))
+    )
+  end
+
+  defp variants(name), do: &[Naming.variant(name, &1, "_")]
+
+  # A reference's target the names do not cover (a hand-built db map) is
+  # converted on its own.
+  defp converted_table(table_or_column, opts) do
+    case Names.table(Keyword.fetch!(opts, :_names), table_or_column) do
+      [name] -> name
+      nil -> snake(ref_table_name(table_or_column, opts))
+    end
+  end
+
+  defp converted_column(column, opts) do
+    case Names.column(Keyword.fetch!(opts, :_names), column) do
+      [name] -> name
+      nil -> snake(column_name(column, opts))
+    end
   end
 
   # Atom-keyed maps iterate in atom-table order on OTP 26+, which depends on
@@ -90,12 +135,12 @@ defmodule BubbleEx.Db.Xano do
       |> Enum.reject(& &1.deleted)
       |> Enum.map(&encode_field(&1, rel_index, external_index, opts))
 
-    %{name: snake(table_name(table, opts)), fields: fields}
+    %{name: converted_table(table, opts), fields: fields}
   end
 
   defp encode_field(column, rel_index, external_index, opts) do
     %{
-      name: snake(column_name(column, opts)),
+      name: converted_column(column, opts),
       type: xano_type(column.type),
       style: external_style(column.type)
     }
@@ -179,7 +224,7 @@ defmodule BubbleEx.Db.Xano do
         "ref:#{snake(column.type.custom_type)} (link manually in Xano)"
 
       to ->
-        "ref:#{snake(ref_table_name(to, opts))}.#{snake(column_name(to, opts))} " <>
+        "ref:#{converted_table(to, opts)}.#{converted_column(to, opts)} " <>
           "(link manually in Xano)"
     end
   end
@@ -188,7 +233,7 @@ defmodule BubbleEx.Db.Xano do
     name =
       case Map.get(rel_index, column.id) do
         nil -> snake(column.type.custom_type)
-        to -> snake(ref_table_name(to, opts))
+        to -> converted_table(to, opts)
       end
 
     "enum:#{name} (option values not rendered)"

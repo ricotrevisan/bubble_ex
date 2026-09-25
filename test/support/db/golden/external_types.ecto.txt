@@ -101,7 +101,7 @@ defmodule MyApp.Repo.Migrations.CreateShipment do
       add :pings, :map
       add :tree, :map
     end
-    create index("shipment", [:created_by_id])
+    create index("shipment", [:created_by_id], name: "shipment_created_by_id_index")
   end
 end
 
@@ -139,7 +139,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 --- diagnostics ---

@@ -33,6 +33,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
     "lib/bubble_ex/db/reader.ex" =>
       "emits its own `db_value` / `display` key columns; reads nothing from the app JSON",
     "lib/bubble_ex/db/encoder.ex" => "builds JSON pointers for diagnostics on hand-built db maps",
+    "lib/bubble_ex/db/encoder/names.ex" =>
+      "builds JSON pointers for name diagnostics on tables and hand-built db maps",
     "lib/bubble_ex/db/convex.ex" => "a comment naming the `db_value` key column",
     "lib/bubble_ex/target/ash.ex" =>
       "the Ash name map's own JSON members (`attributes`, `fields`)",

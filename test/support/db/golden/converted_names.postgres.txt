@@ -1,0 +1,63 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Blog Post" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Post" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "created_date" timestamptz,
+  "Created-By" text,
+  "created_by_id" text,
+  "Foo Bar" text,
+  "foo-bar" double precision,
+  "Owner ID" text,
+  "Owner" text,
+  "bubble_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Repo" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Blog-Post" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Blog Post"."Created By" -> "custom"."User"."_id"
+-- "custom"."Post"."Created By" -> "custom"."User"."_id"
+-- "custom"."Post"."Created-By" -> "custom"."User"."_id"
+-- "custom"."Post"."Owner" -> "custom"."User"."_id"
+-- "custom"."Repo"."Created By" -> "custom"."User"."_id"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,202 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "blog_post",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "post",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "created_date_2",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by_2",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_by_id",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "foo_bar",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "foo_bar_2",
+        "type": "decimal",
+        "style": "single"
+      },
+      {
+        "name": "owner_id",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "owner",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "bubble_id",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "repo",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "blog_post_2",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+db_converted_name_suffixed /option_sets/blog_post_os
+db_converted_name_suffixed /user_types/post/fields/a_created_date_date/value
+db_converted_name_suffixed /user_types/post/fields/b_created_by_user/value
+db_converted_name_suffixed /user_types/post/fields/e_foo_bar_number/value
+model_synthesized_user_type /user_types/user
