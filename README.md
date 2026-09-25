@@ -335,7 +335,7 @@ IO.puts(app.schema)
 | `:sqlite`   | SQLite DDL |
 | `:tsql`     | SQL Server / Azure SQL T-SQL DDL |
 | `:ecto`     | Ecto schema modules + migrations |
-| `:ash`      | Ash resources and embedded resources |
+| `:ash`      | Ash resources, enums and typed structs (via `BubbleEx.Model` and `BubbleEx.Target.Ash`) |
 | `:zod`      | Zod (TypeScript) validation schemas |
 | `:xano`     | Xano table-schema import JSON |
 | `:convex`   | Convex `schema.ts` |
@@ -372,9 +372,34 @@ DBML diagnostics are returned separately in `:dbml_diagnostics`. BubbleEx never
 infers type members from response samples. Version-sensitive output is opt-in
 through `external_type_capabilities`, for example `%{tsql: [:native_json]}`.
 Target limitations are localized: PostgreSQL uses composites where possible;
-Ecto/Ash use identity-free embeds; Zod uses loose objects; Xano expands acyclic
+Ecto uses identity-free embeds; Zod uses loose objects; Xano expands acyclic
 shapes inline; DBML, SQLite, T-SQL, and unsupported recursive edges use honest
 JSON fallbacks.
+
+### Ash
+
+`:ash` is not an encoder over the Reader's tables. It maps the typed
+`BubbleEx.Model` through `BubbleEx.Target.Ash`, which returns the Ash project
+as plain data (resources, attributes, relationships, enums, typed structs,
+diagnostics and a name map), and prints it with `BubbleEx.Target.Ash.Source`:
+
+```elixir
+{:ok, model} = BubbleEx.Model.build(app_json)
+{:ok, project} = BubbleEx.Target.Ash.map(model)
+{:ok, source} = BubbleEx.Target.Ash.Source.render(project, namespace: "MyApp")
+
+# Later: keep every generated name, even after captions change in Bubble.
+{:ok, project} = BubbleEx.Target.Ash.map(new_model, [], names: project.names)
+```
+
+The mapping is source-faithful: Bubble IDs are writable string primary keys,
+references keep Bubble IDs with no database foreign key, lists keep their
+order, numbers are floats, and option sets are `Ash.Type.Enum`s keyed by their
+stable `db_value`. The `:naming`, `:external_types` and
+`:external_type_capabilities` options do not apply to it. See the
+`BubbleEx.Target.Ash` moduledoc for the full table, and
+`scripts/ash_compile_check.sh` to compile the output against pinned Ash
+versions.
 
 ### DBML / database diagram (legacy options)
 

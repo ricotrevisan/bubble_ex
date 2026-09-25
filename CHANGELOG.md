@@ -6,6 +6,21 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **`BubbleEx.Db.Ash` is deleted** (no alias, no compatibility layer; WTF-362).
+  Ash output now comes from the Model: `BubbleEx.Model.build/1` →
+  `BubbleEx.Target.Ash.map/3` (a `%BubbleEx.Target.Ash.Project{}` of plain
+  structs) → `BubbleEx.Target.Ash.Source.render/2` (one source file).
+  `Db.Encoder.module_for(:ash)` and `Db.Encoder.render(:ash, …)` now return
+  `:unknown_format`, and the `external_type_capabilities: %{ash: …}`
+  attestation is gone. `fetch_app(id, format: :ash)` keeps working through
+  the new path; for it the `:naming`, `:external_types` and
+  `:external_type_capabilities` options no longer apply. The generated source
+  changes: option sets are `Ash.Type.Enum` modules keyed by `db_value`
+  instead of resources, list references are ordered `{:array, :string}` of
+  Bubble IDs, scalar references are `belongs_to` with no database foreign
+  key, strings are untrimmed, structured values and known API types are
+  `Ash.TypedStruct`s, names follow WTF-339 (see `BubbleEx.Target.Ash.Naming`)
+  and the primary key is `id`.
 - One diagnostic type, `BubbleEx.Diagnostic`, replaces `BubbleEx.Expression.Diagnostic`
   (removed, no alias) and the Reader's and encoders' warning maps. It carries a
   stable `code`, `severity`, `outcome` (`:preserved | :degraded | :unresolved`),
@@ -47,6 +62,20 @@ All notable changes to this project are documented here.
   `"model"` or `"target:<format>"`; `Diagnostic.parse_stage/1` reverses this.
 
 ### Added
+
+- `BubbleEx.Target.Ash` (WTF-362): maps a `BubbleEx.Model` to a
+  `BubbleEx.Target.Ash.Project` describing Ash resources, attributes,
+  `belongs_to` relationships, enums and typed structs as data, with the
+  source-faithful defaults of WTF-338 and diagnostics at stage
+  `{:target, :ash}` (new `ash_*` codes). Names are derived by
+  `BubbleEx.Target.Ash.Naming` and recorded in a per-app name map
+  (`project.names`); passing it back as `names:` keeps every name, so caption
+  edits in Bubble do not rename code. `decisions` must be `[]` until WTF-352.
+  `BubbleEx.Target.Ash.Source.render/2` prints a Project; a `mix xref` test
+  keeps it independent of the Model and the Reader.
+- `scripts/ash_compile_check.sh` (and the `ash-compile-check` CI job) compiles
+  the generated source of every model fixture in a scratch project with
+  pinned `ash` 3.31.3 / `ash_postgres` 2.11.0 and dry-runs `mix ash.codegen`.
 
 - Deterministic model-refinement analyzers through `BubbleEx.Findings.analyze/2`
   / `BubbleEx.model_findings/2`. They emit `BubbleEx.Finding`s, a type separate

@@ -9,7 +9,7 @@ defmodule BubbleEx.Apps.Enricher do
   require Logger
   alias BubbleEx.Apps.Parser
   alias BubbleEx.Db.{Encoder, Reader}
-  alias BubbleEx.HTTP
+  alias BubbleEx.{HTTP, Model, Target}
 
   @doc """
   Adds database schema output to app attributes if requested.
@@ -17,6 +17,9 @@ defmodule BubbleEx.Apps.Enricher do
   Renders DBML into `:dbml`/`:dbdiagram` when the legacy `:dbml` /
   `:include_db_diagram` options are set, and/or renders the `:format` target
   (e.g. `:postgres`) into `:schema`. The payload is parsed once and shared.
+  `format: :ash` maps `BubbleEx.Model` through `BubbleEx.Target.Ash` and
+  renders it with `BubbleEx.Target.Ash.Source` instead; its diagnostics land
+  in `:schema_diagnostics` as for other formats.
   """
   @spec maybe_add_db_diagram(map(), map(), keyword()) :: map()
   def maybe_add_db_diagram(attrs, app_data, opts) do
@@ -184,7 +187,7 @@ defmodule BubbleEx.Apps.Enricher do
 
     attrs
     |> maybe_put_dbml(parsed_map, opts, legacy?)
-    |> maybe_put_schema(parsed_map, opts, format)
+    |> maybe_put_schema(parsed_map, app_data, opts, format)
   rescue
     error ->
       message = "Error parsing database diagram: #{Exception.message(error)}"
@@ -218,9 +221,26 @@ defmodule BubbleEx.Apps.Enricher do
     end
   end
 
-  defp maybe_put_schema(attrs, _parsed_map, _opts, nil), do: attrs
+  defp maybe_put_schema(attrs, _parsed_map, _app_data, _opts, nil), do: attrs
 
-  defp maybe_put_schema(attrs, parsed_map, opts, format) do
+  defp maybe_put_schema(attrs, _parsed_map, app_data, _opts, :ash) do
+    with {:ok, model} <- Model.build(app_data),
+         {:ok, project} <- Target.Ash.map(model),
+         {:ok, source} <- Target.Ash.Source.render(project) do
+      attrs
+      |> Map.put(:schema, source)
+      |> maybe_put_diagnostics(:schema_diagnostics, project.diagnostics)
+    else
+      {:error, error} ->
+        Logger.warning(
+          "Could not render schema: #{inspect(BubbleEx.SafeMetadata.sanitize(error))}"
+        )
+
+        attrs
+    end
+  end
+
+  defp maybe_put_schema(attrs, parsed_map, _app_data, opts, format) do
     case Encoder.render(
            format,
            parsed_map,

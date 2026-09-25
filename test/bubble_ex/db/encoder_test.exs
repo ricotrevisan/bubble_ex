@@ -19,8 +19,8 @@ defmodule BubbleEx.Db.EncoderTest do
       assert error.context == %{format: :mongodb}
     end
 
-    test "resolves :ash" do
-      assert BubbleEx.Db.Encoder.module_for(:ash) == {:ok, BubbleEx.Db.Ash}
+    test ":ash is no longer an encoder (BubbleEx.Target.Ash maps from the Model)" do
+      assert {:error, %BubbleEx.Error{kind: :unknown_format}} = Encoder.module_for(:ash)
     end
   end
 
@@ -123,7 +123,7 @@ defmodule BubbleEx.Db.EncoderTest do
       planned_names =
         BubbleEx.Db.Encoder.Plan.build(db).names |> Map.values() |> Enum.map(&String.downcase/1)
 
-      for format <- [:postgres, :ecto, :ash, :convex] do
+      for format <- [:postgres, :ecto, :convex] do
         assert {:ok, result} = Encoder.render(format, db, external_types: :preserve)
         normalized_content = String.downcase(result.content) |> String.replace(~r/[^a-z0-9]+/, "")
         normalized_names = Enum.map(planned_names, &String.replace(&1, ~r/[^a-z0-9]+/, ""))
@@ -155,21 +155,13 @@ defmodule BubbleEx.Db.EncoderTest do
       assert ecto_recursive.content =~ "embeds_one"
       refute Enum.any?(ecto_recursive.diagnostics, &(&1.code == :external_type_cycle_edge))
 
-      assert {:ok, ash_recursive} =
-               Encoder.render(:ash, db,
-                 external_types: :preserve,
-                 external_type_capabilities: %{ash: [:recursive_new_type]}
-               )
-
-      refute Enum.any?(ash_recursive.diagnostics, &(&1.code == :external_type_cycle_edge))
-
       shuffled = %{
         db
         | external_types:
             nodes |> Enum.reverse() |> Enum.map(&%{&1 | fields: Enum.reverse(&1.fields)})
       }
 
-      for format <- [:postgres, :ecto, :ash, :zod, :xano, :convex] do
+      for format <- [:postgres, :ecto, :zod, :xano, :convex] do
         assert Encoder.render(format, shuffled, external_types: :preserve) ==
                  Encoder.render(format, db, external_types: :preserve)
       end
@@ -183,9 +175,7 @@ defmodule BubbleEx.Db.EncoderTest do
                Encoder.render(:dbml, %{}, external_type_capabilities: %{tsql: [:future_json]})
 
       assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
-               Encoder.render(:ecto, %{},
-                 external_type_capabilities: %{ash: [:recursive_new_type]}
-               )
+               Encoder.render(:ecto, %{}, external_type_capabilities: %{tsql: [:native_json]})
     end
 
     test "defaults older maps without external_types to legacy mode" do
@@ -217,7 +207,7 @@ defmodule BubbleEx.Db.EncoderTest do
         tables: [%{id: "item", name: "Item", group: :custom, columns: [column]}]
       }
 
-      for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex],
+      for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :zod, :xano, :convex],
           mode <- [:preserve, :opaque, :legacy] do
         assert {:ok, %Encoder.Result{format: ^format, content: content, diagnostics: diagnostics}} =
                  Encoder.render(format, db, external_types: mode)
