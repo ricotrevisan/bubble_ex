@@ -33,6 +33,7 @@ defmodule BubbleEx.Findings.SearchIndex do
   alias BubbleEx.Expression.Ast
   alias BubbleEx.Findings.Context
   alias BubbleEx.Index.{Symbol, Types}
+  alias BubbleEx.Model.Type
 
   @access %{
     equals: :equality,
@@ -134,7 +135,7 @@ defmodule BubbleEx.Findings.SearchIndex do
     cond do
       op == "geographic_search" -> :geo
       value_type == "geographic_address" and op in [:equals, :in] -> :geo
-      op == :contains and match?("list." <> _, value_type) -> :membership
+      op == :contains and Type.list?(value_type) -> :membership
       true -> Map.get(@access, op)
     end
   end

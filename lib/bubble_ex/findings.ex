@@ -39,12 +39,17 @@ defmodule BubbleEx.Findings do
   ## Options
 
     * `:index` - a `BubbleEx.Index` already built from the same app (its
-      `source_sha256` must match the app; otherwise `:invalid_input`)
+      `source_sha256` must match the app; otherwise `:invalid_input`). Its
+      Model is reused.
+    * `:model` - a `BubbleEx.Model` already built from the same app
+      (checked with `BubbleEx.Model.matches?/2`; otherwise `:invalid_input`),
+      used for the index when none is given and for typing expressions.
+      Without either, the Model is built once, here.
     * `:kinds` - only these kinds (default: all, see `BubbleEx.Finding.Kinds`).
       A kind's findings do not depend on which other kinds are requested.
   """
 
-  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Finding, Index}
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Finding, Index, Model}
   alias BubbleEx.Finding.Kinds
 
   alias BubbleEx.Findings.{
@@ -68,14 +73,15 @@ defmodule BubbleEx.Findings do
           index_sha256: String.t() | nil
         }
 
-  @type option :: {:index, Index.t()} | {:kinds, [atom()]}
+  @type option :: {:index, Index.t()} | {:model, Model.t()} | {:kinds, [atom()]}
 
   @doc "Runs the analyzers over decoded app JSON."
   @spec analyze(term(), [option()]) :: {:ok, t()} | {:error, Error.t()}
   def analyze(app, opts \\ []) do
     with {:ok, kinds} <- kinds(Keyword.get(opts, :kinds, Kinds.all())),
-         {:ok, index} <- index(app, Keyword.get(opts, :index)) do
-      ctx = Context.build(app, index)
+         {:ok, model} <- model(app, Keyword.get(opts, :model), Keyword.get(opts, :index)),
+         {:ok, index} <- index(app, Keyword.get(opts, :index), model) do
+      ctx = Context.build(app, index, model || index.model)
       findings = ctx |> all_findings() |> Enum.filter(&(&1.kind in kinds)) |> Finding.normalize()
 
       {:ok,
@@ -126,18 +132,26 @@ defmodule BubbleEx.Findings do
   defp kinds(other),
     do: {:error, Error.new(:invalid_input, "kinds must be a list", %{kinds: other})}
 
-  defp index(app, nil) when is_map(app), do: Index.build(app)
+  # A given model is checked; else the given index's (already checked
+  # through the index's source hash); else none yet (the index builds it).
+  defp model(app, nil, %Index{model: %Model{} = model}) when is_map(app), do: {:ok, model}
+  defp model(app, nil, %Index{}) when is_map(app), do: Model.for_app(app, nil)
+  defp model(_app, nil, _index), do: {:ok, nil}
+  defp model(app, model, _index), do: Model.for_app(app, model)
 
-  defp index(app, %Index{} = index) when is_map(app) do
+  defp index(app, nil, model) when is_map(app), do: Index.build(app, model: model)
+
+  defp index(app, %Index{} = index, _model) when is_map(app) do
     if index.source_sha256 == CanonicalJson.sha256(app),
       do: {:ok, index},
       else: {:error, Error.new(:invalid_input, "index was built from a different app")}
   end
 
-  defp index(app, _) when is_map(app),
+  defp index(app, _, _) when is_map(app),
     do: {:error, Error.new(:invalid_input, "index must be a BubbleEx.Index")}
 
-  defp index(_, _), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
+  defp index(_, _, _),
+    do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
 
   @doc "Counts of findings by kind and confidence."
   @spec summary(t()) :: %{atom() => %{Finding.confidence() => pos_integer()}}

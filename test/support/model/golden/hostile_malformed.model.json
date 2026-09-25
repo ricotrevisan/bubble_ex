@@ -1,5 +1,14 @@
 {
   "bubble_id": "synthetic-malformed",
+  "connectors": [
+    {
+      "auth": null,
+      "calls": [],
+      "id": "bad",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/bad"
+    }
+  ],
   "data_types": [
     {
       "comment": null,
@@ -999,5 +1008,5 @@
       "values": []
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

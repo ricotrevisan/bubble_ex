@@ -448,6 +448,15 @@ defmodule BubbleEx.FindingsTest do
                Findings.analyze(@app, index: other)
     end
 
+    test "reuses a prebuilt Model of the same app, and rejects another app's", %{result: result} do
+      {:ok, model} = BubbleEx.Model.build(@app)
+      assert {:ok, ^result} = Findings.analyze(@app, model: model)
+
+      {:ok, other} = BubbleEx.Model.build(%{"user_types" => %{"other" => %{}}})
+
+      assert {:error, %Error{kind: :invalid_input}} = Findings.analyze(@app, model: other)
+    end
+
     test "a proposal change changes proposal_sha256 but not the ID", %{findings: fs} do
       {:ok, changed} =
         @app

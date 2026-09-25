@@ -663,12 +663,50 @@ defmodule BubbleEx.ModelTest do
   end
 
   describe "schema for expression typing" do
-    test "matches Expression.Schema built from the same app" do
+    # WTF-380: the schema used to be read from the app JSON by
+    # `Expression.Schema.from_app/1`. That reading is kept here, as the
+    # reference the Model's schema must still equal.
+    test "matches the former direct reading of the app JSON" do
       for name <- @fixtures do
         app = load(name)
-        assert Model.schema(build!(name)) == Schema.from_app(app), name
+        assert Model.schema(build!(name)) == legacy_schema(app), name
       end
     end
+
+    # Privacy types rule conditions against the schema read before privacy
+    # (the Model's pre-privacy stage); it is the built Model's schema.
+    test "the pre-privacy schema equals the built Model's" do
+      for name <- @fixtures do
+        app = load(name)
+        assert BubbleEx.Model.Builder.schema(app) == Model.schema(build!(name)), name
+      end
+    end
+
+    defp legacy_schema(%{"user_types" => types}) when is_map(types) do
+      for {id, type} <- types, is_map(type), into: %{} do
+        {id,
+         %{
+           display: legacy_text(type, ["display", "%d"]),
+           fields: legacy_fields(Map.get(type, "fields") || Map.get(type, "%f3"))
+         }}
+      end
+    end
+
+    defp legacy_schema(_), do: %{}
+
+    defp legacy_fields(fields) when is_map(fields) do
+      for {id, field} <- fields, is_map(field), into: %{} do
+        {id,
+         %{
+           display: legacy_text(field, ["display", "%d"]),
+           value: legacy_text(field, ["value", "%v"])
+         }}
+      end
+    end
+
+    defp legacy_fields(_), do: %{}
+
+    defp legacy_text(map, keys), do: Enum.find_value(keys, &(is_binary(map[&1]) && map[&1]))
 
     test "types field chains through the Model" do
       schema = Model.schema(build!("field_types"))
@@ -677,6 +715,75 @@ defmodule BubbleEx.ModelTest do
                Schema.field(schema, "custom.task", "project_custom_project")
 
       assert {:ok, %{value: "list.text"}} = Schema.field(schema, "list.custom.task", "title_text")
+    end
+  end
+
+  describe "API Connector groups and calls" do
+    test "every group and call, whether or not a field uses it" do
+      app = %{
+        "settings" => %{
+          "client_safe" => %{
+            "apiconnector2" => %{
+              "g1" => %{
+                "human" => "Stripe",
+                "auth" => "none",
+                "calls" => %{
+                  "c2" => %{"name" => "Charge", "method" => "post", "publish_as" => "action"},
+                  "c1" => "not an object"
+                }
+              },
+              "g0" => "not an object"
+            }
+          }
+        }
+      }
+
+      {:ok, model} = Model.build(app)
+
+      assert [
+               %Model.Connector{
+                 id: "g1",
+                 name: "Stripe",
+                 auth: "none",
+                 path: "/settings/client_safe/apiconnector2/g1",
+                 calls: [
+                   %Model.ConnectorCall{id: "c1", name: nil, path: path1},
+                   %Model.ConnectorCall{id: "c2", name: "Charge", method: "post"} = c2
+                 ]
+               }
+             ] = model.connectors
+
+      assert path1 == "/settings/client_safe/apiconnector2/g1/calls/c1"
+      assert c2.publish_as == "action"
+    end
+  end
+
+  describe "matches?/2" do
+    test "a Model matches the app it was built from, not another" do
+      app = load("field_types")
+      model = build!("field_types")
+      assert Model.matches?(model, app)
+      refute Model.matches?(model, load("option_sets"))
+      refute Model.matches?(model, Map.put(app, "_id", "another"))
+      assert Model.for_app(app, model) == {:ok, model}
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Model.for_app(app, :nope)
+    end
+  end
+
+  describe "descriptors" do
+    test "Type.reference/1 and list helpers" do
+      assert Type.reference("user") == {:data_type, "user"}
+      assert Type.reference("custom.task") == {:data_type, "task"}
+      assert Type.reference("option.status") == {:option_set, "status"}
+      assert Type.reference("api.apiconnector2.g.c") == {:api_call, "g", "c", nil}
+      assert Type.reference("api.apiconnector2.g.c.body.x") == {:api_call, "g", "c", "body.x"}
+      assert Type.reference("list.custom.task") == nil
+      assert Type.reference("custom.") == nil
+      assert Type.list_item("list.custom.task") == "custom.task"
+      assert Type.listed("text") == "list.text"
+      assert Type.listed("list.text") == "list.text"
+      assert Type.record("task") == "custom.task"
+      assert Type.record("user") == "user"
     end
   end
 

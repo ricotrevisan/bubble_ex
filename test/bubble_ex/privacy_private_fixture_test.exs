@@ -53,7 +53,8 @@ defmodule BubbleEx.PrivacyPrivateFixtureTest do
     app: app,
     expressions: roots
   } do
-    schema = Schema.from_app(app)
+    {:ok, model} = BubbleEx.Model.build(app)
+    schema = BubbleEx.Model.schema(model)
     assert roots != []
 
     asts =

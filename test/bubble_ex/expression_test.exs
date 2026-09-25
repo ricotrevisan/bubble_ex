@@ -28,28 +28,33 @@ defmodule BubbleEx.ExpressionTest do
     ThisThing
   }
 
-  @schema Schema.from_user_types(%{
-            "user" => %{
-              "display" => "User",
-              "fields" => %{
-                "admin_boolean" => %{"display" => "Admin", "value" => "boolean"},
-                "role_custom_role" => %{"display" => "Role", "value" => "custom.role"},
-                "tasks_list_custom_task" => %{"display" => "Tasks", "value" => "list.custom.task"}
-              }
-            },
-            "role" => %{
-              "%d" => "Role",
-              "%f3" => %{"workspace_text" => %{"%d" => "Workspace", "%v" => "text"}}
-            },
-            "task" => %{
-              "display" => "Task",
-              "fields" => %{
-                "owner_user" => %{"display" => "Owner", "value" => "user"},
-                "done_boolean" => %{"display" => "Done", "value" => "boolean"},
-                "points_number" => %{"display" => "Points", "value" => "number"}
-              }
-            }
-          })
+  {:ok, model} =
+    BubbleEx.Model.build(%{
+      "user_types" => %{
+        "user" => %{
+          "display" => "User",
+          "fields" => %{
+            "admin_boolean" => %{"display" => "Admin", "value" => "boolean"},
+            "role_custom_role" => %{"display" => "Role", "value" => "custom.role"},
+            "tasks_list_custom_task" => %{"display" => "Tasks", "value" => "list.custom.task"}
+          }
+        },
+        "role" => %{
+          "%d" => "Role",
+          "%f3" => %{"workspace_text" => %{"%d" => "Workspace", "%v" => "text"}}
+        },
+        "task" => %{
+          "display" => "Task",
+          "fields" => %{
+            "owner_user" => %{"display" => "Owner", "value" => "user"},
+            "done_boolean" => %{"display" => "Done", "value" => "boolean"},
+            "points_number" => %{"display" => "Points", "value" => "number"}
+          }
+        }
+      }
+    })
+
+  @schema BubbleEx.Model.schema(model)
 
   # Readable-key builders mirroring Bubble's editor/export JSON.
   defp src(type, fields \\ %{}), do: Map.merge(%{"type" => type, "is_slidable" => false}, fields)

@@ -7,15 +7,30 @@ defmodule BubbleEx.Model.Builder do
   # type-level flags come from `BubbleEx.Privacy`, API Connector types from
   # `BubbleEx.Model.External`. Nothing in the source is dropped:
   # what is not modeled is kept in `extra`/`raw` and diagnosed.
+  #
+  # Privacy types its rule conditions against the app's fields, so fields are
+  # read first (the pre-privacy stage, `schema/1`), then privacy is parsed
+  # against that schema, then the data types are assembled.
 
   alias BubbleEx.{Diagnostic, Privacy}
   alias BubbleEx.Expression.Vocabulary
-  alias BubbleEx.Model.{DataType, External, Field, OptionSet, OptionValue, Type}
+
+  alias BubbleEx.Model.{
+    Connector,
+    ConnectorCall,
+    DataType,
+    External,
+    Field,
+    OptionSet,
+    OptionValue,
+    Type
+  }
 
   @type result :: %{
           data_types: [DataType.t()],
           option_sets: [OptionSet.t()],
           external_types: [BubbleEx.Model.ExternalType.t()],
+          connectors: [Connector.t()],
           extra: map(),
           diagnostics: [Diagnostic.t()]
         }
@@ -36,10 +51,11 @@ defmodule BubbleEx.Model.Builder do
       option: MapSet.new(Map.keys(sets))
     }
 
-    {privacy, privacy_diags} = privacy(types)
+    staged = types |> sorted() |> Enum.map(&stage(&1, known))
+    {privacy, privacy_diags} = privacy(types, staged_schema(staged))
 
     {data_types, type_diags} =
-      types |> sorted() |> Enum.map(&data_type(&1, privacy, known)) |> unzip()
+      staged |> Enum.map(&data_type(&1, privacy)) |> unzip()
 
     {data_types, user_diags} = ensure_user(data_types, types, known)
 
@@ -53,6 +69,7 @@ defmodule BubbleEx.Model.Builder do
       data_types: data_types,
       option_sets: option_sets,
       external_types: external_types,
+      connectors: connectors(app),
       extra: Map.merge(types_extra, sets_extra),
       diagnostics:
         Diagnostic.normalize(
@@ -82,30 +99,41 @@ defmodule BubbleEx.Model.Builder do
     end
   end
 
-  defp privacy(types) when map_size(types) == 0, do: {%{}, []}
+  defp privacy(types, _schema) when map_size(types) == 0, do: {%{}, []}
 
-  defp privacy(types) do
+  defp privacy(types, schema) do
     {:ok, %Privacy{data_types: parsed, diagnostics: diags}} =
-      Privacy.parse(%{"user_types" => types})
+      Privacy.parse(%{"user_types" => types}, schema: schema)
 
     {Map.new(parsed, &{&1.id, &1}), diags}
   end
 
-  # --- data types --------------------------------------------------------------
+  # --- pre-privacy stage ---------------------------------------------------------
 
-  defp data_type({id, raw}, privacy, _known) when not is_map(raw) do
-    # Privacy diagnoses the type itself (`:malformed_node`).
-    {%DataType{
-       id: id,
-       path: pointer(["user_types", id]),
-       raw: raw,
-       privacy: privacy[id].availability
-     }, []}
+  @doc """
+  The field lookup for typing expressions (`BubbleEx.Expression.Schema`) of
+  the data types in `app`, read before privacy: what `BubbleEx.Privacy` types
+  rule conditions against while the Model is built. Equal to
+  `BubbleEx.Model.schema/1` of the built Model.
+  """
+  @spec schema(term()) :: BubbleEx.Expression.Schema.t()
+  def schema(%{"user_types" => types}) when is_map(types) do
+    known = %{ref: MapSet.new(), option: MapSet.new()}
+
+    types
+    |> Map.filter(fn {k, _} -> is_binary(k) end)
+    |> sorted()
+    |> Enum.map(&stage(&1, known))
+    |> staged_schema()
   end
 
-  defp data_type({id, raw}, privacy, known) do
+  def schema(_), do: %{}
+
+  # A data type's own reading, before privacy: its display name and fields.
+  defp stage({id, raw}, _known) when not is_map(raw), do: %{id: id, raw: raw}
+
+  defp stage({id, raw}, known) do
     path = ["user_types", id]
-    p = Map.fetch!(privacy, id)
     {fields, extra, diags} = members(raw, ~w(fields %f3), path, %{type: id})
     fields_path = path ++ [members_key(raw, ~w(fields %f3))]
 
@@ -116,6 +144,62 @@ defmodule BubbleEx.Model.Builder do
         field(fid, field, fields_path ++ [fid], %{type: id, field: fid}, known)
       end)
       |> unzip()
+
+    %{
+      id: id,
+      raw: raw,
+      path: path,
+      name: text(raw, ~w(display %d)),
+      fields: fields,
+      extra: extra,
+      diagnostics: diags ++ field_diags,
+      known: known
+    }
+  end
+
+  defp staged_schema(staged) do
+    for %{raw: raw} = type <- staged, is_map(raw), into: %{} do
+      {type.id, %{display: type.name, fields: schema_fields(type.fields)}}
+    end
+  end
+
+  @doc false
+  # The schema entries of a data type's defined fields (malformed ones left out).
+  @spec schema_fields([Field.t()]) :: %{String.t() => BubbleEx.Expression.Schema.field()}
+  def schema_fields(fields) do
+    for field <- fields, is_nil(field.raw), into: %{} do
+      value = if is_binary(field.type.source), do: field.type.source
+      {field.id, %{display: field.name, value: value}}
+    end
+  end
+
+  @doc false
+  # The members of a raw field supplied in both key forms (`display` and
+  # `%d`, `value` and `%v`): `:name`, `:type`. The Model reads the first
+  # form; a reader that must not guess between them uses this.
+  @spec conflicting_forms(term()) :: [:name | :type]
+  def conflicting_forms(raw) when is_map(raw) do
+    for {member, keys} <- [name: ~w(display %d), type: ~w(value %v)],
+        Enum.all?(keys, &Map.has_key?(raw, &1)),
+        do: member
+  end
+
+  def conflicting_forms(_), do: []
+
+  # --- data types --------------------------------------------------------------
+
+  defp data_type(%{id: id, raw: raw}, privacy) when not is_map(raw) do
+    # Privacy diagnoses the type itself (`:malformed_node`).
+    {%DataType{
+       id: id,
+       path: pointer(["user_types", id]),
+       raw: raw,
+       privacy: privacy[id].availability
+     }, []}
+  end
+
+  defp data_type(%{id: id, path: path, fields: fields, known: known} = staged, privacy) do
+    p = Map.fetch!(privacy, id)
 
     type = %DataType{
       id: id,
@@ -128,10 +212,10 @@ defmodule BubbleEx.Model.Builder do
       fields: fields,
       system_fields: system_fields(id, path, live_ids(fields), known),
       rules: p.rules,
-      extra: Map.merge(p.extra, extra)
+      extra: Map.merge(p.extra, staged.extra)
     }
 
-    {type, diags ++ field_diags}
+    {type, staged.diagnostics}
   end
 
   defp ensure_user(data_types, types, _known) when is_map_key(types, "user"),
@@ -262,6 +346,59 @@ defmodule BubbleEx.Model.Builder do
   end
 
   defp type_diagnostics(nil, _type, _path, _subject), do: []
+
+  # --- API Connector groups and calls -------------------------------------------
+
+  @connectors ["settings", "client_safe", "apiconnector2"]
+
+  defp connectors(%{"settings" => %{"client_safe" => %{"apiconnector2" => groups}}})
+       when is_map(groups),
+       do: for({id, group} <- entries(groups), is_map(group), do: connector(id, group))
+
+  defp connectors(_app), do: []
+
+  defp connector(id, group) do
+    path = @connectors ++ [id]
+
+    calls =
+      case member(group, ["calls"]) do
+        {key, calls} when is_map(calls) ->
+          for {cid, call} <- entries(calls), do: call(cid, call, path ++ [key, cid])
+
+        _ ->
+          []
+      end
+
+    %Connector{
+      id: id,
+      name: first_text(group, ~w(human name)),
+      auth: first_text(group, ["auth"]),
+      path: pointer(path),
+      calls: calls
+    }
+  end
+
+  defp call(id, call, path) do
+    %ConnectorCall{
+      id: id,
+      name: first_text(call, ["name"]),
+      method: first_text(call, ["method"]),
+      publish_as: first_text(call, ["publish_as"]),
+      path: pointer(path)
+    }
+  end
+
+  defp entries(map), do: map |> Map.filter(fn {k, _} -> is_binary(k) end) |> sorted()
+
+  # The first of `keys` present in `map`, when it is a string.
+  defp first_text(map, keys) when is_map(map) do
+    case member(map, keys) do
+      {_, value} when is_binary(value) -> value
+      _ -> nil
+    end
+  end
+
+  defp first_text(_, _), do: nil
 
   # --- option sets -------------------------------------------------------------
 

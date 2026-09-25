@@ -6,6 +6,24 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **The Index, Findings, Workflows explanations and expression schema read
+  the data model only through `BubbleEx.Model`** (WTF-380).
+  `Expression.Schema.from_app/1` and `from_user_types/1` are removed: use
+  `BubbleEx.Model.schema/1`. `Privacy.parse/2` types conditions against the
+  Model's pre-privacy schema (the `:schema` option; `BubbleEx.Model.build/1`
+  passes it, so there is still one parser and no cycle). `Index.build/2`,
+  `Findings.analyze/2` (`:model`) and `Workflows.inventory/2` take a prebuilt
+  Model, checked with the new `Model.matches?/2` (`Model.for_app/2`), so a
+  pipeline builds it once; the index keeps it in `Index.model` (not
+  serialized) and Findings reuses it. The Model gains `connectors` (API
+  Connector groups and calls, `Model.Connector`/`Model.ConnectorCall`) and
+  `Model.Type` descriptor helpers (`reference/1`, `list_item/1`, `list?/1`,
+  `listed/1`, `record/1`); `Model.schema_version/0` is 2. Index, Findings,
+  Workflows and expression outputs are unchanged on every fixture and on the
+  private mm-137 export, except that an option value whose `db_value` is
+  `""` is now keyed by its Bubble ID in the index, as the Model keys it
+  (`:model_option_key_missing`), instead of by the empty string.
+
 - **PostgreSQL, SQLite and T-SQL declare no foreign keys by default**
   (WTF-392). Bubble has no referential integrity, so real data holds
   dangling references, and the constraints on every scalar reference

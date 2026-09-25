@@ -1,24 +1,19 @@
 defmodule BubbleEx.Index.PrivacyRules do
   @moduledoc false
 
-  # Privacy rule symbols from `BubbleEx.Privacy`, with the fields each rule
+  # Privacy rule symbols from the Model (as `BubbleEx.Privacy` parses them),
+  # with the fields each rule
   # references: condition reads (`:reads_field`), visible fields
   # (`:grants_view`) and auto-binding fields (`:grants_binding`).
 
   alias BubbleEx.Index.{Reads, Reference, Symbol}
-  alias BubbleEx.Privacy
+  alias BubbleEx.{Model, Privacy}
 
-  @spec build(map(), map()) :: {[Symbol.t()], [Reference.t()]}
-  def build(app, ctx) do
-    case Privacy.parse(app) do
-      {:ok, %Privacy{data_types: types}} ->
-        types
-        |> Enum.flat_map(fn type -> Enum.map(type.rules, &rule(type, &1, ctx)) end)
-        |> then(&{Enum.map(&1, fn {s, _} -> s end), Enum.flat_map(&1, fn {_, r} -> r end)})
-
-      {:error, _} ->
-        {[], []}
-    end
+  @spec build(Model.t(), map()) :: {[Symbol.t()], [Reference.t()]}
+  def build(%Model{data_types: types}, ctx) do
+    types
+    |> Enum.flat_map(fn type -> Enum.map(type.rules, &rule(type, &1, ctx)) end)
+    |> then(&{Enum.map(&1, fn {s, _} -> s end), Enum.flat_map(&1, fn {_, r} -> r end)})
   end
 
   defp rule(type, rule, ctx) do

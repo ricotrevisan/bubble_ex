@@ -1,5 +1,6 @@
 {
   "bubble_id": null,
+  "connectors": [],
   "data_types": [
     {
       "comment": null,
@@ -155,5 +156,5 @@
   "external_types": [],
   "extra": {},
   "option_sets": [],
-  "schema_version": 1
+  "schema_version": 2
 }

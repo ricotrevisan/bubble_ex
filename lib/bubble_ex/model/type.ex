@@ -99,6 +99,57 @@ defmodule BubbleEx.Model.Type do
   @spec reference?(t()) :: boolean()
   def reference?(%__MODULE__{kind: kind}), do: kind in [:ref, :option, :external]
 
+  # --- descriptors ---------------------------------------------------------------
+  #
+  # Readers outside the Model (the index, analyzers, workflow explanations)
+  # see Bubble value types only as descriptors (e.g. an expression's type or
+  # a symbol's `value_type`). These read them the one way the Model does.
+
+  @doc """
+  The data type, option set or API Connector call a single (not list)
+  descriptor names: `{:data_type, id}` (`"user"`, `"custom.<id>"`),
+  `{:option_set, id}` (`"option.<id>"`), `{:api_call, connector, call,
+  response_path}` (`"api.apiconnector2.<connector>.<call>[.<path>]"`, path
+  `nil` when absent), or `nil`.
+  """
+  @spec reference(term()) ::
+          {:data_type, String.t()}
+          | {:option_set, String.t()}
+          | {:api_call, String.t(), String.t(), String.t() | nil}
+          | nil
+  def reference("user"), do: {:data_type, "user"}
+  def reference("custom." <> id) when id != "", do: {:data_type, id}
+  def reference("option." <> id) when id != "", do: {:option_set, id}
+
+  def reference("api.apiconnector2." <> rest) do
+    case String.split(rest, ".", parts: 3) do
+      [connector, call] -> {:api_call, connector, call, nil}
+      [connector, call, path] -> {:api_call, connector, call, path}
+      _ -> nil
+    end
+  end
+
+  def reference(_), do: nil
+
+  @doc "The item descriptor of a list descriptor (`\"list.<item>\"`), or nil."
+  @spec list_item(term()) :: String.t() | nil
+  def list_item("list." <> item), do: item
+  def list_item(_), do: nil
+
+  @doc "Whether `descriptor` is a list descriptor."
+  @spec list?(term()) :: boolean()
+  def list?(descriptor), do: list_item(descriptor) != nil
+
+  @doc "The list descriptor of `descriptor`; a list descriptor is kept."
+  @spec listed(String.t()) :: String.t()
+  def listed("list." <> _ = descriptor), do: descriptor
+  def listed(descriptor), do: "list." <> descriptor
+
+  @doc "The descriptor of a record of data type `id` (`\"user\"` or `\"custom.<id>\"`)."
+  @spec record(String.t()) :: String.t()
+  def record("user"), do: "user"
+  def record(id), do: "custom." <> id
+
   defp unknown(source), do: %__MODULE__{kind: :unknown, cardinality: :one, source: source}
 
   defp strip_list("list." <> inner), do: {inner, :many}

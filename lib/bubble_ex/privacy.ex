@@ -15,10 +15,16 @@ defmodule BubbleEx.Privacy do
   themselves (`privacy_role`) appear only in exports and editor JSON; for a
   live payload every type is `:unavailable` rather than rule-free.
   `diagnostics` itemizes everything not fully modeled, across all rules.
+
+  Conditions are typed against the app's fields as the Model reads them
+  (`BubbleEx.Model`'s pre-privacy stage). `BubbleEx.Model.build/1` parses
+  privacy itself and passes that schema as the `:schema` option; without it,
+  `parse/2` reads it the same way.
   """
 
   alias BubbleEx.{Diagnostic, Error, Expression}
   alias BubbleEx.Expression.Schema
+  alias BubbleEx.Model.Builder
   alias BubbleEx.Privacy.{DataType, Permissions, Rule}
 
   @enforce_keys [:data_types, :diagnostics]
@@ -26,9 +32,11 @@ defmodule BubbleEx.Privacy do
 
   @type t :: %__MODULE__{data_types: [DataType.t()], diagnostics: [Diagnostic.t()]}
 
-  @spec parse(term()) :: {:ok, t()} | {:error, Error.t()}
-  def parse(%{"user_types" => types} = app) when is_map(types) do
-    schema = Schema.from_app(app)
+  @spec parse(term(), [{:schema, Schema.t()}]) :: {:ok, t()} | {:error, Error.t()}
+  def parse(app, opts \\ [])
+
+  def parse(%{"user_types" => types} = app, opts) when is_map(types) do
+    schema = Keyword.get_lazy(opts, :schema, fn -> Builder.schema(app) end)
 
     data_types =
       types
@@ -43,13 +51,14 @@ defmodule BubbleEx.Privacy do
     {:ok, %__MODULE__{data_types: data_types, diagnostics: diagnostics}}
   end
 
-  def parse(%{"user_types" => _}),
+  def parse(%{"user_types" => _}, _opts),
     do: {:error, Error.new(:invalid_input, "user_types must be an object")}
 
-  def parse(app) when is_map(app),
+  def parse(app, _opts) when is_map(app),
     do: {:error, Error.new(:invalid_input, "app JSON has no user_types")}
 
-  def parse(_), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
+  def parse(_, _opts),
+    do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
 
   defp data_type(id, type, schema) when is_map(type) do
     path = ["user_types", id]

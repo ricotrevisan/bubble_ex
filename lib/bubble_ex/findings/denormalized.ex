@@ -33,6 +33,7 @@ defmodule BubbleEx.Findings.Denormalized do
   alias BubbleEx.{Finding, Index}
   alias BubbleEx.Findings.{Context, Values}
   alias BubbleEx.Index.Symbol
+  alias BubbleEx.Model.Type
 
   @scalars ~w(text number date boolean)
 
@@ -46,7 +47,8 @@ defmodule BubbleEx.Findings.Denormalized do
 
   defp candidate?(%Symbol{attrs: attrs}) do
     not Map.has_key?(attrs, :builtin) and
-      (attrs[:value_type] in @scalars or match?("option." <> _, attrs[:value_type]))
+      (attrs[:value_type] in @scalars or
+         match?({:option_set, _}, Type.reference(attrs[:value_type])))
   end
 
   # Only fields every write of which is a traced copy: a field that is also
@@ -113,7 +115,7 @@ defmodule BubbleEx.Findings.Denormalized do
 
   defp list_type?(ctx, id) do
     case Index.symbol(ctx.index, id) do
-      %{attrs: %{value_type: "list." <> _}} -> true
+      %{attrs: %{value_type: value_type}} -> Type.list?(value_type)
       _ -> false
     end
   end

@@ -1,5 +1,35 @@
 {
   "bubble_id": "synthetic-external-types",
+  "connectors": [
+    {
+      "auth": null,
+      "calls": [],
+      "id": "geo",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/geo"
+    },
+    {
+      "auth": null,
+      "calls": [],
+      "id": "graph",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/graph"
+    },
+    {
+      "auth": null,
+      "calls": [],
+      "id": "misc",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/misc"
+    },
+    {
+      "auth": null,
+      "calls": [],
+      "id": "tree",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/tree"
+    }
+  ],
   "data_types": [
     {
       "comment": null,
@@ -831,5 +861,5 @@
   ],
   "extra": {},
   "option_sets": [],
-  "schema_version": 1
+  "schema_version": 2
 }

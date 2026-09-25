@@ -12,7 +12,8 @@ defmodule BubbleEx.Model do
   It holds data types (`BubbleEx.Model.DataType`) with their fields, Bubble's
   built-in fields and privacy rules; option sets (`BubbleEx.Model.OptionSet`)
   with stable value keys, values and attributes; and the API Connector types
-  reached from them (`BubbleEx.Model.ExternalType`). Every field has a
+  reached from them (`BubbleEx.Model.ExternalType`), and the API Connector
+  groups and calls themselves (`BubbleEx.Model.Connector`). Every field has a
   content type (`BubbleEx.Model.Type`): a scalar, file reference, structured
   value, reference to a data type, option set or external type (resolved or
   not), or an opaque/unknown value kept verbatim.
@@ -57,10 +58,10 @@ defmodule BubbleEx.Model do
   """
 
   alias BubbleEx.{CanonicalJson, Diagnostic, Error, Expression}
-  alias BubbleEx.Model.{Builder, DataType, ExternalType, Field, OptionSet, Type}
+  alias BubbleEx.Model.{Builder, Connector, DataType, ExternalType, Field, OptionSet, Type}
   alias BubbleEx.Privacy.Rule
 
-  @schema_version 1
+  @schema_version 2
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -69,6 +70,7 @@ defmodule BubbleEx.Model do
     data_types: [],
     option_sets: [],
     external_types: [],
+    connectors: [],
     extra: %{},
     diagnostics: []
   ]
@@ -79,6 +81,7 @@ defmodule BubbleEx.Model do
           data_types: [DataType.t()],
           option_sets: [OptionSet.t()],
           external_types: [ExternalType.t()],
+          connectors: [Connector.t()],
           extra: map(),
           diagnostics: [Diagnostic.t()]
         }
@@ -102,12 +105,54 @@ defmodule BubbleEx.Model do
        data_types: result.data_types,
        option_sets: result.option_sets,
        external_types: result.external_types,
+       connectors: result.connectors,
        extra: result.extra,
        diagnostics: result.diagnostics
      }}
   end
 
   def build(_), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
+
+  @doc """
+  Whether `model` was built from `app`, for callers that take a prebuilt
+  Model: the same Bubble app ID and the same data type and option set IDs. A
+  cheap identity check (no content hash): a Model of an edited copy of the
+  same app passes.
+  """
+  @spec matches?(t(), term()) :: boolean()
+  def matches?(%__MODULE__{} = model, app) when is_map(app) and not is_struct(app) do
+    defined = for %DataType{synthesized: false, id: id} <- model.data_types, do: id
+
+    model.bubble_id == if(is_binary(app["_id"]), do: app["_id"]) and
+      defined == ids(app["user_types"]) and
+      Enum.map(model.option_sets, & &1.id) == ids(app["option_sets"])
+  end
+
+  def matches?(_, _), do: false
+
+  @doc """
+  The Model for work on `app`: `model` when it is one built from `app`
+  (`matches?/2`), or a new one when `model` is nil. For entry points that
+  take an optional prebuilt Model, so it is built once.
+  """
+  @spec for_app(term(), t() | nil) :: {:ok, t()} | {:error, Error.t()}
+  def for_app(app, nil), do: build(app)
+
+  def for_app(app, %__MODULE__{} = model) when is_map(app) and not is_struct(app) do
+    if matches?(model, app),
+      do: {:ok, model},
+      else: {:error, Error.new(:invalid_input, "model was built from a different app")}
+  end
+
+  def for_app(app, _) when is_map(app) and not is_struct(app),
+    do: {:error, Error.new(:invalid_input, "model must be a BubbleEx.Model")}
+
+  def for_app(_, _), do: {:error, Error.new(:invalid_input, "expected a decoded app JSON object")}
+
+  defp ids(map) when is_map(map),
+    do: map |> Map.keys() |> Enum.filter(&is_binary/1) |> Enum.sort()
+
+  defp ids(_), do: []
 
   # --- lookups -----------------------------------------------------------------
 
@@ -145,17 +190,14 @@ defmodule BubbleEx.Model do
   typing expressions): every defined field with its display name and source
   type descriptor. Built-in fields are resolved by the expression schema
   itself. A synthesized User type is left out: its fields are unknown.
+
+  `BubbleEx.Privacy` types rule conditions against the same schema, read
+  before privacy while the Model is built (the Model's pre-privacy stage).
   """
   @spec schema(t()) :: BubbleEx.Expression.Schema.t()
   def schema(%__MODULE__{data_types: types}) do
     for %DataType{raw: nil, synthesized: false} = type <- types, into: %{} do
-      fields =
-        for field <- type.fields, is_nil(field.raw), into: %{} do
-          value = if is_binary(field.type.source), do: field.type.source
-          {field.id, %{display: field.name, value: value}}
-        end
-
-      {type.id, %{display: type.name, fields: fields}}
+      {type.id, %{display: type.name, fields: Builder.schema_fields(type.fields)}}
     end
   end
 

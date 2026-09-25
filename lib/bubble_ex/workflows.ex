@@ -16,21 +16,28 @@ defmodule BubbleEx.Workflows do
   exactly. Availability and interpretation are separate: a present workflow may
   contain unsupported semantics. The inventory claims coverage of supplied data
   only, never the complete server-side app.
+
+  Data types and fields named in explanations are read through
+  `BubbleEx.Model`. Option `:model` passes one already built from the same
+  payload (checked with `BubbleEx.Model.matches?/2`), so it is built once.
   """
-  @spec inventory(term()) :: {:ok, map()} | {:error, Error.t()}
-  def inventory(payload) when is_map(payload) and not is_struct(payload) do
+  @spec inventory(term(), [{:model, BubbleEx.Model.t()}]) :: {:ok, map()} | {:error, Error.t()}
+  def inventory(payload, opts \\ [])
+
+  def inventory(payload, opts) when is_map(payload) and not is_struct(payload) do
     if json?(payload) do
-      build(payload)
+      with {:ok, model} <- BubbleEx.Model.for_app(payload, Keyword.get(opts, :model)),
+           do: build(payload, model)
     else
       {:error, Error.new(:invalid_input, "expected JSON data with string map keys")}
     end
   end
 
-  def inventory(_), do: {:error, Error.new(:invalid_input, "expected an app JSON object")}
+  def inventory(_, _), do: {:error, Error.new(:invalid_input, "expected an app JSON object")}
 
-  defp build(payload) do
+  defp build(payload, model) do
     collections = Source.collections(payload)
-    index = Node.index(payload)
+    index = payload |> Node.index() |> Map.put(:model, model)
     scopes = Enum.map(collections, &scope/1)
 
     {candidates, known} = Enum.split_with(collections, &Map.get(&1, :single, false))

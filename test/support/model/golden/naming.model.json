@@ -1,5 +1,6 @@
 {
   "bubble_id": "synthetic-naming",
+  "connectors": [],
   "data_types": [
     {
       "comment": null,
@@ -859,5 +860,5 @@
       ]
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

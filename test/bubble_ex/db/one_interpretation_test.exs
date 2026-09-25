@@ -18,16 +18,6 @@ defmodule BubbleEx.Db.OneInterpretationTest do
 
   # file (or directory) => why it may use those members or descriptors.
   @allowed %{
-    "lib/bubble_ex/index/data_model.ex" =>
-      "WTF-380: the symbol index reads data types, fields and option sets itself",
-    "lib/bubble_ex/index/types.ex" =>
-      "WTF-380: the symbol index classifies type descriptors itself",
-    "lib/bubble_ex/findings/" =>
-      "WTF-380: analyzers match the index's raw value-type descriptors",
-    "lib/bubble_ex/workflows/explanation_context.ex" =>
-      "WTF-380: resolves `custom.` record types of workflow parameters",
-    "lib/bubble_ex/expression/schema.ex" =>
-      "WTF-380: field lookup for typing expressions; Privacy (inside the Model's reading) needs it before a Model exists; the Model's equivalent is Model.schema/1",
     "lib/bubble_ex/expression/" =>
       "expression value types (`list.` wrapping of expression results) and the expression key aliases, not definitions",
     "lib/bubble_ex/db/reader.ex" =>
