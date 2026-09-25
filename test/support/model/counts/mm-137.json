@@ -1,5 +1,18 @@
 {
   "counts": {
+    "api_calls": 203,
+    "api_calls_named": 202,
+    "api_calls_with_host": 202,
+    "api_connectors": 30,
+    "api_parameters": {
+      "body": 418,
+      "header": 137,
+      "param": 22,
+      "query": 47,
+      "url": 115
+    },
+    "api_parameters_named": 666,
+    "api_parameters_private": 73,
     "cycle_cuts": 0,
     "data_types": 97,
     "deleted_data_types": 4,
@@ -52,5 +65,5 @@
     "synthesized_data_types": 0,
     "system_fields": 486
   },
-  "schema_version": 2
+  "schema_version": 3
 }

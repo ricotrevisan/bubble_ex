@@ -5,9 +5,11 @@
       "auth": null,
       "calls": [
         {
+          "host": null,
           "id": "lookup",
           "method": null,
           "name": null,
+          "parameters": [],
           "path": "/settings/client_safe/apiconnector2/geo/lookup",
           "placement": "direct",
           "publish_as": null,
@@ -67,15 +69,18 @@
       ],
       "id": "geo",
       "name": null,
+      "parameters": [],
       "path": "/settings/client_safe/apiconnector2/geo"
     },
     {
       "auth": null,
       "calls": [
         {
+          "host": null,
           "id": "ping",
           "method": null,
           "name": null,
+          "parameters": [],
           "path": "/settings/client_safe/apiconnector2/graph/ping",
           "placement": "direct",
           "publish_as": null,
@@ -105,9 +110,11 @@
           "types": null
         },
         {
+          "host": null,
           "id": "pong",
           "method": null,
           "name": null,
+          "parameters": [],
           "path": "/settings/client_safe/apiconnector2/graph/pong",
           "placement": "direct",
           "publish_as": null,
@@ -124,7 +131,6 @@
                   "ret_btype": "api.apiconnector2.graph.ping.A"
                 },
                 "blob": {
-                  "caption": null,
                   "path": [
                     "blob"
                   ],
@@ -139,15 +145,18 @@
       ],
       "id": "graph",
       "name": null,
+      "parameters": [],
       "path": "/settings/client_safe/apiconnector2/graph"
     },
     {
       "auth": null,
       "calls": [
         {
+          "host": null,
           "id": "blank",
           "method": null,
           "name": null,
+          "parameters": [],
           "path": "/settings/client_safe/apiconnector2/misc/blank",
           "placement": "direct",
           "publish_as": null,
@@ -164,15 +173,18 @@
       ],
       "id": "misc",
       "name": null,
+      "parameters": [],
       "path": "/settings/client_safe/apiconnector2/misc"
     },
     {
       "auth": null,
       "calls": [
         {
+          "host": null,
           "id": "walk",
           "method": null,
           "name": null,
+          "parameters": [],
           "path": "/settings/client_safe/apiconnector2/tree/walk",
           "placement": "direct",
           "publish_as": null,
@@ -204,6 +216,7 @@
       ],
       "id": "tree",
       "name": null,
+      "parameters": [],
       "path": "/settings/client_safe/apiconnector2/tree"
     }
   ],
@@ -1038,5 +1051,5 @@
   ],
   "extra": {},
   "option_sets": [],
-  "schema_version": 2
+  "schema_version": 3
 }

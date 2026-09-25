@@ -31,12 +31,18 @@ defmodule BubbleEx.Model do
 
   Decoded app JSON in either key form: a `.bubble` export (`display`,
   `fields`, `value`, `deleted`) or the live payload (`%d`, `%f3`, `%v`,
-  `%del`). Privacy rules and API Connector settings exist only in exports.
-  The Model is the one reading of data types, fields, option sets and API
-  Connector types: it resolves API Connector types itself (from the calls'
+  `%del`); API Connector calls in either form (`name` / `%nm`, `key` /
+  `%k`). Privacy rules exist only in exports. The Model is the one reading
+  of data types, fields, option sets and API Connector groups, calls and
+  types: it resolves API Connector types itself (from the calls'
   `types` registries) and takes privacy rules, type-level flags and their
   diagnostics from `BubbleEx.Privacy`. `BubbleEx.Db.Reader`'s tables are a
   projection of it.
+
+  API Connector calls hold credentials. The Model reads only their URL's
+  host and their headers' and parameters' names and `private` flags (see
+  `BubbleEx.Model.ConnectorParameter`); never a header or parameter value,
+  body, query string, user info or URL path.
 
   `source_sha256` is the canonical-JSON hash of the app it was built from
   (`BubbleEx.CanonicalJson.sha256/1`); entry points that take a prebuilt
@@ -65,7 +71,7 @@ defmodule BubbleEx.Model do
   alias BubbleEx.Model.{Builder, Connector, DataType, ExternalType, Field, OptionSet, Type}
   alias BubbleEx.Privacy.Rule
 
-  @schema_version 2
+  @schema_version 3
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -271,8 +277,9 @@ defmodule BubbleEx.Model do
   @doc """
   Aggregate counts, with string keys (for reports and count snapshots):
   data types, fields by kind, relationships, option sets, values and
-  attributes, external types by resolution, cycle cuts, privacy rules and
-  diagnostics by code. Counts include deleted definitions; `deleted_*`
+  attributes, external types by resolution, cycle cuts, privacy rules, API
+  Connector groups, calls (named, with a host) and their parameters (by
+  location, private) and diagnostics by code. Counts include deleted definitions; `deleted_*`
   counts them separately.
   """
   @spec summary(t()) :: map()
@@ -282,6 +289,10 @@ defmodule BubbleEx.Model do
     values = Enum.flat_map(model.option_sets, & &1.values)
     external_fields = Enum.flat_map(model.external_types, & &1.fields)
     relationships = Enum.filter(fields, &(&1.type.kind == :ref and not &1.deleted))
+    calls = Enum.flat_map(model.connectors, & &1.calls)
+
+    parameters =
+      Enum.flat_map(model.connectors, & &1.parameters) ++ Enum.flat_map(calls, & &1.parameters)
 
     %{
       "data_types" => length(model.data_types),
@@ -303,6 +314,13 @@ defmodule BubbleEx.Model do
       "external_fields" => length(external_fields),
       "cycle_cuts" => Enum.count(external_fields, & &1.cycle),
       "privacy_rules" => model.data_types |> Enum.map(&length(&1.rules)) |> Enum.sum(),
+      "api_connectors" => length(model.connectors),
+      "api_calls" => length(calls),
+      "api_calls_named" => Enum.count(calls, &is_binary(&1.name)),
+      "api_calls_with_host" => Enum.count(calls, &is_binary(&1.host)),
+      "api_parameters" => frequencies(parameters, &Atom.to_string(&1.in)),
+      "api_parameters_named" => Enum.count(parameters, &is_binary(&1.name)),
+      "api_parameters_private" => Enum.count(parameters, & &1.private),
       "diagnostics" => frequencies(model.diagnostics, &Atom.to_string(&1.code))
     }
   end
