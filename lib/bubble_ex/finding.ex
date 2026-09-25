@@ -228,11 +228,27 @@ defmodule BubbleEx.Finding do
 
   @doc """
   The index symbol IDs a finding is about: its subject's symbols (see
-  `BubbleEx.Index.Subject`) and its evidence symbols, sorted.
+  `BubbleEx.Index.Subject`) and the data-model symbols among its evidence
+  (data types, fields, option sets, option values and attributes, privacy
+  rules), sorted. Pages, elements, workflows and actions in the evidence
+  (e.g. the hosts of a `:search_index` hint's searches) are left out: the
+  references they make are in `proposal_sha256`, and unrelated edits to
+  them must not invalidate a decision.
   """
   @spec basis_symbols(t()) :: [String.t()]
-  def basis_symbols(%__MODULE__{} = f),
-    do: sorted(Subject.symbol_ids(f.subject) ++ f.evidence.symbols)
+  def basis_symbols(%__MODULE__{} = f) do
+    evidence = Enum.filter(f.evidence.symbols, &data_model_symbol?/1)
+    sorted(Subject.symbol_ids(f.subject) ++ evidence)
+  end
+
+  @data_model ~w(data_type field option_set option_value option_attribute privacy_rule)
+
+  defp data_model_symbol?(id) do
+    case String.split(id, ":", parts: 2) do
+      [kind, _] -> kind in @data_model
+      _ -> false
+    end
+  end
 
   @doc """
   SHA-256 of the content of the finding's `basis_symbols/1` in `index`

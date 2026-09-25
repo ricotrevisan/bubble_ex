@@ -15,6 +15,10 @@ defmodule BubbleEx.DecisionTest do
   @reverse %{type: "workspace", field: "projects_list_custom_project"}
   @tasks %{type: "project", field: "tasks_list_custom_task"}
 
+  @now ~U[2026-09-25 12:00:00Z]
+  @sha_a String.duplicate("a", 64)
+  @sha_b String.duplicate("b", 64)
+
   setup_all do
     %{findings: analyze(@app)}
   end
@@ -76,7 +80,11 @@ defmodule BubbleEx.DecisionTest do
     {entry.state, entry.reasons}
   end
 
+  # Resolves against the unchanged app at @now unless told otherwise.
   defp resolve!(decisions, findings, opts \\ []) do
+    opts =
+      opts |> Keyword.put_new_lazy(:index, fn -> index(@app) end) |> Keyword.put_new(:now, @now)
+
     {:ok, resolved} = Decision.resolve(decisions, findings, opts)
     resolved
   end
@@ -103,7 +111,7 @@ defmodule BubbleEx.DecisionTest do
         decide(finding(fs, :denormalized_field, @copy), :accept),
         decide(finding(fs, :search_index, %{type: "project"}), :modify, %{drop: [2, 0, 2]}),
         rename(@copy, :attribute, "sort_key"),
-        parity(expires_at: ~U[2027-01-01 00:00:00Z], basis: %{scenario_sha256: "abc"})
+        parity(expires_at: ~U[2027-01-01 00:00:00Z], basis: %{scenario_sha256: @sha_a})
       ]
 
       for d <- decisions do
@@ -200,7 +208,7 @@ defmodule BubbleEx.DecisionTest do
       assert {:ok, _} = Decision.from_map(Map.delete(map, "key"))
     end
 
-    test "renames and parity exceptions are always accept, with their own params" do
+    test "renames and parity exceptions are accept or withdraw, with their own params" do
       assert invalid(
                Decision.new(
                  kind: :rename,
@@ -209,7 +217,7 @@ defmodule BubbleEx.DecisionTest do
                  choice: :reject,
                  params: %{slot: :attribute, name: "x"}
                )
-             ) =~ "always accept"
+             ) =~ "rename decisions are accept, withdraw"
 
       assert invalid(
                Decision.new(
@@ -456,8 +464,6 @@ defmodule BubbleEx.DecisionTest do
       assert state(resolve!([d], analyze(gone), index: index(gone)), d) ==
                {:orphaned, [:finding_absent, :subject_gone]}
 
-      assert state(resolve!([d], analyze(gone)), d) == {:orphaned, [:finding_absent]}
-
       r = rename(@copy, :attribute, "sort_key")
 
       assert state(resolve!([r], analyze(gone), index: index(gone)), r) ==
@@ -474,28 +480,36 @@ defmodule BubbleEx.DecisionTest do
       assert state(resolved, new) == {:active, []}
       assert Enum.map(resolved.entries, & &1.decision.revision) == [1, 2]
 
-      assert invalid(Decision.resolve([old, old], fs)) =~ "share a key and revision"
-      assert invalid(Decision.resolve([:nope], fs)) =~ "structs"
+      opts = [index: index(@app), now: @now]
+      assert invalid(Decision.resolve([old, old], fs, opts)) =~ "share a key and revision"
+      assert invalid(Decision.resolve([:nope], fs, opts)) =~ "structs"
+      assert invalid(Decision.resolve([old], fs, now: @now)) =~ "needs index"
+      assert invalid(Decision.resolve([old], fs, index: index(@app))) =~ "needs index"
     end
 
-    test "parity exceptions expire by date or when their scenario changes", %{findings: fs} do
-      d = parity(expires_at: ~U[2027-01-01 00:00:00Z], basis: %{scenario_sha256: "abc"})
+    test "parity exceptions expire by date, or when their scenario changes or is unknown", %{
+      findings: fs
+    } do
+      d = parity(expires_at: ~U[2027-01-01 00:00:00Z], basis: %{scenario_sha256: @sha_a})
       before = ~U[2026-12-31 23:59:59Z]
+      same = %{"scenario:create_project" => @sha_a}
 
-      assert state(resolve!([d], fs, now: before), d) == {:active, []}
-      assert state(resolve!([d], fs, now: ~U[2027-01-01 00:00:00Z]), d) == {:expired, [:expired]}
+      assert state(resolve!([d], fs, now: before, scenarios: same), d) == {:active, []}
 
-      assert state(
-               resolve!([d], fs, now: before, scenarios: %{"scenario:create_project" => "abc"}),
-               d
-             ) ==
-               {:active, []}
+      assert state(resolve!([d], fs, now: ~U[2027-01-01 00:00:00Z], scenarios: same), d) ==
+               {:expired, [:expired]}
 
       assert state(
-               resolve!([d], fs, now: before, scenarios: %{"scenario:create_project" => "def"}),
+               resolve!([d], fs, now: before, scenarios: %{"scenario:create_project" => @sha_b}),
                d
-             ) ==
-               {:expired, [:scenario_changed]}
+             ) == {:expired, [:scenario_changed]}
+
+      # Fail-safe: a scenario nobody vouched for does not keep the exception.
+      assert state(resolve!([d], fs, now: before), d) == {:expired, [:scenario_unknown]}
+
+      # An exception on a check pattern (no scenario hash) expires by date only.
+      pattern = parity([])
+      assert state(resolve!([pattern], fs), pattern) == {:active, []}
     end
 
     test "modify params that no longer fit the finding are stale", %{findings: fs} do
@@ -663,6 +677,216 @@ defmodule BubbleEx.DecisionTest do
 
       refute Index.subject_sha256(index, [field, "field:workspace/missing"]) ==
                Index.subject_sha256(index, [field])
+    end
+  end
+
+  describe "acknowledge, withdraw and publication" do
+    test "an orphan whose subject still exists blocks until acknowledged", %{findings: fs} do
+      d = decide(finding(fs, :denormalized_field, @copy), :accept)
+
+      listed =
+        update_field(
+          @app,
+          "project",
+          "sort_workspace_name_text",
+          &Map.put(&1, "value", "list.text")
+        )
+
+      opts = [index: index(listed)]
+      resolved = resolve!([d], analyze(listed), opts)
+      assert [%{decision: ^d, state: :orphaned}] = Resolved.blocking(resolved)
+      assert Resolved.archived(resolved) == []
+
+      # A new reject does not help: its finding is still gone.
+      {:ok, reject} = Decision.new(Map.merge(Map.from_struct(d), %{choice: :reject, revision: 2}))
+      assert Resolved.blocking(resolve!([d, reject], analyze(listed), opts)) == []
+
+      assert state(resolve!([d, reject], analyze(listed), opts), reject) ==
+               {:orphaned, [:finding_absent, :subject_present]}
+
+      {:ok, ack} = Decision.acknowledge(d, rationale: "seen", decided_at: @now)
+      assert ack.revision == 2 and ack.choice == :acknowledge and ack.key == d.key
+      assert ack.basis == %{finding_id: d.basis.finding_id}
+      assert {:ok, ^ack} = ack |> Decision.to_json() |> Decision.from_json()
+
+      resolved = resolve!([d, ack], analyze(listed), opts)
+      assert state(resolved, ack) == {:acknowledged, [:finding_absent, :subject_present]}
+      assert Resolved.blocking(resolved) == []
+
+      assert Decision.applicable(resolved, analyze(listed)) |> Enum.filter(&(&1.key == d.key)) ==
+               []
+
+      # If the finding comes back, the acknowledgement is stale (non-blocking).
+      back = resolve!([d, ack], fs)
+      assert {:stale, [:proposal_changed, :basis_changed]} = state(back, ack)
+      assert Resolved.blocking(back) == []
+    end
+
+    test "an orphan whose subject is gone is archived, not blocking", %{findings: fs} do
+      d = decide(finding(fs, :denormalized_field, @copy), :accept)
+      r = rename(@copy, :attribute, "sort_key")
+
+      gone =
+        update_in(
+          @app,
+          ["user_types", "project", "fields"],
+          &Map.delete(&1, "sort_workspace_name_text")
+        )
+
+      resolved = resolve!([d, r], analyze(gone), index: index(gone))
+      assert Resolved.blocking(resolved) == []
+
+      assert resolved |> Resolved.archived() |> Enum.map(& &1.decision) |> Enum.sort() ==
+               Enum.sort([d, r])
+    end
+
+    test "a stale accept blocks until re-decided or acknowledged with the new finding", %{
+      findings: fs
+    } do
+      d = decide(finding(fs, :denormalized_field, @copy), :accept)
+      changed = update_field(@app, "workspace", "name_text", &Map.put(&1, "value", "number"))
+      now_findings = analyze(changed)
+      opts = [index: index(changed)]
+      new_copy = finding(now_findings, :denormalized_field, @copy)
+
+      assert [%{state: :stale}] = Resolved.blocking(resolve!([d], now_findings, opts))
+
+      {:ok, ack} = Decision.acknowledge(d, finding: new_copy)
+      resolved = resolve!([d, ack], now_findings, opts)
+      assert state(resolved, ack) == {:acknowledged, []}
+      assert Resolved.blocking(resolved) == []
+
+      reaccept = decide(new_copy, :accept, %{}, revision: 2)
+      resolved = resolve!([d, reaccept], now_findings, opts)
+      assert state(resolved, reaccept) == {:active, []}
+      assert Enum.any?(Decision.applicable(resolved, now_findings), &(&1.key == d.key))
+
+      # A stale reject never blocks: it applies nothing either way.
+      reject = decide(finding(fs, :denormalized_field, @copy), :reject)
+      assert Resolved.blocking(resolve!([reject], now_findings, opts)) == []
+
+      assert invalid(Decision.acknowledge(d, finding: finding(fs, :number_type, @points))) =~
+               "own finding"
+    end
+
+    test "renames and parity exceptions are withdrawn", %{findings: fs} do
+      r = rename(@copy, :calculation, "sort_key")
+      p = parity(expires_at: ~U[2027-01-01 00:00:00Z])
+      {:ok, r2} = Decision.withdraw(r, rationale: "back to the derived name")
+      {:ok, p2} = Decision.withdraw(p)
+
+      assert {r2.key, r2.revision, r2.choice} == {r.key, 2, :withdraw}
+      assert {:ok, ^r2} = r2 |> Decision.to_json() |> Decision.from_json()
+
+      resolved = resolve!([r, r2, p, p2], fs)
+      assert state(resolved, r2) == {:withdrawn, []}
+      assert state(resolved, p2) == {:withdrawn, []}
+      assert state(resolved, r) == {:superseded, [:newer_revision]}
+      refute Enum.any?(Decision.applicable(resolved, fs), &(&1.kind == :rename))
+
+      assert invalid(Decision.withdraw(decide(finding(fs, :number_type, @points), :accept))) =~
+               "acknowledge"
+
+      assert invalid(Decision.acknowledge(r)) =~ "withdraw"
+      d = decide(finding(fs, :number_type, @points), :accept)
+
+      assert invalid(Decision.from_map(%{Decision.to_map(d) | "choice" => "withdraw"})) =~
+               "finding decisions are"
+    end
+  end
+
+  describe "review hardening" do
+    test "target_type must be one the finding saw, and live in the index" do
+      f =
+        Finding.new(:id_in_text, @owner_id,
+          evidence: %{
+            symbols: ["field:project/owner_id_text"],
+            target_types: ["data_type:ghost", "data_type:user"]
+          },
+          proposal: %{
+            transform: :text_to_reference,
+            field: "field:project/owner_id_text",
+            target_type: nil,
+            cardinality: :one
+          },
+          confidence: :low,
+          message: "m"
+        )
+
+      f = %{f | basis_sha256: @sha_a}
+
+      assert invalid(Decision.for_finding(f, :modify, %{target_type: "data_type:project"})) =~
+               "not one the finding saw"
+
+      user = decide(f, :modify, %{target_type: "data_type:user"})
+      ghost = decide(f, :modify, %{target_type: "data_type:ghost"})
+      assert state(resolve!([user], [f]), user) == {:active, []}
+      assert state(resolve!([ghost], [f]), ghost) == {:stale, [:params_invalid]}
+    end
+
+    test "decoding rejects null unknown basis members, non-string keys, empty values and reserved modules",
+         %{findings: fs} do
+      map = fs |> finding(:number_type, @points) |> decide(:accept) |> Decision.to_map()
+
+      assert invalid(Decision.from_map(put_in(map, ["basis", "extra"], nil))) =~ "basis"
+      assert invalid(Decision.from_map(put_in(map, ["basis", "proposal_sha256"], ""))) =~ "basis"
+      assert invalid(Decision.from_map(put_in(map, ["basis", "basis_sha256"], "abc"))) =~ "basis"
+      assert invalid(Decision.from_map(put_in(map, ["basis", "bubble_version"], ""))) =~ "basis"
+      assert invalid(Decision.from_map(Map.put(map, :kind, "finding"))) =~ "strings"
+      assert invalid(Decision.from_map(%{map | "subject" => %{type: "task"}})) =~ "subject"
+      assert invalid(Decision.from_map(%{map | "id" => ""})) =~ "empty"
+      assert invalid(Decision.from_json(nil)) =~ "string"
+
+      modify = %{map | "choice" => "modify", "params" => %{to: "decimal"}}
+      assert invalid(Decision.from_map(modify)) =~ "not allowed"
+
+      for name <- ["Kernel", "Enum.Things", "Ash", "Ecto.Thing"] do
+        assert invalid(
+                 Decision.new(
+                   kind: :rename,
+                   target: "ash",
+                   subject: %{type: "project"},
+                   choice: :accept,
+                   params: %{slot: :module, name: name}
+                 )
+               ) =~ "invalid module name"
+      end
+    end
+
+    test "decisions_sha256 changes when a re-accept records another basis", %{findings: fs} do
+      copy = finding(fs, :denormalized_field, @copy)
+      old = decide(copy, :accept)
+      reaccepted = decide(%{copy | basis_sha256: @sha_b}, :accept, %{}, revision: 2)
+      refute Decision.decisions_sha256([old]) == Decision.decisions_sha256([old, reaccepted])
+
+      p = parity(expires_at: ~U[2027-01-01 00:00:00Z])
+
+      {:ok, later} =
+        Decision.new(
+          Map.merge(Map.from_struct(p), %{revision: 2, expires_at: ~U[2028-01-01 00:00:00Z]})
+        )
+
+      refute Decision.decisions_sha256([p]) == Decision.decisions_sha256([p, later])
+    end
+
+    test "hint bases ignore search hosts; action positions do not count", %{findings: fs} do
+      search = finding(fs, :search_index, %{type: "project"})
+
+      assert Enum.all?(
+               Finding.basis_symbols(search),
+               &String.starts_with?(&1, ["data_type:", "field:"])
+             )
+
+      swapped =
+        update_in(@app, ["api", "wfCreateProject", "actions"], fn %{"0" => a, "1" => b} ->
+          %{"0" => b, "1" => a}
+        end)
+
+      ids = ["action:aCreateProject", "action:aAddToWorkspace"]
+      assert Index.subject_sha256(index(swapped), ids) == Index.subject_sha256(index(@app), ids)
+
+      refute Enum.map(ids, &Index.symbol(index(swapped), &1).attrs[:index]) ==
+               Enum.map(ids, &Index.symbol(index(@app), &1).attrs[:index])
     end
   end
 

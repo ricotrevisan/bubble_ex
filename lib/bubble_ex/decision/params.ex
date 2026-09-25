@@ -12,7 +12,7 @@ defmodule BubbleEx.Decision.Params do
   | `:derive_from_related`, `:derive_count` | `alternative` - index (from 0) into `proposal.alternatives`: derive from that alternative instead |
   | `:refine_number_type` | `to` - `:integer` or `:decimal` |
   | `:normalize_list_to_join` | `keep_order` - boolean; `join_name` - snake_case name of the join |
-  | `:text_to_reference` | `target_type` - the data type symbol (`"data_type:<key>"`) the IDs reference, only when the finding named none |
+  | `:text_to_reference` | `target_type` - the data type symbol (`"data_type:<key>"`) the IDs reference: one of the finding's `evidence.target_types`, only when the finding named none |
   | `:add_indexes` | `drop` - indexes (from 0) into `proposal.indexes` not to create |
   | `:membership_policy`, `:derive_reverse_relationship` | none |
 
@@ -53,10 +53,11 @@ defmodule BubbleEx.Decision.Params do
   allowed by one of the kind's transforms and of the right shape.
   """
   @spec cast(atom(), atom(), map()) :: {:ok, t()} | {:error, Error.t()}
-  def cast(_kind, choice, params) when choice in [:accept, :reject] and map_size(params) == 0,
-    do: {:ok, %{}}
+  def cast(_kind, choice, params)
+      when choice in [:accept, :reject, :acknowledge] and map_size(params) == 0,
+      do: {:ok, %{}}
 
-  def cast(_kind, choice, params) when choice in [:accept, :reject],
+  def cast(_kind, choice, params) when choice in [:accept, :reject, :acknowledge],
     do: error("#{choice} takes no parameters; use modify", %{params: Map.keys(params)})
 
   def cast(kind, :modify, params) when is_map(params) do
@@ -95,7 +96,7 @@ defmodule BubbleEx.Decision.Params do
   end
 
   defp param_name(names, key, allowed) do
-    case Map.fetch(names, to_string(key)) do
+    case Map.fetch(names, key) do
       {:ok, name} -> {:ok, name}
       :error -> error("parameter #{inspect(key)} is not allowed", %{allowed: allowed})
     end
@@ -131,17 +132,18 @@ defmodule BubbleEx.Decision.Params do
   defp bad(name, value), do: error("invalid value for parameter #{name}", %{value: value})
 
   @doc """
-  Checks cast `params` against the finding `proposal` they modify: every
-  parameter is allowed by its transform and points into it (an existing
-  alternative or index; a `target_type` only where the finding named none).
+  Checks cast `params` against the finding `proposal` they modify and its
+  `evidence`: every parameter is allowed by its transform and points into
+  it (an existing alternative or index; a `target_type` only where the
+  finding named none, and one of its `evidence.target_types`).
   """
-  @spec check(map(), t()) :: :ok | {:error, Error.t()}
-  def check(%{transform: transform} = proposal, params) when is_map(params) do
+  @spec check(map(), t(), map()) :: :ok | {:error, Error.t()}
+  def check(%{transform: transform} = proposal, params, evidence \\ %{}) when is_map(params) do
     allowed = Map.get(@transforms, transform, [])
 
     case Enum.reject(Map.keys(params), &(&1 in allowed)) do
       [] ->
-        Enum.find_value(params, :ok, &error_or_nil(fits(proposal, &1)))
+        Enum.find_value(params, :ok, &error_or_nil(fits(proposal, evidence, &1)))
 
       extra ->
         error("parameters not allowed for #{transform}", %{params: extra, allowed: allowed})
@@ -151,19 +153,28 @@ defmodule BubbleEx.Decision.Params do
   defp error_or_nil(:ok), do: nil
   defp error_or_nil(error), do: error
 
-  defp fits(proposal, {:alternative, n}) do
+  defp fits(proposal, _evidence, {:alternative, n}) do
     if n < length(Map.get(proposal, :alternatives, [])),
       do: :ok,
       else: error("the finding has no alternative #{n}", %{alternative: n})
   end
 
-  defp fits(proposal, {:target_type, _}) do
-    if Map.get(proposal, :target_type) == nil,
-      do: :ok,
-      else: error("the finding already names its target type", %{})
+  defp fits(proposal, evidence, {:target_type, type}) do
+    candidates = Map.get(evidence, :target_types, [])
+
+    cond do
+      Map.get(proposal, :target_type) != nil ->
+        error("the finding already names its target type", %{})
+
+      type not in candidates ->
+        error("target_type is not one the finding saw", %{target_type: type, allowed: candidates})
+
+      true ->
+        :ok
+    end
   end
 
-  defp fits(proposal, {:drop, drop}) do
+  defp fits(proposal, _evidence, {:drop, drop}) do
     count = length(Map.get(proposal, :indexes, []))
 
     if Enum.all?(drop, &(&1 < count)),
@@ -171,7 +182,7 @@ defmodule BubbleEx.Decision.Params do
       else: error("the finding has #{count} indexes", %{drop: drop})
   end
 
-  defp fits(_proposal, _param), do: :ok
+  defp fits(_proposal, _evidence, _param), do: :ok
 
   @doc """
   The finding `proposal` modified by checked `params`: `alternative` swaps

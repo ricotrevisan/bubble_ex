@@ -85,9 +85,22 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
         d
       end
 
-    {:ok, resolved} = BubbleEx.Decision.resolve(decisions, result.findings, index: index)
+    {:ok, resolved} =
+      BubbleEx.Decision.resolve(decisions, result.findings, index: index, now: DateTime.utc_now())
+
     assert Enum.all?(resolved.entries, &(&1.state == :active))
     assert resolved.undecided == []
+    assert BubbleEx.Decision.Resolved.blocking(resolved) == []
+
+    # Hint bases cover only the type and its indexed columns.
+    for %{category: :hint} = f <- result.findings,
+        do:
+          assert(
+            Enum.all?(
+              Finding.basis_symbols(f),
+              &String.starts_with?(&1, ["data_type:", "field:"])
+            )
+          )
   end
 
   test "finds the expected findings", %{result: result} do

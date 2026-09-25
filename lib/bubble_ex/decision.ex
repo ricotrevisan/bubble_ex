@@ -7,7 +7,7 @@ defmodule BubbleEx.Decision do
 
   | `kind` | Key (one current record per key) | Decides |
   |--------|----------------------------------|---------|
-  | `:finding` | `"finding:<finding id>"` | accept, reject or modify a `BubbleEx.Finding`'s proposal |
+  | `:finding` | `"finding:<finding id>"` | accept, reject or modify a `BubbleEx.Finding`'s proposal, or acknowledge that a decision no longer applies |
   | `:rename` | `"rename:<hash>"` of target, slot and subject | a target name overriding the name map |
   | `:parity_exception` | `"parity_exception:<hash>"` of scope and subject | an accepted behavioural difference with no finding |
 
@@ -21,9 +21,11 @@ defmodule BubbleEx.Decision do
       (older ones are `:superseded`)
     * `subject` - Bubble IDs, keyed like a `BubbleEx.Finding`'s subject
     * `target` - the target stack of a `:rename` (`"ash"`), else `nil`
-    * `choice` - `:accept`, `:reject` or `:modify` for findings; renames and
-      parity exceptions are always `:accept`
-    * `params` - `%{}` for accept and reject; for `modify`, only what
+    * `choice` - findings: `:accept`, `:reject`, `:modify` or
+      `:acknowledge` (a stale or orphaned decision was seen: stop blocking,
+      keep the faithful mapping; `acknowledge/2`); renames and parity
+      exceptions: `:accept` or `:withdraw` (`withdraw/2`)
+    * `params` - `%{}` for accept, reject and acknowledge; for `modify`, only what
       `BubbleEx.Decision.Params` allows for the finding's transform. A
       rename's are `%{slot, name}`, a parity exception's
       `%{scope, bubble_behavior, chosen_behavior}`
@@ -36,9 +38,9 @@ defmodule BubbleEx.Decision do
       via: :chat | :form | :cli}`), `decided_at` - audit only
     * `expires_at` - optional, parity exceptions only
 
-  Only `key`, `kind`, `subject`, `target`, `choice`, `params` and
-  `basis.proposal_sha256` are generation inputs (`decisions_sha256/1`);
-  editing a rationale never regenerates anything.
+  Only `key`, `kind`, `subject`, `target`, `choice`, `params`,
+  `expires_at` and the basis hashes decide state and what applies
+  (`decisions_sha256/1`); editing a rationale never regenerates anything.
 
   ## JSON
 
@@ -87,7 +89,12 @@ defmodule BubbleEx.Decision do
   @schema_version 1
 
   @kinds [:finding, :rename, :parity_exception]
-  @choices [:accept, :reject, :modify]
+  @choices [:accept, :reject, :modify, :acknowledge, :withdraw]
+  @kind_choices %{
+    finding: [:accept, :reject, :modify, :acknowledge],
+    rename: [:accept, :withdraw],
+    parity_exception: [:accept, :withdraw]
+  }
   @author_kinds [:owner, :agent, :wtf_staff]
   @vias [:chat, :form, :cli]
   @targets ["ash"]
@@ -103,6 +110,13 @@ defmodule BubbleEx.Decision do
     :scenario_sha256
   ]
   @finding_basis [:finding_id, :proposal_sha256, :basis_sha256]
+
+  # Top-level module names a rename may not take: Elixir's own modules and
+  # the namespaces of the target's libraries.
+  @reserved_modules for mod <- elem(:application.get_key(:elixir, :modules), 1),
+                        "Elixir." <> name <- [Atom.to_string(mod)],
+                        into: MapSet.new(~w(Elixir Erlang Ash AshPostgres Ecto Phoenix Spark)),
+                        do: name |> String.split(".") |> hd()
 
   # Rename slots and the subject shapes (sorted subject keys) each names.
   @slots %{
@@ -122,7 +136,7 @@ defmodule BubbleEx.Decision do
   @attrs Enum.map(@members, &String.to_atom/1)
 
   @type kind :: :finding | :rename | :parity_exception
-  @type choice :: :accept | :reject | :modify
+  @type choice :: :accept | :reject | :modify | :acknowledge | :withdraw
   @type author :: %{
           kind: :owner | :agent | :wtf_staff,
           id: String.t() | nil,
@@ -230,6 +244,80 @@ defmodule BubbleEx.Decision do
   end
 
   @doc """
+  The next revision of finding decision `decision`, acknowledging that it
+  no longer applies: an orphaned decision (its finding is gone) or a stale
+  one (its finding changed). It stops blocking publication and keeps the
+  source-faithful mapping, like a reject; to apply a changed proposal,
+  accept it again instead.
+
+  Pass the current finding as `:finding` when there is one (a stale
+  decision), so the acknowledgement records its hashes and resolves
+  `:acknowledged`; if the finding changes again it is `:stale` again. Other
+  options: `:id`, `:rationale`, `:author`, `:decided_at`, `:basis` (extra
+  basis members).
+  """
+  @spec acknowledge(t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def acknowledge(decision, opts \\ [])
+
+  def acknowledge(%__MODULE__{kind: :finding} = d, opts) do
+    hashes =
+      case Keyword.get(opts, :finding) do
+        %Finding{id: id} = f when id == d.basis.finding_id ->
+          {:ok, %{proposal_sha256: f.proposal_sha256, basis_sha256: f.basis_sha256}}
+
+        nil ->
+          {:ok, %{}}
+
+        other ->
+          error("acknowledge needs the decision's own finding", %{finding: other})
+      end
+
+    with {:ok, hashes} <- hashes do
+      basis =
+        opts
+        |> Keyword.get(:basis, %{})
+        |> Map.new()
+        |> Map.merge(hashes)
+        |> Map.put(:finding_id, d.basis.finding_id)
+
+      next(d, :acknowledge, %{}, basis, opts)
+    end
+  end
+
+  def acknowledge(%__MODULE__{kind: kind}, _opts),
+    do: error("only finding decisions are acknowledged; withdraw a #{kind}", %{kind: kind})
+
+  @doc """
+  The next revision of a rename or parity exception, withdrawing it: the
+  rename's derived name comes back, the exception no longer excuses a
+  difference. Options: `:id`, `:rationale`, `:author`, `:decided_at`.
+  """
+  @spec withdraw(t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def withdraw(decision, opts \\ [])
+
+  def withdraw(%__MODULE__{kind: kind} = d, opts) when kind in [:rename, :parity_exception],
+    do: next(d, :withdraw, d.params, d.basis, opts)
+
+  def withdraw(%__MODULE__{kind: kind}, _opts),
+    do: error("only renames and parity exceptions are withdrawn; acknowledge a #{kind}", %{})
+
+  defp next(d, choice, params, basis, opts) do
+    opts
+    |> Keyword.take([:id, :rationale, :author, :decided_at])
+    |> Map.new()
+    |> Map.merge(%{
+      kind: d.kind,
+      subject: d.subject,
+      target: d.target,
+      choice: choice,
+      params: params,
+      basis: basis,
+      revision: d.revision + 1
+    })
+    |> new()
+  end
+
+  @doc """
   Checks a finding decision against `finding`: it is about that finding and
   its `modify` parameters fit the finding's proposal
   (`BubbleEx.Decision.Params.check/2`).
@@ -244,7 +332,7 @@ defmodule BubbleEx.Decision do
         })
 
       d.choice == :modify ->
-        Params.check(finding.proposal, d.params)
+        Params.check(finding.proposal, d.params, finding.evidence)
 
       true ->
         :ok
@@ -307,6 +395,8 @@ defmodule BubbleEx.Decision do
     end
   end
 
+  def from_json(other), do: error("decision JSON must be a string", %{value: other})
+
   @doc """
   Decodes and validates the JSON form. Unknown members, an unknown
   `schema_version`, kind, choice, author, rename slot or `modify` parameter,
@@ -325,7 +415,7 @@ defmodule BubbleEx.Decision do
          {:ok, author} <- author(map["author"]),
          {:ok, decided_at} <- timestamp(map["decided_at"], "decided_at"),
          {:ok, expires_at} <- timestamp(map["expires_at"], "expires_at"),
-         {:ok, id} <- string(map["id"], "id"),
+         {:ok, id} <- non_empty(map["id"], "id"),
          {:ok, rationale} <- string(map["rationale"], "rationale"),
          {:ok, target} <- string(map["target"], "target"),
          decision = %__MODULE__{
@@ -350,9 +440,12 @@ defmodule BubbleEx.Decision do
   def from_map(other), do: error("a decision must be a JSON object", %{value: other})
 
   defp members(map) do
-    keys = map |> Map.keys() |> Enum.map(&to_string/1)
+    keys = Map.keys(map)
 
     cond do
+      not Enum.all?(keys, &is_binary/1) ->
+        error("decision members must be strings", %{members: Enum.reject(keys, &is_binary/1)})
+
       (extra = keys -- @members) != [] ->
         error("unknown decision members", %{members: extra})
 
@@ -376,7 +469,7 @@ defmodule BubbleEx.Decision do
     names = Map.new(@subject_keys, &{Atom.to_string(&1), &1})
 
     Enum.reduce_while(subject, {:ok, %{}}, fn {k, v}, {:ok, acc} ->
-      case Map.fetch(names, to_string(k)) do
+      case Map.fetch(names, k) do
         {:ok, key} when is_binary(v) and v != "" -> {:cont, {:ok, Map.put(acc, key, v)}}
         _ -> {:halt, error("invalid subject entry", %{entry: {k, v}})}
       end
@@ -388,26 +481,36 @@ defmodule BubbleEx.Decision do
   defp basis(basis) when is_map(basis) do
     names = Map.new(@basis_keys, &{Atom.to_string(&1), &1})
 
-    Enum.reduce_while(basis, {:ok, %{}}, fn
-      {_k, nil}, acc ->
-        {:cont, acc}
-
-      {k, v}, {:ok, acc} ->
-        case Map.fetch(names, to_string(k)) do
-          {:ok, key} when is_binary(v) -> {:cont, {:ok, Map.put(acc, key, v)}}
-          _ -> {:halt, error("invalid basis entry", %{entry: {k, v}})}
-        end
+    Enum.reduce_while(basis, {:ok, %{}}, fn {k, v}, {:ok, acc} ->
+      case {Map.fetch(names, k), v} do
+        {{:ok, _}, nil} -> {:cont, {:ok, acc}}
+        {{:ok, key}, v} when is_binary(v) -> basis_value(acc, key, v)
+        _ -> {:halt, error("invalid basis entry", %{entry: {k, v}})}
+      end
     end)
   end
 
   defp basis(basis), do: error("basis must be an object", %{basis: basis})
+
+  # Hashes are lowercase hex SHA-256; every other basis member a non-empty
+  # string.
+  defp basis_value(acc, key, v) do
+    valid? =
+      if key |> Atom.to_string() |> String.ends_with?("sha256"),
+        do: v =~ ~r/\A[0-9a-f]{64}\z/,
+        else: v != ""
+
+    if valid?,
+      do: {:cont, {:ok, Map.put(acc, key, v)}},
+      else: {:halt, error("invalid basis #{key}", %{value: v})}
+  end
 
   defp author(nil), do: {:ok, nil}
 
   defp author(%{} = author) do
     with :ok <- only(author, ~w(kind id via), "author"),
          {:ok, kind} <- enum(author["kind"], @author_kinds, "author kind"),
-         {:ok, id} <- string(author["id"], "author id"),
+         {:ok, id} <- non_empty(author["id"], "author id"),
          {:ok, via} <- optional_enum(author["via"], @vias, "author via") do
       {:ok, %{kind: kind, id: id, via: via}}
     end
@@ -430,6 +533,9 @@ defmodule BubbleEx.Decision do
   defp string(s, _) when is_binary(s), do: {:ok, s}
   defp string(value, name), do: error("#{name} must be a string", %{value: value})
 
+  defp non_empty("", name), do: error("#{name} must not be empty", %{})
+  defp non_empty(value, name), do: string(value, name)
+
   defp enum(value, allowed, name) when is_binary(value) do
     case Enum.find(allowed, &(Atom.to_string(&1) == value)) do
       nil -> error("unknown #{name}", %{value: value, allowed: allowed})
@@ -444,7 +550,7 @@ defmodule BubbleEx.Decision do
   defp optional_enum(value, allowed, name), do: enum(value, allowed, name)
 
   defp only(map, allowed, name) do
-    case Enum.map(Map.keys(map), &to_string/1) -- allowed do
+    case Map.keys(map) -- allowed do
       [] -> :ok
       extra -> error("unknown #{name} members", %{members: extra})
     end
@@ -452,7 +558,8 @@ defmodule BubbleEx.Decision do
 
   # Kind-specific rules: target, choice, basis, params and expiry.
   defp by_kind(%{kind: :finding} = d, params) do
-    with :ok <- absent(d.target, "target", :finding),
+    with :ok <- choice_of(d),
+         :ok <- absent(d.target, "target", :finding),
          :ok <- absent(d.expires_at, "expires_at", :finding),
          :ok <- finding_basis(d),
          {:ok, kind} <- finding_kind(d),
@@ -463,7 +570,7 @@ defmodule BubbleEx.Decision do
   end
 
   defp by_kind(%{kind: :rename} = d, params) do
-    with :ok <- accept_only(d),
+    with :ok <- choice_of(d),
          :ok <- absent(d.expires_at, "expires_at", :rename),
          :ok <- target(d.target),
          {:ok, params} <- params_object(params),
@@ -476,7 +583,7 @@ defmodule BubbleEx.Decision do
   end
 
   defp by_kind(%{kind: :parity_exception} = d, params) do
-    with :ok <- accept_only(d),
+    with :ok <- choice_of(d),
          :ok <- absent(d.target, "target", :parity_exception),
          {:ok, params} <- params_object(params),
          :ok <- only(params, Enum.map(@parity_params, &Atom.to_string/1), "parity params"),
@@ -502,16 +609,22 @@ defmodule BubbleEx.Decision do
   defp absent(nil, _, _), do: :ok
   defp absent(_, name, kind), do: error("#{kind} decisions have no #{name}", %{})
 
-  defp accept_only(%{choice: :accept}), do: :ok
+  defp choice_of(%{kind: kind, choice: choice}) do
+    allowed = @kind_choices[kind]
 
-  defp accept_only(%{kind: kind, choice: choice}),
-    do: error("#{kind} decisions are always accept", %{choice: choice})
+    if choice in allowed,
+      do: :ok,
+      else: error("#{kind} decisions are #{Enum.join(allowed, ", ")}", %{choice: choice})
+  end
 
   defp target(target) when target in @targets, do: :ok
   defp target(target), do: error("unknown rename target", %{target: target, allowed: @targets})
 
-  defp finding_basis(%{basis: basis}) do
-    case Enum.reject(@finding_basis, &Map.has_key?(basis, &1)) do
+  # An acknowledgement of an orphaned decision has no finding to hash.
+  defp finding_basis(%{basis: basis, choice: choice}) do
+    required = if choice == :acknowledge, do: [:finding_id], else: @finding_basis
+
+    case Enum.reject(required, &Map.has_key?(basis, &1)) do
       [] -> :ok
       missing -> error("a finding decision's basis needs #{Enum.join(missing, ", ")}", %{})
     end
@@ -545,10 +658,17 @@ defmodule BubbleEx.Decision do
         _ -> ~r/\A[a-z][a-z0-9_]{0,62}\z/
       end
 
-    if name =~ pattern, do: {:ok, name}, else: bad_name(slot, name)
+    cond do
+      not (name =~ pattern) -> bad_name(slot, name)
+      slot in [:module, :enum_module] and reserved_module?(name) -> bad_name(slot, name)
+      true -> {:ok, name}
+    end
   end
 
   defp slot_name(slot, name), do: bad_name(slot, name)
+
+  defp reserved_module?(name),
+    do: MapSet.member?(@reserved_modules, name |> String.split(".") |> hd())
 
   defp bad_name(slot, name), do: error("invalid #{slot} name", %{name: name})
 
@@ -570,30 +690,30 @@ defmodule BubbleEx.Decision do
 
   Options:
 
-    * `:index` - the `BubbleEx.Index` of the current snapshot. With it, an
-      orphaned finding decision says whether its subject still exists, and
-      a rename whose subject is gone (or deleted) is orphaned.
+    * `:index` (required) - the `BubbleEx.Index` of the snapshot the
+      findings come from. It tells an orphan whose subject still exists
+      (the owner must acknowledge it) from one whose subject is gone
+      (archived), orphans a rename whose subject is gone or deleted, and
+      checks a `modify`'s `target_type` still names a live data type.
+    * `:now` (required) - the `DateTime` parity exceptions expire against;
+      explicit so resolving stays a pure function of its inputs
+    * `:scenarios` - `%{scope => scenario sha256}` of the current
+      scenarios (default `%{}`). A parity exception with a
+      `basis.scenario_sha256` is expired when its scope's hash differs
+      (`:scenario_changed`) or is not given (`:scenario_unknown`): an
+      exception is never kept on a scenario nobody vouched for.
     * `:bubble_ex` - the current analyzer version, to flag stale decisions
       recorded by another one (`:analyzer_updated`)
-    * `:now` - the time parity exceptions expire against (default: now)
-    * `:scenarios` - `%{scope => sha256}` of the current scenarios; a parity
-      exception whose `basis.scenario_sha256` differs from its scope's is
-      expired
 
-  Two records with the same key and revision are `:invalid_input`.
+  Missing or invalid options, and two records with the same key and
+  revision, are `:invalid_input`. `BubbleEx.Decision.Resolved.blocking/1`
+  lists what blocks publication.
   """
   @spec resolve([t()], [Finding.t()], keyword()) :: {:ok, Resolved.t()} | {:error, Error.t()}
-  def resolve(decisions, findings, opts \\ []) when is_list(decisions) and is_list(findings) do
-    with {:ok, latest} <- latest(decisions) do
-      by_id = Map.new(findings, &{&1.id, &1})
-
-      ctx = %{
-        findings: by_id,
-        index: Keyword.get(opts, :index),
-        bubble_ex: Keyword.get(opts, :bubble_ex),
-        now: Keyword.get_lazy(opts, :now, &DateTime.utc_now/0),
-        scenarios: Keyword.get(opts, :scenarios, %{})
-      }
+  def resolve(decisions, findings, opts) when is_list(decisions) and is_list(findings) do
+    with {:ok, latest} <- latest(decisions),
+         {:ok, ctx} <- resolve_context(opts) do
+      ctx = Map.put(ctx, :findings, Map.new(findings, &{&1.id, &1}))
 
       entries =
         decisions
@@ -606,6 +726,17 @@ defmodule BubbleEx.Decision do
             do: id
 
       {:ok, %Resolved{entries: entries, undecided: Enum.sort(undecided)}}
+    end
+  end
+
+  defp resolve_context(opts) do
+    case {Keyword.get(opts, :index), Keyword.get(opts, :now), Keyword.get(opts, :scenarios, %{})} do
+      {%Index{} = index, %DateTime{} = now, scenarios} when is_map(scenarios) ->
+        {:ok,
+         %{index: index, now: now, scenarios: scenarios, bubble_ex: Keyword.get(opts, :bubble_ex)}}
+
+      _ ->
+        error("resolve needs index: %BubbleEx.Index{}, now: %DateTime{} and a scenarios map", %{})
     end
   end
 
@@ -645,28 +776,28 @@ defmodule BubbleEx.Decision do
   end
 
   defp current(%{kind: :finding} = d, ctx) do
-    case Map.fetch(ctx.findings, d.basis.finding_id) do
-      {:ok, finding} ->
-        reasons =
-          [
-            {:proposal_changed, finding.proposal_sha256 != d.basis.proposal_sha256},
-            {:basis_changed, finding.basis_sha256 != d.basis.basis_sha256},
-            {:params_invalid, d.choice == :modify and check(d, finding) != :ok}
-          ]
-          |> Enum.filter(&elem(&1, 1))
-          |> Enum.map(&elem(&1, 0))
+    presence = subject_presence(d.subject, ctx.index)
 
-        if reasons == [],
-          do: entry(d, :active, []),
-          else: entry(d, :stale, reasons ++ analyzer(d, ctx))
+    case {Map.fetch(ctx.findings, d.basis.finding_id), d.choice} do
+      {{:ok, finding}, choice} ->
+        case changes(d, finding, ctx.index) do
+          [] when choice == :acknowledge -> entry(d, :acknowledged, [])
+          [] -> entry(d, :active, [])
+          reasons -> entry(d, :stale, reasons ++ analyzer(d, ctx))
+        end
 
-      :error ->
-        entry(d, :orphaned, [:finding_absent | subject_presence(d, ctx.index)])
+      {:error, :acknowledge} ->
+        entry(d, :acknowledged, [:finding_absent, presence])
+
+      {:error, _} ->
+        entry(d, :orphaned, [:finding_absent, presence])
     end
   end
 
+  defp current(%{choice: :withdraw} = d, _ctx), do: entry(d, :withdrawn, [])
+
   defp current(%{kind: :rename} = d, ctx) do
-    if subject_presence(d, ctx.index) == [:subject_gone],
+    if subject_presence(d.subject, ctx.index) == :subject_gone,
       do: entry(d, :orphaned, [:subject_gone]),
       else: entry(d, :active, [])
   end
@@ -674,13 +805,33 @@ defmodule BubbleEx.Decision do
   defp current(%{kind: :parity_exception} = d, ctx) do
     reasons =
       [
-        {:expired, d.expires_at != nil and DateTime.compare(ctx.now, d.expires_at) != :lt},
-        {:scenario_changed, scenario_changed?(d, ctx.scenarios)}
+        if(d.expires_at != nil and DateTime.compare(ctx.now, d.expires_at) != :lt,
+          do: :expired
+        ),
+        scenario(d, ctx.scenarios)
       ]
-      |> Enum.filter(&elem(&1, 1))
-      |> Enum.map(&elem(&1, 0))
+      |> Enum.reject(&is_nil/1)
 
     if reasons == [], do: entry(d, :active, []), else: entry(d, :expired, reasons)
+  end
+
+  # What changed between the finding a decision was made on and `finding`.
+  defp changes(d, finding, index) do
+    [
+      {:proposal_changed, finding.proposal_sha256 != d.basis[:proposal_sha256]},
+      {:basis_changed, finding.basis_sha256 != d.basis[:basis_sha256]},
+      {:params_invalid, d.choice == :modify and not params_valid?(d, finding, index)}
+    ]
+    |> Enum.filter(&elem(&1, 1))
+    |> Enum.map(&elem(&1, 0))
+  end
+
+  defp params_valid?(d, finding, index) do
+    check(d, finding) == :ok and
+      case d.params do
+        %{target_type: type} -> live?(index, type)
+        _ -> true
+      end
   end
 
   defp entry(d, state, reasons), do: %{decision: d, state: state, reasons: reasons}
@@ -691,29 +842,28 @@ defmodule BubbleEx.Decision do
 
   defp analyzer(_, _), do: []
 
-  defp scenario_changed?(%{basis: %{scenario_sha256: recorded}, params: %{scope: scope}}, now) do
-    case Map.fetch(now, scope) do
-      {:ok, sha} -> sha != recorded
-      :error -> false
+  defp scenario(%{basis: %{scenario_sha256: recorded}, params: %{scope: scope}}, scenarios) do
+    case Map.fetch(scenarios, scope) do
+      {:ok, ^recorded} -> nil
+      {:ok, _} -> :scenario_changed
+      :error -> :scenario_unknown
     end
   end
 
-  defp scenario_changed?(_, _), do: false
+  defp scenario(_, _), do: nil
 
-  # Whether every symbol of the subject exists (and is not deleted) in the
-  # index; nothing to say without one.
-  defp subject_presence(_d, nil), do: []
+  # Whether every symbol of the subject exists (and is not deleted).
+  defp subject_presence(subject, index) do
+    if Enum.all?(Subject.symbol_ids(subject), &live?(index, &1)),
+      do: :subject_present,
+      else: :subject_gone
+  end
 
-  defp subject_presence(d, %Index{} = index) do
-    present? =
-      Enum.all?(Subject.symbol_ids(d.subject), fn id ->
-        case Index.symbol(index, id) do
-          nil -> false
-          symbol -> not Map.get(symbol.attrs, :deleted, false)
-        end
-      end)
-
-    if present?, do: [:subject_present], else: [:subject_gone]
+  defp live?(index, id) do
+    case Index.symbol(index, id) do
+      nil -> false
+      symbol -> not Map.get(symbol.attrs, :deleted, false)
+    end
   end
 
   @doc """
@@ -721,8 +871,9 @@ defmodule BubbleEx.Decision do
   modify of a finding (its proposal with the parameters merged in), every
   `:active` rename, and every hint finding with no current record (hints
   apply by default and are recorded only when rejected or trimmed; these
-  are `automatic`). Rejections, parity exceptions and records in any other
-  state apply nothing: previews fall back to the source-faithful mapping.
+  are `automatic`). Rejections, acknowledgements, withdrawals, parity
+  exceptions and records in any other state apply nothing: previews fall
+  back to the source-faithful mapping.
   """
   @spec applicable(Resolved.t(), [Finding.t()]) :: [Applied.t()]
   def applicable(%Resolved{entries: entries}, findings) when is_list(findings) do
@@ -789,11 +940,14 @@ defmodule BubbleEx.Decision do
   end
 
   @doc """
-  SHA-256 of the generation inputs of the current record of every key:
-  `key`, `kind`, `subject`, `target`, `choice`, `params` and
-  `basis.proposal_sha256`, sorted by key. IDs, revisions, the rest of the
-  basis, rationales, authors and timestamps are excluded, so an audit-only
-  revision does not change it. Raises `ArgumentError` when two records
+  SHA-256 of the inputs of the current record of every key that decide
+  its state or what it applies: `key`, `kind`, `subject`, `target`,
+  `choice`, `params`, `expires_at` and the basis hashes
+  (`proposal_sha256`, `basis_sha256`, `scenario_sha256`), sorted by key.
+  Record IDs, revisions, `decided_at`, rationales, authors and the
+  informational basis members (`source_sha256`, `index_semantic_sha256`,
+  `bubble_version`, `bubble_ex`) are excluded, so an audit-only revision
+  does not change it; a re-accept of a changed finding does. Raises `ArgumentError` when two records
   share a key and revision.
   """
   @spec decisions_sha256([t()]) :: String.t()
@@ -819,7 +973,9 @@ defmodule BubbleEx.Decision do
       "target" => d.target,
       "choice" => Atom.to_string(d.choice),
       "params" => json(d.params),
-      "proposal_sha256" => Map.get(d.basis, :proposal_sha256)
+      "expires_at" => json(d.expires_at),
+      "basis" =>
+        d.basis |> Map.take([:proposal_sha256, :basis_sha256, :scenario_sha256]) |> json()
     }
   end
 

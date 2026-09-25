@@ -448,8 +448,9 @@ defmodule BubbleEx.Index do
 
   @doc """
   SHA-256 of the content of the symbols `ids`: each symbol's `id`, `kind`,
-  `bubble_id`, `parent` and `attrs`, without its source `path` or display
-  `name`. It changes when one of them changes content (a field's value
+  `bubble_id`, `parent` and `attrs`, without its source `path`, display
+  `name` or positional attributes (an action's `index` within its
+  workflow). It changes when one of them changes content (a field's value
   type, a workflow's settings, a symbol appearing or disappearing: an ID
   absent from the index hashes as `%{id, missing: true}`), and not when
   definitions move in the JSON or are renamed in the Bubble editor. The
@@ -465,12 +466,19 @@ defmodule BubbleEx.Index do
     |> Enum.sort()
     |> Enum.map(fn id ->
       case symbol(index, id) do
-        nil -> %{id: id, missing: true}
-        s -> %{id: s.id, kind: s.kind, bubble_id: s.bubble_id, parent: s.parent, attrs: s.attrs}
+        nil ->
+          %{id: id, missing: true}
+
+        s ->
+          %{id: s.id, kind: s.kind, bubble_id: s.bubble_id, parent: s.parent, attrs: content(s)}
       end
     end)
     |> CanonicalJson.sha256()
   end
+
+  # Attributes that only say where a symbol sits among its siblings.
+  defp content(%Symbol{kind: :action, attrs: attrs}), do: Map.delete(attrs, :index)
+  defp content(%Symbol{attrs: attrs}), do: attrs
 
   @doc "All symbols of `kind`, sorted by ID."
   @spec symbols(t(), Symbol.kind()) :: [Symbol.t()]
