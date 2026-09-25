@@ -96,6 +96,22 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:index_duplicate_symbol, :warning, :degraded, :model,
      "two definitions share a Bubble ID; the first by source path is indexed and references by that ID resolve to it"},
 
+    # --- :model — BubbleEx.Model (WTF-361) -----------------------------------
+    {:model_malformed_node, :error, :preserved, :model,
+     "a field, attribute, option set, option value or collection that is not a JSON object; kept verbatim (`raw`, or `extra` under its key)"},
+    {:model_malformed_field_type, :warning, :preserved, :model,
+     "a field or attribute whose type descriptor is missing or not a string; kept verbatim in `type.source` (kind `:unknown`)"},
+    {:model_unsupported_field_type, :warning, :preserved, :model,
+     "a type descriptor outside Bubble's type vocabulary; kept verbatim in `type.source` (kind `:unknown`)"},
+    {:model_unresolved_target, :warning, :unresolved, :model,
+     "a field or attribute referencing a data type or option set absent from the app; kept as an unresolved reference to its Bubble ID"},
+    {:model_uninterpreted_member, :info, :preserved, :model,
+     "an unexpected field, attribute, option-set or option-value member; kept in `extra` but not modeled"},
+    {:model_option_key_missing, :warning, :degraded, :model,
+     "an option value without a `db_value`; its Bubble ID stands in as the stable key"},
+    {:model_duplicate_option_key, :warning, :degraded, :model,
+     "an option value (not deleted) repeating the stable key of an earlier value in the same set"},
+
     # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
     {:external_type_unresolved_root, :warning, :degraded, :target,
      "an external field whose type did not resolve; rendered as JSON"},
