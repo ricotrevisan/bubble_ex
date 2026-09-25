@@ -1,0 +1,1130 @@
+{
+  "bubble_id": "synthetic-external-types",
+  "diagnostics": [
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "map",
+        "kind": "opaque",
+        "source": "mystery"
+      },
+      "message": "api.apiconnector2.graph.pong.B.blob is mapped to :map: the value has no usable type",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "field": "blob"
+      }
+    },
+    {
+      "code": "field_type_unsupported",
+      "details": {
+        "descriptor": "mystery",
+        "embedded_path": "/api.apiconnector2.graph.pong.B/fields/blob",
+        "root": {
+          "field": "pings_list_api",
+          "type": "shipment"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.graph.ping.A",
+            "field": "b"
+          },
+          {
+            "external_type": "api.apiconnector2.graph.pong.B",
+            "field": "blob"
+          }
+        ]
+      },
+      "message": "unsupported external field type: \"mystery\"",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "field": "blob"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "map",
+        "kind": "opaque",
+        "source": "api.not_a_connector"
+      },
+      "message": "shipment.invalid_api is mapped to :map: the value has no usable type",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/invalid_api",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "invalid_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "invalid_descriptor",
+      "details": {
+        "descriptor": "api.not_a_connector"
+      },
+      "message": "invalid API Connector type descriptor: \"api.not_a_connector\"",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/invalid_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "invalid_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "map",
+        "kind": "opaque",
+        "source": "list.api.not_a_connector"
+      },
+      "message": "shipment.invalid_list_api is mapped to :map: the value has no usable type",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/invalid_list_api",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "invalid_list_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "invalid_descriptor",
+      "details": {
+        "descriptor": "list.api.not_a_connector"
+      },
+      "message": "invalid API Connector type descriptor: \"list.api.not_a_connector\"",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/invalid_list_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "invalid_list_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "exact_type_definition_missing",
+      "details": {
+        "external_type": "api.apiconnector2.geo.lookup.Missing"
+      },
+      "message": "API Connector type definition is missing: api.apiconnector2.geo.lookup.Missing",
+      "outcome": "unresolved",
+      "path": "/user_types/shipment/fields/missing_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "missing_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "external_type_unresolved_root",
+      "details": {
+        "cardinality": "one",
+        "external_type": "api.apiconnector2.geo.lookup.Missing",
+        "fallback": "json"
+      },
+      "message": "shipment.missing_api is rendered as JSON: external type \"api.apiconnector2.geo.lookup.Missing\" has no known shape",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/missing_api",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "missing_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "connector_missing",
+      "details": {
+        "external_type": "api.apiconnector2.absent.call.Thing"
+      },
+      "message": "API Connector is missing: api.apiconnector2.absent.call.Thing",
+      "outcome": "unresolved",
+      "path": "/user_types/shipment/fields/nowhere_api/value",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "field": "nowhere_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "external_type_unresolved_root",
+      "details": {
+        "cardinality": "one",
+        "external_type": "api.apiconnector2.absent.call.Thing",
+        "fallback": "json"
+      },
+      "message": "shipment.nowhere_api is rendered as JSON: external type \"api.apiconnector2.absent.call.Thing\" has no known shape",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/nowhere_api",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "nowhere_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "external_type_cycle_edge",
+      "details": {
+        "cardinality": "one",
+        "external_type": "api.apiconnector2.graph.ping.A",
+        "fallback": "json"
+      },
+      "message": "api.apiconnector2.graph.pong.B.a closes a cycle of external types and is rendered as JSON",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "field": "a"
+      }
+    },
+    {
+      "code": "incomplete_field_metadata",
+      "details": {
+        "embedded_path": "/api.apiconnector2.graph.pong.B/fields/blob",
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "root": {
+          "field": "pings_list_api",
+          "type": "shipment"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.graph.ping.A",
+            "field": "b"
+          },
+          {
+            "external_type": "api.apiconnector2.graph.pong.B",
+            "field": "blob"
+          }
+        ]
+      },
+      "message": "external type field lacks a caption or path: api.apiconnector2.graph.pong.B",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/graph/pong/types",
+      "severity": "info",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.graph.pong.B",
+        "field": "blob"
+      }
+    },
+    {
+      "code": "empty_definition",
+      "details": {
+        "embedded_path": "/api.apiconnector2.misc.blank.Empty",
+        "external_type": "api.apiconnector2.misc.blank.Empty"
+      },
+      "message": "API Connector type has no fields: api.apiconnector2.misc.blank.Empty",
+      "outcome": "preserved",
+      "path": "/settings/client_safe/apiconnector2/misc/blank/types",
+      "severity": "info",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.misc.blank.Empty"
+      }
+    },
+    {
+      "code": "external_type_cycle_edge",
+      "details": {
+        "cardinality": "many",
+        "external_type": "api.apiconnector2.tree.walk.Node",
+        "fallback": "json"
+      },
+      "message": "api.apiconnector2.tree.walk.Node.children closes a cycle of external types and is rendered as JSON",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/tree/walk/types",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "external_type": "api.apiconnector2.tree.walk.Node",
+        "field": "children"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "deleted field \"old_api\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/shipment/fields/old_api",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "old_api",
+        "type": "shipment"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [],
+  "names": {
+    "enums": {},
+    "external_types": {
+      "api.apiconnector2.geo.lookup.Address": {
+        "fields": {
+          "lat": "latitude",
+          "lines": "lines",
+          "seen": "seen",
+          "street": "street",
+          "verified": "verified"
+        },
+        "module": "Address"
+      },
+      "api.apiconnector2.graph.ping.A": {
+        "fields": {
+          "at": "at",
+          "b": "b"
+        },
+        "module": "A"
+      },
+      "api.apiconnector2.graph.pong.B": {
+        "fields": {
+          "a": "a",
+          "blob": "blob"
+        },
+        "module": "B"
+      },
+      "api.apiconnector2.misc.blank.Empty": {
+        "module": "Empty"
+      },
+      "api.apiconnector2.tree.walk.Node": {
+        "fields": {
+          "children": "children",
+          "label": "label"
+        },
+        "module": "Node"
+      }
+    },
+    "resources": {
+      "shipment": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "address_api": "address",
+          "blank_api": "blank",
+          "invalid_api": "invalid",
+          "invalid_list_api": "invalid_list",
+          "missing_api": "missing",
+          "nowhere_api": "nowhere",
+          "pings_list_api": "pings",
+          "tree_api": "tree"
+        },
+        "module": "Shipment",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "shipment"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "shipment"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "shipment"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "shipment"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "shipment"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "shipment"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.geo.lookup.Address",
+          "constraints": [],
+          "default": null,
+          "name": "address",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "address_api",
+            "type": "shipment"
+          },
+          "type": [
+            "module",
+            "External.Address"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.misc.blank.Empty",
+          "constraints": [],
+          "default": null,
+          "name": "blank",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "blank_api",
+            "type": "shipment"
+          },
+          "type": [
+            "module",
+            "External.Empty"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.not_a_connector",
+          "constraints": [],
+          "default": null,
+          "name": "invalid",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "invalid_api",
+            "type": "shipment"
+          },
+          "type": "map",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.api.not_a_connector",
+          "constraints": [],
+          "default": null,
+          "name": "invalid_list",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "invalid_list_api",
+            "type": "shipment"
+          },
+          "type": [
+            "array",
+            "map"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.geo.lookup.Missing",
+          "constraints": [],
+          "default": null,
+          "name": "missing",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "missing_api",
+            "type": "shipment"
+          },
+          "type": "map",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.absent.call.Thing",
+          "constraints": [],
+          "default": null,
+          "name": "nowhere",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "nowhere_api",
+            "type": "shipment"
+          },
+          "type": "map",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.api.apiconnector2.graph.ping.A",
+          "constraints": [],
+          "default": null,
+          "name": "pings",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "pings_list_api",
+            "type": "shipment"
+          },
+          "type": [
+            "array",
+            [
+              "module",
+              "External.A"
+            ]
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.tree.walk.Node",
+          "constraints": [],
+          "default": null,
+          "name": "tree",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "tree_api",
+            "type": "shipment"
+          },
+          "type": [
+            "module",
+            "External.Node"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Shipment",
+      "description": null,
+      "identities": [],
+      "module": "Shipment",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "shipment"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "shipment"
+      },
+      "synthesized": false,
+      "table": "shipment"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": [
+    {
+      "bubble_name": "Address",
+      "description": null,
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "constraints": [],
+          "default": null,
+          "name": "latitude",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.geo.lookup.Address",
+            "field": "lat"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.text",
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "lines",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.geo.lookup.Address",
+            "field": "lines"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date_unix",
+          "constraints": [],
+          "default": null,
+          "name": "seen",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.geo.lookup.Address",
+            "field": "seen"
+          },
+          "type": "integer",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "street",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.geo.lookup.Address",
+            "field": "street"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "boolean",
+          "constraints": [],
+          "default": null,
+          "name": "verified",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.geo.lookup.Address",
+            "field": "verified"
+          },
+          "type": "boolean",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "External.Address",
+      "source": {
+        "external_type": "api.apiconnector2.geo.lookup.Address"
+      }
+    },
+    {
+      "bubble_name": "B",
+      "description": null,
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.graph.ping.A",
+          "constraints": [],
+          "default": null,
+          "name": "a",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.graph.pong.B",
+            "field": "a"
+          },
+          "type": "map",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "mystery",
+          "constraints": [],
+          "default": null,
+          "name": "blob",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.graph.pong.B",
+            "field": "blob"
+          },
+          "type": "map",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "External.B",
+      "source": {
+        "external_type": "api.apiconnector2.graph.pong.B"
+      }
+    },
+    {
+      "bubble_name": "A",
+      "description": null,
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "at",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.graph.ping.A",
+            "field": "at"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.graph.pong.B",
+          "constraints": [],
+          "default": null,
+          "name": "b",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.graph.ping.A",
+            "field": "b"
+          },
+          "type": [
+            "module",
+            "External.B"
+          ],
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "External.A",
+      "source": {
+        "external_type": "api.apiconnector2.graph.ping.A"
+      }
+    },
+    {
+      "bubble_name": "Empty",
+      "description": null,
+      "fields": [],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "External.Empty",
+      "source": {
+        "external_type": "api.apiconnector2.misc.blank.Empty"
+      }
+    },
+    {
+      "bubble_name": "Node",
+      "description": null,
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.api.apiconnector2.tree.walk.Node",
+          "constraints": [],
+          "default": null,
+          "name": "children",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.tree.walk.Node",
+            "field": "children"
+          },
+          "type": [
+            "array",
+            "map"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "label",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.tree.walk.Node",
+            "field": "label"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "External.Node",
+      "source": {
+        "external_type": "api.apiconnector2.tree.walk.Node"
+      }
+    }
+  ]
+}

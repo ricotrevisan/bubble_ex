@@ -96,6 +96,11 @@ defmodule BubbleEx.DiagnosticTest do
       model_codes = Enum.filter(Codes.all(), &String.starts_with?(Atom.to_string(&1), "model_"))
       assert model_codes != []
       assert model_codes -- MapSet.to_list(covered) == []
+
+      # ... and the Ash target's.
+      ash_codes = Enum.filter(Codes.all(), &String.starts_with?(Atom.to_string(&1), "ash_"))
+      assert ash_codes != []
+      assert ash_codes -- MapSet.to_list(covered) == []
     end
 
     defp sweep do
@@ -112,14 +117,16 @@ defmodule BubbleEx.DiagnosticTest do
         |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
 
       # The Model's fixtures include hostile shapes the Reader cannot take.
+      # ... and so do the Ash target's.
       model_apps =
-        "test/support/model/*.json"
-        |> Path.wildcard()
+        ["test/support/model/*.json", "test/support/target/ash/*.json"]
+        |> Enum.flat_map(&Path.wildcard/1)
         |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
 
       Enum.flat_map(apps, &app_diagnostics/1) ++
         Enum.flat_map(apps, &index_diagnostics/1) ++
         Enum.flat_map(apps ++ model_apps, &model_diagnostics/1) ++
+        Enum.flat_map(apps ++ model_apps, &ash_diagnostics/1) ++
         Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
         Enum.flat_map(expression_samples(), &expression_diagnostics/1)
     end
@@ -130,7 +137,7 @@ defmodule BubbleEx.DiagnosticTest do
       {:ok, db} = Reader.parse(reader_app)
 
       rendered =
-        for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex],
+        for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :zod, :xano, :convex],
             mode <- [:preserve, :opaque, :legacy],
             {:ok, result} = Encoder.render(format, db, external_types: mode),
             d <- result.diagnostics,
@@ -148,6 +155,12 @@ defmodule BubbleEx.DiagnosticTest do
     defp model_diagnostics(app) do
       {:ok, model} = BubbleEx.Model.build(app)
       model.diagnostics
+    end
+
+    defp ash_diagnostics(app) do
+      {:ok, model} = BubbleEx.Model.build(app)
+      {:ok, project} = BubbleEx.Target.Ash.map(model)
+      Enum.filter(project.diagnostics, &(&1.stage == {:target, :ash}))
     end
 
     defp index_diagnostics(app) do

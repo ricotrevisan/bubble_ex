@@ -1,0 +1,782 @@
+{
+  "bubble_id": "synthetic-option-sets",
+  "diagnostics": [
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost_set",
+        "target_kind": "option_set"
+      },
+      "message": "option set \"ghost_set\" is not defined",
+      "outcome": "unresolved",
+      "path": "/option_sets/orphan/attributes/parent/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "parent",
+        "option_set": "orphan"
+      }
+    },
+    {
+      "code": "ash_duplicate_enum_value",
+      "details": {
+        "key": "high",
+        "value": "bAg"
+      },
+      "message": "option value \"bAg\" repeats the key \"high\" and is omitted from the enum",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/values/bAg",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_duplicate_option_key",
+      "details": {
+        "first": "bAb",
+        "key": "high",
+        "value": "bAg"
+      },
+      "message": "option value \"bAg\" repeats the key \"high\"",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/values/bAg",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_option_key_missing",
+      "details": {
+        "db_value": null,
+        "value": "bAf"
+      },
+      "message": "option value has no db_value; its Bubble ID \"bAf\" is used",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/values/bAf",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_undeclared_option_attribute_value",
+      "details": {
+        "attribute": "tooltip",
+        "value": "bAh"
+      },
+      "message": "option value member \"tooltip\" names no declared attribute",
+      "outcome": "preserved",
+      "path": "/option_sets/priority/values/bAh/tooltip",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "option_set"
+      },
+      "message": "deleted option_set \"legacy\" is omitted",
+      "outcome": "degraded",
+      "path": "/option_sets/legacy",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "option_set": "legacy"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "option_value",
+        "value": "bAe"
+      },
+      "message": "deleted option_value \"bAe\" is omitted",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/values/bAe",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "option_set_attribute"
+      },
+      "message": "deleted option_set_attribute \"retired\" is omitted",
+      "outcome": "degraded",
+      "path": "/option_sets/priority/attributes/retired",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "retired",
+        "option_set": "priority"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [],
+      "bubble_name": "Channel",
+      "description": null,
+      "module": "Enums.Channel",
+      "source": {
+        "option_set": "channel"
+      },
+      "values": [
+        {
+          "attributes": {},
+          "label": "Email",
+          "source": {
+            "option_set": "channel",
+            "value": "email"
+          },
+          "value": "email"
+        },
+        {
+          "attributes": {},
+          "label": "SMS",
+          "source": {
+            "option_set": "channel",
+            "value": "sms"
+          },
+          "value": "sms"
+        }
+      ]
+    },
+    {
+      "attributes": [
+        {
+          "bubble_type": "option.ghost_set",
+          "name": "parent",
+          "source": {
+            "field": "parent",
+            "option_set": "orphan"
+          }
+        }
+      ],
+      "bubble_name": "Orphan",
+      "description": null,
+      "module": "Enums.Orphan",
+      "source": {
+        "option_set": "orphan"
+      },
+      "values": []
+    },
+    {
+      "attributes": [
+        {
+          "bubble_type": "list.option.channel",
+          "name": "channels",
+          "source": {
+            "field": "channels",
+            "option_set": "priority"
+          }
+        },
+        {
+          "bubble_type": "text",
+          "name": "color",
+          "source": {
+            "field": "color",
+            "option_set": "priority"
+          }
+        },
+        {
+          "bubble_type": "option.priority",
+          "name": "escalates_to",
+          "source": {
+            "field": "escalates_to",
+            "option_set": "priority"
+          }
+        },
+        {
+          "bubble_type": "image",
+          "name": "icon",
+          "source": {
+            "field": "icon",
+            "option_set": "priority"
+          }
+        },
+        {
+          "bubble_type": "boolean",
+          "name": "urgent",
+          "source": {
+            "field": "urgent",
+            "option_set": "priority"
+          }
+        },
+        {
+          "bubble_type": "number",
+          "name": "weight",
+          "source": {
+            "field": "weight",
+            "option_set": "priority"
+          }
+        }
+      ],
+      "bubble_name": "Priority",
+      "description": null,
+      "module": "Enums.Priority",
+      "source": {
+        "option_set": "priority"
+      },
+      "values": [
+        {
+          "attributes": {
+            "channels": null,
+            "color": null,
+            "escalates_to": null,
+            "icon": "//cdn.example.invalid/critical.png",
+            "urgent": true,
+            "weight": null
+          },
+          "label": "Critical",
+          "source": {
+            "option_set": "priority",
+            "value": "bAd"
+          },
+          "value": "critical"
+        },
+        {
+          "attributes": {
+            "channels": [
+              "email",
+              "sms"
+            ],
+            "color": "red",
+            "escalates_to": "critical",
+            "icon": null,
+            "urgent": true,
+            "weight": 10
+          },
+          "label": "High",
+          "source": {
+            "option_set": "priority",
+            "value": "bAb"
+          },
+          "value": "high"
+        },
+        {
+          "attributes": {
+            "channels": null,
+            "color": "amber",
+            "escalates_to": null,
+            "icon": null,
+            "urgent": null,
+            "weight": 5.5
+          },
+          "label": "Medium",
+          "source": {
+            "option_set": "priority",
+            "value": "bAc"
+          },
+          "value": "medium"
+        },
+        {
+          "attributes": {
+            "channels": null,
+            "color": "grey",
+            "escalates_to": null,
+            "icon": null,
+            "urgent": false,
+            "weight": 1
+          },
+          "label": "Low",
+          "source": {
+            "option_set": "priority",
+            "value": "bAa"
+          },
+          "value": "low"
+        },
+        {
+          "attributes": {
+            "channels": null,
+            "color": null,
+            "escalates_to": null,
+            "icon": null,
+            "urgent": null,
+            "weight": null
+          },
+          "label": "Unkeyed",
+          "source": {
+            "option_set": "priority",
+            "value": "bAf"
+          },
+          "value": "bAf"
+        },
+        {
+          "attributes": {
+            "channels": null,
+            "color": null,
+            "escalates_to": null,
+            "icon": null,
+            "urgent": null,
+            "weight": null
+          },
+          "label": "Stale",
+          "source": {
+            "option_set": "priority",
+            "value": "bAh"
+          },
+          "value": "stale"
+        }
+      ]
+    }
+  ],
+  "names": {
+    "enums": {
+      "channel": {
+        "module": "Channel"
+      },
+      "orphan": {
+        "attributes": {
+          "parent": "parent"
+        },
+        "module": "Orphan"
+      },
+      "priority": {
+        "attributes": {
+          "channels": "channels",
+          "color": "color",
+          "escalates_to": "escalates_to",
+          "icon": "icon",
+          "urgent": "urgent",
+          "weight": "weight"
+        },
+        "module": "Priority"
+      }
+    },
+    "external_types": {},
+    "resources": {
+      "ticket": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "channels_list_option_channel": "channels",
+          "priority_option_priority": "priority"
+        },
+        "module": "Ticket",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "ticket"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "ticket"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "ticket"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "ticket"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "ticket"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "ticket"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.option.channel",
+          "constraints": [],
+          "default": null,
+          "name": "channels",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "channels_list_option_channel",
+            "type": "ticket"
+          },
+          "type": [
+            "array",
+            [
+              "module",
+              "Enums.Channel"
+            ]
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "option.priority",
+          "constraints": [],
+          "default": null,
+          "name": "priority",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "priority_option_priority",
+            "type": "ticket"
+          },
+          "type": [
+            "module",
+            "Enums.Priority"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Ticket",
+      "description": null,
+      "identities": [],
+      "module": "Ticket",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "ticket"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "ticket"
+      },
+      "synthesized": false,
+      "table": "ticket"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": []
+}

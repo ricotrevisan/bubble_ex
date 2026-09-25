@@ -1,0 +1,725 @@
+{
+  "bubble_id": "synthetic-missing-deleted",
+  "diagnostics": [
+    {
+      "code": "ash_unresolved_reference",
+      "details": {
+        "cardinality": "one",
+        "fallback": "string",
+        "reason": "omitted",
+        "target": "archive",
+        "target_kind": "data_type"
+      },
+      "message": "invoice.archive_custom_archive references data type \"archive\" (omitted); its Bubble IDs are kept as strings",
+      "outcome": "degraded",
+      "path": "/user_types/invoice/fields/archive_custom_archive",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "archive_custom_archive",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "ash_unresolved_reference",
+      "details": {
+        "cardinality": "one",
+        "fallback": "string",
+        "reason": "missing",
+        "target": "ghost",
+        "target_kind": "data_type"
+      },
+      "message": "invoice.customer_custom_ghost references data type \"ghost\" (missing); its Bubble IDs are kept as strings",
+      "outcome": "degraded",
+      "path": "/user_types/invoice/fields/customer_custom_ghost",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "customer_custom_ghost",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost",
+        "target_kind": "data_type"
+      },
+      "message": "data type \"ghost\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/customer_custom_ghost/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "customer_custom_ghost",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "ash_unresolved_reference",
+      "details": {
+        "cardinality": "one",
+        "fallback": "string",
+        "reason": "missing",
+        "target": "ghost_line",
+        "target_kind": "data_type"
+      },
+      "message": "invoice.lines_list_custom_ghost_line references data type \"ghost_line\" (missing); its Bubble IDs are kept as strings",
+      "outcome": "degraded",
+      "path": "/user_types/invoice/fields/lines_list_custom_ghost_line",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "lines_list_custom_ghost_line",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost_line",
+        "target_kind": "data_type"
+      },
+      "message": "data type \"ghost_line\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/lines_list_custom_ghost_line/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "lines_list_custom_ghost_line",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost",
+        "target_kind": "data_type"
+      },
+      "message": "data type \"ghost\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/old_ref_custom_ghost/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "old_ref_custom_ghost",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "ash_unresolved_reference",
+      "details": {
+        "cardinality": "one",
+        "fallback": "string",
+        "reason": "missing",
+        "target": "ghost_state",
+        "target_kind": "option_set"
+      },
+      "message": "invoice.state_option_ghost_state references option set \"ghost_state\" (missing); its Bubble IDs are kept as strings",
+      "outcome": "degraded",
+      "path": "/user_types/invoice/fields/state_option_ghost_state",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "state_option_ghost_state",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_unresolved_target",
+      "details": {
+        "target": "ghost_state",
+        "target_kind": "option_set"
+      },
+      "message": "option set \"ghost_state\" is not defined",
+      "outcome": "unresolved",
+      "path": "/user_types/invoice/fields/state_option_ghost_state/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "state_option_ghost_state",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "option_set"
+      },
+      "message": "deleted option_set \"retired\" is omitted",
+      "outcome": "degraded",
+      "path": "/option_sets/retired",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "option_set": "retired"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "data_type"
+      },
+      "message": "deleted data_type \"archive\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/archive",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "type": "archive"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "deleted field \"old_ref_custom_ghost\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/invoice/fields/old_ref_custom_ghost",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "old_ref_custom_ghost",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "deleted field \"old_total_number\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/invoice/fields/old_total_number",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "old_total_number",
+        "type": "invoice"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [],
+  "names": {
+    "enums": {},
+    "external_types": {},
+    "resources": {
+      "invoice": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "archive_custom_archive": "archive",
+          "customer_custom_ghost": "customer",
+          "lines_list_custom_ghost_line": "lines",
+          "state_option_ghost_state": "state",
+          "total_number": "total"
+        },
+        "module": "Invoice",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "invoice"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "invoice"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "invoice"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "invoice"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "invoice"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "invoice"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.archive",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "archive",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "archive"
+          },
+          "source": {
+            "field": "archive_custom_archive",
+            "type": "invoice"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.ghost",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "customer",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "ghost"
+          },
+          "source": {
+            "field": "customer_custom_ghost",
+            "type": "invoice"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.ghost_line",
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "lines",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "ghost_line"
+          },
+          "source": {
+            "field": "lines_list_custom_ghost_line",
+            "type": "invoice"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "option.ghost_state",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "state",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "state_option_ghost_state",
+            "type": "invoice"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "constraints": [],
+          "default": null,
+          "name": "total",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "total_number",
+            "type": "invoice"
+          },
+          "type": "float",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Invoice",
+      "description": null,
+      "identities": [],
+      "module": "Invoice",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "invoice"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "invoice"
+      },
+      "synthesized": false,
+      "table": "invoice"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": []
+}

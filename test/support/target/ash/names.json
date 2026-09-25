@@ -1,0 +1,45 @@
+{
+  "_id": "synthetic-target-names",
+  "option_sets": {
+    "tier": {
+      "attributes": {
+        "nil_text": {"display": "nil", "value": "text"},
+        "rank_number": {"display": "Rank", "value": "number"},
+        "rank_number0": {"display": "Rank", "value": "number"}
+      },
+      "display": "01) Tier",
+      "values": {
+        "gold": {"db_value": "Gold Tier", "display": "Gold", "nil_text": "n", "rank_number": 1, "sort_factor": 1},
+        "silver": {"db_value": "silver", "display": "Silver", "rank_number0": 2, "sort_factor": 2}
+      }
+    }
+  },
+  "user_types": {
+    "domain": {
+      "display": "Domain",
+      "fields": {}
+    },
+    "gadget": {
+      "display": "3D Gadget",
+      "fields": {
+        "a_title_text": {"display": "Title", "value": "text"},
+        "b_title_text": {"display": "Title", "value": "text"},
+        "c_title_text": {"display": "Title", "value": "text"},
+        "cafe_text": {"display": "Café Straße", "value": "text"},
+        "camel_text": {"display": "firstName", "value": "text"},
+        "creator_user": {"display": "Creator", "value": "user"},
+        "inch_number": {"display": "3.5 inch", "value": "number"},
+        "slug_text": {"display": "Slug", "value": "text"},
+        "struct_text": {"display": "__struct__", "value": "text"},
+        "twofa_text": {"display": "2FA code", "value": "text"},
+        "updated_date": {"display": "updated_at", "value": "date"},
+        "widget_custom_repo": {"display": "Widget", "value": "custom.repo"},
+        "widget_id_text": {"display": "Widget id", "value": "text"}
+      }
+    },
+    "repo": {
+      "display": "Repo",
+      "fields": {}
+    }
+  }
+}

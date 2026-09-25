@@ -1,0 +1,604 @@
+{
+  "bubble_id": "synthetic-live",
+  "diagnostics": [
+    {
+      "code": "ash_unresolved_reference",
+      "details": {
+        "cardinality": "one",
+        "fallback": "string",
+        "reason": "omitted",
+        "target": "item",
+        "target_kind": "data_type"
+      },
+      "message": "order.items_list_custom_item references data type \"item\" (omitted); its Bubble IDs are kept as strings",
+      "outcome": "degraded",
+      "path": "/user_types/order/%f3/items_list_custom_item",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "items_list_custom_item",
+        "type": "order"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "data_type"
+      },
+      "message": "deleted data_type \"item\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/item",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "type": "item"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "deleted field \"gone_text\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/order/%f3/gone_text",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "gone_text",
+        "type": "order"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [
+        {
+          "bubble_type": "number",
+          "name": "code",
+          "source": {
+            "field": "code",
+            "option_set": "kind"
+          }
+        }
+      ],
+      "bubble_name": "Kind",
+      "description": null,
+      "module": "Enums.Kind",
+      "source": {
+        "option_set": "kind"
+      },
+      "values": [
+        {
+          "attributes": {
+            "code": 1
+          },
+          "label": "Wholesale",
+          "source": {
+            "option_set": "kind",
+            "value": "k2"
+          },
+          "value": "wholesale"
+        },
+        {
+          "attributes": {
+            "code": 2
+          },
+          "label": "Retail",
+          "source": {
+            "option_set": "kind",
+            "value": "k1"
+          },
+          "value": "retail"
+        }
+      ]
+    }
+  ],
+  "names": {
+    "enums": {
+      "kind": {
+        "attributes": {
+          "code": "code"
+        },
+        "module": "Kind"
+      }
+    },
+    "external_types": {},
+    "resources": {
+      "order": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "buyer_user": "buyer_id",
+          "items_list_custom_item": "items",
+          "kind_option_kind": "kind"
+        },
+        "module": "Order",
+        "relationships": {
+          "Created By": "creator",
+          "buyer_user": "buyer"
+        },
+        "table": "order"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email",
+          "name_text": "name"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "order"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "order"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "order"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "order"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "order"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "buyer_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "buyer_user",
+            "type": "order"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.item",
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "items",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "item"
+          },
+          "source": {
+            "field": "items_list_custom_item",
+            "type": "order"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "option.kind",
+          "constraints": [],
+          "default": null,
+          "name": "kind",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "kind_option_kind",
+            "type": "order"
+          },
+          "type": [
+            "module",
+            "Enums.Kind"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Order",
+      "description": null,
+      "identities": [],
+      "module": "Order",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "order"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "buyer",
+          "public?": true,
+          "source": {
+            "field": "buyer_user",
+            "type": "order"
+          },
+          "source_attribute": "buyer_id"
+        }
+      ],
+      "source": {
+        "type": "order"
+      },
+      "synthesized": false,
+      "table": "order"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": false,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": []
+}
