@@ -12,6 +12,27 @@
         "style": "single"
       },
       {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
         "name": "title",
         "type": "text",
         "style": "single"
@@ -50,6 +71,22 @@
         "values": [],
         "description": "enum:status (option values not rendered)",
         "style": "single"
+      },
+      {
+        "name": "created_date_2",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by_2",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug_2",
+        "type": "text",
+        "style": "single"
       }
     ]
   },
@@ -61,6 +98,27 @@
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
         "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
       }
     ]
   },
@@ -71,6 +129,37 @@
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email_2",
+        "type": "text",
         "style": "single"
       }
     ]
@@ -144,5 +233,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

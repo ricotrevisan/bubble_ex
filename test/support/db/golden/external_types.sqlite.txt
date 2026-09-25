@@ -6,6 +6,10 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Shipment" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Address" TEXT CHECK ("Address" IS NULL OR json_valid("Address")),
   "Blank" TEXT CHECK ("Blank" IS NULL OR json_valid("Blank")),
   "Invalid" TEXT CHECK ("Invalid" IS NULL OR json_valid("Invalid")),
@@ -19,6 +23,11 @@ CREATE TABLE IF NOT EXISTS "custom__Shipment" (
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---

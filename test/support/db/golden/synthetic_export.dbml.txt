@@ -7,11 +7,19 @@ Project "synthexport" {
 
 Table custom."Project" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Name" varchar
 
 }
 Table custom."Task" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Done?" bool
 	"Project" project.id
 	"Status" status.id
@@ -20,6 +28,11 @@ Table custom."Task" {
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table option."Status" {
@@ -28,6 +41,9 @@ Table option."Status" {
 
 }
 
+Ref: custom."Project"."Created By" > custom."User"."_id"
+Ref: custom."Task"."Created By" > custom."User"."_id"
 Ref: custom."Task"."Project" > custom."Project"."_id"
-Ref: custom."Task"."Status" > option."Status"."db_value"--- diagnostics ---
+Ref: custom."Task"."Status" > option."Status"."db_value"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_synthesized_user_type /user_types/user

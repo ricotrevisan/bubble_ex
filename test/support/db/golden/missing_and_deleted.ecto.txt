@@ -7,6 +7,10 @@ defmodule MyApp.Invoice do
   @foreign_key_type :string
 
   schema "invoice" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :archive, :string
     field :customer, :string
     field :lines, {:array, :string}
@@ -15,7 +19,7 @@ defmodule MyApp.Invoice do
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:archive, :customer, :lines, :state, :total]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :archive, :customer, :lines, :state, :total]) |> validate_required([:_id])
   end
 end
 
@@ -26,12 +30,17 @@ defmodule MyApp.Repo.Migrations.CreateInvoice do
   def change do
     create table("invoice", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :archive, :string
       add :customer, :string
       add :lines, {:array, :string}
       add :state, :string
       add :total, :float
     end
+    create index("invoice", [:created_by_id])
   end
 end
 
@@ -44,11 +53,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -59,7 +72,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 --- diagnostics ---

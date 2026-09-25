@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Onboarding Answer" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "label" text,
   "score" double precision,
   PRIMARY KEY ("_id")
@@ -10,6 +14,10 @@ CREATE TABLE "custom"."Onboarding Answer" (
 
 CREATE TABLE "custom"."Survey Response" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "answer" text,
   "onboarding answer" text,
   "rating" double precision,
@@ -19,6 +27,11 @@ CREATE TABLE "custom"."Survey Response" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 

@@ -7,15 +7,26 @@ Project "" {
 
 Table custom."Node" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Children" node.id[]
 	"Parent" node.id
 
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 
+Ref: custom."Node"."Created By" > custom."User"."_id"
 Ref: custom."Node"."Children" <> custom."Node"."_id"
-Ref: custom."Node"."Parent" > custom."Node"."_id"--- diagnostics ---
+Ref: custom."Node"."Parent" > custom."Node"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_synthesized_user_type /user_types/user

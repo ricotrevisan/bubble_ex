@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Order" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Buyer" text,
   "Items" text[],
   "Kind" text,
@@ -11,6 +15,11 @@ CREATE TABLE "custom"."Order" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   "Name" text,
   PRIMARY KEY ("_id")
 );

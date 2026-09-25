@@ -7,22 +7,43 @@ Project "synthetic-privacy" {
 
 Table custom."Draft" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 
 }
 Table custom."Note" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Body" varchar
 	"Secret" varchar
 
 }
 Table custom."Public page" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Slug text" varchar
 
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 	"Admin" bool
 
 }
---- diagnostics ---
+
+Ref: custom."Draft"."Created By" > custom."User"."_id"
+Ref: custom."Note"."Created By" > custom."User"."_id"
+Ref: custom."Public page"."Created By" > custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---

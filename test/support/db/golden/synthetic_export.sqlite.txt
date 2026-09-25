@@ -6,12 +6,20 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Project" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Name" TEXT,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Task" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Done?" INTEGER,
   "Project" TEXT,
   "Status" TEXT,
@@ -23,6 +31,11 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
   PRIMARY KEY ("_id")
 );
 

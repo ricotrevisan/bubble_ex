@@ -5,6 +5,10 @@ GO
 
 CREATE TABLE [custom].[Ticket] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [Channels] NVARCHAR(MAX) /* list<enum>: consider a junction table */,
   [Priority] NVARCHAR(450),
   CONSTRAINT [PK_ticket] PRIMARY KEY ([_id])
@@ -12,6 +16,11 @@ CREATE TABLE [custom].[Ticket] (
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 

@@ -2,6 +2,10 @@ CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."Invoice" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Archive" text,
   "Customer" text,
   "Lines" text[],
@@ -12,6 +16,11 @@ CREATE TABLE "custom"."Invoice" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---

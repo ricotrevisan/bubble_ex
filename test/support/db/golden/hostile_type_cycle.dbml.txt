@@ -7,25 +7,46 @@ Project "" {
 
 Table custom."A" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"B" b.id
 
 }
 Table custom."B" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"C" c.id[]
 
 }
 Table custom."C" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"A" a.id
 
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 
+Ref: custom."A"."Created By" > custom."User"."_id"
 Ref: custom."A"."B" > custom."B"."_id"
+Ref: custom."B"."Created By" > custom."User"."_id"
 Ref: custom."B"."C" <> custom."C"."_id"
-Ref: custom."C"."A" > custom."A"."_id"--- diagnostics ---
+Ref: custom."C"."Created By" > custom."User"."_id"
+Ref: custom."C"."A" > custom."A"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_synthesized_user_type /user_types/user

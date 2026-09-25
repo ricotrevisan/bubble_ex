@@ -7,6 +7,10 @@ Project "synthetic-naming" {
 
 Table custom."00. Thing - Join" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"11. Done" bool
 	"40. Sort: Thing Title" varchar
 	"__struct__" varchar
@@ -19,20 +23,37 @@ Table custom."00. Thing - Join" {
 }
 Table custom."🚀 Launch" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"🔥" varchar
 	"Name ✨" varchar
 
 }
 Table custom."Thing" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 
 }
 Table custom."Thing_2" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table option."40. Levels" {
@@ -40,7 +61,12 @@ Table option."40. Levels" {
 	"Display" varchar
 
 }
---- diagnostics ---
+
+Ref: custom."00. Thing - Join"."Created By" > custom."User"."_id"
+Ref: custom."🚀 Launch"."Created By" > custom."User"."_id"
+Ref: custom."Thing"."Created By" > custom."User"."_id"
+Ref: custom."Thing_2"."Created By" > custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 db_name_suffixed /user_types/00__thing___join/fields/title_text1
 db_name_suffixed /user_types/thing0
 model_synthesized_user_type /user_types/user

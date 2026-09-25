@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."00. Thing - Join" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "11. Done" boolean,
   "40. Sort: Thing Title" text,
   "__struct__" text,
@@ -16,6 +20,10 @@ CREATE TABLE "custom"."00. Thing - Join" (
 
 CREATE TABLE "custom"."🚀 Launch" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "🔥" text,
   "Name ✨" text,
   PRIMARY KEY ("_id")
@@ -23,16 +31,29 @@ CREATE TABLE "custom"."🚀 Launch" (
 
 CREATE TABLE "custom"."Thing" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."Thing_2" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 

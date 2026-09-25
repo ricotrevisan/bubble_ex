@@ -5,6 +5,10 @@ GO
 
 CREATE TABLE [custom].[Task] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [Title] NVARCHAR(MAX),
   [title_2] BIT,
   [_ID_2] NVARCHAR(MAX),
@@ -12,16 +16,29 @@ CREATE TABLE [custom].[Task] (
   [Gone] NVARCHAR(450),
   [Retired] NVARCHAR(450),
   [Status] NVARCHAR(450),
+  [Created Date_2] DATETIME2,
+  [created by_2] NVARCHAR(450),
+  [SLUG_2] NVARCHAR(MAX),
   CONSTRAINT [PK_task] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[task_2] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   CONSTRAINT [PK_task_2] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
+  [Email_2] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 
@@ -46,6 +63,10 @@ ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_status]
   FOREIGN KEY ([Status])
   REFERENCES [option].[Status] ([db_value]);
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_created_by_2]
+  FOREIGN KEY ([created by_2])
+  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2
@@ -57,5 +78,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

@@ -3,6 +3,10 @@ import { z } from 'zod';
 // Order
 export const OrderSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   Buyer: z.string().nullish(), // reference -> user
   Items: z.array(z.string()).nullish(), // reference -> item
   Kind: z.string().nullish(), // enum -> kind option set (values not rendered)
@@ -13,6 +17,11 @@ export type Order = z.infer<typeof OrderSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
   Name: z.string().nullish(),
 });
 

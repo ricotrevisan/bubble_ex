@@ -7,6 +7,10 @@ defmodule MyApp.VeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVery
   @foreign_key_type :string
 
   schema "very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :slash_and_tilde, :string
     belongs_to :field, MyApp.Table, foreign_key: :field_id, references: :_id, type: :string
     field :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :string
@@ -14,7 +18,7 @@ defmodule MyApp.VeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVery
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:slash_and_tilde, :field_id, :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :n_c_d]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :slash_and_tilde, :field_id, :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :n_c_d]) |> validate_required([:_id])
   end
 end
 
@@ -25,11 +29,16 @@ defmodule MyApp.Repo.Migrations.CreateVeryLongNameVeryLongNameVeryLongNameVeryLo
   def change do
     create table("very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :slash_and_tilde, :string
       add :field_id, :string
       add :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :string
       add :n_c_d, :string
     end
+    create index("very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end", [:created_by_id])
     create index("very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end", [:field_id])
   end
 end
@@ -43,11 +52,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -58,7 +71,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 
@@ -71,11 +90,14 @@ defmodule MyApp.Table do
   @foreign_key_type :string
 
   schema "field" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug]) |> validate_required([:_id])
   end
 end
 
@@ -86,7 +108,12 @@ defmodule MyApp.Repo.Migrations.CreateTable do
   def change do
     create table("field", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
     end
+    create index("field", [:created_by_id])
   end
 end
 

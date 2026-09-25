@@ -7,12 +7,16 @@ defmodule MyApp.Node do
   @foreign_key_type :string
 
   schema "node" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :children, {:array, :string}
     belongs_to :parent, MyApp.Node, foreign_key: :parent_id, references: :_id, type: :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:children, :parent_id]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :children, :parent_id]) |> validate_required([:_id])
   end
 end
 
@@ -23,9 +27,14 @@ defmodule MyApp.Repo.Migrations.CreateNode do
   def change do
     create table("node", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :children, {:array, :string}
       add :parent_id, :string
     end
+    create index("node", [:created_by_id])
     create index("node", [:parent_id])
   end
 end
@@ -39,11 +48,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -54,7 +67,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 --- diagnostics ---

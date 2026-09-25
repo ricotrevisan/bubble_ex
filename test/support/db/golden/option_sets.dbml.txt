@@ -7,12 +7,21 @@ Project "synthetic-option-sets" {
 
 Table custom."Ticket" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Channels" channel.id[]
 	"Priority" priority.id
 
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table option."Channel" {
@@ -38,8 +47,10 @@ Table option."Priority" {
 
 }
 
+Ref: custom."Ticket"."Created By" > custom."User"."_id"
 Ref: custom."Ticket"."Channels" <> option."Channel"."db_value"
 Ref: custom."Ticket"."Priority" > option."Priority"."db_value"
+Ref: custom."User"."Created By" > custom."User"."_id"
 Ref: option."Priority"."Channels" <> option."Channel"."db_value"
 Ref: option."Priority"."Escalates to" > option."Priority"."db_value"--- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value

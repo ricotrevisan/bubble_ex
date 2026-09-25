@@ -4,7 +4,8 @@ defmodule BubbleEx.Db.Sql.Tsql do
   SQL Server / Azure SQL T-SQL DDL: a `CREATE SCHEMA` (followed by a `GO` batch
   separator) per table group, a `CREATE TABLE` (columns + a named primary-key
   constraint) per table, and an `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`
-  per scalar reference.
+  per scalar reference except the built-in `Created By` (see
+  `BubbleEx.Db.Encoder.foreign_key?/1`).
 
   Identifiers are bracket-quoted (`[name]`, with embedded `]` doubled). Key-bearing
   columns (the primary key and scalar reference/enum columns that back a foreign
@@ -74,10 +75,7 @@ defmodule BubbleEx.Db.Sql.Tsql do
   defp encode_foreign_keys(parsed_map, opts) do
     parsed_map
     |> Map.get(:relationships, [])
-    |> Enum.filter(fn {from, to, _dir} ->
-      from != nil and to != nil and not from.deleted and not to.deleted and
-        Map.get(from.type, :is_array) != true
-    end)
+    |> Enum.filter(&BubbleEx.Db.Encoder.foreign_key?/1)
     |> Enum.map_join("\n", fn {from, to, _dir} -> encode_fk(from, to, opts) end)
   end
 

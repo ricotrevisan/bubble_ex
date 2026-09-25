@@ -7,12 +7,16 @@ defmodule MyApp.OnboardingAnswer do
   @foreign_key_type :string
 
   schema "onboarding_answer" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :label, :string
     field :score, :float
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:label, :score]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :label, :score]) |> validate_required([:_id])
   end
 end
 
@@ -23,9 +27,14 @@ defmodule MyApp.Repo.Migrations.CreateOnboardingAnswer do
   def change do
     create table("onboarding_answer", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :label, :string
       add :score, :float
     end
+    create index("onboarding_answer", [:created_by_id])
   end
 end
 
@@ -38,6 +47,10 @@ defmodule MyApp.SurveyResponse do
   @foreign_key_type :string
 
   schema "survey_response" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :answer, :string
     belongs_to :onboarding_answer, MyApp.OnboardingAnswer, foreign_key: :onboarding_answer_id, references: :_id, type: :string
     field :rating, :float
@@ -45,7 +58,7 @@ defmodule MyApp.SurveyResponse do
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:answer, :onboarding_answer_id, :rating, :status_id]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :answer, :onboarding_answer_id, :rating, :status_id]) |> validate_required([:_id])
   end
 end
 
@@ -56,11 +69,16 @@ defmodule MyApp.Repo.Migrations.CreateSurveyResponse do
   def change do
     create table("survey_response", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :answer, :string
       add :onboarding_answer_id, :string
       add :rating, :float
       add :status_id, :string
     end
+    create index("survey_response", [:created_by_id])
     create index("survey_response", [:onboarding_answer_id])
     create index("survey_response", [:status_id])
   end
@@ -75,11 +93,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -90,7 +112,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 

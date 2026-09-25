@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Task" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Title" text,
   "title_2" boolean,
   "_ID_2" text,
@@ -10,16 +14,29 @@ CREATE TABLE "custom"."Task" (
   "Gone" text,
   "Retired" text,
   "Status" text,
+  "Created Date_2" timestamptz,
+  "created by_2" text,
+  "SLUG_2" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."task_2" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
+  "Email_2" text,
   PRIMARY KEY ("_id")
 );
 
@@ -41,6 +58,7 @@ CREATE TABLE "option"."TASK_3" (
 );
 
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("created by_2") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2
@@ -52,5 +70,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

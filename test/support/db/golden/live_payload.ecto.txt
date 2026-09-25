@@ -7,13 +7,17 @@ defmodule MyApp.Order do
   @foreign_key_type :string
 
   schema "order" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     belongs_to :buyer, MyApp.User, foreign_key: :buyer_id, references: :_id, type: :string
     field :items, {:array, :string}
     belongs_to :kind, MyApp.Kind, foreign_key: :kind_id, references: :db_value, type: :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:buyer_id, :items, :kind_id]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :buyer_id, :items, :kind_id]) |> validate_required([:_id])
   end
 end
 
@@ -24,10 +28,15 @@ defmodule MyApp.Repo.Migrations.CreateOrder do
   def change do
     create table("order", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :buyer_id, :string
       add :items, {:array, :string}
       add :kind_id, :string
     end
+    create index("order", [:created_by_id])
     create index("order", [:buyer_id])
     create index("order", [:kind_id])
   end
@@ -42,11 +51,16 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
     field :name, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:name]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email, :name]) |> validate_required([:_id])
   end
 end
 
@@ -57,8 +71,14 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
       add :name, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 

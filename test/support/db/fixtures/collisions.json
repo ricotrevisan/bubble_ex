@@ -11,7 +11,10 @@
         "d_tags_list_text": {"display": "Tags", "value": "list.text"},
         "e_gone_custom_gone": {"display": "Gone", "value": "custom.gone"},
         "f_retired_option_retired": {"display": "Retired", "value": "option.retired"},
-        "g_status_option_status": {"display": "Status", "value": "option.status"}
+        "g_status_option_status": {"display": "Status", "value": "option.status"},
+        "h_created_date": {"display": "Created Date", "value": "date"},
+        "i_created_by_user": {"display": "created by", "value": "user"},
+        "j_slug_text": {"display": "SLUG", "value": "text"}
       },
       "privacy_role": {
         "x_": {"permissions": {"view_all": true}},
@@ -19,6 +22,10 @@
       }
     },
     "task_copy": {"display": "task", "fields": {}},
+    "user": {
+      "display": "User",
+      "fields": {"email_text": {"display": "Email", "value": "text"}}
+    },
     "gone": {"display": "Gone", "deleted": true, "fields": {}}
   },
   "option_sets": {

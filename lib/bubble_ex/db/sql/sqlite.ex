@@ -2,7 +2,8 @@ defmodule BubbleEx.Db.Sql.Sqlite do
   @moduledoc """
   Encodes a parsed Bubble database map (see `BubbleEx.Db.Reader`) into SQLite DDL:
   a `CREATE TABLE IF NOT EXISTS` per table group/table, with columns, a primary
-  key, and any scalar foreign keys declared inline (SQLite does not support
+  key, and the scalar foreign keys (all but the built-in `Created By`, see
+  `BubbleEx.Db.Encoder.foreign_key?/1`) declared inline (SQLite does not support
   `ALTER TABLE ... ADD FOREIGN KEY`).
 
   SQLite has no schema namespaces, so the Bubble group (`custom`/`option`/`api`)
@@ -109,9 +110,8 @@ defmodule BubbleEx.Db.Sql.Sqlite do
 
   defp fk_constraints(table, relationships, opts) do
     relationships
-    |> Enum.filter(fn {from, to, _dir} ->
-      from != nil and to != nil and not from.deleted and not to.deleted and
-        from.table_id == table.id and Map.get(from.type, :is_array) != true
+    |> Enum.filter(fn {from, _to, _dir} = rel ->
+      from != nil and from.table_id == table.id and BubbleEx.Db.Encoder.foreign_key?(rel)
     end)
     |> Enum.map(fn {from, to, _dir} -> encode_fk(from, to, opts) end)
   end

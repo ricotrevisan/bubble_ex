@@ -2,24 +2,41 @@ CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."A" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "B" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."B" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "C" text[],
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."C" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "A" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 

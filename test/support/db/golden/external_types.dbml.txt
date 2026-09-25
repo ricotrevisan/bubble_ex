@@ -7,6 +7,10 @@ Project "synthetic-external-types" {
 
 Table custom."Shipment" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Address" json [note: 'External API type api.apiconnector2.geo.lookup.Address (one)']
 	"Blank" json [note: 'External API type api.apiconnector2.misc.blank.Empty (one)']
 	"Invalid" json [note: 'External API type api.not_a_connector (one)']
@@ -19,9 +23,16 @@ Table custom."Shipment" {
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
---- diagnostics ---
+
+Ref: custom."Shipment"."Created By" > custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
 external_type_unresolved_root /user_types/shipment/fields/invalid_api/value
 invalid_descriptor /user_types/shipment/fields/invalid_api/value

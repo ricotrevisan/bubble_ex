@@ -2,11 +2,19 @@ CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."Draft" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."Note" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Body" text,
   "Secret" text,
   PRIMARY KEY ("_id")
@@ -14,12 +22,21 @@ CREATE TABLE "custom"."Note" (
 
 CREATE TABLE "custom"."Public page" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Slug text" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   "Admin" boolean,
   PRIMARY KEY ("_id")
 );

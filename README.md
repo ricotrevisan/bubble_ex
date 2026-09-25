@@ -353,9 +353,21 @@ Pass `naming: :id` to use Bubble's internal identifiers instead:
 
 Every encoder renders the same reading of the app: `BubbleEx.Db.Reader` projects
 `BubbleEx.Model` into tables (see its moduledoc), so the formats and `:ash` agree
-on types, keys, order and what is deleted. Deleted data types, option sets and
-fields are left out; User is always present; tables and fields follow Bubble ID
-order.
+on types, keys, order, what is deleted and Bubble's built-in fields. Deleted
+data types, option sets and fields are left out; User is always present; tables
+and fields follow Bubble ID order. Every table has the built-in fields after
+`_id`: `Created Date`, `Modified Date`, `Created By` (a relationship to User
+wherever the format expresses relationships), `Slug`, and `email` on User; a
+defined field with the same name is suffixed (`Created Date_2`).
+
+Like `:ash` (`db_reference: :ignore`), the SQL formats declare no foreign key
+on `Created By`: Bubble keeps a record's creator after the user is deleted, and
+records made by backend workflows or logged-out visitors may have no creator
+that exists. Where they still differ: the formats name columns after Bubble's
+display names (`Created By`; `created_by` / `created_by_id` in Ecto), while
+`:ash` uses its own names (`belongs_to :creator` with `creator_id`); and the SQL
+formats give every other scalar reference a real foreign key, which `:ash`
+does not.
 
 Each encoder maps Bubble's model as faithfully as the target allows. Scalar
 references become real foreign keys (SQL/Ecto) or id fields; Bubble *list* fields

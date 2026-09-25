@@ -480,7 +480,9 @@ defmodule BubbleEx.Db.ReaderTest do
       # Ref: relationship is dropped.)
       assert {:ok, dbml} = BubbleEx.Db.Dbml.encode(db)
       ref_lines = dbml |> String.split("\n") |> Enum.filter(&String.starts_with?(&1, "Ref:"))
-      assert ref_lines == []
+      refute Enum.any?(ref_lines, &String.contains?(&1, "ghost"))
+      # Only the built-in Created By -> User relationships remain.
+      assert Enum.all?(ref_lines, &String.contains?(&1, ~s("Created By" > custom."User"."_id")))
     end
   end
 
@@ -513,7 +515,9 @@ defmodule BubbleEx.Db.ReaderTest do
 
       # the custom.project reference resolves to a relationship (a single
       # reference column is many-to-one: many tasks point at one project)
-      assert [{from, to, :many_to_one}] = db_map.relationships
+      assert [{from, to, :many_to_one}] =
+               Enum.reject(db_map.relationships, fn {from, _, _} -> from.id == "Created By" end)
+
       assert from.source_path == "/user_types/task/fields/project_ref/value"
       assert from.table_id == "task"
       assert to.table_id == "project"
@@ -577,8 +581,15 @@ defmodule BubbleEx.Db.ReaderTest do
       {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
       table = Enum.find(db_map.tables, &(&1.id == "ghost"))
       assert table.name == "Ghost"
-      assert [pk] = table.columns
+      assert [pk | built_in] = table.columns
       assert pk.primary_key
+
+      assert Enum.map(built_in, & &1.id) == [
+               "Created Date",
+               "Modified Date",
+               "Created By",
+               "Slug"
+             ]
     end
 
     test "user_type with a non-map fields value does not crash" do
@@ -632,12 +643,13 @@ defmodule BubbleEx.Db.ReaderTest do
       assert Enum.find(task.columns, &(&1.id == "z_title_text")).default == "untitled"
     end
 
-    test "orders tables and columns by Bubble ID, injected columns first" do
+    test "orders tables and columns by Bubble ID, injected and built-in columns first" do
       {:ok, db} = Reader.parse(@export)
       task = Enum.find(db.tables, &(&1.id == "task"))
 
       assert Enum.map(task.columns, & &1.id) ==
-               ~w(_id empty_ref grid_list owner_user unnamed_text z_title_text)
+               ["_id", "Created Date", "Modified Date", "Created By", "Slug"] ++
+                 ~w(empty_ref grid_list owner_user unnamed_text z_title_text)
     end
 
     test "types outside Bubble's vocabulary are unsupported, not guessed" do
@@ -657,13 +669,77 @@ defmodule BubbleEx.Db.ReaderTest do
     test "User is always a table, so user references resolve" do
       {:ok, db} = Reader.parse(@export)
 
-      assert %{columns: [%{id: "_id", primary_key: true}]} =
+      assert %{columns: [%{id: "_id", primary_key: true} | built_in]} =
                Enum.find(db.tables, &(&1.id == "user"))
+
+      assert Enum.map(built_in, & &1.id) ==
+               ["Created Date", "Modified Date", "Created By", "Slug", "email"]
 
       assert {%{id: "owner_user"}, %{table_id: "user", id: "_id"}, :many_to_one} =
                Enum.find(db.relationships, fn {from, _, _} -> from.id == "owner_user" end)
 
       assert Enum.any?(db.diagnostics, &(&1.code == :model_synthesized_user_type))
+    end
+
+    test "every table gets the Model's built-in fields; Created By references User" do
+      {:ok, model} = BubbleEx.Model.build(@export)
+      {:ok, db} = Reader.parse(@export)
+
+      for table <- db.tables, table.group == :custom do
+        system = BubbleEx.Model.data_type(model, table.id).system_fields
+        expected = for f <- system, f.system != :unique_id, do: {f.id, f.name, f.type}
+        built_in = Enum.slice(table.columns, 1, length(expected))
+
+        assert Enum.map(built_in, &{&1.id, &1.name, &1.type}) ==
+                 Enum.map(expected, fn {id, name, type} ->
+                   {id, name, Reader.column_type(type)}
+                 end)
+
+        assert {_, %{table_id: "user", id: "_id"}, :many_to_one} =
+                 Enum.find(db.relationships, fn {from, _, _} ->
+                   from.table_id == table.id and from.id == "Created By"
+                 end)
+      end
+
+      task = Enum.find(db.tables, &(&1.id == "task"))
+
+      assert Enum.map(Enum.slice(task.columns, 1, 4), &{&1.name, &1.type}) == [
+               {"Created Date", %{type: :utc_datetime_usec}},
+               {"Modified Date", %{type: :utc_datetime_usec}},
+               {"Created By", %{type: :reference, custom_type: "user"}},
+               {"Slug", %{type: :string}}
+             ]
+    end
+
+    test "only a live field replaces the built-in field with its Bubble ID" do
+      app = %{
+        "user_types" => %{
+          "task" => %{
+            "display" => "Task",
+            "fields" => %{
+              "Slug" => %{"display" => "Old slug", "value" => "text", "deleted" => true},
+              "Created Date" => "not an object",
+              "Modified Date" => %{"display" => "Touched", "value" => "text"}
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Model.build(app)
+      system = BubbleEx.Model.data_type(model, "task").system_fields
+      assert Enum.map(system, & &1.id) == ["_id", "Created Date", "Created By", "Slug"]
+      assert {:ok, %{system: :slug}} = BubbleEx.Model.field(model, "task", "Slug")
+
+      {:ok, db} = Reader.parse(app)
+      task = Enum.find(db.tables, &(&1.id == "task"))
+
+      assert Enum.map(task.columns, &{&1.id, &1.name, &1.system}) == [
+               {"_id", "_id", :unique_id},
+               {"Created Date", "Created Date", :created_date},
+               {"Created By", "Created By", :created_by},
+               {"Slug", "Slug", :slug},
+               {"Modified Date", "Touched", nil}
+             ]
     end
 
     test "a missing display name falls back to the Bubble ID" do
@@ -710,8 +786,15 @@ defmodule BubbleEx.Db.ReaderTest do
     defp names(db, id), do: Enum.find(db.tables, &(&1.id == id)).columns |> Enum.map(& &1.name)
 
     test "column names are unique per table, case-insensitively, key columns first", %{db: db} do
+      # Bubble's built-in fields keep their names; a defined field repeating
+      # one is suffixed.
       assert names(db, "task") ==
-               ["_id", "Title", "title_2", "_ID_2", "Tags", "Gone", "Retired", "Status"]
+               ["_id", "Created Date", "Modified Date", "Created By", "Slug"] ++
+                 ["Title", "title_2", "_ID_2", "Tags", "Gone", "Retired", "Status"] ++
+                 ["Created Date_2", "created by_2", "SLUG_2"]
+
+      assert names(db, "user") ==
+               ["_id", "Created Date", "Modified Date", "Created By", "Slug", "email", "Email_2"]
 
       # Suffixes follow Bubble ID order and skip names already taken.
       assert names(db, "status") ==
@@ -755,10 +838,20 @@ defmodule BubbleEx.Db.ReaderTest do
       assert Enum.map(notes, & &1[:details].target) == ["gone", "retired"]
     end
 
+    test "SQL has no foreign key on the built-in Created By, only on defined references",
+         %{db: db} do
+      for format <- [:postgres, :sqlite, :tsql] do
+        {:ok, %{content: sql}} = BubbleEx.Db.Encoder.render(format, db)
+        fks = sql |> String.split("\n") |> Enum.filter(&(&1 =~ "FOREIGN KEY"))
+        refute Enum.any?(fks, &(&1 =~ ~r/Created By[\]"]\)/)), "#{format}: #{inspect(fks)}"
+        assert Enum.any?(fks, &(&1 =~ "created by_2")), "#{format}: #{inspect(fks)}"
+      end
+    end
+
     test "Encoder.render emits the projection's diagnostics for its target", %{db: db} do
       {:ok, result} = BubbleEx.Db.Encoder.render(:sqlite, db)
       suffixed = Enum.filter(result.diagnostics, &(&1.code == :db_name_suffixed))
-      assert length(suffixed) == 7
+      assert length(suffixed) == 11
       assert Enum.all?(suffixed, &(&1.stage == {:target, :sqlite}))
     end
 

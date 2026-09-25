@@ -6,11 +6,19 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Draft" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Note" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Body" TEXT,
   "Secret" TEXT,
   PRIMARY KEY ("_id")
@@ -18,12 +26,21 @@ CREATE TABLE IF NOT EXISTS "custom__Note" (
 
 CREATE TABLE IF NOT EXISTS "custom__Public page" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Slug text" TEXT,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
   "Admin" INTEGER,
   PRIMARY KEY ("_id")
 );

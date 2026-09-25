@@ -9,6 +9,10 @@ import { v } from "convex/values";
 export default defineSchema({
   field00ThingJoin: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     field11Done: v.boolean(),
     field40SortThingTitle: v.string(),
     struct: v.string(),
@@ -21,20 +25,37 @@ export default defineSchema({
 
   launch: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     field: v.string(),
     name: v.string(),
   }),
 
   thing: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
   }),
 
   thing2: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
   }),
 
   user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
+    email: v.string(),
   }),
 
   field40Levels: defineTable({

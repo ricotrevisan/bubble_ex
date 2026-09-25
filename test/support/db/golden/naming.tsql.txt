@@ -5,6 +5,10 @@ GO
 
 CREATE TABLE [custom].[00. Thing - Join] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [11. Done] BIT,
   [40. Sort: Thing Title] NVARCHAR(MAX),
   [__struct__] NVARCHAR(MAX),
@@ -18,6 +22,10 @@ CREATE TABLE [custom].[00. Thing - Join] (
 
 CREATE TABLE [custom].[🚀 Launch] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [🔥] NVARCHAR(MAX),
   [Name ✨] NVARCHAR(MAX),
   CONSTRAINT [PK_launch] PRIMARY KEY ([_id])
@@ -25,16 +33,29 @@ CREATE TABLE [custom].[🚀 Launch] (
 
 CREATE TABLE [custom].[Thing] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   CONSTRAINT [PK_thing] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[Thing_2] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   CONSTRAINT [PK_thing_2] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 

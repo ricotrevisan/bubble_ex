@@ -5,6 +5,10 @@ GO
 
 CREATE TABLE [custom].[Order] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [Buyer] NVARCHAR(450),
   [Items] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   [Kind] NVARCHAR(450),
@@ -13,6 +17,11 @@ CREATE TABLE [custom].[Order] (
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   [Name] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );

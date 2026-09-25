@@ -17,24 +17,35 @@ defmodule BubbleEx.Db.Reader do
       `:option`) that is neither deleted nor malformed (`raw`). User is always
       present, as in the Model (a source without one gets Bubble's built-in
       User).
-    * Custom tables get a `_id` primary-key column (Bubble's unique id).
-      Option tables get a `db_value` primary-key column (the value's stable
-      key, `BubbleEx.Model.OptionValue.key`) and a `display` column (its
-      display text), then the declared attributes.
+    * Custom tables get a `_id` primary-key column (Bubble's unique id),
+      then a column per built-in field the Model defines
+      (`BubbleEx.Model.DataType.system_fields`): `Created Date` and
+      `Modified Date` (dates), `Created By` (a reference to User, so a
+      relationship), `Slug` (text), and `email` (text) on User, named as
+      the Model names them. A column's `system` is its built-in role
+      (`BubbleEx.Model.Field.system`, `:unique_id` for `_id`), nil for
+      declared fields and option-set columns. Option tables get a
+      `db_value` primary-key column (the value's stable key,
+      `BubbleEx.Model.OptionValue.key`) and a `display` column (its display
+      text), then the declared attributes.
     * Deleted and malformed fields and attributes are left out. A declared
       field whose Bubble ID is a primary-key or `display` column's is left
-      out too (the injected column stands for it).
+      out too (the injected column stands for it). A live declared field
+      whose Bubble ID is a built-in field's replaces it (the Model keeps
+      only the declared one).
     * `values` are an option set's values that are not deleted, in the
       Model's order (`sort_factor`, then Bubble ID), with `db_value` holding
       the stable key.
     * Order is the Model's: data types, then option sets, each in Bubble ID
-      order; within a table the injected columns come first, then fields in
-      Bubble ID order. Relationships follow column order.
+      order; within a table the injected columns come first, then the
+      built-in fields in the Model's order, then fields in Bubble ID order.
+      Relationships follow column order.
     * A display name the source does not supply falls back to the Bubble ID.
       Names stay usable as SQL identifiers: table names are unique across
       all tables and column names within a table, case-insensitively and
-      never a key column's; a repeat gets the first free `_2`, `_3`, ...
-      suffix, in Bubble ID order (data types before option sets).
+      never a key or built-in column's; a repeat (e.g. a field named
+      "Created Date") gets the first free `_2`, `_3`, ... suffix, in Bubble
+      ID order (data types before option sets).
     * An option value repeating an earlier value's stable key is left out of
       `values`, so `db_value` stays a key.
     * `external_types` are the API Connector types reachable from the
@@ -111,7 +122,8 @@ defmodule BubbleEx.Db.Reader do
           primary_key: boolean(),
           deleted: false,
           default: term(),
-          source_path: String.t() | nil
+          source_path: String.t() | nil,
+          system: Field.system() | nil
         }
 
   @type relationship_direction() :: :many_to_one | :many_to_many
@@ -231,9 +243,8 @@ defmodule BubbleEx.Db.Reader do
   defp table({:custom, %DataType{} = type, name}, source) do
     table = %{id: type.id, name: name, group: :custom}
 
-    {columns, notes} =
-      columns(table, [injected(table, @custom_pk, "_id", type.path)], type.fields, source)
-
+    keys = [injected(table, @custom_pk, "_id", type.path) | system_columns(table, type, source)]
+    {columns, notes} = columns(table, keys, type.fields, source)
     {Map.merge(table, %{columns: columns, values: []}), notes}
   end
 
@@ -248,6 +259,15 @@ defmodule BubbleEx.Db.Reader do
     {columns, column_notes} = columns(table, keys, set.attributes, source)
     {values, value_notes} = values(set)
     {Map.merge(table, %{columns: columns, values: values}), column_notes ++ value_notes}
+  end
+
+  # Bubble's built-in fields as the Model defines them (`DataType.system_fields`),
+  # after `_id` (the injected primary key stands for it): Created Date,
+  # Modified Date, Created By (a reference to User), Slug, and email on User.
+  defp system_columns(table, type, source) do
+    for %Field{system: role} = field <- type.system_fields, role != :unique_id do
+      column(table, field, field.name || field.id, source)
+    end
   end
 
   # The option set's values that are not deleted, one per stable key: a value
@@ -287,12 +307,14 @@ defmodule BubbleEx.Db.Reader do
       primary_key: true,
       deleted: false,
       default: nil,
-      source_path: path
+      source_path: path,
+      system: if(id == @custom_pk, do: :unique_id)
     }
   end
 
-  # The injected key columns, then the live fields in Bubble ID order. A field
-  # whose Bubble ID is a key column's is left out (the key stands for it). A
+  # The injected key columns (and a data type's built-in ones), then the live
+  # fields in Bubble ID order. A field whose Bubble ID is a key column's is
+  # left out (the key stands for it). A
   # field whose display name repeats an earlier column's, case-insensitively
   # (SQL identifiers are), gets the first free `_2`, `_3`, ... suffix.
   defp columns(table, keys, fields, source) do
@@ -323,7 +345,8 @@ defmodule BubbleEx.Db.Reader do
       deleted: false,
       default: field.default,
       source_path:
-        Resolver.descriptor_pointer(source, table.group, table.id, field.id) || field.path
+        Resolver.descriptor_pointer(source, table.group, table.id, field.id) || field.path,
+      system: field.system
     }
   end
 

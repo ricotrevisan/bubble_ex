@@ -14,10 +14,18 @@ const tValidator = v.object({
 export default defineSchema({
   listy: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
   }),
 
   task: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     emptyCustom: v.string(),
     extraMember: v.string(),
     nestedList: v.string(),
@@ -30,6 +38,11 @@ export default defineSchema({
 
   user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
+    email: v.string(),
   }),
 
   badValue: defineTable({

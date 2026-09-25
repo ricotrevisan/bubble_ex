@@ -7,10 +7,18 @@ Project "synthetic-malformed" {
 
 Table custom."Listy" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 
 }
 Table custom."Task" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Empty custom" unsupported
 	"Extra member" varchar
 	"Nested list" unsupported
@@ -23,6 +31,11 @@ Table custom."Task" {
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table option."Bad value" {
@@ -35,7 +48,10 @@ Table option."Bad values" {
 	"Display" varchar
 
 }
---- diagnostics ---
+
+Ref: custom."Listy"."Created By" > custom."User"."_id"
+Ref: custom."Task"."Created By" > custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_malformed_node /option_sets/bad_set
 model_malformed_node /option_sets/bad_value/values/v1
 model_malformed_node /option_sets/bad_values/attributes

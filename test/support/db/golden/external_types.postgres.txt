@@ -22,6 +22,10 @@ CREATE TYPE "Node" AS (
 
 CREATE TABLE "custom"."Shipment" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Address" "Address",
   "Blank" jsonb,
   "Invalid" jsonb,
@@ -35,6 +39,11 @@ CREATE TABLE "custom"."Shipment" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---

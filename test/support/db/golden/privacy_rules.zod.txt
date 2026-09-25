@@ -3,6 +3,10 @@ import { z } from 'zod';
 // Draft
 export const DraftSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
 });
 
 export type Draft = z.infer<typeof DraftSchema>;
@@ -10,6 +14,10 @@ export type Draft = z.infer<typeof DraftSchema>;
 // Note
 export const NoteSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   Body: z.string().nullish(),
   Secret: z.string().nullish(),
 });
@@ -19,6 +27,10 @@ export type Note = z.infer<typeof NoteSchema>;
 // Public page
 export const PublicPageSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   'Slug text': z.string().nullish(),
 });
 
@@ -27,6 +39,11 @@ export type PublicPage = z.infer<typeof PublicPageSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
   Admin: z.boolean().nullish(),
 });
 

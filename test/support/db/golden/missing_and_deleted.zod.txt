@@ -3,6 +3,10 @@ import { z } from 'zod';
 // Invoice
 export const InvoiceSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   Archive: z.string().nullish(), // reference -> archive
   Customer: z.string().nullish(), // reference -> ghost
   Lines: z.array(z.string()).nullish(), // reference -> ghost_line
@@ -15,6 +19,11 @@ export type Invoice = z.infer<typeof InvoiceSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;

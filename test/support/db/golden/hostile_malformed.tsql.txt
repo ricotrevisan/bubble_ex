@@ -5,11 +5,19 @@ GO
 
 CREATE TABLE [custom].[Listy] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   CONSTRAINT [PK_listy] PRIMARY KEY ([_id])
 );
 
 CREATE TABLE [custom].[Task] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [Empty custom] NVARCHAR(MAX),
   [Extra member] NVARCHAR(MAX),
   [Nested list] NVARCHAR(MAX),
@@ -23,6 +31,11 @@ CREATE TABLE [custom].[Task] (
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 

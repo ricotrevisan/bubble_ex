@@ -9,6 +9,10 @@ import { v } from "convex/values";
 export default defineSchema({
   task: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     title: v.string(),
     title2: v.boolean(),
     id2: v.string(),
@@ -16,14 +20,27 @@ export default defineSchema({
     gone: v.string(), // reference -> re-key to v.id(...)
     retired: v.string(), // enum -> option set (member values not rendered)
     status: v.string(), // enum -> option set (member values not rendered)
+    createdDate2: v.float64(),
+    createdBy2: v.string(), // reference -> re-key to v.id(...)
+    slug2: v.string(),
   }),
 
   task2: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
   }),
 
   user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
+    email: v.string(),
+    email2: v.string(),
   }),
 
   status: defineTable({
@@ -52,5 +69,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

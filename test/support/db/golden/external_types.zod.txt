@@ -26,6 +26,10 @@ export const NodeSchema = z.looseObject({
 // Shipment
 export const ShipmentSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   Address: AddressSchema.nullish(),
   Blank: z.json().nullish(),
   Invalid: z.json().nullish(),
@@ -41,6 +45,11 @@ export type Shipment = z.infer<typeof ShipmentSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;

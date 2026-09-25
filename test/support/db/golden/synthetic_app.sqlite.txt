@@ -6,6 +6,10 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Onboarding Answer" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "label" TEXT,
   "score" REAL,
   PRIMARY KEY ("_id")
@@ -13,6 +17,10 @@ CREATE TABLE IF NOT EXISTS "custom__Onboarding Answer" (
 
 CREATE TABLE IF NOT EXISTS "custom__Survey Response" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "answer" TEXT,
   "onboarding answer" TEXT,
   "rating" REAL,
@@ -24,6 +32,11 @@ CREATE TABLE IF NOT EXISTS "custom__Survey Response" (
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
   PRIMARY KEY ("_id")
 );
 

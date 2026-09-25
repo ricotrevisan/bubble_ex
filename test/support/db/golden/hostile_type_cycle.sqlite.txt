@@ -6,6 +6,10 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__A" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "B" TEXT,
   PRIMARY KEY ("_id"),
   FOREIGN KEY ("B") REFERENCES "custom__B" ("_id")
@@ -13,12 +17,20 @@ CREATE TABLE IF NOT EXISTS "custom__A" (
 
 CREATE TABLE IF NOT EXISTS "custom__B" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "C" TEXT,  -- list<TEXT>; store as JSON
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__C" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "A" TEXT,
   PRIMARY KEY ("_id"),
   FOREIGN KEY ("A") REFERENCES "custom__A" ("_id")
@@ -26,6 +38,11 @@ CREATE TABLE IF NOT EXISTS "custom__C" (
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---

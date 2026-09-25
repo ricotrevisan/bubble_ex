@@ -2,6 +2,10 @@ CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."Node" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Children" text[],
   "Parent" text,
   PRIMARY KEY ("_id")
@@ -9,6 +13,11 @@ CREATE TABLE "custom"."Node" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 

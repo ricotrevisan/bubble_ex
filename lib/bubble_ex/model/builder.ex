@@ -126,7 +126,7 @@ defmodule BubbleEx.Model.Builder do
       privacy: p.availability,
       path: pointer(path),
       fields: fields,
-      system_fields: system_fields(id, path, MapSet.new(fields, & &1.id), known),
+      system_fields: system_fields(id, path, live_ids(fields), known),
       rules: p.rules,
       extra: Map.merge(p.extra, extra)
     }
@@ -159,8 +159,14 @@ defmodule BubbleEx.Model.Builder do
     {Enum.sort_by([user | data_types], & &1.id), [diag]}
   end
 
+  # The Bubble IDs of the fields that are neither deleted nor malformed: only
+  # these replace a built-in field of the same ID.
+  defp live_ids(fields),
+    do: for(%Field{deleted: false, raw: nil} = f <- fields, into: MapSet.new(), do: f.id)
+
   # Bubble's built-in fields: every record has them, and every User an email.
-  # Absent from exported field lists; their path is the type's.
+  # Absent from exported field lists; their path is the type's. A live
+  # defined field with a built-in's ID replaces it.
   defp system_fields(type_id, path, defined, known) do
     names = if type_id == "user", do: @system_fields ++ ["email"], else: @system_fields
 
