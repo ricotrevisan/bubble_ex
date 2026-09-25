@@ -1,0 +1,363 @@
+{
+  "_id": "synthindex",
+  "app_version": "test",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "name_text": { "display": "Name", "value": "text" },
+        "role_option_os_role": { "display": "Role", "value": "option.os_role" },
+        "workspace_custom_workspace": { "display": "Workspace", "value": "custom.workspace" }
+      }
+    },
+    "workspace": {
+      "display": "Workspace",
+      "fields": {
+        "members_list_user": { "display": "Members", "value": "list.user" },
+        "name_text": { "display": "Name", "value": "text" },
+        "old_flag_boolean": { "display": "Old flag", "value": "boolean", "deleted": true }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "done_boolean": { "display": "Done", "value": "boolean" },
+        "feed_items": { "display": "Feed items", "value": "list.api.apiconnector2.grpA.callFeed.items" },
+        "project_custom_project": { "display": "Project", "value": "custom.project" },
+        "status_option_os_status": { "display": "Status", "value": "option.os_status" },
+        "title_text": { "display": "Title", "value": "text" },
+        "workspace_custom_workspace": { "display": "Workspace", "value": "custom.workspace" }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": { "auto_binding": false, "search_for": false, "view_all": false, "view_attachments": false }
+        },
+        "member_": {
+          "display": "Member",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "workspace_custom_workspace",
+              "next": {
+                "type": "Message",
+                "name": "equals",
+                "args": {
+                  "type": "CurrentUser",
+                  "next": { "type": "Message", "name": "workspace_custom_workspace" }
+                }
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": { "0": "done_boolean" },
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": true,
+            "view_fields": { "0": "title_text", "1": "Slug" }
+          }
+        }
+      }
+    }
+  },
+  "option_sets": {
+    "os_role": {
+      "display": "Role",
+      "values": {
+        "r1": { "display": "Admin", "db_value": "admin", "sort_factor": 1 }
+      }
+    },
+    "os_status": {
+      "display": "Status",
+      "attributes": {
+        "color_text": { "display": "Color", "value": "text" }
+      },
+      "values": {
+        "s1": { "display": "Open", "db_value": "open", "sort_factor": 1 },
+        "s2": { "display": "Closed", "db_value": "closed", "sort_factor": 2 }
+      }
+    }
+  },
+  "settings": {
+    "client_safe": {
+      "apiconnector2": {
+        "grpA": {
+          "human": "Feeds",
+          "auth": "none",
+          "calls": {
+            "callFeed": { "name": "Get feed", "method": "get", "publish_as": "data" },
+            "callPost": { "name": "Post item", "method": "post", "publish_as": "action" }
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "pgHome": {
+      "id": "pHome",
+      "name": "index",
+      "type": "Page",
+      "properties": { "title": "Home" },
+      "elements": {
+        "grpMain": {
+          "id": "eMain",
+          "type": "Group",
+          "default_name": "Group Main",
+          "properties": {
+            "group_type": "custom.task",
+            "roles": { "type": "AllOptionValue", "properties": { "option_set": "option.os_role" } }
+          },
+          "elements": {
+            "btnSave": { "id": "eSave", "type": "Button", "default_name": "Button Save", "properties": {} },
+            "txtTitle": {
+              "id": "eTitle",
+              "type": "Text",
+              "default_name": "Text Title",
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Hi ",
+                    "1": { "type": "CurrentUser", "next": { "type": "Message", "name": "name_text" } }
+                  }
+                }
+              }
+            },
+            "txtFeed": {
+              "id": "eFeed",
+              "type": "Text",
+              "default_name": "Text Feed",
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": {
+                      "type": "GetDataFromAPI",
+                      "properties": { "provider": "apiconnector2.grpA.callFeed" },
+                      "next": { "type": "Message", "name": "_api_c2_title" }
+                    }
+                  }
+                }
+              }
+            },
+            "rgOpen": {
+              "id": "eOpen",
+              "type": "RepeatingGroup",
+              "default_name": "RG Open",
+              "properties": {
+                "data_source": {
+                  "type": "Search",
+                  "properties": { "type_to_find": "custom.task" },
+                  "next": {
+                    "type": "Message",
+                    "name": "filtered",
+                    "properties": {
+                      "constraints": {
+                        "0": { "key": "done_boolean", "constraint_type": "equals", "value": false }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "navInstance": {
+              "id": "eNav",
+              "type": "CustomElement",
+              "default_name": "Nav A",
+              "properties": { "custom_id": "rNav" }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wfClick": {
+          "id": "wClick",
+          "type": "ButtonClicked",
+          "properties": { "element_id": "eSave" },
+          "actions": {
+            "0": {
+              "id": "aNew",
+              "type": "NewThing",
+              "properties": {
+                "thing_type": "custom.task",
+                "initial_values": {
+                  "0": {
+                    "action": { "type": "Empty" },
+                    "key": "title_text",
+                    "value": {
+                      "type": "GetElement",
+                      "properties": { "element_id": "eTitle" },
+                      "next": { "type": "Message", "name": "value" }
+                    }
+                  },
+                  "1": {
+                    "action": { "type": "Empty" },
+                    "key": "workspace_custom_workspace",
+                    "value": { "type": "CurrentUser", "next": { "type": "Message", "name": "workspace_custom_workspace" } }
+                  }
+                }
+              }
+            },
+            "1": { "id": "aTrigger", "type": "TriggerCustomEvent", "properties": { "custom_event": "wSave" } },
+            "2": { "id": "aHide", "type": "HideElement", "properties": { "element_id": "eMain" } }
+          }
+        },
+        "wfSave": {
+          "id": "wSave",
+          "type": "CustomEvent",
+          "properties": { "event_name": "save" },
+          "actions": {
+            "0": {
+              "id": "aSchedule",
+              "type": "ScheduleAPIEvent",
+              "properties": { "api_event": "wApiA", "ignore_privacy_rules": true, "date": { "type": "Empty" } }
+            }
+          }
+        },
+        "wfLoad": {
+          "id": "wLoad",
+          "type": "PageLoaded",
+          "actions": {
+            "0": { "id": "aShow", "type": "ShowElement", "properties": { "element_id": "eMain" } },
+            "1": { "id": "aScrollPage", "type": "ScrollToElement", "properties": { "element_id": "Current page" } }
+          }
+        },
+        "wfPlugin": {
+          "id": "wPlugin",
+          "type": "PageLoaded",
+          "actions": { "0": { "id": "aPlugin", "type": "1700000000000x100-AAA", "properties": {} } }
+        },
+        "wfTimer": {
+          "id": "wTimer",
+          "type": "DoInterval",
+          "properties": { "interval": 5 },
+          "actions": { "0": { "id": "aTick", "type": "ToggleElement", "properties": { "element_id": "eOpen" } } }
+        }
+      }
+    }
+  },
+  "element_definitions": {
+    "rNavKey": {
+      "id": "rNav",
+      "name": "Nav",
+      "type": "CustomDefinition",
+      "properties": {},
+      "workflows": {
+        "wfNav": {
+          "id": "wNav",
+          "type": "CustomEvent",
+          "properties": { "event_name": "poll" },
+          "actions": { "0": { "id": "aPoll", "type": "ScheduleCustom", "properties": { "custom_event": "wNav", "delay": 5 } } }
+        }
+      }
+    }
+  },
+  "api": {
+    "wfApiA": {
+      "id": "wApiA",
+      "type": "APIEvent",
+      "properties": { "wf_name": "update-task", "expose": true },
+      "actions": {
+        "0": {
+          "id": "aChange",
+          "type": "ChangeThing",
+          "properties": {
+            "to_change": { "type": "APIEventParameter", "properties": { "btype_id": "custom.task", "param_id": "task" } },
+            "changes": {
+              "0": { "action": { "type": "Empty" }, "key": "done_boolean", "value": true },
+              "1": {
+                "action": { "type": "Empty" },
+                "key": "status_option_os_status",
+                "value": { "type": "OneOptionValue", "properties": { "option_set": "option.os_status", "option_value": "open" } }
+              }
+            }
+          }
+        },
+        "1": {
+          "id": "aOnList",
+          "type": "ScheduleAPIEventOnList",
+          "properties": {
+            "api_event": "wApiB",
+            "type_of_list": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false,
+                "constraints": {
+                  "0": {
+                    "key": "workspace_custom_workspace",
+                    "constraint_type": "equals",
+                    "value": { "type": "APIEventParameter", "properties": { "btype_id": "custom.workspace", "param_id": "ws" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "wfApiB": {
+      "id": "wApiB",
+      "type": "APIEvent",
+      "properties": { "wf_name": "sweep", "expose": false, "ignore_privacy_rules": true },
+      "actions": {
+        "0": { "id": "aBack", "type": "ScheduleAPIEvent", "properties": { "api_event": "wApiA" } },
+        "1": {
+          "id": "aDeleteList",
+          "type": "DeleteListOfThings",
+          "properties": {
+            "type_to_delete": "custom.task",
+            "to_delete": { "type": "Search", "properties": { "type_to_find": "custom.task" } }
+          }
+        },
+        "2": { "id": "aPost", "type": "apiconnector2-grpA.callPost", "properties": {} },
+        "3": {
+          "id": "aInferred",
+          "type": "ChangeThing",
+          "properties": {
+            "to_change": { "type": "PreviousStep", "properties": { "action_id": "aDeleteList" } },
+            "changes": { "0": { "action": "add", "key": "title_text", "value": "x" } }
+          }
+        },
+        "4": {
+          "id": "aAmbiguous",
+          "type": "ChangeThing",
+          "properties": {
+            "to_change": { "type": "PreviousStep", "properties": { "action_id": "aDeleteList" } },
+            "changes": { "0": { "action": { "type": "Empty" }, "key": "name_text", "value": "x" } }
+          }
+        },
+        "5": { "id": "aRecur", "type": "ScheduleRecurringAPIEvent", "properties": { "api_event": "wApiC" } }
+      }
+    },
+    "wfApiC": {
+      "id": "wApiC",
+      "type": "APIEvent",
+      "properties": { "wf_name": "nightly", "expose": false },
+      "actions": {}
+    },
+    "wfTrigger": {
+      "id": "wTrigger",
+      "type": "DatabaseTriggerEvent",
+      "properties": {
+        "event_name": "task-done",
+        "data_trigger_type": "custom.task",
+        "condition": {
+          "type": "CurrentDataItem",
+          "next": { "type": "Message", "name": "done_boolean", "next": { "type": "Message", "name": "is_true" } }
+        }
+      },
+      "actions": {
+        "0": {
+          "id": "aDeleteDone",
+          "type": "DeleteThing",
+          "properties": { "to_delete": { "type": "CurrentDataItem" } }
+        }
+      }
+    }
+  }
+}

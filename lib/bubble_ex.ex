@@ -194,6 +194,10 @@ defmodule BubbleEx do
   @spec privacy_rules(term()) :: {:ok, BubbleEx.Privacy.t()} | {:error, BubbleEx.Error.t()}
   def privacy_rules(app), do: BubbleEx.Privacy.parse(app)
 
+  @doc "Builds the symbol and reference index of decoded app JSON. See `BubbleEx.Index`."
+  @spec symbol_index(term()) :: {:ok, BubbleEx.Index.t()} | {:error, BubbleEx.Error.t()}
+  def symbol_index(app), do: BubbleEx.Index.build(app)
+
   @doc "Exports supplied workflow data to JSON and Markdown in an empty output directory."
   @spec export_workflows(term(), String.t()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
   def export_workflows(payload, out_dir), do: BubbleEx.Workflows.export(payload, out_dir)
