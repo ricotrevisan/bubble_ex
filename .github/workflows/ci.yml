@@ -33,6 +33,40 @@ jobs:
         if: matrix.elixir == '1.18.4' && matrix.otp == '28.0'
         run: scripts/package_consumer_smoke.sh
 
+  ash-compile-check:
+    # Renders every fixture through BubbleEx.Target.Ash, compiles the source in
+    # a scratch project pinned to Target.Ash.versions/0, checks the generated
+    # migrations, runs them and round-trips sample rows through every
+    # resource. See scripts/ash_compile_check.sh.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ASH_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.4"
+          otp-version: "28.0"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-ash-check-${{ hashFiles('mix.lock', 'scripts/ash_compile_check/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-ash-check-
+      - run: mix deps.get
+      - run: scripts/ash_compile_check.sh
+
   fidelity:
     runs-on: ubuntu-latest
     steps:

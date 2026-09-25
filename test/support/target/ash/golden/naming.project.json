@@ -1,0 +1,1172 @@
+{
+  "bubble_id": "synthetic-naming",
+  "diagnostics": [
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [],
+      "bubble_name": "40. Levels",
+      "description": null,
+      "module": "Enums.Levels",
+      "source": {
+        "option_set": "os__40__levels"
+      },
+      "values": [
+        {
+          "attributes": {},
+          "label": "id",
+          "source": {
+            "option_set": "os__40__levels",
+            "value": "a"
+          },
+          "value": "id"
+        },
+        {
+          "attributes": {},
+          "label": "type",
+          "source": {
+            "option_set": "os__40__levels",
+            "value": "b"
+          },
+          "value": "type"
+        }
+      ]
+    }
+  ],
+  "names": {
+    "enums": {
+      "os__40__levels": {
+        "module": "Levels"
+      }
+    },
+    "external_types": {},
+    "resources": {
+      "00__thing___join": {
+        "attributes": {
+          "11__done_boolean": "done",
+          "40__sort__thing_title_text": "sort_thing_title",
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "__struct___text": "struct",
+          "_id": "id",
+          "id_text": "id_field",
+          "inserted_at_date": "inserted_at_field",
+          "title_text": "title",
+          "title_text1": "title_2",
+          "type_text": "type_field"
+        },
+        "module": "ThingJoin",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "thing_join"
+      },
+      "launch": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "_text": "text",
+          "name_text": "name"
+        },
+        "module": "Launch",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "launch"
+      },
+      "thing": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id"
+        },
+        "module": "Thing",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "thing"
+      },
+      "thing0": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id"
+        },
+        "module": "Thing2",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "thing2"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "00__thing___join"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "00__thing___join"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "boolean",
+          "constraints": [],
+          "default": null,
+          "name": "done",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "11__done_boolean",
+            "type": "00__thing___join"
+          },
+          "type": "boolean",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "sort_thing_title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "40__sort__thing_title_text",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "struct",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "__struct___text",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id_field",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "id_text",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "inserted_at_field",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "inserted_at_date",
+            "type": "00__thing___join"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "title_text",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title_2",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "title_text1",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "type_field",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "type_text",
+            "type": "00__thing___join"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "00. Thing - Join",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "ThingJoin",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "00__thing___join"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "00__thing___join"
+      },
+      "synthesized": false,
+      "table": "thing_join"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "launch"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "launch"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "launch"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "launch"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "launch"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "text",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_text",
+            "type": "launch"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "launch"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "🚀 Launch",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Launch",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "launch"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "launch"
+      },
+      "synthesized": false,
+      "table": "launch"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "thing"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "thing"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "thing"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "thing"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "thing"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Thing",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Thing",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "thing"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "thing"
+      },
+      "synthesized": false,
+      "table": "thing"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "thing0"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "thing0"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "thing0"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "thing0"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "thing0"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Thing",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Thing2",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "thing0"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "thing0"
+      },
+      "synthesized": false,
+      "table": "thing2"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": [],
+  "types": []
+}

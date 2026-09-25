@@ -128,7 +128,25 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:external_type_opaque_mode, :info, :degraded, :target,
      "`external_types: :opaque` was selected; rendered as JSON"},
     {:external_type_legacy_mode, :info, :degraded, :target,
-     "`external_types: :legacy` was selected; rendered in the legacy form"}
+     "`external_types: :legacy` was selected; rendered in the legacy form"},
+
+    # --- target:ash — BubbleEx.Target.Ash (WTF-362) ---------------------------
+    # Also emits the shared external_type_unresolved_root/_nested and
+    # external_type_cycle_edge codes above, with target :ash.
+    {:ash_deleted_omitted, :info, :degraded, :target,
+     "a deleted data type, field, option set, option value or option-set attribute; omitted from the Ash project"},
+    {:ash_malformed_omitted, :warning, :unresolved, :target,
+     "a data type, field, option set, option value or attribute that is malformed in the source (`raw`); not mapped"},
+    {:ash_unresolved_reference, :warning, :degraded, :target,
+     "a reference to a data type or option set that is missing or omitted; its Bubble IDs are kept as `:string` (or an array of them)"},
+    {:ash_opaque_value, :warning, :preserved, :target,
+     "a value with no usable type (opaque, unknown, or of unknown list-ness); kept verbatim as any JSON value (the generated `Types.JsonValue`, jsonb) but not modeled"},
+    {:ash_date_interval_as_number, :info, :degraded, :target,
+     "a date interval (Bubble: the difference between two dates in milliseconds); mapped to `:float` milliseconds, not a duration type"},
+    {:ash_default_unmapped, :warning, :degraded, :target,
+     "a field default with no Ash equivalent (e.g. a list, a reference, or a value of the wrong type); omitted"},
+    {:ash_duplicate_enum_value, :warning, :degraded, :target,
+     "an option value repeating an earlier value's stable key; omitted from the enum"}
   ]
 
   @registry Map.new(@codes, fn {code, severity, outcome, stage, doc} ->

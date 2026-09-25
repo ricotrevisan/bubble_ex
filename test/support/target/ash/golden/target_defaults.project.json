@@ -1,0 +1,727 @@
+{
+  "bubble_id": "synthetic-target-defaults",
+  "diagnostics": [
+    {
+      "code": "ash_default_unmapped",
+      "details": {
+        "default": "green",
+        "source": "option.color"
+      },
+      "message": "card.hue_option_color: the default \"green\" has no Ash equivalent and is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/hue_option_color",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "hue_option_color",
+        "type": "card"
+      }
+    },
+    {
+      "code": "ash_default_unmapped",
+      "details": {
+        "default": [
+          "a",
+          "b"
+        ],
+        "source": "list.text"
+      },
+      "message": "card.tags_list_text: the default [\"a\", \"b\"] has no Ash equivalent and is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/tags_list_text",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "tags_list_text",
+        "type": "card"
+      }
+    },
+    {
+      "code": "ash_default_unmapped",
+      "details": {
+        "default": 42,
+        "source": "text"
+      },
+      "message": "card.weird_text: the default 42 has no Ash equivalent and is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/weird_text",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "weird_text",
+        "type": "card"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [],
+      "bubble_name": "Color",
+      "description": null,
+      "module": "Enums.Color",
+      "source": {
+        "option_set": "color"
+      },
+      "values": [
+        {
+          "attributes": {},
+          "label": "Red",
+          "source": {
+            "option_set": "color",
+            "value": "r"
+          },
+          "value": "red"
+        },
+        {
+          "attributes": {},
+          "label": "Blue",
+          "source": {
+            "option_set": "color",
+            "value": "b"
+          },
+          "value": "blue"
+        }
+      ]
+    }
+  ],
+  "names": {
+    "enums": {
+      "color": {
+        "module": "Color"
+      }
+    },
+    "external_types": {},
+    "resources": {
+      "card": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "active_boolean": "active",
+          "color_option_color": "color",
+          "count_number": "count",
+          "due_date": "due",
+          "empty_text": "empty",
+          "hue_option_color": "hue",
+          "icon_image": "icon",
+          "tags_list_text": "tags",
+          "title_text": "title",
+          "weird_text": "weird"
+        },
+        "module": "Card",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "card"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "card"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "card"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "boolean",
+          "constraints": [],
+          "default": [
+            "value",
+            true
+          ],
+          "name": "active",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "active_boolean",
+            "type": "card"
+          },
+          "type": "boolean",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "option.color",
+          "constraints": [],
+          "default": [
+            "value",
+            "blue"
+          ],
+          "name": "color",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "color_option_color",
+            "type": "card"
+          },
+          "type": [
+            "module",
+            "Enums.Color"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "constraints": [],
+          "default": [
+            "value",
+            3.0
+          ],
+          "name": "count",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "count_number",
+            "type": "card"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": [
+            "value",
+            "2024-01-01T00:00:00.000000Z"
+          ],
+          "name": "due",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "due_date",
+            "type": "card"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": [
+            "value",
+            ""
+          ],
+          "name": "empty",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "empty_text",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "option.color",
+          "constraints": [],
+          "default": null,
+          "name": "hue",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "hue_option_color",
+            "type": "card"
+          },
+          "type": [
+            "module",
+            "Enums.Color"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "image",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": [
+            "value",
+            "https://example.invalid/icon.png"
+          ],
+          "name": "icon",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "icon_image",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.text",
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "tags",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "tags_list_text",
+            "type": "card"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": [
+            "value",
+            "Untitled"
+          ],
+          "name": "title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "title_text",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "weird",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "weird_text",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Card",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Card",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "card"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "card"
+      },
+      "synthesized": false,
+      "table": "card"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": [],
+  "types": []
+}

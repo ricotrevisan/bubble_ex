@@ -1,0 +1,1160 @@
+{
+  "bubble_id": "synthetic-target-names",
+  "diagnostics": [
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [
+        {
+          "bubble_type": "text",
+          "name": "nil_field",
+          "source": {
+            "field": "nil_text",
+            "option_set": "tier"
+          }
+        },
+        {
+          "bubble_type": "number",
+          "name": "rank",
+          "source": {
+            "field": "rank_number",
+            "option_set": "tier"
+          }
+        },
+        {
+          "bubble_type": "number",
+          "name": "rank_2",
+          "source": {
+            "field": "rank_number0",
+            "option_set": "tier"
+          }
+        }
+      ],
+      "bubble_name": "01) Tier",
+      "description": null,
+      "module": "Enums.Tier",
+      "source": {
+        "option_set": "tier"
+      },
+      "values": [
+        {
+          "attributes": {
+            "nil_field": "n",
+            "rank": 1,
+            "rank_2": null
+          },
+          "label": "Gold",
+          "source": {
+            "option_set": "tier",
+            "value": "gold"
+          },
+          "value": "Gold Tier"
+        },
+        {
+          "attributes": {
+            "nil_field": null,
+            "rank": null,
+            "rank_2": 2
+          },
+          "label": "Silver",
+          "source": {
+            "option_set": "tier",
+            "value": "silver"
+          },
+          "value": "silver"
+        }
+      ]
+    }
+  ],
+  "names": {
+    "enums": {
+      "tier": {
+        "attributes": {
+          "nil_text": "nil_field",
+          "rank_number": "rank",
+          "rank_number0": "rank_2"
+        },
+        "module": "Tier"
+      }
+    },
+    "external_types": {},
+    "resources": {
+      "domain": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id"
+        },
+        "module": "DomainResource",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "domain_resource"
+      },
+      "gadget": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "a_title_text": "title",
+          "b_title_text": "title_2",
+          "c_title_text": "title_3",
+          "cafe_text": "cafe_strasse",
+          "camel_text": "first_name",
+          "creator_user": "creator_2_id",
+          "inch_number": "n3_5_inch",
+          "slug_text": "slug_2",
+          "struct_text": "struct",
+          "twofa_text": "n2fa_code",
+          "updated_date": "updated_at_field",
+          "widget_custom_repo": "widget_id",
+          "widget_id_text": "widget_id_2"
+        },
+        "module": "N3dGadget",
+        "relationships": {
+          "Created By": "creator",
+          "creator_user": "creator_2",
+          "widget_custom_repo": "widget"
+        },
+        "table": "n3d_gadget"
+      },
+      "repo": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id"
+        },
+        "module": "RepoResource",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "repo_resource"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "domain"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "domain"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "domain"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "domain"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "domain"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Domain",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "DomainResource",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "domain"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "domain"
+      },
+      "synthesized": false,
+      "table": "domain_resource"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "gadget"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "gadget"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "a_title_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title_2",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "b_title_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title_3",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "c_title_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "cafe_strasse",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "cafe_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "first_name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "camel_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_2_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "creator_user",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "constraints": [],
+          "default": null,
+          "name": "n3_5_inch",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "inch_number",
+            "type": "gadget"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug_2",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "slug_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "struct",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "struct_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "n2fa_code",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "twofa_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "updated_at_field",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "updated_date",
+            "type": "gadget"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.repo",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "widget_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "repo"
+          },
+          "source": {
+            "field": "widget_custom_repo",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "widget_id_2",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "widget_id_text",
+            "type": "gadget"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "3D Gadget",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "N3dGadget",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "gadget"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator_2",
+          "public?": true,
+          "source": {
+            "field": "creator_user",
+            "type": "gadget"
+          },
+          "source_attribute": "creator_2_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "RepoResource",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "widget",
+          "public?": true,
+          "source": {
+            "field": "widget_custom_repo",
+            "type": "gadget"
+          },
+          "source_attribute": "widget_id"
+        }
+      ],
+      "source": {
+        "type": "gadget"
+      },
+      "synthesized": false,
+      "table": "n3d_gadget"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "repo"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "repo"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "repo"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "repo"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "repo"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Repo",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "RepoResource",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "repo"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "repo"
+      },
+      "synthesized": false,
+      "table": "repo_resource"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": [],
+  "types": []
+}

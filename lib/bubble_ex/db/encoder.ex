@@ -5,6 +5,9 @@ defmodule BubbleEx.Db.Encoder do
   An encoder turns the universal `db_map` produced by `BubbleEx.Db.Reader.parse/1`
   into a textual schema for one target format. `module_for/1` resolves a format
   atom to its encoder module.
+
+  Ash is not an encoder: it maps from `BubbleEx.Model` through
+  `BubbleEx.Target.Ash` and prints with `BubbleEx.Target.Ash.Source`.
   """
 
   alias BubbleEx.{Diagnostic, Error}
@@ -34,7 +37,6 @@ defmodule BubbleEx.Db.Encoder do
     sqlite: BubbleEx.Db.Sql.Sqlite,
     tsql: BubbleEx.Db.Sql.Tsql,
     ecto: BubbleEx.Db.Ecto,
-    ash: BubbleEx.Db.Ash,
     zod: BubbleEx.Db.Zod,
     xano: BubbleEx.Db.Xano,
     convex: BubbleEx.Db.Convex
@@ -87,7 +89,7 @@ defmodule BubbleEx.Db.Encoder do
 
   defp validate_capabilities(format, opts) do
     capabilities = Keyword.get(opts, :external_type_capabilities, %{})
-    allowed = %{ecto: [:recursive_embeds], ash: [:recursive_new_type], tsql: [:native_json]}
+    allowed = %{ecto: [:recursive_embeds], tsql: [:native_json]}
 
     valid? =
       is_map(capabilities) and
@@ -158,7 +160,7 @@ defmodule BubbleEx.Db.Encoder do
   defp graph_diagnostics(_plan, _format, mode, _opts) when mode != :preserve, do: []
 
   defp graph_diagnostics(plan, format, :preserve, opts) do
-    shape_formats = [:postgres, :ecto, :ash, :zod, :xano, :convex]
+    shape_formats = [:postgres, :ecto, :zod, :xano, :convex]
 
     if format in shape_formats do
       plan.nodes
@@ -190,12 +192,6 @@ defmodule BubbleEx.Db.Encoder do
       :recursive_embeds in (opts
                             |> Keyword.get(:external_type_capabilities, %{})
                             |> Map.get(:ecto, []))
-
-  defp recursive_capability?(:ash, opts),
-    do:
-      :recursive_new_type in (opts
-                              |> Keyword.get(:external_type_capabilities, %{})
-                              |> Map.get(:ash, []))
 
   defp recursive_capability?(_format, _opts), do: false
 

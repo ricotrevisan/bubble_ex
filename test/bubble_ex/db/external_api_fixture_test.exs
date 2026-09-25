@@ -20,7 +20,7 @@ defmodule BubbleEx.Db.ExternalApiFixtureTest do
     {:ok, db} = Reader.parse(ExternalApiTypeFixture.app())
 
     results =
-      Map.new([:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex], fn format ->
+      Map.new([:dbml, :postgres, :sqlite, :tsql, :ecto, :zod, :xano, :convex], fn format ->
         assert {:ok, result} = BubbleEx.Db.Encoder.render(format, db, external_types: :preserve)
         assert is_binary(result.content) and result.content != ""
         assert Enum.any?(result.diagnostics, &(&1.code == :invalid_descriptor))
@@ -39,7 +39,6 @@ defmodule BubbleEx.Db.ExternalApiFixtureTest do
     assert results.sqlite =~ "json_valid"
     assert results.tsql =~ "ISJSON"
     assert results.ecto =~ "embedded_schema"
-    assert results.ash =~ "data_layer: :embedded"
     assert results.zod =~ "z.looseObject"
     assert results.xano =~ ~s("type": "object")
     assert results.convex =~ "Validator = v.object"

@@ -1,0 +1,1301 @@
+{
+  "bubble_id": "synthetic-malformed",
+  "diagnostics": [
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "option set must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_set",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_set"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {
+        "value": "v1"
+      },
+      "message": "option value must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_value/values/v1",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "attributes must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_values/attributes",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_values"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "values must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_values/values",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_values"
+      }
+    },
+    {
+      "code": "malformed_node",
+      "details": {},
+      "message": "data type must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/broken",
+      "severity": "error",
+      "stage": "parse",
+      "subject": {
+        "type": "broken"
+      }
+    },
+    {
+      "code": "malformed_node",
+      "details": {},
+      "message": "data type must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/counted",
+      "severity": "error",
+      "stage": "parse",
+      "subject": {
+        "type": "counted"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "fields must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/listy/fields",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "type": "listy"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "field must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/bad",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "field": "bad",
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "unknown",
+        "fallback": "json",
+        "kind": "opaque",
+        "source": "nil"
+      },
+      "message": "api.apiconnector2.bad.defs.T.odd is kept as any JSON value (Types.JsonValue): its list-ness is unknown",
+      "outcome": "preserved",
+      "path": "/settings/client_safe/apiconnector2/bad/defs/types",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "field": "odd"
+      }
+    },
+    {
+      "code": "field_type_malformed",
+      "details": {
+        "descriptor": null,
+        "embedded_path": "/api.apiconnector2.bad.defs.T/fields/odd",
+        "root": {
+          "field": "odd_api",
+          "type": "task"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.bad.defs.T",
+            "field": "odd"
+          }
+        ]
+      },
+      "message": "missing or malformed external field type: nil",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/bad/defs/types",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "field": "odd"
+      }
+    },
+    {
+      "code": "ash_malformed_omitted",
+      "details": {
+        "kind": "option_set"
+      },
+      "message": "option_set \"bad_set\" is malformed in the source and is not mapped",
+      "outcome": "unresolved",
+      "path": "/option_sets/bad_set",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "option_set": "bad_set"
+      }
+    },
+    {
+      "code": "ash_malformed_omitted",
+      "details": {
+        "kind": "option_value",
+        "value": "v1"
+      },
+      "message": "option_value \"v1\" is malformed in the source and is not mapped",
+      "outcome": "unresolved",
+      "path": "/option_sets/bad_value/values/v1",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "model_option_key_missing",
+      "details": {
+        "db_value": "",
+        "value": "v2"
+      },
+      "message": "option value has no db_value; its Bubble ID \"v2\" is used",
+      "outcome": "degraded",
+      "path": "/option_sets/bad_value/values/v2",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "ash_malformed_omitted",
+      "details": {
+        "kind": "data_type"
+      },
+      "message": "data_type \"broken\" is malformed in the source and is not mapped",
+      "outcome": "unresolved",
+      "path": "/user_types/broken",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "broken"
+      }
+    },
+    {
+      "code": "ash_malformed_omitted",
+      "details": {
+        "kind": "data_type"
+      },
+      "message": "data_type \"counted\" is malformed in the source and is not mapped",
+      "outcome": "unresolved",
+      "path": "/user_types/counted",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "counted"
+      }
+    },
+    {
+      "code": "uninterpreted_field",
+      "details": {},
+      "message": "unexpected data type member \"surprise\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/surprise",
+      "severity": "warning",
+      "stage": "parse",
+      "subject": {
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_malformed_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "field \"bad\" is malformed in the source and is not mapped",
+      "outcome": "unresolved",
+      "path": "/user_types/task/fields/bad",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "bad",
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "json",
+        "kind": "unknown",
+        "source": "custom."
+      },
+      "message": "task.empty_custom is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/empty_custom",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "empty_custom",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "custom."
+      },
+      "message": "unsupported type descriptor \"custom.\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/empty_custom/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "empty_custom",
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "json",
+        "kind": "unknown",
+        "source": "list.list.text"
+      },
+      "message": "task.nested_list is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/nested_list",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "nested_list",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "list.list.text"
+      },
+      "message": "unsupported type descriptor \"list.list.text\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/nested_list/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "nested_list",
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "json",
+        "kind": "unknown",
+        "source": "7"
+      },
+      "message": "task.numeric_type is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/numeric_type",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "numeric_type",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_malformed_field_type",
+      "details": {},
+      "message": "missing or malformed type descriptor: 7",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/numeric_type/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "numeric_type",
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "json",
+        "kind": "unknown",
+        "source": "quantum_state"
+      },
+      "message": "task.quantum is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/quantum",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "quantum",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "quantum_state"
+      },
+      "message": "unsupported type descriptor \"quantum_state\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/quantum/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "quantum",
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "json",
+        "kind": "unknown",
+        "source": "nil"
+      },
+      "message": "task.untyped is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/untyped",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "untyped",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_malformed_field_type",
+      "details": {},
+      "message": "missing or malformed type descriptor: nil",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/untyped",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "untyped",
+        "type": "task"
+      }
+    },
+    {
+      "code": "incomplete_field_metadata",
+      "details": {
+        "embedded_path": "/api.apiconnector2.bad.defs.T/fields/odd",
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "root": {
+          "field": "odd_api",
+          "type": "task"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.bad.defs.T",
+            "field": "odd"
+          }
+        ]
+      },
+      "message": "external type field lacks a caption or path: api.apiconnector2.bad.defs.T",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/bad/defs/types",
+      "severity": "info",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "field": "odd"
+      }
+    },
+    {
+      "code": "model_uninterpreted_member",
+      "details": {},
+      "message": "unexpected option set member \"flavor\"",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_value/flavor",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "model_uninterpreted_member",
+      "details": {},
+      "message": "unexpected field member \"secret_sauce\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/extra_member/secret_sauce",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "field": "extra_member",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [],
+      "bubble_name": "Bad value",
+      "description": null,
+      "module": "Enums.BadValue",
+      "source": {
+        "option_set": "bad_value"
+      },
+      "values": [
+        {
+          "attributes": {},
+          "label": "Two",
+          "source": {
+            "option_set": "bad_value",
+            "value": "v2"
+          },
+          "value": "v2"
+        }
+      ]
+    },
+    {
+      "attributes": [],
+      "bubble_name": "Bad values",
+      "description": null,
+      "module": "Enums.BadValues",
+      "source": {
+        "option_set": "bad_values"
+      },
+      "values": []
+    }
+  ],
+  "names": {
+    "enums": {
+      "bad_value": {
+        "module": "BadValue"
+      },
+      "bad_values": {
+        "module": "BadValues"
+      }
+    },
+    "external_types": {
+      "api.apiconnector2.bad.defs.T": {
+        "fields": {
+          "fine": "fine",
+          "odd": "odd"
+        },
+        "module": "T"
+      }
+    },
+    "resources": {
+      "listy": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id"
+        },
+        "module": "Listy",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "listy"
+      },
+      "task": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "empty_custom": "empty_custom",
+          "extra_member": "extra_member",
+          "nested_list": "nested_list",
+          "numeric_type": "numeric_type",
+          "odd_api": "odd_api",
+          "ok_text": "ok",
+          "quantum": "quantum",
+          "untyped": "untyped"
+        },
+        "module": "Task",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "task"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "listy"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "listy"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "listy"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "listy"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "listy"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Listy",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Listy",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "listy"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "listy"
+      },
+      "synthesized": false,
+      "table": "listy"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "task"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "task"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "task"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "task"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "task"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.",
+          "constraints": [],
+          "default": null,
+          "name": "empty_custom",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "empty_custom",
+            "type": "task"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "extra_member",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "extra_member",
+            "type": "task"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.list.text",
+          "constraints": [],
+          "default": null,
+          "name": "nested_list",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "nested_list",
+            "type": "task"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": 7,
+          "constraints": [],
+          "default": null,
+          "name": "numeric_type",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "numeric_type",
+            "type": "task"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "api.apiconnector2.bad.defs.T",
+          "constraints": [],
+          "default": null,
+          "name": "odd_api",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "odd_api",
+            "type": "task"
+          },
+          "type": [
+            "module",
+            "External.T"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "ok",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "ok_text",
+            "type": "task"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "quantum_state",
+          "constraints": [],
+          "default": null,
+          "name": "quantum",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "quantum",
+            "type": "task"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "constraints": [],
+          "default": null,
+          "name": "untyped",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "untyped",
+            "type": "task"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Task",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Task",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "task"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "task"
+      },
+      "synthesized": false,
+      "table": "task"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": [
+    {
+      "bubble_name": "T",
+      "description": null,
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "fine",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.bad.defs.T",
+            "field": "fine"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "nil",
+          "constraints": [],
+          "default": null,
+          "name": "odd",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "external_type": "api.apiconnector2.bad.defs.T",
+            "field": "odd"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "External.T",
+      "source": {
+        "external_type": "api.apiconnector2.bad.defs.T"
+      }
+    }
+  ],
+  "types": [
+    {
+      "description": "Any JSON value (object, array, string, number, boolean or null), stored as jsonb. Holds Bubble values whose shape is not known, verbatim.",
+      "kind": "json_value",
+      "module": "Types.JsonValue"
+    }
+  ]
+}

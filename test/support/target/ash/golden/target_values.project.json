@@ -1,0 +1,1103 @@
+{
+  "bubble_id": "synthetic-target-values",
+  "diagnostics": [
+    {
+      "code": "ash_default_unmapped",
+      "details": {
+        "default": "1700000000000x1",
+        "source": "custom.venue"
+      },
+      "message": "event.host_custom_venue: the default \"1700000000000x1\" has no Ash equivalent and is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/event/fields/host_custom_venue",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "host_custom_venue",
+        "type": "event"
+      }
+    },
+    {
+      "code": "ash_opaque_value",
+      "details": {
+        "base": null,
+        "cardinality": "one",
+        "fallback": "json",
+        "kind": "unknown",
+        "source": "something.new"
+      },
+      "message": "event.odd_value is kept as any JSON value (Types.JsonValue): the value has no usable type",
+      "outcome": "preserved",
+      "path": "/user_types/event/fields/odd_value",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "odd_value",
+        "type": "event"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "something.new"
+      },
+      "message": "unsupported type descriptor \"something.new\"",
+      "outcome": "preserved",
+      "path": "/user_types/event/fields/odd_value/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "odd_value",
+        "type": "event"
+      }
+    },
+    {
+      "code": "ash_date_interval_as_number",
+      "details": {
+        "cardinality": "one",
+        "fallback": "float",
+        "unit": "millisecond"
+      },
+      "message": "event.gap_dateinterval is a date interval, mapped to :float milliseconds",
+      "outcome": "degraded",
+      "path": "/user_types/event/fields/gap_dateinterval",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "gap_dateinterval",
+        "type": "event"
+      }
+    },
+    {
+      "code": "ash_date_interval_as_number",
+      "details": {
+        "cardinality": "one",
+        "fallback": "float",
+        "unit": "millisecond"
+      },
+      "message": "event.gaps_list_dateinterval is a date interval, mapped to :float milliseconds",
+      "outcome": "degraded",
+      "path": "/user_types/event/fields/gaps_list_dateinterval",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "gaps_list_dateinterval",
+        "type": "event"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "attributes": [],
+      "bubble_name": "Phase",
+      "description": null,
+      "module": "Enums.Phase",
+      "source": {
+        "option_set": "phase"
+      },
+      "values": [
+        {
+          "attributes": {},
+          "label": "Plan",
+          "source": {
+            "option_set": "phase",
+            "value": "p1"
+          },
+          "value": "Plan"
+        },
+        {
+          "attributes": {},
+          "label": "In progress",
+          "source": {
+            "option_set": "phase",
+            "value": "p2"
+          },
+          "value": "in progress"
+        }
+      ]
+    }
+  ],
+  "names": {
+    "enums": {
+      "phase": {
+        "module": "Phase"
+      }
+    },
+    "external_types": {},
+    "resources": {
+      "event": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "at_list_date": "occurrences",
+          "gap_dateinterval": "gap",
+          "gaps_list_dateinterval": "gaps",
+          "host_custom_venue": "host_id",
+          "odd_value": "odd",
+          "phase_option_phase": "phase",
+          "phases_list_option_phase": "phases",
+          "place_geographic_address": "place",
+          "span_date_range": "span",
+          "starts_date": "starts",
+          "venues_list_custom_venue": "venues"
+        },
+        "module": "Event",
+        "relationships": {
+          "Created By": "creator",
+          "host_custom_venue": "host"
+        },
+        "table": "event"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      },
+      "venue": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "name_text": "name"
+        },
+        "module": "Venue",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "venue"
+      }
+    },
+    "version": 1
+  },
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "event"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "event"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "event"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "event"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "event"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.date",
+          "constraints": [],
+          "default": null,
+          "name": "occurrences",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "at_list_date",
+            "type": "event"
+          },
+          "type": [
+            "array",
+            "utc_datetime_usec"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "dateinterval",
+          "constraints": [],
+          "default": null,
+          "name": "gap",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "gap_dateinterval",
+            "type": "event"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.dateinterval",
+          "constraints": [],
+          "default": null,
+          "name": "gaps",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "gaps_list_dateinterval",
+            "type": "event"
+          },
+          "type": [
+            "array",
+            "float"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.venue",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "host_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "venue"
+          },
+          "source": {
+            "field": "host_custom_venue",
+            "type": "event"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "something.new",
+          "constraints": [],
+          "default": null,
+          "name": "odd",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "odd_value",
+            "type": "event"
+          },
+          "type": [
+            "module",
+            "Types.JsonValue"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "option.phase",
+          "constraints": [],
+          "default": [
+            "value",
+            "in progress"
+          ],
+          "name": "phase",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "phase_option_phase",
+            "type": "event"
+          },
+          "type": [
+            "module",
+            "Enums.Phase"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.option.phase",
+          "constraints": [],
+          "default": null,
+          "name": "phases",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "phases_list_option_phase",
+            "type": "event"
+          },
+          "type": [
+            "array",
+            [
+              "module",
+              "Enums.Phase"
+            ]
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "geographic_address",
+          "constraints": [],
+          "default": null,
+          "name": "place",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "place_geographic_address",
+            "type": "event"
+          },
+          "type": [
+            "module",
+            "Types.GeographicAddress"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date_range",
+          "constraints": [],
+          "default": null,
+          "name": "span",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "span_date_range",
+            "type": "event"
+          },
+          "type": [
+            "module",
+            "Types.DateRange"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": [
+            "value",
+            "2024-01-02T03:04:05.123000Z"
+          ],
+          "name": "starts",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "starts_date",
+            "type": "event"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.venue",
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "venues",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "venue"
+          },
+          "source": {
+            "field": "venues_list_custom_venue",
+            "type": "event"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Event",
+      "description": null,
+      "identities": [],
+      "migration_types": [
+        [
+          "occurrences",
+          [
+            "array",
+            "utc_datetime_usec"
+          ]
+        ]
+      ],
+      "module": "Event",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "event"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Venue",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "host",
+          "public?": true,
+          "source": {
+            "field": "host_custom_venue",
+            "type": "event"
+          },
+          "source_attribute": "host_id"
+        }
+      ],
+      "source": {
+        "type": "event"
+      },
+      "synthesized": false,
+      "table": "event"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "User",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": true,
+      "table": "user"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "venue"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "venue"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "venue"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "venue"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "venue"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "venue"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Venue",
+      "description": null,
+      "identities": [],
+      "migration_types": [],
+      "module": "Venue",
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "venue"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "venue"
+      },
+      "synthesized": false,
+      "table": "venue"
+    }
+  ],
+  "schema_version": 1,
+  "typed_structs": [
+    {
+      "bubble_name": null,
+      "description": "A Bubble date range. Whether each end is inclusive is not verified against Bubble.",
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "start",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "start",
+            "structured": "date_range"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "end",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "end",
+            "structured": "date_range"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {
+        "bounds": {
+          "end": "unverified",
+          "start": "unverified"
+        }
+      },
+      "module": "Types.DateRange",
+      "source": {
+        "structured": "date_range"
+      }
+    },
+    {
+      "bubble_name": null,
+      "description": "A Bubble geographic address.",
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "formatted_address",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "formatted_address",
+            "structured": "geographic_address"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "constraints": [],
+          "default": null,
+          "name": "lat",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "lat",
+            "structured": "geographic_address"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "constraints": [],
+          "default": null,
+          "name": "lng",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "lng",
+            "structured": "geographic_address"
+          },
+          "type": "float",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "Types.GeographicAddress",
+      "source": {
+        "structured": "geographic_address"
+      }
+    }
+  ],
+  "types": [
+    {
+      "description": "Any JSON value (object, array, string, number, boolean or null), stored as jsonb. Holds Bubble values whose shape is not known, verbatim.",
+      "kind": "json_value",
+      "module": "Types.JsonValue"
+    }
+  ]
+}

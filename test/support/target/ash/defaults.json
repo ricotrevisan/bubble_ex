@@ -1,0 +1,29 @@
+{
+  "_id": "synthetic-target-defaults",
+  "option_sets": {
+    "color": {
+      "display": "Color",
+      "values": {
+        "r": {"db_value": "red", "display": "Red", "sort_factor": 1},
+        "b": {"db_value": "blue", "display": "Blue", "sort_factor": 2}
+      }
+    }
+  },
+  "user_types": {
+    "card": {
+      "display": "Card",
+      "fields": {
+        "active_boolean": {"default_val": true, "display": "Active", "value": "boolean"},
+        "color_option_color": {"default_val": "blue", "display": "Color", "value": "option.color"},
+        "count_number": {"default_val": 3, "display": "Count", "value": "number"},
+        "due_date": {"default_val": "2024-01-01T00:00:00Z", "display": "Due", "value": "date"},
+        "empty_text": {"default_val": "", "display": "Empty", "value": "text"},
+        "hue_option_color": {"default_val": "green", "display": "Hue", "value": "option.color"},
+        "icon_image": {"default_val": "https://example.invalid/icon.png", "display": "Icon", "value": "image"},
+        "tags_list_text": {"default_val": ["a", "b"], "display": "Tags", "value": "list.text"},
+        "title_text": {"default_val": "Untitled", "display": "Title", "value": "text"},
+        "weird_text": {"default_val": 42, "display": "Weird", "value": "text"}
+      }
+    }
+  }
+}
