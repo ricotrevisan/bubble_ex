@@ -38,6 +38,7 @@ The codebase follows a modular architecture with clear separation of concerns:
 - **BubbleEx.Privacy** - Data-type privacy rules (conditions as expression ASTs, permissions, per-field visibility)
 - **BubbleEx.Model** - Typed, stack-neutral model of an app's data (data types, fields with content types, built-in fields, option sets with stable keys, API Connector types with cycle cuts, privacy rules), keyed by Bubble IDs with no target-language names; built from the Reader's API Connector resolution and `Privacy`. Target stacks map from it
 - **BubbleEx.Index** - Deterministic symbol and reference index keyed by stable Bubble IDs (reads/writes per field, privacy-rule references, workflow call graph with cycles, execution class, invocation modes); a disposable derived cache built from `Workflows`, `Expression` and `Privacy`
+- **BubbleEx.Findings** - Deterministic model-refinement analyzers over the index that emit `BubbleEx.Finding`s (kind and category registry in `Finding.Kinds`): evidence, a stack-neutral proposal, confidence, a stable ID and a `proposal_sha256`; separate from diagnostics
 - **BubbleEx.Logs** - Log querying and filtering functionality
 - **BubbleEx.Server** - Asynchronous scan processing (GenServer on top of `Task.Supervisor`)
 - **BubbleEx.Frontend** - Modern-responsive frontend export: normalize a decoded

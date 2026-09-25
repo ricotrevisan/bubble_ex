@@ -48,6 +48,17 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Deterministic model-refinement analyzers through `BubbleEx.Findings.analyze/2`
+  / `BubbleEx.model_findings/2`. They emit `BubbleEx.Finding`s, a type separate
+  from diagnostics: a registered `kind` and `category` (`:decision` or `:hint`,
+  `BubbleEx.Finding.Kinds`), a subject of Bubble IDs, evidence (index symbol
+  IDs and references), a stack-neutral `proposal`, a confidence with its
+  reason, the readers and maintainers affected, `related` findings, a stable ID
+  hashed from kind and subject and a `proposal_sha256` that changes with the
+  proposal. Kinds: redundant reverse lists, fully traced denormalized (copied
+  or counted) fields, used lists of things (mirrored lists share one join),
+  privacy-access lists, IDs of app types stored in text, per-type search index
+  hints and integer number fields.
 - Build the stack-neutral data model through `BubbleEx.Model.build/1` /
   `BubbleEx.data_model/1`: data types with fields (content type, cardinality,
   resolved or unresolved target, default, `deleted`), Bubble's built-in fields,

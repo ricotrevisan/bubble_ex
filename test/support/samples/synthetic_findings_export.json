@@ -1,0 +1,1277 @@
+{
+  "_id": "synthfindings",
+  "api": {
+    "wfAddTask": {
+      "actions": {
+        "0": {
+          "id": "aCreateTask",
+          "properties": {
+            "initial_values": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "project_custom_project",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.project",
+                    "param_id": "project"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "title_text",
+                "value": {
+                  "properties": {
+                    "btype_id": "text",
+                    "param_id": "title"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "2": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "points_number",
+                "value": 3
+              },
+              "3": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "status_text",
+                "value": "open"
+              }
+            },
+            "thing_type": "custom.task"
+          },
+          "type": "NewThing"
+        }
+      },
+      "id": "wAddTask",
+      "properties": {
+        "expose": false,
+        "wf_name": "add-task"
+      },
+      "type": "APIEvent"
+    },
+    "wfCreateProject": {
+      "actions": {
+        "0": {
+          "id": "aCreateProject",
+          "properties": {
+            "initial_values": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "workspace_custom_workspace",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.workspace",
+                    "param_id": "ws"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "title_text",
+                "value": {
+                  "properties": {
+                    "btype_id": "text",
+                    "param_id": "title"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "2": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "sort_workspace_name_text",
+                "value": {
+                  "next": {
+                    "name": "name_text",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.workspace",
+                    "param_id": "ws"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "3": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "owner_id_text",
+                "value": {
+                  "next": {
+                    "name": "_id",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                }
+              },
+              "4": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "external_ref_text",
+                "value": "abc-123"
+              },
+              "5": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "task_count_number",
+                "value": 0
+              },
+              "6": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "note_text",
+                "value": {
+                  "entries": {
+                    "0": "Note: ",
+                    "1": {
+                      "properties": {
+                        "btype_id": "text",
+                        "param_id": "title"
+                      },
+                      "type": "APIEventParameter"
+                    }
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "7": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "summary_text",
+                "value": "draft"
+              },
+              "8": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "workspace_created_date",
+                "value": {
+                  "next": {
+                    "name": "Created Date",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.workspace",
+                    "param_id": "ws"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "9": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "external_user_id_text",
+                "value": {
+                  "next": {
+                    "name": "_id",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aExternal"
+                  },
+                  "type": "PreviousStep"
+                }
+              }
+            },
+            "thing_type": "custom.project"
+          },
+          "type": "NewThing"
+        },
+        "1": {
+          "id": "aAddToWorkspace",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "projects_list_custom_project",
+                "value": {
+                  "properties": {
+                    "action_id": "aCreateProject"
+                  },
+                  "type": "PreviousStep"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.workspace",
+                "param_id": "ws"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wCreateProject",
+      "properties": {
+        "expose": false,
+        "wf_name": "create-project"
+      },
+      "type": "APIEvent"
+    },
+    "wfFavorite": {
+      "actions": {
+        "0": {
+          "id": "aFavorite",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "favorites_list_custom_project",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.project",
+                    "param_id": "project"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        },
+        "1": {
+          "id": "aAddViewer",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "viewers_list_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "2": {
+          "id": "aFindTasks",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "points_number",
+                "value": {
+                  "next": {
+                    "name": "points_number",
+                    "next": {
+                      "args": 1,
+                      "name": "plus",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "greater than",
+                    "key": "points_number",
+                    "value": 2
+                  },
+                  "1": {
+                    "constraint_type": "equals",
+                    "key": "_id",
+                    "value": {
+                      "next": {
+                        "name": "legacy_task_id_text",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "btype_id": "custom.project",
+                        "param_id": "project"
+                      },
+                      "type": "APIEventParameter"
+                    }
+                  }
+                },
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "type_to_change": "custom.task"
+          },
+          "type": "ChangeListOfThings"
+        }
+      },
+      "id": "wFavorite",
+      "properties": {
+        "expose": false,
+        "wf_name": "favorite"
+      },
+      "type": "APIEvent"
+    },
+    "wfJoinWorkspace": {
+      "actions": {
+        "0": {
+          "id": "aAddMember",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "members_list_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.workspace",
+                "param_id": "ws"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aAddWorkspace",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "workspaces_list_custom_workspace",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.workspace",
+                    "param_id": "ws"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        }
+      },
+      "id": "wJoinWorkspace",
+      "properties": {
+        "expose": false,
+        "wf_name": "join-workspace"
+      },
+      "type": "APIEvent"
+    },
+    "wfLinkTask": {
+      "actions": {
+        "0": {
+          "id": "aLinkTask",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "tasks_list_custom_task",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "task"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aCountTasks",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "task_count_number",
+                "value": {
+                  "next": {
+                    "name": "tasks_list_custom_task",
+                    "next": {
+                      "name": "count",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.project",
+                    "param_id": "project"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "score_number",
+                "value": {
+                  "next": {
+                    "name": "task_count_number",
+                    "next": {
+                      "args": 2,
+                      "name": "divide",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.project",
+                    "param_id": "project"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wLinkTask",
+      "properties": {
+        "expose": false,
+        "wf_name": "link-task"
+      },
+      "type": "APIEvent"
+    },
+    "wfPin": {
+      "actions": {
+        "0": {
+          "id": "aPinAssign",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "assignee_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.task",
+                "param_id": "task"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aPin",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "pinned_tasks_list_custom_task",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "task"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        }
+      },
+      "id": "wPin",
+      "properties": {
+        "expose": false,
+        "wf_name": "pin-task"
+      },
+      "type": "APIEvent"
+    },
+    "wfRenameSync": {
+      "actions": {
+        "0": {
+          "id": "aSyncName",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "sort_workspace_name_text",
+                "value": {
+                  "entries": {
+                    "0": {
+                      "next": {
+                        "name": "workspace_custom_workspace",
+                        "next": {
+                          "name": "name_text",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "InjectedValue"
+                    }
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "backup_title_text",
+                "value": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wRenameSync",
+      "properties": {
+        "expose": false,
+        "wf_name": "sync-workspace-name"
+      },
+      "type": "APIEvent"
+    },
+    "wfStar": {
+      "actions": {
+        "0": {
+          "id": "aStarAssign",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "assignee_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.task",
+                "param_id": "task"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aStar",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "starred_tasks_list_custom_task",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "task"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        }
+      },
+      "id": "wStar",
+      "properties": {
+        "expose": false,
+        "wf_name": "star-task"
+      },
+      "type": "APIEvent"
+    },
+    "wfSyncNotify": {
+      "actions": {
+        "0": {
+          "id": "aSyncNotify",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "sort_workspace_name_text",
+                "value": {
+                  "next": {
+                    "name": "workspace_custom_workspace",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "summary_text",
+                "value": {
+                  "next": {
+                    "name": "workspace_custom_workspace",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aNotify",
+          "properties": {
+            "api_event": "wSyncOnly"
+          },
+          "type": "ScheduleAPIEvent"
+        }
+      },
+      "id": "wSyncNotify",
+      "properties": {
+        "expose": false,
+        "wf_name": "sync-and-notify"
+      },
+      "type": "APIEvent"
+    },
+    "wfSyncOnly": {
+      "actions": {
+        "0": {
+          "id": "aSyncOnly",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "sort_workspace_name_text",
+                "value": {
+                  "next": {
+                    "name": "workspace_custom_workspace",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wSyncOnly",
+      "properties": {
+        "expose": false,
+        "wf_name": "sync-only"
+      },
+      "type": "APIEvent"
+    },
+    "wfUnlinkTask": {
+      "actions": {
+        "0": {
+          "id": "aUnlinkTask",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "remove",
+                "key": "tasks_list_custom_task",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "task"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "task_count_number",
+                "value": {
+                  "next": {
+                    "name": "task_count_number",
+                    "next": {
+                      "args": 1,
+                      "name": "minus",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wUnlinkTask",
+      "properties": {
+        "expose": false,
+        "wf_name": "unlink-task"
+      },
+      "type": "APIEvent"
+    }
+  },
+  "app_version": "test",
+  "option_sets": {},
+  "pages": {
+    "pgHome": {
+      "elements": {
+        "inpScore": {
+          "default_name": "Input Score",
+          "id": "eScore",
+          "properties": {},
+          "type": "Input"
+        },
+        "rgDone": {
+          "default_name": "RG Done",
+          "id": "eDone",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "done_boolean",
+                    "value": true
+                  }
+                },
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgNearby": {
+          "default_name": "RG Nearby",
+          "id": "eNearby",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "geographic_search",
+                    "key": "location_geographic_address",
+                    "value": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    }
+                  },
+                  "1": {
+                    "constraint_type": "text contains",
+                    "key": "title_text",
+                    "value": "roadmap"
+                  },
+                  "2": {
+                    "constraint_type": "equals",
+                    "key": "workspace_custom_workspace",
+                    "value": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    }
+                  }
+                },
+                "type_to_find": "custom.project"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgProjects": {
+          "default_name": "RG Projects",
+          "id": "eProjects",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "workspace_custom_workspace",
+                    "value": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    }
+                  },
+                  "1": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": "abc"
+                  },
+                  "2": {
+                    "constraint_type": "not equal",
+                    "key": "note_text",
+                    "value": "x"
+                  },
+                  "3": {
+                    "constraint_type": "equals",
+                    "key": "_id",
+                    "value": "123"
+                  }
+                },
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.project"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgRecent": {
+          "default_name": "RG Recent",
+          "id": "eRecent",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "Created Date",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgTasks": {
+          "default_name": "RG Tasks",
+          "id": "eTasks",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "filtered",
+                "properties": {
+                  "constraints": {
+                    "0": {
+                      "constraint_type": "equals",
+                      "key": "status_text",
+                      "value": "open"
+                    }
+                  }
+                },
+                "type": "Message"
+              },
+              "properties": {
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "txtProjects": {
+          "default_name": "Text Projects",
+          "id": "eProjectCount",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "first_element",
+                    "next": {
+                      "name": "projects_list_custom_project",
+                      "next": {
+                        "name": "count",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type_to_find": "custom.workspace"
+                  },
+                  "type": "Search"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "pHome",
+      "name": "index",
+      "properties": {
+        "title": "Home"
+      },
+      "type": "Page",
+      "workflows": {
+        "wfScore": {
+          "actions": {
+            "0": {
+              "id": "aScore",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "action": {
+                      "type": "Empty"
+                    },
+                    "key": "score_number",
+                    "value": {
+                      "next": {
+                        "name": "value",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "eScore"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
+                "to_change": {
+                  "properties": {
+                    "btype_id": "custom.project",
+                    "param_id": "project"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "type": "ChangeThing"
+            }
+          },
+          "id": "wScore",
+          "properties": {
+            "element_id": "eProjects"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "backup_title_text": {
+          "display": "Backup Title",
+          "value": "text"
+        },
+        "external_ref_text": {
+          "display": "External Ref",
+          "value": "text"
+        },
+        "external_user_id_text": {
+          "display": "External user ID",
+          "value": "text"
+        },
+        "legacy_task_id_text": {
+          "display": "Legacy Task ID",
+          "value": "text"
+        },
+        "legacy_tasks_list_custom_task": {
+          "display": "Legacy tasks",
+          "value": "list.custom.task"
+        },
+        "location_geographic_address": {
+          "display": "Location",
+          "value": "geographic_address"
+        },
+        "note_text": {
+          "display": "Note",
+          "value": "text"
+        },
+        "old_flag_boolean": {
+          "deleted": true,
+          "display": "Old flag",
+          "value": "boolean"
+        },
+        "owner_id_text": {
+          "display": "Owner ID",
+          "value": "text"
+        },
+        "score_number": {
+          "display": "Score",
+          "value": "number"
+        },
+        "sort_workspace_name_text": {
+          "display": "Sort: Workspace Name",
+          "value": "text"
+        },
+        "summary_text": {
+          "display": "Summary",
+          "value": "text"
+        },
+        "task_count_number": {
+          "display": "Task Count",
+          "value": "number"
+        },
+        "tasks_list_custom_task": {
+          "display": "Tasks",
+          "value": "list.custom.task"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "viewers_list_user": {
+          "display": "Viewers",
+          "value": "list.user"
+        },
+        "workspace_created_date": {
+          "display": "Workspace created",
+          "value": "date"
+        },
+        "workspace_custom_workspace": {
+          "display": "Workspace",
+          "value": "custom.workspace"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "workspace_member_": {
+          "condition": {
+            "next": {
+              "name": "workspace_custom_workspace",
+              "next": {
+                "name": "members_list_user",
+                "next": {
+                  "args": {
+                    "type": "CurrentUser"
+                  },
+                  "name": "contains",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Workspace member",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "assignee_user": {
+          "display": "Assignee",
+          "value": "user"
+        },
+        "done_boolean": {
+          "display": "Done",
+          "value": "boolean"
+        },
+        "points_number": {
+          "display": "Points",
+          "value": "number"
+        },
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
+        },
+        "status_text": {
+          "display": "Status",
+          "value": "text"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "favorites_list_custom_project": {
+          "display": "Favorites",
+          "value": "list.custom.project"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "pinned_tasks_list_custom_task": {
+          "display": "Pinned tasks",
+          "value": "list.custom.task"
+        },
+        "starred_tasks_list_custom_task": {
+          "display": "Starred tasks",
+          "value": "list.custom.task"
+        },
+        "workspaces_list_custom_workspace": {
+          "display": "Workspaces",
+          "value": "list.custom.workspace"
+        }
+      }
+    },
+    "workspace": {
+      "display": "Workspace",
+      "fields": {
+        "members_list_user": {
+          "display": "Members",
+          "value": "list.user"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "projects_list_custom_project": {
+          "display": "Projects",
+          "value": "list.custom.project"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "member_": {
+          "condition": {
+            "next": {
+              "name": "members_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Member",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    }
+  }
+}

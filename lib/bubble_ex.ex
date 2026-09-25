@@ -198,6 +198,11 @@ defmodule BubbleEx do
   @spec symbol_index(term()) :: {:ok, BubbleEx.Index.t()} | {:error, BubbleEx.Error.t()}
   def symbol_index(app), do: BubbleEx.Index.build(app)
 
+  @doc "Runs the model-refinement analyzers over decoded app JSON. See `BubbleEx.Findings`."
+  @spec model_findings(term(), [BubbleEx.Findings.option()]) ::
+          {:ok, BubbleEx.Findings.t()} | {:error, BubbleEx.Error.t()}
+  def model_findings(app, opts \\ []), do: BubbleEx.Findings.analyze(app, opts)
+
   @doc "Builds the stack-neutral data model of decoded app JSON. See `BubbleEx.Model`."
   @spec data_model(term()) :: {:ok, BubbleEx.Model.t()} | {:error, BubbleEx.Error.t()}
   def data_model(app), do: BubbleEx.Model.build(app)
