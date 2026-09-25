@@ -443,6 +443,13 @@ stable `db_value`. The `:naming`, `:external_types` and
 `scripts/ash_compile_check.sh` to compile the output against pinned Ash
 versions.
 
+Privacy rules are not compiled by default (`privacy: :omit`): the generated
+resources have no authorization, and the Project notes the rules it left out
+(`:ash_privacy_omitted`). `privacy: :unverified` generates Ash policies from
+them, **not yet verified against Bubble**: do not ship those to an app's
+users. `BubbleEx.Target.Ash.versions/1` takes the same option (PicoSAT is
+pinned only for the policies).
+
 ### DBML / database diagram (legacy options)
 
 The original DBML path is unchanged and still available via its own options:

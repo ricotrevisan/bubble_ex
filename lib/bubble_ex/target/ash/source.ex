@@ -420,11 +420,14 @@ defmodule BubbleEx.Target.Ash.Source do
       attribute_type #{type(r.attribute_type, ctx)}
       define_attribute? #{literal(r.define_attribute?)}
       allow_nil? #{literal(r.allow_nil?)}
-      public? #{literal(r.public?)}
-      sortable? #{literal(r.sortable?)}#{gate(r.gate)}
+      public? #{literal(r.public?)}#{sortable(r.sortable?)}#{gate(r.gate)}
     end
     """
   end
+
+  # Ash's default (true) is not printed.
+  defp sortable(true), do: ""
+  defp sortable(false), do: "\nsortable? false"
 
   defp gate(nil), do: ""
   defp gate(:never), do: "\nfilter expr(false)"
@@ -522,9 +525,14 @@ defmodule BubbleEx.Target.Ash.Source do
 
   # The privacy helpers every generated app needs: whether the policies are
   # verified (never, yet) and loading the actor with what they read.
-  defp privacy_module(%Project{resources: []}, _ctx), do: []
-
+  # Only with policies (`privacy: :unverified`): an `:omit` Project has none.
   defp privacy_module(%Project{} = project, ctx) do
+    if Enum.any?(project.resources, &(&1.policies != [])),
+      do: privacy_source(project, ctx),
+      else: []
+  end
+
+  defp privacy_source(%Project{} = project, ctx) do
     loads = load_tree(project.actor_loads)
 
     load_actor =

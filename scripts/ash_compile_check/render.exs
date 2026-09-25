@@ -3,7 +3,7 @@
 # fixture (test/support/expression/*.json) through BubbleEx.Target.Ash and
 # BubbleEx.Target.Ash.Source into a scratch Mix project: one namespace,
 # domain, repo and database per fixture. The project's dependencies are
-# BubbleEx.Target.Ash.versions/0. With BUBBLE_EX_PRIVATE_EXPORT set, a
+# BubbleEx.Target.Ash.versions/1. With BUBBLE_EX_PRIVATE_EXPORT set, a
 # private app export is rendered too (as `Private.App`); the scratch project
 # is never committed. The BubbleEx.Db.Ecto output of the same fixtures (and
 # the schema golden fixtures) is written beside it, so the compile step
@@ -16,9 +16,27 @@
 # module, as a policy's `authorize_if expr(...)` would hold them, so
 # `mix compile` checks them too; filters.exs and runtime.exs use them.
 #
-#     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir>
+#     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir> [unverified|omit]
+#
+# The privacy mode (default `unverified`) is passed to
+# BubbleEx.Target.Ash.map/3 and versions/1. With `omit` (a separate scratch
+# project) only the Ash source is rendered, with no PrivacyFilters and no
+# Db.Ecto output, every database is named ash_omit_check_<fixture>, and the
+# render fails if any generated source contains policy machinery.
 
-[dir] = System.argv()
+{dir, privacy} =
+  case System.argv() do
+    [dir] -> {dir, :unverified}
+    [dir, "unverified"] -> {dir, :unverified}
+    [dir, "omit"] -> {dir, :omit}
+  end
+
+database_prefix = if privacy == :omit, do: "ash_omit_check_", else: "ash_check_"
+
+# What privacy: :omit must never render (see BubbleEx.Target.Ash, "Privacy
+# modes").
+policy_source =
+  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr|calculations do|authorize_if|forbid_if|NOT VERIFIED/
 
 defmodule PrivacyFilters do
   # `<namespace>.PrivacyFilters.all/0`: one entry per compiled privacy-rule
@@ -95,8 +113,13 @@ rendered =
   for {namespace, name, app} <- fixtures ++ private do
     repo = namespace <> "Repo"
     {:ok, model} = BubbleEx.Model.build(app)
-    {:ok, project} = BubbleEx.Target.Ash.map(model)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: privacy)
     {:ok, source} = BubbleEx.Target.Ash.Source.render(project, namespace: namespace, repo: repo)
+
+    if privacy == :omit and source =~ policy_source do
+      [match | _] = Regex.run(policy_source, source)
+      raise "#{name}: privacy: :omit rendered policy machinery (#{inspect(match)})"
+    end
 
     repo_module = """
     defmodule #{repo} do
@@ -111,6 +134,7 @@ rendered =
 
     # The rule calculations the policies test (their relationship paths go
     # through the private *_for_privacy twins), as filters.
+    # (none with privacy: :omit, which compiles no rule)
     filters =
       for resource <- project.resources,
           calc <- resource.calculations,
@@ -126,49 +150,52 @@ rendered =
       "rendered #{name} as #{namespace} (#{length(project.resources)} resources, " <>
         "#{length(filters)} privacy filters)"
     )
+
     {namespace, repo, name}
   end
 
-# The Db.Ecto output of every schema golden fixture (and the private export)
-# compiles in the same project (WTF-391): Ecto rejects a repeated field,
-# association or foreign key at compile time. One namespace per fixture.
-ecto_lib = Path.join(dir, "lib/ecto_generated")
-File.rm_rf!(ecto_lib)
-File.mkdir_p!(ecto_lib)
+if privacy == :unverified do
+  # The Db.Ecto output of every schema golden fixture (and the private export)
+  # compiles in the same project (WTF-391): Ecto rejects a repeated field,
+  # association or foreign key at compile time. One namespace per fixture.
+  ecto_lib = Path.join(dir, "lib/ecto_generated")
+  File.rm_rf!(ecto_lib)
+  File.mkdir_p!(ecto_lib)
 
-ecto_fixtures =
-  (Path.wildcard("test/support/model/*.json") ++
-     Path.wildcard("test/support/db/fixtures/*.json") ++
-     ~w(test/support/samples/synthetic_app.json test/support/samples/synthetic_export.json))
-  |> Enum.sort()
-  |> Enum.map(&{Path.basename(&1, ".json"), &1 |> File.read!() |> Jason.decode!()})
+  ecto_fixtures =
+    (Path.wildcard("test/support/model/*.json") ++
+       Path.wildcard("test/support/db/fixtures/*.json") ++
+       ~w(test/support/samples/synthetic_app.json test/support/samples/synthetic_export.json))
+    |> Enum.sort()
+    |> Enum.map(&{Path.basename(&1, ".json"), &1 |> File.read!() |> Jason.decode!()})
 
-ecto_private =
-  Enum.map(private, fn {_namespace, name, app} -> {name, app} end)
+  ecto_private =
+    Enum.map(private, fn {_namespace, name, app} -> {name, app} end)
 
-for {name, app} <- ecto_fixtures ++ ecto_private, naming <- [:proper, :id] do
-  {:ok, db} = BubbleEx.Db.Reader.parse(app)
-  namespace = "EctoCheck.#{Macro.camelize(name)}.#{Macro.camelize(Atom.to_string(naming))}"
-  {:ok, result} = BubbleEx.Db.Encoder.render(:ecto, db, naming: naming, namespace: namespace)
-  File.write!(Path.join(ecto_lib, "#{name}_#{naming}.ex"), result.content)
+  for {name, app} <- ecto_fixtures ++ ecto_private, naming <- [:proper, :id] do
+    {:ok, db} = BubbleEx.Db.Reader.parse(app)
+    namespace = "EctoCheck.#{Macro.camelize(name)}.#{Macro.camelize(Atom.to_string(naming))}"
+    {:ok, result} = BubbleEx.Db.Encoder.render(:ecto, db, naming: naming, namespace: namespace)
+    File.write!(Path.join(ecto_lib, "#{name}_#{naming}.ex"), result.content)
+  end
+
+  # The repo ecto_migrate.exs runs those migrations with (not in ecto_repos:
+  # it is started per database).
+  File.write!(Path.join(ecto_lib, "repo.ex"), """
+  defmodule EctoCheck.Repo do
+    use Ecto.Repo, otp_app: :ash_compile_check, adapter: Ecto.Adapters.Postgres
+  end
+  """)
+
+  IO.puts("rendered #{2 * length(ecto_fixtures ++ ecto_private)} Db.Ecto schemas")
 end
 
-# The repo ecto_migrate.exs runs those migrations with (not in ecto_repos:
-# it is started per database).
-File.write!(Path.join(ecto_lib, "repo.ex"), """
-defmodule EctoCheck.Repo do
-  use Ecto.Repo, otp_app: :ash_compile_check, adapter: Ecto.Adapters.Postgres
-end
-""")
-
-IO.puts("rendered #{2 * length(ecto_fixtures ++ ecto_private)} Db.Ecto schemas")
-
-deps = Enum.map_join(BubbleEx.Target.Ash.versions(), ", ", &inspect/1)
+deps = Enum.map_join(BubbleEx.Target.Ash.versions(privacy: privacy), ", ", &inspect/1)
 
 File.write!(Path.join(dir, "mix.exs"), """
 defmodule AshCompileCheck.MixProject do
   # Generated by scripts/ash_compile_check/render.exs from
-  # BubbleEx.Target.Ash.versions/0.
+  # BubbleEx.Target.Ash.versions/1 (privacy: #{privacy}).
   use Mix.Project
 
   def project do
@@ -186,7 +213,7 @@ domains = Enum.map_join(rendered, ", ", &elem(&1, 0))
 
 repo_config =
   Enum.map_join(rendered, "\n", fn {_namespace, repo, name} ->
-    "config :ash_compile_check, #{repo}, url: base <> \"/ash_check_#{name}\", pool_size: 2, log: false"
+    "config :ash_compile_check, #{repo}, url: base <> \"/#{database_prefix}#{name}\", pool_size: 2, log: false"
   end)
 
 File.write!(Path.join(dir, "config/config.exs"), """

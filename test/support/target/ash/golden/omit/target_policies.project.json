@@ -1,196 +1,145 @@
 {
   "actor_loads": [],
   "authorization_bypasses": [],
-  "bubble_id": "synthetic-target-names",
+  "bubble_id": "policies-fixture",
   "diagnostics": [
     {
-      "code": "ash_policies_unverified",
+      "code": "unknown_operator",
       "details": {},
-      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
+      "message": "unmodeled operator \"mystery_operator\"",
+      "outcome": "preserved",
+      "path": "/user_types/doc/privacy_role/raw_/condition/next/next",
+      "severity": "error",
+      "stage": "parse",
+      "subject": {
+        "rule": "raw_",
+        "type": "doc"
+      }
+    },
+    {
+      "code": "unknown_operator",
+      "details": {},
+      "message": "unmodeled operator \"mystery_operator\"",
+      "outcome": "preserved",
+      "path": "/user_types/memo/privacy_role/raw_/condition/next/next",
+      "severity": "error",
+      "stage": "parse",
+      "subject": {
+        "rule": "raw_",
+        "type": "memo"
+      }
+    },
+    {
+      "code": "ash_privacy_omitted",
+      "details": {
+        "rules": 14,
+        "types": [
+          "board",
+          "doc",
+          "memo",
+          "note",
+          "user"
+        ],
+        "unavailable": []
+      },
+      "message": "privacy rules were not compiled (privacy: :omit): 14 rules on 5 data types; the generated resources have no authorization",
       "outcome": "degraded",
       "path": "",
-      "severity": "warning",
+      "severity": "info",
       "stage": "target:ash",
       "subject": {}
-    },
-    {
-      "code": "ash_policy_aggregates_unguarded",
-      "details": {
-        "fields": [
-          "created_date",
-          "modified_date",
-          "creator_id",
-          "slug",
-          "email"
-        ]
-      },
-      "message": "user: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, email reads values some users may not view",
-      "outcome": "degraded",
-      "path": "/user_types/user",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "type": "user"
-      }
-    },
-    {
-      "code": "ash_privacy_rules_unavailable",
-      "details": {},
-      "message": "the source does not include user's privacy rules; every read is denied",
-      "outcome": "degraded",
-      "path": "/user_types/user",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "type": "user"
-      }
-    },
-    {
-      "code": "model_synthesized_user_type",
-      "details": {},
-      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
-      "outcome": "degraded",
-      "path": "/user_types/user",
-      "severity": "info",
-      "stage": "model",
-      "subject": {
-        "type": "user"
-      }
     }
   ],
-  "enums": [
-    {
-      "attributes": [
-        {
-          "bubble_type": "text",
-          "name": "nil_field",
-          "source": {
-            "field": "nil_text",
-            "option_set": "tier"
-          }
-        },
-        {
-          "bubble_type": "number",
-          "name": "rank",
-          "source": {
-            "field": "rank_number",
-            "option_set": "tier"
-          }
-        },
-        {
-          "bubble_type": "number",
-          "name": "rank_2",
-          "source": {
-            "field": "rank_number0",
-            "option_set": "tier"
-          }
-        }
-      ],
-      "bubble_name": "01) Tier",
-      "description": null,
-      "module": "Enums.Tier",
-      "source": {
-        "option_set": "tier"
-      },
-      "values": [
-        {
-          "attributes": {
-            "nil_field": "n",
-            "rank": 1,
-            "rank_2": null
-          },
-          "label": "Gold",
-          "source": {
-            "option_set": "tier",
-            "value": "gold"
-          },
-          "value": "Gold Tier"
-        },
-        {
-          "attributes": {
-            "nil_field": null,
-            "rank": null,
-            "rank_2": 2
-          },
-          "label": "Silver",
-          "source": {
-            "option_set": "tier",
-            "value": "silver"
-          },
-          "value": "silver"
-        }
-      ]
-    }
-  ],
+  "enums": [],
   "names": {
-    "enums": {
-      "tier": {
-        "attributes": {
-          "nil_text": "nil_field",
-          "rank_number": "rank",
-          "rank_number0": "rank_2"
-        },
-        "module": "Tier"
-      }
-    },
+    "enums": {},
     "external_types": {},
     "resources": {
-      "domain": {
-        "attributes": {
-          "Created By": "creator_id",
-          "Created Date": "created_date",
-          "Modified Date": "modified_date",
-          "Slug": "slug",
-          "_id": "id"
-        },
-        "module": "DomainResource",
-        "relationships": {
-          "Created By": "creator"
-        },
-        "table": "domain_resource"
-      },
-      "gadget": {
+      "board": {
         "attributes": {
           "Created By": "creator_id",
           "Created Date": "created_date",
           "Modified Date": "modified_date",
           "Slug": "slug",
           "_id": "id",
-          "a_title_text": "title",
-          "b_title_text": "title_2",
-          "c_title_text": "title_3",
-          "cafe_text": "cafe_strasse",
-          "camel_text": "first_name",
-          "creator_user": "creator_2_id",
-          "inch_number": "n3_5_inch",
-          "slug_text": "slug_2",
-          "struct_text": "struct",
-          "twofa_text": "n2fa_code",
-          "updated_date": "updated_at_field",
-          "widget_custom_repo": "widget_id",
-          "widget_id_text": "widget_id_2"
+          "name_text": "name",
+          "owner_user": "owner_id"
         },
-        "module": "N3dGadget",
+        "module": "Board",
         "relationships": {
           "Created By": "creator",
-          "creator_user": "creator_2",
-          "widget_custom_repo": "widget"
+          "owner_user": "owner"
         },
-        "table": "n3d_gadget"
+        "table": "board"
       },
-      "repo": {
+      "doc": {
         "attributes": {
           "Created By": "creator_id",
           "Created Date": "created_date",
           "Modified Date": "modified_date",
           "Slug": "slug",
-          "_id": "id"
+          "_id": "id",
+          "attachment_file": "attachment",
+          "body_text": "body",
+          "owner_user": "owner_id",
+          "public_boolean": "public",
+          "secret_text": "secret",
+          "title_text": "title"
         },
-        "module": "RepoResource",
+        "module": "Doc",
+        "relationships": {
+          "Created By": "creator",
+          "owner_user": "owner"
+        },
+        "table": "doc"
+      },
+      "memo": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "text_text": "text"
+        },
+        "module": "Memo",
         "relationships": {
           "Created By": "creator"
         },
-        "table": "repo_resource"
+        "table": "memo"
+      },
+      "note": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "hidden_boolean": "hidden",
+          "text_text": "text"
+        },
+        "module": "Note",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "note"
+      },
+      "team": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "lead_user": "lead_id",
+          "name_text": "name"
+        },
+        "module": "Team",
+        "relationships": {
+          "Created By": "creator",
+          "lead_user": "lead"
+        },
+        "table": "team"
       },
       "user": {
         "attributes": {
@@ -199,14 +148,15 @@
           "Modified Date": "modified_date",
           "Slug": "slug",
           "_id": "id",
-          "email": "email"
+          "admin_boolean": "admin",
+          "email": "email",
+          "name_text": "name",
+          "team_custom_team": "team_id"
         },
         "module": "User",
-        "privacy_relationships": {
-          "Created By": "creator_for_privacy"
-        },
         "relationships": {
-          "Created By": "creator"
+          "Created By": "creator",
+          "team_custom_team": "team"
         },
         "table": "user"
       }
@@ -214,10 +164,11 @@
     "version": 1
   },
   "policies_verified": false,
-  "privacy": "unverified",
+  "privacy": "omit",
   "resources": [
     {
       "actions": [
+        "read",
         "destroy",
         [
           "create",
@@ -249,7 +200,7 @@
           "references": null,
           "source": {
             "field": "_id",
-            "type": "domain"
+            "type": "board"
           },
           "type": "string",
           "writable?": true
@@ -265,7 +216,7 @@
           "references": null,
           "source": {
             "field": "Created Date",
-            "type": "domain"
+            "type": "board"
           },
           "type": "utc_datetime_usec",
           "writable?": true
@@ -281,7 +232,7 @@
           "references": null,
           "source": {
             "field": "Modified Date",
-            "type": "domain"
+            "type": "board"
           },
           "type": "utc_datetime_usec",
           "writable?": true
@@ -309,7 +260,7 @@
           },
           "source": {
             "field": "Created By",
-            "type": "domain"
+            "type": "board"
           },
           "type": "string",
           "writable?": true
@@ -334,122 +285,75 @@
           "references": null,
           "source": {
             "field": "Slug",
-            "type": "domain"
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "owner_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "owner_user",
+            "type": "board"
           },
           "type": "string",
           "writable?": true
         }
       ],
-      "bubble_name": "Domain",
+      "bubble_name": "Board",
       "calculations": [],
       "description": null,
-      "extra_actions": [
-        {
-          "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
-          "keyed?": true,
-          "name": "read",
-          "primary?": true,
-          "type": "read"
-        },
-        {
-          "accept": [],
-          "description": "Bubble \"Do a search for\": the records the user may find in searches",
-          "keyed?": false,
-          "name": "search",
-          "primary?": false,
-          "type": "read"
-        }
-      ],
-      "field_policies": [
-        {
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": null,
-          "fields": [
-            "created_date",
-            "modified_date",
-            "creator_id",
-            "slug"
-          ]
-        }
-      ],
+      "extra_actions": [],
+      "field_policies": [],
       "identities": [],
       "migration_types": [],
-      "module": "DomainResource",
-      "policies": [
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {},
-              "test": "keyed"
-            }
-          ],
-          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
-          "permission": "keyed"
-        },
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
-          "permission": "view"
-        },
-        {
-          "action": "search",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": "Searches: the user may find the record in searches",
-          "permission": "search_for"
-        }
-      ],
-      "privacy": {
-        "attachments": [
-          {
-            "kind": "authorize_if",
-            "source": {
-              "default": true
-            },
-            "test": "always"
-          }
-        ],
-        "compiled_rules": [],
-        "data_api": {
-          "create": [],
-          "delete": [],
-          "exposed": null,
-          "modify": []
-        },
-        "denied_rules": [],
-        "file_fields": [],
-        "source": "public_default"
-      },
+      "module": "Board",
+      "policies": [],
+      "privacy": null,
       "privacy_relationships": [],
       "relationships": [
         {
@@ -463,22 +367,41 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
-            "type": "domain"
+            "type": "board"
           },
           "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "owner",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "owner_user",
+            "type": "board"
+          },
+          "source_attribute": "owner_id"
         }
       ],
       "source": {
-        "type": "domain"
+        "type": "board"
       },
       "synthesized": false,
-      "table": "domain_resource"
+      "table": "board"
     },
     {
       "actions": [
+        "read",
         "destroy",
         [
           "create",
@@ -510,7 +433,7 @@
           "references": null,
           "source": {
             "field": "_id",
-            "type": "gadget"
+            "type": "doc"
           },
           "type": "string",
           "writable?": true
@@ -526,7 +449,7 @@
           "references": null,
           "source": {
             "field": "Created Date",
-            "type": "gadget"
+            "type": "doc"
           },
           "type": "utc_datetime_usec",
           "writable?": true
@@ -542,7 +465,7 @@
           "references": null,
           "source": {
             "field": "Modified Date",
-            "type": "gadget"
+            "type": "doc"
           },
           "type": "utc_datetime_usec",
           "writable?": true
@@ -570,7 +493,7 @@
           },
           "source": {
             "field": "Created By",
-            "type": "gadget"
+            "type": "doc"
           },
           "type": "string",
           "writable?": true
@@ -595,7 +518,126 @@
           "references": null,
           "source": {
             "field": "Slug",
-            "type": "gadget"
+            "type": "doc"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "file",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "attachment",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "attachment_file",
+            "type": "doc"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "body",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "body_text",
+            "type": "doc"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "owner_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "owner_user",
+            "type": "doc"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "boolean",
+          "constraints": [],
+          "default": null,
+          "name": "public",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "public_boolean",
+            "type": "doc"
+          },
+          "type": "boolean",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "secret",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "secret_text",
+            "type": "doc"
           },
           "type": "string",
           "writable?": true
@@ -619,424 +661,23 @@
           "public?": true,
           "references": null,
           "source": {
-            "field": "a_title_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "title_2",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "b_title_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "title_3",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "c_title_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "cafe_strasse",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "cafe_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "first_name",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "camel_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "user",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "creator_2_id",
-          "primary_key?": false,
-          "public?": true,
-          "references": {
-            "cardinality": "one",
-            "target": "user"
-          },
-          "source": {
-            "field": "creator_user",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "number",
-          "constraints": [],
-          "default": null,
-          "name": "n3_5_inch",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "inch_number",
-            "type": "gadget"
-          },
-          "type": "float",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "slug_2",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "slug_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "struct",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "struct_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "n2fa_code",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "twofa_text",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "date",
-          "constraints": [],
-          "default": null,
-          "name": "updated_at_field",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "updated_date",
-            "type": "gadget"
-          },
-          "type": "utc_datetime_usec",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "custom.repo",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "widget_id",
-          "primary_key?": false,
-          "public?": true,
-          "references": {
-            "cardinality": "one",
-            "target": "repo"
-          },
-          "source": {
-            "field": "widget_custom_repo",
-            "type": "gadget"
-          },
-          "type": "string",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "text",
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "default": null,
-          "name": "widget_id_2",
-          "primary_key?": false,
-          "public?": true,
-          "references": null,
-          "source": {
-            "field": "widget_id_text",
-            "type": "gadget"
+            "field": "title_text",
+            "type": "doc"
           },
           "type": "string",
           "writable?": true
         }
       ],
-      "bubble_name": "3D Gadget",
+      "bubble_name": "Doc",
       "calculations": [],
       "description": null,
-      "extra_actions": [
-        {
-          "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
-          "keyed?": true,
-          "name": "read",
-          "primary?": true,
-          "type": "read"
-        },
-        {
-          "accept": [],
-          "description": "Bubble \"Do a search for\": the records the user may find in searches",
-          "keyed?": false,
-          "name": "search",
-          "primary?": false,
-          "type": "read"
-        }
-      ],
-      "field_policies": [
-        {
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": null,
-          "fields": [
-            "created_date",
-            "modified_date",
-            "creator_id",
-            "slug",
-            "title",
-            "title_2",
-            "title_3",
-            "cafe_strasse",
-            "first_name",
-            "creator_2_id",
-            "n3_5_inch",
-            "slug_2",
-            "struct",
-            "n2fa_code",
-            "updated_at_field",
-            "widget_id",
-            "widget_id_2"
-          ]
-        }
-      ],
+      "extra_actions": [],
+      "field_policies": [],
       "identities": [],
       "migration_types": [],
-      "module": "N3dGadget",
-      "policies": [
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {},
-              "test": "keyed"
-            }
-          ],
-          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
-          "permission": "keyed"
-        },
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
-          "permission": "view"
-        },
-        {
-          "action": "search",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": "Searches: the user may find the record in searches",
-          "permission": "search_for"
-        }
-      ],
-      "privacy": {
-        "attachments": [
-          {
-            "kind": "authorize_if",
-            "source": {
-              "default": true
-            },
-            "test": "always"
-          }
-        ],
-        "compiled_rules": [],
-        "data_api": {
-          "create": [],
-          "delete": [],
-          "exposed": null,
-          "modify": []
-        },
-        "denied_rules": [],
-        "file_fields": [],
-        "source": "public_default"
-      },
+      "module": "Doc",
+      "policies": [],
+      "privacy": null,
       "privacy_relationships": [],
       "relationships": [
         {
@@ -1050,10 +691,10 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
-            "type": "gadget"
+            "type": "doc"
           },
           "source_attribute": "creator_id"
         },
@@ -1066,42 +707,25 @@
           "destination_attribute": "id",
           "gate": null,
           "kind": "belongs_to",
-          "name": "creator_2",
+          "name": "owner",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
-            "field": "creator_user",
-            "type": "gadget"
+            "field": "owner_user",
+            "type": "doc"
           },
-          "source_attribute": "creator_2_id"
-        },
-        {
-          "allow_nil?": true,
-          "attribute_type": "string",
-          "db_reference": "ignore",
-          "define_attribute?": false,
-          "destination": "RepoResource",
-          "destination_attribute": "id",
-          "gate": null,
-          "kind": "belongs_to",
-          "name": "widget",
-          "public?": true,
-          "sortable?": false,
-          "source": {
-            "field": "widget_custom_repo",
-            "type": "gadget"
-          },
-          "source_attribute": "widget_id"
+          "source_attribute": "owner_id"
         }
       ],
       "source": {
-        "type": "gadget"
+        "type": "doc"
       },
       "synthesized": false,
-      "table": "n3d_gadget"
+      "table": "doc"
     },
     {
       "actions": [
+        "read",
         "destroy",
         [
           "create",
@@ -1133,7 +757,7 @@
           "references": null,
           "source": {
             "field": "_id",
-            "type": "repo"
+            "type": "memo"
           },
           "type": "string",
           "writable?": true
@@ -1149,7 +773,7 @@
           "references": null,
           "source": {
             "field": "Created Date",
-            "type": "repo"
+            "type": "memo"
           },
           "type": "utc_datetime_usec",
           "writable?": true
@@ -1165,7 +789,7 @@
           "references": null,
           "source": {
             "field": "Modified Date",
-            "type": "repo"
+            "type": "memo"
           },
           "type": "utc_datetime_usec",
           "writable?": true
@@ -1193,7 +817,7 @@
           },
           "source": {
             "field": "Created By",
-            "type": "repo"
+            "type": "memo"
           },
           "type": "string",
           "writable?": true
@@ -1218,122 +842,47 @@
           "references": null,
           "source": {
             "field": "Slug",
-            "type": "repo"
+            "type": "memo"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "text",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "text_text",
+            "type": "memo"
           },
           "type": "string",
           "writable?": true
         }
       ],
-      "bubble_name": "Repo",
+      "bubble_name": "Memo",
       "calculations": [],
       "description": null,
-      "extra_actions": [
-        {
-          "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
-          "keyed?": true,
-          "name": "read",
-          "primary?": true,
-          "type": "read"
-        },
-        {
-          "accept": [],
-          "description": "Bubble \"Do a search for\": the records the user may find in searches",
-          "keyed?": false,
-          "name": "search",
-          "primary?": false,
-          "type": "read"
-        }
-      ],
-      "field_policies": [
-        {
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": null,
-          "fields": [
-            "created_date",
-            "modified_date",
-            "creator_id",
-            "slug"
-          ]
-        }
-      ],
+      "extra_actions": [],
+      "field_policies": [],
       "identities": [],
       "migration_types": [],
-      "module": "RepoResource",
-      "policies": [
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {},
-              "test": "keyed"
-            }
-          ],
-          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
-          "permission": "keyed"
-        },
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
-          "permission": "view"
-        },
-        {
-          "action": "search",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {
-                "default": true
-              },
-              "test": "always"
-            }
-          ],
-          "description": "Searches: the user may find the record in searches",
-          "permission": "search_for"
-        }
-      ],
-      "privacy": {
-        "attachments": [
-          {
-            "kind": "authorize_if",
-            "source": {
-              "default": true
-            },
-            "test": "always"
-          }
-        ],
-        "compiled_rules": [],
-        "data_api": {
-          "create": [],
-          "delete": [],
-          "exposed": null,
-          "modify": []
-        },
-        "denied_rules": [],
-        "file_fields": [],
-        "source": "public_default"
-      },
+      "module": "Memo",
+      "policies": [],
+      "privacy": null,
       "privacy_relationships": [],
       "relationships": [
         {
@@ -1347,22 +896,459 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
-            "type": "repo"
+            "type": "memo"
           },
           "source_attribute": "creator_id"
         }
       ],
       "source": {
-        "type": "repo"
+        "type": "memo"
       },
       "synthesized": false,
-      "table": "repo_resource"
+      "table": "memo"
     },
     {
       "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "note"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "note"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "note"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "note"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "note"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "boolean",
+          "constraints": [],
+          "default": null,
+          "name": "hidden",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "hidden_boolean",
+            "type": "note"
+          },
+          "type": "boolean",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "text",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "text_text",
+            "type": "note"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Note",
+      "calculations": [],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "migration_types": [],
+      "module": "Note",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "note"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "note"
+      },
+      "synthesized": false,
+      "table": "note"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "team"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "team"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "team"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "team"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "team"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "lead_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "lead_user",
+            "type": "team"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "team"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Team",
+      "calculations": [],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "migration_types": [],
+      "module": "Team",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "team"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "lead",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "lead_user",
+            "type": "team"
+          },
+          "source_attribute": "lead_id"
+        }
+      ],
+      "source": {
+        "type": "team"
+      },
+      "synthesized": false,
+      "table": "team"
+    },
+    {
+      "actions": [
+        "read",
         "destroy",
         [
           "create",
@@ -1508,112 +1494,89 @@
           },
           "type": "string",
           "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "boolean",
+          "constraints": [],
+          "default": null,
+          "name": "admin",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "admin_boolean",
+            "type": "user"
+          },
+          "type": "boolean",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.team",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "team_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "team"
+          },
+          "source": {
+            "field": "team_custom_team",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
         }
       ],
       "bubble_name": "User",
       "calculations": [],
       "description": null,
-      "extra_actions": [
-        {
-          "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
-          "keyed?": true,
-          "name": "read",
-          "primary?": true,
-          "type": "read"
-        },
-        {
-          "accept": [],
-          "description": "Bubble \"Do a search for\": the records the user may find in searches",
-          "keyed?": false,
-          "name": "search",
-          "primary?": false,
-          "type": "read"
-        }
-      ],
-      "field_policies": [
-        {
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": null,
-          "fields": [
-            "created_date",
-            "modified_date",
-            "creator_id",
-            "slug",
-            "email"
-          ]
-        }
-      ],
+      "extra_actions": [],
+      "field_policies": [],
       "identities": [],
       "migration_types": [],
       "module": "User",
-      "policies": [
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "authorize_if",
-              "source": {},
-              "test": "keyed"
-            }
-          ],
-          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
-          "permission": "keyed"
-        },
-        {
-          "action": "read",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
-          "permission": "view"
-        },
-        {
-          "action": "search",
-          "changing": null,
-          "checks": [
-            {
-              "kind": "forbid_if",
-              "source": {},
-              "test": "always"
-            }
-          ],
-          "description": "Searches: the user may find the record in searches",
-          "permission": "search_for"
-        }
-      ],
-      "privacy": {
-        "attachments": [
-          {
-            "kind": "forbid_if",
-            "source": {},
-            "test": "always"
-          }
-        ],
-        "compiled_rules": [],
-        "data_api": {
-          "create": [],
-          "delete": [],
-          "exposed": null,
-          "modify": []
-        },
-        "denied_rules": [],
-        "file_fields": [],
-        "source": "unavailable"
-      },
-      "privacy_relationships": [
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
         {
           "allow_nil?": true,
           "attribute_type": "string",
@@ -1623,40 +1586,38 @@
           "destination_attribute": "id",
           "gate": null,
           "kind": "belongs_to",
-          "name": "creator_for_privacy",
-          "public?": false,
-          "sortable?": false,
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"
           },
           "source_attribute": "creator_id"
-        }
-      ],
-      "relationships": [
+        },
         {
           "allow_nil?": true,
           "attribute_type": "string",
           "db_reference": "ignore",
           "define_attribute?": false,
-          "destination": "User",
+          "destination": "Team",
           "destination_attribute": "id",
-          "gate": "never",
+          "gate": null,
           "kind": "belongs_to",
-          "name": "creator",
+          "name": "team",
           "public?": true,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
-            "field": "Created By",
+            "field": "team_custom_team",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "team_id"
         }
       ],
       "source": {
         "type": "user"
       },
-      "synthesized": true,
+      "synthesized": false,
       "table": "user"
     }
   ],

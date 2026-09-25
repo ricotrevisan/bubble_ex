@@ -113,11 +113,13 @@ defmodule BubbleEx.Apps.EnricherTest do
       assert attrs[:schema_diagnostics] == project.diagnostics
     end
 
-    test "format: :ash always reports the generated policies as unverified" do
+    test "format: :ash renders no privacy policies (Target.Ash's default privacy: :omit)" do
       app = %{"user_types" => %{"user" => %{"display" => "User", "fields" => %{}}}}
       attrs = Enricher.maybe_add_db_diagram(%{}, app, format: :ash)
       assert attrs[:schema] =~ "defmodule MyApp.User do"
-      assert Enum.map(attrs.schema_diagnostics, & &1.code) == [:ash_policies_unverified]
+      refute attrs[:schema] =~ "Ash.Policy"
+      refute attrs[:schema] =~ "policies do"
+      refute Map.has_key?(attrs, :schema_diagnostics)
     end
 
     test "legacy dbml: true still fills :dbml and :dbdiagram" do
