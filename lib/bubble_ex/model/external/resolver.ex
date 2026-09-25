@@ -1,5 +1,13 @@
-defmodule BubbleEx.Db.Reader.ExternalTypes do
+defmodule BubbleEx.Model.External.Resolver do
   @moduledoc false
+
+  # The one reading of API Connector (`api.apiconnector2.…`) types. Given the
+  # `api.` descriptors of data-type fields and option-set attributes (the
+  # roots), it resolves each against the call's `types` registry in the app
+  # JSON, depth-first, and returns the external-type nodes reached and one
+  # `BubbleEx.Diagnostic` (stage `:read`) per occurrence it could not read
+  # faithfully. `BubbleEx.Model.External` converts the result into Model
+  # structs; nothing else reads API Connector settings.
 
   @prefix "api.apiconnector2."
   @scalars %{
@@ -12,35 +20,66 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
 
   alias BubbleEx.Diagnostic
 
-  @spec resolve([BubbleEx.Db.Reader.table()], map()) ::
-          {[BubbleEx.Db.Reader.table()], [map()], [Diagnostic.t()]}
-  def resolve(tables, attrs) do
+  @type group :: :custom | :option
+  @type root :: %{group: group(), owner: String.t(), field: String.t(), descriptor: term()}
+  @type value ::
+          %{type: :scalar, scalar: atom(), cardinality: :one | :many, raw: String.t()}
+          | %{type: :external, target: String.t(), cardinality: :one | :many, raw: String.t()}
+          | %{
+              type: :opaque_external,
+              target: nil,
+              cardinality: :one | :many | :unknown,
+              raw: term()
+            }
+
+  @doc """
+  Resolves `roots` against `attrs` (the app JSON, either key form). Returns
+  each root's value keyed by `{group, owner, field}`, the external-type nodes
+  reached (in ID order) and the normalized diagnostics.
+  """
+  @spec resolve([root()], map()) ::
+          {%{{group(), String.t(), String.t()} => value()}, [map()], [Diagnostic.t()]}
+  def resolve(roots, attrs) do
     state = %{attrs: attrs, nodes: %{}, failures: %{}, diagnostics: []}
 
-    {tables, state} =
-      Enum.map_reduce(tables, state, fn table, state ->
-        {columns, state} = Enum.map_reduce(table.columns, state, &resolve_column(&1, &2))
-        {%{table | columns: columns}, state}
+    {values, state} =
+      Enum.map_reduce(roots, state, fn root, state ->
+        occurrence = %{
+          root: %{table_group: root.group, table_id: root.owner, field_id: root.field},
+          path: []
+        }
+
+        {value, state} = resolve_value(root.descriptor, occurrence, state)
+        {{{root.group, root.owner, root.field}, value}, state}
       end)
 
     nodes = state.nodes |> Map.values() |> Enum.sort_by(& &1.id)
 
-    {tables, nodes, state.diagnostics |> Enum.reverse() |> Diagnostic.normalize()}
+    {Map.new(values), nodes, state.diagnostics |> Enum.reverse() |> Diagnostic.normalize()}
   end
 
-  defp resolve_column(%{type: %{type: :api} = old} = column, state) do
-    raw = raw_descriptor(old)
-    root = %{table_group: column.table_group, table_id: column.table_id, field_id: column.id}
-    occurrence = %{root: root, path: []}
-    {type, state} = resolve_value(raw, occurrence, state)
-    {%{column | type: type}, state}
-  end
+  @doc """
+  JSON pointer to a data-type field's or option-set attribute's type
+  descriptor in `source` (either key form), or `nil` when the source does not
+  spell one out.
+  """
+  @spec descriptor_pointer(map(), group(), String.t(), String.t()) :: String.t() | nil
+  def descriptor_pointer(source, group, owner, field) do
+    {collection, containers} =
+      case group do
+        :custom -> {"user_types", ~w(%f3 fields)}
+        :option -> {"option_sets", ["attributes"]}
+      end
 
-  defp resolve_column(column, state), do: {column, state}
-
-  defp raw_descriptor(old) do
-    prefix = if old[:is_array], do: "list.api.", else: "api."
-    prefix <> to_string(old[:custom_type] || "")
+    with %{} = definition <- get(source, collection) |> get(owner),
+         container when is_binary(container) <-
+           Enum.find(containers, &is_map(get(get(definition, &1), field))),
+         %{} = raw <- definition |> get(container) |> get(field),
+         key when is_binary(key) <- Enum.find(~w(%v value), &Map.has_key?(raw, &1)) do
+      Diagnostic.pointer([collection, owner, container, field, key])
+    else
+      _ -> nil
+    end
   end
 
   defp resolve_value(raw, occurrence, state) when is_binary(raw) do
@@ -348,7 +387,7 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
   defp root_subject(%{table_id: id, field_id: field}), do: %{type: id, field: field}
 
   defp root_path(attrs, %{table_group: group, table_id: id, field_id: field}) do
-    BubbleEx.Db.Reader.field_pointer(attrs, group, id, field) ||
+    descriptor_pointer(attrs, group, id, field) ||
       Diagnostic.pointer([if(group == :option, do: "option_sets", else: "user_types"), id])
   end
 

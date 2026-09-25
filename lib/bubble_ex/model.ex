@@ -31,24 +31,24 @@ defmodule BubbleEx.Model do
   Decoded app JSON in either key form: a `.bubble` export (`display`,
   `fields`, `value`, `deleted`) or the live payload (`%d`, `%f3`, `%v`,
   `%del`). Privacy rules and API Connector settings exist only in exports.
-  The Model is built from the same reading as `BubbleEx.Db.Reader` (its API
-  Connector resolution, and its diagnostics) and `BubbleEx.Privacy` (its
-  rules, type-level flags and diagnostics). It does not use the Reader's
-  table output, which drops deleted fields and values and orders by display
-  name.
+  The Model is the one reading of data types, fields, option sets and API
+  Connector types: it resolves API Connector types itself (from the calls'
+  `types` registries) and takes privacy rules, type-level flags and their
+  diagnostics from `BubbleEx.Privacy`. `BubbleEx.Db.Reader`'s tables are a
+  projection of it.
 
   ## Order
 
   Output is identical across runs and independent of input map order.
   Bubble supplies an order only for option values (`sort_factor`); they
   follow it, then their Bubble ID. Everything else is in Bubble ID order;
-  external-type fields follow their response path, as in the Reader; privacy
+  external-type fields follow their response path; privacy
   rules are ordered as `BubbleEx.Privacy` orders them.
 
   ## Diagnostics
 
   `diagnostics` holds every `BubbleEx.Diagnostic` from building the Model,
-  normalized: the Reader's API Connector diagnostics (stage `:read`), the
+  normalized: the API Connector resolution's diagnostics (stage `:read`), the
   privacy parse's (`:parse`) and the Model's own (`:model`, codes prefixed
   `model_`). Nothing in the source is dropped: what the Model does not model
   is kept in an `extra` or `raw` member and diagnosed. A data type that is

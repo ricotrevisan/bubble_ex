@@ -91,8 +91,7 @@ defmodule BubbleEx.Db.Reader do
     columns = flatten_columns(tables)
     relationships = generate_relationships(columns)
 
-    {tables, external_types, diagnostics} =
-      BubbleEx.Db.Reader.ExternalTypes.resolve(tables, raw_attrs)
+    {tables, external_types, diagnostics} = resolve_external(tables, raw_attrs)
 
     db_map = %{
       bubble_id: bubble_id,
@@ -106,6 +105,37 @@ defmodule BubbleEx.Db.Reader do
     }
 
     {:ok, db_map}
+  end
+
+  # API Connector resolution is the Model's (`BubbleEx.Model.External.Resolver`).
+  defp resolve_external(tables, source) do
+    roots =
+      for table <- tables, %{type: %{type: :api} = type} = column <- table.columns do
+        prefix = if type[:is_array], do: "list.api.", else: "api."
+
+        %{
+          group: table.group,
+          owner: table.id,
+          field: column.id,
+          descriptor: prefix <> to_string(type[:custom_type] || "")
+        }
+      end
+
+    {values, nodes, diagnostics} = BubbleEx.Model.External.Resolver.resolve(roots, source)
+
+    tables =
+      Enum.map(tables, fn table ->
+        %{table | columns: Enum.map(table.columns, &resolved_column(&1, table, values))}
+      end)
+
+    {tables, nodes, diagnostics}
+  end
+
+  defp resolved_column(column, table, values) do
+    case Map.fetch(values, {table.group, table.id, column.id}) do
+      {:ok, value} -> %{column | type: value}
+      :error -> column
+    end
   end
 
   defp generate_tables(attrs, :custom, source) do
@@ -180,36 +210,8 @@ defmodule BubbleEx.Db.Reader do
     }
   end
 
-  @doc """
-  JSON pointer to a field's type descriptor in the supplied app JSON (either
-  key form), or `nil` for a field the source does not spell out (the injected
-  `_id` / `display` keys, option-set attributes derived from an export's values).
-  """
-  @spec field_pointer(map(), table_group(), String.t(), String.t()) :: String.t() | nil
-  def field_pointer(source, :custom, table_id, field_id) do
-    case get_in(source, ["user_types", table_id]) do
-      %{"%f3" => %{^field_id => _}} ->
-        pointer(["user_types", table_id, "%f3", field_id, "%v"])
-
-      %{"fields" => %{^field_id => _}} ->
-        pointer(["user_types", table_id, "fields", field_id, "value"])
-
-      _ ->
-        nil
-    end
-  end
-
-  def field_pointer(source, :option, table_id, field_id) do
-    case get_in(source, ["option_sets", table_id]) do
-      %{"attributes" => %{^field_id => _}} ->
-        pointer(["option_sets", table_id, "attributes", field_id, "%v"])
-
-      _ ->
-        nil
-    end
-  end
-
-  defp pointer(path), do: BubbleEx.Diagnostic.pointer(path)
+  defp field_pointer(source, group, table_id, field_id),
+    do: BubbleEx.Model.External.Resolver.descriptor_pointer(source, group, table_id, field_id)
 
   defp primary_key?(:custom, @custom_pk_id), do: true
   defp primary_key?(:option, @option_pk_id), do: true

@@ -5,7 +5,7 @@ defmodule BubbleEx.Diagnostic.Codes do
   # `lib/` for emitted codes and requires this registry to match exactly.
 
   @codes [
-    # --- :read — BubbleEx.Db.Reader (API Connector types) -------------------
+    # --- :read — BubbleEx.Model.External.Resolver (API Connector types) -----
     {:invalid_descriptor, :warning, :degraded, :read,
      "an `api.` type descriptor that is not a valid API Connector type; kept as an opaque external value"},
     {:field_type_unsupported, :warning, :degraded, :read,

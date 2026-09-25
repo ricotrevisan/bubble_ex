@@ -61,7 +61,7 @@ defmodule BubbleEx.Model.Type do
   resolved) and `nil`, or `:malformed` (missing or not a string) or
   `:unsupported` (outside the vocabulary) for a type of kind `:unknown`.
   API Connector descriptors (`api.…`) classify as `:external`; their
-  resolution is the Reader's.
+  resolution is `BubbleEx.Model.External`'s.
   """
   @spec classify(term()) :: {t(), nil | :malformed | :unsupported}
   def classify(descriptor) when is_binary(descriptor) do

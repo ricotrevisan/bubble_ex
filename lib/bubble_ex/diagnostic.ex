@@ -1,9 +1,9 @@
 defmodule BubbleEx.Diagnostic do
   @moduledoc """
   The one diagnostic type: BubbleEx reporting that it could not read, parse,
-  model or render part of a Bubble app faithfully. The Reader, the expression
-  and privacy parsers, the workflow inventory and the schema encoders all emit
-  it.
+  model or render part of a Bubble app faithfully. The Model (and its API
+  Connector resolution), the expression and privacy parsers, the workflow
+  inventory and the schema encoders all emit it.
 
     * `code` - stable atom, listed in `BubbleEx.Diagnostic.Codes`
     * `severity` - `:error | :warning | :info`: how much the owner should care.
