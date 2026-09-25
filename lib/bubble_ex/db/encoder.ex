@@ -7,14 +7,21 @@ defmodule BubbleEx.Db.Encoder do
   atom to its encoder module.
   """
 
-  alias BubbleEx.Error
+  alias BubbleEx.{Diagnostic, Error}
 
   defmodule Result do
-    @moduledoc "Detailed schema-rendering result."
-    @enforce_keys [:format, :content, :warnings]
-    defstruct [:format, :content, :warnings]
+    @moduledoc """
+    Detailed schema-rendering result. `diagnostics` are the Reader's
+    diagnostics plus this target's (stage `{:target, format}`), normalized.
+    """
+    @enforce_keys [:format, :content, :diagnostics]
+    defstruct [:format, :content, :diagnostics]
 
-    @type t() :: %__MODULE__{format: atom(), content: String.t(), warnings: [map()]}
+    @type t() :: %__MODULE__{
+            format: atom(),
+            content: String.t(),
+            diagnostics: [BubbleEx.Diagnostic.t()]
+          }
   end
 
   @callback encode(db_map :: map(), opts :: keyword()) ::
@@ -45,7 +52,7 @@ defmodule BubbleEx.Db.Encoder do
      Error.new(:unknown_format, "unknown schema format: #{inspect(format)}", %{format: format})}
   end
 
-  @doc "Renders a registered schema format and returns artifact-scoped warnings."
+  @doc "Renders a registered schema format and returns artifact-scoped diagnostics."
   @spec render(atom(), map(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
   def render(format, db_map, opts \\ []) do
     plan = BubbleEx.Db.Encoder.Plan.build(db_map, opts)
@@ -58,13 +65,14 @@ defmodule BubbleEx.Db.Encoder do
              db_map,
              opts |> Keyword.put(:external_types, mode) |> Keyword.put(:_external_plan, plan)
            ) do
-      warnings =
-        (Map.get(db_map, :warnings, []) ++
-           renderer_warnings(db_map, format, mode, plan) ++
-           graph_warnings(plan, format, mode, opts))
-        |> Enum.sort_by(&inspect/1)
+      diagnostics =
+        Diagnostic.normalize(
+          Map.get(db_map, :diagnostics, []) ++
+            root_diagnostics(db_map, format, mode, plan) ++
+            graph_diagnostics(plan, format, mode, opts)
+        )
 
-      {:ok, %Result{format: format, content: content, warnings: warnings}}
+      {:ok, %Result{format: format, content: content, diagnostics: diagnostics}}
     end
   end
 
@@ -94,7 +102,7 @@ defmodule BubbleEx.Db.Encoder do
         {:error, Error.new(:invalid_input, "invalid external type capability", %{format: format})}
   end
 
-  defp renderer_warnings(db_map, format, mode, plan) do
+  defp root_diagnostics(db_map, format, mode, plan) do
     db_map
     |> Map.get(:tables, [])
     |> Enum.flat_map(& &1.columns)
@@ -102,29 +110,30 @@ defmodule BubbleEx.Db.Encoder do
       &(&1.type.type in [:external, :opaque_external] and root_loss?(&1, format, mode, plan))
     )
     |> Enum.map(fn column ->
-      %{
-        kind: :external_type_rendering,
+      Diagnostic.new(
+        root_code(column, format, mode, plan),
+        Map.get(column, :source_path) || table_pointer(column),
+        "#{column.table_id}.#{column.id} is rendered as " <>
+          if(mode == :legacy, do: "its legacy form", else: "JSON"),
         target: format,
-        source: column.type[:target],
-        field: %{table_group: column.table_group, table_id: column.table_id, field_id: column.id},
-        occurrences: [
-          %{
-            root: %{
-              table_group: column.table_group,
-              table_id: column.table_id,
-              field_id: column.id
-            },
-            path: []
-          }
-        ],
-        cardinality: column.type.cardinality,
-        reason: root_reason(column, format, mode, plan),
-        fallback: if(mode == :legacy, do: :legacy, else: :json),
-        mode: mode
-      }
+        subject: column_subject(column),
+        details: %{
+          external_type: column.type[:target],
+          cardinality: column.type.cardinality,
+          fallback: if(mode == :legacy, do: :legacy, else: :json),
+          mode: mode
+        }
+      )
     end)
-    |> Enum.sort_by(&{&1.source || "", &1.field.table_id, &1.field.field_id})
   end
+
+  defp column_subject(%{table_group: :option} = column),
+    do: %{option_set: column.table_id, field: column.id}
+
+  defp column_subject(column), do: %{type: column.table_id, field: column.id}
+
+  defp table_pointer(%{table_group: :option, table_id: id}), do: ["option_sets", id]
+  defp table_pointer(%{table_id: id}), do: ["user_types", id]
 
   defp root_loss?(_column, _format, mode, _plan) when mode in [:opaque, :legacy], do: true
   defp root_loss?(%{type: %{type: :opaque_external}}, _format, :preserve, _plan), do: true
@@ -135,20 +144,20 @@ defmodule BubbleEx.Db.Encoder do
   defp root_loss?(column, _format, :preserve, plan),
     do: not BubbleEx.Db.Encoder.Plan.resolved?(plan, column.type.target)
 
-  defp root_reason(_column, _format, :opaque, _plan), do: :selected_opaque_mode
-  defp root_reason(_column, _format, :legacy, _plan), do: :selected_legacy_mode
+  defp root_code(_column, _format, :opaque, _plan), do: :external_type_opaque_mode
+  defp root_code(_column, _format, :legacy, _plan), do: :external_type_legacy_mode
 
-  defp root_reason(%{type: %{type: :opaque_external}}, _format, :preserve, _plan),
-    do: :unresolved_root
+  defp root_code(%{type: %{type: :opaque_external}}, _format, :preserve, _plan),
+    do: :external_type_unresolved_root
 
-  defp root_reason(_column, format, :preserve, _plan) when format in [:dbml, :sqlite, :tsql],
-    do: :target_opaque
+  defp root_code(_column, format, :preserve, _plan) when format in [:dbml, :sqlite, :tsql],
+    do: :external_type_target_opaque
 
-  defp root_reason(_column, _format, :preserve, _plan), do: :unresolved_root
+  defp root_code(_column, _format, :preserve, _plan), do: :external_type_unresolved_root
 
-  defp graph_warnings(_plan, _format, mode, _opts) when mode != :preserve, do: []
+  defp graph_diagnostics(_plan, _format, mode, _opts) when mode != :preserve, do: []
 
-  defp graph_warnings(plan, format, :preserve, opts) do
+  defp graph_diagnostics(plan, format, :preserve, opts) do
     shape_formats = [:postgres, :ecto, :ash, :zod, :xano, :convex]
 
     if format in shape_formats do
@@ -160,11 +169,11 @@ defmodule BubbleEx.Db.Encoder do
         |> Enum.flat_map(fn field ->
           cond do
             not BubbleEx.Db.Encoder.Plan.resolved?(plan, field.type.target) ->
-              [graph_warning(plan, format, node.id, field, :unresolved_nested_target)]
+              [graph_diagnostic(:external_type_unresolved_nested, plan, format, node.id, field)]
 
             format != :zod and not recursive_capability?(format, opts) and
                 BubbleEx.Db.Encoder.Plan.cycle_edge?(plan, node.id, field.id) ->
-              [graph_warning(plan, format, node.id, field, :cycle_edge)]
+              [graph_diagnostic(:external_type_cycle_edge, plan, format, node.id, field)]
 
             true ->
               []
@@ -190,17 +199,21 @@ defmodule BubbleEx.Db.Encoder do
 
   defp recursive_capability?(_format, _opts), do: false
 
-  defp graph_warning(plan, format, source, field, reason) do
-    %{
-      kind: :external_type_rendering,
+  defp graph_diagnostic(code, plan, format, source, field) do
+    Diagnostic.new(
+      code,
+      plan.nodes[source][:source_path] || "",
+      "#{source} field #{field.id} is rendered as JSON",
       target: format,
-      source: source,
-      field: %{external_type_id: source, field_id: field.id},
-      occurrences: BubbleEx.Db.Encoder.Plan.occurrences(plan, source, field.id),
-      cardinality: field.type.cardinality,
-      reason: reason,
-      fallback: :json,
-      mode: :preserve
-    }
+      subject: %{external_type: source, field: field.id},
+      details: %{
+        external_type: field.type.target,
+        embedded_path: Diagnostic.pointer([source, "fields", field.id]),
+        occurrences: BubbleEx.Db.Encoder.Plan.occurrences(plan, source, field.id),
+        cardinality: field.type.cardinality,
+        fallback: :json,
+        mode: :preserve
+      }
+    )
   end
 end

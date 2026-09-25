@@ -7,7 +7,8 @@ defmodule BubbleEx.Expression.Parser do
   # outside the vocabulary becomes a `Raw` node plus a diagnostic.
 
   alias BubbleEx.AppTree.Expr.Explanation
-  alias BubbleEx.Expression.{Ast, Constraints, Diagnostic, Keys, Schema, Vocabulary}
+  alias BubbleEx.Diagnostic
+  alias BubbleEx.Expression.{Ast, Constraints, Keys, Schema, Vocabulary}
 
   alias BubbleEx.Expression.Ast.{
     AllOptions,
@@ -203,13 +204,13 @@ defmodule BubbleEx.Expression.Parser do
       _ ->
         {next, base} = if is_map(msg), do: pop_next(msg), else: {nil, msg}
 
-        code =
+        diag =
           if is_map(msg) and Keys.collisions(msg, @node_keys) != [],
-            do: :alias_collision,
-            else: :malformed_node
+            do: Diagnostic.new(:alias_collision, path, "not an operator message"),
+            else: Diagnostic.new(:malformed_node, path, "not an operator message")
 
-        node = %Raw{raw: base, reason: code, subject: subject, meta: %{link: link}}
-        continue(next, path, node, [Diagnostic.new(code, path, "not an operator message")], ctx)
+        node = %Raw{raw: base, reason: diag.code, subject: subject, meta: %{link: link}}
+        continue(next, path, node, [diag], ctx)
     end
   end
 
@@ -306,7 +307,8 @@ defmodule BubbleEx.Expression.Parser do
            Diagnostic.new(
              :unresolved_field,
              path,
-             "#{subject.type} has no field #{inspect(name)}"
+             "#{subject.type} has no field #{inspect(name)}",
+             details: %{subject_type: subject.type, field: name}
            )
          ]}
 
@@ -316,7 +318,8 @@ defmodule BubbleEx.Expression.Parser do
            Diagnostic.new(
              :unresolved_property,
              path,
-             "#{inspect(name)} on a subject of unknown type"
+             "#{inspect(name)} on a subject of unknown type",
+             details: %{property: name}
            )
          ]}
     end

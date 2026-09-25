@@ -10,10 +10,12 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
     "date_unix" => :date_unix
   }
 
+  alias BubbleEx.Diagnostic
+
   @spec resolve([BubbleEx.Db.Reader.table()], map()) ::
-          {[BubbleEx.Db.Reader.table()], [map()], [map()]}
+          {[BubbleEx.Db.Reader.table()], [map()], [Diagnostic.t()]}
   def resolve(tables, attrs) do
-    state = %{attrs: attrs, nodes: %{}, failures: %{}, warnings: %{}}
+    state = %{attrs: attrs, nodes: %{}, failures: %{}, diagnostics: []}
 
     {tables, state} =
       Enum.map_reduce(tables, state, fn table, state ->
@@ -23,13 +25,7 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
 
     nodes = state.nodes |> Map.values() |> Enum.sort_by(& &1.id)
 
-    warnings =
-      state.warnings
-      |> Map.values()
-      |> Enum.map(&sort_occurrences/1)
-      |> Enum.sort_by(&warning_key/1)
-
-    {tables, nodes, warnings}
+    {tables, nodes, state.diagnostics |> Enum.reverse() |> Diagnostic.normalize()}
   end
 
   defp resolve_column(%{type: %{type: :api} = old} = column, state) do
@@ -86,7 +82,16 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
   defp ensure_node(id, occurrence, state) do
     {connector_id, call_id} = identity_parts(id)
     provenance = %{connector_id: connector_id, call_id: call_id}
-    placeholder = %{id: id, caption: nil, provenance: provenance, resolution: :opaque, fields: []}
+
+    placeholder = %{
+      id: id,
+      caption: nil,
+      provenance: provenance,
+      resolution: :opaque,
+      fields: [],
+      source_path: nil
+    }
+
     state = put_in(state.nodes[id], placeholder)
 
     if conflicting_definition?(state.attrs, id) do
@@ -102,8 +107,15 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
 
   defp resolve_registry_node(state, id, connector_id, call_id, occurrence) do
     case registry_for(state.attrs, connector_id, call_id) do
-      {:error, category} -> fail_node(state, id, category, occurrence)
-      {:ok, call, registry} -> resolve_registry_definition(state, id, call, registry, occurrence)
+      {:error, category} ->
+        fail_node(state, id, category, occurrence)
+
+      {:ok, call, registry} ->
+        source_path = Diagnostic.pointer(call_path(state.attrs, id) ++ ["types"])
+
+        state
+        |> put_in([:nodes, id, :source_path], source_path)
+        |> resolve_registry_definition(id, call, registry, occurrence)
     end
   end
 
@@ -281,30 +293,91 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
     |> warn(category, external_target(id), occurrence)
   end
 
-  defp warn(state, category, target, occurrence) do
-    key = {category, target}
+  # One diagnostic per occurrence. Its subject and path are the field whose
+  # type descriptor raised it: a data-type or option-set field for a root
+  # occurrence, or an external type's field (`%{external_type: id, field:
+  # field_id}`) for a nested one. Nested definitions live inside the call's
+  # JSON-encoded `types` string, so `path` points at that string and
+  # `details.embedded_path` is a JSON pointer into its decoded value. A nested
+  # diagnostic also keeps the data-type field it was reached from
+  # (`details.root`) and every hop from there (`details.via`, ending at the
+  # subject). Definition-level codes are about the external type itself.
+  @definition_codes [:empty_definition, :call_metadata_inconsistent]
 
-    warning =
-      Map.get(state.warnings, key, %{
-        kind: :external_type_resolution,
-        category: category,
-        target: target,
-        occurrences: []
-      })
+  defp warn(state, code, target, occurrence) do
+    {subject, path, located} = locate(code, target, occurrence, state.attrs)
+    details = target_details(target) |> Map.merge(located)
 
-    warning = %{warning | occurrences: Enum.uniq([occurrence | warning.occurrences])}
-    put_in(state.warnings[key], warning)
+    diagnostic =
+      Diagnostic.new(code, path, message(code, target), subject: subject, details: details)
+
+    %{state | diagnostics: [diagnostic | state.diagnostics]}
   end
 
-  defp sort_occurrences(warning),
-    do: %{
-      warning
-      | occurrences:
-          Enum.sort_by(
-            warning.occurrences,
-            &{&1.root.table_group, &1.root.table_id, &1.root.field_id, &1.path}
-          )
-    }
+  defp locate(code, %{type: :external_type, id: id}, _occurrence, attrs)
+       when code in @definition_codes do
+    member = if code == :call_metadata_inconsistent, do: "ret_value", else: "types"
+    details = if member == "types", do: %{embedded_path: Diagnostic.pointer([id])}, else: %{}
+    {%{external_type: id}, call_path(attrs, id) ++ [member], details}
+  end
 
-  defp warning_key(warning), do: {warning.category, inspect(warning.target)}
+  defp locate(_code, _target, %{root: root, path: []}, attrs),
+    do: {root_subject(root), root_path(attrs, root), %{}}
+
+  defp locate(_code, _target, %{root: root, path: path}, attrs) do
+    %{external_type_id: type_id, field_id: field_id} = List.last(path)
+
+    via = Enum.map(path, &%{external_type: &1.external_type_id, field: &1.field_id})
+
+    {%{external_type: type_id, field: field_id}, call_path(attrs, type_id) ++ ["types"],
+     %{
+       root: root_subject(root),
+       via: via,
+       embedded_path: Diagnostic.pointer([type_id, "fields", field_id])
+     }}
+  end
+
+  defp root_subject(%{table_group: :option, table_id: id, field_id: field}),
+    do: %{option_set: id, field: field}
+
+  defp root_subject(%{table_id: id, field_id: field}), do: %{type: id, field: field}
+
+  defp root_path(attrs, %{table_group: group, table_id: id, field_id: field}) do
+    BubbleEx.Db.Reader.field_pointer(attrs, group, id, field) ||
+      Diagnostic.pointer([if(group == :option, do: "option_sets", else: "user_types"), id])
+  end
+
+  defp call_path(attrs, id) do
+    {connector_id, call_id} = identity_parts(id)
+    base = ["settings", "client_safe", "apiconnector2", connector_id]
+
+    case get_in(attrs, ["settings", "client_safe", "apiconnector2", connector_id]) do
+      %{^call_id => _} -> base ++ [call_id]
+      %{"calls" => %{^call_id => _}} -> base ++ ["calls", call_id]
+      _ -> base ++ [call_id]
+    end
+  end
+
+  defp target_details(%{type: :external_type, id: id}), do: %{external_type: id}
+  defp target_details(%{type: :raw_descriptor, raw: raw}), do: %{descriptor: raw}
+
+  @messages %{
+    invalid_descriptor: "invalid API Connector type descriptor",
+    field_type_unsupported: "unsupported external field type",
+    field_type_malformed: "missing or malformed external field type",
+    conflicting_duplicate_definition: "API Connector type has conflicting definitions",
+    connector_missing: "API Connector is missing",
+    call_missing: "API Connector call is missing",
+    registry_unavailable: "API Connector call has no types registry",
+    registry_malformed: "API Connector call types registry is malformed",
+    exact_type_definition_missing: "API Connector type definition is missing",
+    empty_definition: "API Connector type has no fields",
+    incomplete_field_metadata: "external type field lacks a caption or path",
+    call_metadata_inconsistent: "API Connector call returns a different type"
+  }
+
+  defp message(code, %{type: :external_type, id: id}), do: "#{@messages[code]}: #{id}"
+
+  defp message(code, %{type: :raw_descriptor, raw: raw}),
+    do: "#{@messages[code]}: #{inspect(raw)}"
 end

@@ -128,7 +128,7 @@ defmodule BubbleEx.Db.DbmlTest do
       tables: [%{id: "t", name: "T", group: :custom, columns: [column]}],
       relationships: [],
       external_types: [],
-      warnings: []
+      diagnostics: []
     }
 
     assert {:ok, result} = BubbleEx.Db.Encoder.render(:dbml, db)

@@ -106,7 +106,7 @@ defmodule BubbleEx.Apps.EnricherTest do
       assert Enricher.maybe_add_db_diagram(%{a: 1}, @app_data, []) == %{a: 1}
     end
 
-    test "keeps selected-format and DBML warnings artifact-scoped" do
+    test "keeps selected-format and DBML diagnostics artifact-scoped" do
       app = %{
         "_id" => "warnings",
         "user_types" => %{
@@ -126,30 +126,30 @@ defmodule BubbleEx.Apps.EnricherTest do
 
       assert is_binary(attrs.schema)
       assert is_binary(attrs.dbml)
-      assert Enum.any?(attrs.schema_warnings, &(&1.category == :invalid_descriptor))
-      assert Enum.any?(attrs.dbml_warnings, &(&1.category == :invalid_descriptor))
-      refute attrs.schema_warnings === attrs.dbml_warnings and attrs.schema !== attrs.dbml
+      assert Enum.any?(attrs.schema_diagnostics, &(&1.code == :invalid_descriptor))
+      assert Enum.any?(attrs.dbml_diagnostics, &(&1.code == :invalid_descriptor))
+      refute attrs.schema_diagnostics === attrs.dbml_diagnostics and attrs.schema !== attrs.dbml
     end
 
-    test "omits warning keys for clean artifacts" do
+    test "omits diagnostic keys for clean artifacts" do
       attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres)
-      refute Map.has_key?(attrs, :schema_warnings)
-      refute Map.has_key?(attrs, :dbml_warnings)
+      refute Map.has_key?(attrs, :schema_diagnostics)
+      refute Map.has_key?(attrs, :dbml_diagnostics)
     end
 
-    test "selected-format render errors leave schema and warnings absent" do
+    test "selected-format render errors leave schema and diagnostics absent" do
       attrs =
         Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres, external_types: :invalid)
 
       refute Map.has_key?(attrs, :schema)
-      refute Map.has_key?(attrs, :schema_warnings)
+      refute Map.has_key?(attrs, :schema_diagnostics)
     end
 
-    test "legacy DBML render errors remain human-readable without warning keys" do
+    test "legacy DBML render errors remain human-readable without diagnostic keys" do
       attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, dbml: true, external_types: :invalid)
       assert attrs.dbml =~ "Error generating DBML"
       assert attrs.dbdiagram == attrs.dbml
-      refute Map.has_key?(attrs, :dbml_warnings)
+      refute Map.has_key?(attrs, :dbml_diagnostics)
     end
   end
 end

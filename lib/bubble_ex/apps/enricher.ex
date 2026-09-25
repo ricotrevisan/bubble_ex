@@ -209,7 +209,7 @@ defmodule BubbleEx.Apps.Enricher do
         attrs
         |> Map.put(:dbdiagram, result.content)
         |> Map.put(:dbml, result.content)
-        |> maybe_put_warnings(:dbml_warnings, result.warnings)
+        |> maybe_put_diagnostics(:dbml_diagnostics, result.diagnostics)
 
       {:error, error} ->
         message = "Error generating DBML: #{inspect(error)}"
@@ -229,7 +229,7 @@ defmodule BubbleEx.Apps.Enricher do
       {:ok, result} ->
         attrs
         |> Map.put(:schema, result.content)
-        |> maybe_put_warnings(:schema_warnings, result.warnings)
+        |> maybe_put_diagnostics(:schema_diagnostics, result.diagnostics)
 
       {:error, error} ->
         Logger.warning(
@@ -253,8 +253,8 @@ defmodule BubbleEx.Apps.Enricher do
     |> Keyword.put(:external_type_capabilities, scoped_capabilities)
   end
 
-  defp maybe_put_warnings(attrs, _key, []), do: attrs
-  defp maybe_put_warnings(attrs, key, warnings), do: Map.put(attrs, key, warnings)
+  defp maybe_put_diagnostics(attrs, _key, []), do: attrs
+  defp maybe_put_diagnostics(attrs, key, diagnostics), do: Map.put(attrs, key, diagnostics)
 
   defp build_obj_url(bubble_id, obj, limit) when is_integer(limit) do
     "http://#{bubble_id}.bubbleapps.io/api/1.1/obj/#{obj}?limit=#{limit}"

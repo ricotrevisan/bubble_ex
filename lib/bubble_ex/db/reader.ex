@@ -1,6 +1,9 @@
 defmodule BubbleEx.Db.Reader do
   @moduledoc """
-  Module that reads a Bubble's app's payload and converts to an universal db format
+  Module that reads a Bubble's app's payload and converts to an universal db format.
+
+  `diagnostics` are `BubbleEx.Diagnostic` records at stage `:read`, one per
+  place an API Connector type could not be read faithfully.
   """
 
   @type table_group() :: :custom | :option
@@ -46,7 +49,8 @@ defmodule BubbleEx.Db.Reader do
           type: column_type(),
           primary_key: boolean(),
           deleted: boolean(),
-          default: term()
+          default: term(),
+          source_path: String.t() | nil
         }
 
   @type relationship_direction() :: :one_to_one | :one_to_many | :many_to_many | :many_to_one
@@ -64,7 +68,7 @@ defmodule BubbleEx.Db.Reader do
           tables: [table()],
           relationships: [relationship()],
           external_types: [map()],
-          warnings: [map()]
+          diagnostics: [BubbleEx.Diagnostic.t()]
         }
 
   # @table_types [:custom, :option, :api]
@@ -81,13 +85,13 @@ defmodule BubbleEx.Db.Reader do
     normalized_attrs = normalize_export_shape(attrs)
     bubble_id = normalized_attrs["_id"]
 
-    user_types = generate_tables(normalized_attrs, :custom)
-    option_sets = generate_tables(normalized_attrs, :option)
+    user_types = generate_tables(normalized_attrs, :custom, raw_attrs)
+    option_sets = generate_tables(normalized_attrs, :option, raw_attrs)
     tables = Enum.sort_by(user_types ++ option_sets, &{&1.name, &1.id})
     columns = flatten_columns(tables)
     relationships = generate_relationships(columns)
 
-    {tables, external_types, warnings} =
+    {tables, external_types, diagnostics} =
       BubbleEx.Db.Reader.ExternalTypes.resolve(tables, raw_attrs)
 
     db_map = %{
@@ -98,13 +102,13 @@ defmodule BubbleEx.Db.Reader do
       relationships:
         Enum.sort_by(relationships, fn {from, _, _} -> {from.table_name, from.name, from.id} end),
       external_types: external_types,
-      warnings: warnings
+      diagnostics: diagnostics
     }
 
     {:ok, db_map}
   end
 
-  defp generate_tables(attrs, :custom) do
+  defp generate_tables(attrs, :custom, source) do
     case Map.get(attrs, "user_types") do
       nil ->
         []
@@ -112,11 +116,11 @@ defmodule BubbleEx.Db.Reader do
       user_types ->
         user_types
         |> ensure_primary_key(:custom)
-        |> Enum.map(&generate_table(&1, :custom))
+        |> Enum.map(&generate_table(&1, :custom, source))
     end
   end
 
-  defp generate_tables(attrs, :option) do
+  defp generate_tables(attrs, :option, source) do
     case Map.get(attrs, "option_sets") do
       nil ->
         []
@@ -124,11 +128,11 @@ defmodule BubbleEx.Db.Reader do
       option_sets ->
         option_sets
         |> ensure_primary_key(:option)
-        |> Enum.map(&generate_table(&1, :option))
+        |> Enum.map(&generate_table(&1, :option, source))
     end
   end
 
-  defp generate_table(table_data, table_group) do
+  defp generate_table(table_data, table_group, source) do
     {table_id, data} = table_data
     table_name = data["%d"]
 
@@ -141,7 +145,7 @@ defmodule BubbleEx.Db.Reader do
     columns =
       data
       |> which_column(table_group)
-      |> Enum.map(&generate_column(&1, table))
+      |> Enum.map(&generate_column(&1, table, source))
       |> Enum.reject(& &1.deleted)
       |> Enum.sort_by(&{&1.name, &1.id})
 
@@ -157,7 +161,7 @@ defmodule BubbleEx.Db.Reader do
     end
   end
 
-  defp generate_column(column_data, table) do
+  defp generate_column(column_data, table, source) do
     {column_id, data} = column_data
     column_name = data["%d"]
     type = which_type(data["%v"])
@@ -171,9 +175,41 @@ defmodule BubbleEx.Db.Reader do
       type: type,
       primary_key: primary_key?(table.group, column_id),
       deleted: Map.get(data, "%del", false),
-      default: Map.get(data, "default_val")
+      default: Map.get(data, "default_val"),
+      source_path: field_pointer(source, table.group, table.id, column_id)
     }
   end
+
+  @doc """
+  JSON pointer to a field's type descriptor in the supplied app JSON (either
+  key form), or `nil` for a field the source does not spell out (the injected
+  `_id` / `display` keys, option-set attributes derived from an export's values).
+  """
+  @spec field_pointer(map(), table_group(), String.t(), String.t()) :: String.t() | nil
+  def field_pointer(source, :custom, table_id, field_id) do
+    case get_in(source, ["user_types", table_id]) do
+      %{"%f3" => %{^field_id => _}} ->
+        pointer(["user_types", table_id, "%f3", field_id, "%v"])
+
+      %{"fields" => %{^field_id => _}} ->
+        pointer(["user_types", table_id, "fields", field_id, "value"])
+
+      _ ->
+        nil
+    end
+  end
+
+  def field_pointer(source, :option, table_id, field_id) do
+    case get_in(source, ["option_sets", table_id]) do
+      %{"attributes" => %{^field_id => _}} ->
+        pointer(["option_sets", table_id, "attributes", field_id, "%v"])
+
+      _ ->
+        nil
+    end
+  end
+
+  defp pointer(path), do: BubbleEx.Diagnostic.pointer(path)
 
   defp primary_key?(:custom, @custom_pk_id), do: true
   defp primary_key?(:option, @option_pk_id), do: true

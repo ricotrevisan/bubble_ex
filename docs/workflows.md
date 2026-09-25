@@ -56,9 +56,9 @@ Typed action-bearing records outside known collections are retained under
 they are not counted as active workflows. Unknown source formats without
 recognizable workflow structure cannot establish an app-wide absence of workflows.
 
-## Version 2 output contract
+## Version 3 output contract
 
-- `schema_version: 2`, `explanation_vocabulary_version: 1`, `scope: "supplied_data_only"`, `execution: "never"`, and
+- `schema_version: 3`, `explanation_vocabulary_version: 1`, `scope: "supplied_data_only"`, `execution: "never"`, and
   `source_sha256` identify the format and source. The hash covers canonical JSON:
   recursively sorted object keys, original array order, and preserved nulls.
   It is not the hash of the input file's whitespace.
@@ -76,12 +76,22 @@ recognizable workflow structure cannot establish an app-wide absence of workflow
 - `coverage` reports workflow/action entries, malformed workflow entries,
   candidate entries/actions, unavailable/malformed scopes, and diagnostic count.
   These are accounting counts, not a fidelity or correctness score.
-- `diagnostics` includes source pointers and stable codes such as
-  `unsupported_type`, `uninterpreted_field`, `properties_not_evaluated`,
-  `unresolved_condition`, `unresolved_reference`, `unresolved_order`,
-  `alias_collision`, `unclassified_definition`, `malformed_node`,
-  `malformed_actions`, `malformed_properties`, `malformed_owner`,
-  `malformed_collection`, `actions_unavailable`, and `unavailable_data`.
+- `diagnostics` are `BubbleEx.Diagnostic` records, serialized as objects with
+  `code`, `severity`, `outcome`, `stage` (`"parse"`), `subject`, `path`,
+  `details` and `message`. `subject.workflow` is set only for entries of a
+  workflow collection (the collection key, or the `id` member in an array); an
+  unclassified candidate has no workflow subject and carries its location key as
+  `details.source_key`. The top-level list and every workflow, event and action
+  list are deduplicated on stage, code, subject and path, and ordered by
+  severity, subject, code and path; scope and condition lists hold at most one
+  record. Severity and outcome come from the code registry
+  (`BubbleEx.Diagnostic.Codes`). Workflow codes are `unsupported_type`,
+  `workflow_uninterpreted_field`, `properties_not_evaluated`,
+  `unresolved_condition`, `unresolved_reference`, `workflow_unresolved_order`,
+  `workflow_alias_collision`, `unclassified_definition`,
+  `workflow_malformed_node`, `malformed_actions`, `malformed_properties`,
+  `malformed_owner`, `malformed_collection`, `actions_unavailable`, and
+  `unavailable_data`.
 
 Source `path` fields are RFC 6901 JSON pointers into the supplied payload.
 Unavailable-scope paths identify expected locations that may be absent. Decode
@@ -167,6 +177,22 @@ legacy `render_condition/1` and `render_text/1` remain unchanged for existing
 AppTree consumers; workflow explanations do not use operator humanization as
 proof. The [verification record](research/workflow-explanation-validation.md)
 distinguishes editor comparisons from payload-only evidence.
+
+### Migration from version 2
+
+Version 3 changes only the diagnostic records. Each is now a
+`BubbleEx.Diagnostic`: `code` is an atom in Elixir (a string in JSON), and
+records gain `severity`, `outcome`, `stage`, `subject` and `details`. Lists are
+deduplicated and ordered as described above instead of following source order,
+so `coverage.diagnostics` counts records after deduplication. Four codes shared
+with the expression parser are renamed so each code has one severity and
+outcome: `unresolved_order`, `alias_collision`, `malformed_node` and
+`uninterpreted_field` become `workflow_unresolved_order` (warning, degraded),
+`workflow_alias_collision` (warning, preserved), `workflow_malformed_node`
+(warning, preserved) and `workflow_uninterpreted_field` (info, preserved). A
+`workflow_alias_collision` points at the colliding member (for example
+`/…/type`) rather than at the node, so collisions on different members stay
+distinct.
 
 ### Migration from version 1
 

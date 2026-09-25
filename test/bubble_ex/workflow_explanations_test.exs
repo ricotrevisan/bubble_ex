@@ -243,7 +243,7 @@ defmodule BubbleEx.WorkflowExplanationsTest do
 
   test "versioned reports visibly separate event/action conditions and count supplied explanations" do
     assert {:ok, a} = Workflows.render(fixture())
-    assert a.inventory.schema_version == 2
+    assert a.inventory.schema_version == 3
     assert a.inventory.explanation_coverage.conditions == %{"fully_supported" => 3}
     assert a.inventory.explanation_coverage.data_actions == %{"fully_supported" => 3}
     assert a.inventory.coverage.workflow_entries == 1
@@ -373,6 +373,8 @@ defmodule BubbleEx.WorkflowExplanationsTest do
 
   defp compact(list) when is_list(list), do: Enum.map(list, &compact/1)
   defp compact(value), do: value
+
+  defp assert_source(_, %BubbleEx.Diagnostic{}), do: :ok
 
   defp assert_source(payload, node) when is_map(node) do
     if Map.has_key?(node, :path) and Map.has_key?(node, :raw) do

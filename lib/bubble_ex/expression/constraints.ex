@@ -6,7 +6,8 @@ defmodule BubbleEx.Expression.Constraints do
   # (and the searched type) are sort/ignore-empty options, kept verbatim.
 
   alias BubbleEx.AppTree.Expr.Explanation
-  alias BubbleEx.Expression.{Diagnostic, Keys, Parser, Vocabulary}
+  alias BubbleEx.Diagnostic
+  alias BubbleEx.Expression.{Keys, Parser, Vocabulary}
   alias BubbleEx.Expression.Ast.{Constraint, Filter, Search}
 
   @spec search(map(), list(), Parser.ctx()) :: Parser.result()

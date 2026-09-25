@@ -236,14 +236,18 @@ defmodule BubbleEx.Db.ReaderTest do
       event_type = Enum.find(db.external_types, &(&1.id == event))
       assert Enum.find(event_type.fields, &(&1.id == "children")).type.target == event
 
-      missing_warning = Enum.find(db.warnings, &(&1.category == :exact_type_definition_missing))
+      # One diagnostic per referencing field, each pointing at its descriptor.
+      missing_diagnostics =
+        Enum.filter(db.diagnostics, &(&1.code == :exact_type_definition_missing))
 
-      assert Enum.map(missing_warning.occurrences, & &1.root.field_id) == [
-               "missing_a",
-               "missing_b"
+      assert Enum.map(missing_diagnostics, &{&1.subject, &1.path}) == [
+               {%{type: "order", field: "missing_a"}, "/user_types/order/%f3/missing_a/%v"},
+               {%{type: "order", field: "missing_b"}, "/user_types/order/%f3/missing_b/%v"}
              ]
 
-      assert Enum.any?(db.warnings, &(&1.category == :invalid_descriptor))
+      assert Enum.all?(missing_diagnostics, &(&1.details == %{external_type: missing}))
+      assert Enum.all?(db.diagnostics, &(&1.stage == :read))
+      assert Enum.any?(db.diagnostics, &(&1.code == :invalid_descriptor))
 
       reordered =
         put_in(
@@ -291,8 +295,13 @@ defmodule BubbleEx.Db.ReaderTest do
       assert {:ok, db} = Reader.parse(attrs)
       assert Enum.find(db.external_types, &(&1.id == conflict)).resolution == :conflicted
       assert Enum.find(db.external_types, &(&1.id == missing_connector)).resolution == :opaque
-      assert Enum.any?(db.warnings, &(&1.category == :conflicting_duplicate_definition))
-      assert Enum.any?(db.warnings, &(&1.category == :connector_missing))
+
+      assert Enum.map(db.diagnostics, &{&1.code, &1.subject, &1.path}) == [
+               {:conflicting_duplicate_definition, %{type: "item", field: "conflict"},
+                "/user_types/item/%f3/conflict/%v"},
+               {:connector_missing, %{type: "item", field: "ghost"},
+                "/user_types/item/%f3/ghost/%v"}
+             ]
     end
   end
 
