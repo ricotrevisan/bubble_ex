@@ -317,7 +317,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -357,6 +357,19 @@
       "migration_types": [],
       "module": "Project",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -422,6 +435,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "project"
@@ -1139,7 +1153,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -1216,6 +1230,19 @@
           "checks": [
             {
               "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
               "source": {
                 "default": true
               },
@@ -1280,6 +1307,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "task"
@@ -1297,6 +1325,7 @@
           "kind": "belongs_to",
           "name": "owner",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "owner_user",
             "type": "task"
@@ -1314,6 +1343,7 @@
           "kind": "belongs_to",
           "name": "project",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "project_custom_project",
             "type": "task"
@@ -1507,7 +1537,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -1548,6 +1578,19 @@
       "migration_types": [],
       "module": "User",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -1613,6 +1656,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "user"

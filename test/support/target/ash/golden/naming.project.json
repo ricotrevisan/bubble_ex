@@ -14,6 +14,26 @@
       "subject": {}
     },
     {
+      "code": "ash_policy_aggregates_unguarded",
+      "details": {
+        "fields": [
+          "created_date",
+          "modified_date",
+          "creator_id",
+          "slug",
+          "email"
+        ]
+      },
+      "message": "user: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, email reads values some users may not view",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "user"
+      }
+    },
+    {
       "code": "ash_privacy_rules_unavailable",
       "details": {},
       "message": "the source does not include user's privacy rules; every read is denied",
@@ -478,7 +498,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -525,6 +545,19 @@
       "migration_types": [],
       "module": "ThingJoin",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -590,6 +623,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "00__thing___join"
@@ -783,7 +817,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -824,6 +858,19 @@
       "migration_types": [],
       "module": "Launch",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -889,6 +936,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "launch"
@@ -1032,7 +1080,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -1071,6 +1119,19 @@
       "migration_types": [],
       "module": "Thing",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -1136,6 +1197,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "thing"
@@ -1279,7 +1341,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -1318,6 +1380,19 @@
       "migration_types": [],
       "module": "Thing2",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -1383,6 +1458,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "thing0"
@@ -1551,7 +1627,7 @@
       "extra_actions": [
         {
           "accept": [],
-          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
           "keyed?": true,
           "name": "read",
           "primary?": true,
@@ -1589,6 +1665,19 @@
       "migration_types": [],
       "module": "User",
       "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
         {
           "action": "read",
           "changing": null,
@@ -1647,6 +1736,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "user"
@@ -1666,6 +1756,7 @@
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "user"

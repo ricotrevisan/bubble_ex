@@ -35,7 +35,11 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
   defp resource(project, type), do: Enum.find(project.resources, &(&1.source.type == type))
 
   defp policy(resource, action),
-    do: Enum.find(resource.policies, &(&1.action == action and is_nil(&1.changing)))
+    do:
+      Enum.find(
+        resource.policies,
+        &(&1.action == action and is_nil(&1.changing) and &1.permission != :keyed)
+      )
 
   defp tests(checks), do: Enum.map(checks, &{&1.kind, &1.test})
 
@@ -205,6 +209,22 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
       {:ok, source} = Source.render(project)
       assert source =~ "filter expr(parent(privacy_rule_admin or privacy_rule_owner))"
       assert source =~ "private_fields :hide"
+      assert source =~ "authorize_if MyApp.Privacy.KeyedRead"
+
+      assert %{checks: [%PolicyCheck{kind: :authorize_if, test: :keyed}]} =
+               Enum.find(resource(project, "doc").policies, &(&1.permission == :keyed))
+
+      assert source =~ "use Ash.Policy.SimpleCheck"
+
+      # Ash does not apply field policies to relationship-path sorts.
+      assert Enum.all?(project.resources, fn r ->
+               Enum.all?(r.relationships ++ r.privacy_relationships, &(&1.sortable? == false))
+             end)
+    end
+
+    test "aggregates over hidden fields are diagnosed", %{project: project} do
+      assert :ash_policy_aggregates_unguarded in codes(project, %{type: "doc"})
+      refute :ash_policy_aggregates_unguarded in codes(project, %{type: "team"})
     end
 
     test "calculations and actor loads read through the twins", %{project: project} do

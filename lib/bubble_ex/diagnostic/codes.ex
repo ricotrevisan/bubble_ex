@@ -201,6 +201,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "Bubble's \"view attached files\" permission, not granted to everyone on a type with file fields; Ash cannot enforce it (the file store must)"},
     {:ash_policy_data_api_unmapped, :info, :degraded, :target,
      "a data type exposed through Bubble's Data API; no API actions or policies are generated (out of scope unless requested)"},
+    {:ash_policy_aggregates_unguarded, :warning, :degraded, :target,
+     "a data type with fields some users may not view; Ash field policies do not apply to aggregates (count, min, max, sum, ...) over them, so generated code must not aggregate them for those users"},
     {:ash_policy_bypass_required, :info, :degraded, :target,
      "a workflow that runs ignoring privacy rules; lowered, its reads need an explicit authorization bypass (`authorize?: false`)"}
   ]

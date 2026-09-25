@@ -1,5 +1,112 @@
 {
-  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role; owns d4; team t1 whose lead is u2), u2 (owner of d1, creator of n2), u3 (admin; dangling team), u4 (every field empty). reads: per type and action, the records each persona reads and the fields it may view ('all': every attribute but the primary key); 'get' reads each record by primary key (Ash.get), 'search' runs :search, 'list' runs the primary :read without a key. filters (filter_input on :search), sorts (sort_input on :search, then id) and loads (Ash.load of a relationship) probe hidden fields and gated relationships. auto_bind / creates: whether the update or create is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies. Written against these rows only: sorts after the auto_bind updates are not asserted.",
+  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role; owns d4; team t1 whose lead is u2), u2 (owner of d1, creator of n2), u3 (admin; dangling team), u4 (every field empty). reads: per type and action, the records each persona reads and the fields it may view ('all': every attribute but the primary key); 'get' reads each record by primary key (Ash.get), 'search' runs :search, 'list' runs the primary :read without a key. filters (filter_input on :search), sorts (sort_input on :search, then id) and loads (Ash.load of a relationship) probe hidden fields and gated relationships; aggregates (count, exists, max through :read or :search, 'forbidden' when the policy refuses) probe the keyed :read. auto_bind / creates: whether the update or create is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies. Written against these rows only: sorts after the auto_bind updates are not asserted.",
+  "aggregates": [
+    {
+      "action": "read",
+      "expected": "forbidden",
+      "kind": "count",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "counting through the keyed :read would enumerate"
+    },
+    {
+      "action": "read",
+      "expected": "forbidden",
+      "kind": "count",
+      "persona": "u3",
+      "type": "doc",
+      "why": "even admins count through :search"
+    },
+    {
+      "action": "read",
+      "expected": "forbidden",
+      "filter": {
+        "title": {
+          "eq": "T1"
+        }
+      },
+      "kind": "exists",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "a guessing oracle for a record logged-out users cannot find"
+    },
+    {
+      "action": "read",
+      "expected": "forbidden",
+      "field": "secret",
+      "kind": "max",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "an unkeyed aggregate over a hidden field"
+    },
+    {
+      "action": "search",
+      "expected": false,
+      "filter": {
+        "title": {
+          "eq": "T1"
+        }
+      },
+      "kind": "exists",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "d1 is not found in logged-out searches"
+    },
+    {
+      "action": "search",
+      "expected": 2,
+      "filter": {
+        "id": {
+          "in": [
+            "d1",
+            "d2",
+            "d3",
+            "d4"
+          ]
+        }
+      },
+      "kind": "count",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "d2 and d4 are public"
+    },
+    {
+      "action": "search",
+      "expected": 4,
+      "filter": {
+        "id": {
+          "in": [
+            "d1",
+            "d2",
+            "d3",
+            "d4"
+          ]
+        }
+      },
+      "kind": "count",
+      "persona": "u3",
+      "type": "doc",
+      "why": "admins find all"
+    },
+    {
+      "action": "read",
+      "expected": 4,
+      "filter": {
+        "id": {
+          "in": [
+            "d1",
+            "d2",
+            "d3",
+            "d4"
+          ]
+        }
+      },
+      "kind": "count",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "a keyed count only counts records named by ID, all of which logged-out users may view directly"
+    }
+  ],
   "auto_bind": [
     {
       "actor": "u2",
@@ -399,19 +506,29 @@
       "action": "get",
       "expected": {
         "logged_out": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u1": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u2": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u3": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u4": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         }
       },
       "type": "team",
@@ -470,19 +587,29 @@
       "action": "search",
       "expected": {
         "logged_out": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u1": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u2": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u3": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         },
         "u4": {
-          "t1": "all"
+          "t1": "all",
+          "t2": "all",
+          "t3": "all"
         }
       },
       "type": "team",
@@ -751,29 +878,43 @@
         "id": "t1",
         "lead_id": "u2",
         "name": "Red"
+      },
+      {
+        "id": "t2",
+        "lead_id": "u1",
+        "name": "Blue"
+      },
+      {
+        "id": "t3",
+        "lead_id": "u3",
+        "name": "Green"
       }
     ],
     "user": [
       {
         "admin": false,
+        "email": "ann@x.invalid",
         "id": "u1",
         "name": "Ann",
         "team_id": "t1"
       },
       {
         "admin": false,
+        "email": "bo@x.invalid",
         "id": "u2",
         "name": "Bo",
         "team_id": null
       },
       {
         "admin": true,
+        "email": "cy@x.invalid",
         "id": "u3",
         "name": "Cy",
         "team_id": "gone-team"
       },
       {
         "admin": null,
+        "email": "",
         "id": "u4",
         "name": "",
         "team_id": null
@@ -782,26 +923,49 @@
   },
   "sorts": [
     {
-      "expected": [
-        "d2",
-        "d4"
-      ],
+      "expected": "rejected",
       "persona": "logged_out",
       "sort": "owner.name,id",
       "type": "doc",
-      "why": "sorting by a gated relationship sees no owner (both null), so the order falls to id; a leak would put d4 (Ann) first"
+      "why": "relationships are not sortable (Ash applies field policies to own-field sorts only)"
     },
     {
-      "expected": [
-        "d1",
-        "d2",
-        "d3",
-        "d4"
-      ],
+      "expected": "rejected",
       "persona": "u3",
       "sort": "owner.name,id",
       "type": "doc",
-      "why": "admins may view owners, but a gated relationship reads as empty in a sort join (Ash 3.31.3; known under-grant), so the order falls to id"
+      "why": "relationships are not sortable (Ash applies field policies to own-field sorts only)"
+    },
+    {
+      "expected": "rejected",
+      "persona": "u4",
+      "sort": "lead.email",
+      "type": "team",
+      "why": "sorting through a relationship would order by the lead's email, which only the lead may view: relationships are not sortable"
+    },
+    {
+      "expected": "rejected",
+      "persona": "u4",
+      "sort": "-lead.email",
+      "type": "team",
+      "why": "same, descending"
+    },
+    {
+      "expected": "rejected",
+      "persona": "u4",
+      "sort": "lead.admin",
+      "type": "team",
+      "why": "would reveal which lead is an admin"
+    },
+    {
+      "expected": [
+        "d4",
+        "d2"
+      ],
+      "persona": "u1",
+      "sort": "secret,id",
+      "type": "doc",
+      "why": "u1 finds d2 and d4 and views only d4's secret (owner): d2's secret reads as null (nulls last), so d4 first; a leak of S2 would put d2 first"
     }
   ]
 }

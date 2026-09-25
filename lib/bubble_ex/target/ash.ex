@@ -52,7 +52,7 @@ defmodule BubbleEx.Target.Ash do
   | Bubble | Ash |
   |--------|-----|
   | a rule's condition | a private boolean calculation `privacy_rule_<name>` (`expr(...)` compiled fail-safe by `BubbleEx.Target.Ash.Expressions`); every check tests one |
-  | direct view (a record reached by ID or through a reference) | the primary `:read` action, **keyed**: when authorized it returns nothing unless its filter selects by primary key (the generated `<namespace>.Privacy.KeyedRead` preparation), so `Ash.get` and relationship loads work but listing does not. `policy action(:read)` authorizes records of which the user may view some field (`view_all`, or a non-empty `view_fields`) |
+  | direct view (a record reached by ID or through a reference) | the primary `:read` action, **keyed**: when authorized it is forbidden unless its filter selects by primary key or it loads a relationship (a separate policy, `authorize_if <namespace>.Privacy.KeyedRead`: a policy check, so it also holds for aggregates), so `Ash.get` and relationship loads work but listing and counting do not. `policy action(:read)` authorizes records of which the user may view some field (`view_all`, or a non-empty `view_fields`) |
   | `search_for` ("find this in searches") | a `:search` read action: `policy action(:search)`. "Do a search for" lowers to it |
   | `view_all` / `view_fields` | `field_policies` (`private_fields :hide`): one `field_policy` per group of attributes with the same grants (every attribute but the primary key); a hidden field reads as `%Ash.ForbiddenField{}`, and `filter_input` / `sort_input` see it as nil |
   | a reference whose ID attribute some users may not view | the `belongs_to` gets `filter expr(parent(<the checks authorizing the attribute>))` (or `filter expr(false)`), so loading, filtering and sorting through it reveal nothing more than the attribute; a private, ungated twin `<name>_for_privacy` (`privacy_relationships`) is what the privacy calculations and the actor loads read through |
@@ -91,7 +91,15 @@ defmodule BubbleEx.Target.Ash do
   `*_input` filters and sorts, not expressions written in code: a filter,
   sort or calculation built in code that references a field the actor may
   not view, or a `*_for_privacy` relationship, sees the real value. Lowered
-  searches must reference only fields the searcher may view.
+  searches must reference only fields the searcher may view. Aggregates
+  (count, min, max, sum, list, first, ...) over a field are not covered by
+  field policies either (`:ash_policy_aggregates_unguarded`): generated
+  code must not aggregate a field the actor may not view. Relationships are
+  generated `sortable?: false`: Ash applies field policies to a resource's
+  own fields in `sort_input`, not to fields reached through a relationship.
+  The primary `:read`'s key requirement is a policy check
+  (a policy, `authorize_if <namespace>.Privacy.KeyedRead`), so it holds for
+  aggregate queries too.
 
   **Actor loads.** `Project.actor_loads` lists the User relationships the
   calculations read through `^actor(...)`. The rendered `<namespace>.Privacy`

@@ -195,6 +195,7 @@ defmodule BubbleEx.Target.Ash.Project do
   end
 
   defp check_key(%{kind: kind, test: :always}), do: "#{kind} always"
+  defp check_key(%{kind: kind, test: :keyed}), do: "#{kind} keyed"
   defp check_key(%{kind: kind, test: {:calculation, _}}), do: "#{kind} calculation"
 
   defp module_kinds(project) do
@@ -308,10 +309,12 @@ defmodule BubbleEx.Target.Ash.Action do
 
     * `type` - `:read` or `:update`; `name` - the action name
     * `primary?` - the primary action of its type
-    * `keyed?` - a read that, when authorized, returns nothing unless its
+    * `keyed?` - a read that, when authorized, is forbidden unless its
       filter selects records by primary key (`id == x` or `id in [...]`,
-      at the top level): the generated `<namespace>.Privacy.KeyedRead`
-      preparation. Relationship loads and `Ash.get` are keyed
+      at the top level) or it loads a relationship: its policy starts with
+      `authorize_if <namespace>.Privacy.KeyedRead` in its own policy, a policy check, so
+      aggregates (count, exists, ...) are held to it too. Relationship
+      loads and `Ash.get` are keyed
     * `accept` - attribute names an update accepts (`[]` for a read)
     * `description` - the action's `description`
   """
@@ -362,8 +365,10 @@ defmodule BubbleEx.Target.Ash.PolicyCheck do
   decides wins.
 
     * `kind` - `:authorize_if` or `:forbid_if`
-    * `test` - `:always`, or `{:calculation, name}`: the resource's boolean
-      calculation `name` is true for the record
+    * `test` - `:always`; `:keyed` (the `<namespace>.Privacy.KeyedRead`
+      check: the read selects by primary key or loads a relationship); or
+      `{:calculation, name}`: the resource's boolean calculation `name` is
+      true for the record
     * `source` - what grants it: `%{rules: [rule_id]}` for a rule,
       `%{default: true, except_rules: [...]}` for the `everyone` rule's
       grant to users no listed rule matches, `%{default: true}` for Bubble's
@@ -376,7 +381,7 @@ defmodule BubbleEx.Target.Ash.PolicyCheck do
 
   @type t :: %__MODULE__{
           kind: :authorize_if | :forbid_if,
-          test: :always | {:calculation, String.t()},
+          test: :always | :keyed | {:calculation, String.t()},
           source: map()
         }
 end
@@ -392,7 +397,8 @@ defmodule BubbleEx.Target.Ash.Policy do
     * `description` - the policy's `description`
     * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
     * `permission` - the Bubble permission it enforces (`:view`,
-      `:search_for`, `:auto_binding`)
+      `:search_for`, `:auto_binding`), or `:keyed` for the key requirement
+      of the primary `:read`
   """
 
   alias BubbleEx.Target.Ash.PolicyCheck
@@ -549,6 +555,10 @@ defmodule BubbleEx.Target.Ash.Relationship do
     * `db_reference` - `:ignore` (no database foreign key: AshPostgres
       `references … ignore?: true`) or `:foreign_key`
     * `source` - `%{type: _, field: _}` Bubble IDs
+    * `sortable?` - false when privacy policies are generated (WTF-356):
+      Ash applies field policies to a resource's own fields in `sort_input`
+      but not to fields reached through a relationship, so sorting by
+      `rel.hidden_field` would order by a value the actor may not view
     * `gate` - nil, or who may follow it (WTF-356): `{:visible_if, calcs}`
       (`filter expr(parent(a or b))`: one of the source record's privacy
       calculations holds, those authorizing its ID attribute) or `:never`
@@ -568,6 +578,7 @@ defmodule BubbleEx.Target.Ash.Relationship do
     allow_nil?: true,
     public?: true,
     db_reference: :ignore,
+    sortable?: true,
     gate: nil
   ]
 
@@ -583,6 +594,7 @@ defmodule BubbleEx.Target.Ash.Relationship do
           public?: boolean(),
           db_reference: :ignore | :foreign_key,
           source: map(),
+          sortable?: boolean(),
           gate: nil | :never | {:visible_if, [String.t()]}
         }
 end

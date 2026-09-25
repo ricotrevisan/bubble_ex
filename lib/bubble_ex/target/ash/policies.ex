@@ -58,7 +58,9 @@ defmodule BubbleEx.Target.Ash.Policies do
       end)
 
     {resources, names} = gate(resources, names)
-    expression_diags = Enum.flat_map(compiled, & &1.diagnostics)
+
+    expression_diags =
+      Enum.flat_map(compiled, & &1.diagnostics) ++ aggregate_diags(resources, types)
 
     actor_loads =
       resources
@@ -70,6 +72,35 @@ defmodule BubbleEx.Target.Ash.Policies do
     project = %{project | resources: resources, names: names, actor_loads: actor_loads}
     diags = [unverified(project) | Enum.reverse(diags)] ++ expression_diags
     {project, List.flatten(diags)}
+  end
+
+  # Ash field policies do not apply to aggregates (count, min, max, sum,
+  # list, first, ...) over a field: diagnosed wherever some field is not
+  # visible to everyone, since a policy cannot tell an aggregate from a read.
+  defp aggregate_diags(resources, types) do
+    for resource <- resources,
+        hidden =
+          for(
+            fp <- resource.field_policies,
+            fp.checks != [
+              %PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}
+            ],
+            f <- fp.fields,
+            do: f
+          ),
+        hidden != [] do
+      type = Map.fetch!(types, resource.source.type)
+
+      Diagnostic.new(
+        :ash_policy_aggregates_unguarded,
+        type.path,
+        "#{type.id}: Ash field policies do not cover aggregates; an aggregate over " <>
+          "#{Enum.join(hidden, ", ")} reads values some users may not view",
+        target: :ash,
+        subject: %{type: type.id},
+        details: %{fields: hidden}
+      )
+    end
   end
 
   # --- gated relationships -----------------------------------------------------------
@@ -124,10 +155,12 @@ defmodule BubbleEx.Target.Ash.Policies do
         end
       end)
 
+    unsortable = &%{&1 | sortable?: false}
+
     resource = %{
       resource
-      | relationships: relationships,
-        privacy_relationships: Enum.reverse(privacy)
+      | relationships: Enum.map(relationships, unsortable),
+        privacy_relationships: privacy |> Enum.reverse() |> Enum.map(unsortable)
     }
 
     {resource, entry, twins}
@@ -278,7 +311,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       resource
       | actions: @write_defaults,
         extra_actions: [read_action(), search_action()],
-        policies: [read_policy(checks), search_policy(checks)],
+        policies: [keyed_policy(), read_policy(checks), search_policy(checks)],
         field_policies: field_policies(Enum.map(fields, fn {_id, a} -> {a.name, checks} end)),
         privacy: privacy
     }
@@ -369,7 +402,8 @@ defmodule BubbleEx.Target.Ash.Policies do
       | actions: @write_defaults,
         extra_actions: [read_action(), search_action()] ++ auto_bind.actions,
         calculations: ctx.order |> Enum.reverse() |> Enum.map(&Map.fetch!(ctx.calculations, &1)),
-        policies: [read_policy(read), search_policy(search)] ++ auto_bind.policies,
+        policies:
+          [keyed_policy(), read_policy(read), search_policy(search)] ++ auto_bind.policies,
         field_policies: field_policies(field_checks),
         privacy: privacy
     }
@@ -710,7 +744,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       keyed?: true,
       description:
         "Direct view: records reached by primary key (Ash.get, relationship loads); " <>
-          "an authorized read that does not select by primary key returns nothing"
+          "an authorized read or aggregate that does not select by primary key is forbidden"
     }
 
   defp search_action,
@@ -720,13 +754,24 @@ defmodule BubbleEx.Target.Ash.Policies do
       description: "Bubble \"Do a search for\": the records the user may find in searches"
     }
 
+  # Two policies on :read (both must pass): the key requirement, kept apart
+  # from the grants so Ash's SAT solving stays small.
+  defp keyed_policy,
+    do: %Policy{
+      action: "read",
+      permission: :keyed,
+      description:
+        "Direct view reaches records by primary key or through a relationship, never by listing",
+      checks: [%PolicyCheck{kind: :authorize_if, test: :keyed}]
+    }
+
   defp read_policy(checks),
     do: %Policy{
       action: "read",
       permission: :view,
+      checks: checks,
       description:
-        "Direct view (by ID, or through a reference): the user may view some field of the record",
-      checks: checks
+        "Direct view (by ID, or through a reference): the user may view some field of the record"
     }
 
   defp search_policy(checks),

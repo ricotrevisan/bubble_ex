@@ -21,6 +21,7 @@
       "ash_expr_unmapped_reference": 1,
       "ash_opaque_value": 6,
       "ash_policies_unverified": 1,
+      "ash_policy_aggregates_unguarded": 38,
       "ash_policy_attachments_unenforced": 5,
       "ash_policy_bypass_required": 207,
       "ash_policy_data_api_unmapped": 2,
@@ -44,11 +45,12 @@
       "checks": {
         "authorize_if always": 174,
         "authorize_if calculation": 520,
+        "authorize_if keyed": 93,
         "forbid_if always": 3
       },
       "field_policies": 100,
       "gated_relationships": 220,
-      "policies": 414,
+      "policies": 507,
       "resources": {
         "public_default": 46,
         "rules": 47

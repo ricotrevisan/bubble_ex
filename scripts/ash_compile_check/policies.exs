@@ -19,7 +19,8 @@
 #     expected fields visible (by primary key, through :search, and none
 #     through an unkeyed :read); filter_input and sort_input on hidden
 #     fields and gated relationships, and relationship loads, must reveal
-#     nothing; :auto_bind updates and a create must be allowed or forbidden
+#     nothing; aggregates (count, exists, max) through the keyed :read
+#     must be refused unless keyed; :auto_bind updates and a create must be allowed or forbidden
 #     as expected
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos),
@@ -171,7 +172,13 @@ defmodule PolicyExpectations do
           failure <- create(resource.(type), actor.(persona), input, allowed),
           do: "#{type}.create as #{persona}: #{failure}"
 
-    failures = read_failures ++ probe_failures ++ write_failures ++ create_failures
+    aggregate_failures =
+      for %{"type" => type, "action" => action, "persona" => persona, "kind" => kind, "expected" => want} = a <-
+            doc["aggregates"],
+          failure <- aggregate(resource.(type), action, actor.(persona), kind, a, want),
+          do: "#{type} #{kind} via :#{action} as #{persona}: #{failure}"
+
+    failures = read_failures ++ probe_failures ++ aggregate_failures ++ write_failures ++ create_failures
 
     if failures != [] do
       Enum.each(failures, &IO.puts/1)
@@ -181,7 +188,7 @@ defmodule PolicyExpectations do
     IO.puts(
       "policy expectation check passed: #{length(doc["reads"])} type/action cases, #{reads} persona reads, " <>
         "#{length(doc["filters"])} filter_input, #{length(doc["sorts"])} sort_input and " <>
-        "#{length(doc["loads"])} relationship-load probes, " <>
+        "#{length(doc["loads"])} relationship-load and #{length(doc["aggregates"])} aggregate probes, " <>
         "#{length(doc["auto_bind"])} auto-binding updates, #{length(doc["creates"])} creates"
     )
   end
@@ -239,6 +246,27 @@ defmodule PolicyExpectations do
 
     got = if sorted? and is_list(got), do: Enum.sort(got), else: got
     want = if sorted? and is_list(want), do: Enum.sort(want), else: want
+    if got == want, do: [], else: ["got #{inspect(got)}, expected #{inspect(want)}"]
+  end
+
+  defp aggregate(resource, action, actor, kind, spec, want) do
+    query = Ash.Query.for_read(resource, String.to_existing_atom(action), %{}, actor: actor)
+    query = if spec["filter"], do: Ash.Query.filter_input(query, spec["filter"]), else: query
+
+    result =
+      case kind do
+        "count" -> Ash.count(query, actor: actor)
+        "exists" -> Ash.exists(query, actor: actor)
+        "max" -> Ash.max(query, String.to_existing_atom(spec["field"]), actor: actor)
+      end
+
+    got =
+      case result do
+        {:ok, value} -> value
+        {:error, %Ash.Error.Forbidden{}} -> "forbidden"
+        {:error, error} -> raise Exception.message(error)
+      end
+
     if got == want, do: [], else: ["got #{inspect(got)}, expected #{inspect(want)}"]
   end
 
