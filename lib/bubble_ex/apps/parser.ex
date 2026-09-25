@@ -367,7 +367,7 @@ defmodule BubbleEx.Apps.Parser do
 
     if size > 0 && :binary.at(rest, size - 1) == quote do
       content = binary_part(rest, 0, size - 1)
-      decode_js_string_content(content, [])
+      decode_js_string_content(content, <<>>)
     else
       {:error, :unterminated_string_literal}
     end
@@ -376,63 +376,63 @@ defmodule BubbleEx.Apps.Parser do
   defp decode_js_string_literal(_literal), do: {:error, :invalid_string_literal}
 
   defp decode_js_string_content(<<>>, acc) do
-    {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
+    {:ok, acc}
   end
 
-  # Scans for the next backslash in one pass and keeps unescaped runs as
-  # zero-copy sub-binaries. The previous per-character implementation built a
-  # list cell plus a heap binary for every byte, amplifying memory ~160x.
+  # Append spans and decoded escapes to one owned binary. An iodata list
+  # retained two heap entries per escape until the entire literal was decoded,
+  # which amplified memory on quote/escape-dense Bubble bundles.
   defp decode_js_string_content(binary, acc) do
     case :binary.match(binary, "\\") do
       :nomatch ->
-        {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary() |> Kernel.<>(binary)}
+        {:ok, <<acc::binary, binary::binary>>}
 
       {pos, _} ->
         span = binary_part(binary, 0, pos)
         rest_size = byte_size(binary) - pos - 1
         rest = if rest_size > 0, do: binary_part(binary, pos + 1, rest_size), else: <<>>
-        decode_js_escape(rest, [span | acc])
+        decode_js_escape(rest, <<acc::binary, span::binary>>)
     end
   end
 
   defp decode_js_escape(<<"'", rest::binary>>, acc),
-    do: decode_js_string_content(rest, ["'" | acc])
+    do: decode_js_string_content(rest, <<acc::binary, "'"::binary>>)
 
   defp decode_js_escape(<<"\"", rest::binary>>, acc),
-    do: decode_js_string_content(rest, ["\"" | acc])
+    do: decode_js_string_content(rest, <<acc::binary, "\""::binary>>)
 
   defp decode_js_escape(<<"\\", rest::binary>>, acc),
-    do: decode_js_string_content(rest, ["\\" | acc])
+    do: decode_js_string_content(rest, <<acc::binary, "\\"::binary>>)
 
   defp decode_js_escape(<<"b", rest::binary>>, acc),
-    do: decode_js_string_content(rest, [<<8>> | acc])
+    do: decode_js_string_content(rest, <<acc::binary, <<8>>::binary>>)
 
   defp decode_js_escape(<<"f", rest::binary>>, acc),
-    do: decode_js_string_content(rest, [<<12>> | acc])
+    do: decode_js_string_content(rest, <<acc::binary, <<12>>::binary>>)
 
   defp decode_js_escape(<<"n", rest::binary>>, acc),
-    do: decode_js_string_content(rest, ["\n" | acc])
+    do: decode_js_string_content(rest, <<acc::binary, "\n"::binary>>)
 
   defp decode_js_escape(<<"r", rest::binary>>, acc),
-    do: decode_js_string_content(rest, ["\r" | acc])
+    do: decode_js_string_content(rest, <<acc::binary, "\r"::binary>>)
 
   defp decode_js_escape(<<"t", rest::binary>>, acc),
-    do: decode_js_string_content(rest, ["\t" | acc])
+    do: decode_js_string_content(rest, <<acc::binary, "\t"::binary>>)
 
   defp decode_js_escape(<<"v", rest::binary>>, acc),
-    do: decode_js_string_content(rest, [<<11>> | acc])
+    do: decode_js_string_content(rest, <<acc::binary, <<11>>::binary>>)
 
   defp decode_js_escape(<<"\n", rest::binary>>, acc), do: decode_js_string_content(rest, acc)
   defp decode_js_escape(<<"\r\n", rest::binary>>, acc), do: decode_js_string_content(rest, acc)
   defp decode_js_escape(<<"\r", rest::binary>>, acc), do: decode_js_string_content(rest, acc)
 
   defp decode_js_escape(<<"0", rest::binary>>, acc),
-    do: decode_js_string_content(rest, [<<0>> | acc])
+    do: decode_js_string_content(rest, <<acc::binary, <<0>>::binary>>)
 
   defp decode_js_escape(<<"x", high, low, rest::binary>>, acc) do
     with {:ok, codepoint} <- hex_to_integer(<<high, low>>),
          {:ok, encoded} <- encode_codepoint(codepoint) do
-      decode_js_string_content(rest, [encoded | acc])
+      decode_js_string_content(rest, <<acc::binary, encoded::binary>>)
     end
   end
 
@@ -440,7 +440,7 @@ defmodule BubbleEx.Apps.Parser do
     with {hex, <<"}", remaining::binary>>} <- take_until(rest, "}"),
          {:ok, codepoint} <- hex_to_integer(hex),
          {:ok, encoded} <- encode_codepoint(codepoint) do
-      decode_js_string_content(remaining, [encoded | acc])
+      decode_js_string_content(remaining, <<acc::binary, encoded::binary>>)
     else
       _ -> {:error, :invalid_unicode_escape}
     end
@@ -449,12 +449,12 @@ defmodule BubbleEx.Apps.Parser do
   defp decode_js_escape(<<"u", h1, h2, h3, h4, rest::binary>>, acc) do
     with {:ok, codepoint} <- hex_to_integer(<<h1, h2, h3, h4>>),
          {:ok, encoded, remaining} <- encode_unicode_escape(codepoint, rest) do
-      decode_js_string_content(remaining, [encoded | acc])
+      decode_js_string_content(remaining, <<acc::binary, encoded::binary>>)
     end
   end
 
   defp decode_js_escape(<<char::utf8, rest::binary>>, acc) do
-    decode_js_string_content(rest, [<<char::utf8>> | acc])
+    decode_js_string_content(rest, <<acc::binary, <<char::utf8>>::binary>>)
   end
 
   defp decode_js_escape(<<>>, _acc), do: {:error, :unterminated_escape_sequence}
