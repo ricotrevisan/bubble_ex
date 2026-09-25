@@ -264,7 +264,7 @@
       },
       "persona": "u1",
       "type": "doc",
-      "why": "u1 owns d4 and may view its owner; but filtering through a gated relationship matches nothing yet (the gate does not hold in joins with Ash 3.31.3): a known under-grant, never a leak"
+      "why": "u1 owns d4 and may view its owner; but filtering through a gated relationship matches nothing yet (the gate does not hold in joins with Ash 3.33.11): a known under-grant, never a leak"
     },
     {
       "expected": [],
@@ -277,7 +277,7 @@
       },
       "persona": "u3",
       "type": "doc",
-      "why": "admins may view owners; but filtering through a gated relationship matches nothing yet (the gate does not hold in joins with Ash 3.31.3): a known under-grant, never a leak"
+      "why": "admins may view owners; but filtering through a gated relationship matches nothing yet (the gate does not hold in joins with Ash 3.33.11): a known under-grant, never a leak"
     },
     {
       "expected": "rejected",
