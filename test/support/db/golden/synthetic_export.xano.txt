@@ -1,0 +1,84 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "project",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "task",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "done",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "project",
+        "type": "text",
+        "description": "ref:project._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "status",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status (option values not rendered)",
+        "style": "single"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

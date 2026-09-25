@@ -1,0 +1,56 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Task" (
+  "_id" text,
+  "Title" text,
+  "title_2" boolean,
+  "_ID_2" text,
+  "Tags" text[],
+  "Gone" text,
+  "Retired" text,
+  "Status" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."task_2" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status" (
+  "db_value" text,
+  "Display" text,
+  "DB_VALUE_2" text,
+  "Display_2" text,
+  "Rank_2" text,
+  "Rank" boolean,
+  "Rank_3" double precision,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE "option"."TASK_3" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

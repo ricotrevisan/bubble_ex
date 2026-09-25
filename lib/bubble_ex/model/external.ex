@@ -1,32 +1,26 @@
 defmodule BubbleEx.Model.External do
   @moduledoc false
 
-  # API Connector types for the Model. Resolution is the Reader's
-  # (`BubbleEx.Db.Reader.ExternalTypes`), run over every `api.` field and
-  # attribute, deleted ones included (the Model keeps them). This module only
-  # converts the Reader's nodes and marks the edges that close cycles.
+  # API Connector types for the Model: runs `BubbleEx.Model.External.Resolver`
+  # over every `api.` field and attribute, deleted ones included (the Model
+  # keeps them), converts its nodes into Model structs and marks the edges
+  # that close cycles.
 
-  alias BubbleEx.Db.Reader.ExternalTypes
   alias BubbleEx.Model.{DataType, ExternalField, ExternalType, OptionSet, Type}
+  alias BubbleEx.Model.External.Resolver
 
   @spec resolve([DataType.t()], [OptionSet.t()], map()) ::
           {[DataType.t()], [OptionSet.t()], [ExternalType.t()], [BubbleEx.Diagnostic.t()]}
   def resolve(data_types, option_sets, app) do
-    tables =
-      Enum.map(data_types, &table(&1.id, :custom, &1.fields)) ++
-        Enum.map(option_sets, &table(&1.id, :option, &1.attributes))
+    roots =
+      Enum.flat_map(data_types, &roots(:custom, &1.id, &1.fields)) ++
+        Enum.flat_map(option_sets, &roots(:option, &1.id, &1.attributes))
 
-    tables = Enum.reject(tables, &(&1.columns == []))
-
-    {resolved, nodes, diagnostics} = ExternalTypes.resolve(tables, reader_source(app))
+    {values, nodes, diagnostics} = Resolver.resolve(roots, resolver_source(app))
 
     external_types = nodes |> Enum.map(&external_type/1) |> mark_cycles()
     known = for t <- external_types, ExternalType.known?(t), into: MapSet.new(), do: t.id
-
-    types =
-      for table <- resolved, column <- table.columns, into: %{} do
-        {{table.group, table.id, column.id}, convert(column.type, known)}
-      end
+    types = Map.new(values, fn {key, value} -> {key, convert(value, known)} end)
 
     data_types =
       Enum.map(data_types, fn t ->
@@ -41,36 +35,22 @@ defmodule BubbleEx.Model.External do
     {data_types, option_sets, external_types, diagnostics}
   end
 
-  defp table(id, group, fields) do
-    columns =
-      for %{type: %Type{kind: :external, source: source}} = field <- fields do
-        {rest, array?} =
-          case source do
-            "list.api." <> rest -> {rest, true}
-            "api." <> rest -> {rest, false}
-          end
-
-        %{
-          table_group: group,
-          table_id: id,
-          id: field.id,
-          type: %{type: :api, custom_type: rest, is_array: array?}
-        }
-      end
-
-    %{id: id, group: group, columns: columns}
+  defp roots(group, owner, fields) do
+    for %{type: %Type{kind: :external, source: source}} = field <- fields do
+      %{group: group, owner: owner, field: field.id, descriptor: source}
+    end
   end
 
   defp patch(field, nil), do: field
 
   # The `list.` prefix is Bubble's own, so the field's cardinality is certain
-  # even when the Reader cannot tell it (`:unknown` for an invalid `api.`
+  # even when the resolver cannot tell it (`:unknown` for an invalid `api.`
   # descriptor).
   defp patch(field, type), do: %{field | type: %{type | cardinality: field.type.cardinality}}
 
-  # The Reader reads only these members; everything else is left out so a
+  # The resolver reads only these members; everything else is left out so a
   # malformed section elsewhere in the app cannot reach it.
-  defp reader_source(app) do
+  defp resolver_source(app) do
     %{
       "user_types" => objects(Map.get(app, "user_types")),
       "option_sets" => objects(Map.get(app, "option_sets")),

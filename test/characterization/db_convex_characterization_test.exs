@@ -46,7 +46,7 @@ defmodule BubbleEx.Characterization.DbConvexTest do
   end
 
   test "renders the option-set enum column as v.string() with a comment", %{ts: ts} do
-    assert ts =~ "    status: v.string(), // enum -> option set (member values not in IR)"
+    assert ts =~ "    status: v.string(), // enum -> option set (member values not rendered)"
   end
 
   test "emits the option-set table as a plain defineTable", %{ts: ts} do

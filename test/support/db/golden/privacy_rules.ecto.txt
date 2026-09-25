@@ -1,0 +1,117 @@
+# schema module
+defmodule MyApp.Draft do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "draft" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateDraft do
+  use Ecto.Migration
+
+  def change do
+    create table("draft", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Note do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "note" do
+    field :body, :string
+    field :secret, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:body, :secret]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateNote do
+  use Ecto.Migration
+
+  def change do
+    create table("note", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :body, :string
+      add :secret, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.PublicPage do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "public_page" do
+    field :slug_text, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:slug_text]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreatePublicPage do
+  use Ecto.Migration
+
+  def change do
+    create table("public_page", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :slug_text, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+    field :admin, :boolean
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:admin]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :admin, :boolean
+    end
+  end
+end
+--- diagnostics ---

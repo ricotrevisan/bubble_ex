@@ -17,7 +17,7 @@ defmodule BubbleEx.Db.Ecto do
     * `:boolean` -> `:boolean`
     * `:utc_datetime_usec` -> `:utc_datetime_usec`
     * `:reference` / `:enum` -> `belongs_to` with `type: :string` (Bubble PKs are
-      text `_id` / `display`, not integer/UUID). The association keeps the Bubble
+      text `_id` / `db_value`, not integer/UUID). The association keeps the Bubble
       field name, but Ecto requires a distinct foreign key, so the FK column is
       `<field>_id` and `references:` points at the target schema's real primary
       key (`:_id` for user tables, the option-set's PK field for enums) since
@@ -31,9 +31,11 @@ defmodule BubbleEx.Db.Ecto do
   Ecto has no array foreign-key: the relational semantics of a Bubble list field
   are lost (a join table would be more correct but needs a synthetic key).
 
-  Enums/option sets are lossy: the IR carries no member values, so `Ecto.Enum` is
-  impossible. Each option set renders as its own sibling schema module with a
-  `:string` primary key, referenced through `belongs_to`.
+  Option sets render as their own sibling schema module keyed by the values'
+  stable `db_value` (a `:string` primary key, with a `display` field and the
+  declared attributes), referenced through `belongs_to`. The member values are
+  in the Reader's `table.values` (seed data), but this encoder does not render
+  them as an `Ecto.Enum`.
 
   `:api` group tables (external placeholders) are skipped, mirroring
   `BubbleEx.Db.Sql.Postgres`.

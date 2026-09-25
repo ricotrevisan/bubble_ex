@@ -1,0 +1,33 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Project" (
+  "_id" text,
+  "Name" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Task" (
+  "_id" text,
+  "Done?" boolean,
+  "Project" text,
+  "Status" text,
+  "Title" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,37 @@
+-- SQLite DDL for Bubble app
+-- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS "custom__Onboarding Answer" (
+  "_id" TEXT NOT NULL,
+  "label" TEXT,
+  "score" REAL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__Survey Response" (
+  "_id" TEXT NOT NULL,
+  "answer" TEXT,
+  "onboarding answer" TEXT,
+  "rating" REAL,
+  "status" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("onboarding answer") REFERENCES "custom__Onboarding Answer" ("_id"),
+  FOREIGN KEY ("status") REFERENCES "option__Status Type" ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Status Type" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  "Color" TEXT,
+  PRIMARY KEY ("db_value")
+);
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

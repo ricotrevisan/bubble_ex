@@ -1,0 +1,58 @@
+import { z } from 'zod';
+
+// 00. Thing - Join
+export const _00ThingJoinSchema = z.object({
+  _id: z.string(),
+  '11. Done': z.boolean().nullish(),
+  '40. Sort: Thing Title': z.string().nullish(),
+  __struct__: z.string().nullish(),
+  id: z.string().nullish(),
+  inserted_at: z.string().datetime().nullish(),
+  Title: z.string().nullish(),
+  Title_2: z.string().nullish(),
+  type: z.string().nullish(),
+});
+
+export type _00ThingJoin = z.infer<typeof _00ThingJoinSchema>;
+
+// 🚀 Launch
+export const LaunchSchema = z.object({
+  _id: z.string(),
+  '🔥': z.string().nullish(),
+  'Name ✨': z.string().nullish(),
+});
+
+export type Launch = z.infer<typeof LaunchSchema>;
+
+// Thing
+export const ThingSchema = z.object({
+  _id: z.string(),
+});
+
+export type Thing = z.infer<typeof ThingSchema>;
+
+// Thing_2
+export const Thing2Schema = z.object({
+  _id: z.string(),
+});
+
+export type Thing2 = z.infer<typeof Thing2Schema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// 40. Levels
+export const _40LevelsSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type _40Levels = z.infer<typeof _40LevelsSchema>;
+--- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
+model_synthesized_user_type /user_types/user

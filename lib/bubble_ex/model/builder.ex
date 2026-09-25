@@ -5,7 +5,7 @@ defmodule BubbleEx.Model.Builder do
   # (`.bubble` exports: `display`, `fields`, `value`, `deleted`; the live
   # payload: `%d`, `%f3`, `%v`, `%del`) into Model structs. Privacy rules and
   # type-level flags come from `BubbleEx.Privacy`, API Connector types from
-  # the Reader (`BubbleEx.Model.External`). Nothing in the source is dropped:
+  # `BubbleEx.Model.External`. Nothing in the source is dropped:
   # what is not modeled is kept in `extra`/`raw` and diagnosed.
 
   alias BubbleEx.{Diagnostic, Privacy}

@@ -72,9 +72,15 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
   end
 
   test "renders list fields as a single text column with a junction-table hint" do
-    db = thing_db([col("tags", "tags", %{type: :string, is_array: true})])
+    db =
+      thing_db([
+        col("tags", "tags", %{type: :string, is_array: true}),
+        col("name", "name", %{type: :string})
+      ])
+
     assert {:ok, sql} = Tsql.encode(db)
-    assert sql =~ "[tags] NVARCHAR(MAX)  -- list<text>: consider a junction table"
+    # A block comment, so the column separator after it is not commented out.
+    assert sql =~ "[tags] NVARCHAR(MAX) /* list<text>: consider a junction table */,\n  [name]"
   end
 
   test "emits a named foreign key for a scalar reference" do
@@ -114,7 +120,7 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
     db = thing_db([from], [{from, to, :one_to_many}])
     assert {:ok, sql} = Tsql.encode(db)
     refute sql =~ "ADD CONSTRAINT [FK"
-    assert sql =~ "[owners] NVARCHAR(MAX)  -- list<ref>: consider a junction table"
+    assert sql =~ "[owners] NVARCHAR(MAX) /* list<ref>: consider a junction table */"
   end
 
   test "respects :id naming for tables, columns, and constraint names" do

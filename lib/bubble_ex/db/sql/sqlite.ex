@@ -14,7 +14,7 @@ defmodule BubbleEx.Db.Sql.Sqlite do
 
   Primary-key columns are emitted as `NOT NULL`: a table-level `PRIMARY KEY` on a
   non-INTEGER column does not imply `NOT NULL` in SQLite, so without it the text
-  `_id`/`Display` key could be NULL (and even duplicate-NULL).
+  `_id`/`db_value` key could be NULL (and even duplicate-NULL).
   """
 
   @behaviour BubbleEx.Db.Encoder
@@ -95,7 +95,7 @@ defmodule BubbleEx.Db.Sql.Sqlite do
   end
 
   # A table-level PRIMARY KEY on a non-INTEGER column does not imply NOT NULL in
-  # SQLite, so primary-key columns must declare it explicitly or `_id`/`Display`
+  # SQLite, so primary-key columns must declare it explicitly or `_id`/`db_value`
   # could be NULL (and even duplicate-NULL), defeating the key.
   defp null_clause(%{primary_key: true}), do: " NOT NULL"
   defp null_clause(_column), do: ""

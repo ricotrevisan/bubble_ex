@@ -35,7 +35,8 @@ defmodule BubbleEx.Characterization.DbXanoTest do
       |> Enum.map(& &1["name"])
       |> Enum.sort()
 
-    assert names == ["onboarding_answer", "status_type", "survey_response"]
+    # User is built into every Bubble app (the Model synthesizes it).
+    assert names == ["onboarding_answer", "status_type", "survey_response", "user"]
   end
 
   test "maps scalar columns to their Xano types", %{decoded: decoded} do
@@ -60,14 +61,20 @@ defmodule BubbleEx.Characterization.DbXanoTest do
            }
   end
 
-  test "describes the option-set table's display key", %{decoded: decoded} do
+  test "describes the option-set table's db_value key", %{decoded: decoded} do
     status = table(decoded, "status_type")
+
+    assert field(status, "db_value") == %{
+             "name" => "db_value",
+             "type" => "text",
+             "style" => "single",
+             "description" => "Bubble primary key (link manually in Xano)"
+           }
 
     assert field(status, "display") == %{
              "name" => "display",
              "type" => "text",
-             "style" => "single",
-             "description" => "Bubble primary key (link manually in Xano)"
+             "style" => "single"
            }
   end
 
@@ -90,7 +97,7 @@ defmodule BubbleEx.Characterization.DbXanoTest do
              "type" => "enum",
              "style" => "single",
              "values" => [],
-             "description" => "enum:status_type (option values not in IR)"
+             "description" => "enum:status_type (option values not rendered)"
            }
   end
 
@@ -99,7 +106,7 @@ defmodule BubbleEx.Characterization.DbXanoTest do
     assert json =~ ~s("type": "decimal")
     assert json =~ ~s("style": "single")
     assert json =~ "\"description\": \"ref:onboarding_answer._id (link manually in Xano)\""
-    assert json =~ "\"description\": \"enum:status_type (option values not in IR)\""
+    assert json =~ "\"description\": \"enum:status_type (option values not rendered)\""
     assert String.ends_with?(json, "\n")
   end
 end

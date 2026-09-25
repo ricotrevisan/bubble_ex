@@ -1,0 +1,27 @@
+import { z } from 'zod';
+
+// Invoice
+export const InvoiceSchema = z.object({
+  _id: z.string(),
+  Archive: z.string().nullish(), // reference -> archive
+  Customer: z.string().nullish(), // reference -> ghost
+  Lines: z.array(z.string()).nullish(), // reference -> ghost_line
+  State: z.string().nullish(), // enum -> ghost_state option set (values not rendered)
+  Total: z.number().nullish(),
+});
+
+export type Invoice = z.infer<typeof InvoiceSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+--- diagnostics ---
+db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

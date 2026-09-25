@@ -1,0 +1,137 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "ticket",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "channels",
+        "type": "enum",
+        "values": [],
+        "description": "enum:channel (option values not rendered)",
+        "style": "list"
+      },
+      {
+        "name": "priority",
+        "type": "enum",
+        "values": [],
+        "description": "enum:priority (option values not rendered)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "channel",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "orphan",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "parent",
+        "type": "enum",
+        "values": [],
+        "description": "enum:ghost_set (option values not rendered)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "priority",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "channels",
+        "type": "enum",
+        "values": [],
+        "description": "enum:channel (option values not rendered)",
+        "style": "list"
+      },
+      {
+        "name": "color",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "escalates_to",
+        "type": "enum",
+        "values": [],
+        "description": "enum:priority (option values not rendered)",
+        "style": "single"
+      },
+      {
+        "name": "icon",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "urgent",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "weight",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

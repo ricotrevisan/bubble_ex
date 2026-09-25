@@ -1,0 +1,74 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "order",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "buyer",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "items",
+        "type": "text",
+        "description": "ref:item (link manually in Xano)",
+        "style": "list"
+      },
+      {
+        "name": "kind",
+        "type": "enum",
+        "values": [],
+        "description": "enum:kind (option values not rendered)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "kind",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "code",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

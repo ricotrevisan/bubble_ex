@@ -18,16 +18,18 @@ defmodule BubbleEx.DiagnosticTest do
         ~r/\braw\(\s*\w+,\s*:(\w+)/,
         # Parser operand_node's {:raw, :code, message}
         ~r/\{:raw,\s*:(\w+)/,
-        # Reader ExternalTypes warn/fail_node
+        # Model.External.Resolver warn/fail_node
         ~r/\bwarn\((?:state,\s*)?:(\w+)/,
         ~r/\bfail_node\((?:state,\s*)?\w+,\s*:(\w+)/,
+        # Reader projection diagnostics {:code, path, message, opts}
+        ~r/\{:(db_\w+),\s/,
         # Encoder root_code/4 clauses
         ~r/defp \w+_code\([^\n]*?\)(?:\s+when [^\n]*)?,?\s*do:\s*:(\w+)/
       ]
     end
 
-    # Reader registry lookups return the category as `{:error, code}`.
-    @category_files ["lib/bubble_ex/db/reader/external_types.ex"]
+    # Resolver registry lookups return the category as `{:error, code}`.
+    @category_files ["lib/bubble_ex/model/external/resolver.ex"]
 
     # Forwarders may pass a variable named `code`, or `root_code(...)`.
     defp forwarded, do: ~r/Diagnostic\.new\(\s*(?!:)(?!code\b)(?!root_code\()([^\s,]+)/
@@ -486,7 +488,9 @@ defmodule BubbleEx.DiagnosticTest do
                  subject: %{option_set: "status", field: "x"},
                  path: "/option_sets/status/attributes/x/%v",
                  details: %{descriptor: "api."}
-               }
+               },
+               # The Reader's diagnostics are the Model's, from every stage.
+               %Diagnostic{code: :model_synthesized_user_type, stage: :model}
              ] = db.diagnostics
     end
 

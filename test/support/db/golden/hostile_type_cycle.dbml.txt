@@ -1,0 +1,31 @@
+Project "" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."A" {
+	"_id" varchar [pk]
+	"B" b.id
+
+}
+Table custom."B" {
+	"_id" varchar [pk]
+	"C" c.id[]
+
+}
+Table custom."C" {
+	"_id" varchar [pk]
+	"A" a.id
+
+}
+Table custom."User" {
+	"_id" varchar [pk]
+
+}
+
+Ref: custom."A"."B" > custom."B"."_id"
+Ref: custom."B"."C" <> custom."C"."_id"
+Ref: custom."C"."A" > custom."A"."_id"--- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,35 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Onboarding Answer" (
+  "_id" text,
+  "label" text,
+  "score" double precision,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Survey Response" (
+  "_id" text,
+  "answer" text,
+  "onboarding answer" text,
+  "rating" double precision,
+  "status" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status Type" (
+  "db_value" text,
+  "Display" text,
+  "Color" text,
+  PRIMARY KEY ("db_value")
+);
+
+ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("onboarding answer") REFERENCES "custom"."Onboarding Answer" ("_id");
+ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

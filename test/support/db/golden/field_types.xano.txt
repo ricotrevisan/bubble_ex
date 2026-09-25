@@ -1,0 +1,198 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "project",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "task",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "attachment",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "budget",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "checks",
+        "type": "bool",
+        "style": "list"
+      },
+      {
+        "name": "cover",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "dates",
+        "type": "timestamp",
+        "style": "list"
+      },
+      {
+        "name": "done",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "due",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "duration",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "estimate",
+        "type": "decimal",
+        "style": "single"
+      },
+      {
+        "name": "files",
+        "type": "text",
+        "style": "list"
+      },
+      {
+        "name": "images",
+        "type": "text",
+        "style": "list"
+      },
+      {
+        "name": "labels",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status (option values not rendered)",
+        "style": "list"
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "style": "list"
+      },
+      {
+        "name": "owner",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "place",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "places",
+        "type": "json",
+        "style": "list"
+      },
+      {
+        "name": "project",
+        "type": "text",
+        "description": "ref:project._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "ranges",
+        "type": "json",
+        "style": "list"
+      },
+      {
+        "name": "scores",
+        "type": "decimal",
+        "style": "list"
+      },
+      {
+        "name": "status",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status (option values not rendered)",
+        "style": "single"
+      },
+      {
+        "name": "subtasks",
+        "type": "text",
+        "description": "ref:task._id (link manually in Xano)",
+        "style": "list"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "watchers",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "list"
+      },
+      {
+        "name": "window",
+        "type": "json",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "nickname",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "color",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---

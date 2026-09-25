@@ -132,7 +132,7 @@ compact keys; unmodeled pieces are kept verbatim and itemized as diagnostics.
 The live payload does not contain privacy rules, so its data types are reported
 as unavailable rather than rule-free.
 
-Every diagnostic BubbleEx returns — from the Reader, the expression and privacy
+Every diagnostic BubbleEx returns — from the Model, the expression and privacy
 parsers, the workflow inventory and the schema encoders — is a
 `%BubbleEx.Diagnostic{}` with a stable `code`, a registry-assigned `severity`
 and `outcome` (`:preserved`, `:degraded` or `:unresolved`), a `stage`, a
@@ -316,14 +316,14 @@ IO.puts(app.schema)
 # CREATE SCHEMA IF NOT EXISTS "custom";
 #
 # CREATE TABLE "custom"."Survey Response" (
+#   "_id" text,
 #   "answer" text,
 #   ...
-#   "_id" text,
 #   PRIMARY KEY ("_id")
 # );
 #
 # ALTER TABLE "custom"."Survey Response"
-#   ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("Display");
+#   ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");
 ```
 
 ### Available formats
@@ -351,12 +351,18 @@ Pass `naming: :id` to use Bubble's internal identifiers instead:
 
 ### What is and isn't preserved
 
+Every encoder renders the same reading of the app: `BubbleEx.Db.Reader` projects
+`BubbleEx.Model` into tables (see its moduledoc), so the formats and `:ash` agree
+on types, keys, order and what is deleted. Deleted data types, option sets and
+fields are left out; User is always present; tables and fields follow Bubble ID
+order.
+
 Each encoder maps Bubble's model as faithfully as the target allows. Scalar
 references become real foreign keys (SQL/Ecto) or id fields; Bubble *list* fields
 become native arrays where supported (`text[]` in Postgres) or a JSON/text column
-otherwise. Option sets (enums) are emitted as lookup tables or string fields —
-Bubble's payload does not carry option *member values*, so they cannot become
-native database enums.
+otherwise. Option sets are emitted as lookup tables keyed by each value's stable
+`db_value` (what Bubble stores in data), with a `display` column and the declared
+attributes, or as string fields; they do not become native database enums.
 
 API Connector v2 External API types reachable from active database fields are
 kept as by-value shapes, separate from persisted tables and relationships.
@@ -415,7 +421,7 @@ app.dbdiagram  # same content
 
 Formats are pluggable. Each is a module implementing the `BubbleEx.Db.Encoder`
 behaviour — `encode(db_map, opts) :: {:ok, String.t()} | {:error, %BubbleEx.Error{}}`
-over the universal map produced by `BubbleEx.Db.Reader.parse/1` — registered in
+over the table view `BubbleEx.Db.Reader.parse/1` projects from `BubbleEx.Model` — registered in
 `BubbleEx.Db.Encoder`. `BubbleEx.Db.Encoder.render/3` additionally returns
 the Reader's and the target's diagnostics with the generated content. To add a target, implement the
 behaviour and register its `:format` atom.

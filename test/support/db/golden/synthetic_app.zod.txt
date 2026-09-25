@@ -1,0 +1,39 @@
+import { z } from 'zod';
+
+// Onboarding Answer
+export const OnboardingAnswerSchema = z.object({
+  _id: z.string(),
+  label: z.string().nullish(),
+  score: z.number().nullish(),
+});
+
+export type OnboardingAnswer = z.infer<typeof OnboardingAnswerSchema>;
+
+// Survey Response
+export const SurveyResponseSchema = z.object({
+  _id: z.string(),
+  answer: z.string().nullish(),
+  'onboarding answer': z.string().nullish(), // reference -> onboarding_answer
+  rating: z.number().nullish(),
+  status: z.string().nullish(), // enum -> status_type option set (values not rendered)
+});
+
+export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Status Type
+export const StatusTypeSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  Color: z.string().nullish(),
+});
+
+export type StatusType = z.infer<typeof StatusTypeSchema>;
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

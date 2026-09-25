@@ -182,16 +182,14 @@ defmodule BubbleEx.AppTree do
     |> Map.new(fn {_composite, info} -> {info["key"], Path.basename(info["path"])} end)
   end
 
-  # BubbleEx.Db.Reader.parse/1 raises (never returns an error tuple) on
-  # hostile export shapes; treat any failure to build the schema view as
-  # "no schema" rather than letting it take generate/3 down.
+  # The Reader projects the Model, which preserves and diagnoses malformed
+  # input; only a payload that is not a JSON object has no schema view.
   defp schema_view(app) do
-    {:ok, db_map} = BubbleEx.Db.Reader.parse(app)
-    {:ok, dbml} = dbml(db_map)
-    [{"data/schema.dbml", {:text, dbml}}]
-  rescue
-    _ -> []
+    with {:ok, db_map} <- BubbleEx.Db.Reader.parse(app),
+         {:ok, dbml} <- BubbleEx.Db.Dbml.encode(db_map) do
+      [{"data/schema.dbml", {:text, dbml}}]
+    else
+      _ -> []
+    end
   end
-
-  defp dbml(db_map), do: BubbleEx.Db.Dbml.encode(db_map)
 end

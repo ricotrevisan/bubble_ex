@@ -1,0 +1,96 @@
+# schema module
+defmodule MyApp.Order do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "order" do
+    belongs_to :buyer, MyApp.User, foreign_key: :buyer_id, references: :_id, type: :string
+    field :items, {:array, :string}
+    belongs_to :kind, MyApp.Kind, foreign_key: :kind_id, references: :db_value, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:buyer_id, :items, :kind_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateOrder do
+  use Ecto.Migration
+
+  def change do
+    create table("order", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :buyer_id, :string
+      add :items, {:array, :string}
+      add :kind_id, :string
+    end
+    create index("order", [:buyer_id])
+    create index("order", [:kind_id])
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+    field :name, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:name]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :name, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Kind do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "kind" do
+    field :display, :string
+    field :code, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :code]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateKind do
+  use Ecto.Migration
+
+  def change do
+    create table("kind", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :code, :float
+    end
+  end
+end
+--- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

@@ -1,0 +1,69 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "a",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "b",
+        "type": "text",
+        "description": "ref:b._id (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "b",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "c",
+        "type": "text",
+        "description": "ref:c._id (link manually in Xano)",
+        "style": "list"
+      }
+    ]
+  },
+  {
+    "name": "c",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "a",
+        "type": "text",
+        "description": "ref:a._id (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

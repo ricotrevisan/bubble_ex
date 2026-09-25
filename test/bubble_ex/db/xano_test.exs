@@ -173,7 +173,7 @@ defmodule BubbleEx.Db.XanoTest do
              "type" => "enum",
              "style" => "single",
              "values" => [],
-             "description" => "enum:status_type (option values not in IR)"
+             "description" => "enum:status_type (option values not rendered)"
            }
   end
 

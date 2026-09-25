@@ -51,7 +51,7 @@ defmodule BubbleEx.Characterization.DbEctoTest do
 
   test "renders an option-set reference as belongs_to to the sibling module", %{code: code} do
     assert code =~
-             "belongs_to :status, MyApp.StatusType, foreign_key: :status_id, references: :display, type: :string"
+             "belongs_to :status, MyApp.StatusType, foreign_key: :status_id, references: :db_value, type: :string"
   end
 
   test "emits a migration per table that creates the table without a default pk", %{code: code} do

@@ -83,7 +83,7 @@ defmodule BubbleEx.Db.ConvexTest do
   test "renders an enum column as v.string() with an option-set comment" do
     db = thing_db([col("st", "status", %{type: :enum, custom_type: "status_type"})])
     assert {:ok, ts} = Convex.encode(db)
-    assert ts =~ "    status: v.string(), // enum -> option set (member values not in IR)"
+    assert ts =~ "    status: v.string(), // enum -> option set (member values not rendered)"
   end
 
   test "skips deleted columns" do

@@ -37,7 +37,8 @@ jobs:
     # Renders every fixture through BubbleEx.Target.Ash, compiles the source in
     # a scratch project pinned to Target.Ash.versions/0, checks the generated
     # migrations, runs them and round-trips sample rows through every
-    # resource. See scripts/ash_compile_check.sh.
+    # resource. See scripts/ash_compile_check.sh. Its PostgreSQL service also
+    # loads the Db.Sql.Postgres DDL of every fixture (DbDdlTest).
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -66,6 +67,13 @@ jobs:
             ${{ runner.os }}-mix-ash-check-
       - run: mix deps.get
       - run: scripts/ash_compile_check.sh
+      - name: Load the generated PostgreSQL DDL of every schema fixture
+        run: |
+          command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+          mix test --only ddl_postgres
+        env:
+          MIX_ENV: test
+          BUBBLE_EX_DDL_PG: postgres://postgres:postgres@localhost:5432
 
   fidelity:
     runs-on: ubuntu-latest

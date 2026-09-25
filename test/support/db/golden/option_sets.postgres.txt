@@ -1,0 +1,49 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Ticket" (
+  "_id" text,
+  "Channels" text[],
+  "Priority" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Channel" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE "option"."Orphan" (
+  "db_value" text,
+  "Display" text,
+  "Parent" text,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE "option"."Priority" (
+  "db_value" text,
+  "Display" text,
+  "Channels" text[],
+  "Color" text,
+  "Escalates to" text,
+  "Icon" text,
+  "Urgent" boolean,
+  "Weight" double precision,
+  PRIMARY KEY ("db_value")
+);
+
+ALTER TABLE "custom"."Ticket" ADD FOREIGN KEY ("Priority") REFERENCES "option"."Priority" ("db_value");
+ALTER TABLE "option"."Priority" ADD FOREIGN KEY ("Escalates to") REFERENCES "option"."Priority" ("db_value");
+--- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,63 @@
+import { z } from 'zod';
+
+// Task
+export const TaskSchema = z.object({
+  _id: z.string(),
+  Title: z.string().nullish(),
+  title_2: z.boolean().nullish(),
+  _ID_2: z.string().nullish(),
+  Tags: z.array(z.string()).nullish(),
+  Gone: z.string().nullish(), // reference -> gone
+  Retired: z.string().nullish(), // enum -> retired option set (values not rendered)
+  Status: z.string().nullish(), // enum -> status option set (values not rendered)
+});
+
+export type Task = z.infer<typeof TaskSchema>;
+
+// task_2
+export const Task2Schema = z.object({
+  _id: z.string(),
+});
+
+export type Task2 = z.infer<typeof Task2Schema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Status
+export const StatusSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  DB_VALUE_2: z.string().nullish(),
+  Display_2: z.string().nullish(),
+  Rank_2: z.string().nullish(),
+  Rank: z.boolean().nullish(),
+  Rank_3: z.number().nullish(),
+});
+
+export type Status = z.infer<typeof StatusSchema>;
+
+// TASK_3
+export const TASK3Schema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type TASK3 = z.infer<typeof TASK3Schema>;
+--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

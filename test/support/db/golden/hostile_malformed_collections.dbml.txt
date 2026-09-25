@@ -1,0 +1,15 @@
+Project "synthetic-malformed-collections" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."User" {
+	"_id" varchar [pk]
+
+}
+--- diagnostics ---
+model_malformed_node /option_sets
+model_malformed_node /user_types
+model_synthesized_user_type /user_types/user

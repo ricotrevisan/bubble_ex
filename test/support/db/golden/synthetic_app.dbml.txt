@@ -1,0 +1,35 @@
+Project "synthapp" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Onboarding Answer" {
+	"_id" varchar [pk]
+	"label" varchar
+	"score" float
+
+}
+Table custom."Survey Response" {
+	"_id" varchar [pk]
+	"answer" varchar
+	"onboarding answer" onboarding_answer.id
+	"rating" float
+	"status" status_type.id
+
+}
+Table custom."User" {
+	"_id" varchar [pk]
+
+}
+Table option."Status Type" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"Color" varchar
+
+}
+
+Ref: custom."Survey Response"."onboarding answer" > custom."Onboarding Answer"."_id"
+Ref: custom."Survey Response"."status" > option."Status Type"."db_value"--- diagnostics ---
+model_synthesized_user_type /user_types/user

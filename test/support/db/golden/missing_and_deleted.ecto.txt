@@ -1,0 +1,71 @@
+# schema module
+defmodule MyApp.Invoice do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "invoice" do
+    field :archive, :string
+    field :customer, :string
+    field :lines, {:array, :string}
+    field :state, :string
+    field :total, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:archive, :customer, :lines, :state, :total]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateInvoice do
+  use Ecto.Migration
+
+  def change do
+    create table("invoice", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :archive, :string
+      add :customer, :string
+      add :lines, {:array, :string}
+      add :state, :string
+      add :total, :float
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+--- diagnostics ---
+db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

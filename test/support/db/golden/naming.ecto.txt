@@ -1,0 +1,190 @@
+# schema module
+defmodule MyApp.N00ThingJoin do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "n00_thing_join" do
+    field :n11_done, :boolean
+    field :n40_sort_thing_title, :string
+    field :_struct, :string
+    field :id, :string
+    field :inserted_at, :utc_datetime_usec
+    field :title, :string
+    field :title_2, :string
+    field :type, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:n11_done, :n40_sort_thing_title, :_struct, :id, :inserted_at, :title, :title_2, :type]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateN00ThingJoin do
+  use Ecto.Migration
+
+  def change do
+    create table("n00_thing_join", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :n11_done, :boolean
+      add :n40_sort_thing_title, :string
+      add :_struct, :string
+      add :id, :string
+      add :inserted_at, :utc_datetime_usec
+      add :title, :string
+      add :title_2, :string
+      add :type, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Launch do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "launch" do
+    field :field, :string
+    field :name, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:field, :name]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateLaunch do
+  use Ecto.Migration
+
+  def change do
+    create table("launch", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :field, :string
+      add :name, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Thing do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "thing" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateThing do
+  use Ecto.Migration
+
+  def change do
+    create table("thing", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Thing2 do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "thing_2" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateThing2 do
+  use Ecto.Migration
+
+  def change do
+    create table("thing_2", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.N40Levels do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "n40_levels" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateN40Levels do
+  use Ecto.Migration
+
+  def change do
+    create table("n40_levels", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+--- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
+model_synthesized_user_type /user_types/user

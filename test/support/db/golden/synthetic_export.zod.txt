@@ -1,0 +1,37 @@
+import { z } from 'zod';
+
+// Project
+export const ProjectSchema = z.object({
+  _id: z.string(),
+  Name: z.string().nullish(),
+});
+
+export type Project = z.infer<typeof ProjectSchema>;
+
+// Task
+export const TaskSchema = z.object({
+  _id: z.string(),
+  'Done?': z.boolean().nullish(),
+  Project: z.string().nullish(), // reference -> project
+  Status: z.string().nullish(), // enum -> status option set (values not rendered)
+  Title: z.string().nullish(),
+});
+
+export type Task = z.infer<typeof TaskSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Status
+export const StatusSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type Status = z.infer<typeof StatusSchema>;
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

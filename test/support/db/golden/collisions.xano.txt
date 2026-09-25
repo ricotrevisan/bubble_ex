@@ -1,0 +1,148 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "task",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "title_2",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "_id_2",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "tags",
+        "type": "text",
+        "style": "list"
+      },
+      {
+        "name": "gone",
+        "type": "text",
+        "description": "ref:gone (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "retired",
+        "type": "enum",
+        "values": [],
+        "description": "enum:retired (option values not rendered)",
+        "style": "single"
+      },
+      {
+        "name": "status",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status (option values not rendered)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "task_2",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "db_value_2",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "display_2",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "rank_2",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "rank",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "rank_3",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "task_3",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

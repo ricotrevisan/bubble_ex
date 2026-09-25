@@ -1,0 +1,127 @@
+{
+  "columns": {
+    "custom boolean": 162,
+    "custom custom": 13,
+    "custom enum": 110,
+    "custom enum[]": 19,
+    "custom external": 6,
+    "custom float": 67,
+    "custom float[]": 1,
+    "custom opaque_external": 6,
+    "custom reference": 296,
+    "custom reference[]": 99,
+    "custom string": 442,
+    "custom string[]": 7,
+    "custom utc_datetime_usec": 92,
+    "option boolean": 68,
+    "option custom": 5,
+    "option enum": 19,
+    "option enum[]": 14,
+    "option float": 31,
+    "option string": 467,
+    "option string[]": 1,
+    "option utc_datetime_usec": 2
+  },
+  "diagnostics": {
+    "exact_type_definition_missing": 7,
+    "invalid_descriptor": 8,
+    "model_option_key_missing": 9,
+    "model_undeclared_option_attribute_value": 40,
+    "model_unresolved_target": 4
+  },
+  "external_types": {
+    "opaque": 5
+  },
+  "formats": {
+    "convex": {
+      "bytes": 99398,
+      "lines": 2639,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_unresolved_root": 12
+      }
+    },
+    "dbml": {
+      "bytes": 104026,
+      "lines": 3189,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_target_opaque": 6,
+        "external_type_unresolved_root": 6
+      }
+    },
+    "ecto": {
+      "bytes": 325424,
+      "lines": 10126,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_unresolved_root": 12
+      }
+    },
+    "postgres": {
+      "bytes": 114313,
+      "lines": 3288,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_unresolved_root": 12
+      }
+    },
+    "sqlite": {
+      "bytes": 104950,
+      "lines": 3290,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_target_opaque": 6,
+        "external_type_unresolved_root": 6
+      }
+    },
+    "tsql": {
+      "bytes": 158848,
+      "lines": 4553,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_target_opaque": 6,
+        "external_type_unresolved_root": 6
+      }
+    },
+    "xano": {
+      "bytes": 262093,
+      "lines": 11764,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_unresolved_root": 12
+      }
+    },
+    "zod": {
+      "bytes": 127432,
+      "lines": 3333,
+      "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
+        "external_type_unresolved_root": 12
+      }
+    }
+  },
+  "option_values": 678,
+  "relationships": {
+    "custom many_to_many unresolved": 1,
+    "custom many_to_one unresolved": 4,
+    "custom->custom many_to_many": 98,
+    "custom->custom many_to_one": 293,
+    "custom->option many_to_many": 19,
+    "custom->option many_to_one": 109,
+    "option->option many_to_many": 14,
+    "option->option many_to_one": 19
+  },
+  "tables": {
+    "custom": 93,
+    "option": 141
+  }
+}

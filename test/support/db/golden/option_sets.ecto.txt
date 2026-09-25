@@ -1,0 +1,168 @@
+# schema module
+defmodule MyApp.Ticket do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "ticket" do
+    field :channels, {:array, :string}
+    belongs_to :priority, MyApp.Priority, foreign_key: :priority_id, references: :db_value, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:channels, :priority_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTicket do
+  use Ecto.Migration
+
+  def change do
+    create table("ticket", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :channels, {:array, :string}
+      add :priority_id, :string
+    end
+    create index("ticket", [:priority_id])
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Channel do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "channel" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateChannel do
+  use Ecto.Migration
+
+  def change do
+    create table("channel", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Orphan do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "orphan" do
+    field :display, :string
+    field :parent, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :parent]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateOrphan do
+  use Ecto.Migration
+
+  def change do
+    create table("orphan", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :parent, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Priority do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "priority" do
+    field :display, :string
+    field :channels, {:array, :string}
+    field :color, :string
+    belongs_to :escalates_to, MyApp.Priority, foreign_key: :escalates_to_id, references: :db_value, type: :string
+    field :icon, :string
+    field :urgent, :boolean
+    field :weight, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :channels, :color, :escalates_to_id, :icon, :urgent, :weight]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreatePriority do
+  use Ecto.Migration
+
+  def change do
+    create table("priority", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :channels, {:array, :string}
+      add :color, :string
+      add :escalates_to_id, :string
+      add :icon, :string
+      add :urgent, :boolean
+      add :weight, :float
+    end
+    create index("priority", [:escalates_to_id])
+  end
+end
+--- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

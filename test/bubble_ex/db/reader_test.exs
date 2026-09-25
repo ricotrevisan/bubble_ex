@@ -75,8 +75,10 @@ defmodule BubbleEx.Db.ReaderTest do
 
       {:ok, db_map} = Reader.parse(attrs)
       table = Enum.find(db_map.tables, &(&1.id == "status_type"))
-      pk = Enum.find(table.columns, & &1.primary_key)
-      assert pk.id == "display"
+      # The stable key (the Model's `OptionValue.key`, Bubble's db_value) is
+      # the primary key; the display text is an ordinary column.
+      assert [%{id: "db_value", primary_key: true}, %{id: "display", primary_key: false}] =
+               table.columns
     end
 
     test "retains normalization inputs without guessing unsupported types" do
@@ -222,12 +224,16 @@ defmodule BubbleEx.Db.ReaderTest do
                raw: "list." <> event
              }
 
+      # The `list.` prefix is Bubble's own, so an invalid descriptor's
+      # cardinality is still known (the Model's reading).
       assert Enum.find(order.columns, &(&1.id == "broken")).type == %{
                type: :opaque_external,
                target: nil,
-               cardinality: :unknown,
+               cardinality: :one,
                raw: "api."
              }
+
+      refute Enum.find(order.columns, &(&1.id == "deleted"))
 
       assert Enum.map(db.external_types, & &1.id) == Enum.sort([address, event, geo, missing])
       assert Enum.find(db.external_types, &(&1.id == event)).resolution == :resolved
@@ -246,7 +252,6 @@ defmodule BubbleEx.Db.ReaderTest do
              ]
 
       assert Enum.all?(missing_diagnostics, &(&1.details == %{external_type: missing}))
-      assert Enum.all?(db.diagnostics, &(&1.stage == :read))
       assert Enum.any?(db.diagnostics, &(&1.code == :invalid_descriptor))
 
       reordered =
@@ -296,7 +301,9 @@ defmodule BubbleEx.Db.ReaderTest do
       assert Enum.find(db.external_types, &(&1.id == conflict)).resolution == :conflicted
       assert Enum.find(db.external_types, &(&1.id == missing_connector)).resolution == :opaque
 
-      assert Enum.map(db.diagnostics, &{&1.code, &1.subject, &1.path}) == [
+      assert db.diagnostics
+             |> Enum.filter(&(&1.stage == :read))
+             |> Enum.map(&{&1.code, &1.subject, &1.path}) == [
                {:conflicting_duplicate_definition, %{type: "item", field: "conflict"},
                 "/user_types/item/%f3/conflict/%v"},
                {:connector_missing, %{type: "item", field: "ghost"},
@@ -327,8 +334,10 @@ defmodule BubbleEx.Db.ReaderTest do
       [node] = db.external_types
       assert [%{id: "odd", type: %{type: :opaque_external}}] = node.fields
 
-      assert db.diagnostics |> Enum.map(& &1.code) |> Enum.sort() ==
-               [:field_type_malformed, :incomplete_field_metadata]
+      assert db.diagnostics
+             |> Enum.filter(&(&1.stage == :read))
+             |> Enum.map(& &1.code)
+             |> Enum.sort() == [:field_type_malformed, :incomplete_field_metadata]
     end
   end
 
@@ -371,9 +380,9 @@ defmodule BubbleEx.Db.ReaderTest do
       assert dir == :many_to_one
     end
 
-    test "an option-set reference targets the option set's display PK, not an arbitrary attribute" do
-      # The option set's "color" attribute sorts before the injected "display"
-      # PK, so the naive lookup would point the enum reference at "color".
+    test "an option-set reference targets the option set's db_value PK, not an arbitrary attribute" do
+      # The option set's "color" attribute sorts before the injected "db_value"
+      # PK, so a naive lookup would point the enum reference at "color".
       attrs = %{
         "_id" => "synthapp",
         "user_types" => %{
@@ -404,12 +413,11 @@ defmodule BubbleEx.Db.ReaderTest do
       assert rel, "expected a relationship from source.field_status to status_type"
       {_from, to, _dir} = rel
       assert to.table_id == "status_type"
-      assert to.id == "display"
+      assert to.id == "db_value"
     end
 
     test "a list (array) custom reference also targets the referenced table's _id" do
-      # `list.custom.X` flows through which_type/1's `list.` Map.merge path,
-      # producing is_array: true alongside the reference type. It must still
+      # `list.custom.X` is a reference with is_array: true. It must still
       # resolve to the target's _id PK.
       attrs = %{
         "_id" => "synthapp",
@@ -477,7 +485,7 @@ defmodule BubbleEx.Db.ReaderTest do
   end
 
   describe "parse/1 with export-shaped input (.bubble.json)" do
-    test "normalizes user_types with display/fields keys" do
+    test "reads user_types with display/fields keys" do
       attrs = %{
         "_id" => "synthexport",
         "user_types" => %{
@@ -506,19 +514,27 @@ defmodule BubbleEx.Db.ReaderTest do
       # the custom.project reference resolves to a relationship (a single
       # reference column is many-to-one: many tasks point at one project)
       assert [{from, to, :many_to_one}] = db_map.relationships
+      assert from.source_path == "/user_types/task/fields/project_ref/value"
       assert from.table_id == "task"
       assert to.table_id == "project"
     end
 
-    test "normalizes option_sets with display/values keys and derives attributes" do
+    test "option-set columns are the declared attributes, not keys of the values" do
       attrs = %{
         "_id" => "synthexport",
         "option_sets" => %{
           "status" => %{
             "display" => "Status",
+            "attributes" => %{"color" => %{"display" => "Color", "value" => "text"}},
             "values" => %{
-              "v1" => %{"display" => "Open", "db_value" => "open", "sort_factor" => 1},
-              "v2" => %{"display" => "Closed", "db_value" => "closed", "sort_factor" => 2}
+              "v2" => %{"display" => "Closed", "db_value" => "closed", "sort_factor" => 2},
+              "v1" => %{
+                "display" => "Open",
+                "db_value" => "open",
+                "sort_factor" => 1,
+                "color" => "green"
+              },
+              "v3" => %{"display" => "Gone", "db_value" => "gone", "deleted" => true}
             }
           }
         }
@@ -530,14 +546,14 @@ defmodule BubbleEx.Db.ReaderTest do
       assert status.name == "Status"
       assert status.group == :option
 
-      db_value = Enum.find(status.columns, &(&1.id == "db_value"))
-      assert db_value.type.type == :string
+      assert Enum.map(status.columns, &{&1.id, &1.name}) ==
+               [{"db_value", "db_value"}, {"display", "Display"}, {"color", "Color"}]
 
-      sort_factor = Enum.find(status.columns, &(&1.id == "sort_factor"))
-      assert sort_factor.type.type == :float
-
-      # injected PK still present
-      assert Enum.find(status.columns, & &1.primary_key).id == "display"
+      # Values in Bubble's order (sort_factor), keyed by db_value; deleted ones left out.
+      assert status.values == [
+               %{id: "v1", name: "Open", db_value: "open"},
+               %{id: "v2", name: "Closed", db_value: "closed"}
+             ]
     end
 
     test "scraped shape still parses identically" do
@@ -569,6 +585,188 @@ defmodule BubbleEx.Db.ReaderTest do
       attrs = %{"_id" => "x", "user_types" => %{"odd" => %{"display" => "Odd", "fields" => nil}}}
       {:ok, db_map} = BubbleEx.Db.Reader.parse(attrs)
       assert Enum.find(db_map.tables, &(&1.id == "odd"))
+    end
+  end
+
+  describe "projection of BubbleEx.Model" do
+    @export %{
+      "_id" => "proj",
+      "user_types" => %{
+        "task" => %{
+          "display" => "Task",
+          "fields" => %{
+            "z_title_text" => %{
+              "display" => "Title",
+              "value" => "text",
+              "default_val" => "untitled"
+            },
+            "a_old_text" => %{"display" => "Old", "value" => "text", "deleted" => true},
+            "grid_list" => %{"display" => "Grid", "value" => "list.list.text"},
+            "empty_ref" => %{"display" => "Empty", "value" => "custom."},
+            "owner_user" => %{"display" => "Owner", "value" => "user"},
+            "unnamed_text" => %{"value" => "text"}
+          }
+        },
+        "archive" => %{"display" => "Archive", "deleted" => true, "fields" => %{}}
+      },
+      "option_sets" => %{
+        "retired" => %{"display" => "Retired", "deleted" => true, "values" => %{}}
+      }
+    }
+
+    test "parse/1 is project/2 of the Model" do
+      {:ok, model} = BubbleEx.Model.build(@export)
+      assert Reader.parse(@export) == {:ok, Reader.project(model, @export)}
+    end
+
+    test "drops deleted types, option sets and fields in the export key form" do
+      {:ok, db} = Reader.parse(@export)
+      assert Enum.map(db.tables, &{&1.group, &1.id}) == [custom: "task", custom: "user"]
+      task = Enum.find(db.tables, &(&1.id == "task"))
+      refute Enum.find(task.columns, &(&1.id == "a_old_text"))
+    end
+
+    test "keeps export-form defaults" do
+      {:ok, db} = Reader.parse(@export)
+      task = Enum.find(db.tables, &(&1.id == "task"))
+      assert Enum.find(task.columns, &(&1.id == "z_title_text")).default == "untitled"
+    end
+
+    test "orders tables and columns by Bubble ID, injected columns first" do
+      {:ok, db} = Reader.parse(@export)
+      task = Enum.find(db.tables, &(&1.id == "task"))
+
+      assert Enum.map(task.columns, & &1.id) ==
+               ~w(_id empty_ref grid_list owner_user unnamed_text z_title_text)
+    end
+
+    test "types outside Bubble's vocabulary are unsupported, not guessed" do
+      {:ok, db} = Reader.parse(@export)
+      task = Enum.find(db.tables, &(&1.id == "task"))
+
+      assert Enum.find(task.columns, &(&1.id == "grid_list")).type ==
+               %{type: :unsupported, raw: "list.list.text"}
+
+      assert Enum.find(task.columns, &(&1.id == "empty_ref")).type ==
+               %{type: :unsupported, raw: "custom."}
+
+      codes = Enum.map(db.diagnostics, & &1.code)
+      assert :model_unsupported_field_type in codes
+    end
+
+    test "User is always a table, so user references resolve" do
+      {:ok, db} = Reader.parse(@export)
+
+      assert %{columns: [%{id: "_id", primary_key: true}]} =
+               Enum.find(db.tables, &(&1.id == "user"))
+
+      assert {%{id: "owner_user"}, %{table_id: "user", id: "_id"}, :many_to_one} =
+               Enum.find(db.relationships, fn {from, _, _} -> from.id == "owner_user" end)
+
+      assert Enum.any?(db.diagnostics, &(&1.code == :model_synthesized_user_type))
+    end
+
+    test "a missing display name falls back to the Bubble ID" do
+      {:ok, db} = Reader.parse(@export)
+      task = Enum.find(db.tables, &(&1.id == "task"))
+      assert Enum.find(task.columns, &(&1.id == "unnamed_text")).name == "unnamed_text"
+    end
+
+    test "a live-form deleted type is dropped too" do
+      app = %{"user_types" => %{"gone" => %{"%d" => "Gone", "%del" => true, "%f3" => %{}}}}
+      {:ok, db} = Reader.parse(app)
+      refute Enum.find(db.tables, &(&1.id == "gone"))
+    end
+
+    test "input that is not a JSON object is an error, not a crash" do
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Reader.parse(nil)
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Reader.parse([])
+    end
+
+    for fixture <- Path.wildcard("test/support/model/hostile_*.json") do
+      @fixture fixture
+      test "does not crash on #{Path.basename(fixture)} and every encoder renders it" do
+        app = @fixture |> File.read!() |> Jason.decode!()
+        {:ok, model} = BubbleEx.Model.build(app)
+        assert {:ok, db} = Reader.parse(app)
+        assert Enum.all?(db.diagnostics, &(&1 in model.diagnostics))
+
+        for format <- ~w(dbml postgres sqlite tsql ecto zod xano convex)a do
+          assert {:ok, %{content: content}} = BubbleEx.Db.Encoder.render(format, db)
+          assert is_binary(content)
+        end
+      end
+    end
+  end
+
+  describe "projection keeps the table view loadable" do
+    @collisions "test/support/db/fixtures/collisions.json" |> File.read!() |> Jason.decode!()
+
+    setup do
+      {:ok, db} = Reader.parse(@collisions)
+      %{db: db}
+    end
+
+    defp names(db, id), do: Enum.find(db.tables, &(&1.id == id)).columns |> Enum.map(& &1.name)
+
+    test "column names are unique per table, case-insensitively, key columns first", %{db: db} do
+      assert names(db, "task") ==
+               ["_id", "Title", "title_2", "_ID_2", "Tags", "Gone", "Retired", "Status"]
+
+      # Suffixes follow Bubble ID order and skip names already taken.
+      assert names(db, "status") ==
+               ["db_value", "Display", "DB_VALUE_2", "Display_2", "Rank_2", "Rank", "Rank_3"]
+
+      for table <- db.tables do
+        folded = Enum.map(table.columns, &String.downcase(&1.name))
+        assert folded == Enum.uniq(folded)
+      end
+    end
+
+    test "table names are unique across groups, data types first", %{db: db} do
+      assert Enum.map(db.tables, &{&1.id, &1.name}) == [
+               {"task", "Task"},
+               {"task_copy", "task_2"},
+               {"user", "User"},
+               {"status", "Status"},
+               {"task_os", "TASK_3"}
+             ]
+    end
+
+    test "a repeated option key keeps only its first value", %{db: db} do
+      status = Enum.find(db.tables, &(&1.id == "status"))
+      assert Enum.map(status.values, &{&1.id, &1.db_value}) == [{"v1", "open"}, {"v3", "closed"}]
+
+      assert {:db_duplicate_option_value_dropped, "/option_sets/status/values/v2", _,
+              subject: %{option_set: "status"}, details: %{value: "v2", key: "open"}} =
+               Enum.find(
+                 db.projection_diagnostics,
+                 &(elem(&1, 0) == :db_duplicate_option_value_dropped)
+               )
+    end
+
+    test "references to deleted definitions keep their column and are diagnosed", %{db: db} do
+      for field <- ~w(e_gone_custom_gone f_retired_option_retired) do
+        assert {_, nil, :many_to_one} =
+                 Enum.find(db.relationships, fn {from, _, _} -> from.id == field end)
+      end
+
+      notes = for {:db_reference_to_omitted, _, _, opts} <- db.projection_diagnostics, do: opts
+      assert Enum.map(notes, & &1[:details].target) == ["gone", "retired"]
+    end
+
+    test "Encoder.render emits the projection's diagnostics for its target", %{db: db} do
+      {:ok, result} = BubbleEx.Db.Encoder.render(:sqlite, db)
+      suffixed = Enum.filter(result.diagnostics, &(&1.code == :db_name_suffixed))
+      assert length(suffixed) == 7
+      assert Enum.all?(suffixed, &(&1.stage == {:target, :sqlite}))
+    end
+
+    test "only diagnostics about the tables are kept, not privacy or expression ones", %{db: db} do
+      {:ok, model} = BubbleEx.Model.build(@collisions)
+      assert Enum.any?(model.diagnostics, &(&1.stage == :parse))
+      refute Enum.any?(db.diagnostics, &(&1.stage == :parse))
+      assert Enum.all?(db.diagnostics, &(&1 in model.diagnostics))
     end
   end
 end

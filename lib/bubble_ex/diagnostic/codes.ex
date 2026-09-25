@@ -5,7 +5,7 @@ defmodule BubbleEx.Diagnostic.Codes do
   # `lib/` for emitted codes and requires this registry to match exactly.
 
   @codes [
-    # --- :read — BubbleEx.Db.Reader (API Connector types) -------------------
+    # --- :read — BubbleEx.Model.External.Resolver (API Connector types) -----
     {:invalid_descriptor, :warning, :degraded, :read,
      "an `api.` type descriptor that is not a valid API Connector type; kept as an opaque external value"},
     {:field_type_unsupported, :warning, :degraded, :read,
@@ -129,6 +129,15 @@ defmodule BubbleEx.Diagnostic.Codes do
      "`external_types: :opaque` was selected; rendered as JSON"},
     {:external_type_legacy_mode, :info, :degraded, :target,
      "`external_types: :legacy` was selected; rendered in the legacy form"},
+
+    # --- {:target, format} — BubbleEx.Db.Reader projection (WTF-365) --------
+    # Recorded by the Reader's table projection, emitted by Encoder.render/3.
+    {:db_name_suffixed, :info, :degraded, :target,
+     "a table or column whose display name repeats an earlier one's (case-insensitively, key columns included); rendered with a `_2`, `_3`, ... suffix assigned in Bubble ID order"},
+    {:db_duplicate_option_value_dropped, :warning, :degraded, :target,
+     "an option value repeating an earlier value's stable key; left out of the option table's values so `db_value` stays a key"},
+    {:db_reference_to_omitted, :warning, :degraded, :target,
+     "a reference to a deleted or malformed data type or option set; its column is kept but it has no relationship or foreign key"},
 
     # --- target:ash — BubbleEx.Target.Ash (WTF-362) ---------------------------
     # Also emits the shared external_type_unresolved_root/_nested and

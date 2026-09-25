@@ -1,0 +1,51 @@
+-- SQLite DDL for Bubble app
+-- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS "custom__Ticket" (
+  "_id" TEXT NOT NULL,
+  "Channels" TEXT,  -- list<TEXT>; store as JSON
+  "Priority" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Priority") REFERENCES "option__Priority" ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Channel" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Orphan" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  "Parent" TEXT,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Priority" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  "Channels" TEXT,  -- list<TEXT>; store as JSON
+  "Color" TEXT,
+  "Escalates to" TEXT,
+  "Icon" TEXT,
+  "Urgent" INTEGER,
+  "Weight" REAL,
+  PRIMARY KEY ("db_value"),
+  FOREIGN KEY ("Escalates to") REFERENCES "option__Priority" ("db_value")
+);
+--- diagnostics ---
+model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
+model_duplicate_option_key /option_sets/priority/values/bAg
+model_option_key_missing /option_sets/priority/values/bAf
+model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip
+model_synthesized_user_type /user_types/user

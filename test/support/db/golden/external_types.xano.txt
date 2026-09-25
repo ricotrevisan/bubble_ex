@@ -1,0 +1,146 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "shipment",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "address",
+        "type": "object",
+        "children": [
+          {
+            "name": "latitude",
+            "type": "decimal",
+            "style": "single"
+          },
+          {
+            "name": "lines",
+            "type": "text",
+            "style": "single"
+          },
+          {
+            "name": "seen",
+            "type": "int",
+            "style": "single"
+          },
+          {
+            "name": "street",
+            "type": "text",
+            "style": "single"
+          },
+          {
+            "name": "verified",
+            "type": "bool",
+            "style": "single"
+          }
+        ],
+        "style": "single"
+      },
+      {
+        "name": "blank",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "invalid",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "invalid_list",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "missing",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "nowhere",
+        "type": "json",
+        "style": "single"
+      },
+      {
+        "name": "pings",
+        "type": "object",
+        "children": [
+          {
+            "name": "at",
+            "type": "timestamp",
+            "style": "single"
+          },
+          {
+            "name": "b",
+            "type": "object",
+            "children": [
+              {
+                "name": "a",
+                "type": "json",
+                "style": "single"
+              },
+              {
+                "name": "blob",
+                "type": "json",
+                "style": "single"
+              }
+            ],
+            "style": "single"
+          }
+        ],
+        "style": "list"
+      },
+      {
+        "name": "tree",
+        "type": "object",
+        "children": [
+          {
+            "name": "children",
+            "type": "json",
+            "style": "list"
+          },
+          {
+            "name": "label",
+            "type": "text",
+            "style": "single"
+          }
+        ],
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
+external_type_unresolved_root /user_types/shipment/fields/blank_api/value
+external_type_unresolved_root /user_types/shipment/fields/invalid_api/value
+invalid_descriptor /user_types/shipment/fields/invalid_api/value
+external_type_unresolved_root /user_types/shipment/fields/invalid_list_api/value
+invalid_descriptor /user_types/shipment/fields/invalid_list_api/value
+exact_type_definition_missing /user_types/shipment/fields/missing_api/value
+external_type_unresolved_root /user_types/shipment/fields/missing_api/value
+connector_missing /user_types/shipment/fields/nowhere_api/value
+external_type_unresolved_root /user_types/shipment/fields/nowhere_api/value
+external_type_cycle_edge /settings/client_safe/apiconnector2/graph/pong/types
+incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
+empty_definition /settings/client_safe/apiconnector2/misc/blank/types
+external_type_cycle_edge /settings/client_safe/apiconnector2/tree/walk/types
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,47 @@
+{
+  "_id": "synthetic-collisions",
+  "user_types": {
+    "task": {
+      "display": "Task",
+      "fields": {
+        "_id": {"display": "Unique id", "value": "text"},
+        "a_title_text": {"display": "Title", "value": "text"},
+        "b_title_boolean": {"display": "title", "value": "boolean"},
+        "c_id_text": {"display": "_ID", "value": "text"},
+        "d_tags_list_text": {"display": "Tags", "value": "list.text"},
+        "e_gone_custom_gone": {"display": "Gone", "value": "custom.gone"},
+        "f_retired_option_retired": {"display": "Retired", "value": "option.retired"},
+        "g_status_option_status": {"display": "Status", "value": "option.status"}
+      },
+      "privacy_role": {
+        "x_": {"permissions": {"view_all": true}},
+        "everyone": {"permissions": {}}
+      }
+    },
+    "task_copy": {"display": "task", "fields": {}},
+    "gone": {"display": "Gone", "deleted": true, "fields": {}}
+  },
+  "option_sets": {
+    "status": {
+      "display": "Status",
+      "attributes": {
+        "display": {"display": "Shadowed display", "value": "text"},
+        "label_text": {"display": "Display", "value": "text"},
+        "key_text": {"display": "DB_VALUE", "value": "text"},
+        "rank_2_text": {"display": "Rank_2", "value": "text"},
+        "rank_b_boolean": {"display": "Rank", "value": "boolean"},
+        "rank_n_number": {"display": "Rank", "value": "number"}
+      },
+      "values": {
+        "v1": {"display": "Open", "db_value": "open", "sort_factor": 1},
+        "v2": {"display": "Open again", "db_value": "open", "sort_factor": 2},
+        "v3": {"display": "Closed", "db_value": "closed", "sort_factor": 3}
+      }
+    },
+    "task_os": {
+      "display": "TASK",
+      "values": {"t1": {"display": "One", "db_value": "one"}}
+    },
+    "retired": {"display": "Retired", "deleted": true, "values": {}}
+  }
+}

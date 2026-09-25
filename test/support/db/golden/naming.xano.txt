@@ -1,0 +1,130 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "00_thing_join",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "11_done",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "40_sort_thing_title",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "_struct",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "id",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "inserted_at",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "title_2",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "type",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "_launch",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "_",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "thing",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "thing_2",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "40_levels",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
+model_synthesized_user_type /user_types/user

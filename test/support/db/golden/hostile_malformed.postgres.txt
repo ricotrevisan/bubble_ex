@@ -1,0 +1,63 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TYPE "T" AS (
+  "Fine" text,
+  "odd" jsonb
+);
+
+CREATE TABLE "custom"."Listy" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Task" (
+  "_id" text,
+  "Empty custom" text,
+  "Extra member" text,
+  "Nested list" text,
+  "Numeric type" text,
+  "Odd API" "T",
+  "OK" text,
+  "Quantum" text,
+  "Untyped" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Bad value" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE "option"."Bad values" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+--- diagnostics ---
+model_malformed_node /option_sets/bad_set
+model_malformed_node /option_sets/bad_value/values/v1
+model_malformed_node /option_sets/bad_values/attributes
+model_malformed_node /option_sets/bad_values/values
+malformed_node /user_types/broken
+malformed_node /user_types/counted
+model_malformed_node /user_types/listy/fields
+model_malformed_node /user_types/task/fields/bad
+field_type_malformed /settings/client_safe/apiconnector2/bad/defs/types
+model_option_key_missing /option_sets/bad_value/values/v2
+uninterpreted_field /user_types/task/surprise
+model_unsupported_field_type /user_types/task/fields/empty_custom/value
+model_unsupported_field_type /user_types/task/fields/nested_list/value
+model_malformed_field_type /user_types/task/fields/numeric_type/value
+model_unsupported_field_type /user_types/task/fields/quantum/value
+model_malformed_field_type /user_types/task/fields/untyped
+incomplete_field_metadata /settings/client_safe/apiconnector2/bad/defs/types
+model_uninterpreted_member /option_sets/bad_value/flavor
+model_uninterpreted_member /user_types/task/fields/extra_member/secret_sauce
+model_synthesized_user_type /user_types/user

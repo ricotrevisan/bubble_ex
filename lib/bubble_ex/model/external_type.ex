@@ -2,8 +2,9 @@ defmodule BubbleEx.Model.ExternalType do
   @moduledoc """
   An API Connector type (e.g. `"api.apiconnector2.bTa.bTb.obj"`) reached from
   a data-type field or option-set attribute, directly or through other
-  external types. Resolution is the Reader's (`BubbleEx.Db.Reader`), and its
-  diagnostics (stage `:read`) say why a type is not known.
+  external types. The Model resolves it against the API Connector call's
+  `types` registry, and the diagnostics (stage `:read`) say why a type is not
+  known.
 
     * `id` - the descriptor; identity
     * `name` - the type's caption, verbatim

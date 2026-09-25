@@ -1,0 +1,30 @@
+import { z } from 'zod';
+
+// Order
+export const OrderSchema = z.object({
+  _id: z.string(),
+  Buyer: z.string().nullish(), // reference -> user
+  Items: z.array(z.string()).nullish(), // reference -> item
+  Kind: z.string().nullish(), // enum -> kind option set (values not rendered)
+});
+
+export type Order = z.infer<typeof OrderSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+  Name: z.string().nullish(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Kind
+export const KindSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+  Code: z.number().nullish(),
+});
+
+export type Kind = z.infer<typeof KindSchema>;
+--- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

@@ -1,0 +1,27 @@
+Project "synthetic-missing-deleted" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Invoice" {
+	"_id" varchar [pk]
+	"Archive" archive.id
+	"Customer" ghost.id
+	"Lines" ghost_line.id[]
+	"State" ghost_state.id
+	"Total" float
+
+}
+Table custom."User" {
+	"_id" varchar [pk]
+
+}
+--- diagnostics ---
+db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
+model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
+model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value
+model_unresolved_target /user_types/invoice/fields/state_option_ghost_state/value
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,55 @@
+Project "synthetic-collisions" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Task" {
+	"_id" varchar [pk]
+	"Title" varchar
+	"title_2" bool
+	"_ID_2" varchar
+	"Tags" varchar[]
+	"Gone" gone.id
+	"Retired" retired.id
+	"Status" status.id
+
+}
+Table custom."task_2" {
+	"_id" varchar [pk]
+
+}
+Table custom."User" {
+	"_id" varchar [pk]
+
+}
+Table option."Status" {
+	"db_value" varchar [pk]
+	"Display" varchar
+	"DB_VALUE_2" varchar
+	"Display_2" varchar
+	"Rank_2" varchar
+	"Rank" bool
+	"Rank_3" float
+
+}
+Table option."TASK_3" {
+	"db_value" varchar [pk]
+	"Display" varchar
+
+}
+
+Ref: custom."Task"."Status" > option."Status"."db_value"--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

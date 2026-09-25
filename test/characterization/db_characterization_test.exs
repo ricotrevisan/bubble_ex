@@ -24,7 +24,8 @@ defmodule BubbleEx.Characterization.DbTest do
     end
 
     test "reads the stable number of tables and relationships", %{db: db} do
-      assert length(db.tables) == 3
+      # The fixture's three plus Bubble's built-in User (the Model synthesizes it).
+      assert length(db.tables) == 4
       # survey_response references both a custom type and an option set, so it
       # generates two relationships: -> onboarding_answer and -> status_type.
       assert length(db.relationships) == 2
@@ -73,7 +74,7 @@ defmodule BubbleEx.Characterization.DbTest do
       # encode_relationships/2 stopped emitting the option-set ref). A single
       # reference column is many-to-one (`>`).
       assert dbml =~
-               ~s(Ref: custom."Survey Response"."status" > option."Status Type"."Display")
+               ~s(Ref: custom."Survey Response"."status" > option."Status Type"."db_value")
     end
   end
 end

@@ -1,0 +1,41 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Project] (
+  [_id] NVARCHAR(450),
+  [Name] NVARCHAR(MAX),
+  CONSTRAINT [PK_project] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[Task] (
+  [_id] NVARCHAR(450),
+  [Done?] BIT,
+  [Project] NVARCHAR(450),
+  [Status] NVARCHAR(450),
+  [Title] NVARCHAR(MAX),
+  CONSTRAINT [PK_task] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Status] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  CONSTRAINT [PK_status] PRIMARY KEY ([db_value])
+);
+
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_project]
+  FOREIGN KEY ([Project])
+  REFERENCES [custom].[Project] ([_id]);
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_status]
+  FOREIGN KEY ([Status])
+  REFERENCES [option].[Status] ([db_value]);
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

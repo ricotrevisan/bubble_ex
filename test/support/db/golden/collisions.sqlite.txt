@@ -1,0 +1,58 @@
+-- SQLite DDL for Bubble app
+-- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS "custom__Task" (
+  "_id" TEXT NOT NULL,
+  "Title" TEXT,
+  "title_2" INTEGER,
+  "_ID_2" TEXT,
+  "Tags" TEXT,  -- list<TEXT>; store as JSON
+  "Gone" TEXT,
+  "Retired" TEXT,
+  "Status" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__task_2" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Status" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  "DB_VALUE_2" TEXT,
+  "Display_2" TEXT,
+  "Rank_2" TEXT,
+  "Rank" INTEGER,
+  "Rank_3" REAL,
+  PRIMARY KEY ("db_value")
+);
+
+CREATE TABLE IF NOT EXISTS "option__TASK_3" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
+);
+--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

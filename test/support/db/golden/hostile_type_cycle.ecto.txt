@@ -1,0 +1,118 @@
+# schema module
+defmodule MyApp.A do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "a" do
+    belongs_to :b, MyApp.B, foreign_key: :b_id, references: :_id, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:b_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateA do
+  use Ecto.Migration
+
+  def change do
+    create table("a", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :b_id, :string
+    end
+    create index("a", [:b_id])
+  end
+end
+
+# schema module
+defmodule MyApp.B do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "b" do
+    field :c, {:array, :string}
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:c]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateB do
+  use Ecto.Migration
+
+  def change do
+    create table("b", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :c, {:array, :string}
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.C do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "c" do
+    belongs_to :a, MyApp.A, foreign_key: :a_id, references: :_id, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:a_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateC do
+  use Ecto.Migration
+
+  def change do
+    create table("c", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :a_id, :string
+    end
+    create index("c", [:a_id])
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+--- diagnostics ---
+model_synthesized_user_type /user_types/user

@@ -1,0 +1,36 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Order] (
+  [_id] NVARCHAR(450),
+  [Buyer] NVARCHAR(450),
+  [Items] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
+  [Kind] NVARCHAR(450),
+  CONSTRAINT [PK_order] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  [Name] NVARCHAR(MAX),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Kind] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  [Code] FLOAT,
+  CONSTRAINT [PK_kind] PRIMARY KEY ([db_value])
+);
+
+ALTER TABLE [custom].[Order]
+  ADD CONSTRAINT [FK_order_buyer]
+  FOREIGN KEY ([Buyer])
+  REFERENCES [custom].[User] ([_id]);
+ALTER TABLE [custom].[Order]
+  ADD CONSTRAINT [FK_order_kind]
+  FOREIGN KEY ([Kind])
+  REFERENCES [option].[Kind] ([db_value]);
+--- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v
