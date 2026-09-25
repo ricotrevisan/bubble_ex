@@ -57,8 +57,11 @@ All notable changes to this project are documented here.
   and element targets. Workflows carry an execution class and invocation modes,
   and the call graph's cycles are reported (Tarjan SCC). Queries answer who
   reads or writes a field, which privacy rules reference it, what depends on a
-  data type, and a workflow's callers, callees and writes. The index has a
-  schema version and a content hash.
+  data type, and a workflow's callers, callees and writes. Cycles carry the
+  kind of each call, so scheduled recursion is told apart from synchronous
+  loops. Built-in fields (unique id, dates, Created By, Slug) are symbols.
+  The index has a schema version, a content hash and a semantic hash of the
+  reference graph that ignores source positions.
 
 - Workflow inventory: previous-step references inside list-form workflow
   collections no longer raise.

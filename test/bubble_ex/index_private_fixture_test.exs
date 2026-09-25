@@ -37,7 +37,10 @@ defmodule BubbleEx.IndexPrivateFixtureTest do
     index: built in #{ms} ms (budget #{@budget_ms} ms)
       symbols #{length(index.symbols)} #{inspect(sorted(summary.symbols))}
       references #{length(index.references)} #{inspect(sorted(summary.references))}
-      cycles #{summary.cycles} (#{Enum.count(index.cycles, &(length(&1) > 1))} multi-workflow)
+      cycles #{summary.cycles} (#{Enum.count(index.cycles, &(length(&1.workflows) > 1))} multi-workflow, #{Enum.count(index.cycles, & &1.synchronous)} synchronous, call kinds #{inspect(index.cycles |> Enum.frequencies_by(& &1.call_kinds) |> sorted())})
+      writes: #{Enum.count(index.references, &(&1.kind == :writes_type))} typed actions, #{Enum.count(index.references, &(&1.kind == :writes_type and &1.attrs[:target] == :inferred))} inferred, #{Enum.count(index.diagnostics, &String.contains?(&1.message, "target data type"))} unresolved
+      built-in field reads #{Enum.count(index.references, &(&1.kind == :reads_field and builtin?(index, &1.to)))}
+      privacy: #{Enum.count(Index.symbols(index, :workflow), & &1.attrs[:runs_ignoring_privacy_rules])} workflows run ignoring rules, #{Enum.count(index.references, & &1.attrs[:ignore_privacy_rules])} flagged references
       diagnostics #{inspect(sorted(summary.diagnostics))}
       execution classes #{inspect(workflow_attr(index, :execution_class))}
       invocation modes #{inspect(workflow_attr(index, :invocation_modes))}
@@ -65,7 +68,7 @@ defmodule BubbleEx.IndexPrivateFixtureTest do
       assert is_list(s.attrs.invocation_modes)
     end
 
-    for cycle <- index.cycles, id <- cycle, do: assert(MapSet.member?(ids, id))
+    for cycle <- index.cycles, id <- cycle.workflows, do: assert(MapSet.member?(ids, id))
   end
 
   test "answers the acceptance queries", %{index: index} do
@@ -97,6 +100,8 @@ defmodule BubbleEx.IndexPrivateFixtureTest do
         "#{length(results.dependents)} references to its data type or fields; #{micros} µs"
     )
   end
+
+  defp builtin?(index, id), do: match?(%{attrs: %{builtin: _}}, Index.symbol(index, id))
 
   defp sorted(counts), do: Enum.sort_by(counts, fn {k, n} -> {-n, k} end)
 
