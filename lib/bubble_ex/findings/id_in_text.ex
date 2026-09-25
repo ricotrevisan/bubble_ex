@@ -6,10 +6,12 @@ defmodule BubbleEx.Findings.IdInText do
   # compares it with one (`unique id = F` / `F = unique id` search
   # constraints, `=`/`≠` comparisons, `F contains unique id`). It is a
   # reference stored as text; making it a reference gives it a type and lets
-  # the database check it.
+  # the database check it. Only unique IDs of a data type the app defines
+  # count; IDs whose type is unknown may belong to an external system and
+  # are not flagged.
   #
   # Confidence: high when writes show one target type; medium when only
-  # comparisons do; low when the target type is unknown or several appear.
+  # comparisons do; low when several target types appear.
 
   alias BubbleEx.{Finding, Index}
   alias BubbleEx.Expression.Ast
@@ -35,6 +37,7 @@ defmodule BubbleEx.Findings.IdInText do
           {ast, reads} <- [Context.write_value(ctx, w)],
           {:read, %{keys: keys} = chain} <- [Values.describe(ast, reads)],
           List.last(keys) == @id,
+          app_type?(ctx, chain.owner),
           do: {w, chain.owner}
 
     compared =
@@ -42,6 +45,7 @@ defmodule BubbleEx.Findings.IdInText do
           ast = Context.expression_at(ctx, r),
           ast != nil,
           target <- comparisons(ast, type, field.bubble_id),
+          app_type?(ctx, target),
           uniq: true,
           do: {r, target}
 
@@ -49,6 +53,11 @@ defmodule BubbleEx.Findings.IdInText do
       do: [],
       else: [finding(ctx, field, type, written, compared)]
   end
+
+  # Only unique IDs of a data type the app defines count: an ID of unknown
+  # origin may be an external system's ID.
+  defp app_type?(_ctx, nil), do: false
+  defp app_type?(ctx, type), do: Index.symbol(ctx.index, "data_type:" <> type) != nil
 
   # Target types (nil when unknown) of the unique IDs `key` is compared with.
   defp comparisons(ast, type, key) do
@@ -122,10 +131,7 @@ defmodule BubbleEx.Findings.IdInText do
         length(known) > 1 ->
           {:low, "unique IDs of #{length(known)} different types appear"}
 
-        known == [] ->
-          {:low, "compared with unique IDs of an unknown type"}
-
-        written != [] and nil not in written_targets ->
+        written != [] ->
           {:high, "written from the unique ID of one data type"}
 
         true ->
@@ -133,6 +139,8 @@ defmodule BubbleEx.Findings.IdInText do
       end
 
     target = if match?([_], known), do: "data_type:" <> hd(known)
+    readers = Enum.map(compared, fn {r, _} -> r.from end)
+    maintainers = Enum.map(written, fn {w, _} -> w.from end)
     refs = Enum.map(written, &elem(&1, 0)) ++ Enum.map(compared, &elem(&1, 0))
 
     Finding.new(:id_in_text, %{type: type, field: field.bubble_id},
@@ -152,7 +160,7 @@ defmodule BubbleEx.Findings.IdInText do
       },
       confidence: confidence,
       confidence_reason: reason,
-      affects: Context.affects(ctx, Enum.map(refs, & &1.from)),
+      affects: Context.affects(ctx, readers, maintainers),
       message:
         "“#{Context.name(ctx, field.id)}” on “#{Context.name(ctx, "data_type:" <> type)}” stores unique IDs" <>
           if(target, do: " of “#{Context.name(ctx, target)}”", else: "") <>

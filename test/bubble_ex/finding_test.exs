@@ -33,7 +33,8 @@ defmodule BubbleEx.FindingTest do
       assert emitted == MapSet.new(Kinds.all())
 
       for kind <- Kinds.all() do
-        assert {:ok, %{transforms: [_ | _], doc: doc}} = Kinds.fetch(kind)
+        assert {:ok, %{category: category, transforms: [_ | _], doc: doc}} = Kinds.fetch(kind)
+        assert category in Kinds.categories()
         assert doc != ""
       end
     end
@@ -84,10 +85,44 @@ defmodule BubbleEx.FindingTest do
 
       b =
         finding(:list_relationship, %{type: "z", field: "x"},
-          proposal: %{transform: :extract_join_resource}
+          proposal: %{transform: :normalize_list_to_join}
         )
 
-      assert Finding.normalize([c, a, b, a]) == [b, a, c]
+      assert Finding.normalize([c, a, b]) == [b, a, c]
+    end
+
+    test "normalize raises when two findings share an ID" do
+      a = finding(:number_type, %{type: "a", field: "y"})
+
+      assert_raise ArgumentError, ~r/duplicate finding IDs/, fn ->
+        Finding.normalize([a, %{a | message: "other"}])
+      end
+    end
+
+    test "proposal_sha256 follows the proposal and evidence, not the message or paths" do
+      ref = %Reference{from: "action:a", to: "field:t/f", kind: :writes_field, path: "/x"}
+
+      a =
+        finding(:number_type, %{type: "t", field: "f"},
+          evidence: %{symbols: [], references: [ref]}
+        )
+
+      b =
+        finding(:number_type, %{type: "t", field: "f"},
+          message: "other",
+          confidence: :low,
+          evidence: %{symbols: [], references: [%{ref | path: "/moved"}]}
+        )
+
+      c =
+        finding(:number_type, %{type: "t", field: "f"},
+          proposal: %{transform: :refine_number_type, field: "field:t/f", to: :integer}
+        )
+
+      assert a.proposal_sha256 == b.proposal_sha256
+      assert a.proposal_sha256 =~ ~r/^[0-9a-f]{64}$/
+      refute a.proposal_sha256 == c.proposal_sha256
+      assert a.id == c.id
     end
   end
 
@@ -104,22 +139,28 @@ defmodule BubbleEx.FindingTest do
           references: [ref.("action:b"), ref.("action:a")],
           writes: %{count: 1}
         },
-        affects: %{workflows: ["workflow:b", "workflow:a"]}
+        affects: %{maintainers: %{workflows: ["workflow:b", "workflow:a"]}},
+        related: ["x", "a", "x"]
       )
 
     assert f.path == "/user_types/task/fields/points_number"
     assert f.evidence.symbols == ["a", "b"]
     assert Enum.map(f.evidence.references, & &1.from) == ["action:a", "action:b"]
 
+    empty = %{workflows: [], pages: [], reusables: [], privacy_rules: []}
+
     assert f.affects == %{
-             workflows: ["workflow:a", "workflow:b"],
-             pages: [],
-             reusables: [],
-             privacy_rules: []
+             readers: empty,
+             maintainers: %{empty | workflows: ["workflow:a", "workflow:b"]}
            }
+
+    assert f.related == ["a", "x"]
+    assert f.category == :decision
 
     map = Finding.to_map(f)
     assert map["kind"] == "number_type"
+    assert map["category"] == "decision"
+    assert map["proposal_sha256"] == f.proposal_sha256
     assert map["proposal"]["transform"] == "refine_number_type"
     assert [%{"from" => "action:a", "kind" => "writes_field"} | _] = map["evidence"]["references"]
     assert map |> Jason.encode!() |> Jason.decode!() == map

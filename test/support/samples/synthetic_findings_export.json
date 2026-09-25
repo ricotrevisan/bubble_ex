@@ -154,6 +154,46 @@
                   },
                   "type": "TextExpression"
                 }
+              },
+              "7": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "summary_text",
+                "value": "draft"
+              },
+              "8": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "workspace_created_date",
+                "value": {
+                  "next": {
+                    "name": "Created Date",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.workspace",
+                    "param_id": "ws"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "9": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "external_user_id_text",
+                "value": {
+                  "next": {
+                    "name": "_id",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aExternal"
+                  },
+                  "type": "PreviousStep"
+                }
               }
             },
             "thing_type": "custom.project"
@@ -215,6 +255,28 @@
           "type": "MakeChangeCurrentUser"
         },
         "1": {
+          "id": "aAddViewer",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "viewers_list_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "2": {
           "id": "aFindTasks",
           "properties": {
             "changes": {
@@ -274,6 +336,57 @@
       "properties": {
         "expose": false,
         "wf_name": "favorite"
+      },
+      "type": "APIEvent"
+    },
+    "wfJoinWorkspace": {
+      "actions": {
+        "0": {
+          "id": "aAddMember",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "members_list_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.workspace",
+                "param_id": "ws"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aAddWorkspace",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "workspaces_list_custom_workspace",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.workspace",
+                    "param_id": "ws"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        }
+      },
+      "id": "wJoinWorkspace",
+      "properties": {
+        "expose": false,
+        "wf_name": "join-workspace"
       },
       "type": "APIEvent"
     },
@@ -371,6 +484,59 @@
       },
       "type": "APIEvent"
     },
+    "wfPin": {
+      "actions": {
+        "0": {
+          "id": "aPinAssign",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "assignee_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.task",
+                "param_id": "task"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aPin",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "pinned_tasks_list_custom_task",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "task"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        }
+      },
+      "id": "wPin",
+      "properties": {
+        "expose": false,
+        "wf_name": "pin-task"
+      },
+      "type": "APIEvent"
+    },
     "wfRenameSync": {
       "actions": {
         "0": {
@@ -428,6 +594,167 @@
       "properties": {
         "expose": false,
         "wf_name": "sync-workspace-name"
+      },
+      "type": "APIEvent"
+    },
+    "wfStar": {
+      "actions": {
+        "0": {
+          "id": "aStarAssign",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "assignee_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.task",
+                "param_id": "task"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aStar",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "starred_tasks_list_custom_task",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "task"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            }
+          },
+          "type": "MakeChangeCurrentUser"
+        }
+      },
+      "id": "wStar",
+      "properties": {
+        "expose": false,
+        "wf_name": "star-task"
+      },
+      "type": "APIEvent"
+    },
+    "wfSyncNotify": {
+      "actions": {
+        "0": {
+          "id": "aSyncNotify",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "sort_workspace_name_text",
+                "value": {
+                  "next": {
+                    "name": "workspace_custom_workspace",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "summary_text",
+                "value": {
+                  "next": {
+                    "name": "workspace_custom_workspace",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aNotify",
+          "properties": {
+            "api_event": "wSyncOnly"
+          },
+          "type": "ScheduleAPIEvent"
+        }
+      },
+      "id": "wSyncNotify",
+      "properties": {
+        "expose": false,
+        "wf_name": "sync-and-notify"
+      },
+      "type": "APIEvent"
+    },
+    "wfSyncOnly": {
+      "actions": {
+        "0": {
+          "id": "aSyncOnly",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "sort_workspace_name_text",
+                "value": {
+                  "next": {
+                    "name": "workspace_custom_workspace",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.project",
+                "param_id": "project"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wSyncOnly",
+      "properties": {
+        "expose": false,
+        "wf_name": "sync-only"
       },
       "type": "APIEvent"
     },
@@ -496,6 +823,26 @@
           "id": "eScore",
           "properties": {},
           "type": "Input"
+        },
+        "rgDone": {
+          "default_name": "RG Done",
+          "id": "eDone",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "done_boolean",
+                    "value": true
+                  }
+                },
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
         },
         "rgNearby": {
           "default_name": "RG Nearby",
@@ -582,6 +929,21 @@
           },
           "type": "RepeatingGroup"
         },
+        "rgRecent": {
+          "default_name": "RG Recent",
+          "id": "eRecent",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "Created Date",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
         "rgTasks": {
           "default_name": "RG Tasks",
           "id": "eTasks",
@@ -607,6 +969,36 @@
             }
           },
           "type": "RepeatingGroup"
+        },
+        "txtProjects": {
+          "default_name": "Text Projects",
+          "id": "eProjectCount",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "first_element",
+                    "next": {
+                      "name": "projects_list_custom_project",
+                      "next": {
+                        "name": "count",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type_to_find": "custom.workspace"
+                  },
+                  "type": "Search"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "pHome",
@@ -671,9 +1063,17 @@
           "display": "External Ref",
           "value": "text"
         },
+        "external_user_id_text": {
+          "display": "External user ID",
+          "value": "text"
+        },
         "legacy_task_id_text": {
           "display": "Legacy Task ID",
           "value": "text"
+        },
+        "legacy_tasks_list_custom_task": {
+          "display": "Legacy tasks",
+          "value": "list.custom.task"
         },
         "location_geographic_address": {
           "display": "Location",
@@ -700,6 +1100,10 @@
           "display": "Sort: Workspace Name",
           "value": "text"
         },
+        "summary_text": {
+          "display": "Summary",
+          "value": "text"
+        },
         "task_count_number": {
           "display": "Task Count",
           "value": "number"
@@ -715,6 +1119,10 @@
         "viewers_list_user": {
           "display": "Viewers",
           "value": "list.user"
+        },
+        "workspace_created_date": {
+          "display": "Workspace created",
+          "value": "date"
         },
         "workspace_custom_workspace": {
           "display": "Workspace",
@@ -763,6 +1171,14 @@
     "task": {
       "display": "Task",
       "fields": {
+        "assignee_user": {
+          "display": "Assignee",
+          "value": "user"
+        },
+        "done_boolean": {
+          "display": "Done",
+          "value": "boolean"
+        },
         "points_number": {
           "display": "Points",
           "value": "number"
@@ -791,6 +1207,18 @@
         "name_text": {
           "display": "Name",
           "value": "text"
+        },
+        "pinned_tasks_list_custom_task": {
+          "display": "Pinned tasks",
+          "value": "list.custom.task"
+        },
+        "starred_tasks_list_custom_task": {
+          "display": "Starred tasks",
+          "value": "list.custom.task"
+        },
+        "workspaces_list_custom_workspace": {
+          "display": "Workspaces",
+          "value": "list.custom.workspace"
         }
       }
     },

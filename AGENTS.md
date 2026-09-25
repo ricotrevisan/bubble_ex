@@ -37,7 +37,7 @@ The codebase follows a modular architecture with clear separation of concerns:
 - **BubbleEx.Expression** - Typed, stack-neutral Bubble expression AST (both key forms), raw nodes + diagnostics for unmodeled pieces, source re-emission and canonical hashing
 - **BubbleEx.Privacy** - Data-type privacy rules (conditions as expression ASTs, permissions, per-field visibility)
 - **BubbleEx.Index** - Deterministic symbol and reference index keyed by stable Bubble IDs (reads/writes per field, privacy-rule references, workflow call graph with cycles, execution class, invocation modes); a disposable derived cache built from `Workflows`, `Expression` and `Privacy`
-- **BubbleEx.Findings** - Deterministic model-refinement analyzers over the index that emit `BubbleEx.Finding`s (kind registry in `Finding.Kinds`): evidence, a stack-neutral proposal, confidence and a stable ID; separate from diagnostics
+- **BubbleEx.Findings** - Deterministic model-refinement analyzers over the index that emit `BubbleEx.Finding`s (kind and category registry in `Finding.Kinds`): evidence, a stack-neutral proposal, confidence, a stable ID and a `proposal_sha256`; separate from diagnostics
 - **BubbleEx.Logs** - Log querying and filtering functionality
 - **BubbleEx.Server** - Asynchronous scan processing (GenServer on top of `Task.Supervisor`)
 - **BubbleEx.Frontend** - Modern-responsive frontend export: normalize a decoded

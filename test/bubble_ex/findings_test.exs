@@ -18,11 +18,15 @@ defmodule BubbleEx.FindingsTest do
   defp subjects(findings, kind),
     do: for(%{kind: ^kind, subject: s} <- findings, do: {s.type, s.field})
 
+  defp subjects_by_type(findings, kind),
+    do: for(%{kind: ^kind, subject: s} <- findings, do: s.type)
+
   describe ":redundant_reverse_list" do
     test "a list kept in sync by the workflow that sets the reference back", %{findings: fs} do
       f = find(fs, :redundant_reverse_list, "workspace", "projects_list_custom_project")
 
       assert f.confidence == :high
+      assert f.category == :decision
       assert f.path == "/user_types/workspace/fields/projects_list_custom_project"
 
       assert f.proposal == %{
@@ -33,97 +37,144 @@ defmodule BubbleEx.FindingsTest do
                  via: "field:project/workspace_custom_workspace",
                  cardinality: :many
                },
-               remove_writes: ["action:aAddToWorkspace"],
-               maintaining_workflows: ["workflow:wCreateProject"]
+               remove_writes: [
+                 %{
+                   action: "action:aAddToWorkspace",
+                   field: "field:workspace/projects_list_custom_project"
+                 }
+               ],
+               maintaining_workflows: ["workflow:wCreateProject"],
+               rewrite_reads: ["element:eProjectCount"]
              }
 
       assert "field:project/workspace_custom_workspace" in f.evidence.symbols
-      assert Enum.any?(f.evidence.references, &(&1.from == "action:aAddToWorkspace"))
-      assert f.affects.workflows == ["workflow:wCreateProject"]
+      assert f.affects.maintainers.workflows == ["workflow:wCreateProject"]
+      assert f.affects.readers.pages == ["page:pHome"]
+      assert f.affects.readers.workflows == []
     end
 
-    test "not for a list no reference-setting workflow maintains", %{findings: fs} do
-      # Project's Tasks: Task has a Project reference, but the workflows that
-      # add and remove tasks never set it, so the list may be any set of tasks.
+    test "not for uncoupled lists, nor for several lists mirroring one reference", %{
+      findings: fs
+    } do
+      # Project's Tasks: no workflow adding tasks sets Task's Project.
+      # User's Pinned and Starred tasks: both mirror Task's Assignee, so each
+      # is a filtered subset; they stay list findings.
       assert subjects(fs, :redundant_reverse_list) == [
                {"workspace", "projects_list_custom_project"}
              ]
+
+      assert find(fs, :list_relationship, "user", "pinned_tasks_list_custom_task")
+      assert find(fs, :list_relationship, "user", "starred_tasks_list_custom_task")
     end
   end
 
   describe ":denormalized_field" do
-    test "a copied field of a related record, maintained on create and on update", %{
-      findings: fs
-    } do
+    test "a copy of a related record, kept in sync by updates", %{findings: fs} do
       f = find(fs, :denormalized_field, "project", "sort_workspace_name_text")
 
       assert f.confidence == :high
-      assert f.proposal.transform == :derive_calculation
+      assert f.proposal.transform == :derive_from_related
 
       assert f.proposal.derivation == %{
                via: ["field:project/workspace_custom_workspace"],
                source_field: "field:workspace/name_text"
              }
 
-      assert f.proposal.remove_writes == ["action:aCreateProject", "action:aSyncName"]
+      assert f.proposal.remove_writes ==
+               for(
+                 a <- ~w(aCreateProject aSyncName aSyncNotify aSyncOnly),
+                 do: %{action: "action:" <> a, field: "field:project/sort_workspace_name_text"}
+               )
+
       assert f.proposal.alternatives == []
-      # Both workflows write other fields too, so neither can simply go.
-      assert f.proposal.delete_workflows == []
-      assert f.affects.workflows == ["workflow:wCreateProject", "workflow:wRenameSync"]
-      assert f.evidence.writes == 2 and f.evidence.traced_writes == 2
+      assert f.evidence.writes == %{total: 4, traced: 4}
+
+      assert f.affects.maintainers.workflows ==
+               ~w(workflow:wCreateProject workflow:wRenameSync workflow:wSyncNotify workflow:wSyncOnly)
     end
 
-    test "a count of the record's own list is an aggregate", %{findings: fs} do
-      f = find(fs, :denormalized_field, "project", "task_count_number")
+    test "deletes only workflows whose every action is a removable copy", %{findings: fs} do
+      f = find(fs, :denormalized_field, "project", "sort_workspace_name_text")
 
-      assert f.proposal.transform == :derive_aggregate
-
-      assert f.proposal.derivation == %{
-               aggregate: :count,
-               via: [],
-               source_field: "field:project/tasks_list_custom_task"
-             }
-
-      # The initial 0 and the decrement are consistent but not traceable.
-      assert f.confidence == :medium
-      assert f.confidence_reason =~ "1 of 3 writes"
+      # wSyncOnly only copies. wSyncNotify also writes Summary and schedules
+      # wSyncOnly; wRenameSync also writes Backup Title; wCreateProject
+      # creates the project. The schedule of wSyncOnly must go with it.
+      assert f.proposal.delete_workflows == ["workflow:wSyncOnly"]
+      assert f.proposal.remove_calls == ["action:aNotify"]
     end
 
-    test "not for formatted text, parameters, same-record copies or unique IDs", %{
+    test "a copy of a source that never changes is high even on creation only", %{
       findings: fs
     } do
+      f = find(fs, :denormalized_field, "project", "workspace_created_date")
+
+      assert f.confidence == :high
+      assert f.confidence_reason =~ "never changes"
+      assert f.proposal.derivation.source_field == "field:workspace/Created Date"
+    end
+
+    test "not for partially traced fields, formatted text, parameters, same-record copies or unique IDs",
+         %{findings: fs} do
+      # Summary: one copy and one literal. Task Count: a count, a literal 0
+      # and a decrement. Both are owned data.
       assert subjects(fs, :denormalized_field) == [
                {"project", "sort_workspace_name_text"},
-               {"project", "task_count_number"}
+               {"project", "workspace_created_date"}
              ]
     end
   end
 
   describe ":list_relationship" do
-    test "a list of things grown by add/remove is a join resource", %{findings: fs} do
-      f = find(fs, :list_relationship, "user", "favorites_list_custom_project")
+    test "a list of things grown by add/remove is a join", %{findings: fs} do
+      f = find(fs, :list_relationship, "project", "tasks_list_custom_task")
 
       assert f.confidence == :high
 
       assert f.proposal == %{
-               transform: :extract_join_resource,
-               field: "field:user/favorites_list_custom_project",
-               from_type: "data_type:user",
-               to_type: "data_type:project",
+               transform: :normalize_list_to_join,
+               field: "field:project/tasks_list_custom_task",
+               from_type: "data_type:project",
+               to_type: "data_type:task",
+               join: %{
+                 id: f.proposal.join.id,
+                 between: ["data_type:project", "data_type:task"],
+                 fields: ["field:project/tasks_list_custom_task"],
+                 basis: :single
+               },
                source_order: :preserved,
                source_limit: 10_000
              }
 
       assert f.message =~ "10,000"
-      assert find(fs, :list_relationship, "project", "viewers_list_user").confidence == :low
+      assert f.related == []
     end
 
-    test "not for lists another finding already models", %{findings: fs} do
-      # Workspace's Projects is a reverse list and its Members an access list.
+    test "both sides of one many-to-many share one join and are related", %{findings: fs} do
+      favorites = find(fs, :list_relationship, "user", "favorites_list_custom_project")
+      viewers = find(fs, :list_relationship, "project", "viewers_list_user")
+
+      assert favorites.proposal.join == viewers.proposal.join
+
+      assert favorites.proposal.join.fields == [
+               "field:project/viewers_list_user",
+               "field:user/favorites_list_custom_project"
+             ]
+
+      assert favorites.proposal.join.basis == :coupled
+      assert favorites.related == [viewers.id]
+      assert viewers.related == [favorites.id]
+    end
+
+    test "not for unused lists or lists another finding already models", %{findings: fs} do
+      # Project's Legacy tasks is unused; Workspace's Projects is a reverse
+      # list and its Members an access list.
       assert subjects(fs, :list_relationship) == [
                {"project", "tasks_list_custom_task"},
                {"project", "viewers_list_user"},
-               {"user", "favorites_list_custom_project"}
+               {"user", "favorites_list_custom_project"},
+               {"user", "pinned_tasks_list_custom_task"},
+               {"user", "starred_tasks_list_custom_task"},
+               {"user", "workspaces_list_custom_workspace"}
              ]
     end
   end
@@ -145,10 +196,21 @@ defmodule BubbleEx.FindingsTest do
                %{rule: "privacy_rule:workspace/member_", membership_test: true, via: []}
              ]
 
-      assert f.affects.privacy_rules == [
+      assert f.affects.readers.privacy_rules == [
                "privacy_rule:project/workspace_member_",
                "privacy_rule:workspace/member_"
              ]
+
+      assert f.affects.maintainers.workflows == ["workflow:wJoinWorkspace"]
+    end
+
+    test "shares its membership join with the user's mirrored list", %{findings: fs} do
+      members = find(fs, :privacy_access_list, "workspace", "members_list_user")
+      workspaces = find(fs, :list_relationship, "user", "workspaces_list_custom_workspace")
+
+      assert members.proposal.join == workspaces.proposal.join
+      assert members.related == [workspaces.id]
+      assert workspaces.related == [members.id]
     end
 
     test "not for a list of users no rule reads", %{findings: fs} do
@@ -175,10 +237,10 @@ defmodule BubbleEx.FindingsTest do
 
       assert f.confidence == :medium
       assert f.proposal.target_type == "data_type:task"
-      assert f.affects.workflows == ["workflow:wFavorite"]
+      assert f.affects.readers.workflows == ["workflow:wFavorite"]
     end
 
-    test "not for text written from literals or parameters", %{findings: fs} do
+    test "not for literals, or IDs whose type is unknown (possibly external)", %{findings: fs} do
       assert subjects(fs, :id_in_text) == [
                {"project", "legacy_task_id_text"},
                {"project", "owner_id_text"}
@@ -187,47 +249,61 @@ defmodule BubbleEx.FindingsTest do
   end
 
   describe ":search_index" do
-    test "indexes by operator", %{findings: fs} do
-      title = find(fs, :search_index, "project", "title_text")
+    test "one hint per data type, with access patterns only", %{findings: fs} do
+      f = Enum.find(fs, &(&1.kind == :search_index and &1.subject == %{type: "project"}))
 
-      assert title.confidence == :high
+      assert f.category == :hint
+      assert f.confidence == :medium
+      assert f.path == "/user_types/project"
+      assert f.affects.readers.pages == ["page:pHome"]
 
-      assert title.proposal.indexes == [
-               %{method: :btree, access: [:sort], operators: [:sort], searches: 1},
+      col = &%{field: "field:project/" <> &1, access: &2}
+
+      assert f.proposal == %{
+               transform: :add_indexes,
+               type: "data_type:project",
+               indexes: [
+                 %{
+                   columns: [col.("location_geographic_address", :geo)],
+                   operators: ["geographic_search"],
+                   searches: 1
+                 },
+                 %{
+                   columns: [col.("title_text", :full_text)],
+                   operators: [:text_contains],
+                   searches: 1
+                 },
+                 %{
+                   columns: [col.("title_text", :substring)],
+                   operators: [:text_contains_string],
+                   searches: 1
+                 },
+                 %{
+                   columns: [
+                     col.("workspace_custom_workspace", :equality),
+                     col.("title_text", :sort)
+                   ],
+                   operators: [:equals, :sort],
+                   searches: 1
+                 }
+               ]
+             }
+    end
+
+    test "skips standalone indexes targets add anyway or rarely need", %{findings: fs} do
+      # Task: `Done = yes` alone and a Created Date sort alone are dropped;
+      # the Project search on Workspace alone is served by the foreign key.
+      task = Enum.find(fs, &(&1.kind == :search_index and &1.subject == %{type: "task"}))
+
+      assert task.proposal.indexes == [
                %{
-                 method: :full_text,
-                 access: [:full_text],
-                 operators: [:text_contains],
-                 searches: 1
-               },
-               %{
-                 method: :trigram,
-                 access: [:substring],
-                 operators: [:text_contains_string],
+                 columns: [%{field: "field:task/points_number", access: :range}],
+                 operators: [:greater_than],
                  searches: 1
                }
              ]
 
-      assert title.affects.pages == ["page:pHome"]
-
-      assert [%{method: :geo, access: [:geo]}] =
-               find(fs, :search_index, "project", "location_geographic_address").proposal.indexes
-
-      assert [%{method: :btree, access: [:range], operators: [:greater_than]}] =
-               find(fs, :search_index, "task", "points_number").proposal.indexes
-
-      assert find(fs, :search_index, "task", "points_number").confidence == :medium
-    end
-
-    test "not for negative operators, unique IDs or in-memory filters", %{findings: fs} do
-      # `note_text` is only constrained by "not equal", `_id` is the primary
-      # key and `status_text` only appears in `:filtered`.
-      assert subjects(fs, :search_index) == [
-               {"project", "location_geographic_address"},
-               {"project", "title_text"},
-               {"project", "workspace_custom_workspace"},
-               {"task", "points_number"}
-             ]
+      assert subjects_by_type(fs, :search_index) == ["project", "task"]
     end
   end
 
@@ -271,6 +347,7 @@ defmodule BubbleEx.FindingsTest do
       {:ok, moved} = @app |> rename_everything() |> move_workflows() |> Findings.analyze()
 
       assert stable(moved.findings) == stable(fs)
+      assert Enum.map(moved.findings, & &1.proposal_sha256) == Enum.map(fs, & &1.proposal_sha256)
       # The inputs really differ: names and source paths changed.
       refute Enum.map(moved.findings, & &1.message) == Enum.map(fs, & &1.message)
       refute paths(moved.findings) == paths(fs)
@@ -324,8 +401,8 @@ defmodule BubbleEx.FindingsTest do
     # Everything but messages and source paths.
     defp stable(findings) do
       Enum.map(findings, fn f ->
-        {f.id, f.kind, f.subject, f.proposal, f.confidence, f.affects, f.evidence.symbols,
-         Enum.map(f.evidence.references, &{&1.from, &1.kind, &1.to})}
+        {f.id, f.kind, f.subject, f.proposal, f.confidence, f.affects, f.related,
+         f.evidence.symbols, Enum.map(f.evidence.references, &{&1.from, &1.kind, &1.to})}
       end)
     end
 
@@ -360,9 +437,33 @@ defmodule BubbleEx.FindingsTest do
   end
 
   describe "options and results" do
-    test "reuses a prebuilt index", %{result: result} do
+    test "reuses a prebuilt index of the same app, and rejects another app's", %{result: result} do
       {:ok, index} = Index.build(@app)
       assert {:ok, ^result} = Findings.analyze(@app, index: index)
+
+      {:ok, other} = Index.build(Map.put(@app, "app_version", "live"))
+
+      assert {:error,
+              %Error{kind: :invalid_input, message: "index was built from a different app"}} =
+               Findings.analyze(@app, index: other)
+    end
+
+    test "a proposal change changes proposal_sha256 but not the ID", %{findings: fs} do
+      {:ok, changed} =
+        @app
+        |> put_in(["api", "wfSyncOnly", "actions", "0", "properties", "changes", "1"], %{
+          "action" => %{"type" => "Empty"},
+          "key" => "backup_title_text",
+          "value" => "x"
+        })
+        |> Findings.analyze()
+
+      before = find(fs, :denormalized_field, "project", "sort_workspace_name_text")
+      now = find(changed.findings, :denormalized_field, "project", "sort_workspace_name_text")
+
+      assert now.id == before.id
+      assert now.proposal.delete_workflows == []
+      refute now.proposal_sha256 == before.proposal_sha256
     end
 
     test "returns the index diagnostics and a summary", %{result: result} do
@@ -371,15 +472,16 @@ defmodule BubbleEx.FindingsTest do
 
       assert Findings.summary(result) == %{
                redundant_reverse_list: %{high: 1},
-               denormalized_field: %{high: 1, medium: 1},
-               list_relationship: %{high: 2, low: 1},
+               denormalized_field: %{high: 2},
+               list_relationship: %{high: 6},
                privacy_access_list: %{high: 1},
                id_in_text: %{high: 1, medium: 1},
-               search_index: %{high: 2, medium: 2},
+               search_index: %{medium: 2},
                number_type: %{high: 2}
              }
 
-      assert %{"findings" => [%{"id" => _} | _], "diagnostics" => []} = Findings.to_map(result)
+      assert %{"findings" => [%{"id" => _, "category" => "decision"} | _], "diagnostics" => []} =
+               Findings.to_map(result)
     end
 
     test "rejects unknown kinds and bad input" do

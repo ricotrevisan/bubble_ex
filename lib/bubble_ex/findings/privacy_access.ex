@@ -3,8 +3,9 @@ defmodule BubbleEx.Findings.PrivacyAccess do
 
   # `:privacy_access_list` - a `list of User` that privacy-rule conditions
   # read, typically `This Thing's Members contains Current User`. It is an
-  # access-control list; a membership relationship with a membership-based
-  # policy expresses it directly. Rules on other types that reach the list
+  # access-control list; a membership join with a membership-based access
+  # rule expresses it directly. The proposal names the join (see
+  # `BubbleEx.Findings.Joins`), shared with a mirrored list on User. Rules on other types that reach the list
   # through references (`This Thing's Workspace's Members …`) are included.
   #
   # High confidence when some rule tests the current user's membership
@@ -16,14 +17,14 @@ defmodule BubbleEx.Findings.PrivacyAccess do
   alias BubbleEx.Findings.{Context, Values}
   alias BubbleEx.Index.Symbol
 
-  @spec run(Context.t()) :: [Finding.t()]
-  def run(ctx) do
+  @spec run(Context.t(), map()) :: [Finding.t()]
+  def run(ctx, joins) do
     for field <- Context.all_fields(ctx),
         not Map.has_key?(field.attrs, :builtin),
         %{type: "user", list: true} <- [Context.target(ctx, field.id)],
         rule_reads = condition_reads(ctx, field.id),
         rule_reads != [],
-        do: finding(ctx, field, rule_reads)
+        do: finding(ctx, field, rule_reads, Map.fetch!(joins, field.id))
   end
 
   defp condition_reads(ctx, field_id) do
@@ -32,7 +33,7 @@ defmodule BubbleEx.Findings.PrivacyAccess do
     |> Enum.filter(&(&1.kind == :reads_field))
   end
 
-  defp finding(ctx, field, rule_reads) do
+  defp finding(ctx, field, rule_reads, join) do
     type = Context.type_of_field(field)
     key = field.bubble_id
 
@@ -57,11 +58,12 @@ defmodule BubbleEx.Findings.PrivacyAccess do
         else: {:medium, "privacy rules read the list, but not as a plain membership test"}
 
     writes = Index.writers(ctx.index, field.id)
+    readers = Index.readers(ctx.index, field.id)
 
     Finding.new(:privacy_access_list, %{type: type, field: key},
       path: field.path,
       evidence: %{
-        symbols: [field.id | Enum.map(checks, & &1.rule)],
+        symbols: [field.id | Enum.map(checks, & &1.rule) ++ join.fields],
         references: rule_reads,
         writes: length(writes),
         rules: length(checks)
@@ -70,15 +72,21 @@ defmodule BubbleEx.Findings.PrivacyAccess do
         transform: :membership_policy,
         field: field.id,
         member_type: "data_type:user",
+        join: join,
         checks: Enum.sort_by(checks, & &1.rule)
       },
       confidence: confidence,
       confidence_reason: reason,
-      affects: Context.affects(ctx, Enum.map(rule_reads ++ writes, & &1.from)),
+      affects:
+        Context.affects(
+          ctx,
+          Enum.map(rule_reads ++ readers, & &1.from),
+          Enum.map(writes, & &1.from)
+        ),
       message:
         "“#{Context.name(ctx, field.id)}” on “#{Context.name(ctx, "data_type:" <> type)}” is a list of users " <>
           "that #{length(checks)} privacy rule(s) check for access; model it as a membership " <>
-          "relationship with a membership-based policy"
+          "join with a membership-based access rule"
     )
   end
 

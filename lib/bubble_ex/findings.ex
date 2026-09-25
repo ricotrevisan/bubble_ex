@@ -12,40 +12,46 @@ defmodule BubbleEx.Findings do
   model stays source-faithful; findings wait for the owner's decisions. No
   LLM is involved.
 
-  | Kind | Proposes |
-  |------|----------|
-  | `:redundant_reverse_list` | derive a maintained `list of A` on B from A's reference to B |
-  | `:denormalized_field` | derive a copied or counted value (calculation or aggregate); drop its maintaining writes |
-  | `:list_relationship` | a join resource for a `list of things` (10,000-item cap) |
-  | `:privacy_access_list` | a membership relationship and policy for a `list of User` checked by privacy rules |
-  | `:id_in_text` | a reference for a text field holding unique IDs |
-  | `:search_index` | indexes for the fields searches constrain or sort on, by operator |
-  | `:number_type` | an integer for a number field whose every write is integral |
+  | Kind | Category | Proposes |
+  |------|----------|----------|
+  | `:redundant_reverse_list` | decision | derive a maintained `list of A` on B from A's reference to B |
+  | `:denormalized_field` | decision | derive a copied or counted value; drop exactly its maintaining writes |
+  | `:list_relationship` | decision | a join for a used `list of things` (10,000-item cap) |
+  | `:privacy_access_list` | decision | a membership join and access rule for a `list of User` checked by privacy rules |
+  | `:id_in_text` | decision | a reference for a text field holding unique IDs of an app data type |
+  | `:search_index` | hint | per data type, the indexes (access patterns) its searches need |
+  | `:number_type` | decision | an integer for a number field whose every write is integral |
 
   A `list of things` field gets at most one of `:redundant_reverse_list`,
   `:privacy_access_list` and `:list_relationship`, in that order of
-  precedence. The analyzers cover what the index sees: writes by actions
-  whose target type is unresolved (see the diagnostics) are missing, so a
-  finding can overlook a writer. Unused fields and dangling references need
-  typed model reads or loaded data and are not analyzed yet.
+  precedence. Two lists mirroring each other (A's list of B and B's list of
+  A) are one many-to-many: their findings name the same `join` in the
+  proposal and list each other in `related`.
+
+  The analyzers cover what the index sees: writes by actions whose target
+  type is unresolved (see the diagnostics) are missing, so a finding can
+  overlook a writer. Unused fields and dangling references need typed model
+  reads or loaded data and are not analyzed yet.
 
   `diagnostics` are the index's (`BubbleEx.Index`): what the analyzers could
   not see.
 
   ## Options
 
-    * `:index` - a `BubbleEx.Index` already built from the same app
+    * `:index` - a `BubbleEx.Index` already built from the same app (its
+      `source_sha256` must match the app; otherwise `:invalid_input`)
     * `:kinds` - only these kinds (default: all, see `BubbleEx.Finding.Kinds`).
       A kind's findings do not depend on which other kinds are requested.
   """
 
-  alias BubbleEx.{Diagnostic, Error, Finding, Index}
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Finding, Index}
   alias BubbleEx.Finding.Kinds
 
   alias BubbleEx.Findings.{
     Context,
     Denormalized,
     IdInText,
+    Joins,
     ListRelationship,
     NumberType,
     PrivacyAccess,
@@ -70,23 +76,7 @@ defmodule BubbleEx.Findings do
     with {:ok, kinds} <- kinds(Keyword.get(opts, :kinds, Kinds.all())),
          {:ok, index} <- index(app, Keyword.get(opts, :index)) do
       ctx = Context.build(app, index)
-      reverse = ReverseList.run(ctx)
-      privacy = PrivacyAccess.run(ctx)
-
-      covered =
-        MapSet.new(reverse ++ privacy, fn f -> f.proposal[:drop_field] || f.proposal[:field] end)
-
-      runs = %{
-        redundant_reverse_list: fn -> reverse end,
-        privacy_access_list: fn -> privacy end,
-        list_relationship: fn -> ListRelationship.run(ctx, covered) end,
-        denormalized_field: fn -> Denormalized.run(ctx) end,
-        id_in_text: fn -> IdInText.run(ctx) end,
-        search_index: fn -> SearchIndex.run(ctx) end,
-        number_type: fn -> NumberType.run(ctx) end
-      }
-
-      findings = kinds |> Enum.flat_map(&Map.fetch!(runs, &1).()) |> Finding.normalize()
+      findings = ctx |> all_findings() |> Enum.filter(&(&1.kind in kinds)) |> Finding.normalize()
 
       {:ok,
        %__MODULE__{
@@ -95,6 +85,35 @@ defmodule BubbleEx.Findings do
          index_sha256: index.semantic_sha256
        }}
     end
+  end
+
+  # Every kind always runs, so a kind's findings never depend on which
+  # kinds were requested (list findings defer to reverse-list and
+  # privacy-access ones).
+  defp all_findings(ctx) do
+    reverse = ReverseList.run(ctx)
+    one_to_many = MapSet.new(reverse, & &1.proposal.drop_field)
+    joins = Joins.build(ctx, one_to_many)
+    privacy = PrivacyAccess.run(ctx, joins)
+    covered = MapSet.union(one_to_many, MapSet.new(privacy, & &1.proposal.field))
+    lists = ListRelationship.run(ctx, covered, joins)
+
+    link_joins(reverse ++ privacy ++ lists) ++
+      Denormalized.run(ctx) ++
+      IdInText.run(ctx) ++ SearchIndex.run(ctx) ++ NumberType.run(ctx)
+  end
+
+  # Findings whose proposals share a join are related to each other.
+  defp link_joins(findings) do
+    by_join =
+      findings
+      |> Enum.filter(&Map.has_key?(&1.proposal, :join))
+      |> Enum.group_by(& &1.proposal.join.id, & &1.id)
+
+    Enum.map(findings, fn
+      %{proposal: %{join: %{id: join}}} = f -> Finding.put_related(f, by_join[join] -- [f.id])
+      f -> f
+    end)
   end
 
   defp kinds(kinds) when is_list(kinds) do
@@ -108,7 +127,12 @@ defmodule BubbleEx.Findings do
     do: {:error, Error.new(:invalid_input, "kinds must be a list", %{kinds: other})}
 
   defp index(app, nil) when is_map(app), do: Index.build(app)
-  defp index(app, %Index{} = index) when is_map(app), do: {:ok, index}
+
+  defp index(app, %Index{} = index) when is_map(app) do
+    if index.source_sha256 == CanonicalJson.sha256(app),
+      do: {:ok, index},
+      else: {:error, Error.new(:invalid_input, "index was built from a different app")}
+  end
 
   defp index(app, _) when is_map(app),
     do: {:error, Error.new(:invalid_input, "index must be a BubbleEx.Index")}

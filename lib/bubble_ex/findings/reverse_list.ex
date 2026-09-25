@@ -18,6 +18,14 @@ defmodule BubbleEx.Findings.ReverseList do
   # since the list may then hold a filtered subset (e.g. only open items)
   # rather than every A.
   #
+  # When two or more lists map to the same reference (e.g. "Favourite
+  # roles" and "Pinned roles" on Preferences, both reached from Role's
+  # Preference), they are filtered subsets, so none is reported here; they
+  # remain `:list_relationship` findings.
+  #
+  # The proposal lists the writes to remove and the symbols whose reads of
+  # the list must be rewritten (`rewrite_reads`, also `affects.readers`).
+  #
   # A missing reverse list is not a finding: the has-many comes free from
   # the other side's reference.
 
@@ -26,11 +34,20 @@ defmodule BubbleEx.Findings.ReverseList do
 
   @spec run(Context.t()) :: [Finding.t()]
   def run(ctx) do
-    for field <- Context.all_fields(ctx),
-        not Map.has_key?(field.attrs, :builtin),
-        %{type: a, list: true} <- [Context.target(ctx, field.id)],
-        finding <- analyze(ctx, field, a),
-        do: finding
+    matches =
+      for field <- Context.all_fields(ctx),
+          not Map.has_key?(field.attrs, :builtin),
+          %{type: a, list: true} <- [Context.target(ctx, field.id)],
+          match <- analyze(ctx, field, a),
+          do: match
+
+    # Two lists mirroring the same reference cannot both be "every A that
+    # points here": they are filtered subsets, so neither is reported.
+    shared = matches |> Enum.frequencies_by(fn {m, _} -> m.ref.id end)
+
+    for {m, ref_workflows} <- matches,
+        shared[m.ref.id] == 1,
+        do: finding(ctx, m, ref_workflows)
   end
 
   defp analyze(ctx, list, a) do
@@ -50,11 +67,8 @@ defmodule BubbleEx.Findings.ReverseList do
     case coupled do
       [{ref, ref_workflows}] ->
         [
-          finding(
-            ctx,
-            %{list: list, b: b, a: a, ref: ref, writes: writes, workflows: workflows},
-            ref_workflows
-          )
+          {%{list: list, b: b, a: a, ref: ref, writes: writes, workflows: workflows},
+           ref_workflows}
         ]
 
       _ ->
@@ -70,8 +84,10 @@ defmodule BubbleEx.Findings.ReverseList do
          %{list: list, b: b, a: a, ref: ref, writes: writes, workflows: workflows},
          ref_workflows
        ) do
-    readers = Index.readers(ctx.index, list.id)
-    rules = Index.privacy_rules_referencing(ctx.index, list.id)
+    # Expression reads and privacy-rule grants of the list.
+    readers =
+      Index.readers(ctx.index, list.id) ++
+        Index.references_to(ctx.index, list.id, [:grants_view, :grants_binding])
 
     alone =
       Enum.reject(
@@ -94,7 +110,7 @@ defmodule BubbleEx.Findings.ReverseList do
       path: list.path,
       evidence: %{
         symbols: [list.id, ref.id, "data_type:" <> a],
-        references: writes ++ Index.writers(ctx.index, ref.id),
+        references: writes ++ readers ++ Index.writers(ctx.index, ref.id),
         writes: length(writes),
         reads: length(readers)
       },
@@ -102,12 +118,14 @@ defmodule BubbleEx.Findings.ReverseList do
         transform: :derive_reverse_relationship,
         drop_field: list.id,
         relationship: %{source_type: "data_type:" <> a, via: ref.id, cardinality: :many},
-        remove_writes: writes |> Enum.map(& &1.from) |> Enum.uniq() |> Enum.sort(),
-        maintaining_workflows: Enum.sort(workflows)
+        remove_writes:
+          writes |> Enum.map(&%{action: &1.from, field: &1.to}) |> Enum.uniq() |> Enum.sort(),
+        maintaining_workflows: Enum.sort(workflows),
+        rewrite_reads: readers |> Enum.map(& &1.from) |> Enum.uniq() |> Enum.sort()
       },
       confidence: confidence,
       confidence_reason: reason,
-      affects: Context.affects(ctx, Enum.map(writes ++ readers ++ rules, & &1.from)),
+      affects: Context.affects(ctx, Enum.map(readers, & &1.from), Enum.map(writes, & &1.from)),
       message:
         "“#{Context.name(ctx, list.id)}” on “#{Context.name(ctx, "data_type:" <> b)}” lists the " <>
           "“#{Context.name(ctx, "data_type:" <> a)}” records whose “#{Context.name(ctx, ref.id)}” points back; " <>

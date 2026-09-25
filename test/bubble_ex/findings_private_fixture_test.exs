@@ -21,6 +21,7 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
   @budget_ms 30_000
 
   setup_all do
+    # The index is built once for the counts; determinism rebuilds it.
     path =
       System.get_env("BUBBLE_EX_PRIVATE_EXPORT") ||
         flunk("set BUBBLE_EX_PRIVATE_EXPORT to a private app export")
@@ -38,7 +39,8 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
       Enum.map_join(BubbleEx.Finding.Kinds.all(), "\n", fn kind ->
         counts = Map.get(summary, kind, %{})
         total = counts |> Map.values() |> Enum.sum()
-        "  #{kind}: #{total} #{inspect(Enum.sort_by(counts, fn {c, _} -> c end))}"
+        {:ok, %{category: category}} = BubbleEx.Finding.Kinds.fetch(kind)
+        "  #{kind} (#{category}): #{total} #{inspect(Enum.sort_by(counts, fn {c, _} -> c end))}"
       end)
 
     IO.puts("""
@@ -50,8 +52,9 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
     assert ms <= @budget_ms
   end
 
-  test "is deterministic", %{app: app, index: index, result: result} do
-    {:ok, again} = Findings.analyze(app, index: index)
+  test "is deterministic, from a rebuilt index", %{app: app, result: result} do
+    {:ok, rebuilt} = Index.build(app)
+    {:ok, again} = Findings.analyze(app, index: rebuilt)
     assert Jason.encode!(Findings.to_map(again)) == Jason.encode!(Findings.to_map(result))
   end
 
@@ -65,7 +68,9 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
     for f <- result.findings do
       assert Enum.all?(f.evidence.symbols, &MapSet.member?(ids, &1)), f.id
       assert Enum.all?(f.evidence.references, &MapSet.member?(refs, &1)), f.id
-      assert f.affects |> Map.values() |> List.flatten() |> Enum.all?(&MapSet.member?(ids, &1))
+      affected = for {_, group} <- f.affects, {_, list} <- group, id <- list, do: id
+      assert Enum.all?(affected, &MapSet.member?(ids, &1)), f.id
+      assert Enum.all?(f.related, &(&1 in Enum.map(result.findings, fn g -> g.id end))), f.id
     end
   end
 
@@ -90,7 +95,7 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
 
       #{spec} (#{f.confidence}: #{f.confidence_reason})
         proposal #{inspect(Map.drop(f.proposal, [:checks]), limit: :infinity)}
-        affects workflows #{inspect(f.affects.workflows)}
+        maintainers #{inspect(f.affects.maintainers.workflows)}; related #{inspect(f.related)}
       """)
     end
   end

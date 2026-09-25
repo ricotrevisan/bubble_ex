@@ -86,7 +86,7 @@ defmodule BubbleEx.Findings.NumberType do
       proposal: %{transform: :refine_number_type, field: field.id, from: :number, to: :integer},
       confidence: confidence,
       confidence_reason: reason,
-      affects: Context.affects(ctx, Enum.map(writes, & &1.from)),
+      affects: Context.affects(ctx, [], Enum.map(writes, & &1.from)),
       message:
         "every write to “#{Context.name(ctx, field.id)}” on “#{Context.name(ctx, "data_type:" <> type)}” " <>
           "is integral; store it as an integer"

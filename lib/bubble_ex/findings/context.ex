@@ -168,11 +168,19 @@ defmodule BubbleEx.Findings.Context do
   end
 
   @doc """
+  A finding's `affects`: the groups (see `group/2`) of the symbols whose
+  reads must be rewritten and of those whose writes change or go.
+  """
+  @spec affects(t(), [Symbol.id()], [Symbol.id()]) :: map()
+  def affects(ctx, readers, maintainers),
+    do: %{readers: group(ctx, readers), maintainers: group(ctx, maintainers)}
+
+  @doc """
   Workflows, pages, reusables and privacy rules that the symbols with the
   given IDs are, or belong to.
   """
-  @spec affects(t(), [Symbol.id()]) :: map()
-  def affects(ctx, ids) do
+  @spec group(t(), [Symbol.id()]) :: map()
+  def group(ctx, ids) do
     ids
     |> Enum.uniq()
     |> Enum.reduce(%{workflows: [], pages: [], reusables: [], privacy_rules: []}, fn id, acc ->

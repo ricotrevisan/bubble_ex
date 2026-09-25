@@ -94,7 +94,7 @@ _Avoid_: Rendered text, binding, Ash expression
 
 **Diagnostic**:
 BubbleEx's own report that it could not read, parse, model or render part of an app faithfully (`BubbleEx.Diagnostic`). It has a registered code, a severity (how much the owner should care), an outcome (the data was preserved, degraded or unresolved), a stage, a subject of Bubble IDs and a JSON pointer into the source. It disappears as the tool improves; it is not a statement about the app. In expressions, the unmodeled source is always kept verbatim in a raw node.
-_Avoid_: Error, finding, warning
+_Avoid_: Error, model finding, warning
 
 **Symbol index**:
 A derived, disposable lookup of every symbol (data type, field, option, page, element, workflow, action, API call, privacy rule) in one app version and the reference edges between them, keyed by Bubble IDs only. It answers "who reads or writes this field" by lookup rather than search.
@@ -109,8 +109,8 @@ A directed edge from one symbol to another that it reads, writes, calls, types o
 _Avoid_: Dependency (the inverse view), link, relationship (reserved for data-schema relationships)
 
 **Model finding**:
-A proposed improvement to an app's data model, found by a deterministic analyzer from the symbol index (`BubbleEx.Finding`), e.g. a denormalized sort field that could be derived. It has a registered kind, a subject of Bubble IDs, evidence, a stack-neutral proposal, a confidence and a stable ID, and it waits for the owner's decision. Unlike a diagnostic it is a statement about the app, not about the tool.
-_Avoid_: Diagnostic, secret-scan finding, recommendation
+A proposed improvement to an app's data model, found by a deterministic analyzer from the symbol index (`BubbleEx.Finding`), e.g. a denormalized sort field that could be derived. It has a registered kind and category (a *decision* for the owner, or a performance *hint*), a subject of Bubble IDs, evidence, a stack-neutral proposal, a confidence, a stable ID and a proposal hash that changes when the proposal does. Unlike a diagnostic it is a statement about the app, not about the tool.
+_Avoid_: Diagnostic, secret finding, recommendation
 
 **Execution class**:
 Where a workflow's actions run: client only, server backed, or mixed.
@@ -132,12 +132,12 @@ _Avoid_: App contributor, collaborator, user
 An inspection of an app payload for values that may grant access to external systems or protected data.
 _Avoid_: App scan, vulnerability scan
 
-**Finding**:
+**Secret finding**:
 A value reported by a secret scan together with its detector, location, encoding, confidence, and verification status.
 _Avoid_: Confirmed secret, vulnerability
 
-**Verified finding**:
-A finding whose credential validity has been confirmed against the relevant external service.
+**Verified secret finding**:
+A secret finding whose credential validity has been confirmed against the relevant external service.
 _Avoid_: High-confidence finding
 
 **Application log**:
@@ -155,7 +155,7 @@ The versioned, serializable description of one app version's pages, reusable def
 _Avoid_: App payload, page HTML, DOM
 
 **Normalization diagnostic**:
-A problem recorded while building the normalized frontend model, such as an unsupported element. Distinct from a secret-scan finding.
+A problem recorded while building the normalized frontend model, such as an unsupported element. Distinct from a secret finding.
 _Avoid_: Finding, error
 
 **Binding**:
@@ -164,7 +164,7 @@ _Avoid_: Placeholder, expression AST
 
 **Export finding**:
 An export-time diagnostic keyed back to a normalized reference. Severity is blocking, warning, or info. A leaked credential is blocking and fails the export.
-_Avoid_: Secret-scan finding (unless wrapping one), normalization diagnostic
+_Avoid_: Secret finding (unless wrapping one), normalization diagnostic
 
 **Coverage**:
 Per-page and overall counts of resolved versus unresolved bindings and native versus placeholder elements.
