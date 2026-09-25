@@ -51,7 +51,7 @@ defmodule BubbleEx.Expression.CompilerTest do
       assert %IR{op: :option_attribute, args: [_, "status", "color"], type: "text"} =
                ir(chain(opt("status", "done"), [msg("color")]))
 
-      assert %IR{op: :option_attribute, args: [_, "status", "display"]} =
+      assert %IR{op: :option_label, args: [_, "status"]} =
                ir(chain(opt("status", "done"), [msg("display")]))
     end
 

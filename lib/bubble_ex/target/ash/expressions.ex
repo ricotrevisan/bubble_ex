@@ -45,6 +45,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   """
 
   alias BubbleEx.{Diagnostic, Error, Model}
+  alias BubbleEx.Model.Type
   alias BubbleEx.Expression.{Compiler, Env, IR, Schema}
   alias BubbleEx.Target.Ash.{Expr, Project}
 
@@ -59,7 +60,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   @compare %{gt: ">", lt: "<", gte: ">=", lte: "<="}
   @arithmetic %{add: "+", sub: "-", mul: "*", div: "/"}
   # IR ops whose yes/no value may be empty (not predicates).
-  @boolean_values [:field, :input, :option_attribute, :external_field, :fallback]
+  @boolean_values [:field, :input, :option_attribute, :option_label, :external_field, :fallback]
 
   @doc """
   Compiles the condition of every privacy rule in `model` against
@@ -290,10 +291,15 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {node, st} = value(x, st)
 
     check =
-      case x.type do
-        "list." <> _ -> &{:or, [{:call, "is_nil", [&1]}, {:op, "==", &1, {:value, []}}]}
-        "text" -> &{:or, [{:call, "is_nil", [&1]}, {:op, "==", &1, {:value, ""}}]}
-        _ -> &{:call, "is_nil", [&1]}
+      case classify(x.type) do
+        %Type{cardinality: :many} ->
+          &{:or, [{:call, "is_nil", [&1]}, {:op, "==", &1, {:value, []}}]}
+
+        %Type{kind: :scalar, base: :text} ->
+          &{:or, [{:call, "is_nil", [&1]}, {:op, "==", &1, {:value, ""}}]}
+
+        _ ->
+          &{:call, "is_nil", [&1]}
       end
 
     {ok(node, check), st}
@@ -478,8 +484,11 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp classify(st, {:unmapped, what}), do: unmapped(st, what)
   defp classify(st, {:unsupported, what}), do: unsupported(st, what)
 
-  defp list_type?("list." <> _), do: true
-  defp list_type?(_), do: false
+  defp list_type?(type), do: match?(%Type{cardinality: :many}, classify(type))
+
+  # IR types are Bubble descriptors; the Model classifies them.
+  defp classify(type) when is_binary(type), do: type |> Type.classify() |> elem(0)
+  defp classify(_type), do: nil
 
   # Argument names from the input kind and its Bubble IDs, deterministic;
   # a clash gets a numeric suffix.

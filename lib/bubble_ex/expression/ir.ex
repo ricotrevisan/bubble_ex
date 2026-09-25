@@ -21,7 +21,8 @@ defmodule BubbleEx.Expression.IR do
   | `:this` | `[binder]` | `This Thing`: `:rule_record`, `:filter_item` or `:context` (see `Ast.ThisThing`) |
   | `:input` | `[kind, ref]` | a value supplied by context: `:element_state`, `:cell_thing`, `:cell_index`, `:page_thing`, `:parameter`, `:step_result`, `:trigger_thing`, `:page_data` or `:url_parameter`; `ref` holds Bubble IDs with string keys |
   | `:field` | `[record, data_type, field]` | a data-type field (built-in ones by their Bubble names, e.g. `"Created By"`); over a list of records it maps, and `type` is a list |
-  | `:option_attribute` | `[option, option_set, attribute]` | an option-set attribute; attribute `"display"` is the option's label |
+  | `:option_attribute` | `[option, option_set, attribute]` | an option-set attribute |
+  | `:option_label` | `[option, option_set]` | an option's display text (Bubble's `display`) |
   | `:external_field` | `[value, external_type, field]` | a field of an API Connector type |
   | `:eq`, `:neq` | `[left, right]` | `is`, `is not`. Bubble semantics: an empty value equals an empty value |
   | `:gt`, `:lt`, `:gte`, `:lte` | `[left, right]` | ordering comparisons |

@@ -49,6 +49,7 @@ defmodule BubbleEx.Target.Elixir do
 
   alias BubbleEx.{Diagnostic, Error}
   alias BubbleEx.Expression.IR
+  alias BubbleEx.Model.Type
   alias BubbleEx.Target.Ash.Project
 
   @type result :: %{
@@ -167,16 +168,23 @@ defmodule BubbleEx.Target.Elixir do
     end
   end
 
-  defp value(%IR{op: :option_attribute, args: [x, set, attr]}, st) do
-    case {st.lookup.enums[set], attr} do
-      {nil, _} ->
+  defp value(%IR{op: :option_label, args: [x, set]}, st) do
+    case st.lookup.enums[set] do
+      nil ->
         unsupported(st, {"an unmapped option set", set})
 
-      {enum, "display"} ->
+      enum ->
         {part, st} = value(x, st)
         {ok(part, &"then(#{&1}, &(&1 && #{st.namespace}.#{enum.module}.label(&1)))"), st}
+    end
+  end
 
-      {enum, attr} ->
+  defp value(%IR{op: :option_attribute, args: [x, set, attr]}, st) do
+    case st.lookup.enums[set] do
+      nil ->
+        unsupported(st, {"an unmapped option set", set})
+
+      enum ->
         case Enum.find(enum.attributes, &(&1.source.field == attr)) do
           nil ->
             unsupported(st, {"an unmapped option attribute", "#{set}.#{attr}"})
@@ -308,7 +316,7 @@ defmodule BubbleEx.Target.Elixir do
 
   # A yes/no in a condition: predicates are booleans, other values may be nil.
   defp condition(%IR{op: op} = ir, st)
-       when op in [:field, :input, :fallback, :option_attribute] do
+       when op in [:field, :input, :fallback, :option_attribute, :option_label] do
     {part, st} = value(ir, st)
     {ok(part, &"(#{&1} == true)"), st}
   end
@@ -331,16 +339,21 @@ defmodule BubbleEx.Target.Elixir do
     end
   end
 
-  defp record_type?("user"), do: true
-  defp record_type?("custom." <> _), do: true
-  defp record_type?(_), do: false
+  defp record_type?(type), do: match?(%Type{kind: :ref, cardinality: :one}, classify(type))
 
-  defp member_list?(%IR{op: op, type: "list." <> item}) when op in [:field, :input, :literal] do
-    op != :input or not record_type?(item)
+  # A list whose items are values or Bubble IDs: a list-of-things field is
+  # an array of IDs, other lists of records (inputs, searches) hold records.
+  defp member_list?(%IR{op: op, type: type}) do
+    case classify(type) do
+      %Type{cardinality: :many, kind: :ref} -> op in [:field, :literal]
+      %Type{cardinality: :many} -> true
+      _ -> false
+    end
   end
 
-  defp member_list?(%IR{type: "list." <> item}), do: not record_type?(item)
-  defp member_list?(_), do: false
+  # IR types are Bubble descriptors; the Model classifies them.
+  defp classify(type) when is_binary(type), do: type |> Type.classify() |> elem(0)
+  defp classify(_type), do: nil
 
   # --- field paths ----------------------------------------------------------------
 
@@ -425,9 +438,12 @@ defmodule BubbleEx.Target.Elixir do
     %{st | loads: Map.put(st.loads, var, Enum.into(loads, paths))}
   end
 
-  defp type_id("user"), do: "user"
-  defp type_id("custom." <> id), do: id
-  defp type_id(_), do: nil
+  defp type_id(type) do
+    case classify(type) do
+      %Type{kind: :ref, target: id} -> id
+      _ -> nil
+    end
+  end
 
   # --- bindings and names ------------------------------------------------------------
 

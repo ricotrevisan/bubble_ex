@@ -467,7 +467,7 @@ defmodule BubbleEx.Expression.Compiler do
       {subject_type, {:ok, _}} when is_binary(subject_type) ->
         case owner(subject_type) do
           {:data_type, id} -> {:ok, IR.node(:field, [subject, id, field], type)}
-          {:option, set} -> {:ok, IR.node(:option_attribute, [subject, set, field], type)}
+          {:option, set} -> {:ok, option_field(subject, set, field, type)}
           {:external, ext} -> {:ok, IR.node(:external_field, [subject, ext, field], type)}
           nil -> :error
         end
@@ -476,6 +476,13 @@ defmodule BubbleEx.Expression.Compiler do
         :error
     end
   end
+
+  # An option's label is Bubble's built-in `display`; other names are attributes.
+  defp option_field(subject, set, "display", type),
+    do: IR.node(:option_label, [subject, set], type)
+
+  defp option_field(subject, set, attr, type),
+    do: IR.node(:option_attribute, [subject, set, attr], type)
 
   defp owner("list." <> item), do: owner(item)
   defp owner("user"), do: {:data_type, "user"}
