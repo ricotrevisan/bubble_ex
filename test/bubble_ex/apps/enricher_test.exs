@@ -84,6 +84,23 @@ defmodule BubbleEx.Apps.EnricherTest do
       refute Map.has_key?(attrs, :dbml)
     end
 
+    test "SQL formats declare no foreign keys unless foreign_keys: :enforced is passed" do
+      attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres)
+      refute attrs[:schema] =~ "FOREIGN KEY"
+      assert attrs[:schema] =~ "-- References without a foreign key"
+
+      attrs =
+        Enricher.maybe_add_db_diagram(%{}, @app_data, format: :postgres, foreign_keys: :enforced)
+
+      assert attrs[:schema] =~ "ADD FOREIGN KEY"
+    end
+
+    test "an unknown foreign_keys mode does not break DBML" do
+      attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, dbml: true, foreign_keys: :bogus)
+      assert attrs.dbml =~ "Table"
+      refute attrs.dbml =~ "Error generating DBML"
+    end
+
     test "format: :ash renders Model -> Target.Ash -> Source into :schema" do
       attrs = Enricher.maybe_add_db_diagram(%{}, @app_data, format: :ash)
       {:ok, model} = BubbleEx.Model.build(@app_data)

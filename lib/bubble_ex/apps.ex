@@ -19,6 +19,7 @@ defmodule BubbleEx.Apps do
           | {:username, String.t()}
           | {:password, String.t()}
           | {:naming, :proper | :id}
+          | {:foreign_keys, :none | :enforced}
           | {:dbml, boolean()}
           | {:format, atom()}
           | {:external_types, :preserve | :opaque | :legacy}
@@ -141,6 +142,11 @@ defmodule BubbleEx.Apps do
     * `:format` - Schema format to render; output lands in the `:schema` key. Defaults to none.
       One of `:dbml`, `:postgres`, `:sqlite`, `:tsql`, `:ecto`, `:zod`, `:xano`, `:convex`.
     * `:naming` - Naming strategy (`:proper` or `:id`).
+    * `:foreign_keys` - SQL formats only: `:none` (default) declares no foreign keys
+      and documents references in a comment, since Bubble data can hold dangling
+      references; `:enforced` declares them (see `BubbleEx.Db.Encoder.foreign_key?/2`).
+      With a SQL `:format`, any other value is an `:invalid_input` error before any
+      request is made; other formats ignore it.
     * `:html_max_body_length` - Landing HTML streaming limit (default 5 MB).
     * `:script_max_body_length` - Dynamic bundle streaming limit (default 100 MB).
     * `:max_body_length` - Legacy explicit override for both size limits.
@@ -154,7 +160,8 @@ defmodule BubbleEx.Apps do
   def fetch_app(url_or_bubble_id, opts \\ []) do
     Telemetry.span([:apps, :fetch_app], %{input: url_or_bubble_id}, fn ->
       result =
-        with {:ok, url} <- Validator.validate_input(url_or_bubble_id) do
+        with {:ok, url} <- Validator.validate_input(url_or_bubble_id),
+             :ok <- BubbleEx.Db.Encoder.validate_options(Keyword.get(opts, :format), opts) do
           fetch_app_url(url_or_bubble_id, url, opts)
         end
 

@@ -40,7 +40,12 @@ CREATE TABLE "custom"."User" (
   PRIMARY KEY ("_id")
 );
 
-ALTER TABLE "custom"."A" ADD FOREIGN KEY ("B") REFERENCES "custom"."B" ("_id");
-ALTER TABLE "custom"."C" ADD FOREIGN KEY ("A") REFERENCES "custom"."A" ("_id");
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."A"."Created By" -> "custom"."User"."_id"
+-- "custom"."A"."B" -> "custom"."B"."_id"
+-- "custom"."B"."Created By" -> "custom"."User"."_id"
+-- "custom"."C"."Created By" -> "custom"."User"."_id"
+-- "custom"."C"."A" -> "custom"."A"."_id"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

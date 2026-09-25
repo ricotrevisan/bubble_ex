@@ -1,17 +1,23 @@
 defmodule BubbleEx.Db.Sql.Sqlite do
   @moduledoc """
   Encodes a parsed Bubble database map (see `BubbleEx.Db.Reader`) into SQLite DDL:
-  a `CREATE TABLE IF NOT EXISTS` per table group/table, with columns, a primary
-  key, and the scalar foreign keys (all but the built-in `Created By`, see
-  `BubbleEx.Db.Encoder.foreign_key?/1`) declared inline (SQLite does not support
-  `ALTER TABLE ... ADD FOREIGN KEY`).
+  a `CREATE TABLE IF NOT EXISTS` per table group/table, with columns and a
+  primary key, and a trailing `--` comment listing each scalar reference
+  (`"custom__Order"."customer" -> "custom__User"."_id"`).
+
+  By default (`foreign_keys: :none`) no foreign key is declared: Bubble has no
+  referential integrity, so real data holds dangling references, and a
+  declared key would reject them as soon as a connection turns on
+  `PRAGMA foreign_keys`. With `foreign_keys: :enforced` each scalar reference
+  except the built-in `Created By` is declared inline instead (SQLite does not
+  support `ALTER TABLE ... ADD FOREIGN KEY`; see
+  `BubbleEx.Db.Encoder.foreign_key?/2`), after a `PRAGMA foreign_keys = ON;`
+  preamble, because SQLite ignores foreign keys unless that pragma is set.
 
   SQLite has no schema namespaces, so the Bubble group (`custom`/`option`/`api`)
   becomes a table-name prefix (e.g. `custom__Survey Response`). List/array fields
   have no native type and are stored as JSON `TEXT` with no foreign-key
-  constraint, mirroring how Bubble stores lists of ids on the record. A
-  `PRAGMA foreign_keys = ON;` preamble is emitted because SQLite ignores foreign
-  keys unless that pragma is set.
+  constraint, mirroring how Bubble stores lists of ids on the record.
 
   Primary-key columns are emitted as `NOT NULL`: a table-level `PRIMARY KEY` on a
   non-INTEGER column does not imply `NOT NULL` in SQLite, so without it the text
@@ -20,9 +26,15 @@ defmodule BubbleEx.Db.Sql.Sqlite do
 
   @behaviour BubbleEx.Db.Encoder
 
-  @type opts :: [naming: :proper | :id | nil]
+  @type opts :: [naming: :proper | :id | nil, foreign_keys: :none | :enforced]
 
   @preamble """
+  -- SQLite DDL for Bubble app
+  -- NOTE: arrays stored as JSON text.
+  -- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.\
+  """
+
+  @enforced_preamble """
   -- SQLite DDL for Bubble app
   -- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
   -- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
@@ -31,8 +43,13 @@ defmodule BubbleEx.Db.Sql.Sqlite do
   """
 
   @impl true
-  @spec encode(map(), opts()) :: {:ok, String.t()}
+  @spec encode(map(), opts()) :: {:ok, String.t()} | {:error, BubbleEx.Error.t()}
   def encode(parsed_map, opts \\ []) do
+    with {:ok, _mode} <- BubbleEx.Db.Encoder.foreign_keys_mode(opts),
+         do: render(parsed_map, opts)
+  end
+
+  defp render(parsed_map, opts) do
     tables =
       parsed_map
       |> Map.get(:tables, [])
@@ -42,13 +59,32 @@ defmodule BubbleEx.Db.Sql.Sqlite do
 
     sections =
       [
-        @preamble,
-        Enum.map_join(tables, "\n\n", &encode_table(&1, relationships, opts))
+        preamble(opts),
+        Enum.map_join(tables, "\n\n", &encode_table(&1, relationships, opts)),
+        encode_references(relationships, opts)
       ]
       |> Enum.reject(&(&1 == ""))
 
     {:ok, Enum.join(sections, "\n\n") <> "\n"}
   end
+
+  defp preamble(opts) do
+    if Keyword.get(opts, :foreign_keys, :none) == :enforced,
+      do: @enforced_preamble,
+      else: @preamble
+  end
+
+  # Scalar references without a constraint, kept as documentation.
+  defp encode_references(relationships, opts) do
+    BubbleEx.Db.Encoder.reference_comments(relationships, opts, fn from, to ->
+      qualified_column(from.table_group, ref_table_name(from, opts), column_name(from, opts)) <>
+        " -> " <>
+        qualified_column(to.table_group, ref_table_name(to, opts), column_name(to, opts))
+    end)
+  end
+
+  defp qualified_column(group, table, column),
+    do: qualified_table(group, table) <> "." <> quote_ident(column)
 
   defp encode_table(table, relationships, opts) do
     columns = Enum.reject(table.columns, & &1.deleted)
@@ -111,7 +147,7 @@ defmodule BubbleEx.Db.Sql.Sqlite do
   defp fk_constraints(table, relationships, opts) do
     relationships
     |> Enum.filter(fn {from, _to, _dir} = rel ->
-      from != nil and from.table_id == table.id and BubbleEx.Db.Encoder.foreign_key?(rel)
+      from != nil and from.table_id == table.id and BubbleEx.Db.Encoder.foreign_key?(rel, opts)
     end)
     |> Enum.map(fn {from, to, _dir} -> encode_fk(from, to, opts) end)
   end

@@ -73,6 +73,22 @@ defmodule BubbleEx.AppsTest do
       assert attrs.payload["_id"] == "abacus-desktop"
     end
 
+    test "rejects an unknown foreign_keys mode for a SQL format before any request" do
+      Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)
+
+      for format <- [:postgres, :sqlite, :tsql], mode <- [:bogus, "enforced"] do
+        assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+                 Apps.fetch_app("abacus-desktop", format: format, foreign_keys: mode)
+      end
+    end
+
+    test "ignores foreign_keys for a non-SQL format" do
+      stub_two_stage_fetch()
+
+      assert {:ok, attrs} = Apps.fetch_app("abacus-desktop", format: :dbml, foreign_keys: :bogus)
+      assert attrs.schema =~ "Table"
+    end
+
     test "returns an error tuple when the page is not a Bubble app" do
       Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 200, "<html>not bubble</html>") end)
 

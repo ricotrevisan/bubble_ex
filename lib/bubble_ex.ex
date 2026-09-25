@@ -17,6 +17,7 @@ defmodule BubbleEx do
     * `:format` - Registered schema format returned in `:schema`.
     * `:external_types` - `:preserve` (default), `:opaque`, or `:legacy`.
     * `:external_type_capabilities` - Per-target capability attestations, such as `%{tsql: [:native_json]}`.
+    * `:foreign_keys` - SQL formats: `:none` (default) or `:enforced` foreign keys on references.
     * `:username` - Username for authentication, if required.
     * `:password` - Password for authentication, if required.
 

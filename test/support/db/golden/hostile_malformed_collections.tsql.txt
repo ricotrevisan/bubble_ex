@@ -10,6 +10,9 @@ CREATE TABLE [custom].[User] (
   [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- [custom].[User].[Created By] -> [custom].[User].[_id]
 --- diagnostics ---
 model_malformed_node /option_sets
 model_malformed_node /user_types

@@ -31,7 +31,10 @@ CREATE TABLE "option"."Kind" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Buyer") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Kind") REFERENCES "option"."Kind" ("db_value");
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Order"."Created By" -> "custom"."User"."_id"
+-- "custom"."Order"."Buyer" -> "custom"."User"."_id"
+-- "custom"."Order"."Kind" -> "option"."Kind"."db_value"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
 --- diagnostics ---
 db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

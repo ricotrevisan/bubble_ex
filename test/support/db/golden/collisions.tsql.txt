@@ -59,14 +59,12 @@ CREATE TABLE [option].[TASK_3] (
   CONSTRAINT [PK_task_3] PRIMARY KEY ([db_value])
 );
 
-ALTER TABLE [custom].[Task]
-  ADD CONSTRAINT [FK_task_status]
-  FOREIGN KEY ([Status])
-  REFERENCES [option].[Status] ([db_value]);
-ALTER TABLE [custom].[Task]
-  ADD CONSTRAINT [FK_task_created_by_2]
-  FOREIGN KEY ([created by_2])
-  REFERENCES [custom].[User] ([_id]);
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- [custom].[Task].[Created By] -> [custom].[User].[_id]
+-- [custom].[Task].[Status] -> [option].[Status].[db_value]
+-- [custom].[Task].[created by_2] -> [custom].[User].[_id]
+-- [custom].[task_2].[Created By] -> [custom].[User].[_id]
+-- [custom].[User].[Created By] -> [custom].[User].[_id]
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2

@@ -24,7 +24,7 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
     }
   end
 
-  test "emits the pragma preamble, prefixed table, columns, and primary key" do
+  test "emits the preamble, prefixed table, columns, and primary key" do
     db =
       thing_db([
         col("name_field", "name", %{type: :string}),
@@ -33,7 +33,8 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
       ])
 
     assert {:ok, sql} = Sqlite.encode(db)
-    assert sql =~ "PRAGMA foreign_keys = ON;"
+    assert sql =~ "-- SQLite DDL for Bubble app"
+    refute sql =~ "PRAGMA foreign_keys"
     assert sql =~ ~s[CREATE TABLE IF NOT EXISTS "custom__Thing" (]
     assert sql =~ ~s("name" TEXT)
     assert sql =~ ~s("score" REAL)
@@ -85,7 +86,25 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
     refute sql =~ "TEXT[]"
   end
 
-  test "declares a scalar reference as an inline foreign key" do
+  test "documents a scalar reference in a comment without a foreign key by default" do
+    db = owner_db()
+    assert {:ok, sql} = Sqlite.encode(db)
+
+    refute sql =~ "FOREIGN KEY"
+    refute sql =~ "PRAGMA foreign_keys"
+    assert sql =~ ~s[-- "custom__Thing"."owner" -> "custom__User"."_id"]
+  end
+
+  test "with foreign_keys: :enforced, declares a scalar reference as an inline foreign key" do
+    db = owner_db()
+    assert {:ok, sql} = Sqlite.encode(db, foreign_keys: :enforced)
+
+    assert sql =~ "PRAGMA foreign_keys = ON;"
+    assert sql =~ ~s[FOREIGN KEY ("owner") REFERENCES "custom__User" ("_id")]
+    refute sql =~ "-- References"
+  end
+
+  defp owner_db do
     from =
       col("ref", "owner", %{type: :reference, custom_type: "user"},
         table_id: "t1",
@@ -99,11 +118,7 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
         primary_key: true
       )
 
-    db = thing_db([from], [{from, to, :one_to_one}])
-    assert {:ok, sql} = Sqlite.encode(db)
-
-    assert sql =~
-             ~s[FOREIGN KEY ("owner") REFERENCES "custom__User" ("_id")]
+    thing_db([from], [{from, to, :one_to_one}])
   end
 
   test "does not declare a foreign key for a list reference" do
@@ -117,7 +132,7 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
       )
 
     db = thing_db([from], [{from, to, :one_to_many}])
-    assert {:ok, sql} = Sqlite.encode(db)
+    assert {:ok, sql} = Sqlite.encode(db, foreign_keys: :enforced)
     refute sql =~ "FOREIGN KEY"
     assert sql =~ ~s("owners" TEXT  -- list<TEXT>; store as JSON)
   end
@@ -129,25 +144,12 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
     assert sql =~ ~s("name_field" TEXT)
   end
 
-  test ":id naming also qualifies foreign-key targets by id" do
-    from =
-      col("ref", "owner", %{type: :reference, custom_type: "user"},
-        table_id: "t1",
-        table_name: "Thing"
-      )
+  test ":id naming also qualifies reference targets by id" do
+    assert {:ok, sql} = Sqlite.encode(owner_db(), naming: :id)
+    assert sql =~ ~s[-- "custom__t1"."ref" -> "custom__user"."_id"]
 
-    to =
-      col("_id", "_id", %{type: :string},
-        table_id: "user",
-        table_name: "User",
-        primary_key: true
-      )
-
-    db = thing_db([from], [{from, to, :one_to_one}])
-    assert {:ok, sql} = Sqlite.encode(db, naming: :id)
-
-    assert sql =~
-             ~s[FOREIGN KEY ("ref") REFERENCES "custom__user" ("_id")]
+    assert {:ok, sql} = Sqlite.encode(owner_db(), naming: :id, foreign_keys: :enforced)
+    assert sql =~ ~s[FOREIGN KEY ("ref") REFERENCES "custom__user" ("_id")]
   end
 
   test "escapes embedded double quotes in identifiers" do
@@ -191,5 +193,12 @@ defmodule BubbleEx.Db.Sql.SqliteTest do
     assert sql =~ "\"payload\" TEXT CHECK (\"payload\" IS NULL OR json_valid(\"payload\"))"
     assert {:ok, legacy} = Sqlite.encode(db, external_types: :legacy)
     refute legacy =~ "json_valid"
+  end
+
+  test "encode/2 rejects an unknown foreign_keys mode" do
+    for mode <- [:bogus, "enforced", nil] do
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+               Sqlite.encode(thing_db([]), foreign_keys: mode)
+    end
   end
 end

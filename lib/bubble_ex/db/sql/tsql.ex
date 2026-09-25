@@ -3,14 +3,23 @@ defmodule BubbleEx.Db.Sql.Tsql do
   Encodes a parsed Bubble database map (see `BubbleEx.Db.Reader`) into Microsoft
   SQL Server / Azure SQL T-SQL DDL: a `CREATE SCHEMA` (followed by a `GO` batch
   separator) per table group, a `CREATE TABLE` (columns + a named primary-key
-  constraint) per table, and an `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`
-  per scalar reference except the built-in `Created By` (see
-  `BubbleEx.Db.Encoder.foreign_key?/1`).
+  constraint) per table, and a trailing `--` comment listing each scalar
+  reference (`[custom].[Order].[customer] -> [custom].[User].[_id]`).
+
+  By default (`foreign_keys: :none`) no foreign key is declared: Bubble has no
+  referential integrity, so real data holds dangling references that a
+  constraint would reject on load. `WITH NOCHECK` would not help, since SQL
+  Server skips only the existing rows and still checks every new insert; a
+  disabled (`NOCHECK CONSTRAINT`) key is untrusted and one `CHECK CONSTRAINT`
+  away from rejecting the data, so a comment says the same more safely. With
+  `foreign_keys: :enforced` each scalar reference except the built-in
+  `Created By` gets an `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` instead
+  (see `BubbleEx.Db.Encoder.foreign_key?/2`).
 
   Identifiers are bracket-quoted (`[name]`, with embedded `]` doubled). Key-bearing
-  columns (the primary key and scalar reference/enum columns that back a foreign
-  key) use `NVARCHAR(450)` so they stay indexable; other text columns use
-  `NVARCHAR(MAX)`.
+  columns (the primary key and scalar reference/enum columns, which can back a
+  foreign key or a join) use `NVARCHAR(450)` so they stay indexable; other text
+  columns use `NVARCHAR(MAX)`.
 
   SQL Server has no native array type, so Bubble list fields (`is_array: true`)
   become a single `NVARCHAR(MAX)` column annotated with a
@@ -20,11 +29,16 @@ defmodule BubbleEx.Db.Sql.Tsql do
 
   @behaviour BubbleEx.Db.Encoder
 
-  @type opts :: [naming: :proper | :id | nil]
+  @type opts :: [naming: :proper | :id | nil, foreign_keys: :none | :enforced]
 
   @impl true
-  @spec encode(map(), opts()) :: {:ok, String.t()}
+  @spec encode(map(), opts()) :: {:ok, String.t()} | {:error, BubbleEx.Error.t()}
   def encode(parsed_map, opts \\ []) do
+    with {:ok, _mode} <- BubbleEx.Db.Encoder.foreign_keys_mode(opts),
+         do: render(parsed_map, opts)
+  end
+
+  defp render(parsed_map, opts) do
     tables =
       parsed_map
       |> Map.get(:tables, [])
@@ -34,7 +48,8 @@ defmodule BubbleEx.Db.Sql.Tsql do
       [
         encode_schemas(tables),
         Enum.map_join(tables, "\n\n", &encode_table(&1, opts)),
-        encode_foreign_keys(parsed_map, opts)
+        encode_foreign_keys(parsed_map, opts),
+        encode_references(parsed_map, opts)
       ]
       |> Enum.reject(&(&1 == ""))
 
@@ -75,9 +90,23 @@ defmodule BubbleEx.Db.Sql.Tsql do
   defp encode_foreign_keys(parsed_map, opts) do
     parsed_map
     |> Map.get(:relationships, [])
-    |> Enum.filter(&BubbleEx.Db.Encoder.foreign_key?/1)
+    |> Enum.filter(&BubbleEx.Db.Encoder.foreign_key?(&1, opts))
     |> Enum.map_join("\n", fn {from, to, _dir} -> encode_fk(from, to, opts) end)
   end
+
+  # Scalar references without a constraint, kept as documentation.
+  defp encode_references(parsed_map, opts) do
+    parsed_map
+    |> Map.get(:relationships, [])
+    |> BubbleEx.Db.Encoder.reference_comments(opts, fn from, to ->
+      qualified_column(from.table_group, ref_table_name(from, opts), column_name(from, opts)) <>
+        " -> " <>
+        qualified_column(to.table_group, ref_table_name(to, opts), column_name(to, opts))
+    end)
+  end
+
+  defp qualified_column(group, table, column),
+    do: qualified_table(group, table) <> "." <> quote_ident(column)
 
   defp encode_fk(from, to, opts) do
     "ALTER TABLE #{qualified_table(from.table_group, ref_table_name(from, opts))}\n" <>

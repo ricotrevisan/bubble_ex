@@ -1,8 +1,6 @@
 -- SQLite DDL for Bubble app
--- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: arrays stored as JSON text.
 -- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
-
-PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Ticket" (
   "_id" TEXT NOT NULL,
@@ -12,8 +10,7 @@ CREATE TABLE IF NOT EXISTS "custom__Ticket" (
   "Slug" TEXT,
   "Channels" TEXT,  -- list<TEXT>; store as JSON
   "Priority" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Priority") REFERENCES "option__Priority" ("db_value")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -48,9 +45,14 @@ CREATE TABLE IF NOT EXISTS "option__Priority" (
   "Icon" TEXT,
   "Urgent" INTEGER,
   "Weight" REAL,
-  PRIMARY KEY ("db_value"),
-  FOREIGN KEY ("Escalates to") REFERENCES "option__Priority" ("db_value")
+  PRIMARY KEY ("db_value")
 );
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom__Ticket"."Created By" -> "custom__User"."_id"
+-- "custom__Ticket"."Priority" -> "option__Priority"."db_value"
+-- "custom__User"."Created By" -> "custom__User"."_id"
+-- "option__Priority"."Escalates to" -> "option__Priority"."db_value"
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value
 db_duplicate_option_value_dropped /option_sets/priority/values/bAg

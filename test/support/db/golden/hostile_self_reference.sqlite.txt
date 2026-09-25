@@ -1,8 +1,6 @@
 -- SQLite DDL for Bubble app
--- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: arrays stored as JSON text.
 -- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
-
-PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Node" (
   "_id" TEXT NOT NULL,
@@ -12,8 +10,7 @@ CREATE TABLE IF NOT EXISTS "custom__Node" (
   "Slug" TEXT,
   "Children" TEXT,  -- list<TEXT>; store as JSON
   "Parent" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Parent") REFERENCES "custom__Node" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -25,5 +22,10 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "email" TEXT,
   PRIMARY KEY ("_id")
 );
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom__Node"."Created By" -> "custom__User"."_id"
+-- "custom__Node"."Parent" -> "custom__Node"."_id"
+-- "custom__User"."Created By" -> "custom__User"."_id"
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

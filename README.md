@@ -322,8 +322,8 @@ IO.puts(app.schema)
 #   PRIMARY KEY ("_id")
 # );
 #
-# ALTER TABLE "custom"."Survey Response"
-#   ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");
+# -- References without a foreign key (Bubble does not enforce referential integrity):
+# -- "custom"."Survey Response"."status" -> "option"."Status Type"."db_value"
 ```
 
 ### Available formats
@@ -360,19 +360,33 @@ and fields follow Bubble ID order. Every table has the built-in fields after
 wherever the format expresses relationships), `Slug`, and `email` on User; a
 defined field with the same name is suffixed (`Created Date_2`).
 
-Like `:ash` (`db_reference: :ignore`), the SQL formats declare no foreign key
-on `Created By`: Bubble keeps a record's creator after the user is deleted, and
-records made by backend workflows or logged-out visitors may have no creator
-that exists. Where they still differ: the formats name columns after Bubble's
-display names (`Created By`; `created_by` / `created_by_id` in Ecto), while
-`:ash` uses its own names (`belongs_to :creator` with `creator_id`); and the SQL
-formats give every other scalar reference a real foreign key, which `:ash`
-does not.
+Like `:ash` (`db_reference: :ignore`) and the Ecto migrations, the SQL
+formats (PostgreSQL, SQLite, T-SQL) declare no foreign keys by default.
+Bubble has no referential integrity: deleting a thing leaves every reference
+to it in place, so real app data holds dangling IDs that a constraint would
+reject on load. Each scalar reference stays a plain column, and a trailing SQL
+comment lists them all (`-- "custom"."Order"."customer" ->
+"custom"."User"."_id"`). Relaxed constraints do not help: PostgreSQL's
+`NOT VALID` and T-SQL's `WITH NOCHECK` skip only existing rows and still check
+every insert, and SQLite checks any declared key once a connection enables
+`PRAGMA foreign_keys`. If you clean the data first, pass
+`foreign_keys: :enforced` to declare a real foreign key on every scalar
+reference (inline, after `PRAGMA foreign_keys = ON;`, in SQLite):
+
+```elixir
+{:ok, app} = BubbleEx.fetch_app("my-app", format: :postgres, foreign_keys: :enforced)
+```
+
+Even then, `Created By` stays a comment: Bubble keeps a record's creator after
+the user is deleted, and records made by backend workflows or logged-out
+visitors may have no creator that exists. The formats name columns after
+Bubble's display names (`Created By`; `created_by` / `created_by_id` in Ecto),
+while `:ash` uses its own names (`belongs_to :creator` with `creator_id`).
 
 Each encoder maps Bubble's model as faithfully as the target allows. Scalar
-references become real foreign keys (SQL/Ecto) or id fields; Bubble *list* fields
-become native arrays where supported (`text[]` in Postgres) or a JSON/text column
-otherwise. Option sets are emitted as lookup tables keyed by each value's stable
+references become id columns (documented in SQL, `belongs_to` in Ecto) or id
+fields; Bubble *list* fields become native arrays where supported (`text[]` in
+Postgres) or a JSON/text column otherwise. Option sets are emitted as lookup tables keyed by each value's stable
 `db_value` (what Bubble stores in data), with a `display` column and the declared
 attributes, or as string fields; they do not become native database enums.
 

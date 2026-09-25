@@ -838,13 +838,37 @@ defmodule BubbleEx.Db.ReaderTest do
       assert Enum.map(notes, & &1[:details].target) == ["gone", "retired"]
     end
 
-    test "SQL has no foreign key on the built-in Created By, only on defined references",
-         %{db: db} do
+    test "SQL has no foreign key by default, only reference comments", %{db: db} do
       for format <- [:postgres, :sqlite, :tsql] do
         {:ok, %{content: sql}} = BubbleEx.Db.Encoder.render(format, db)
+        refute sql =~ "FOREIGN KEY", "#{format}"
+        comments = sql |> String.split("\n") |> Enum.filter(&(&1 =~ " -> "))
+        assert Enum.any?(comments, &(&1 =~ ~r/Created By[\]"] ->/)), "#{format}"
+        assert Enum.any?(comments, &(&1 =~ "created by_2")), "#{format}"
+      end
+    end
+
+    test "enforced SQL has no foreign key on the built-in Created By, only on defined references",
+         %{db: db} do
+      for format <- [:postgres, :sqlite, :tsql] do
+        {:ok, %{content: sql}} = BubbleEx.Db.Encoder.render(format, db, foreign_keys: :enforced)
         fks = sql |> String.split("\n") |> Enum.filter(&(&1 =~ "FOREIGN KEY"))
         refute Enum.any?(fks, &(&1 =~ ~r/Created By[\]"]\)/)), "#{format}: #{inspect(fks)}"
         assert Enum.any?(fks, &(&1 =~ "created by_2")), "#{format}: #{inspect(fks)}"
+      end
+    end
+
+    test "Encoder.render rejects an unknown foreign_keys mode for the SQL formats only",
+         %{db: db} do
+      for format <- [:postgres, :sqlite, :tsql] do
+        assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+                 BubbleEx.Db.Encoder.render(format, db, foreign_keys: :deferred)
+      end
+
+      for format <- [:dbml, :ecto, :zod, :xano, :convex] do
+        assert {:ok, bogus} = BubbleEx.Db.Encoder.render(format, db, foreign_keys: :deferred)
+        assert {:ok, default} = BubbleEx.Db.Encoder.render(format, db)
+        assert bogus == default, "#{format}"
       end
     end
 

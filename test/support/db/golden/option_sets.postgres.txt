@@ -47,8 +47,11 @@ CREATE TABLE "option"."Priority" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Ticket" ADD FOREIGN KEY ("Priority") REFERENCES "option"."Priority" ("db_value");
-ALTER TABLE "option"."Priority" ADD FOREIGN KEY ("Escalates to") REFERENCES "option"."Priority" ("db_value");
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Ticket"."Created By" -> "custom"."User"."_id"
+-- "custom"."Ticket"."Priority" -> "option"."Priority"."db_value"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
+-- "option"."Priority"."Escalates to" -> "option"."Priority"."db_value"
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value
 db_duplicate_option_value_dropped /option_sets/priority/values/bAg

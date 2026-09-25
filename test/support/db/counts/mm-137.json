@@ -62,8 +62,8 @@
       }
     },
     "postgres": {
-      "bytes": 123350,
-      "lines": 3661,
+      "bytes": 113789,
+      "lines": 3755,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
@@ -71,8 +71,8 @@
       }
     },
     "sqlite": {
-      "bytes": 112685,
-      "lines": 3663,
+      "bytes": 119624,
+      "lines": 3756,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
@@ -81,8 +81,8 @@
       }
     },
     "tsql": {
-      "bytes": 169196,
-      "lines": 4926,
+      "bytes": 140180,
+      "lines": 3757,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,

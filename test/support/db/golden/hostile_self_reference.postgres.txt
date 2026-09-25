@@ -21,6 +21,9 @@ CREATE TABLE "custom"."User" (
   PRIMARY KEY ("_id")
 );
 
-ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Parent") REFERENCES "custom"."Node" ("_id");
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Node"."Created By" -> "custom"."User"."_id"
+-- "custom"."Node"."Parent" -> "custom"."Node"."_id"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
 --- diagnostics ---
 model_synthesized_user_type /user_types/user
