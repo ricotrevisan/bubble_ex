@@ -1,0 +1,49 @@
+CREATE SCHEMA [option];
+GO
+CREATE SCHEMA [custom];
+GO
+
+CREATE TABLE [option].[Channel] (
+  [Display] NVARCHAR(450),
+  [db_value] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  CONSTRAINT [PK_channel] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [option].[Legacy] (
+  [Display] NVARCHAR(450),
+  CONSTRAINT [PK_legacy] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [option].[Orphan] (
+  [Display] NVARCHAR(450),
+  CONSTRAINT [PK_orphan] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [option].[Priority] (
+  [Display] NVARCHAR(450),
+  [channels] NVARCHAR(MAX),
+  [color] NVARCHAR(MAX),
+  [db_value] NVARCHAR(MAX),
+  [deleted] NVARCHAR(MAX),
+  [escalates_to] NVARCHAR(MAX),
+  [icon] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  [tooltip] NVARCHAR(MAX),
+  [urgent] NVARCHAR(MAX),
+  [weight] FLOAT,
+  CONSTRAINT [PK_priority] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [custom].[Ticket] (
+  [Channels] NVARCHAR(MAX)  -- list<enum>: consider a junction table,
+  [Priority] NVARCHAR(450),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_ticket] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[Ticket]
+  ADD CONSTRAINT [FK_ticket_priority]
+  FOREIGN KEY ([Priority])
+  REFERENCES [option].[Priority] ([Display]);
+--- diagnostics ---

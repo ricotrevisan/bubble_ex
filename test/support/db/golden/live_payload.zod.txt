@@ -1,0 +1,35 @@
+import { z } from 'zod';
+
+// Item
+export const ItemSchema = z.object({
+  _id: z.string(),
+});
+
+export type Item = z.infer<typeof ItemSchema>;
+
+// Kind
+export const KindSchema = z.object({
+  Code: z.number().nullish(),
+  Display: z.string(),
+});
+
+export type Kind = z.infer<typeof KindSchema>;
+
+// Order
+export const OrderSchema = z.object({
+  Buyer: z.string().nullish(), // reference -> user
+  Items: z.array(z.string()).nullish(), // reference -> item
+  Kind: z.string().nullish(), // enum -> kind option set (values not in IR)
+  _id: z.string(),
+});
+
+export type Order = z.infer<typeof OrderSchema>;
+
+// User
+export const UserSchema = z.object({
+  Name: z.string().nullish(),
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+--- diagnostics ---

@@ -1,0 +1,11 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+
+CREATE TABLE "custom"."Node" (
+  "Children" text[],
+  "Parent" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Parent") REFERENCES "custom"."Node" ("_id");
+--- diagnostics ---

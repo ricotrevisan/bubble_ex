@@ -1,0 +1,29 @@
+Project "synthexport" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Project" {
+	"Name" varchar
+	"_id" varchar [pk]
+
+}
+Table option."Status" {
+	"Display" varchar [pk]
+	"db_value" varchar
+	"sort_factor" float
+
+}
+Table custom."Task" {
+	"Done?" bool
+	"Project" project.id
+	"Status" status.id
+	"Title" varchar
+	"_id" varchar [pk]
+
+}
+
+Ref: custom."Task"."Project" > custom."Project"."_id"
+Ref: custom."Task"."Status" > option."Status"."Display"--- diagnostics ---

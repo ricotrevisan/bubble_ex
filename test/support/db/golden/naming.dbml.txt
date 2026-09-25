@@ -1,0 +1,40 @@
+Project "synthetic-naming" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."00. Thing - Join" {
+	"11. Done" bool
+	"40. Sort: Thing Title" varchar
+	"Title" varchar
+	"Title" varchar
+	"__struct__" varchar
+	"_id" varchar [pk]
+	"id" varchar
+	"inserted_at" datetime
+	"type" varchar
+
+}
+Table option."40. Levels" {
+	"Display" varchar [pk]
+	"db_value" varchar
+	"sort_factor" float
+
+}
+Table custom."Thing" {
+	"_id" varchar [pk]
+
+}
+Table custom."Thing" {
+	"_id" varchar [pk]
+
+}
+Table custom."🚀 Launch" {
+	"Name ✨" varchar
+	"_id" varchar [pk]
+	"🔥" varchar
+
+}
+--- diagnostics ---

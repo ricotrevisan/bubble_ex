@@ -1,0 +1,36 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Project] (
+  [Name] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_project] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Status] (
+  [Display] NVARCHAR(450),
+  [db_value] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  CONSTRAINT [PK_status] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [custom].[Task] (
+  [Done?] BIT,
+  [Project] NVARCHAR(450),
+  [Status] NVARCHAR(450),
+  [Title] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_task] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_project]
+  FOREIGN KEY ([Project])
+  REFERENCES [custom].[Project] ([_id]);
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_status]
+  FOREIGN KEY ([Status])
+  REFERENCES [option].[Status] ([Display]);
+--- diagnostics ---

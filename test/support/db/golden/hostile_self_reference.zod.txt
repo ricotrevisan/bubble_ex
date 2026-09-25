@@ -1,0 +1,11 @@
+import { z } from 'zod';
+
+// Node
+export const NodeSchema = z.object({
+  Children: z.array(z.string()).nullish(), // reference -> node
+  Parent: z.string().nullish(), // reference -> node
+  _id: z.string(),
+});
+
+export type Node = z.infer<typeof NodeSchema>;
+--- diagnostics ---

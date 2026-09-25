@@ -1,0 +1,28 @@
+Project "synthetic-privacy" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Draft" {
+	"_id" varchar [pk]
+
+}
+Table custom."Note" {
+	"Body" varchar
+	"Secret" varchar
+	"_id" varchar [pk]
+
+}
+Table custom."Public page" {
+	"Slug text" varchar
+	"_id" varchar [pk]
+
+}
+Table custom."User" {
+	"Admin" bool
+	"_id" varchar [pk]
+
+}
+--- diagnostics ---

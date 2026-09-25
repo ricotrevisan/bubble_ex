@@ -1,0 +1,59 @@
+Project "synthetic-field-types" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Project" {
+	"Name" varchar
+	"_id" varchar [pk]
+
+}
+Table option."Status" {
+	"Display" varchar [pk]
+	"color" varchar
+	"db_value" varchar
+	"sort_factor" float
+
+}
+Table custom."Task" {
+	"Attachment" bubble_file
+	"Budget" bubble_number_range
+	"Checks" bool[]
+	"Cover" bubble_image
+	"Dates" datetime[]
+	"Done" bool
+	"Due" datetime
+	"Duration" bubble_dateinterval
+	"Estimate" float
+	"Files" bubble_file[]
+	"Images" bubble_image[]
+	"Labels" status.id[]
+	"Notes" varchar[]
+	"Owner" user.id
+	"Place" bubble_geo_address
+	"Places" bubble_geo_address[]
+	"Project" project.id
+	"Ranges" bubble_date_range[]
+	"Scores" float[]
+	"Status" status.id
+	"Subtasks" task.id[]
+	"Title" varchar
+	"Watchers" user.id[]
+	"Window" bubble_date_range
+	"_id" varchar [pk]
+
+}
+Table custom."User" {
+	"Nickname" varchar
+	"_id" varchar [pk]
+
+}
+
+Ref: custom."Task"."Labels" <> option."Status"."Display"
+Ref: custom."Task"."Owner" > custom."User"."_id"
+Ref: custom."Task"."Project" > custom."Project"."_id"
+Ref: custom."Task"."Status" > option."Status"."Display"
+Ref: custom."Task"."Subtasks" <> custom."Task"."_id"
+Ref: custom."Task"."Watchers" <> custom."User"."_id"--- diagnostics ---

@@ -1,0 +1,36 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Onboarding Answer] (
+  [_id] NVARCHAR(450),
+  [label] NVARCHAR(MAX),
+  [score] FLOAT,
+  CONSTRAINT [PK_onboarding_answer] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Status Type] (
+  [Color] NVARCHAR(MAX),
+  [Display] NVARCHAR(450),
+  CONSTRAINT [PK_status_type] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [custom].[Survey Response] (
+  [_id] NVARCHAR(450),
+  [answer] NVARCHAR(MAX),
+  [onboarding answer] NVARCHAR(450),
+  [rating] FLOAT,
+  [status] NVARCHAR(450),
+  CONSTRAINT [PK_survey_response] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[Survey Response]
+  ADD CONSTRAINT [FK_survey_response_onboarding_answer]
+  FOREIGN KEY ([onboarding answer])
+  REFERENCES [custom].[Onboarding Answer] ([_id]);
+ALTER TABLE [custom].[Survey Response]
+  ADD CONSTRAINT [FK_survey_response_status]
+  FOREIGN KEY ([status])
+  REFERENCES [option].[Status Type] ([Display]);
+--- diagnostics ---

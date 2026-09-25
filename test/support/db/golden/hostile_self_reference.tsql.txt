@@ -1,0 +1,15 @@
+CREATE SCHEMA [custom];
+GO
+
+CREATE TABLE [custom].[Node] (
+  [Children] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Parent] NVARCHAR(450),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_node] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[Node]
+  ADD CONSTRAINT [FK_node_parent]
+  FOREIGN KEY ([Parent])
+  REFERENCES [custom].[Node] ([_id]);
+--- diagnostics ---

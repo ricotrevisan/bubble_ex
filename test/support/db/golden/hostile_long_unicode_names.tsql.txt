@@ -1,0 +1,31 @@
+CREATE SCHEMA [option];
+GO
+CREATE SCHEMA [custom];
+GO
+
+CREATE TABLE [option].[Ölçü] (
+  [Display] NVARCHAR(450),
+  [db_value] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  CONSTRAINT [PK_l] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [custom].[Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end] (
+  [_id] NVARCHAR(450),
+  [slash/and~tilde] NVARCHAR(MAX),
+  [xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx] NVARCHAR(MAX),
+  [名前 — ✓ ünïcödé] NVARCHAR(MAX),
+  [🧪] NVARCHAR(450),
+  CONSTRAINT [PK_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[类型 🏷️] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end]
+  ADD CONSTRAINT [FK_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end_]
+  FOREIGN KEY ([🧪])
+  REFERENCES [custom].[类型 🏷️] ([_id]);
+--- diagnostics ---

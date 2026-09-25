@@ -1,0 +1,30 @@
+CREATE SCHEMA [custom];
+GO
+
+CREATE TABLE [custom].[A] (
+  [B] NVARCHAR(450),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_a] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[B] (
+  [C] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_b] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[C] (
+  [A] NVARCHAR(450),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_c] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[A]
+  ADD CONSTRAINT [FK_a_b]
+  FOREIGN KEY ([B])
+  REFERENCES [custom].[B] ([_id]);
+ALTER TABLE [custom].[C]
+  ADD CONSTRAINT [FK_c_a]
+  FOREIGN KEY ([A])
+  REFERENCES [custom].[A] ([_id]);
+--- diagnostics ---

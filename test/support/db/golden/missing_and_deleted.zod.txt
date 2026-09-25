@@ -1,0 +1,34 @@
+import { z } from 'zod';
+
+// Archive
+export const ArchiveSchema = z.object({
+  Label: z.string().nullish(),
+  _id: z.string(),
+});
+
+export type Archive = z.infer<typeof ArchiveSchema>;
+
+// Invoice
+export const InvoiceSchema = z.object({
+  Archive: z.string().nullish(), // reference -> archive
+  Customer: z.string().nullish(), // reference -> ghost
+  Lines: z.array(z.string()).nullish(), // reference -> ghost_line
+  'Old ref': z.string().nullish(), // reference -> ghost
+  'Old total': z.number().nullish(),
+  State: z.string().nullish(), // enum -> ghost_state option set (values not in IR)
+  Total: z.number().nullish(),
+  _id: z.string(),
+});
+
+export type Invoice = z.infer<typeof InvoiceSchema>;
+
+// Retired
+export const RetiredSchema = z.object({
+  Display: z.string(),
+  db_value: z.string().nullish(),
+  deleted: z.string().nullish(),
+  sort_factor: z.number().nullish(),
+});
+
+export type Retired = z.infer<typeof RetiredSchema>;
+--- diagnostics ---

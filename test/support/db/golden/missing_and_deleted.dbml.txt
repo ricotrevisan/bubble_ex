@@ -1,0 +1,32 @@
+Project "synthetic-missing-deleted" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Archive" {
+	"Label" varchar
+	"_id" varchar [pk]
+
+}
+Table custom."Invoice" {
+	"Archive" archive.id
+	"Customer" ghost.id
+	"Lines" ghost_line.id[]
+	"Old ref" ghost.id
+	"Old total" float
+	"State" ghost_state.id
+	"Total" float
+	"_id" varchar [pk]
+
+}
+Table option."Retired" {
+	"Display" varchar [pk]
+	"db_value" varchar
+	"deleted" varchar
+	"sort_factor" float
+
+}
+
+Ref: custom."Invoice"."Archive" > custom."Archive"."_id"--- diagnostics ---

@@ -1,0 +1,97 @@
+# schema module
+defmodule MyApp.OnboardingAnswer do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "onboarding_answer" do
+    field :label, :string
+    field :score, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:label, :score]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateOnboardingAnswer do
+  use Ecto.Migration
+
+  def change do
+    create table("onboarding_answer", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :label, :string
+      add :score, :float
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.StatusType do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:display, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "status_type" do
+    field :color, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:color]) |> validate_required([:display])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateStatusType do
+  use Ecto.Migration
+
+  def change do
+    create table("status_type", primary_key: false) do
+      add :display, :string, primary_key: true
+      add :color, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.SurveyResponse do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "survey_response" do
+    field :answer, :string
+    belongs_to :onboarding_answer, MyApp.OnboardingAnswer, foreign_key: :onboarding_answer_id, references: :_id, type: :string
+    field :rating, :float
+    belongs_to :status, MyApp.StatusType, foreign_key: :status_id, references: :display, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:answer, :onboarding_answer_id, :rating, :status_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateSurveyResponse do
+  use Ecto.Migration
+
+  def change do
+    create table("survey_response", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :answer, :string
+      add :onboarding_answer_id, :string
+      add :rating, :float
+      add :status_id, :string
+    end
+    create index("survey_response", [:onboarding_answer_id])
+    create index("survey_response", [:status_id])
+  end
+end
+--- diagnostics ---

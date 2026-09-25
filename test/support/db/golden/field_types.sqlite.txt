@@ -1,0 +1,58 @@
+-- SQLite DDL for Bubble app
+-- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS "custom__Project" (
+  "Name" TEXT,
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Status" (
+  "Display" TEXT NOT NULL,
+  "color" TEXT,
+  "db_value" TEXT,
+  "sort_factor" REAL,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__Task" (
+  "Attachment" TEXT,
+  "Budget" TEXT,
+  "Checks" TEXT,  -- list<INTEGER>; store as JSON
+  "Cover" TEXT,
+  "Dates" TEXT,  -- list<TEXT>; store as JSON
+  "Done" INTEGER,
+  "Due" TEXT,
+  "Duration" TEXT,
+  "Estimate" REAL,
+  "Files" TEXT,  -- list<TEXT>; store as JSON
+  "Images" TEXT,  -- list<TEXT>; store as JSON
+  "Labels" TEXT,  -- list<TEXT>; store as JSON
+  "Notes" TEXT,  -- list<TEXT>; store as JSON
+  "Owner" TEXT,
+  "Place" TEXT,
+  "Places" TEXT,  -- list<TEXT>; store as JSON
+  "Project" TEXT,
+  "Ranges" TEXT,  -- list<TEXT>; store as JSON
+  "Scores" TEXT,  -- list<REAL>; store as JSON
+  "Status" TEXT,
+  "Subtasks" TEXT,  -- list<TEXT>; store as JSON
+  "Title" TEXT,
+  "Watchers" TEXT,  -- list<TEXT>; store as JSON
+  "Window" TEXT,
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Owner") REFERENCES "custom__User" ("_id"),
+  FOREIGN KEY ("Project") REFERENCES "custom__Project" ("_id"),
+  FOREIGN KEY ("Status") REFERENCES "option__Status" ("Display")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "Nickname" TEXT,
+  "_id" TEXT NOT NULL,
+  PRIMARY KEY ("_id")
+);
+--- diagnostics ---

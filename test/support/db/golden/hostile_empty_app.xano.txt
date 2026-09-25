@@ -1,0 +1,6 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  }
+]
+--- diagnostics ---

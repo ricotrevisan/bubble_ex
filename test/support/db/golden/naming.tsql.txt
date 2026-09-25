@@ -1,0 +1,42 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[00. Thing - Join] (
+  [11. Done] BIT,
+  [40. Sort: Thing Title] NVARCHAR(MAX),
+  [Title] NVARCHAR(MAX),
+  [Title] NVARCHAR(MAX),
+  [__struct__] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  [id] NVARCHAR(MAX),
+  [inserted_at] DATETIME2,
+  [type] NVARCHAR(MAX),
+  CONSTRAINT [PK_00_thing_join] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[40. Levels] (
+  [Display] NVARCHAR(450),
+  [db_value] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  CONSTRAINT [PK_40_levels] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [custom].[Thing] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_thing] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[Thing] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_thing] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[🚀 Launch] (
+  [Name ✨] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  [🔥] NVARCHAR(MAX),
+  CONSTRAINT [PK_launch] PRIMARY KEY ([_id])
+);
+--- diagnostics ---

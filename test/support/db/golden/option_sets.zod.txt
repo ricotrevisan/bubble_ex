@@ -1,0 +1,51 @@
+import { z } from 'zod';
+
+// Channel
+export const ChannelSchema = z.object({
+  Display: z.string(),
+  db_value: z.string().nullish(),
+  sort_factor: z.number().nullish(),
+});
+
+export type Channel = z.infer<typeof ChannelSchema>;
+
+// Legacy
+export const LegacySchema = z.object({
+  Display: z.string(),
+});
+
+export type Legacy = z.infer<typeof LegacySchema>;
+
+// Orphan
+export const OrphanSchema = z.object({
+  Display: z.string(),
+});
+
+export type Orphan = z.infer<typeof OrphanSchema>;
+
+// Priority
+export const PrioritySchema = z.object({
+  Display: z.string(),
+  channels: z.string().nullish(),
+  color: z.string().nullish(),
+  db_value: z.string().nullish(),
+  deleted: z.string().nullish(),
+  escalates_to: z.string().nullish(),
+  icon: z.string().nullish(),
+  sort_factor: z.number().nullish(),
+  tooltip: z.string().nullish(),
+  urgent: z.string().nullish(),
+  weight: z.number().nullish(),
+});
+
+export type Priority = z.infer<typeof PrioritySchema>;
+
+// Ticket
+export const TicketSchema = z.object({
+  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not in IR)
+  Priority: z.string().nullish(), // enum -> priority option set (values not in IR)
+  _id: z.string(),
+});
+
+export type Ticket = z.infer<typeof TicketSchema>;
+--- diagnostics ---

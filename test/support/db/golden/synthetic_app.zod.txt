@@ -1,0 +1,30 @@
+import { z } from 'zod';
+
+// Onboarding Answer
+export const OnboardingAnswerSchema = z.object({
+  _id: z.string(),
+  label: z.string().nullish(),
+  score: z.number().nullish(),
+});
+
+export type OnboardingAnswer = z.infer<typeof OnboardingAnswerSchema>;
+
+// Status Type
+export const StatusTypeSchema = z.object({
+  Color: z.string().nullish(),
+  Display: z.string(),
+});
+
+export type StatusType = z.infer<typeof StatusTypeSchema>;
+
+// Survey Response
+export const SurveyResponseSchema = z.object({
+  _id: z.string(),
+  answer: z.string().nullish(),
+  'onboarding answer': z.string().nullish(), // reference -> onboarding_answer
+  rating: z.number().nullish(),
+  status: z.string().nullish(), // enum -> status_type option set (values not in IR)
+});
+
+export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;
+--- diagnostics ---

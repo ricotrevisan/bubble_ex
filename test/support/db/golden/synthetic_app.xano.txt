@@ -1,0 +1,77 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "onboarding_answer",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "label",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "score",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status_type",
+    "fields": [
+      {
+        "name": "color",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "survey_response",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "answer",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "onboarding_answer",
+        "type": "text",
+        "description": "ref:onboarding_answer._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "rating",
+        "type": "decimal",
+        "style": "single"
+      },
+      {
+        "name": "status",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status_type (option values not in IR)",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---

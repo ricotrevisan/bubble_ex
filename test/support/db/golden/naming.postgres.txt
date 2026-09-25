@@ -1,0 +1,40 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."00. Thing - Join" (
+  "11. Done" boolean,
+  "40. Sort: Thing Title" text,
+  "Title" text,
+  "Title" text,
+  "__struct__" text,
+  "_id" text,
+  "id" text,
+  "inserted_at" timestamptz,
+  "type" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."40. Levels" (
+  "Display" text,
+  "db_value" text,
+  "sort_factor" double precision,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "custom"."Thing" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Thing" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."🚀 Launch" (
+  "Name ✨" text,
+  "_id" text,
+  "🔥" text,
+  PRIMARY KEY ("_id")
+);
+--- diagnostics ---

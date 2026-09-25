@@ -1,0 +1,32 @@
+Project "synthetic-live" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Item" {
+	"_id" varchar [pk]
+
+}
+Table option."Kind" {
+	"Code" float
+	"Display" varchar [pk]
+
+}
+Table custom."Order" {
+	"Buyer" user.id
+	"Items" item.id[]
+	"Kind" kind.id
+	"_id" varchar [pk]
+
+}
+Table custom."User" {
+	"Name" varchar
+	"_id" varchar [pk]
+
+}
+
+Ref: custom."Order"."Buyer" > custom."User"."_id"
+Ref: custom."Order"."Items" <> custom."Item"."_id"
+Ref: custom."Order"."Kind" > option."Kind"."Display"--- diagnostics ---

@@ -1,0 +1,27 @@
+CREATE SCHEMA [custom];
+GO
+
+CREATE TABLE [custom].[Draft] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_draft] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[Note] (
+  [Body] NVARCHAR(MAX),
+  [Secret] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_note] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[Public page] (
+  [Slug text] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_public_page] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [Admin] BIT,
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+--- diagnostics ---

@@ -1,0 +1,53 @@
+import { z } from 'zod';
+
+export const AddressSchema = z.looseObject({
+  Latitude: z.number().nullish(),
+  Lines: z.array(z.string()).nullish(),
+  Seen: z.number().int().nullish(),
+  Street: z.string().nullish(),
+  Verified: z.boolean().nullish(),
+});
+
+export const BSchema = z.looseObject({
+  get A() { return ASchema.nullish(); },
+  blob: z.json().nullish(),
+});
+
+export const ASchema = z.looseObject({
+  At: z.string().datetime().nullish(),
+  get B() { return BSchema.nullish(); },
+});
+
+export const NodeSchema = z.looseObject({
+  get Children() { return z.array(NodeSchema).nullish(); },
+  Label: z.string().nullish(),
+});
+
+// Shipment
+export const ShipmentSchema = z.object({
+  Address: AddressSchema.nullish(),
+  Blank: z.json().nullish(),
+  Invalid: z.json().nullish(),
+  'Invalid list': z.json().nullish(),
+  Missing: z.json().nullish(),
+  Nowhere: z.json().nullish(),
+  Old: AddressSchema.nullish(),
+  Pings: z.array(ASchema).nullish(),
+  Tree: NodeSchema.nullish(),
+  _id: z.string(),
+});
+
+export type Shipment = z.infer<typeof ShipmentSchema>;
+--- diagnostics ---
+field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
+external_type_unresolved_root /user_types/shipment/fields/blank_api/value
+external_type_unresolved_root /user_types/shipment/fields/invalid_api/value
+invalid_descriptor /user_types/shipment/fields/invalid_api/value
+external_type_unresolved_root /user_types/shipment/fields/invalid_list_api/value
+invalid_descriptor /user_types/shipment/fields/invalid_list_api/value
+exact_type_definition_missing /user_types/shipment/fields/missing_api/value
+external_type_unresolved_root /user_types/shipment/fields/missing_api/value
+connector_missing /user_types/shipment/fields/nowhere_api/value
+external_type_unresolved_root /user_types/shipment/fields/nowhere_api/value
+incomplete_field_metadata /settings/client_safe/apiconnector2/graph/pong/types
+empty_definition /settings/client_safe/apiconnector2/misc/blank/types

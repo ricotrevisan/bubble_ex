@@ -1,0 +1,26 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+
+CREATE TABLE "custom"."Draft" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Note" (
+  "Body" text,
+  "Secret" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Public page" (
+  "Slug text" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "Admin" boolean,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+--- diagnostics ---

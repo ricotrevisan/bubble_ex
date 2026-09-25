@@ -1,0 +1,97 @@
+# schema module
+defmodule MyApp.Project do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "project" do
+    field :name, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:name]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateProject do
+  use Ecto.Migration
+
+  def change do
+    create table("project", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :name, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Status do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:display, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "status" do
+    field :db_value, :string
+    field :sort_factor, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:db_value, :sort_factor]) |> validate_required([:display])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateStatus do
+  use Ecto.Migration
+
+  def change do
+    create table("status", primary_key: false) do
+      add :display, :string, primary_key: true
+      add :db_value, :string
+      add :sort_factor, :float
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Task do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "task" do
+    field :done, :boolean
+    belongs_to :project, MyApp.Project, foreign_key: :project_id, references: :_id, type: :string
+    belongs_to :status, MyApp.Status, foreign_key: :status_id, references: :display, type: :string
+    field :title, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:done, :project_id, :status_id, :title]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTask do
+  use Ecto.Migration
+
+  def change do
+    create table("task", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :done, :boolean
+      add :project_id, :string
+      add :status_id, :string
+      add :title, :string
+    end
+    create index("task", [:project_id])
+    create index("task", [:status_id])
+  end
+end
+--- diagnostics ---

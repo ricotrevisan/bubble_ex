@@ -1,0 +1,26 @@
+import { z } from 'zod';
+
+// A
+export const ASchema = z.object({
+  B: z.string().nullish(), // reference -> b
+  _id: z.string(),
+});
+
+export type A = z.infer<typeof ASchema>;
+
+// B
+export const BSchema = z.object({
+  C: z.array(z.string()).nullish(), // reference -> c
+  _id: z.string(),
+});
+
+export type B = z.infer<typeof BSchema>;
+
+// C
+export const CSchema = z.object({
+  A: z.string().nullish(), // reference -> a
+  _id: z.string(),
+});
+
+export type C = z.infer<typeof CSchema>;
+--- diagnostics ---

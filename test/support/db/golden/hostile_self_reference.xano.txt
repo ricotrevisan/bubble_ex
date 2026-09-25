@@ -1,0 +1,29 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "node",
+    "fields": [
+      {
+        "name": "children",
+        "type": "text",
+        "description": "ref:node._id (link manually in Xano)",
+        "style": "list"
+      },
+      {
+        "name": "parent",
+        "type": "text",
+        "description": "ref:node._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---

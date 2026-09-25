@@ -1,0 +1,36 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Archive] (
+  [Label] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_archive] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[Invoice] (
+  [Archive] NVARCHAR(450),
+  [Customer] NVARCHAR(450),
+  [Lines] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Old ref] NVARCHAR(450),
+  [Old total] FLOAT,
+  [State] NVARCHAR(450),
+  [Total] FLOAT,
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_invoice] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Retired] (
+  [Display] NVARCHAR(450),
+  [db_value] NVARCHAR(MAX),
+  [deleted] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  CONSTRAINT [PK_retired] PRIMARY KEY ([Display])
+);
+
+ALTER TABLE [custom].[Invoice]
+  ADD CONSTRAINT [FK_invoice_archive]
+  FOREIGN KEY ([Archive])
+  REFERENCES [custom].[Archive] ([_id]);
+--- diagnostics ---

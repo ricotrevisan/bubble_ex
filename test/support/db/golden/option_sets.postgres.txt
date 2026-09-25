@@ -1,0 +1,44 @@
+CREATE SCHEMA IF NOT EXISTS "option";
+CREATE SCHEMA IF NOT EXISTS "custom";
+
+CREATE TABLE "option"."Channel" (
+  "Display" text,
+  "db_value" text,
+  "sort_factor" double precision,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "option"."Legacy" (
+  "Display" text,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "option"."Orphan" (
+  "Display" text,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "option"."Priority" (
+  "Display" text,
+  "channels" text,
+  "color" text,
+  "db_value" text,
+  "deleted" text,
+  "escalates_to" text,
+  "icon" text,
+  "sort_factor" double precision,
+  "tooltip" text,
+  "urgent" text,
+  "weight" double precision,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "custom"."Ticket" (
+  "Channels" text[],
+  "Priority" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+ALTER TABLE "custom"."Ticket" ADD FOREIGN KEY ("Priority") REFERENCES "option"."Priority" ("Display");
+--- diagnostics ---

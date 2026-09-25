@@ -1,0 +1,31 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Archive" (
+  "Label" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Invoice" (
+  "Archive" text,
+  "Customer" text,
+  "Lines" text[],
+  "Old ref" text,
+  "Old total" double precision,
+  "State" text,
+  "Total" double precision,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Retired" (
+  "Display" text,
+  "db_value" text,
+  "deleted" text,
+  "sort_factor" double precision,
+  PRIMARY KEY ("Display")
+);
+
+ALTER TABLE "custom"."Invoice" ADD FOREIGN KEY ("Archive") REFERENCES "custom"."Archive" ("_id");
+--- diagnostics ---

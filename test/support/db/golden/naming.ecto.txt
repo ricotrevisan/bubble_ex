@@ -1,0 +1,161 @@
+# schema module
+defmodule MyApp.N00ThingJoin do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "n00_thing_join" do
+    field :n11_done, :boolean
+    field :n40_sort_thing_title, :string
+    field :title, :string
+    field :title, :string
+    field :_struct, :string
+    field :id, :string
+    field :inserted_at, :utc_datetime_usec
+    field :type, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:n11_done, :n40_sort_thing_title, :title, :title, :_struct, :id, :inserted_at, :type]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateN00ThingJoin do
+  use Ecto.Migration
+
+  def change do
+    create table("n00_thing_join", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :n11_done, :boolean
+      add :n40_sort_thing_title, :string
+      add :title, :string
+      add :title, :string
+      add :_struct, :string
+      add :id, :string
+      add :inserted_at, :utc_datetime_usec
+      add :type, :string
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.N40Levels do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:display, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "n40_levels" do
+    field :db_value, :string
+    field :sort_factor, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:db_value, :sort_factor]) |> validate_required([:display])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateN40Levels do
+  use Ecto.Migration
+
+  def change do
+    create table("n40_levels", primary_key: false) do
+      add :display, :string, primary_key: true
+      add :db_value, :string
+      add :sort_factor, :float
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Thing do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "thing" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateThing do
+  use Ecto.Migration
+
+  def change do
+    create table("thing", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Thing do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "thing" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateThing do
+  use Ecto.Migration
+
+  def change do
+    create table("thing", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Launch do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "launch" do
+    field :name, :string
+    field :field, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:name, :field]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateLaunch do
+  use Ecto.Migration
+
+  def change do
+    create table("launch", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :name, :string
+      add :field, :string
+    end
+  end
+end
+--- diagnostics ---

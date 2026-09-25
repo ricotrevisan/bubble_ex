@@ -1,0 +1,95 @@
+# schema module
+defmodule MyApp.L do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:display, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "l" do
+    field :db_value, :string
+    field :sort_factor, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:db_value, :sort_factor]) |> validate_required([:display])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateL do
+  use Ecto.Migration
+
+  def change do
+    create table("l", primary_key: false) do
+      add :display, :string, primary_key: true
+      add :db_value, :string
+      add :sort_factor, :float
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.VeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameEnd do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end" do
+    field :slash_and_tilde, :string
+    field :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :string
+    field :n_c_d, :string
+    belongs_to :field, MyApp.Table, foreign_key: :field_id, references: :_id, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:slash_and_tilde, :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :n_c_d, :field_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameVeryLongNameEnd do
+  use Ecto.Migration
+
+  def change do
+    create table("very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :slash_and_tilde, :string
+      add :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :string
+      add :n_c_d, :string
+      add :field_id, :string
+    end
+    create index("very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end", [:field_id])
+  end
+end
+
+# schema module
+defmodule MyApp.Table do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "field" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTable do
+  use Ecto.Migration
+
+  def change do
+    create table("field", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+--- diagnostics ---

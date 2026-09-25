@@ -1,0 +1,56 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Project" (
+  "Name" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status" (
+  "Display" text,
+  "color" text,
+  "db_value" text,
+  "sort_factor" double precision,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "custom"."Task" (
+  "Attachment" text,
+  "Budget" jsonb,
+  "Checks" boolean[],
+  "Cover" text,
+  "Dates" timestamptz[],
+  "Done" boolean,
+  "Due" timestamptz,
+  "Duration" jsonb,
+  "Estimate" double precision,
+  "Files" text[],
+  "Images" text[],
+  "Labels" text[],
+  "Notes" text[],
+  "Owner" text,
+  "Place" jsonb,
+  "Places" jsonb[],
+  "Project" text,
+  "Ranges" jsonb[],
+  "Scores" double precision[],
+  "Status" text,
+  "Subtasks" text[],
+  "Title" text,
+  "Watchers" text[],
+  "Window" jsonb,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "Nickname" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Owner") REFERENCES "custom"."User" ("_id");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("Display");
+--- diagnostics ---

@@ -1,0 +1,32 @@
+# schema module
+defmodule MyApp.Node do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "node" do
+    field :children, {:array, :string}
+    belongs_to :parent, MyApp.Node, foreign_key: :parent_id, references: :_id, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:children, :parent_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateNode do
+  use Ecto.Migration
+
+  def change do
+    create table("node", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :children, {:array, :string}
+      add :parent_id, :string
+    end
+    create index("node", [:parent_id])
+  end
+end
+--- diagnostics ---

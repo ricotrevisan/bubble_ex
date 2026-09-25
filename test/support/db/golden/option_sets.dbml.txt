@@ -1,0 +1,44 @@
+Project "synthetic-option-sets" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table option."Channel" {
+	"Display" varchar [pk]
+	"db_value" varchar
+	"sort_factor" float
+
+}
+Table option."Legacy" {
+	"Display" varchar [pk]
+
+}
+Table option."Orphan" {
+	"Display" varchar [pk]
+
+}
+Table option."Priority" {
+	"Display" varchar [pk]
+	"channels" varchar
+	"color" varchar
+	"db_value" varchar
+	"deleted" varchar
+	"escalates_to" varchar
+	"icon" varchar
+	"sort_factor" float
+	"tooltip" varchar
+	"urgent" varchar
+	"weight" float
+
+}
+Table custom."Ticket" {
+	"Channels" channel.id[]
+	"Priority" priority.id
+	"_id" varchar [pk]
+
+}
+
+Ref: custom."Ticket"."Channels" <> option."Channel"."Display"
+Ref: custom."Ticket"."Priority" > option."Priority"."Display"--- diagnostics ---

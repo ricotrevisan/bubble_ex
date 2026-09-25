@@ -1,0 +1,77 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "project",
+    "fields": [
+      {
+        "name": "name",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status",
+    "fields": [
+      {
+        "name": "display",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "db_value",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "sort_factor",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "task",
+    "fields": [
+      {
+        "name": "done",
+        "type": "bool",
+        "style": "single"
+      },
+      {
+        "name": "project",
+        "type": "text",
+        "description": "ref:project._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "status",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status (option values not in IR)",
+        "style": "single"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---

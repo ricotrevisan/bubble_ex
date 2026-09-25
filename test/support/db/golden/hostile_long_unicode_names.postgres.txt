@@ -1,0 +1,26 @@
+CREATE SCHEMA IF NOT EXISTS "option";
+CREATE SCHEMA IF NOT EXISTS "custom";
+
+CREATE TABLE "option"."Ölçü" (
+  "Display" text,
+  "db_value" text,
+  "sort_factor" double precision,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "custom"."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end" (
+  "_id" text,
+  "slash/and~tilde" text,
+  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" text,
+  "名前 — ✓ ünïcödé" text,
+  "🧪" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."类型 🏷️" (
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+ALTER TABLE "custom"."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end" ADD FOREIGN KEY ("🧪") REFERENCES "custom"."类型 🏷️" ("_id");
+--- diagnostics ---

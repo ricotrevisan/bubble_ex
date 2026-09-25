@@ -1,0 +1,34 @@
+import { z } from 'zod';
+
+// Draft
+export const DraftSchema = z.object({
+  _id: z.string(),
+});
+
+export type Draft = z.infer<typeof DraftSchema>;
+
+// Note
+export const NoteSchema = z.object({
+  Body: z.string().nullish(),
+  Secret: z.string().nullish(),
+  _id: z.string(),
+});
+
+export type Note = z.infer<typeof NoteSchema>;
+
+// Public page
+export const PublicPageSchema = z.object({
+  'Slug text': z.string().nullish(),
+  _id: z.string(),
+});
+
+export type PublicPage = z.infer<typeof PublicPageSchema>;
+
+// User
+export const UserSchema = z.object({
+  Admin: z.boolean().nullish(),
+  _id: z.string(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+--- diagnostics ---

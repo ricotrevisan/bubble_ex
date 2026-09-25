@@ -1,0 +1,8 @@
+Project "" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+--- diagnostics ---

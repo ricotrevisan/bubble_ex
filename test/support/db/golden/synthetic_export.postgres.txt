@@ -1,0 +1,28 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Project" (
+  "Name" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status" (
+  "Display" text,
+  "db_value" text,
+  "sort_factor" double precision,
+  PRIMARY KEY ("Display")
+);
+
+CREATE TABLE "custom"."Task" (
+  "Done?" boolean,
+  "Project" text,
+  "Status" text,
+  "Title" text,
+  "_id" text,
+  PRIMARY KEY ("_id")
+);
+
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("Display");
+--- diagnostics ---

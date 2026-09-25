@@ -1,0 +1,26 @@
+Project "" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."A" {
+	"B" b.id
+	"_id" varchar [pk]
+
+}
+Table custom."B" {
+	"C" c.id[]
+	"_id" varchar [pk]
+
+}
+Table custom."C" {
+	"A" a.id
+	"_id" varchar [pk]
+
+}
+
+Ref: custom."A"."B" > custom."B"."_id"
+Ref: custom."B"."C" <> custom."C"."_id"
+Ref: custom."C"."A" > custom."A"."_id"--- diagnostics ---

@@ -1,0 +1,100 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "archive",
+    "fields": [
+      {
+        "name": "label",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "invoice",
+    "fields": [
+      {
+        "name": "archive",
+        "type": "text",
+        "description": "ref:archive._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "customer",
+        "type": "text",
+        "description": "ref:ghost (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "lines",
+        "type": "text",
+        "description": "ref:ghost_line (link manually in Xano)",
+        "style": "list"
+      },
+      {
+        "name": "old_ref",
+        "type": "text",
+        "description": "ref:ghost (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "old_total",
+        "type": "decimal",
+        "style": "single"
+      },
+      {
+        "name": "state",
+        "type": "enum",
+        "values": [],
+        "description": "enum:ghost_state (option values not in IR)",
+        "style": "single"
+      },
+      {
+        "name": "total",
+        "type": "decimal",
+        "style": "single"
+      },
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "retired",
+    "fields": [
+      {
+        "name": "display",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "db_value",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "deleted",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "sort_factor",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---

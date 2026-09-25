@@ -1,0 +1,67 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Project] (
+  [Name] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_project] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Status] (
+  [Display] NVARCHAR(450),
+  [color] NVARCHAR(MAX),
+  [db_value] NVARCHAR(MAX),
+  [sort_factor] FLOAT,
+  CONSTRAINT [PK_status] PRIMARY KEY ([Display])
+);
+
+CREATE TABLE [custom].[Task] (
+  [Attachment] NVARCHAR(MAX),
+  [Budget] NVARCHAR(MAX),
+  [Checks] NVARCHAR(MAX)  -- list<bit>: consider a junction table,
+  [Cover] NVARCHAR(MAX),
+  [Dates] NVARCHAR(MAX)  -- list<datetime>: consider a junction table,
+  [Done] BIT,
+  [Due] DATETIME2,
+  [Duration] NVARCHAR(MAX),
+  [Estimate] FLOAT,
+  [Files] NVARCHAR(MAX)  -- list<text>: consider a junction table,
+  [Images] NVARCHAR(MAX)  -- list<text>: consider a junction table,
+  [Labels] NVARCHAR(MAX)  -- list<enum>: consider a junction table,
+  [Notes] NVARCHAR(MAX)  -- list<text>: consider a junction table,
+  [Owner] NVARCHAR(450),
+  [Place] NVARCHAR(MAX),
+  [Places] NVARCHAR(MAX)  -- list<text>: consider a junction table,
+  [Project] NVARCHAR(450),
+  [Ranges] NVARCHAR(MAX)  -- list<text>: consider a junction table,
+  [Scores] NVARCHAR(MAX)  -- list<float>: consider a junction table,
+  [Status] NVARCHAR(450),
+  [Subtasks] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Title] NVARCHAR(MAX),
+  [Watchers] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Window] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_task] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [Nickname] NVARCHAR(MAX),
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_owner]
+  FOREIGN KEY ([Owner])
+  REFERENCES [custom].[User] ([_id]);
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_project]
+  FOREIGN KEY ([Project])
+  REFERENCES [custom].[Project] ([_id]);
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_status]
+  FOREIGN KEY ([Status])
+  REFERENCES [option].[Status] ([Display]);
+--- diagnostics ---

@@ -1,0 +1,70 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "_l",
+    "fields": [
+      {
+        "name": "display",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "db_value",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "sort_factor",
+        "type": "decimal",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slash_and_tilde",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "_n_c_d",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "_",
+        "type": "text",
+        "description": "ref:_._id (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "_",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
