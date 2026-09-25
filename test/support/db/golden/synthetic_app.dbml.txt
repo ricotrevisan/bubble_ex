@@ -7,12 +7,20 @@ Project "synthapp" {
 
 Table custom."Onboarding Answer" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"label" varchar
 	"score" float
 
 }
 Table custom."Survey Response" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"answer" varchar
 	"onboarding answer" onboarding_answer.id
 	"rating" float
@@ -21,6 +29,11 @@ Table custom."Survey Response" {
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table option."Status Type" {
@@ -30,6 +43,9 @@ Table option."Status Type" {
 
 }
 
+Ref: custom."Onboarding Answer"."Created By" > custom."User"."_id"
+Ref: custom."Survey Response"."Created By" > custom."User"."_id"
 Ref: custom."Survey Response"."onboarding answer" > custom."Onboarding Answer"."_id"
-Ref: custom."Survey Response"."status" > option."Status Type"."db_value"--- diagnostics ---
+Ref: custom."Survey Response"."status" > option."Status Type"."db_value"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_synthesized_user_type /user_types/user

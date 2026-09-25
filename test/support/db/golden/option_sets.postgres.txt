@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Ticket" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Channels" text[],
   "Priority" text,
   PRIMARY KEY ("_id")
@@ -10,6 +14,11 @@ CREATE TABLE "custom"."Ticket" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 
@@ -38,7 +47,9 @@ CREATE TABLE "option"."Priority" (
   PRIMARY KEY ("db_value")
 );
 
+ALTER TABLE "custom"."Ticket" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Ticket" ADD FOREIGN KEY ("Priority") REFERENCES "option"."Priority" ("db_value");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "option"."Priority" ADD FOREIGN KEY ("Escalates to") REFERENCES "option"."Priority" ("db_value");
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value

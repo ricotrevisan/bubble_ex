@@ -3,8 +3,18 @@ GO
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
+
+ALTER TABLE [custom].[User]
+  ADD CONSTRAINT [FK_user_created_by]
+  FOREIGN KEY ([Created By])
+  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 model_malformed_node /option_sets
 model_malformed_node /user_types

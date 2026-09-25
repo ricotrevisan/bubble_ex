@@ -9,6 +9,10 @@ import { v } from "convex/values";
 export default defineSchema({
   invoice: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     archive: v.string(), // reference -> re-key to v.id(...)
     customer: v.string(), // reference -> re-key to v.id(...)
     lines: v.array(v.string()), // reference -> re-key to v.id(...)
@@ -18,6 +22,11 @@ export default defineSchema({
 
   user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
+    email: v.string(),
   }),
 });
 --- diagnostics ---

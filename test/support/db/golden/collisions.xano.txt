@@ -12,6 +12,27 @@
         "style": "single"
       },
       {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
         "name": "title",
         "type": "text",
         "style": "single"
@@ -61,6 +82,27 @@
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
         "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
       }
     ]
   },
@@ -71,6 +113,32 @@
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email",
+        "type": "text",
         "style": "single"
       }
     ]

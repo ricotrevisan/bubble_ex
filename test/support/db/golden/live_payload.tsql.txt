@@ -5,6 +5,10 @@ GO
 
 CREATE TABLE [custom].[Order] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [Buyer] NVARCHAR(450),
   [Items] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   [Kind] NVARCHAR(450),
@@ -13,6 +17,11 @@ CREATE TABLE [custom].[Order] (
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   [Name] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
@@ -25,6 +34,10 @@ CREATE TABLE [option].[Kind] (
 );
 
 ALTER TABLE [custom].[Order]
+  ADD CONSTRAINT [FK_order_created_by]
+  FOREIGN KEY ([Created By])
+  REFERENCES [custom].[User] ([_id]);
+ALTER TABLE [custom].[Order]
   ADD CONSTRAINT [FK_order_buyer]
   FOREIGN KEY ([Buyer])
   REFERENCES [custom].[User] ([_id]);
@@ -32,5 +45,9 @@ ALTER TABLE [custom].[Order]
   ADD CONSTRAINT [FK_order_kind]
   FOREIGN KEY ([Kind])
   REFERENCES [option].[Kind] ([db_value]);
+ALTER TABLE [custom].[User]
+  ADD CONSTRAINT [FK_user_created_by]
+  FOREIGN KEY ([Created By])
+  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

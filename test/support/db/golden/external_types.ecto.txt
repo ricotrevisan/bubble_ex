@@ -62,6 +62,10 @@ defmodule MyApp.Shipment do
   @foreign_key_type :string
 
   schema "shipment" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     embeds_one :address, MyApp.External.Address, on_replace: :delete
     field :blank, :map
     field :invalid, :map
@@ -73,7 +77,7 @@ defmodule MyApp.Shipment do
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:blank, :invalid, :invalid_list, :missing, :nowhere]) |> cast_embed(:address) |> cast_embed(:pings) |> cast_embed(:tree) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :blank, :invalid, :invalid_list, :missing, :nowhere]) |> cast_embed(:address) |> cast_embed(:pings) |> cast_embed(:tree) |> validate_required([:_id])
   end
 end
 
@@ -84,6 +88,10 @@ defmodule MyApp.Repo.Migrations.CreateShipment do
   def change do
     create table("shipment", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :address, :map
       add :blank, :map
       add :invalid, :map
@@ -93,6 +101,7 @@ defmodule MyApp.Repo.Migrations.CreateShipment do
       add :pings, :map
       add :tree, :map
     end
+    create index("shipment", [:created_by_id])
   end
 end
 
@@ -105,11 +114,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -120,7 +133,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 --- diagnostics ---

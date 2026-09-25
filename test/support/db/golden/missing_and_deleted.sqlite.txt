@@ -6,17 +6,28 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Invoice" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Archive" TEXT,
   "Customer" TEXT,
   "Lines" TEXT,  -- list<TEXT>; store as JSON
   "State" TEXT,
   "Total" REAL,
-  PRIMARY KEY ("_id")
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 --- diagnostics ---
 db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value

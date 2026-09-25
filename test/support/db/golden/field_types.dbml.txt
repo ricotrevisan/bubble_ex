@@ -7,11 +7,19 @@ Project "synthetic-field-types" {
 
 Table custom."Project" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Name" varchar
 
 }
 Table custom."Task" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Attachment" bubble_file
 	"Budget" bubble_number_range
 	"Checks" bool[]
@@ -40,6 +48,11 @@ Table custom."Task" {
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 	"Nickname" varchar
 
 }
@@ -50,9 +63,12 @@ Table option."Status" {
 
 }
 
+Ref: custom."Project"."Created By" > custom."User"."_id"
+Ref: custom."Task"."Created By" > custom."User"."_id"
 Ref: custom."Task"."Labels" <> option."Status"."db_value"
 Ref: custom."Task"."Owner" > custom."User"."_id"
 Ref: custom."Task"."Project" > custom."Project"."_id"
 Ref: custom."Task"."Status" > option."Status"."db_value"
 Ref: custom."Task"."Subtasks" <> custom."Task"."_id"
-Ref: custom."Task"."Watchers" <> custom."User"."_id"--- diagnostics ---
+Ref: custom."Task"."Watchers" <> custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---

@@ -3,6 +3,10 @@ import { z } from 'zod';
 // Ticket
 export const TicketSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not rendered)
   Priority: z.string().nullish(), // enum -> priority option set (values not rendered)
 });
@@ -12,6 +16,11 @@ export type Ticket = z.infer<typeof TicketSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;

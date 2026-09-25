@@ -3,6 +3,10 @@ import { z } from 'zod';
 // A
 export const ASchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   B: z.string().nullish(), // reference -> b
 });
 
@@ -11,6 +15,10 @@ export type A = z.infer<typeof ASchema>;
 // B
 export const BSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   C: z.array(z.string()).nullish(), // reference -> c
 });
 
@@ -19,6 +27,10 @@ export type B = z.infer<typeof BSchema>;
 // C
 export const CSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   A: z.string().nullish(), // reference -> a
 });
 
@@ -27,6 +39,11 @@ export type C = z.infer<typeof CSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;

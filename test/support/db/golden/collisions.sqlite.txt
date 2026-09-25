@@ -6,6 +6,10 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Task" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Title" TEXT,
   "title_2" INTEGER,
   "_ID_2" TEXT,
@@ -14,17 +18,29 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "Retired" TEXT,
   "Status" TEXT,
   PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__task_2" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Status" (

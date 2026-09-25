@@ -8,11 +8,19 @@ CREATE TYPE "T" AS (
 
 CREATE TABLE "custom"."Listy" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."Task" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Empty custom" text,
   "Extra member" text,
   "Nested list" text,
@@ -26,6 +34,11 @@ CREATE TABLE "custom"."Task" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 
@@ -40,6 +53,10 @@ CREATE TABLE "option"."Bad values" (
   "Display" text,
   PRIMARY KEY ("db_value")
 );
+
+ALTER TABLE "custom"."Listy" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_malformed_node /option_sets/bad_set
 model_malformed_node /option_sets/bad_value/values/v1

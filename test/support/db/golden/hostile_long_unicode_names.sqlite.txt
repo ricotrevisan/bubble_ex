@@ -6,22 +6,38 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "slash/and~tilde" TEXT,
   "🧪" TEXT,
   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" TEXT,
   "名前 — ✓ ünïcödé" TEXT,
   PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("🧪") REFERENCES "custom__类型 🏷️" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__类型 🏷️" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Ölçü" (

@@ -22,6 +22,10 @@ CREATE TYPE "Node" AS (
 
 CREATE TABLE "custom"."Shipment" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Address" "Address",
   "Blank" jsonb,
   "Invalid" jsonb,
@@ -35,8 +39,16 @@ CREATE TABLE "custom"."Shipment" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
+
+ALTER TABLE "custom"."Shipment" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
 external_type_unresolved_root /user_types/shipment/fields/blank_api/value

@@ -6,7 +6,13 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

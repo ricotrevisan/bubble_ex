@@ -7,11 +7,15 @@ defmodule MyApp.A do
   @foreign_key_type :string
 
   schema "a" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     belongs_to :b, MyApp.B, foreign_key: :b_id, references: :_id, type: :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:b_id]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :b_id]) |> validate_required([:_id])
   end
 end
 
@@ -22,8 +26,13 @@ defmodule MyApp.Repo.Migrations.CreateA do
   def change do
     create table("a", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :b_id, :string
     end
+    create index("a", [:created_by_id])
     create index("a", [:b_id])
   end
 end
@@ -37,11 +46,15 @@ defmodule MyApp.B do
   @foreign_key_type :string
 
   schema "b" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :c, {:array, :string}
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:c]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :c]) |> validate_required([:_id])
   end
 end
 
@@ -52,8 +65,13 @@ defmodule MyApp.Repo.Migrations.CreateB do
   def change do
     create table("b", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :c, {:array, :string}
     end
+    create index("b", [:created_by_id])
   end
 end
 
@@ -66,11 +84,15 @@ defmodule MyApp.C do
   @foreign_key_type :string
 
   schema "c" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     belongs_to :a, MyApp.A, foreign_key: :a_id, references: :_id, type: :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:a_id]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :a_id]) |> validate_required([:_id])
   end
 end
 
@@ -81,8 +103,13 @@ defmodule MyApp.Repo.Migrations.CreateC do
   def change do
     create table("c", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :a_id, :string
     end
+    create index("c", [:created_by_id])
     create index("c", [:a_id])
   end
 end
@@ -96,11 +123,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -111,7 +142,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 --- diagnostics ---

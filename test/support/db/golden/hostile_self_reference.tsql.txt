@@ -3,6 +3,10 @@ GO
 
 CREATE TABLE [custom].[Node] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
   [Children] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   [Parent] NVARCHAR(450),
   CONSTRAINT [PK_node] PRIMARY KEY ([_id])
@@ -10,12 +14,25 @@ CREATE TABLE [custom].[Node] (
 
 CREATE TABLE [custom].[User] (
   [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 
 ALTER TABLE [custom].[Node]
+  ADD CONSTRAINT [FK_node_created_by]
+  FOREIGN KEY ([Created By])
+  REFERENCES [custom].[User] ([_id]);
+ALTER TABLE [custom].[Node]
   ADD CONSTRAINT [FK_node_parent]
   FOREIGN KEY ([Parent])
   REFERENCES [custom].[Node] ([_id]);
+ALTER TABLE [custom].[User]
+  ADD CONSTRAINT [FK_user_created_by]
+  FOREIGN KEY ([Created By])
+  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

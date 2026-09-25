@@ -7,6 +7,10 @@ Project "" {
 
 Table custom."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"slash/and~tilde" varchar
 	"🧪" 类型.id
 	"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" varchar
@@ -15,10 +19,19 @@ Table custom."Ωvery long name very long name very long name very long name very
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table custom."类型 🏷️" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 
 }
 Table option."Ölçü" {
@@ -27,5 +40,8 @@ Table option."Ölçü" {
 
 }
 
-Ref: custom."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end"."🧪" > custom."类型 🏷️"."_id"--- diagnostics ---
+Ref: custom."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end"."Created By" > custom."User"."_id"
+Ref: custom."Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end"."🧪" > custom."类型 🏷️"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"
+Ref: custom."类型 🏷️"."Created By" > custom."User"."_id"--- diagnostics ---
 model_synthesized_user_type /user_types/user

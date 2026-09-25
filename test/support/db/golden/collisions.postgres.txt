@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Task" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Title" text,
   "title_2" boolean,
   "_ID_2" text,
@@ -15,11 +19,20 @@ CREATE TABLE "custom"."Task" (
 
 CREATE TABLE "custom"."task_2" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 
@@ -40,7 +53,10 @@ CREATE TABLE "option"."TASK_3" (
   PRIMARY KEY ("db_value")
 );
 
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+ALTER TABLE "custom"."task_2" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2

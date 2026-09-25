@@ -3,6 +3,10 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Order" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Buyer" text,
   "Items" text[],
   "Kind" text,
@@ -11,6 +15,11 @@ CREATE TABLE "custom"."Order" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   "Name" text,
   PRIMARY KEY ("_id")
 );
@@ -22,7 +31,9 @@ CREATE TABLE "option"."Kind" (
   PRIMARY KEY ("db_value")
 );
 
+ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Buyer") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Kind") REFERENCES "option"."Kind" ("db_value");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

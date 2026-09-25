@@ -28,15 +28,19 @@ defmodule BubbleEx.Characterization.DbTest do
       assert length(db.tables) == 4
       # survey_response references both a custom type and an option set, so it
       # generates two relationships: -> onboarding_answer and -> status_type.
-      assert length(db.relationships) == 2
+      # Every custom table (both data types and User) adds one more: its
+      # built-in Created By -> User.
+      assert length(db.relationships) == 5
     end
 
     test "reads the known custom table with its columns", %{db: db} do
       table = Enum.find(db.tables, &(&1.id == "onboarding_answer"))
       assert table.name == "Onboarding Answer"
       assert table.group == :custom
-      # 2 custom fields (label, score) + 1 Reader-injected built-in _id column
-      assert length(table.columns) == 3
+      # The injected _id, Bubble's built-in fields (Created Date, Modified
+      # Date, Created By, Slug) and 2 custom fields (label, score)
+      assert Enum.map(table.columns, & &1.name) ==
+               ["_id", "Created Date", "Modified Date", "Created By", "Slug", "label", "score"]
     end
 
     test "covers the enum/option-set reference path", %{db: db} do

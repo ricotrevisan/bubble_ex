@@ -3,6 +3,10 @@ import { z } from 'zod';
 // 00. Thing - Join
 export const _00ThingJoinSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   '11. Done': z.boolean().nullish(),
   '40. Sort: Thing Title': z.string().nullish(),
   __struct__: z.string().nullish(),
@@ -18,6 +22,10 @@ export type _00ThingJoin = z.infer<typeof _00ThingJoinSchema>;
 // 🚀 Launch
 export const LaunchSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   '🔥': z.string().nullish(),
   'Name ✨': z.string().nullish(),
 });
@@ -27,6 +35,10 @@ export type Launch = z.infer<typeof LaunchSchema>;
 // Thing
 export const ThingSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
 });
 
 export type Thing = z.infer<typeof ThingSchema>;
@@ -34,6 +46,10 @@ export type Thing = z.infer<typeof ThingSchema>;
 // Thing_2
 export const Thing2Schema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
 });
 
 export type Thing2 = z.infer<typeof Thing2Schema>;
@@ -41,6 +57,11 @@ export type Thing2 = z.infer<typeof Thing2Schema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;

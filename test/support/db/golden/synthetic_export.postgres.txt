@@ -3,12 +3,20 @@ CREATE SCHEMA IF NOT EXISTS "option";
 
 CREATE TABLE "custom"."Project" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Name" text,
   PRIMARY KEY ("_id")
 );
 
 CREATE TABLE "custom"."Task" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Done?" boolean,
   "Project" text,
   "Status" text,
@@ -18,6 +26,11 @@ CREATE TABLE "custom"."Task" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 
@@ -27,7 +40,10 @@ CREATE TABLE "option"."Status" (
   PRIMARY KEY ("db_value")
 );
 
+ALTER TABLE "custom"."Project" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

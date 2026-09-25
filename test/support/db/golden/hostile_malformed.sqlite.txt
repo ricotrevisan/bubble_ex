@@ -6,11 +6,20 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Listy" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Task" (
   "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
   "Empty custom" TEXT,
   "Extra member" TEXT,
   "Nested list" TEXT,
@@ -19,12 +28,19 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "OK" TEXT,
   "Quantum" TEXT,
   "Untyped" TEXT,
-  PRIMARY KEY ("_id")
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
   "_id" TEXT NOT NULL,
-  PRIMARY KEY ("_id")
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  PRIMARY KEY ("_id"),
+  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Bad value" (

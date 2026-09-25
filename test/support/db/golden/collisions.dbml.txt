@@ -7,6 +7,10 @@ Project "synthetic-collisions" {
 
 Table custom."Task" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Title" varchar
 	"title_2" bool
 	"_ID_2" varchar
@@ -18,10 +22,19 @@ Table custom."Task" {
 }
 Table custom."task_2" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
 Table option."Status" {
@@ -40,7 +53,10 @@ Table option."TASK_3" {
 
 }
 
-Ref: custom."Task"."Status" > option."Status"."db_value"--- diagnostics ---
+Ref: custom."Task"."Created By" > custom."User"."_id"
+Ref: custom."Task"."Status" > option."Status"."db_value"
+Ref: custom."task_2"."Created By" > custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2
 db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value

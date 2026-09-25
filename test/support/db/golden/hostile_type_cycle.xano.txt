@@ -12,6 +12,27 @@
         "style": "single"
       },
       {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
         "name": "b",
         "type": "text",
         "description": "ref:b._id (link manually in Xano)",
@@ -26,6 +47,27 @@
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
         "style": "single"
       },
       {
@@ -46,6 +88,27 @@
         "style": "single"
       },
       {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
         "name": "a",
         "type": "text",
         "description": "ref:a._id (link manually in Xano)",
@@ -60,6 +123,32 @@
         "name": "_id",
         "type": "text",
         "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email",
+        "type": "text",
         "style": "single"
       }
     ]

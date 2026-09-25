@@ -3,6 +3,10 @@ import { z } from 'zod';
 // Onboarding Answer
 export const OnboardingAnswerSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   label: z.string().nullish(),
   score: z.number().nullish(),
 });
@@ -12,6 +16,10 @@ export type OnboardingAnswer = z.infer<typeof OnboardingAnswerSchema>;
 // Survey Response
 export const SurveyResponseSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
   answer: z.string().nullish(),
   'onboarding answer': z.string().nullish(), // reference -> onboarding_answer
   rating: z.number().nullish(),
@@ -23,6 +31,11 @@ export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;
 // User
 export const UserSchema = z.object({
   _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;

@@ -9,21 +9,38 @@ import { v } from "convex/values";
 export default defineSchema({
   draft: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
   }),
 
   note: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     body: v.string(),
     secret: v.string(),
   }),
 
   publicPage: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
     slugText: v.string(),
   }),
 
   user: defineTable({
     bubbleId: v.string(), // primary key (Bubble _id, text)
+    createdDate: v.float64(),
+    modifiedDate: v.float64(),
+    createdBy: v.string(), // reference -> re-key to v.id(...)
+    slug: v.string(),
+    email: v.string(),
     admin: v.boolean(),
   }),
 });

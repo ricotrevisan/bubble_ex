@@ -7,6 +7,10 @@ defmodule MyApp.N00ThingJoin do
   @foreign_key_type :string
 
   schema "n00_thing_join" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :n11_done, :boolean
     field :n40_sort_thing_title, :string
     field :_struct, :string
@@ -18,7 +22,7 @@ defmodule MyApp.N00ThingJoin do
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:n11_done, :n40_sort_thing_title, :_struct, :id, :inserted_at, :title, :title_2, :type]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :n11_done, :n40_sort_thing_title, :_struct, :id, :inserted_at, :title, :title_2, :type]) |> validate_required([:_id])
   end
 end
 
@@ -29,6 +33,10 @@ defmodule MyApp.Repo.Migrations.CreateN00ThingJoin do
   def change do
     create table("n00_thing_join", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :n11_done, :boolean
       add :n40_sort_thing_title, :string
       add :_struct, :string
@@ -38,6 +46,7 @@ defmodule MyApp.Repo.Migrations.CreateN00ThingJoin do
       add :title_2, :string
       add :type, :string
     end
+    create index("n00_thing_join", [:created_by_id])
   end
 end
 
@@ -50,12 +59,16 @@ defmodule MyApp.Launch do
   @foreign_key_type :string
 
   schema "launch" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
     field :field, :string
     field :name, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:field, :name]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :field, :name]) |> validate_required([:_id])
   end
 end
 
@@ -66,9 +79,14 @@ defmodule MyApp.Repo.Migrations.CreateLaunch do
   def change do
     create table("launch", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
       add :field, :string
       add :name, :string
     end
+    create index("launch", [:created_by_id])
   end
 end
 
@@ -81,11 +99,14 @@ defmodule MyApp.Thing do
   @foreign_key_type :string
 
   schema "thing" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug]) |> validate_required([:_id])
   end
 end
 
@@ -96,7 +117,12 @@ defmodule MyApp.Repo.Migrations.CreateThing do
   def change do
     create table("thing", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
     end
+    create index("thing", [:created_by_id])
   end
 end
 
@@ -109,11 +135,14 @@ defmodule MyApp.Thing2 do
   @foreign_key_type :string
 
   schema "thing_2" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug]) |> validate_required([:_id])
   end
 end
 
@@ -124,7 +153,12 @@ defmodule MyApp.Repo.Migrations.CreateThing2 do
   def change do
     create table("thing_2", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
     end
+    create index("thing_2", [:created_by_id])
   end
 end
 
@@ -137,11 +171,15 @@ defmodule MyApp.User do
   @foreign_key_type :string
 
   schema "user" do
-
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, []) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
   end
 end
 
@@ -152,7 +190,13 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   def change do
     create table("user", primary_key: false) do
       add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
     end
+    create index("user", [:created_by_id])
   end
 end
 

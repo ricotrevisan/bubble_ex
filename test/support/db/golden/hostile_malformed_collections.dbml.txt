@@ -7,9 +7,15 @@ Project "synthetic-malformed-collections" {
 
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 
 }
---- diagnostics ---
+
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_malformed_node /option_sets
 model_malformed_node /user_types
 model_synthesized_user_type /user_types/user

@@ -2,6 +2,10 @@ CREATE SCHEMA IF NOT EXISTS "custom";
 
 CREATE TABLE "custom"."Node" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
   "Children" text[],
   "Parent" text,
   PRIMARY KEY ("_id")
@@ -9,9 +13,16 @@ CREATE TABLE "custom"."Node" (
 
 CREATE TABLE "custom"."User" (
   "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
   PRIMARY KEY ("_id")
 );
 
+ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Parent") REFERENCES "custom"."Node" ("_id");
+ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

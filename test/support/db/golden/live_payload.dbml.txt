@@ -7,6 +7,10 @@ Project "synthetic-live" {
 
 Table custom."Order" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
 	"Buyer" user.id
 	"Items" item.id[]
 	"Kind" kind.id
@@ -14,6 +18,11 @@ Table custom."Order" {
 }
 Table custom."User" {
 	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
 	"Name" varchar
 
 }
@@ -24,6 +33,8 @@ Table option."Kind" {
 
 }
 
+Ref: custom."Order"."Created By" > custom."User"."_id"
 Ref: custom."Order"."Buyer" > custom."User"."_id"
-Ref: custom."Order"."Kind" > option."Kind"."db_value"--- diagnostics ---
+Ref: custom."Order"."Kind" > option."Kind"."db_value"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v
