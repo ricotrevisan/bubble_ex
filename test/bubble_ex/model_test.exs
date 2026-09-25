@@ -769,6 +769,85 @@ defmodule BubbleEx.ModelTest do
     end
   end
 
+  describe "API Connector call names, hosts and parameters" do
+    setup do
+      {:ok, model} =
+        "api_connector_secrets" |> BubbleEx.SampleHelper.load_json_sample() |> Model.build()
+
+      %{
+        calls: Map.new(model.connectors, &{&1.id, Map.new(&1.calls, fn c -> {c.id, c} end)}),
+        groups: Map.new(model.connectors, &{&1.id, &1})
+      }
+    end
+
+    test "names in both key forms", %{calls: calls} do
+      assert calls["gExport"]["cCharge"].name == "Create charge"
+      assert calls["gLive"]["cSend"].name == "Send email"
+      assert calls["gLive"]["cNoName"].name == nil
+    end
+
+    test "the URL's host only", %{calls: calls} do
+      hosts = for {g, cs} <- calls, {c, call} <- cs, into: %{}, do: {{g, c}, call.host}
+
+      assert hosts == %{
+               {"gExport", "cCharge"} => "api.payments.example",
+               {"gExport", "cHostParam"} => "[tenant].crm.example",
+               {"gExport", "cWholeUrl"} => nil,
+               {"gExport", "cSlashPassword"} => nil,
+               {"gLive", "cSend"} => "api.mail.example",
+               {"gLive", "cNoName"} => "hooks.example"
+             }
+    end
+
+    test "parameters: location, name and private flag", %{calls: calls, groups: groups} do
+      summary = fn params -> Enum.map(params, &{&1.id, &1.in, &1.name, &1.private}) end
+
+      assert summary.(calls["gExport"]["cCharge"].parameters) == [
+               {"h1", :header, "Authorization", true},
+               {"h2", :header, "Content-Type", false},
+               {"h3", :header, nil, false},
+               {"h4", :header, nil, true},
+               {"u1", :url, "account", true},
+               {"b1", :body, "amount", false},
+               {"b2", :body, "signing_secret", true},
+               {"p1", :query, "limit", false},
+               {"p2", :param, "token", true},
+               {"p3", :param, nil, false}
+             ]
+
+      assert summary.(calls["gLive"]["cSend"].parameters) == [
+               {"lh1", :header, "X-Api-Key", true},
+               {"lh2", :header, "Accept", false},
+               {"lb1", :body, "subject", false}
+             ]
+
+      assert summary.(groups["gExport"].parameters) == [
+               {"shA", :header, nil, true},
+               {"shB", :header, "X-Tenant", false},
+               {"spA", :query, "api_key", true}
+             ]
+
+      assert hd(groups["gExport"].parameters).path ==
+               "/settings/client_safe/apiconnector2/gExport/shared_headers/shA"
+    end
+
+    test "host/1" do
+      host = &Model.ConnectorReader.host/1
+      assert host.("https://api.example.com") == "api.example.com"
+      assert host.("  HTTPS://Api.Example.com:443/x?y=1") == "Api.Example.com"
+      assert host.("https://a:b@api.example.com/") == "api.example.com"
+      assert host.("https://[region].api.example.com:[port]/x") == "[region].api.example.com"
+      assert host.("https://api.example.com/users/@me") == nil
+      assert host.("https://a:1/b@api.example.com") == nil
+      assert host.("api.example.com/x") == nil
+      assert host.("[url]") == nil
+      assert host.("https://") == nil
+      assert host.("https://[::1]/") == nil
+      assert host.("https://bad host.example") == nil
+      assert host.(nil) == nil
+    end
+  end
+
   describe "matches?/2" do
     test "a Model matches the app it was built from, not another" do
       app = load("field_types")

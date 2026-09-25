@@ -5,9 +5,11 @@
       "auth": null,
       "calls": [
         {
+          "host": null,
           "id": "defs",
           "method": null,
           "name": null,
+          "parameters": [],
           "path": "/settings/client_safe/apiconnector2/bad/defs",
           "placement": "direct",
           "publish_as": null,
@@ -33,6 +35,7 @@
       ],
       "id": "bad",
       "name": null,
+      "parameters": [],
       "path": "/settings/client_safe/apiconnector2/bad"
     }
   ],
@@ -1035,5 +1038,5 @@
       "values": []
     }
   ],
-  "schema_version": 2
+  "schema_version": 3
 }

@@ -12,9 +12,12 @@ defmodule BubbleEx.Db.OneInterpretationTest do
   @interpreters ["lib/bubble_ex/model", "lib/bubble_ex/privacy"]
 
   # Data-model members in both key forms: as string literals, in ~w() lists or
-  # as atoms (`Map.get(x, :db_value)` on decoded-with-atoms JSON).
+  # as atoms (`Map.get(x, :db_value)` on decoded-with-atoms JSON). API
+  # Connector parameter collections hold credentials: only the Model reads
+  # them (WTF-396).
   @keys ~w(%f3 %v %d %del default_val sort_factor attributes values user_types option_sets
-           fields display value deleted db_value apiconnector2 client_safe)
+           fields display value deleted db_value apiconnector2 client_safe
+           url_params body_params shared_headers shared_params)
 
   # file (or directory) => why it may use those members or descriptors.
   @allowed %{
@@ -99,6 +102,7 @@ defmodule BubbleEx.Db.OneInterpretationTest do
 
   test "the check sees the Model's own reading" do
     assert hits("lib/bubble_ex/model/builder.ex") != []
+    assert hits("lib/bubble_ex/model/connector_reader.ex") != []
     assert hits("lib/bubble_ex/model/type.ex") != []
   end
 

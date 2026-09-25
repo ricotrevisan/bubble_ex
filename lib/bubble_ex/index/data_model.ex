@@ -175,7 +175,7 @@ defmodule BubbleEx.Index.DataModel do
       bubble_id: connector.id,
       name: connector.name,
       path: connector.path,
-      attrs: compact(%{auth: connector.auth})
+      attrs: Map.merge(compact(%{auth: connector.auth}), parameters(connector.parameters))
     }
 
     calls =
@@ -187,11 +187,28 @@ defmodule BubbleEx.Index.DataModel do
           name: call.name,
           parent: id,
           path: call.path,
-          attrs: compact(%{method: call.method, publish_as: call.publish_as})
+          attrs:
+            %{method: call.method, publish_as: call.publish_as, host: call.host}
+            |> compact()
+            |> Map.merge(parameters(call.parameters))
         }
       end
 
     [symbol | calls]
+  end
+
+  # Header names and every parameter's location, name and privacy (never a
+  # value: the Model reads none). Omitted when there are none.
+  defp parameters([]), do: %{}
+
+  defp parameters(params) do
+    headers = for %{in: :header, name: name} when is_binary(name) <- params, do: name
+
+    compact(%{
+      headers: if(headers != [], do: headers |> Enum.uniq() |> Enum.sort()),
+      parameters:
+        Enum.map(params, &compact(%{id: &1.id, in: &1.in, name: &1.name, private: &1.private}))
+    })
   end
 
   defp merge(pairs), do: {Enum.flat_map(pairs, &elem(&1, 0)), Enum.flat_map(pairs, &elem(&1, 1))}

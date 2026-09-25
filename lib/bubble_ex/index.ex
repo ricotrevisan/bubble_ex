@@ -23,7 +23,7 @@ defmodule BubbleEx.Index do
 
   Input is a decoded `.bubble` export (readable keys). Compact live-payload
   keys are read where the live payload carries the data (data types, pages,
-  elements, workflows); privacy rules and API Connector settings exist only in
+  elements, workflows, API Connector calls); privacy rules exist only in
   exports. The index covers the supplied data only.
 
   ## Symbols
@@ -57,6 +57,14 @@ defmodule BubbleEx.Index do
       or plugin event: clicks, page load, input changes, a condition becoming
       true, log in/out, plugin events, …) and `:database_trigger`. An empty
       list means nothing in the supplied data invokes it.
+
+  API Connector call symbols are named by the call's display name and carry,
+  in `attrs`, `method`, `publish_as` and `host` (the URL's host only, see
+  `BubbleEx.Model.ConnectorCall`); `headers` (header names, sorted) and
+  `parameters` (each header or parameter's `id`, `in`, `name` and `private`
+  flag) when it has any. Group symbols carry `auth` and the same `headers` /
+  `parameters` for the parameters shared by their calls. No header or
+  parameter value, query string or URL path is ever indexed.
 
   Recurring schedule actions are recognized by an explicit list of action
   types that no available export contains yet; treat `:recurring` calls as

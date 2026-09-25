@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **API Connector call names from live payloads, URL hosts and header and
+  parameter names** (WTF-396). `Model.ConnectorCall` reads its name in both
+  key forms (`name`, live `%nm`) and gains `host` (the URL's host only: no
+  scheme, user info, port, path or query string) and `parameters`
+  (`Model.ConnectorParameter`: location `:header`/`:url`/`:body`/`:query`/
+  `:param`, name from `key`/`%k`, Bubble's `private` flag); `Model.Connector`
+  gains the group's shared `parameters`. Values, bodies and the rest of the
+  URL are never read (`Model.ConnectorReader`; a leak test covers the Model,
+  Index and Findings). Index `api_call` symbols carry `host`, `headers`
+  (names) and `parameters`; `api_group` symbols the shared ones.
+  `Model.summary/1` counts API connectors, calls (named, with a host) and
+  parameters; `Model.schema_version/0` is 3. Finding IDs and proposal hashes
+  are unchanged on the private mm-137 export.
+
 ### Changed (breaking)
 
 - **The Index, Findings, Workflows explanations and expression schema read
