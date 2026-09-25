@@ -10,7 +10,7 @@ defmodule BubbleEx.Db.ExternalApiFixtureTest do
     assert Enum.map(db.external_types, & &1.id) == Enum.sort(Enum.map(db.external_types, & &1.id))
     assert Enum.any?(db.external_types, &(&1.resolution == :resolved))
     assert Enum.any?(db.external_types, &(&1.resolution == :opaque))
-    assert Enum.any?(db.warnings, &(&1.category == :invalid_descriptor))
+    assert Enum.any?(db.diagnostics, &(&1.code == :invalid_descriptor))
 
     refute inspect(ExternalApiTypeFixture.app()) =~
              ~r/(password|authorization|api[_-]?key|secret)/i
@@ -23,12 +23,12 @@ defmodule BubbleEx.Db.ExternalApiFixtureTest do
       Map.new([:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex], fn format ->
         assert {:ok, result} = BubbleEx.Db.Encoder.render(format, db, external_types: :preserve)
         assert is_binary(result.content) and result.content != ""
-        assert Enum.any?(result.warnings, &(Map.get(&1, :category) == :invalid_descriptor))
+        assert Enum.any?(result.diagnostics, &(&1.code == :invalid_descriptor))
 
         for mode <- [:opaque, :legacy] do
           assert {:ok, mode_result} = BubbleEx.Db.Encoder.render(format, db, external_types: mode)
           assert is_binary(mode_result.content) and mode_result.content != ""
-          assert Enum.any?(mode_result.warnings, &(Map.get(&1, :mode) == mode))
+          assert Enum.any?(mode_result.diagnostics, &(&1.details[:mode] == mode))
         end
 
         {format, result.content}
@@ -49,10 +49,12 @@ defmodule BubbleEx.Db.ExternalApiFixtureTest do
     app = ExternalApiTypeFixture.app()
     app = update_in(app, ["settings", "client_safe", "apiconnector2"], &Map.delete(&1, "compass"))
     assert {:ok, db} = Reader.parse(app)
-    warning = Enum.find(db.warnings, &(&1.category == :connector_missing))
-    assert warning
+    assert [diagnostic] = Enum.filter(db.diagnostics, &(&1.code == :connector_missing))
 
-    assert [%{root: %{table_id: "parcel", field_id: "destination"}, path: [_ | _]}] =
-             warning.occurrences
+    # The nested field whose type failed is the subject; the data-type field
+    # that led there is kept in details.
+    assert %{type: "api.apiconnector2." <> _, field: _} = diagnostic.subject
+    assert diagnostic.details.root == %{type: "parcel", field: "destination"}
+    assert diagnostic.path =~ ~r{^/settings/client_safe/apiconnector2/[^/]+/.+/types$}
   end
 end

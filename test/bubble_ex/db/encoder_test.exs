@@ -25,11 +25,11 @@ defmodule BubbleEx.Db.EncoderTest do
   end
 
   describe "render/3" do
-    test "returns detailed DBML content and structured warnings without changing encode/2" do
+    test "returns detailed DBML content and target diagnostics without changing encode/2" do
       db = %{
         bubble_id: "app",
         external_types: [],
-        warnings: [],
+        diagnostics: [],
         relationships: [],
         tables: [
           %{
@@ -57,13 +57,22 @@ defmodule BubbleEx.Db.EncoderTest do
         ]
       }
 
-      assert {:ok, %Encoder.Result{format: :dbml, content: content, warnings: [warning]}} =
+      assert {:ok, %Encoder.Result{format: :dbml, content: content, diagnostics: [diagnostic]}} =
                Encoder.render(:dbml, db)
 
       assert content =~
                "\"Payload\" json [note: 'External API type api.apiconnector2.alpha.call.Shape (one)']"
 
-      assert warning.kind == :external_type_rendering
+      assert %BubbleEx.Diagnostic{
+               code: :external_type_target_opaque,
+               severity: :info,
+               outcome: :degraded,
+               stage: {:target, :dbml},
+               subject: %{type: "item", field: "payload"},
+               path: "/user_types/item",
+               details: %{external_type: "api.apiconnector2.alpha.call.Shape", fallback: :json}
+             } = diagnostic
+
       assert {:ok, legacy} = BubbleEx.Db.Dbml.encode(db)
       assert legacy =~ ~s(api."apiconnector2.alpha.call.Shape")
     end
@@ -106,7 +115,7 @@ defmodule BubbleEx.Db.EncoderTest do
       db = %{
         bubble_id: "app",
         external_types: nodes,
-        warnings: [],
+        diagnostics: [],
         relationships: [],
         tables: [%{id: "item", name: "Item", group: :custom, columns: [column]}]
       }
@@ -122,20 +131,20 @@ defmodule BubbleEx.Db.EncoderTest do
         assert Enum.all?(normalized_names, &String.contains?(normalized_content, &1)),
                "missing planned names in #{format}"
 
-        assert Enum.any?(result.warnings, &(&1.reason == :cycle_edge))
-        assert Enum.any?(result.warnings, &(&1.reason == :unresolved_nested_target))
+        assert Enum.any?(result.diagnostics, &(&1.code == :external_type_cycle_edge))
+        assert Enum.any?(result.diagnostics, &(&1.code == :external_type_unresolved_nested))
       end
 
       assert {:ok, xano} = Encoder.render(:xano, db, external_types: :preserve)
       assert xano.content =~ ~s("type": "json")
-      assert Enum.any?(xano.warnings, &(&1.reason == :cycle_edge))
-      assert Enum.any?(xano.warnings, &(&1.reason == :unresolved_nested_target))
+      assert Enum.any?(xano.diagnostics, &(&1.code == :external_type_cycle_edge))
+      assert Enum.any?(xano.diagnostics, &(&1.code == :external_type_unresolved_nested))
 
       assert {:ok, zod} = Encoder.render(:zod, db, external_types: :preserve)
       assert Enum.all?(planned_names, &String.contains?(String.downcase(zod.content), &1))
       assert zod.content =~ "get next()"
-      assert Enum.any?(zod.warnings, &(&1.reason == :unresolved_nested_target))
-      refute Enum.any?(zod.warnings, &(&1.reason == :cycle_edge))
+      assert Enum.any?(zod.diagnostics, &(&1.code == :external_type_unresolved_nested))
+      refute Enum.any?(zod.diagnostics, &(&1.code == :external_type_cycle_edge))
 
       assert {:ok, ecto_recursive} =
                Encoder.render(:ecto, db,
@@ -144,7 +153,7 @@ defmodule BubbleEx.Db.EncoderTest do
                )
 
       assert ecto_recursive.content =~ "embeds_one"
-      refute Enum.any?(ecto_recursive.warnings, &(&1.reason == :cycle_edge))
+      refute Enum.any?(ecto_recursive.diagnostics, &(&1.code == :external_type_cycle_edge))
 
       assert {:ok, ash_recursive} =
                Encoder.render(:ash, db,
@@ -152,7 +161,7 @@ defmodule BubbleEx.Db.EncoderTest do
                  external_type_capabilities: %{ash: [:recursive_new_type]}
                )
 
-      refute Enum.any?(ash_recursive.warnings, &(&1.reason == :cycle_edge))
+      refute Enum.any?(ash_recursive.diagnostics, &(&1.code == :external_type_cycle_edge))
 
       shuffled = %{
         db
@@ -203,20 +212,20 @@ defmodule BubbleEx.Db.EncoderTest do
       db = %{
         bubble_id: "app",
         external_types: [],
-        warnings: [],
+        diagnostics: [],
         relationships: [],
         tables: [%{id: "item", name: "Item", group: :custom, columns: [column]}]
       }
 
       for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex],
           mode <- [:preserve, :opaque, :legacy] do
-        assert {:ok, %Encoder.Result{format: ^format, content: content, warnings: warnings}} =
+        assert {:ok, %Encoder.Result{format: ^format, content: content, diagnostics: diagnostics}} =
                  Encoder.render(format, db, external_types: mode)
 
         assert is_binary(content) and content != ""
 
         if mode in [:opaque, :legacy] or format in [:dbml, :sqlite, :tsql] do
-          assert Enum.any?(warnings, &(&1.kind == :external_type_rendering))
+          assert Enum.any?(diagnostics, &(&1.stage == {:target, format}))
         end
       end
     end

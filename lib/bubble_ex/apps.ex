@@ -34,8 +34,8 @@ defmodule BubbleEx.Apps do
   @type app_plan :: :free | :paid | :agency | :template | nil
 
   @type app_attrs :: %{
-          optional(:schema_warnings) => [map()],
-          optional(:dbml_warnings) => [map()],
+          optional(:schema_diagnostics) => [BubbleEx.Diagnostic.t()],
+          optional(:dbml_diagnostics) => [BubbleEx.Diagnostic.t()],
           app_plan: app_plan(),
           bubble_id: String.t(),
           url: String.t() | nil,
