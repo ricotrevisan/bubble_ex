@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role), u2 (owner / creator), u3 (admin), u4 (every field empty). For each type and read action (:read is direct view, :search is Bubble's searches), the records each persona reads and the fields it may view ('all': every attribute but the primary key). auto_bind: whether the :auto_bind update is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies.",
+  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role; owns d4; team t1 whose lead is u2), u2 (owner of d1, creator of n2), u3 (admin; dangling team), u4 (every field empty). reads: per type and action, the records each persona reads and the fields it may view ('all': every attribute but the primary key); 'get' reads each record by primary key (Ash.get), 'search' runs :search, 'list' runs the primary :read without a key. filters (filter_input on :search), sorts (sort_input on :search, then id) and loads (Ash.load of a relationship) probe hidden fields and gated relationships. auto_bind / creates: whether the update or create is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies. Written against these rows only: sorts after the auto_bind updates are not asserted.",
   "auto_bind": [
     {
       "actor": "u2",
@@ -84,9 +84,161 @@
       "why": "privacy rules grant no writes; create is forbidden unless authorization is bypassed"
     }
   ],
+  "filters": [
+    {
+      "expected": [],
+      "filter": {
+        "secret": {
+          "eq": "S2"
+        }
+      },
+      "persona": "u1",
+      "type": "doc",
+      "why": "u1 finds d2 but may not view its secret: filtering on it matches nothing"
+    },
+    {
+      "expected": [
+        "d2"
+      ],
+      "filter": {
+        "secret": {
+          "eq": "S2"
+        }
+      },
+      "persona": "u3",
+      "type": "doc",
+      "why": "admins view secrets"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "owner_id": {
+          "eq": "u1"
+        }
+      },
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "hidden reference attribute"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "owner": {
+          "id": {
+            "eq": "u1"
+          }
+        }
+      },
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "the owner relationship is gated by who may view owner_id"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "owner": {
+          "name": {
+            "eq": "Ann"
+          }
+        }
+      },
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "no filtering through a gated relationship"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "owner": {
+          "name": {
+            "eq": "Ann"
+          }
+        }
+      },
+      "persona": "u1",
+      "type": "doc",
+      "why": "u1 owns d4 and may view its owner; but filtering through a gated relationship matches nothing yet (the gate does not hold in joins with Ash 3.31.3): a known under-grant, never a leak"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "owner": {
+          "name": {
+            "eq": "Bo"
+          }
+        }
+      },
+      "persona": "u3",
+      "type": "doc",
+      "why": "admins may view owners; but filtering through a gated relationship matches nothing yet (the gate does not hold in joins with Ash 3.31.3): a known under-grant, never a leak"
+    },
+    {
+      "expected": "rejected",
+      "filter": {
+        "owner_for_privacy": {
+          "name": {
+            "eq": "Bo"
+          }
+        }
+      },
+      "persona": "u2",
+      "type": "doc",
+      "why": "the private twin is not accepted as input"
+    }
+  ],
+  "loads": [
+    {
+      "expected": null,
+      "persona": "logged_out",
+      "record": "d1",
+      "relationship": "owner",
+      "type": "doc",
+      "why": "owner_id hidden"
+    },
+    {
+      "expected": null,
+      "persona": "u1",
+      "record": "d1",
+      "relationship": "owner",
+      "type": "doc",
+      "why": "owner_id hidden from u1"
+    },
+    {
+      "expected": "u2",
+      "persona": "u2",
+      "record": "d1",
+      "relationship": "owner",
+      "type": "doc",
+      "why": "the owner"
+    },
+    {
+      "expected": "u2",
+      "persona": "u3",
+      "record": "d1",
+      "relationship": "owner",
+      "type": "doc",
+      "why": "admins"
+    },
+    {
+      "expected": null,
+      "persona": "u2",
+      "record": "u1",
+      "relationship": "team",
+      "type": "user",
+      "why": "another user's team_id is hidden"
+    },
+    {
+      "expected": "t1",
+      "persona": "u1",
+      "record": "u1",
+      "relationship": "team",
+      "type": "user",
+      "why": "their own team"
+    }
+  ],
   "reads": [
     {
-      "action": "read",
+      "action": "get",
       "expected": {
         "logged_out": {
           "d1": [
@@ -98,6 +250,10 @@
           ],
           "d3": [
             "title"
+          ],
+          "d4": [
+            "title",
+            "body"
           ]
         },
         "u1": {
@@ -110,7 +266,8 @@
           ],
           "d3": [
             "title"
-          ]
+          ],
+          "d4": "all"
         },
         "u2": {
           "d1": "all",
@@ -120,12 +277,17 @@
           ],
           "d3": [
             "title"
+          ],
+          "d4": [
+            "title",
+            "body"
           ]
         },
         "u3": {
           "d1": "all",
           "d2": "all",
-          "d3": "all"
+          "d3": "all",
+          "d4": "all"
         },
         "u4": {
           "d1": [
@@ -137,11 +299,15 @@
           ],
           "d3": [
             "title"
+          ],
+          "d4": [
+            "title",
+            "body"
           ]
         }
       },
       "type": "doc",
-      "why": "every rule and everyone grant some field, so direct view is always allowed; fields: title for everyone, body when public, all for the owner and admins"
+      "why": "every rule and everyone grant some field, so each doc is readable by primary key; fields: title for everyone, body when public, all for the owner and admins"
     },
     {
       "action": "search",
@@ -150,17 +316,26 @@
           "d2": [
             "title",
             "body"
+          ],
+          "d4": [
+            "title",
+            "body"
           ]
         },
         "u1": {
           "d2": [
             "title",
             "body"
-          ]
+          ],
+          "d4": "all"
         },
         "u2": {
           "d1": "all",
           "d2": [
+            "title",
+            "body"
+          ],
+          "d4": [
             "title",
             "body"
           ]
@@ -168,10 +343,15 @@
         "u3": {
           "d1": "all",
           "d2": "all",
-          "d3": "all"
+          "d3": "all",
+          "d4": "all"
         },
         "u4": {
           "d2": [
+            "title",
+            "body"
+          ],
+          "d4": [
             "title",
             "body"
           ]
@@ -181,35 +361,30 @@
       "why": "everyone may not search; public docs, the owner's and (for admins) all docs are found; raw_ does not compile and grants nothing"
     },
     {
-      "action": "read",
+      "action": "get",
       "expected": {
         "logged_out": {
-          "n1": "all",
-          "n3": "all"
+          "n1": "all"
         },
         "u1": {
-          "n1": "all",
-          "n3": "all"
+          "n1": "all"
         },
         "u2": {
           "n1": "all",
-          "n2": "all",
-          "n3": "all"
+          "n2": "all"
         },
         "u3": {
-          "n1": "all",
-          "n3": "all"
+          "n1": "all"
         },
         "u4": {
-          "n1": "all",
-          "n3": "all"
+          "n1": "all"
         }
       },
       "type": "note",
-      "why": "everyone else sees notes that are not hidden (empty hidden is not yes); the creator also sees their hidden note"
+      "why": "everyone else sees notes that are known not hidden: n3's hidden is empty, and the negation of 'hidden is yes' denies on an empty field (fail-safe); the creator also sees their hidden note"
     },
     {
-      "action": "read",
+      "action": "get",
       "expected": {
         "logged_out": {},
         "u1": {},
@@ -221,7 +396,78 @@
       "why": "everyone's grant applies only when raw_ does not hold, and raw_ does not compile: denied for all"
     },
     {
-      "action": "read",
+      "action": "get",
+      "expected": {
+        "logged_out": {
+          "t1": "all"
+        },
+        "u1": {
+          "t1": "all"
+        },
+        "u2": {
+          "t1": "all"
+        },
+        "u3": {
+          "t1": "all"
+        },
+        "u4": {
+          "t1": "all"
+        }
+      },
+      "type": "team",
+      "why": "no privacy rules: Bubble's public defaults"
+    },
+    {
+      "action": "get",
+      "expected": {
+        "logged_out": {},
+        "u1": {
+          "b1": "all"
+        },
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "board",
+      "why": "owner is the actor's team's lead (actor load through the user's private team twin); u3's team is dangling, others have none"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {
+          "n1": "all"
+        },
+        "u1": {
+          "n1": "all"
+        },
+        "u2": {
+          "n1": "all",
+          "n2": "all"
+        },
+        "u3": {
+          "n1": "all"
+        },
+        "u4": {
+          "n1": "all"
+        }
+      },
+      "type": "note",
+      "why": "everyone else sees notes that are known not hidden: n3's hidden is empty, and the negation of 'hidden is yes' denies on an empty field (fail-safe); the creator also sees their hidden note"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "memo",
+      "why": "everyone's grant applies only when raw_ does not hold, and raw_ does not compile: denied for all"
+    },
+    {
+      "action": "search",
       "expected": {
         "logged_out": {
           "t1": "all"
@@ -245,67 +491,19 @@
     {
       "action": "search",
       "expected": {
-        "logged_out": {
-          "n1": "all",
-          "n3": "all"
-        },
-        "u1": {
-          "n1": "all",
-          "n3": "all"
-        },
-        "u2": {
-          "n1": "all",
-          "n2": "all",
-          "n3": "all"
-        },
-        "u3": {
-          "n1": "all",
-          "n3": "all"
-        },
-        "u4": {
-          "n1": "all",
-          "n3": "all"
-        }
-      },
-      "type": "note",
-      "why": "everyone else sees notes that are not hidden (empty hidden is not yes); the creator also sees their hidden note"
-    },
-    {
-      "action": "search",
-      "expected": {
         "logged_out": {},
-        "u1": {},
+        "u1": {
+          "b1": "all"
+        },
         "u2": {},
         "u3": {},
         "u4": {}
       },
-      "type": "memo",
-      "why": "everyone's grant applies only when raw_ does not hold, and raw_ does not compile: denied for all"
+      "type": "board",
+      "why": "owner is the actor's team's lead (actor load through the user's private team twin); u3's team is dangling, others have none"
     },
     {
-      "action": "search",
-      "expected": {
-        "logged_out": {
-          "t1": "all"
-        },
-        "u1": {
-          "t1": "all"
-        },
-        "u2": {
-          "t1": "all"
-        },
-        "u3": {
-          "t1": "all"
-        },
-        "u4": {
-          "t1": "all"
-        }
-      },
-      "type": "team",
-      "why": "no privacy rules: Bubble's public defaults"
-    },
-    {
-      "action": "read",
+      "action": "get",
       "expected": {
         "logged_out": {
           "u1": [
@@ -392,9 +590,98 @@
       },
       "type": "user",
       "why": "only the user themselves is found in searches"
+    },
+    {
+      "action": "list",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "doc",
+      "why": "an authorized :read that does not select by primary key returns nothing: enumeration only through :search"
+    },
+    {
+      "action": "list",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "note",
+      "why": "an authorized :read that does not select by primary key returns nothing: enumeration only through :search"
+    },
+    {
+      "action": "list",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "memo",
+      "why": "an authorized :read that does not select by primary key returns nothing: enumeration only through :search"
+    },
+    {
+      "action": "list",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "team",
+      "why": "an authorized :read that does not select by primary key returns nothing: enumeration only through :search"
+    },
+    {
+      "action": "list",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "board",
+      "why": "an authorized :read that does not select by primary key returns nothing: enumeration only through :search"
+    },
+    {
+      "action": "list",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "user",
+      "why": "an authorized :read that does not select by primary key returns nothing: enumeration only through :search"
     }
   ],
   "records": {
+    "board": [
+      {
+        "id": "b1",
+        "name": "B1",
+        "owner_id": "u2"
+      },
+      {
+        "id": "b2",
+        "name": "B2",
+        "owner_id": "u3"
+      },
+      {
+        "id": "b3",
+        "name": "B3",
+        "owner_id": null
+      }
+    ],
     "doc": [
       {
         "attachment": "https://files.invalid/d1.pdf",
@@ -422,6 +709,15 @@
         "public": null,
         "secret": "S3",
         "title": ""
+      },
+      {
+        "attachment": null,
+        "body": "B4",
+        "id": "d4",
+        "owner_id": "u1",
+        "public": true,
+        "secret": "S4",
+        "title": "T4"
       }
     ],
     "memo": [
@@ -453,6 +749,7 @@
     "team": [
       {
         "id": "t1",
+        "lead_id": "u2",
         "name": "Red"
       }
     ],
@@ -460,23 +757,51 @@
       {
         "admin": false,
         "id": "u1",
-        "name": "Ann"
+        "name": "Ann",
+        "team_id": "t1"
       },
       {
         "admin": false,
         "id": "u2",
-        "name": "Bo"
+        "name": "Bo",
+        "team_id": null
       },
       {
         "admin": true,
         "id": "u3",
-        "name": "Cy"
+        "name": "Cy",
+        "team_id": "gone-team"
       },
       {
         "admin": null,
         "id": "u4",
-        "name": ""
+        "name": "",
+        "team_id": null
       }
     ]
-  }
+  },
+  "sorts": [
+    {
+      "expected": [
+        "d2",
+        "d4"
+      ],
+      "persona": "logged_out",
+      "sort": "owner.name,id",
+      "type": "doc",
+      "why": "sorting by a gated relationship sees no owner (both null), so the order falls to id; a leak would put d4 (Ann) first"
+    },
+    {
+      "expected": [
+        "d1",
+        "d2",
+        "d3",
+        "d4"
+      ],
+      "persona": "u3",
+      "sort": "owner.name,id",
+      "type": "doc",
+      "why": "admins may view owners, but a gated relationship reads as empty in a sort join (Ash 3.31.3; known under-grant), so the order falls to id"
+    }
+  ]
 }

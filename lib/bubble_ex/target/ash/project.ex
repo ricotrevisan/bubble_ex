@@ -56,7 +56,8 @@ defmodule BubbleEx.Target.Ash.Project do
             "table" => "task",
             "attributes" => %{"_id" => "id", "title_text" => "title", "project_custom_project" => "project_id"},
             "relationships" => %{"project_custom_project" => "project"},
-            "privacy_rules" => %{"owner_" => "privacy_rule_owner"}
+            "privacy_rules" => %{"owner_" => "privacy_rule_owner"},
+            "privacy_relationships" => %{"project_custom_project" => "project_for_privacy"}
           }
         },
         "enums" => %{"status" => %{"module" => "Status", "attributes" => %{"color" => "color"}}},
@@ -162,6 +163,7 @@ defmodule BubbleEx.Target.Ash.Project do
   (`rules`, `public_default`, `unavailable`), rules by outcome (`compiled`,
   `denied`: a condition that does not compile, so the rule grants nothing),
   policies, their checks by test, field policies, privacy calculations,
+  gated relationships (each with a private twin),
   auto-binding actions, actor loads and authorization bypasses.
   """
   @spec privacy_summary(t()) :: map()
@@ -181,6 +183,8 @@ defmodule BubbleEx.Target.Ash.Project do
       "field_policies" => length(field_policies),
       "checks" => frequencies(checks, &check_key/1),
       "calculations" => project.resources |> Enum.map(&length(&1.calculations)) |> Enum.sum(),
+      "gated_relationships" =>
+        project.resources |> Enum.map(&length(&1.privacy_relationships)) |> Enum.sum(),
       "auto_bind_actions" =>
         Enum.count(project.resources, fn r ->
           Enum.any?(r.extra_actions, &(&1.name == "auto_bind"))
@@ -236,6 +240,10 @@ defmodule BubbleEx.Target.Ash.Resource do
     * `policies` - `BubbleEx.Target.Ash.Policy`s (`policies do`); with
       any policy the resource uses `Ash.Policy.Authorizer`
     * `field_policies` - `BubbleEx.Target.Ash.FieldPolicy`s
+    * `privacy_relationships` - private, ungated `belongs_to` twins of the
+      relationships whose ID attribute some users may not view (their
+      `filter` gates them): only the privacy calculations and the actor
+      loads read through them (see `BubbleEx.Target.Ash`, "Privacy rules")
     * `privacy` - the `BubbleEx.Target.Ash.ResourcePrivacy` the policies
       were derived from
     * `description` - text for the module's documentation, or nil
@@ -269,6 +277,7 @@ defmodule BubbleEx.Target.Ash.Resource do
     calculations: [],
     policies: [],
     field_policies: [],
+    privacy_relationships: [],
     privacy: nil
   ]
 
@@ -288,6 +297,7 @@ defmodule BubbleEx.Target.Ash.Resource do
           calculations: [Calculation.t()],
           policies: [Policy.t()],
           field_policies: [FieldPolicy.t()],
+          privacy_relationships: [Relationship.t()],
           privacy: ResourcePrivacy.t() | nil
         }
 end
@@ -297,16 +307,23 @@ defmodule BubbleEx.Target.Ash.Action do
   An action beyond a resource's `defaults`.
 
     * `type` - `:read` or `:update`; `name` - the action name
+    * `primary?` - the primary action of its type
+    * `keyed?` - a read that, when authorized, returns nothing unless its
+      filter selects records by primary key (`id == x` or `id in [...]`,
+      at the top level): the generated `<namespace>.Privacy.KeyedRead`
+      preparation. Relationship loads and `Ash.get` are keyed
     * `accept` - attribute names an update accepts (`[]` for a read)
     * `description` - the action's `description`
   """
 
   @enforce_keys [:type, :name]
-  defstruct [:type, :name, :description, accept: []]
+  defstruct [:type, :name, :description, primary?: false, keyed?: false, accept: []]
 
   @type t :: %__MODULE__{
           type: :read | :update,
           name: String.t(),
+          primary?: boolean(),
+          keyed?: boolean(),
           accept: [String.t()],
           description: String.t() | nil
         }
@@ -532,6 +549,10 @@ defmodule BubbleEx.Target.Ash.Relationship do
     * `db_reference` - `:ignore` (no database foreign key: AshPostgres
       `references … ignore?: true`) or `:foreign_key`
     * `source` - `%{type: _, field: _}` Bubble IDs
+    * `gate` - nil, or who may follow it (WTF-356): `{:visible_if, calcs}`
+      (`filter expr(parent(a or b))`: one of the source record's privacy
+      calculations holds, those authorizing its ID attribute) or `:never`
+      (`filter expr(false)`)
   """
 
   @enforce_keys [:kind, :name, :destination, :source_attribute, :source]
@@ -546,7 +567,8 @@ defmodule BubbleEx.Target.Ash.Relationship do
     define_attribute?: false,
     allow_nil?: true,
     public?: true,
-    db_reference: :ignore
+    db_reference: :ignore,
+    gate: nil
   ]
 
   @type t :: %__MODULE__{
@@ -560,7 +582,8 @@ defmodule BubbleEx.Target.Ash.Relationship do
           allow_nil?: boolean(),
           public?: boolean(),
           db_reference: :ignore | :foreign_key,
-          source: map()
+          source: map(),
+          gate: nil | :never | {:visible_if, [String.t()]}
         }
 end
 

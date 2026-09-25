@@ -64,6 +64,10 @@ defmodule BubbleEx.Target.Ash.Source do
     field: 3,
     calculate: 3,
     calculate: 4,
+    filter: 1,
+    prepare: 1,
+    primary?: 1,
+    private_fields: 1,
     policy: 1,
     field_policy: 1,
     authorize_if: 1,
@@ -106,6 +110,7 @@ defmodule BubbleEx.Target.Ash.Source do
         Enum.map(project.types, &custom_type(&1, ctx)) ++
           Enum.map(project.enums, &enum(&1, ctx)) ++
           Enum.map(project.typed_structs, &typed_struct(&1, ctx)) ++
+          keyed_read_module(project, ctx) ++
           Enum.map(project.resources, &resource(&1, ctx)) ++
           [domain_module(project, ctx)] ++ privacy_module(project, ctx)
 
@@ -232,33 +237,42 @@ defmodule BubbleEx.Target.Ash.Source do
       postgres do
         table #{literal(resource.table)}
         repo #{ctx.repo}
-    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships)}
+    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships ++ resource.privacy_relationships)}
       end
 
       attributes do
     #{Enum.map_join(resource.attributes, "\n", &attribute(&1, ctx))}
       end
-    #{relationships(resource.relationships, ctx)}#{calculations(resource.calculations)}#{identities(resource.identities)}
+    #{relationships(resource.relationships ++ resource.privacy_relationships, ctx)}#{calculations(resource.calculations)}#{identities(resource.identities)}
       actions do
         defaults #{literal(resource.actions)}
-    #{Enum.map_join(resource.extra_actions, "\n", &action/1)}
+    #{Enum.map_join(resource.extra_actions, "\n", &action(&1, ctx))}
       end
     #{policies(resource, ctx)}#{field_policies(resource.field_policies)}end
     """
   end
 
-  defp authorizers(%Resource{policies: []}), do: ""
-  defp authorizers(%Resource{}), do: ", authorizers: [Ash.Policy.Authorizer]"
+  defp authorizers(%Resource{policies: []} = resource), do: primary_read_warning(resource)
 
-  defp action(%Action{type: :read} = action) do
+  defp authorizers(%Resource{} = resource),
+    do: ", authorizers: [Ash.Policy.Authorizer]" <> primary_read_warning(resource)
+
+  # The keyed primary read has a preparation, on purpose.
+  defp primary_read_warning(resource) do
+    if Enum.any?(resource.extra_actions, &(&1.primary? and &1.keyed?)),
+      do: ", primary_read_warning?: false",
+      else: ""
+  end
+
+  defp action(%Action{type: :read} = action, ctx) do
     """
     read #{atom(action.name)} do
-      #{description(action.description)}
+      #{description(action.description)}#{if action.primary?, do: "\nprimary? true", else: ""}#{if action.keyed?, do: "\nprepare #{ctx.namespace}.Privacy.KeyedRead", else: ""}
     end
     """
   end
 
-  defp action(%Action{type: :update} = action) do
+  defp action(%Action{type: :update} = action, _ctx) do
     """
     update #{atom(action.name)} do
       #{description(action.description)}
@@ -290,7 +304,12 @@ defmodule BubbleEx.Target.Ash.Source do
   # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
   # the replay verification (WTF-384/385) confirms the semantics they rest on.
   # Load the actor with the Privacy module's load_actor/1 on every request
-  # and LiveView mount.
+  # and LiveView mount. Enumerate records only through :search; :read
+  # returns records by primary key. Field policies do not guard code: a
+  # filter, sort or calculation written in code (not *_input) that reads a
+  # field the actor may not view still sees its value, so lowered searches
+  # must not reference such fields directly, nor the private *_for_privacy
+  # relationships.
   """
 
   defp policies(%Resource{policies: []}, _ctx), do: ""
@@ -330,7 +349,7 @@ defmodule BubbleEx.Target.Ash.Source do
         """
       end)
 
-    "\nfield_policies do\n" <> body <> "\nend\n"
+    "\nfield_policies do\nprivate_fields :hide\n\n" <> body <> "\nend\n"
   end
 
   defp checks(checks), do: Enum.map_join(checks, "\n", &check/1)
@@ -393,10 +412,16 @@ defmodule BubbleEx.Target.Ash.Source do
       attribute_type #{type(r.attribute_type, ctx)}
       define_attribute? #{literal(r.define_attribute?)}
       allow_nil? #{literal(r.allow_nil?)}
-      public? #{literal(r.public?)}
+      public? #{literal(r.public?)}#{gate(r.gate)}
     end
     """
   end
+
+  defp gate(nil), do: ""
+  defp gate(:never), do: "\nfilter expr(false)"
+
+  defp gate({:visible_if, calcs}),
+    do: "\nfilter expr(parent(" <> Enum.map_join(calcs, " or ", &identifier!/1) <> "))"
 
   defp identities([]), do: ""
 
@@ -421,6 +446,66 @@ defmodule BubbleEx.Target.Ash.Source do
       end
     end
     """
+  end
+
+  # The preparation of every keyed `:read`: when the read is authorized, it
+  # returns nothing unless the filter selects records by primary key at the
+  # top level (`id == x`, `id in [...]`, and-ed with anything).
+  defp keyed_read_module(project, ctx) do
+    if Enum.any?(project.resources, fn r -> Enum.any?(r.extra_actions, & &1.keyed?) end) do
+      [
+        """
+        defmodule #{ctx.namespace}.Privacy.KeyedRead do
+          @moduledoc \"\"\"
+          Restricts an authorized read to records selected by primary key
+          (`Ash.get`) or loaded through a relationship: direct view in Bubble reaches a record
+          through a reference, never by listing. Enumerate with `:search`.
+          Generated by bubble_ex (WTF-356); NOT VERIFIED AGAINST BUBBLE.
+          \"\"\"
+          use Ash.Resource.Preparation
+
+          alias Ash.Query.{BooleanExpression, Ref}
+          alias Ash.Query.Operator.{Eq, In}
+
+          @impl true
+          def prepare(query, _opts, %{authorize?: false}), do: query
+
+          def prepare(query, _opts, _context) do
+            Ash.Query.before_action(query, fn query ->
+              # A relationship load (`accessing_from`) is keyed by the source
+              # records' IDs, possibly as `id == parent(...)`.
+              if query.context[:accessing_from] ||
+                   keyed?(query.filter && query.filter.expression, query.resource),
+                do: query,
+                else: Ash.Query.do_filter(query, false)
+            end)
+          end
+
+          defp keyed?(%BooleanExpression{op: :and, left: left, right: right}, resource),
+            do: keyed?(left, resource) or keyed?(right, resource)
+
+          defp keyed?(%Eq{left: %Ref{relationship_path: [], attribute: a}, right: v}, resource),
+            do: key?(a, resource) and not Ash.Expr.expr?(v)
+
+          defp keyed?(%Eq{left: v, right: %Ref{relationship_path: [], attribute: a}}, resource),
+            do: key?(a, resource) and not Ash.Expr.expr?(v)
+
+          defp keyed?(%In{left: %Ref{relationship_path: [], attribute: a}, right: v}, resource),
+            do: key?(a, resource) and not Ash.Expr.expr?(v)
+
+          defp keyed?(_expression, _resource), do: false
+
+          defp key?(attribute, resource),
+            do: [name(attribute)] == Ash.Resource.Info.primary_key(resource)
+
+          defp name(%{name: name}), do: name
+          defp name(name), do: name
+        end
+        """
+      ]
+    else
+      []
+    end
   end
 
   # The privacy helpers every generated app needs: whether the policies are

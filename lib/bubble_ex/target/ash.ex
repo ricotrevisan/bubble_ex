@@ -52,9 +52,10 @@ defmodule BubbleEx.Target.Ash do
   | Bubble | Ash |
   |--------|-----|
   | a rule's condition | a private boolean calculation `privacy_rule_<name>` (`expr(...)` compiled fail-safe by `BubbleEx.Target.Ash.Expressions`); every check tests one |
-  | direct view (a record reached by ID or through a reference) | the primary `:read` action: `policy action(:read)` authorizes records of which the user may view some field (`view_all`, or a non-empty `view_fields`); relationship loads and `Ash.get` use it |
+  | direct view (a record reached by ID or through a reference) | the primary `:read` action, **keyed**: when authorized it returns nothing unless its filter selects by primary key (the generated `<namespace>.Privacy.KeyedRead` preparation), so `Ash.get` and relationship loads work but listing does not. `policy action(:read)` authorizes records of which the user may view some field (`view_all`, or a non-empty `view_fields`) |
   | `search_for` ("find this in searches") | a `:search` read action: `policy action(:search)`. "Do a search for" lowers to it |
-  | `view_all` / `view_fields` | `field_policies`: one `field_policy` per group of attributes with the same grants (every attribute but the primary key); a hidden field reads as `%Ash.ForbiddenField{}` |
+  | `view_all` / `view_fields` | `field_policies` (`private_fields :hide`): one `field_policy` per group of attributes with the same grants (every attribute but the primary key); a hidden field reads as `%Ash.ForbiddenField{}`, and `filter_input` / `sort_input` see it as nil |
+  | a reference whose ID attribute some users may not view | the `belongs_to` gets `filter expr(parent(<the checks authorizing the attribute>))` (or `filter expr(false)`), so loading, filtering and sorting through it reveal nothing more than the attribute; a private, ungated twin `<name>_for_privacy` (`privacy_relationships`) is what the privacy calculations and the actor loads read through |
   | `auto_binding` / `binding_fields` | an `:auto_bind` update accepting every bindable field: `policy action(:auto_bind)` (some auto-binding grant holds) and, per field, `policy [action(:auto_bind), changing_attributes([field])]` |
   | `view_attachments` | not enforceable in Ash (file fields hold URLs; the file store must enforce it): the grant is kept as data (`privacy.attachments`), diagnosed when a type with file fields does not grant it to everyone |
   | Data API (`exposed_api`, `create_api` / `modify_api` / `delete_api`) | out of scope unless requested (WTF-359 Q6): no API actions; the grants are kept as data (`privacy.data_api`), and an exposed type is diagnosed |
@@ -67,25 +68,35 @@ defmodule BubbleEx.Target.Ash do
   permission, that grant becomes "no rule lacking the permission holds",
   one negated condition compiled by the same compiler (so its actor guards
   are kept; `:ash_policy_default_rule_negated`), or `always()` when no rule
-  lacks it. Field lists union the same way.
+  lacks it. Because a compiled condition is fail-safe only on the actor
+  side (record-side emptiness is not verified), the negation also requires
+  every record value the negated conditions read to be non-empty: it can
+  only under-grant. Field lists union the same way.
 
   **Defaults.** A type the source lists without rules gets Bubble's public
   defaults: view all, search and attachments for everyone, no auto-binding,
   no Data API writes. A type whose rules the source cannot say (a live
   payload) denies every read (`:ash_privacy_rules_unavailable`).
 
-  **Fail-safe.** Nothing is ever allowed on doubt. A rule whose condition
+  **Fail-safe.** Where this mapping is uncertain it denies: a rule whose condition
   does not compile (`:ash_expr_unsupported`, an unmapped reference, a
   missing condition) grants nothing (`:ash_policy_rule_denied`); an
   `everyone` grant that would need it negated is denied too
   (`:ash_policy_default_grant_denied`). A permission nobody holds is
   `forbid_if always()`. A read whose policy is false for the actor before
   running (e.g. logged out where every rule reads the actor) returns
-  `Ash.Error.Forbidden`; Bubble shows nothing, so treat it as empty.
+  `Ash.Error.Forbidden`; Bubble shows nothing, so treat it as empty. What
+  it does not decide: the compiled conditions' own record-side semantics
+  (see "Not verified" below), and code. Field policies guard reads and
+  `*_input` filters and sorts, not expressions written in code: a filter,
+  sort or calculation built in code that references a field the actor may
+  not view, or a `*_for_privacy` relationship, sees the real value. Lowered
+  searches must reference only fields the searcher may view.
 
   **Actor loads.** `Project.actor_loads` lists the User relationships the
   calculations read through `^actor(...)`. The rendered `<namespace>.Privacy`
-  module's `load_actor/1` reads the actor afresh with them (bypassing
+  module's `load_actor/1` reads the actor afresh with them (through the
+  ungated twins) (bypassing
   authorization, so the policies see current values); call it on every
   request and LiveView mount, so a role change is never served stale.
 
@@ -100,9 +111,9 @@ defmodule BubbleEx.Target.Ash do
   then `Project.policies_verified` is `false`, every non-empty Project
   carries `:ash_policies_unverified`, the rendered policies carry a "NOT
   VERIFIED" header and `<namespace>.Privacy.verified?/0` returns false:
-  **do not ship them to an app's users.** Loading a `belongs_to` whose ID
-  attribute a user may not view is authorized by the destination's read
-  policy only (`:ash_policy_relationship_unguarded`).
+  **do not ship them to an app's users.** The pinned Ash (3.31.3) also has
+  published security advisories: a version bump is a separate ticket and
+  a ship blocker.
 
   ## Names (WTF-339)
 
@@ -518,11 +529,12 @@ defmodule BubbleEx.Target.Ash do
 
     # Privacy calculation names (WTF-356) are claimed after the fields, but
     # a locked one is never given to a field.
-    rules = Map.get(entry, "privacy_rules", %{})
+    privacy = Map.values(Map.get(entry, "privacy_rules", %{}))
+    privacy = privacy ++ Map.values(Map.get(entry, "privacy_relationships", %{}))
 
     %{
       locked: Map.new(locked),
-      used: MapSet.new(Map.values(attributes) ++ Map.values(relationships) ++ Map.values(rules))
+      used: MapSet.new(Map.values(attributes) ++ Map.values(relationships) ++ privacy)
     }
   end
 
@@ -1033,7 +1045,8 @@ defmodule BubbleEx.Target.Ash do
       {"table", :snake, :table},
       {"attributes", :names, :attribute},
       {"relationships", :names, :attribute},
-      {"privacy_rules", :names, :attribute}
+      {"privacy_rules", :names, :attribute},
+      {"privacy_relationships", :names, :attribute}
     ],
     "enums" => [{"module", :pascal, :none}, {"attributes", :names, :field}],
     "external_types" => [{"module", :pascal, :none}, {"fields", :names, :field}]

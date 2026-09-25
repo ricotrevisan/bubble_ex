@@ -26,7 +26,6 @@
       "ash_policy_data_api_unmapped": 2,
       "ash_policy_default_rule_negated": 2,
       "ash_policy_field_unmapped": 8,
-      "ash_policy_relationship_unguarded": 220,
       "ash_unresolved_reference": 5,
       "exact_type_definition_missing": 7,
       "external_type_unresolved_root": 6,
@@ -48,6 +47,7 @@
         "forbid_if always": 3
       },
       "field_policies": 100,
+      "gated_relationships": 220,
       "policies": 414,
       "resources": {
         "public_default": 46,

@@ -75,6 +75,13 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
 
       assert Enum.any?(doc.extra_actions, &match?(%Action{type: :read, name: "search"}, &1))
 
+      assert Enum.any?(
+               doc.extra_actions,
+               &match?(%Action{type: :read, name: "read", primary?: true, keyed?: true}, &1)
+             )
+
+      refute :read in doc.actions
+
       # Every rule and the everyone rule grant some field: direct view.
       assert tests(policy(doc, "read").checks) == [authorize_if: :always]
 
@@ -122,9 +129,17 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
                authorize_if: {:calculation, "privacy_everyone_else"}
              ]
 
+      # Negated, and only for notes whose hidden is known (fail-safe).
       assert %Calculation{
                source: %{type: "note", except_rules: ["hidden_"]},
-               expr: %{expr: {:call, "is_distinct_from", [{:ref, [], "hidden"}, {:value, true}]}}
+               expr: %{
+                 expr:
+                   {:and,
+                    [
+                      {:call, "is_distinct_from", [{:ref, [], "hidden"}, {:value, true}]},
+                      {:not, {:call, "is_nil", [{:ref, [], "hidden"}]}}
+                    ]}
+               }
              } = calc(note, "privacy_everyone_else")
 
       assert :ash_policy_default_rule_negated in codes(project, %{type: "note", rule: "everyone"})
@@ -175,11 +190,34 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
       assert :ash_policy_field_unmapped in codes(project, %{type: "doc", rule: "public_"})
     end
 
-    test "a reference some users may not view is diagnosed", %{project: project} do
-      assert :ash_policy_relationship_unguarded in codes(project, %{
-               type: "doc",
-               field: "owner_user"
-             })
+    test "a reference some users may not view is gated, with a private twin",
+         %{project: project} do
+      doc = resource(project, "doc")
+      owner = Enum.find(doc.relationships, &(&1.name == "owner"))
+      assert owner.gate == {:visible_if, ["privacy_rule_admin", "privacy_rule_owner"]}
+
+      assert [%{name: "owner_for_privacy", public?: false, gate: nil}] =
+               Enum.filter(doc.privacy_relationships, &(&1.source.field == "owner_user"))
+
+      # Public-default types need no gate.
+      assert Enum.all?(resource(project, "team").relationships, &is_nil(&1.gate))
+
+      {:ok, source} = Source.render(project)
+      assert source =~ "filter expr(parent(privacy_rule_admin or privacy_rule_owner))"
+      assert source =~ "private_fields :hide"
+    end
+
+    test "calculations and actor loads read through the twins", %{project: project} do
+      board = resource(project, "board")
+
+      assert [
+               %Calculation{
+                 expr: %{expr: {:op, "==", _, {:actor, ["team_for_privacy", "lead_id"]}}}
+               }
+             ] =
+               board.calculations
+
+      assert project.actor_loads == [["team_for_privacy"]]
     end
   end
 
@@ -258,10 +296,17 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
   describe "actor loads" do
     test "the relationships the calculations read are listed and rendered" do
       project = project!(load(@expressions))
-      assert project.actor_loads == [["active_membership"], ["active_membership", "team"]]
+
+      assert project.actor_loads == [
+               ["active_membership_for_privacy"],
+               ["active_membership_for_privacy", "team_for_privacy"]
+             ]
 
       {:ok, source} = Source.render(project)
-      assert source =~ "def actor_loads, do: [active_membership: [team: []]]"
+
+      assert source =~
+               "def actor_loads, do: [active_membership_for_privacy: [team_for_privacy: []]]"
+
       assert source =~ "Ash.get(MyApp.User, id, load: actor_loads(), authorize?: false)"
     end
   end
@@ -281,8 +326,8 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
 
   test "summary counts", %{project: project} do
     assert %{
-             "resources" => %{"rules" => 4, "public_default" => 1},
-             "rules" => %{"compiled" => 6, "denied" => 2},
+             "resources" => %{"rules" => 5, "public_default" => 1},
+             "rules" => %{"compiled" => 7, "denied" => 2},
              "auto_bind_actions" => 1,
              "authorization_bypasses" => 1
            } = Project.privacy_summary(project)

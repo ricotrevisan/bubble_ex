@@ -43,6 +43,61 @@
   "option_sets": {},
   "pages": {},
   "user_types": {
+    "board": {
+      "display": "Board",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "lead_": {
+          "condition": {
+            "next": {
+              "name": "owner_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "next": {
+                      "name": "lead_user",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owned by my team's lead",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
     "doc": {
       "display": "Doc",
       "exposed_api": true,
@@ -300,6 +355,10 @@
     "team": {
       "display": "Team",
       "fields": {
+        "lead_user": {
+          "display": "Lead",
+          "value": "user"
+        },
         "name_text": {
           "display": "Name",
           "value": "text"
@@ -316,6 +375,10 @@
         "name_text": {
           "display": "Name",
           "value": "text"
+        },
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
         }
       },
       "privacy_role": {

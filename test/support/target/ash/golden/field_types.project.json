@@ -164,7 +164,6 @@
   "resources": [
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -318,8 +317,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -400,6 +409,7 @@
         "file_fields": [],
         "source": "public_default"
       },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -408,6 +418,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -426,7 +437,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -1129,8 +1139,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -1247,6 +1267,7 @@
         ],
         "source": "public_default"
       },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -1255,6 +1276,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1271,6 +1293,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "owner",
           "public?": true,
@@ -1287,6 +1310,7 @@
           "define_attribute?": false,
           "destination": "Project",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "project",
           "public?": true,
@@ -1305,7 +1329,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -1484,8 +1507,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -1567,6 +1600,7 @@
         "file_fields": [],
         "source": "public_default"
       },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -1575,6 +1609,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,

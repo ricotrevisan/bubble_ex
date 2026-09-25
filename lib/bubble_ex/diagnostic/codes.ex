@@ -192,7 +192,7 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:ash_policy_default_grant_denied, :warning, :degraded, :target,
      "grants of the `everyone` rule that apply only when a rule whose condition does not compile fails to hold; denied"},
     {:ash_policy_default_rule_negated, :info, :degraded, :target,
-     "grants of the `everyone` rule compiled as the negation of the rules lacking them; the negation denies when the actor lacks a value a condition reads (e.g. logged out)"},
+     "grants of the `everyone` rule compiled as the negation of the rules lacking them; the negation denies when the actor lacks a value a condition reads (e.g. logged out) or a record value it reads is empty"},
     {:ash_policy_field_unmapped, :info, :degraded, :target,
      "a privacy rule's visible or auto-binding field list names a field the Ash project does not map; ignored"},
     {:ash_privacy_rules_unavailable, :warning, :degraded, :target,
@@ -201,8 +201,6 @@ defmodule BubbleEx.Diagnostic.Codes do
      "Bubble's \"view attached files\" permission, not granted to everyone on a type with file fields; Ash cannot enforce it (the file store must)"},
     {:ash_policy_data_api_unmapped, :info, :degraded, :target,
      "a data type exposed through Bubble's Data API; no API actions or policies are generated (out of scope unless requested)"},
-    {:ash_policy_relationship_unguarded, :warning, :degraded, :target,
-     "a relationship whose ID attribute some users may not view; loading it is authorized by the destination's read policy only"},
     {:ash_policy_bypass_required, :info, :degraded, :target,
      "a workflow that runs ignoring privacy rules; lowered, its reads need an explicit authorization bypass (`authorize?: false`)"}
   ]

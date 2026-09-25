@@ -153,6 +153,10 @@
           "kind_option_kind": "kind"
         },
         "module": "Order",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy",
+          "buyer_user": "buyer_for_privacy"
+        },
         "relationships": {
           "Created By": "creator",
           "buyer_user": "buyer"
@@ -170,6 +174,9 @@
           "name_text": "name"
         },
         "module": "User",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy"
+        },
         "relationships": {
           "Created By": "creator"
         },
@@ -182,7 +189,6 @@
   "resources": [
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -394,8 +400,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -470,6 +486,42 @@
         "file_fields": [],
         "source": "unavailable"
       },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "order"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "buyer_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "buyer_user",
+            "type": "order"
+          },
+          "source_attribute": "buyer_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -478,6 +530,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": "never",
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -494,6 +547,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": "never",
           "kind": "belongs_to",
           "name": "buyer",
           "public?": true,
@@ -512,7 +566,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -691,8 +744,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -766,6 +829,25 @@
         "file_fields": [],
         "source": "unavailable"
       },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -774,6 +856,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": "never",
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,

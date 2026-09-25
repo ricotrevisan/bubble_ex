@@ -159,8 +159,9 @@ All notable changes to this project are documented here.
 ### Added
 
 - Privacy rules compiled to Ash policies (WTF-356). `BubbleEx.Target.Ash.map/3`
-  now gives every resource `policies` (`:read` for direct view, a new
-  `:search` read for Bubble searches, an `:auto_bind` update with a policy
+  now gives every resource `policies` (a keyed primary `:read` for direct
+  view: when authorized it returns only records selected by primary key or
+  loaded through a relationship; a new `:search` read for Bubble searches, an `:auto_bind` update with a policy
   per bindable field), `field_policies` (per-field visibility, the union of
   the rules showing each field) and private boolean `calculations`, one per
   rule condition (compiled fail-safe by `Target.Ash.Expressions`) and one
@@ -176,7 +177,9 @@ All notable changes to this project are documented here.
   replay. `Project.schema_version` is 2; `Target.Ash.versions/0` adds
   `picosat_elixir` (Ash's SAT solver for policies). New diagnostic codes
   `ash_policies_unverified`, `ash_policy_*` and
-  `ash_privacy_rules_unavailable`. `scripts/ash_compile_check.sh` runs
+  `ash_privacy_rules_unavailable`. The "everyone else" negation also
+  requires the record values it reads to be non-empty, so it can only
+  under-grant. `scripts/ash_compile_check.sh` runs
   `policies.exs`: every resource read through its policies, and a
   hand-authored persona table for the policy fixture.
 

@@ -1,5 +1,9 @@
 {
-  "actor_loads": [],
+  "actor_loads": [
+    [
+      "team_for_privacy"
+    ]
+  ],
   "authorization_bypasses": [],
   "bubble_id": "policies-fixture",
   "diagnostics": [
@@ -90,36 +94,6 @@
       }
     },
     {
-      "code": "ash_policy_relationship_unguarded",
-      "details": {
-        "relationship": "creator"
-      },
-      "message": "doc.Created By: loading creator is authorized by its destination's read policy, not by whether the user may view creator_id",
-      "outcome": "degraded",
-      "path": "/user_types/doc",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "field": "Created By",
-        "type": "doc"
-      }
-    },
-    {
-      "code": "ash_policy_relationship_unguarded",
-      "details": {
-        "relationship": "owner"
-      },
-      "message": "doc.owner_user: loading owner is authorized by its destination's read policy, not by whether the user may view owner_id",
-      "outcome": "degraded",
-      "path": "/user_types/doc",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "field": "owner_user",
-        "type": "doc"
-      }
-    },
-    {
       "code": "ash_policy_default_grant_denied",
       "details": {
         "blocking_rules": [
@@ -177,51 +151,6 @@
       }
     },
     {
-      "code": "ash_policy_relationship_unguarded",
-      "details": {
-        "relationship": "creator"
-      },
-      "message": "memo.Created By: loading creator is authorized by its destination's read policy, not by whether the user may view creator_id",
-      "outcome": "degraded",
-      "path": "/user_types/memo",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "field": "Created By",
-        "type": "memo"
-      }
-    },
-    {
-      "code": "ash_policy_relationship_unguarded",
-      "details": {
-        "relationship": "creator"
-      },
-      "message": "note.Created By: loading creator is authorized by its destination's read policy, not by whether the user may view creator_id",
-      "outcome": "degraded",
-      "path": "/user_types/note",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "field": "Created By",
-        "type": "note"
-      }
-    },
-    {
-      "code": "ash_policy_relationship_unguarded",
-      "details": {
-        "relationship": "creator"
-      },
-      "message": "user.Created By: loading creator is authorized by its destination's read policy, not by whether the user may view creator_id",
-      "outcome": "degraded",
-      "path": "/user_types/user",
-      "severity": "warning",
-      "stage": "target:ash",
-      "subject": {
-        "field": "Created By",
-        "type": "user"
-      }
-    },
-    {
       "code": "ash_policy_data_api_unmapped",
       "details": {},
       "message": "doc is exposed through Bubble's Data API; no API actions are generated (the Data API is out of scope unless requested)",
@@ -268,7 +197,7 @@
           "view_attachments"
         ]
       },
-      "message": "note: the everyone rule grants 9 permission(s) only when some other rules do not hold; that negation denies when the actor lacks a value a condition reads (e.g. logged out)",
+      "message": "note: the everyone rule grants 9 permission(s) only when some other rules do not hold; that negation denies when the actor lacks a value a condition reads (e.g. logged out) or a record value it reads is empty",
       "outcome": "degraded",
       "path": "/user_types/note/privacy_role/everyone",
       "severity": "info",
@@ -284,6 +213,30 @@
     "enums": {},
     "external_types": {},
     "resources": {
+      "board": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "name_text": "name",
+          "owner_user": "owner_id"
+        },
+        "module": "Board",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy",
+          "owner_user": "owner_for_privacy"
+        },
+        "privacy_rules": {
+          "lead_": "privacy_rule_owned_by_my_team_s_lead"
+        },
+        "relationships": {
+          "Created By": "creator",
+          "owner_user": "owner"
+        },
+        "table": "board"
+      },
       "doc": {
         "attributes": {
           "Created By": "creator_id",
@@ -299,6 +252,10 @@
           "title_text": "title"
         },
         "module": "Doc",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy",
+          "owner_user": "owner_for_privacy"
+        },
         "privacy_rules": {
           "admin_": "privacy_rule_admin",
           "owner_": "privacy_rule_owner",
@@ -320,6 +277,9 @@
           "text_text": "text"
         },
         "module": "Memo",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy"
+        },
         "relationships": {
           "Created By": "creator"
         },
@@ -336,6 +296,9 @@
           "text_text": "text"
         },
         "module": "Note",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy"
+        },
         "privacy_rules": {
           "mine_": "privacy_rule_mine"
         },
@@ -351,11 +314,13 @@
           "Modified Date": "modified_date",
           "Slug": "slug",
           "_id": "id",
+          "lead_user": "lead_id",
           "name_text": "name"
         },
         "module": "Team",
         "relationships": {
-          "Created By": "creator"
+          "Created By": "creator",
+          "lead_user": "lead"
         },
         "table": "team"
       },
@@ -368,14 +333,20 @@
           "_id": "id",
           "admin_boolean": "admin",
           "email": "email",
-          "name_text": "name"
+          "name_text": "name",
+          "team_custom_team": "team_id"
         },
         "module": "User",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy",
+          "team_custom_team": "team_for_privacy"
+        },
         "privacy_rules": {
           "me_": "privacy_rule_me"
         },
         "relationships": {
-          "Created By": "creator"
+          "Created By": "creator",
+          "team_custom_team": "team"
         },
         "table": "user"
       }
@@ -386,7 +357,449 @@
   "resources": [
     {
       "actions": [
-        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "board"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "board"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "owner_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "owner_user",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Board",
+      "calculations": [
+        {
+          "description": "Bubble privacy rule \"Owned by my team's lead\" (lead_): its condition holds",
+          "expr": {
+            "actor_loads": [
+              [
+                "team_for_privacy"
+              ]
+            ],
+            "arguments": [],
+            "expr": [
+              "op",
+              "==",
+              [
+                "ref",
+                [],
+                "owner_id"
+              ],
+              [
+                "actor",
+                [
+                  "team_for_privacy",
+                  "lead_id"
+                ]
+              ]
+            ],
+            "resource": "Board",
+            "sort": [],
+            "source": {
+              "rule": "lead_",
+              "type": "board"
+            }
+          },
+          "name": "privacy_rule_owned_by_my_team_s_lead",
+          "source": {
+            "rule": "lead_",
+            "type": "board"
+          }
+        }
+      ],
+      "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "lead_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owned_by_my_team_s_lead"
+              ]
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "name",
+            "owner_id"
+          ]
+        }
+      ],
+      "identities": [],
+      "migration_types": [],
+      "module": "Board",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "lead_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owned_by_my_team_s_lead"
+              ]
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "lead_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owned_by_my_team_s_lead"
+              ]
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "rules": [
+                "lead_"
+              ]
+            },
+            "test": [
+              "calculation",
+              "privacy_rule_owned_by_my_team_s_lead"
+            ]
+          }
+        ],
+        "compiled_rules": [
+          "lead_"
+        ],
+        "data_api": {
+          "create": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "delete": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "exposed": null,
+          "modify": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ]
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "rules"
+      },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "board"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "owner_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "owner_user",
+            "type": "board"
+          },
+          "source_attribute": "owner_id"
+        }
+      ],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_owned_by_my_team_s_lead"
+            ]
+          ],
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "source": {
+            "field": "Created By",
+            "type": "board"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_owned_by_my_team_s_lead"
+            ]
+          ],
+          "kind": "belongs_to",
+          "name": "owner",
+          "public?": true,
+          "source": {
+            "field": "owner_user",
+            "type": "board"
+          },
+          "source_attribute": "owner_id"
+        }
+      ],
+      "source": {
+        "type": "board"
+      },
+      "synthesized": false,
+      "table": "board"
+    },
+    {
+      "actions": [
         "destroy",
         [
           "create",
@@ -756,8 +1169,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         },
         {
@@ -767,7 +1190,9 @@
             "title"
           ],
           "description": "Bubble auto-binding: an input writes one field of the record",
+          "keyed?": false,
           "name": "auto_bind",
+          "primary?": false,
           "type": "update"
         }
       ],
@@ -1111,6 +1536,42 @@
         ],
         "source": "rules"
       },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "doc"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "owner_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "owner_user",
+            "type": "doc"
+          },
+          "source_attribute": "owner_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -1119,6 +1580,13 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_admin",
+              "privacy_rule_owner"
+            ]
+          ],
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1135,6 +1603,13 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_admin",
+              "privacy_rule_owner"
+            ]
+          ],
           "kind": "belongs_to",
           "name": "owner",
           "public?": true,
@@ -1153,7 +1628,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -1307,8 +1781,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -1401,6 +1885,25 @@
         "file_fields": [],
         "source": "rules"
       },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "memo"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -1409,6 +1912,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": "never",
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1427,7 +1931,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -1599,17 +2102,36 @@
             "actor_loads": [],
             "arguments": [],
             "expr": [
-              "call",
-              "is_distinct_from",
+              "and",
               [
                 [
-                  "ref",
-                  [],
-                  "hidden"
+                  "call",
+                  "is_distinct_from",
+                  [
+                    [
+                      "ref",
+                      [],
+                      "hidden"
+                    ],
+                    [
+                      "value",
+                      true
+                    ]
+                  ]
                 ],
                 [
-                  "value",
-                  true
+                  "not",
+                  [
+                    "call",
+                    "is_nil",
+                    [
+                      [
+                        "ref",
+                        [],
+                        "hidden"
+                      ]
+                    ]
+                  ]
                 ]
               ]
             ],
@@ -1668,8 +2190,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -1844,6 +2376,25 @@
         "file_fields": [],
         "source": "rules"
       },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "note"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -1852,6 +2403,13 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_mine",
+              "privacy_everyone_else"
+            ]
+          ],
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1870,7 +2428,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -1994,6 +2551,34 @@
         },
         {
           "allow_nil?": true,
+          "bubble_type": "user",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "lead_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "lead_user",
+            "type": "team"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
           "bubble_type": "text",
           "constraints": [
             [
@@ -2024,8 +2609,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -2046,6 +2641,7 @@
             "modified_date",
             "creator_id",
             "slug",
+            "lead_id",
             "name"
           ]
         }
@@ -2106,6 +2702,7 @@
         "file_fields": [],
         "source": "public_default"
       },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -2114,6 +2711,7 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -2122,6 +2720,23 @@
             "type": "team"
           },
           "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "lead",
+          "public?": true,
+          "source": {
+            "field": "lead_user",
+            "type": "team"
+          },
+          "source_attribute": "lead_id"
         }
       ],
       "source": {
@@ -2132,7 +2747,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -2319,6 +2933,34 @@
           },
           "type": "string",
           "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.team",
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "team_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "team"
+          },
+          "source": {
+            "field": "team_custom_team",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
         }
       ],
       "bubble_name": "User",
@@ -2361,8 +3003,18 @@
       "extra_actions": [
         {
           "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read that does not select by primary key returns nothing",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
           "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
           "name": "search",
+          "primary?": false,
           "type": "read"
         }
       ],
@@ -2389,7 +3041,8 @@
             "creator_id",
             "slug",
             "email",
-            "admin"
+            "admin",
+            "team_id"
           ]
         },
         {
@@ -2494,6 +3147,42 @@
         "file_fields": [],
         "source": "rules"
       },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Team",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "team_for_privacy",
+          "public?": false,
+          "source": {
+            "field": "team_custom_team",
+            "type": "user"
+          },
+          "source_attribute": "team_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -2502,6 +3191,12 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_me"
+            ]
+          ],
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -2510,6 +3205,28 @@
             "type": "user"
           },
           "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Team",
+          "destination_attribute": "id",
+          "gate": [
+            "visible_if",
+            [
+              "privacy_rule_me"
+            ]
+          ],
+          "kind": "belongs_to",
+          "name": "team",
+          "public?": true,
+          "source": {
+            "field": "team_custom_team",
+            "type": "user"
+          },
+          "source_attribute": "team_id"
         }
       ],
       "source": {

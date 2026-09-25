@@ -20,6 +20,9 @@ defmodule BubbleEx.Target.Ash.Policies do
   # have to be negated for: never an allow.
 
   alias BubbleEx.{Diagnostic, Model}
+
+  # `:read` is generated as a keyed action (`read_action/0`), not a default.
+  @write_defaults [:destroy, create: :*, update: :*]
   alias BubbleEx.Expression.IR
   alias BubbleEx.Model.Type
 
@@ -54,6 +57,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         {resource, {[more | diags], put_in(names, ["resources", type.id], entry)}}
       end)
 
+    {resources, names} = gate(resources, names)
     expression_diags = Enum.flat_map(compiled, & &1.diagnostics)
 
     actor_loads =
@@ -66,6 +70,166 @@ defmodule BubbleEx.Target.Ash.Policies do
     project = %{project | resources: resources, names: names, actor_loads: actor_loads}
     diags = [unverified(project) | Enum.reverse(diags)] ++ expression_diags
     {project, List.flatten(diags)}
+  end
+
+  # --- gated relationships -----------------------------------------------------------
+
+  # Ash field policies do not cover relationships: a `belongs_to` whose ID
+  # attribute some users may not view would still load, filter and sort the
+  # record it names. Such a relationship gets a `filter` requiring the
+  # checks that authorize its ID attribute (`gate`), and a private ungated
+  # twin that only the privacy calculations and the actor loads read
+  # through (they must see the real reference, or they would depend on
+  # themselves). Every relationship path in the calculations and actor
+  # loads is rewritten to the twins.
+  defp gate(resources, names) do
+    {resources, {names, twins}} =
+      Enum.map_reduce(resources, {names, %{}}, fn resource, {names, twins} ->
+        entry = get_in(names, ["resources", resource.source.type])
+        {resource, entry, twins} = gate_resource(resource, entry, twins)
+        {resource, {put_in(names, ["resources", resource.source.type], entry), twins}}
+      end)
+
+    modules = Map.new(resources, &{&1.module, &1})
+
+    resources =
+      Enum.map(resources, fn resource ->
+        calculations =
+          Enum.map(resource.calculations, fn calc ->
+            %{calc | expr: rewrite_expr(calc.expr, modules, twins)}
+          end)
+
+        %{resource | calculations: calculations}
+      end)
+
+    {resources, names}
+  end
+
+  defp gate_resource(%Resource{} = resource, entry, twins) do
+    checks = for fp <- resource.field_policies, f <- fp.fields, into: %{}, do: {f, fp.checks}
+
+    used =
+      MapSet.new(
+        Enum.map(resource.attributes, & &1.name) ++
+          Enum.map(resource.relationships, & &1.name) ++
+          Enum.map(resource.calculations, & &1.name) ++
+          Map.values(Map.get(entry, "privacy_relationships", %{}))
+      )
+
+    {relationships, {privacy, entry, _used, twins}} =
+      Enum.map_reduce(resource.relationships, {[], entry, used, twins}, fn rel, acc ->
+        case gate_of(Map.get(checks, rel.source_attribute, [])) do
+          nil -> {rel, acc}
+          gate -> twin(rel, gate, resource, acc)
+        end
+      end)
+
+    resource = %{
+      resource
+      | relationships: relationships,
+        privacy_relationships: Enum.reverse(privacy)
+    }
+
+    {resource, entry, twins}
+  end
+
+  defp twin(rel, gate, resource, {privacy, entry, used, twins}) do
+    field = rel.source.field
+
+    {name, used, entry} =
+      case get_in(entry, ["privacy_relationships", field]) do
+        nil ->
+          {name, used} = Naming.claim(rel.name <> "_for_privacy", used, :snake, :attribute)
+
+          entry =
+            Map.update(
+              entry,
+              "privacy_relationships",
+              %{field => name},
+              &Map.put(&1, field, name)
+            )
+
+          {name, used, entry}
+
+        name ->
+          {name, used, entry}
+      end
+
+    twin = %{rel | name: name, public?: false, gate: nil}
+    twins = Map.put(twins, {resource.module, rel.name}, name)
+    {%{rel | gate: gate}, {[twin | privacy], entry, used, twins}}
+  end
+
+  # Who may follow a relationship: those its ID attribute's checks
+  # authorize. nil: everyone.
+  defp gate_of(checks) do
+    always? = Enum.any?(checks, &match?(%PolicyCheck{kind: :authorize_if, test: :always}, &1))
+    calcs = for %PolicyCheck{kind: :authorize_if, test: {:calculation, c}} <- checks, do: c
+
+    cond do
+      always? -> nil
+      calcs == [] -> :never
+      true -> {:visible_if, calcs}
+    end
+  end
+
+  defp rewrite_expr(expr, modules, twins) do
+    user = actor_module(modules)
+
+    %{
+      expr
+      | expr: rewrite_node(expr.expr, expr.resource, user, modules, twins),
+        actor_loads:
+          Enum.map(expr.actor_loads, &rewrite_path(&1, user, modules, twins))
+          |> Enum.uniq()
+          |> Enum.sort()
+    }
+  end
+
+  defp actor_module(modules) do
+    Enum.find_value(modules, fn {module, r} -> if r.source.type == "user", do: module end)
+  end
+
+  defp rewrite_node({:ref, rels, last}, module, _user, modules, twins) do
+    path = rewrite_path(rels ++ [last], module, modules, twins)
+    {init, [last]} = Enum.split(path, -1)
+    {:ref, init, last}
+  end
+
+  defp rewrite_node({:actor, path}, _module, user, modules, twins),
+    do: {:actor, rewrite_path(path, user, modules, twins)}
+
+  defp rewrite_node({:op, op, l, r}, module, user, modules, twins),
+    do:
+      {:op, op, rewrite_node(l, module, user, modules, twins),
+       rewrite_node(r, module, user, modules, twins)}
+
+  defp rewrite_node({bool, nodes}, module, user, modules, twins) when bool in [:and, :or],
+    do: {bool, Enum.map(nodes, &rewrite_node(&1, module, user, modules, twins))}
+
+  defp rewrite_node({:not, node}, module, user, modules, twins),
+    do: {:not, rewrite_node(node, module, user, modules, twins)}
+
+  defp rewrite_node({:call, name, args}, module, user, modules, twins),
+    do: {:call, name, Enum.map(args, &rewrite_node(&1, module, user, modules, twins))}
+
+  defp rewrite_node(other, _module, _user, _modules, _twins), do: other
+
+  # A path of relationship names (then possibly an attribute) from
+  # `module`: each gated relationship is replaced by its twin.
+  defp rewrite_path([], _module, _modules, _twins), do: []
+
+  defp rewrite_path([name | rest], module, modules, twins) do
+    case modules[module] && Enum.find(modules[module].relationships, &(&1.name == name)) do
+      nil ->
+        [name | rest]
+
+      rel ->
+        [
+          Map.get(twins, {module, name}, name)
+          | rewrite_path(rest, rel.destination, modules, twins)
+        ]
+    end
   end
 
   # --- one resource ----------------------------------------------------------------
@@ -112,7 +276,8 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     resource = %{
       resource
-      | extra_actions: [search_action()],
+      | actions: @write_defaults,
+        extra_actions: [read_action(), search_action()],
         policies: [read_policy(checks), search_policy(checks)],
         field_policies: field_policies(Enum.map(fields, fn {_id, a} -> {a.name, checks} end)),
         privacy: privacy
@@ -201,7 +366,8 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     resource = %{
       resource
-      | extra_actions: [search_action()] ++ auto_bind.actions,
+      | actions: @write_defaults,
+        extra_actions: [read_action(), search_action()] ++ auto_bind.actions,
         calculations: ctx.order |> Enum.reverse() |> Enum.map(&Map.fetch!(ctx.calculations, &1)),
         policies: [read_policy(read), search_policy(search)] ++ auto_bind.policies,
         field_policies: field_policies(field_checks),
@@ -214,7 +380,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         denied_rules(type, denied, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
         attachments_diag(type, privacy) ++
-        data_api(type, privacy) ++ unguarded(type, resource, field_checks)
+        data_api(type, privacy)
 
     {resource, ctx.entry, diags}
   end
@@ -341,8 +507,22 @@ defmodule BubbleEx.Target.Ash.Policies do
     any = if match?([_], irs), do: hd(irs), else: IR.node(:or, irs, "boolean")
     subject = %{type: ctx.type.id}
 
+    # The compiled conditions are fail-safe for the actor, not for record
+    # values whose Bubble emptiness semantics are unverified ("is no" on an
+    # empty field, empty-is-empty, dangling references): negating them could
+    # grant where Bubble would not. So the negation also requires every
+    # record-side value the conditions read to be non-empty, and can only
+    # under-grant.
+    guards =
+      irs
+      |> Enum.flat_map(&record_values/1)
+      |> Enum.uniq()
+      |> Enum.map(&IR.node(:not, [IR.node(:is_empty, [&1], "boolean")], "boolean"))
+
+    negation = IR.node(:and, [IR.node(:not, [any], "boolean") | guards], "boolean")
+
     {:ok, result} =
-      Expressions.filter(IR.node(:not, [any], "boolean"), ctx.project,
+      Expressions.filter(negation, ctx.project,
         resource: ctx.type.id,
         source: Map.put(subject, :except_rules, ids),
         subject: subject,
@@ -370,6 +550,26 @@ defmodule BubbleEx.Target.Ash.Policies do
         {except_check(name, ids), negated(ctx, permission, ids)}
     end
   end
+
+  # The outermost field chains read from the rule's record (`This Thing's
+  # a's b`), not from the actor.
+  defp record_values(%IR{op: :field, args: [base | _]} = ir) do
+    if record_based?(base), do: [strip_path(ir)], else: []
+  end
+
+  defp record_values(%IR{args: args}), do: Enum.flat_map(args, &record_values/1)
+  defp record_values(list) when is_list(list), do: Enum.flat_map(list, &record_values/1)
+  defp record_values(_), do: []
+
+  defp record_based?(%IR{op: :this, args: [binder]}), do: binder in [:rule_record, :filter_item]
+  defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)
+  defp record_based?(_), do: false
+
+  # Source paths differ between occurrences of the same chain.
+  defp strip_path(%IR{args: args} = ir),
+    do: %{ir | path: nil, args: Enum.map(args, &strip_path/1)}
+
+  defp strip_path(other), do: other
 
   defp except_check(name, ids),
     do: %PolicyCheck{
@@ -405,7 +605,7 @@ defmodule BubbleEx.Target.Ash.Policies do
             path,
             "#{ctx.type.id}: the everyone rule grants #{length(entries)} permission(s) only " <>
               "when some other rules do not hold; that negation denies when the actor lacks " <>
-              "a value a condition reads (e.g. logged out)",
+              "a value a condition reads (e.g. logged out) or a record value it reads is empty",
             target: :ash,
             subject: subject,
             details: %{
@@ -501,6 +701,17 @@ defmodule BubbleEx.Target.Ash.Policies do
   defp binds?(perms, id, ctx), do: perms.auto_binding == true and id in binding_fields(perms, ctx)
 
   # --- policies ------------------------------------------------------------------------
+
+  defp read_action,
+    do: %Action{
+      type: :read,
+      name: "read",
+      primary?: true,
+      keyed?: true,
+      description:
+        "Direct view: records reached by primary key (Ash.get, relationship loads); " <>
+          "an authorized read that does not select by primary key returns nothing"
+    }
 
   defp search_action,
     do: %Action{
@@ -638,27 +849,6 @@ defmodule BubbleEx.Target.Ash.Policies do
   end
 
   defp data_api(_type, _privacy), do: []
-
-  # A belongs_to whose ID attribute some users may not view: loading the
-  # relationship is authorized by the destination's read policy only.
-  defp unguarded(type, %Resource{} = resource, field_checks) do
-    checks = Map.new(field_checks)
-
-    for rel <- resource.relationships,
-        Map.get(checks, rel.source_attribute) != [
-          %PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}
-        ] do
-      Diagnostic.new(
-        :ash_policy_relationship_unguarded,
-        type.path,
-        "#{type.id}.#{rel.source.field}: loading #{rel.name} is authorized by its destination's " <>
-          "read policy, not by whether the user may view #{rel.source_attribute}",
-        target: :ash,
-        subject: %{type: type.id, field: rel.source.field},
-        details: %{relationship: rel.name}
-      )
-    end
-  end
 
   # --- workflows ignoring privacy rules ------------------------------------------------
 
