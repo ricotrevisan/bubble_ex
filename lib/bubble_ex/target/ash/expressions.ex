@@ -41,7 +41,12 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   A filter never matches because the actor is logged out or lacks a value
   it reads (fail-safe): every atomic comparison with an actor-side operand
-  is false when that operand is empty, in either polarity. `not`, `is no`
+  is false when that operand is empty, in either polarity. Empty is
+  Bubble's emptiness, as `is empty` tests it: nil, `""` for text, `[]` for
+  a list. For lists this is a deliberate choice over Bubble's "an empty
+  list doesn't contain X": an actor with an empty (or no) list is denied
+  `doesn't contain` / `is not contained by`, since a privacy grant must
+  not follow from the actor lacking data. `not`, `is no`
   and `is not` are pushed down to the atoms (De Morgan), so a guard is
   never negated; `a is b` between yes/no values of which one is a
   condition reading the actor is expanded to `(a and b) or (not a and not
@@ -390,13 +395,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {[a, b], st} = values([l, r], st)
     eq = eq_node(a, b, st)
     neq = neq_node(a, b, st)
-    {all_ok(if(op == :eq, do: {eq, neq, [a, b]}, else: {neq, eq, [a, b]}), [a, b]), st}
+    operands = [{a, l.type}, {b, r.type}]
+    {all_ok(if(op == :eq, do: {eq, neq, operands}, else: {neq, eq, operands}), [a, b]), st}
   end
 
   defp atom_(%IR{op: op, args: [l, r]}, st) when is_map_key(@compare, op) do
     {[a, b], st} = values([l, r], st)
     node = {:op, Map.fetch!(@compare, op), a, b}
-    {all_ok({node, {:not, node}, [a, b]}, [a, b]), st}
+    {all_ok({node, {:not, node}, [{a, l.type}, {b, r.type}]}, [a, b]), st}
   end
 
   # A reference is empty when the record it names is gone too (there are no
@@ -405,7 +411,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # actor's own value, so only a logged-in actor is required.
   defp atom_(%IR{op: :is_empty, args: [x]}, st) do
     {node, st} = empty(x, st)
-    logged_in = if reads_actor?(x), do: [actor_id(st)], else: []
+    logged_in = if reads_actor?(x), do: [{actor_id(st), "user"}], else: []
     {all_ok({node, negate(node), logged_in}, [node]), st}
   end
 
@@ -426,7 +432,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
       member = {:op, "in", i, l}
       absent = {:or, [{:call, "is_nil", [l]} | nil_item] ++ [{:not, member}]}
-      {all_ok({member, absent, [l, i]}, [l, i]), st}
+      {all_ok({member, absent, [{l, list.type}, {i, item.type}]}, [l, i]), st}
     else
       unsupported(st, {"contains on a value that is not a list", nil})
     end
@@ -436,14 +442,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {[t, p], st} = values([text, part], st)
     contains = {:call, "contains", [t, p]}
     absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
-    {all_ok({contains, absent, [t, p]}, [t, p]), st}
+    {all_ok({contains, absent, [{t, text.type}, {p, part.type}]}, [t, p]), st}
   end
 
   # A yes/no value: `x == true`; negated, empty is not yes.
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
     {v, st} = value(ir, st)
     yes = {:op, "==", v, {:value, true}}
-    {all_ok({yes, {:call, "is_distinct_from", [v, {:value, true}]}, [v]}, [v]), st}
+    {all_ok({yes, {:call, "is_distinct_from", [v, {:value, true}]}, [{v, ir.type}]}, [v]), st}
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"the condition #{inspect(op)}", nil})
@@ -507,17 +513,35 @@ defmodule BubbleEx.Target.Ash.Expressions do
       else: {:call, "is_distinct_from", [a, b]}
   end
 
-  # `node`, required to have every actor-side operand non-empty. A core that
-  # is already NULL (so false) for an empty operand (`==`, `in`, ordering)
-  # needs no guard.
+  # `node`, required to have every actor-side operand non-empty in Bubble's
+  # sense (as `is empty`): not nil, and not `""` for text or `[]` for a
+  # list. `operands` are `{node, bubble_type}`. A core that is already NULL
+  # (so false) for a nil operand (`==`, `in`, ordering) needs only the text
+  # and list checks.
   @null_false ["==", "in", ">", "<", ">=", "<="]
   defp guard(:error, _operands), do: :error
-  defp guard({:op, op, _, _} = node, _operands) when op in @null_false, do: node
 
   defp guard(node, operands) do
-    case for(operand <- operands, operand != :error, actor?(operand), uniq: true, do: operand) do
-      [] -> node
-      actor -> {:and, Enum.map(actor, &{:not, {:call, "is_nil", [&1]}}) ++ [node]}
+    null_false = match?({:op, op, _, _} when op in @null_false, node)
+
+    checks =
+      for {operand, type} <- operands,
+          operand != :error,
+          actor?(operand),
+          check <- empty_checks(operand, type, null_false),
+          uniq: true,
+          do: check
+
+    if checks == [], do: node, else: {:and, checks ++ [node]}
+  end
+
+  defp empty_checks(operand, type, null_false) do
+    nil_check = if null_false, do: [], else: [{:not, {:call, "is_nil", [operand]}}]
+
+    case classify(type) do
+      %Type{cardinality: :many} -> nil_check ++ [{:op, "!=", operand, {:value, []}}]
+      %Type{kind: :scalar, base: :text} -> nil_check ++ [{:op, "!=", operand, {:value, ""}}]
+      _ -> nil_check
     end
   end
 

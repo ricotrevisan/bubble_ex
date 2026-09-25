@@ -30,8 +30,8 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     {"task", "h_parent_"} => "expr(parent.assignee_id == ^actor(:id))",
     {"task", "i_unfiled_"} => "expr(not exists(team, true))",
     {"task", "j_feature_"} =>
-      ~s|expr("early_access" in ^actor([:active_membership, :team, :features]))|,
-    {"task", "k_listed_"} => "expr(team_id in ^actor(:teams))",
+      ~s|expr(^actor([:active_membership, :team, :features]) != [] and "early_access" in ^actor([:active_membership, :team, :features]))|,
+    {"task", "k_listed_"} => "expr(^actor(:teams) != [] and team_id in ^actor(:teams))",
     {"task", "n_estimate_"} => "expr(estimate > parent.estimate + 1)",
     {"task", "o_no_access_"} =>
       "expr(not is_nil(^actor(:id)) and (is_nil(access) or not (^actor(:id) in access)))",
@@ -47,12 +47,17 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     {"task", "w_public_is_not_"} =>
       "expr(public == true and ^actor(:id) in access or public == false and not is_nil(^actor(:id)) and (is_nil(access) or not (^actor(:id) in access)))",
     {"task", "x_not_listed_"} =>
-      "expr(not is_nil(^actor(:teams)) and (is_nil(^actor(:teams)) or is_nil(team_id) or not (team_id in ^actor(:teams))))",
+      "expr(not is_nil(^actor(:teams)) and ^actor(:teams) != [] and (is_nil(^actor(:teams)) or is_nil(team_id) or not (team_id in ^actor(:teams))))",
+    {"task", "y_title_not_name_no_"} => ~s|expr(^actor(:name) != "" and title == ^actor(:name))|,
+    {"task", "z_title_not_name_"} =>
+      ~s|expr(not is_nil(^actor(:name)) and ^actor(:name) != "" and is_distinct_from(title, ^actor(:name)))|,
+    {"task", "za_team_not_contained_"} =>
+      "expr(not is_nil(^actor(:teams)) and ^actor(:teams) != [] and (is_nil(^actor(:teams)) or is_nil(team_id) or not (team_id in ^actor(:teams))))",
     {"user", "me_"} => "expr(id == ^actor(:id))",
     {"membership", "mine_"} => "expr(^actor(:active_membership_id) == id)",
     {"membership", "account_"} => "expr(member_id == ^actor(:id))",
     {"team", "members_"} => "expr(^actor(:id) in members)",
-    {"team", "listed_"} => "expr(id in ^actor(:teams))"
+    {"team", "listed_"} => "expr(^actor(:teams) != [] and id in ^actor(:teams))"
   }
 
   test "every compiled privacy condition", %{privacy: privacy} do

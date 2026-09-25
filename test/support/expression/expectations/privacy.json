@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-authored expectations for the privacy conditions of test/support/expression/app.json (all data invented). Records use the Ash attribute names of the fixture's project; IDs starting with 'gone-' name records that do not exist (dangling references). For each rule and actor (logged out, u1, u2, u3), the IDs of the records the condition selects. Checked by BubbleEx.Target.ElixirTest (Elixir backend) and by scripts/ash_compile_check/runtime.exs (Ash backend: PostgreSQL and in-memory).",
+  "_comment": "Hand-authored expectations for the privacy conditions of test/support/expression/app.json (all data invented). Records use the Ash attribute names of the fixture's project; IDs starting with 'gone-' name records that do not exist (dangling references). For each rule and actor (logged out, u1, u2, u3, u4), the IDs of the records the condition selects. Checked by BubbleEx.Target.ElixirTest (Elixir backend) and by scripts/ash_compile_check/runtime.exs (Ash backend: PostgreSQL and in-memory).",
   "cases": [
     {
       "expected": {
@@ -12,7 +12,8 @@
         ],
         "u3": [
           "k4"
-        ]
+        ],
+        "u4": []
       },
       "rule": "a_owner_",
       "type": "task",
@@ -26,7 +27,8 @@
           "k5"
         ],
         "u2": [],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "b_team_",
       "type": "task",
@@ -43,7 +45,8 @@
           "k5"
         ],
         "u2": [],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "c_admin_",
       "type": "task",
@@ -63,6 +66,10 @@
         "u3": [
           "k1",
           "k4"
+        ],
+        "u4": [
+          "k1",
+          "k4"
         ]
       },
       "rule": "d_public_",
@@ -80,7 +87,8 @@
         ],
         "u3": [
           "k4"
-        ]
+        ],
+        "u4": []
       },
       "rule": "e_access_",
       "type": "task",
@@ -101,6 +109,10 @@
           "k4"
         ],
         "u3": [
+          "k1",
+          "k4"
+        ],
+        "u4": [
           "k1",
           "k4"
         ]
@@ -126,7 +138,8 @@
           "k4",
           "k5"
         ],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "g_active_",
       "type": "task",
@@ -141,7 +154,8 @@
         "u2": [
           "k5"
         ],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "h_parent_",
       "type": "task",
@@ -164,6 +178,10 @@
         "u3": [
           "k2",
           "k3"
+        ],
+        "u4": [
+          "k2",
+          "k3"
         ]
       },
       "rule": "i_unfiled_",
@@ -181,7 +199,8 @@
           "k5"
         ],
         "u2": [],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "j_feature_",
       "type": "task",
@@ -195,7 +214,8 @@
           "k5"
         ],
         "u2": [],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "k_listed_",
       "type": "task",
@@ -213,6 +233,9 @@
           "k4"
         ],
         "u3": [
+          "k4"
+        ],
+        "u4": [
           "k4"
         ]
       },
@@ -240,6 +263,13 @@
           "k2",
           "k3",
           "k5"
+        ],
+        "u4": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
         ]
       },
       "rule": "o_no_access_",
@@ -265,6 +295,13 @@
           "k1",
           "k2",
           "k3",
+          "k5"
+        ],
+        "u4": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
           "k5"
         ]
       },
@@ -293,6 +330,11 @@
           "k1",
           "k4",
           "k5"
+        ],
+        "u4": [
+          "k1",
+          "k4",
+          "k5"
         ]
       },
       "rule": "q_filed_",
@@ -314,6 +356,10 @@
           "k4"
         ],
         "u3": [
+          "k1",
+          "k4"
+        ],
+        "u4": [
           "k1",
           "k4"
         ]
@@ -339,6 +385,10 @@
         "u3": [
           "k2",
           "k5"
+        ],
+        "u4": [
+          "k2",
+          "k5"
         ]
       },
       "rule": "s_same_team_",
@@ -356,7 +406,8 @@
         ],
         "u3": [
           "k4"
-        ]
+        ],
+        "u4": []
       },
       "rule": "t_access_no_",
       "type": "task",
@@ -373,7 +424,8 @@
         ],
         "u3": [
           "k4"
-        ]
+        ],
+        "u4": []
       },
       "rule": "u_not_owner_no_",
       "type": "task",
@@ -390,6 +442,10 @@
         ],
         "u3": [
           "k1"
+        ],
+        "u4": [
+          "k1",
+          "k4"
         ]
       },
       "rule": "v_public_is_",
@@ -410,6 +466,9 @@
         "u3": [
           "k3",
           "k4"
+        ],
+        "u4": [
+          "k3"
         ]
       },
       "rule": "w_public_is_not_",
@@ -425,17 +484,65 @@
           "k4"
         ],
         "u2": [],
+        "u3": [],
+        "u4": []
+      },
+      "rule": "x_not_listed_",
+      "type": "task",
+      "why": "the actor's teams don't contain the task's team: an empty actor-side list (nil for u2, [] for u3 and u4) denies (fail-safe, not Bubble's 'an empty list contains nothing')"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [],
+        "u2": [],
         "u3": [
+          "k1"
+        ],
+        "u4": []
+      },
+      "rule": "y_title_not_name_no_",
+      "type": "task",
+      "why": "title is the actor's name; an empty name (nil for u2, \"\" for u4) never matches, not even an empty title"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
           "k1",
           "k2",
           "k3",
           "k4",
           "k5"
-        ]
+        ],
+        "u2": [],
+        "u3": [
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u4": []
       },
-      "rule": "x_not_listed_",
+      "rule": "z_title_not_name_",
       "type": "task",
-      "why": "the actor's teams don't contain the task's team: an empty actor-side list denies (u2's is nil), an empty but present one contains nothing (u3)"
+      "why": "title is not the actor's name; an empty name (nil or \"\") denies"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k2",
+          "k3",
+          "k4"
+        ],
+        "u2": [],
+        "u3": [],
+        "u4": []
+      },
+      "rule": "za_team_not_contained_",
+      "type": "task",
+      "why": "as x_not_listed_, written as 'is not contained by'"
     },
     {
       "expected": {
@@ -446,7 +553,8 @@
         "u2": [],
         "u3": [
           "m2"
-        ]
+        ],
+        "u4": []
       },
       "rule": "mine_",
       "type": "membership",
@@ -461,7 +569,8 @@
         "u2": [],
         "u3": [
           "m2"
-        ]
+        ],
+        "u4": []
       },
       "rule": "account_",
       "type": "membership",
@@ -476,7 +585,8 @@
         "u2": [
           "t1"
         ],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "members_",
       "type": "team",
@@ -489,7 +599,8 @@
           "t1"
         ],
         "u2": [],
-        "u3": []
+        "u3": [],
+        "u4": []
       },
       "rule": "listed_",
       "type": "team",
@@ -506,6 +617,9 @@
         ],
         "u3": [
           "u3"
+        ],
+        "u4": [
+          "u4"
         ]
       },
       "rule": "me_",
@@ -540,7 +654,8 @@
         "parent_id": null,
         "public": true,
         "status": "done",
-        "team_id": "t1"
+        "team_id": "t1",
+        "title": "Plan"
       },
       {
         "access": null,
@@ -551,7 +666,8 @@
         "parent_id": "gone-task",
         "public": null,
         "status": null,
-        "team_id": null
+        "team_id": null,
+        "title": ""
       },
       {
         "access": [],
@@ -562,7 +678,8 @@
         "parent_id": null,
         "public": false,
         "status": "open",
-        "team_id": "gone-team"
+        "team_id": "gone-team",
+        "title": null
       },
       {
         "access": [
@@ -576,7 +693,8 @@
         "parent_id": "k3",
         "public": true,
         "status": "done",
-        "team_id": "t2"
+        "team_id": "t2",
+        "title": "Ship"
       },
       {
         "access": null,
@@ -587,7 +705,8 @@
         "parent_id": "k1",
         "public": null,
         "status": "open",
-        "team_id": "t1"
+        "team_id": "t1",
+        "title": ""
       }
     ],
     "team": [
@@ -613,6 +732,7 @@
         "admin": true,
         "coach": false,
         "id": "u1",
+        "name": "Ann",
         "teams": [
           "t1"
         ]
@@ -622,6 +742,7 @@
         "admin": null,
         "coach": true,
         "id": "u2",
+        "name": null,
         "teams": null
       },
       {
@@ -629,6 +750,15 @@
         "admin": false,
         "coach": null,
         "id": "u3",
+        "name": "Plan",
+        "teams": []
+      },
+      {
+        "active_membership_id": null,
+        "admin": null,
+        "coach": null,
+        "id": "u4",
+        "name": "",
         "teams": []
       }
     ]

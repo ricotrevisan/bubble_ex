@@ -450,11 +450,12 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # `source`, required to have every operand read from the current user
-  # non-empty. `operands` are `{ir, source}` pairs.
+  # non-empty in Bubble's sense: not nil, `""` or `[]` (as the Ash
+  # backend). `operands` are `{ir, source}` pairs.
   defp guard(:error, _operands), do: :error
 
   defp guard(source, operands) do
-    case for({ir, part} <- operands, actor?(ir), uniq: true, do: "not is_nil(#{part})") do
+    case for({ir, part} <- operands, actor?(ir), uniq: true, do: "#{part} not in [nil, \"\", []]") do
       [] -> source
       checks -> "(" <> Enum.join(checks ++ [source], " and ") <> ")"
     end

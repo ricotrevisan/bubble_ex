@@ -1553,6 +1553,91 @@
             "view_all": true,
             "view_attachments": true
           }
+        },
+        "y_title_not_name_no_": {
+          "condition": {
+            "next": {
+              "name": "title_text",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "name_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Title is not the actor's name) is no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "z_title_not_name_": {
+          "condition": {
+            "next": {
+              "name": "title_text",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "name_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Title is not the actor's name",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "za_team_not_contained_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "teams_list_custom_team",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "is_not_contained_by_list",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Team is not contained by the actor's teams",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
         }
       }
     },
