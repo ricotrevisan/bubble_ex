@@ -111,7 +111,7 @@ defmodule BubbleEx.WorkflowsTest do
              )
 
     assert i.coverage.workflow_entries == 2
-    assert Enum.any?(i.diagnostics, &(&1.code == :malformed_node))
+    assert Enum.any?(i.diagnostics, &(&1.code == :workflow_malformed_node))
     assert Enum.any?(i.diagnostics, &(&1.code == :malformed_actions))
     assert Enum.any?(i.diagnostics, &(&1.code == :malformed_properties))
   end
@@ -126,7 +126,7 @@ defmodule BubbleEx.WorkflowsTest do
       assert [w] = i.workflows
       assert w.ordering == "unresolved"
       assert length(w.actions) == map_size(actions)
-      assert Enum.any?(i.diagnostics, &(&1.code == :unresolved_order))
+      assert Enum.any?(i.diagnostics, &(&1.code == :workflow_unresolved_order))
     end
   end
 
@@ -253,7 +253,7 @@ defmodule BubbleEx.WorkflowsTest do
 
     assert {:ok, %{workflows: [w], diagnostics: diagnostics}} = Workflows.inventory(payload)
     assert w.ordering == "unavailable"
-    assert Enum.any?(diagnostics, &(&1.code == :alias_collision))
+    assert Enum.any?(diagnostics, &(&1.code == :workflow_alias_collision))
     assert w.raw["%x"] == "FutureEvent"
   end
 

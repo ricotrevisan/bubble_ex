@@ -87,14 +87,14 @@ defmodule BubbleEx.Workflows do
 
   defp workflow_entries(%{single: true} = collection, index) do
     [
-      Node.workflow(collection.value, collection.path, index)
+      Node.workflow(collection.value, collection.path, index, :candidate)
       |> Map.put(:discovery, "unclassified_candidate")
     ]
   end
 
   defp workflow_entries(%{present: true} = collection, index) do
     Enum.map(Source.entries(collection.value), fn {key, value} ->
-      Node.workflow(value, collection.path ++ [key], index)
+      Node.workflow(value, collection.path ++ [key], index, :collection)
       |> Map.put(:discovery, "collection_entry")
     end)
   end
