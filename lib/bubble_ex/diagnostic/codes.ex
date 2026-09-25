@@ -129,6 +129,9 @@ defmodule BubbleEx.Diagnostic.Codes do
      "an expression IR construct with no `Ash.Expr` mapping (e.g. a path through a list of things, a context input in a privacy rule); the expression is not compiled"},
     {:ash_expr_unmapped_reference, :warning, :unresolved, :target,
      "an expression reading a data type, field or option value the Ash project does not map (deleted, malformed or missing); the expression is not compiled"},
+    # target:elixir — BubbleEx.Target.Elixir
+    {:elixir_expr_unsupported, :warning, :unresolved, :target,
+     "an expression IR construct with no Elixir mapping yet (e.g. a search); the expression is not compiled"},
 
     # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
     {:external_type_unresolved_root, :warning, :degraded, :target,
