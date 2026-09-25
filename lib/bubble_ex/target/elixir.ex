@@ -21,11 +21,19 @@ defmodule BubbleEx.Target.Elixir do
 
   Field access is nil-safe (a field of an empty value is empty), written as
   `get_in(x, [Access.key(:a), Access.key(:b)])`. Records are compared by
-  Bubble ID. `==` treats empty as equal to empty, as Bubble does.
+  Bubble ID. Empty values follow `BubbleEx.Target.Ash.Expressions`: a
+  comparison with a value read from the current user is false when that
+  value is empty; between other values empty equals empty (not verified
+  against Bubble); an empty list contains nothing; `not` of an empty yes/no
+  is true. `BubbleEx.Target.ElixirTest` holds both backends to one
+  hand-authored expectation table.
   Everything whose Bubble behavior Elixir's operators do not match (ordering
   with empty values, arithmetic, emptiness, text formatting) is a call to a
   runtime module the generated app provides (`:runtime`, default
-  `"Bubble.Runtime"`); `runtime` lists the functions used:
+  `"Bubble.Runtime"`), whose contract is the behaviour
+  `BubbleEx.Target.Elixir.Runtime` (`stubs/0` lists the functions whose
+  Bubble behavior is not pinned down yet); `runtime` lists the functions
+  used:
 
   | Function | Bubble |
   |----------|--------|
@@ -216,9 +224,20 @@ defmodule BubbleEx.Target.Elixir do
 
   defp value(%IR{op: :field} = ir, st), do: path(ir, [], :value, st)
 
+  # `is` / `is not`, with the Ash backend's semantics
+  # (`BubbleEx.Target.Ash.Expressions`): a side read from the current user
+  # must not be empty (fail-safe), unless the other side is a value that
+  # cannot be empty; otherwise empty equals empty (Bubble's, unverified).
   defp value(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = Enum.map_reduce([l, r], st, &id_value/2)
-    {all_ok("(#{a} #{if op == :eq, do: "==", else: "!="} #{b})", [a, b]), st}
+    compare = "(#{a} #{if op == :eq, do: "==", else: "!="} #{b})"
+
+    guarded =
+      if op == :eq and (nonnull?(l) or nonnull?(r)),
+        do: compare,
+        else: guard(compare, [{l, a}, {r, b}])
+
+    {all_ok(guarded, [a, b]), st}
   end
 
   defp value(%IR{op: op, args: [l, r]}, st) when is_map_key(@compare, op) do
@@ -229,6 +248,33 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: op, args: args}, st) when op in [:and, :or] do
     {parts, st} = Enum.map_reduce(args, st, &condition/2)
     {all_ok("(" <> Enum.join(parts, " #{op} ") <> ")", parts), st}
+  end
+
+  # `list doesn't contain item`: an empty list contains nothing. Fail-safe
+  # for the current user as in the Ash backend: an empty item read from
+  # them, or a logged-out user reading their own list, never matches.
+  defp value(%IR{op: :not, args: [%IR{op: :member, args: [list, item]} = member]}, st) do
+    {part, st} = value(member, st)
+
+    logged_in =
+      if actor?(list), do: [{IR.node(:current_user, [], "user"), "current_user"}], else: []
+
+    case part do
+      :error ->
+        {:error, st}
+
+      part ->
+        {i, st} = id_value(item, st)
+        {guard("(not #{part})", logged_in ++ [{item, i}]), st}
+    end
+  end
+
+  # `not x` for a yes/no value that may be empty: empty is not yes; an
+  # empty value read from the current user never matches.
+  defp value(%IR{op: :not, args: [%IR{op: op, type: "boolean"} = x]}, st)
+       when op in [:field, :input, :fallback, :option_attribute, :option_label] do
+    {part, st} = value(x, st)
+    {ok(part, &guard("(#{&1} != true)", [{x, &1}])), st}
   end
 
   defp value(%IR{op: :not, args: [x]}, st) do
@@ -338,6 +384,24 @@ defmodule BubbleEx.Target.Elixir do
       value(ir, st)
     end
   end
+
+  # `source`, required to have every operand read from the current user
+  # non-empty. `operands` are `{ir, source}` pairs.
+  defp guard(source, operands) do
+    case for({ir, part} <- operands, actor?(ir), uniq: true, do: "not is_nil(#{part})") do
+      [] -> source
+      checks -> "(" <> Enum.join(checks ++ [source], " and ") <> ")"
+    end
+  end
+
+  # Whether `ir` is read from the current user (directly or through fields).
+  defp actor?(%IR{op: :current_user}), do: true
+  defp actor?(%IR{op: :field, args: [base | _]}), do: actor?(base)
+  defp actor?(_ir), do: false
+
+  defp nonnull?(%IR{op: :literal, args: [v]}), do: not is_nil(v)
+  defp nonnull?(%IR{op: op}) when op in [:option, :this], do: true
+  defp nonnull?(_ir), do: false
 
   defp record_type?(type), do: match?(%Type{kind: :ref, cardinality: :one}, classify(type))
 

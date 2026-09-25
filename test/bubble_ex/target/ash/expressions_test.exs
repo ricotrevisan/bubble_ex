@@ -19,26 +19,32 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
   end
 
   @expected %{
-    {"task", "a_owner_"} => "expr(is_not_distinct_from(creator_id, ^actor(:id)))",
-    {"task", "b_workspace_"} =>
-      "expr(is_not_distinct_from(^actor([:current_role, :workspace_id]), workspace_id))",
+    {"task", "a_owner_"} => "expr(creator_id == ^actor(:id))",
+    {"task", "b_team_"} => "expr(^actor([:active_membership, :team_id]) == team_id)",
     {"task", "c_admin_"} => "expr(^actor(:admin) == true)",
     {"task", "d_public_"} => "expr(not is_nil(^actor(:id)) and public == true)",
     {"task", "e_access_"} => "expr(^actor(:id) in access)",
     {"task", "f_done_"} => ~s|expr(status == "done")|,
     {"task", "g_active_"} =>
-      ~s|expr(is_distinct_from(^actor([:current_role, :role_kind]), "archived") or ^actor(:coach) == true)|,
-    {"task", "h_parent_"} => "expr(is_not_distinct_from(parent.assignee_id, ^actor(:id)))",
-    {"task", "i_unfiled_"} => "expr(is_nil(workspace_id))",
-    {"task", "j_beta_"} =>
-      ~s|expr("full_access" in ^actor([:current_role, :workspace, :beta_features]))|,
-    {"task", "k_listed_"} => "expr(workspace_id in ^actor(:workspaces))",
+      ~s|expr(not is_nil(^actor([:active_membership, :tier])) and is_distinct_from(^actor([:active_membership, :tier]), "retired") or ^actor(:coach) == true)|,
+    {"task", "h_parent_"} => "expr(parent.assignee_id == ^actor(:id))",
+    {"task", "i_unfiled_"} => "expr(not exists(team, true))",
+    {"task", "j_feature_"} =>
+      ~s|expr("early_access" in ^actor([:active_membership, :team, :features]))|,
+    {"task", "k_listed_"} => "expr(team_id in ^actor(:teams))",
     {"task", "n_estimate_"} => "expr(estimate > parent.estimate + 1)",
+    {"task", "o_no_access_"} =>
+      "expr(not is_nil(^actor(:id)) and (is_nil(access) or not (^actor(:id) in access)))",
+    {"task", "p_not_owner_"} =>
+      "expr(not is_nil(^actor(:id)) and is_distinct_from(creator_id, ^actor(:id)))",
+    {"task", "q_filed_"} => "expr(exists(team, true))",
+    {"task", "r_done_by_id_"} => ~s|expr(status == "done")|,
+    {"task", "s_same_team_"} => "expr(is_not_distinct_from(team_id, parent.team_id))",
     {"user", "me_"} => "expr(id == ^actor(:id))",
-    {"role", "mine_"} => "expr(^actor(:current_role_id) == id)",
-    {"role", "account_"} => "expr(is_not_distinct_from(account_id, ^actor(:id)))",
-    {"workspace", "members_"} => "expr(^actor(:id) in members)",
-    {"workspace", "listed_"} => "expr(id in ^actor(:workspaces))"
+    {"membership", "mine_"} => "expr(^actor(:active_membership_id) == id)",
+    {"membership", "account_"} => "expr(member_id == ^actor(:id))",
+    {"team", "members_"} => "expr(^actor(:id) in members)",
+    {"team", "listed_"} => "expr(id in ^actor(:teams))"
   }
 
   test "every compiled privacy condition", %{privacy: privacy} do
@@ -46,7 +52,11 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
       for %{expr: %Expr{} = e} = r <- privacy, into: %{}, do: {{r.type, r.rule}, Source.expr(e)}
 
     assert compiled == @expected
-    assert Enum.all?(privacy, &(&1.expr == nil or &1.diagnostics == []))
+
+    assert Enum.all?(
+             privacy,
+             &(&1.expr == nil or Enum.all?(&1.diagnostics, fn d -> d.severity == :info end))
+           )
   end
 
   test "actor templates through relationships list the loads they need", %{privacy: privacy} do
@@ -57,9 +67,9 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
           do: {r.rule, e.actor_loads}
 
     assert loads == %{
-             "b_workspace_" => [["current_role"]],
-             "g_active_" => [["current_role"]],
-             "j_beta_" => [["current_role", "workspace"]]
+             "b_team_" => [["active_membership"]],
+             "g_active_" => [["active_membership"]],
+             "j_feature_" => [["active_membership", "team"]]
            }
   end
 
@@ -75,8 +85,11 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     assert unmapped.subject == %{type: "archived_thing", rule: "old_"}
     assert unmapped.path == "/user_types/archived_thing/privacy_role/old_/condition"
 
-    assert [%{code: :ash_expr_unsupported, details: %{constructs: ["a field of first"]}}] =
+    assert [%{code: :ash_expr_unsupported, details: %{constructs: ["a field of first"]}} = first] =
              failed[{"task", "l_first_"}]
+
+    # The failing sub-node (`Current User's Teams:first item's Name`), not the condition.
+    assert first.path == "/user_types/task/privacy_role/l_first_/condition/next/next/next"
 
     assert [%{code: :expr_uncompiled, stage: :model} = raw | _] = failed[{"task", "m_raw_"}]
     assert raw.path == "/user_types/task/privacy_role/m_raw_/condition/next/next"

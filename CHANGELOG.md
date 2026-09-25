@@ -170,13 +170,18 @@ All notable changes to this project are documented here.
   `BubbleEx.Target.Elixir` (value expressions as Elixir source over a runtime
   module). `BubbleEx.Expression.Sites` finds every page, reusable and
   workflow expression with its context, and `BubbleEx.Target.CompileReport`
-  counts what compiles. New diagnostic codes: `expr_untyped_scope`,
-  `expr_unresolved_accessor`, `expr_uncompiled` (stage `:model`),
+  counts what compiles. Comparisons with an actor-side value deny when it is
+  empty (fail-safe for logged-out users); "empty is empty" between record
+  values is not verified against Bubble. `BubbleEx.Target.Elixir.Runtime` is
+  the behaviour the generated app's runtime module implements. New diagnostic
+  codes: `expr_untyped_scope`, `expr_unresolved_accessor`, `expr_uncompiled`,
+  `expr_option_by_id` (stage `:model`),
   `ash_expr_unsupported`, `ash_expr_unmapped_reference` (`{:target, :ash}`)
   and `elixir_expr_unsupported` (`{:target, :elixir}`).
   `scripts/ash_compile_check.sh` now also compiles every fixture's privacy
-  filters, builds their AshPostgres queries and, with a database, runs them
-  and compares the result with Ash's in-memory evaluation.
+  filters, builds their AshPostgres queries and, with a database, runs them,
+  compares the result with Ash's in-memory evaluation, and checks the
+  expression fixture's filters against a hand-authored expectation table.
 
 - `BubbleEx.Target.Ash` (WTF-362): maps a `BubbleEx.Model` to a
   `BubbleEx.Target.Ash.Project` describing Ash resources, attributes,

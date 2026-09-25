@@ -9,7 +9,9 @@ defmodule BubbleEx.Expression.IR do
 
       {:ok, %{ir: ir, diagnostics: []}} = BubbleEx.Expression.Compiler.compile(ast, env)
 
-  A node is `%IR{op: op, args: args, type: type}`:
+  A node is `%IR{op: op, args: args, type: type, path: path}`, where `path`
+  is the JSON pointer of the source node it was compiled from (nil for
+  nodes the compiler adds, e.g. the `true` of `is yes`):
 
   | `op` | `args` | Bubble |
   |------|--------|--------|
@@ -24,13 +26,13 @@ defmodule BubbleEx.Expression.IR do
   | `:option_attribute` | `[option, option_set, attribute]` | an option-set attribute |
   | `:option_label` | `[option, option_set]` | an option's display text (Bubble's `display`) |
   | `:external_field` | `[value, external_type, field]` | a field of an API Connector type |
-  | `:eq`, `:neq` | `[left, right]` | `is`, `is not`. Bubble semantics: an empty value equals an empty value |
+  | `:eq`, `:neq` | `[left, right]` | `is`, `is not`. Taken to be Bubble's: an empty value equals an empty value (not verified; targets deny on an empty actor-side value) |
   | `:gt`, `:lt`, `:gte`, `:lte` | `[left, right]` | ordering comparisons |
   | `:and`, `:or` | `[a, b, …]` | flattened; Bubble groups left to right |
   | `:not` | `[x]` | negation |
   | `:is_empty` | `[x]` | empty: no value, an empty text or an empty list |
   | `:logged_in` | `[]` | the current user is logged in |
-  | `:member` | `[list, item]` | `list contains item` |
+  | `:member` | `[list, item]` | `list contains item`; an empty list contains nothing |
   | `:contains_all` | `[list, list]` | `contains list` |
   | `:count`, `:first`, `:last`, `:unique`, `:as_list` | `[list]` | list operators |
   | `:item_at`, `:limit` | `[list, n]` | `item #`, `items until #` |
@@ -59,9 +61,14 @@ defmodule BubbleEx.Expression.IR do
   """
 
   @enforce_keys [:op]
-  defstruct [:op, args: [], type: nil]
+  defstruct [:op, args: [], type: nil, path: nil]
 
-  @type t :: %__MODULE__{op: atom(), args: [term()], type: String.t() | nil}
+  @type t :: %__MODULE__{
+          op: atom(),
+          args: [term()],
+          type: String.t() | nil,
+          path: String.t() | nil
+        }
 
   @doc "Builds a node."
   @spec node(atom(), [term()], String.t() | nil) :: t()
@@ -69,8 +76,22 @@ defmodule BubbleEx.Expression.IR do
 
   @doc "JSON form: `%{\"op\" => …, \"args\" => […], \"type\" => …}` with nested nodes as maps."
   @spec to_map(t()) :: map()
-  def to_map(%__MODULE__{} = ir),
-    do: %{"op" => Atom.to_string(ir.op), "args" => Enum.map(ir.args, &json/1), "type" => ir.type}
+  def to_map(%__MODULE__{} = ir) do
+    %{
+      "op" => Atom.to_string(ir.op),
+      "args" => Enum.map(ir.args, &json/1),
+      "type" => ir.type,
+      "path" => ir.path
+    }
+  end
+
+  @doc "`ir` without source paths, for comparing what two expressions compile to."
+  @spec strip_paths(t()) :: t()
+  def strip_paths(%__MODULE__{} = ir), do: %{ir | path: nil, args: Enum.map(ir.args, &strip/1)}
+
+  defp strip(%__MODULE__{} = ir), do: strip_paths(ir)
+  defp strip(list) when is_list(list), do: Enum.map(list, &strip/1)
+  defp strip(other), do: other
 
   defp json(%__MODULE__{} = ir), do: to_map(ir)
   defp json(list) when is_list(list), do: Enum.map(list, &json/1)

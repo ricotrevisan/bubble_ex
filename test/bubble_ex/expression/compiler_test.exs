@@ -14,9 +14,10 @@ defmodule BubbleEx.Expression.CompilerTest do
     result
   end
 
+  # The IR without source paths (those are tested on their own).
   defp ir(raw, opts \\ []) do
     %{ir: %IR{} = ir, diagnostics: []} = compile(raw, opts)
-    ir
+    IR.strip_paths(ir)
   end
 
   defp n(op, args, type), do: IR.node(op, args, type)
@@ -25,15 +26,21 @@ defmodule BubbleEx.Expression.CompilerTest do
 
   describe "sources and fields" do
     test "field chains through records, with Bubble IDs" do
-      assert ir(chain(cu(), [msg("current_role_custom_role"), msg("workspace_custom_workspace")])) ==
+      assert ir(
+               chain(cu(), [msg("active_membership_custom_membership"), msg("team_custom_team")])
+             ) ==
                n(
                  :field,
                  [
-                   n(:field, [user(), "user", "current_role_custom_role"], "custom.role"),
-                   "role",
-                   "workspace_custom_workspace"
+                   n(
+                     :field,
+                     [user(), "user", "active_membership_custom_membership"],
+                     "custom.membership"
+                   ),
+                   "membership",
+                   "team_custom_team"
                  ],
-                 "custom.workspace"
+                 "custom.team"
                )
     end
 
@@ -41,8 +48,10 @@ defmodule BubbleEx.Expression.CompilerTest do
       env = rule_env("task")
       {:ok, %{ir: ir}} = Compiler.compile(parse!(chain(this(), [msg("Created By")]), env), env)
 
-      assert ir ==
+      assert IR.strip_paths(ir) ==
                n(:field, [n(:this, [:rule_record], "custom.task"), "task", "Created By"], "user")
+
+      assert %IR{path: "/next", args: [%IR{path: ""} | _]} = ir
     end
 
     test "options carry their stored key; attributes and labels" do
@@ -106,7 +115,7 @@ defmodule BubbleEx.Expression.CompilerTest do
     end
 
     test "list operators" do
-      list = chain(cu(), [msg("workspaces_list_custom_workspace")])
+      list = chain(cu(), [msg("teams_list_custom_team")])
       assert %IR{op: :count, type: "number"} = ir(chain(list, [msg("count")]))
 
       assert %IR{op: :member, args: [%IR{op: :field}, %IR{op: :this}]} =
@@ -115,7 +124,7 @@ defmodule BubbleEx.Expression.CompilerTest do
       assert %IR{op: :not, args: [%IR{op: :member}]} =
                ir(chain(list, [msg("not_contains", this())]))
 
-      assert %IR{op: :first, type: "custom.workspace"} = ir(chain(list, [msg("first_element")]))
+      assert %IR{op: :first, type: "custom.team"} = ir(chain(list, [msg("first_element")]))
     end
 
     test "arithmetic, text operators and fallback" do
@@ -242,6 +251,14 @@ defmodule BubbleEx.Expression.CompilerTest do
       %{diagnostics: [diag]} = compile(el("bI1"), subject: %{workflow: "bW1"})
       assert diag.subject == %{workflow: "bW1"}
     end
+  end
+
+  test "an option named by its Bubble ID compiles, with a diagnostic" do
+    assert %{ir: %IR{op: :option, args: ["status", "bSb", "done"]}, diagnostics: [diag]} =
+             compile(opt("status", "bSb"))
+
+    assert diag.code == :expr_option_by_id
+    assert diag.subject == %{option_set: "status"}
   end
 
   test "IR is deterministic and JSON-encodable" do

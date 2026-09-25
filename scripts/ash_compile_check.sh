@@ -15,7 +15,10 @@
 #     e.g. ecto://postgres:postgres@localhost:5432): generates and runs the
 #     migrations in one database per fixture, then scripts/ash_compile_check/
 #     runtime.exs inserts and reads back sample rows for every resource and
-#     runs every privacy filter against them for each actor
+#     runs every privacy filter against them for each actor; then it seeds
+#     the expression fixture's discriminating rows and requires every privacy
+#     filter to select exactly the records in its hand-authored expectation
+#     table (test/support/expression/expectations/privacy.json)
 #
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
 # mm-137). The scratch project lives in _build/ash_compile_check (or
@@ -28,6 +31,7 @@ scratch="${ASH_COMPILE_CHECK_DIR:-$root/_build/ash_compile_check}"
 mkdir -p "$scratch"
 cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
   "$root/scripts/ash_compile_check/filters.exs" "$scratch/"
+cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectations.json"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch"

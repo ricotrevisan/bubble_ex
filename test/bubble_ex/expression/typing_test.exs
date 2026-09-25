@@ -22,9 +22,27 @@ defmodule BubbleEx.Expression.TypingTest do
       assert %Field{field: "title_text", type: "text", subject: %Scope{type: "custom.task"}} = ast
     end
 
+    test "a parent group that is a repeating group's cell or the page is that input" do
+      env = env(host: "bT3")
+      scope = parse!(src("ElementParent"), env)
+
+      assert {:value, {:cell_thing, %{"element" => "bR1"}}, "custom.task"} =
+               Typing.context(scope, env)
+
+      env = env(host: "bT4")
+
+      assert {:value, {:page_thing, %{"page" => "bP1"}}, "custom.task"} =
+               Typing.context(scope, env)
+
+      env = env(host: "bT1")
+
+      assert {:value, {:element_state, %{"element" => "bG1", "state" => "get_group_data"}}, _} =
+               Typing.context(scope, env)
+    end
+
     test "inside a reusable, the parent group can be the reusable itself" do
       {ast, []} = typed(chain(src("ElementParent"), [msg("name_text")]), host: "bT9")
-      assert %Field{type: "text", subject: %Scope{type: "custom.workspace"}} = ast
+      assert %Field{type: "text", subject: %Scope{type: "custom.team"}} = ast
     end
 
     test "current cell's thing is the enclosing repeating group's item" do
@@ -82,7 +100,7 @@ defmodule BubbleEx.Expression.TypingTest do
         {chain(el("bR1"), [msg("page_number")]), "number"},
         {chain(el("bC1"), [msg("param_bPa")]), "text"},
         {chain(el("bC1"), [msg("custom.open_")]), "boolean"},
-        {chain(el("bC1"), [msg("get_group_data")]), "custom.workspace"},
+        {chain(el("bC1"), [msg("get_group_data")]), "custom.team"},
         {chain(el("bP1"), [msg("custom.flag_")]), "boolean"}
       ]
 
@@ -115,7 +133,7 @@ defmodule BubbleEx.Expression.TypingTest do
 
     test "fields over a list map to a list" do
       {ast, []} =
-        typed(chain(cu(), [msg("workspaces_list_custom_workspace"), msg("name_text")]), [])
+        typed(chain(cu(), [msg("teams_list_custom_team"), msg("name_text")]), [])
 
       assert ast.type == "list.text"
     end

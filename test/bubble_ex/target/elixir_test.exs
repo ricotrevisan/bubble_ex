@@ -19,11 +19,12 @@ defmodule BubbleEx.Target.ElixirTest do
     def text(x) when is_float(x) and x == trunc(x), do: Integer.to_string(trunc(x))
     def text(x), do: to_string(x)
     def empty?(x), do: x in [nil, "", []]
-    def add(a, b), do: (a || 0) + (b || 0)
-    def mul(a, b), do: (a || 0) * (b || 0)
+    def add(a, b), do: a && b && a + b
+    def mul(a, b), do: a && b && a * b
     def compare(_op, nil, _), do: false
     def compare(_op, _, nil), do: false
     def compare(:gt, a, b), do: a > b
+    def compare(:lt, a, b), do: a < b
     def uppercase(x), do: x && String.upcase(x)
     def default(x, d), do: if(empty?(x), do: d, else: x)
   end
@@ -77,27 +78,28 @@ defmodule BubbleEx.Target.ElixirTest do
     assert eval(result, element_state_bi1_get_data: 2.0) == "Total: 3"
   end
 
-  test "records compare by ID, empty equals empty", %{project: project} do
+  test "records compare by ID; the current user side must not be empty", %{project: project} do
     raw = chain(src("CurrentDataItem"), [msg("assignee_user"), msg("equals", cu())])
     result = compile(raw, project, host: "bT3")
 
     assert eval(result, cell_thing_br1: %{assignee_id: "u1"}, current_user: %{id: "u1"})
     refute eval(result, cell_thing_br1: %{assignee_id: "u2"}, current_user: %{id: "u1"})
-    assert eval(result, cell_thing_br1: %{assignee_id: nil}, current_user: nil)
+    # Fail-safe: an empty value read from the current user never matches.
+    refute eval(result, cell_thing_br1: %{assignee_id: nil}, current_user: nil)
   end
 
   test "field paths through relationships record their loads", %{project: project} do
     raw =
       chain(cu(), [
-        msg("current_role_custom_role"),
-        msg("workspace_custom_workspace"),
+        msg("active_membership_custom_membership"),
+        msg("team_custom_team"),
         msg("name_text")
       ])
 
     result = compile(raw, project)
 
-    assert result.loads == %{"current_user" => [["current_role", "workspace"]]}
-    user = %{current_role: %{workspace: %{name: "Acme"}}}
+    assert result.loads == %{"current_user" => [["active_membership", "team"]]}
+    user = %{active_membership: %{team: %{name: "Acme"}}}
     assert eval(result, current_user: user) == "Acme"
     assert eval(result, current_user: nil) == nil
   end
@@ -136,6 +138,99 @@ defmodule BubbleEx.Target.ElixirTest do
     assert eval(result, current_user: %{admin: true}, element_state_bi1_get_data: 4)
     refute eval(result, current_user: %{admin: nil}, element_state_bi1_get_data: 4)
     refute eval(result, current_user: %{admin: true}, element_state_bi1_get_data: nil)
+  end
+
+  describe "the privacy expectation table (shared with the Ash backend's runtime check)" do
+    @expectations "test/support/expression/expectations/privacy.json"
+                  |> File.read!()
+                  |> Jason.decode!()
+
+    test "every case selects exactly the expected records", %{project: project} do
+      model = model()
+      db = records(@expectations["records"], project)
+
+      for %{"type" => type, "rule" => rule, "expected" => expected} <- @expectations["cases"] do
+        condition =
+          Enum.find(BubbleEx.Model.data_type(model, type).rules, &(&1.id == rule)).condition
+
+        env = rule_env(type)
+        {:ok, %{ir: %IR{} = ir}} = Compiler.compile(condition, env)
+        {:ok, %{source: source}} = Target.compile(ir, project, runtime: @runtime)
+        assert source, "#{type}/#{rule} did not compile to Elixir"
+
+        for {actor, ids} <- expected do
+          user = if actor != "logged_out", do: resolve(db, "user", actor)
+
+          selected =
+            for %{id: id} <- db[type],
+                {true, _} <- [
+                  Code.eval_string(source, this: resolve(db, type, id), current_user: user)
+                ],
+                do: id
+
+          assert Enum.sort(selected) == Enum.sort(ids), "#{type}/#{rule} as #{actor}"
+        end
+      end
+    end
+
+    # Records by type, with atom keys, plus how each relationship resolves.
+    defp records(json, project) do
+      types = Map.new(project.resources, &{&1.module, &1.source.type})
+
+      relationships =
+        Map.new(project.resources, fn r ->
+          {r.source.type,
+           for(
+             rel <- r.relationships,
+             do: {rel.name, rel.source_attribute, types[rel.destination]}
+           )}
+        end)
+
+      json
+      |> Map.new(fn {type, rows} ->
+        {type,
+         Enum.map(rows, fn row -> Map.new(row, fn {k, v} -> {String.to_atom(k), v} end) end)}
+      end)
+      |> Map.put(:relationships, relationships)
+    end
+
+    # A record with its relationships loaded (a dangling or empty reference
+    # loads as nil), three levels deep.
+    defp resolve(db, type, id, depth \\ 3) do
+      case Enum.find(db[type] || [], &(&1.id == id)) do
+        nil ->
+          nil
+
+        record when depth == 0 ->
+          record
+
+        record ->
+          Enum.reduce(db.relationships[type], record, fn {name, attribute, target}, acc ->
+            related = Map.get(record, String.to_atom(attribute))
+            Map.put(acc, String.to_atom(name), related && resolve(db, target, related, depth - 1))
+          end)
+      end
+    end
+  end
+
+  test "every runtime function the backend calls is in the published contract", %{
+    project: project
+  } do
+    functions = BubbleEx.Target.Elixir.Runtime.functions()
+    assert BubbleEx.Target.Elixir.Runtime.stubs() -- functions == []
+
+    {:ok, sites} = BubbleEx.Expression.Sites.collect(app(), model())
+
+    used =
+      for site <- sites,
+          {:ok, %{ir: %IR{} = ir}} <- [Compiler.compile(parse!(site.raw, site.env), site.env)],
+          {:ok, %{runtime: runtime}} <- [Target.compile(ir, project)],
+          fun <- runtime,
+          uniq: true,
+          do: fun
+
+    assert used != []
+    assert used -- functions == []
   end
 
   test "a search is not compiled yet", %{project: project} do

@@ -110,24 +110,42 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
+  # Lowers a node and stamps the IR with the node's source pointer, so a
+  # target can point its diagnostics at the part it cannot compile.
+  defp c(node, base, ctx) do
+    {ir, path, diags} = lower(node, base, ctx)
+    {stamp(ir, path), path, diags}
+  end
+
+  defp stamp(%IR{path: nil} = ir, path), do: %{ir | path: Diagnostic.pointer(path)}
+  defp stamp(ir, _path), do: ir
+
   # --- sources ---------------------------------------------------------------------
 
   # Each clause returns `{ir | :error, own source path, diagnostics}`.
-  defp c(%Literal{value: nil}, base, _ctx), do: {IR.node(:empty), base, []}
-  defp c(%Literal{value: v, type: t}, base, _ctx), do: {IR.node(:literal, [v], t), base, []}
-  defp c(%Empty{}, base, _ctx), do: {IR.node(:empty), base, []}
-  defp c(%CurrentUser{}, base, _ctx), do: {IR.node(:current_user, [], "user"), base, []}
-  defp c(%ThisThing{binder: b, type: t}, base, _ctx), do: {IR.node(:this, [b], t), base, []}
+  defp lower(%Literal{value: nil}, base, _ctx), do: {IR.node(:empty), base, []}
+  defp lower(%Literal{value: v, type: t}, base, _ctx), do: {IR.node(:literal, [v], t), base, []}
+  defp lower(%Empty{}, base, _ctx), do: {IR.node(:empty), base, []}
+  defp lower(%CurrentUser{}, base, _ctx), do: {IR.node(:current_user, [], "user"), base, []}
+  defp lower(%ThisThing{binder: b, type: t}, base, _ctx), do: {IR.node(:this, [b], t), base, []}
 
-  defp c(%OptionValue{option_set: set, value: value, type: type}, base, ctx) do
+  defp lower(%OptionValue{option_set: set, value: value, type: type}, base, ctx) do
     set_id = strip_option(set)
-    {IR.node(:option, [set_id, value, option_key(ctx.env.model, set_id, value)], type), base, []}
+
+    {key, diags} =
+      case option_key(ctx.env.model, set_id, value) do
+        {:key, key} -> {key, []}
+        {:id, key} -> {key, [option_by_id(base, set_id, value, key)]}
+        nil -> {nil, []}
+      end
+
+    {IR.node(:option, [set_id, value, key], type), base, diags}
   end
 
-  defp c(%AllOptions{option_set: set, type: type}, base, _ctx),
+  defp lower(%AllOptions{option_set: set, type: type}, base, _ctx),
     do: {IR.node(:all_options, [strip_option(set)], type), base, []}
 
-  defp c(%Scope{} = n, base, ctx) do
+  defp lower(%Scope{} = n, base, ctx) do
     case Typing.context(n, ctx.env) do
       {:value, {kind, ref}, type} when is_binary(type) ->
         {IR.node(:input, [kind, ref], type), base, []}
@@ -141,7 +159,7 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp c(%DynamicText{parts: parts} = n, base, ctx) do
+  defp lower(%DynamicText{parts: parts} = n, base, ctx) do
     keys = keys(n.meta, :entry_keys, length(parts))
     ekey = key(n, :entries)
 
@@ -168,12 +186,12 @@ defmodule BubbleEx.Expression.Compiler do
     {ir, base, diags}
   end
 
-  defp c(%ArbitraryText{text: text} = n, base, ctx) do
+  defp lower(%ArbitraryText{text: text} = n, base, ctx) do
     {ir, _p, diags} = c(text, base ++ [key(n, :properties), "arbitrary_text"], ctx)
     {ir, base, diags}
   end
 
-  defp c(%Search{} = n, base, ctx) do
+  defp lower(%Search{} = n, base, ctx) do
     pbase = base ++ [key(n, :properties)]
     item = %{ctx | this_type: n.data_type, this_binder: :filter_item}
 
@@ -189,10 +207,10 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp c(%Raw{subject: nil} = n, base, _ctx),
+  defp lower(%Raw{subject: nil} = n, base, _ctx),
     do: {:error, base, [uncompiled(base, "a raw source (#{n.reason})", :raw)]}
 
-  defp c(%Raw{subject: subject, raw: raw} = n, base, ctx) do
+  defp lower(%Raw{subject: subject, raw: raw} = n, base, ctx) do
     {ir, spath, diags} = operand(subject, base, ctx)
     path = spath ++ [link(n)]
     name = if is_map(raw), do: Keys.value(raw, :name)
@@ -208,7 +226,7 @@ defmodule BubbleEx.Expression.Compiler do
 
   # --- operators ------------------------------------------------------------------
 
-  defp c(%Field{} = n, base, ctx) do
+  defp lower(%Field{} = n, base, ctx) do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
 
@@ -219,13 +237,13 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp c(%Property{type: nil} = n, base, ctx) do
+  defp lower(%Property{type: nil} = n, base, ctx) do
     # Untyped: typing reported it.
     {_ir, spath, diags} = operand(n.subject, base, ctx)
     {:error, spath ++ [link(n)], diags}
   end
 
-  defp c(%Property{subject: %Scope{} = scope, name: name, type: type} = n, base, ctx) do
+  defp lower(%Property{subject: %Scope{} = scope, name: name, type: type} = n, base, ctx) do
     case Typing.context(scope, ctx.env) do
       {:element, %{id: id}} ->
         input = IR.node(:input, [:element_state, %{"element" => id, "state" => name}], type)
@@ -236,25 +254,25 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp c(%Property{} = n, base, ctx), do: property_operator(n, base, ctx)
+  defp lower(%Property{} = n, base, ctx), do: property_operator(n, base, ctx)
 
-  defp c(%Compare{op: op} = n, base, ctx) do
+  defp lower(%Compare{op: op} = n, base, ctx) do
     binary(n, base, ctx, fn l, r -> IR.node(Map.fetch!(@compare, op), [l, r], "boolean") end)
   end
 
-  defp c(%Logical{op: op} = n, base, ctx),
+  defp lower(%Logical{op: op} = n, base, ctx),
     do: binary(n, base, ctx, fn l, r -> IR.node(op, flatten(op, [l, r]), "boolean") end)
 
-  defp c(%Arithmetic{op: op} = n, base, ctx),
+  defp lower(%Arithmetic{op: op} = n, base, ctx),
     do: binary(n, base, ctx, fn l, r -> IR.node(Map.fetch!(@arithmetic, op), [l, r], n.type) end)
 
-  defp c(%Check{op: op} = n, base, ctx) do
+  defp lower(%Check{op: op} = n, base, ctx) do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
     {check(op, subject), path, diags}
   end
 
-  defp c(%ListOp{op: :sorted} = n, base, ctx) do
+  defp lower(%ListOp{op: :sorted} = n, base, ctx) do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
 
@@ -264,7 +282,7 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp c(%ListOp{} = n, base, ctx) do
+  defp lower(%ListOp{} = n, base, ctx) do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
 
@@ -281,7 +299,7 @@ defmodule BubbleEx.Expression.Compiler do
     {list_op(n.op, subject, arg, n.type), path, diags ++ more}
   end
 
-  defp c(%Filter{} = n, base, ctx) do
+  defp lower(%Filter{} = n, base, ctx) do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
     pbase = path ++ [key(n, :properties)]
@@ -300,7 +318,7 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp c(%Fallback{} = n, base, ctx) do
+  defp lower(%Fallback{} = n, base, ctx) do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
     {fallback, _p, more} = c(n.fallback, path ++ [key(n, :args)], ctx)
@@ -683,18 +701,33 @@ defmodule BubbleEx.Expression.Compiler do
   # --- helpers ---------------------------------------------------------------------------
 
   # Expressions name an option by its stored key (`db_value`, e.g.
-  # "archived"); a value without one is keyed by its Bubble ID.
+  # "retired"). Naming it by its Bubble ID instead is not verified against
+  # Bubble: it is accepted and diagnosed.
   defp option_key(%Model{} = model, set, value) do
-    with %OptionSet{values: values} <- Model.option_set(model, set),
-         %ModelOptionValue{key: key} <-
-           Enum.find(values, &(&1.key == value)) || Enum.find(values, &(&1.id == value)) do
-      key
-    else
+    values =
+      case Model.option_set(model, set) do
+        %OptionSet{values: values} -> values
+        nil -> []
+      end
+
+    case {Enum.find(values, &(&1.key == value)), Enum.find(values, &(&1.id == value))} do
+      {%ModelOptionValue{key: key}, _} -> {:key, key}
+      {nil, %ModelOptionValue{key: key}} -> {:id, key}
       _ -> nil
     end
   end
 
   defp option_key(_model, _set, _value), do: nil
+
+  defp option_by_id(path, set, value, key) do
+    Diagnostic.new(
+      :expr_option_by_id,
+      path,
+      "option #{inspect(value)} of #{inspect(set)} is named by its Bubble ID, not its stored key; read as #{inspect(key)}",
+      subject: %{option_set: set},
+      details: %{value: value, key: key}
+    )
+  end
 
   defp strip_option("option." <> set), do: set
   defp strip_option(set), do: set

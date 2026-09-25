@@ -1,0 +1,544 @@
+{
+  "_comment": "Hand-authored expectations for the privacy conditions of test/support/expression/app.json (all data invented). Records use the Ash attribute names of the fixture's project; IDs starting with 'gone-' name records that do not exist (dangling references). For each rule and actor (logged out, u1, u2, u3), the IDs of the records the condition selects. Checked by BubbleEx.Target.ElixirTest (Elixir backend) and by scripts/ash_compile_check/runtime.exs (Ash backend: PostgreSQL and in-memory).",
+  "cases": [
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1"
+        ],
+        "u2": [
+          "k3"
+        ],
+        "u3": [
+          "k4"
+        ]
+      },
+      "rule": "a_owner_",
+      "type": "task",
+      "why": "creator is the actor; a logged-out actor never matches a task without a creator"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k5"
+        ],
+        "u2": [],
+        "u3": []
+      },
+      "rule": "b_team_",
+      "type": "task",
+      "why": "u2's membership is dangling and u3's has no team: an empty actor side never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u2": [],
+        "u3": []
+      },
+      "rule": "c_admin_",
+      "type": "task",
+      "why": "admin is yes; empty admin is not yes"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k4"
+        ],
+        "u2": [
+          "k1",
+          "k4"
+        ],
+        "u3": [
+          "k1",
+          "k4"
+        ]
+      },
+      "rule": "d_public_",
+      "type": "task",
+      "why": "logged in and public"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k4"
+        ],
+        "u2": [
+          "k1"
+        ],
+        "u3": [
+          "k4"
+        ]
+      },
+      "rule": "e_access_",
+      "type": "task",
+      "why": "access contains the actor"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k1",
+          "k4"
+        ],
+        "u1": [
+          "k1",
+          "k4"
+        ],
+        "u2": [
+          "k1",
+          "k4"
+        ],
+        "u3": [
+          "k1",
+          "k4"
+        ]
+      },
+      "rule": "f_done_",
+      "type": "task",
+      "why": "status is done, whoever reads"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u2": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u3": []
+      },
+      "rule": "g_active_",
+      "type": "task",
+      "why": "u1's tier is gold; u2 has no tier (denied) but is a coach; u3 is retired and not a coach"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k4"
+        ],
+        "u2": [
+          "k5"
+        ],
+        "u3": []
+      },
+      "rule": "h_parent_",
+      "type": "task",
+      "why": "the parent's assignee is the actor; k2's parent is dangling"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k2",
+          "k3"
+        ],
+        "u1": [
+          "k2",
+          "k3"
+        ],
+        "u2": [
+          "k2",
+          "k3"
+        ],
+        "u3": [
+          "k2",
+          "k3"
+        ]
+      },
+      "rule": "i_unfiled_",
+      "type": "task",
+      "why": "team is empty: nil, or a dangling reference (k3)"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u2": [],
+        "u3": []
+      },
+      "rule": "j_feature_",
+      "type": "task",
+      "why": "the actor's membership's team has early access (only u1)"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k5"
+        ],
+        "u2": [],
+        "u3": []
+      },
+      "rule": "k_listed_",
+      "type": "task",
+      "why": "the actor's teams contain the task's team; nil and empty lists contain nothing"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k4"
+        ],
+        "u1": [
+          "k4"
+        ],
+        "u2": [
+          "k4"
+        ],
+        "u3": [
+          "k4"
+        ]
+      },
+      "rule": "n_estimate_",
+      "type": "task",
+      "why": "10 > 1 + 1; empty values and dangling parents do not compare"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k2",
+          "k3",
+          "k5"
+        ],
+        "u2": [
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u3": [
+          "k1",
+          "k2",
+          "k3",
+          "k5"
+        ]
+      },
+      "rule": "o_no_access_",
+      "type": "task",
+      "why": "an empty or nil access list contains nobody; logged out never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u2": [
+          "k1",
+          "k2",
+          "k4",
+          "k5"
+        ],
+        "u3": [
+          "k1",
+          "k2",
+          "k3",
+          "k5"
+        ]
+      },
+      "rule": "p_not_owner_",
+      "type": "task",
+      "why": "a task without a creator is not owned by the actor; logged out never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k1",
+          "k4",
+          "k5"
+        ],
+        "u1": [
+          "k1",
+          "k4",
+          "k5"
+        ],
+        "u2": [
+          "k1",
+          "k4",
+          "k5"
+        ],
+        "u3": [
+          "k1",
+          "k4",
+          "k5"
+        ]
+      },
+      "rule": "q_filed_",
+      "type": "task",
+      "why": "team is not empty: a dangling reference (k3) is empty"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k1",
+          "k4"
+        ],
+        "u1": [
+          "k1",
+          "k4"
+        ],
+        "u2": [
+          "k1",
+          "k4"
+        ],
+        "u3": [
+          "k1",
+          "k4"
+        ]
+      },
+      "rule": "r_done_by_id_",
+      "type": "task",
+      "why": "the option named by Bubble ID is done"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k2",
+          "k5"
+        ],
+        "u1": [
+          "k2",
+          "k5"
+        ],
+        "u2": [
+          "k2",
+          "k5"
+        ],
+        "u3": [
+          "k2",
+          "k5"
+        ]
+      },
+      "rule": "s_same_team_",
+      "type": "task",
+      "why": "record vs record: empty is empty (k2: no team, dangling parent), k5 shares k1's team"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "m1"
+        ],
+        "u2": [],
+        "u3": [
+          "m2"
+        ]
+      },
+      "rule": "mine_",
+      "type": "membership",
+      "why": "the actor's active membership; u2's is dangling"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "m1"
+        ],
+        "u2": [],
+        "u3": [
+          "m2"
+        ]
+      },
+      "rule": "account_",
+      "type": "membership",
+      "why": "member is the actor"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "t1"
+        ],
+        "u2": [
+          "t1"
+        ],
+        "u3": []
+      },
+      "rule": "members_",
+      "type": "team",
+      "why": "members contain the actor"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "t1"
+        ],
+        "u2": [],
+        "u3": []
+      },
+      "rule": "listed_",
+      "type": "team",
+      "why": "the actor's teams contain the team"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "u1"
+        ],
+        "u2": [
+          "u2"
+        ],
+        "u3": [
+          "u3"
+        ]
+      },
+      "rule": "me_",
+      "type": "user",
+      "why": "the actor itself"
+    }
+  ],
+  "records": {
+    "membership": [
+      {
+        "id": "m1",
+        "member_id": "u1",
+        "team_id": "t1",
+        "tier": "gold"
+      },
+      {
+        "id": "m2",
+        "member_id": "u3",
+        "team_id": null,
+        "tier": "retired"
+      }
+    ],
+    "task": [
+      {
+        "access": [
+          "u2"
+        ],
+        "assignee_id": "u2",
+        "creator_id": "u1",
+        "estimate": 5.0,
+        "id": "k1",
+        "parent_id": null,
+        "public": true,
+        "status": "done",
+        "team_id": "t1"
+      },
+      {
+        "access": null,
+        "assignee_id": null,
+        "creator_id": null,
+        "estimate": null,
+        "id": "k2",
+        "parent_id": "gone-task",
+        "public": null,
+        "status": null,
+        "team_id": null
+      },
+      {
+        "access": [],
+        "assignee_id": "u1",
+        "creator_id": "u2",
+        "estimate": 1.0,
+        "id": "k3",
+        "parent_id": null,
+        "public": false,
+        "status": "open",
+        "team_id": "gone-team"
+      },
+      {
+        "access": [
+          "u1",
+          "u3"
+        ],
+        "assignee_id": null,
+        "creator_id": "u3",
+        "estimate": 10.0,
+        "id": "k4",
+        "parent_id": "k3",
+        "public": true,
+        "status": "done",
+        "team_id": "t2"
+      },
+      {
+        "access": null,
+        "assignee_id": "u3",
+        "creator_id": null,
+        "estimate": null,
+        "id": "k5",
+        "parent_id": "k1",
+        "public": null,
+        "status": "open",
+        "team_id": "t1"
+      }
+    ],
+    "team": [
+      {
+        "features": [
+          "early_access"
+        ],
+        "id": "t1",
+        "members": [
+          "u1",
+          "u2"
+        ]
+      },
+      {
+        "features": null,
+        "id": "t2",
+        "members": null
+      }
+    ],
+    "user": [
+      {
+        "active_membership_id": "m1",
+        "admin": true,
+        "coach": false,
+        "id": "u1",
+        "teams": [
+          "t1"
+        ]
+      },
+      {
+        "active_membership_id": "gone-m",
+        "admin": null,
+        "coach": true,
+        "id": "u2",
+        "teams": null
+      },
+      {
+        "active_membership_id": "m2",
+        "admin": false,
+        "coach": null,
+        "id": "u3",
+        "teams": []
+      }
+    ]
+  }
+}

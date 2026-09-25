@@ -122,6 +122,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a context value (element, parent group, cell, page thing, previous step, …) whose type the element tree and workflow do not determine; it stays untyped"},
     {:expr_unresolved_accessor, :warning, :unresolved, :model,
      "an accessor that is neither a field of its subject's type, an element state nor a known operator; it stays untyped"},
+    {:expr_option_by_id, :info, :degraded, :model,
+     "an option value named by its Bubble ID rather than its stored key (`db_value`); read as that option, which is not verified against Bubble"},
     {:expr_uncompiled, :warning, :unresolved, :model,
      "an expression construct with no stack-neutral IR (a raw node, an unmodeled operator or constraint, an untyped operand); the expression is not compiled"},
     # target:ash — BubbleEx.Target.Ash.Expressions

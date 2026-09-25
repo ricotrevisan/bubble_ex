@@ -271,6 +271,13 @@ defmodule BubbleEx.Expression.Typing do
 
   defp definition(node, _env), do: node
 
+  # The thing a group holds, as the input that supplies it: a repeating
+  # group's (or table's) current cell, a page's thing, or a group's data.
+  defp group_data(%Tree.Node{type: type} = node) when type in @repeating,
+    do: {:cell_thing, %{"element" => node.id}}
+
+  defp group_data(%Tree.Node{kind: :page} = node), do: {:page_thing, %{"page" => node.id}}
+
   defp group_data(node),
     do: {:element_state, %{"element" => node.id, "state" => "get_group_data"}}
 

@@ -91,7 +91,7 @@
     }
   },
   "element_definitions": {
-    "workspace_card": {
+    "team_card": {
       "custom_states": {
         "open_": {
           "display": "Open",
@@ -120,9 +120,9 @@
         }
       },
       "id": "bU1",
-      "name": "Workspace card",
+      "name": "Team card",
       "properties": {
-        "group_type": "custom.workspace",
+        "group_type": "custom.team",
         "parameters": {
           "0": {
             "btype_id": "text",
@@ -138,28 +138,13 @@
     }
   },
   "option_sets": {
-    "beta": {
-      "display": "Beta",
+    "feature": {
+      "display": "Feature",
       "values": {
         "bBa": {
-          "db_value": "full_access",
-          "display": "Full access",
+          "db_value": "early_access",
+          "display": "Early access",
           "sort_factor": 1
-        }
-      }
-    },
-    "os_role": {
-      "display": "Role kind",
-      "values": {
-        "bRa": {
-          "db_value": "admin",
-          "display": "Admin",
-          "sort_factor": 1
-        },
-        "bRb": {
-          "db_value": "archived",
-          "display": "Archived",
-          "sort_factor": 2
         }
       }
     },
@@ -189,6 +174,21 @@
           "display": "Done",
           "sort_factor": 2,
           "urgent": true
+        }
+      }
+    },
+    "tier": {
+      "display": "Tier",
+      "values": {
+        "bRa": {
+          "db_value": "gold",
+          "display": "Gold",
+          "sort_factor": 1
+        },
+        "bRb": {
+          "db_value": "retired",
+          "display": "Retired",
+          "sort_factor": 2
         }
       }
     }
@@ -761,27 +761,27 @@
         }
       }
     },
-    "role": {
-      "display": "Role",
+    "membership": {
+      "display": "Membership",
       "fields": {
-        "account_user": {
-          "display": "Account",
+        "member_user": {
+          "display": "Member",
           "value": "user"
         },
-        "os_role_option_os_role": {
-          "display": "Role kind",
-          "value": "option.os_role"
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
         },
-        "workspace_custom_workspace": {
-          "display": "Workspace",
-          "value": "custom.workspace"
+        "tier_option_tier": {
+          "display": "Tier",
+          "value": "option.tier"
         }
       },
       "privacy_role": {
         "account_": {
           "condition": {
             "next": {
-              "name": "account_user",
+              "name": "member_user",
               "next": {
                 "args": {
                   "type": "CurrentUser"
@@ -813,7 +813,7 @@
         "mine_": {
           "condition": {
             "next": {
-              "name": "current_role_custom_role",
+              "name": "active_membership_custom_membership",
               "next": {
                 "args": {
                   "type": "InjectedValue"
@@ -866,13 +866,13 @@
           "display": "Status",
           "value": "option.status"
         },
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
+        },
         "title_text": {
           "display": "Title",
           "value": "text"
-        },
-        "workspace_custom_workspace": {
-          "display": "Workspace",
-          "value": "custom.workspace"
         }
       },
       "privacy_role": {
@@ -899,16 +899,16 @@
             "view_attachments": true
           }
         },
-        "b_workspace_": {
+        "b_team_": {
           "condition": {
             "next": {
-              "name": "current_role_custom_role",
+              "name": "active_membership_custom_membership",
               "next": {
-                "name": "workspace_custom_workspace",
+                "name": "team_custom_team",
                 "next": {
                   "args": {
                     "next": {
-                      "name": "workspace_custom_workspace",
+                      "name": "team_custom_team",
                       "type": "Message"
                     },
                     "type": "InjectedValue"
@@ -922,7 +922,7 @@
             },
             "type": "CurrentUser"
           },
-          "display": "Workspace",
+          "display": "Team",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
@@ -1039,14 +1039,14 @@
         "g_active_": {
           "condition": {
             "next": {
-              "name": "current_role_custom_role",
+              "name": "active_membership_custom_membership",
               "next": {
-                "name": "os_role_option_os_role",
+                "name": "tier_option_tier",
                 "next": {
                   "args": {
                     "properties": {
-                      "option_set": "option.os_role",
-                      "option_value": "archived"
+                      "option_set": "option.tier",
+                      "option_value": "retired"
                     },
                     "type": "OneOptionValue"
                   },
@@ -1074,7 +1074,7 @@
             },
             "type": "CurrentUser"
           },
-          "display": "Active role",
+          "display": "Active tier",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
@@ -1112,7 +1112,7 @@
         "i_unfiled_": {
           "condition": {
             "next": {
-              "name": "workspace_custom_workspace",
+              "name": "team_custom_team",
               "next": {
                 "name": "is_empty",
                 "type": "Message"
@@ -1129,19 +1129,19 @@
             "view_attachments": true
           }
         },
-        "j_beta_": {
+        "j_feature_": {
           "condition": {
             "next": {
-              "name": "current_role_custom_role",
+              "name": "active_membership_custom_membership",
               "next": {
-                "name": "workspace_custom_workspace",
+                "name": "team_custom_team",
                 "next": {
-                  "name": "beta_list_option_beta",
+                  "name": "features_list_option_feature",
                   "next": {
                     "args": {
                       "properties": {
-                        "option_set": "option.beta",
-                        "option_value": "full_access"
+                        "option_set": "option.feature",
+                        "option_value": "early_access"
                       },
                       "type": "OneOptionValue"
                     },
@@ -1156,7 +1156,7 @@
             },
             "type": "CurrentUser"
           },
-          "display": "Beta",
+          "display": "Feature",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
@@ -1167,11 +1167,11 @@
         "k_listed_": {
           "condition": {
             "next": {
-              "name": "workspaces_list_custom_workspace",
+              "name": "teams_list_custom_team",
               "next": {
                 "args": {
                   "next": {
-                    "name": "workspace_custom_workspace",
+                    "name": "team_custom_team",
                     "type": "Message"
                   },
                   "type": "InjectedValue"
@@ -1183,7 +1183,7 @@
             },
             "type": "CurrentUser"
           },
-          "display": "Listed workspace",
+          "display": "Listed team",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
@@ -1194,7 +1194,7 @@
         "l_first_": {
           "condition": {
             "next": {
-              "name": "workspaces_list_custom_workspace",
+              "name": "teams_list_custom_team",
               "next": {
                 "name": "first_element",
                 "next": {
@@ -1212,7 +1212,7 @@
             },
             "type": "CurrentUser"
           },
-          "display": "First workspace (unsupported)",
+          "display": "First team (unsupported)",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
@@ -1280,55 +1280,124 @@
             "view_all": true,
             "view_attachments": true
           }
-        }
-      }
-    },
-    "user": {
-      "display": "User",
-      "fields": {
-        "admin_boolean": {
-          "display": "Admin",
-          "value": "boolean"
         },
-        "coach_boolean": {
-          "display": "Coach",
-          "value": "boolean"
-        },
-        "current_role_custom_role": {
-          "display": "Current role",
-          "value": "custom.role"
-        },
-        "name_text": {
-          "display": "Name",
-          "value": "text"
-        },
-        "workspaces_list_custom_workspace": {
-          "display": "Workspaces",
-          "value": "list.custom.workspace"
-        }
-      },
-      "privacy_role": {
-        "everyone": {
-          "display": "everyone",
-          "permissions": {
-            "auto_binding": false,
-            "search_for": false,
-            "view_all": false,
-            "view_attachments": false
-          }
-        },
-        "me_": {
+        "o_no_access_": {
           "condition": {
             "next": {
-              "args": {
-                "type": "CurrentUser"
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_contains",
+                "type": "Message"
               },
-              "name": "equals",
               "type": "Message"
             },
             "type": "InjectedValue"
           },
-          "display": "Me",
+          "display": "No access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "p_not_owner_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Not owner",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "q_filed_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "name": "is_not_empty",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Filed",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "r_done_by_id_": {
+          "condition": {
+            "next": {
+              "name": "status_option_status",
+              "next": {
+                "args": {
+                  "properties": {
+                    "option_set": "option.status",
+                    "option_value": "bSb"
+                  },
+                  "type": "OneOptionValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Done (option by Bubble ID)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "s_same_team_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "parent_custom_task",
+                    "next": {
+                      "name": "team_custom_team",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Same team as parent",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
@@ -1338,12 +1407,12 @@
         }
       }
     },
-    "workspace": {
-      "display": "Workspace",
+    "team": {
+      "display": "Team",
       "fields": {
-        "beta_list_option_beta": {
-          "display": "Beta features",
-          "value": "list.option.beta"
+        "features_list_option_feature": {
+          "display": "Features",
+          "value": "list.option.feature"
         },
         "members_list_user": {
           "display": "Members",
@@ -1367,7 +1436,7 @@
         "listed_": {
           "condition": {
             "next": {
-              "name": "workspaces_list_custom_workspace",
+              "name": "teams_list_custom_team",
               "next": {
                 "args": {
                   "type": "InjectedValue"
@@ -1403,6 +1472,61 @@
             "type": "InjectedValue"
           },
           "display": "Members",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "active_membership_custom_membership": {
+          "display": "Active membership",
+          "value": "custom.membership"
+        },
+        "admin_boolean": {
+          "display": "Admin",
+          "value": "boolean"
+        },
+        "coach_boolean": {
+          "display": "Coach",
+          "value": "boolean"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "teams_list_custom_team": {
+          "display": "Teams",
+          "value": "list.custom.team"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "me_": {
+          "condition": {
+            "next": {
+              "args": {
+                "type": "CurrentUser"
+              },
+              "name": "equals",
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Me",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
