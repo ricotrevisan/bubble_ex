@@ -1,0 +1,21 @@
+{
+  "_id": "synthetic-target-valueless",
+  "option_sets": {
+    "tier": {
+      "attributes": {
+        "limit": {"display": "Limit", "value": "number"},
+        "badge": {"display": "Badge", "value": "text"}
+      },
+      "display": "Tier",
+      "values": {}
+    }
+  },
+  "user_types": {
+    "plan": {
+      "display": "Plan",
+      "fields": {
+        "tier_option_tier": {"display": "Tier", "value": "option.tier"}
+      }
+    }
+  }
+}

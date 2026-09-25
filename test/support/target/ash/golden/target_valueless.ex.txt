@@ -6,74 +6,11 @@
 #   mix igniter.new my_app --install ash,ash_postgres
 # then add these modules and run `mix ash.codegen --dev` while iterating.
 
-defmodule MyApp.Enums.Channel do
-  use Ash.Type.Enum, values: [{"email", [label: "Email"]}, {"sms", [label: "SMS"]}]
-end
-
-defmodule MyApp.Enums.Orphan do
+defmodule MyApp.Enums.Tier do
   use Ash.Type.Enum, values: []
 
   @doc "The attribute values of `value`. This option set has no values, so it always raises."
   def attributes(value), do: raise(KeyError, key: value, term: %{})
-end
-
-defmodule MyApp.Enums.Priority do
-  use Ash.Type.Enum,
-    values: [
-      {"critical", [label: "Critical"]},
-      {"high", [label: "High"]},
-      {"medium", [label: "Medium"]},
-      {"low", [label: "Low"]},
-      {"bAf", [label: "Unkeyed"]},
-      {"stale", [label: "Stale"]}
-    ]
-
-  @attributes %{
-    "critical" => %{
-      channels: nil,
-      color: nil,
-      escalates_to: nil,
-      icon: "//cdn.example.invalid/critical.png",
-      urgent: true,
-      weight: nil
-    },
-    "high" => %{
-      channels: ["email", "sms"],
-      color: "red",
-      escalates_to: "critical",
-      icon: nil,
-      urgent: true,
-      weight: 10
-    },
-    "medium" => %{
-      channels: nil,
-      color: "amber",
-      escalates_to: nil,
-      icon: nil,
-      urgent: nil,
-      weight: 5.5
-    },
-    "low" => %{
-      channels: nil,
-      color: "grey",
-      escalates_to: nil,
-      icon: nil,
-      urgent: false,
-      weight: 1
-    },
-    "bAf" => %{channels: nil, color: nil, escalates_to: nil, icon: nil, urgent: nil, weight: nil},
-    "stale" => %{
-      channels: nil,
-      color: nil,
-      escalates_to: nil,
-      icon: nil,
-      urgent: nil,
-      weight: nil
-    }
-  }
-
-  @doc "The attribute values of `value`."
-  def attributes(value), do: Map.fetch!(@attributes, value)
 end
 
 defmodule MyApp.Privacy.KeyedRead do
@@ -126,14 +63,14 @@ defmodule MyApp.Privacy.KeyedRead do
   defp name(name), do: name
 end
 
-defmodule MyApp.Ticket do
+defmodule MyApp.Plan do
   use Ash.Resource,
     domain: MyApp,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "ticket"
+    table "plan"
     repo MyApp.Repo
 
     references do
@@ -164,12 +101,7 @@ defmodule MyApp.Ticket do
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
 
-    attribute :channels, {:array, MyApp.Enums.Channel},
-      allow_nil?: true,
-      writable?: true,
-      public?: true
-
-    attribute :priority, MyApp.Enums.Priority, allow_nil?: true, writable?: true, public?: true
+    attribute :tier, MyApp.Enums.Tier, allow_nil?: true, writable?: true, public?: true
   end
 
   relationships do
@@ -229,7 +161,7 @@ defmodule MyApp.Ticket do
   field_policies do
     private_fields :hide
 
-    field_policy [:created_date, :modified_date, :creator_id, :slug, :channels, :priority] do
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :tier] do
       authorize_if always()
     end
   end
@@ -359,7 +291,7 @@ defmodule MyApp do
   use Ash.Domain
 
   resources do
-    resource MyApp.Ticket
+    resource MyApp.Plan
     resource MyApp.User
   end
 end
