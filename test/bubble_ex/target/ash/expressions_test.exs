@@ -40,6 +40,14 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     {"task", "q_filed_"} => "expr(exists(team, true))",
     {"task", "r_done_by_id_"} => ~s|expr(status == "done")|,
     {"task", "s_same_team_"} => "expr(is_not_distinct_from(team_id, parent.team_id))",
+    {"task", "t_access_no_"} => "expr(^actor(:id) in access)",
+    {"task", "u_not_owner_no_"} => "expr(creator_id == ^actor(:id))",
+    {"task", "v_public_is_"} =>
+      "expr(public == true and not is_nil(^actor(:id)) and (is_nil(access) or not (^actor(:id) in access)) or public == false and ^actor(:id) in access)",
+    {"task", "w_public_is_not_"} =>
+      "expr(public == true and ^actor(:id) in access or public == false and not is_nil(^actor(:id)) and (is_nil(access) or not (^actor(:id) in access)))",
+    {"task", "x_not_listed_"} =>
+      "expr(not is_nil(^actor(:teams)) and (is_nil(^actor(:teams)) or is_nil(team_id) or not (team_id in ^actor(:teams))))",
     {"user", "me_"} => "expr(id == ^actor(:id))",
     {"membership", "mine_"} => "expr(^actor(:active_membership_id) == id)",
     {"membership", "account_"} => "expr(member_id == ^actor(:id))",
@@ -146,6 +154,30 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
              ~s|expr(status == "done" and (is_nil(^arg(:element_state_bi1_get_data)) or estimate > ^arg(:element_state_bi1_get_data)))|
 
     assert [%{name: "element_state_bi1_get_data", type: "number"}] = expr.arguments
+  end
+
+  test "a condition reading the actor used as a value is rejected", %{project: project} do
+    logged_in = IR.node(:logged_in, [], "boolean")
+    ir = IR.node(:gt, [logged_in, IR.node(:literal, [false], "boolean")], "boolean")
+
+    assert {:ok, %{expr: nil, diagnostics: [%{code: :ash_expr_unsupported} = diag]}} =
+             Expressions.filter(ir, project, resource: "task")
+
+    assert diag.details.constructs == ["a condition reading the current user used as a value"]
+  end
+
+  test "negation never flips an actor guard", %{privacy: privacy, project: project} do
+    for %{expr: %Expr{}, type: "task", rule: rule} <- privacy,
+        rule in ["o_no_access_", "p_not_owner_", "x_not_listed_"] do
+      condition =
+        Enum.find(BubbleEx.Model.data_type(model(), "task").rules, &(&1.id == rule)).condition
+
+      env = rule_env("task")
+      {:ok, %{ir: ir}} = Compiler.compile(condition, env)
+      negated = IR.node(:not, [ir], "boolean")
+      {:ok, %{expr: e}} = Expressions.filter(negated, project, resource: "task")
+      refute Source.expr(e) =~ "not (not is_nil(^actor", rule
+    end
   end
 
   test "an option the enum lacks is unmapped", %{project: project} do

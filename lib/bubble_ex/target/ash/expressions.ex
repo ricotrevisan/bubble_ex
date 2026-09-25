@@ -40,8 +40,15 @@ defmodule BubbleEx.Target.Ash.Expressions do
   ## Empty values and the actor
 
   A filter never matches because the actor is logged out or lacks a value
-  it reads (fail-safe): every comparison with an actor-side operand denies
-  when that operand is empty. Between two record-side values, `is` keeps
+  it reads (fail-safe): every atomic comparison with an actor-side operand
+  is false when that operand is empty, in either polarity. `not`, `is no`
+  and `is not` are pushed down to the atoms (De Morgan), so a guard is
+  never negated; `a is b` between yes/no values of which one is a
+  condition reading the actor is expanded to `(a and b) or (not a and not
+  b)` (a stored yes/no side is `== true` / `== false`: empty is neither).
+  A condition reading the actor used as any other value is rejected. The
+  one exception is `is empty` on an actor-side value, which tests the
+  emptiness itself: it only requires a logged-in actor. Between two record-side values, `is` keeps
   what we take to be Bubble's rule, that an empty value equals an empty
   value; that rule is **not verified against Bubble** (pending the replay
   tests of WTF-384/385), and neither is Bubble's treatment of a dangling
@@ -287,7 +294,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   # Every node is compiled `within` its source path, so diagnostics point at
   # the part that does not compile.
-  defp pred(%IR{} = ir, st), do: within(ir, st, &pred_/2)
+  defp pred(ir, st), do: pred(ir, st, true)
+  defp pred(%IR{} = ir, st, positive), do: within(ir, st, &pred_(&1, &2, positive))
   defp value(%IR{} = ir, st), do: within(ir, st, &value_/2)
 
   defp within(ir, st, fun) do
@@ -296,65 +304,151 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {node, %{st | at: outer}}
   end
 
-  # A condition: predicates compile as themselves, other yes/no values as `x == true`.
-  defp pred_(%IR{op: op} = ir, st) when op in [:and, :or] do
-    {nodes, st} = Enum.map_reduce(ir.args, st, &pred/2)
-    {all_ok({op, nodes}, nodes), st}
+  # A condition, compiled for `positive` or negated polarity. Negation is
+  # pushed down to the atomic comparisons (De Morgan), so an actor guard is
+  # never negated: an atom that reads an empty actor-side value is false in
+  # either polarity (fail-safe).
+  defp pred_(%IR{op: op, args: args}, st, positive) when op in [:and, :or] do
+    {nodes, st} = Enum.map_reduce(args, st, &pred(&1, &2, positive))
+    {all_ok({if(positive, do: op, else: dual(op)), nodes}, nodes), st}
   end
 
-  # `list doesn't contain item`: an empty list contains nothing, so it
-  # matches; `not (x in list)` alone would be NULL for a nil list or item.
-  # Fail-safe for the actor: a logged-out actor, or an actor-side item that
-  # is empty, never matches.
-  defp pred_(%IR{op: :not, args: [%IR{op: :member, args: [list, item]}]}, st) do
+  defp pred_(%IR{op: :not, args: [x]}, st, positive), do: pred(x, st, not positive)
+
+  defp pred_(%IR{op: :literal, args: [b]}, st, positive) when is_boolean(b),
+    do: {{:value, b == positive}, st}
+
+  defp pred_(%IR{op: op, args: [l, r]}, st, positive) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) -> pred(empty_check(op, r), st, positive)
+      match?(%IR{op: :empty}, r) -> pred(empty_check(op, l), st, positive)
+      condition_is_literal?(l, r) -> pred(r, st, literal_polarity(op, l, positive))
+      condition_is_literal?(r, l) -> pred(l, st, literal_polarity(op, r, positive))
+      boolean_equality?(l, r) -> boolean_equality(op, l, r, st, positive)
+      true -> atom(%IR{op: op, args: [l, r]}, st, positive)
+    end
+  end
+
+  defp pred_(ir, st, positive), do: atom(ir, st, positive)
+
+  defp dual(:and), do: :or
+  defp dual(:or), do: :and
+
+  # `a is b` between yes/no conditions that read the actor: (a and b) or
+  # (not a and not b), each side compiled with its own guards.
+  # A condition (not a stored yes/no value) and a literal yes/no: `c is yes`
+  # is `c`, `c is no` is `not c`.
+  defp condition_is_literal?(%IR{op: :literal, args: [b]}, other) when is_boolean(b),
+    do: condition?(other)
+
+  defp condition_is_literal?(_literal, _other), do: false
+
+  defp literal_polarity(op, %IR{args: [b]}, positive), do: op == :eq == b == positive
+
+  defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
+  defp condition?(_ir), do: false
+
+  # Two yes/no sides, one a condition, reading the actor: expanded so that
+  # each side keeps its own guards (a stored yes/no side is `== true` /
+  # `== false`: empty is neither).
+  defp boolean_equality?(l, r),
+    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+
+  defp boolean_equality(op, l, r, st, positive) do
+    {[lp, ln, rp, rn], st} =
+      Enum.map_reduce([{l, true}, {l, false}, {r, true}, {r, false}], st, fn {ir, pol}, st ->
+        side(ir, st, pol)
+      end)
+
+    node =
+      if op == :eq == positive,
+        do: {:or, [{:and, [lp, rp]}, {:and, [ln, rn]}]},
+        else: {:or, [{:and, [lp, rn]}, {:and, [ln, rp]}]}
+
+    {all_ok(node, [lp, ln, rp, rn]), st}
+  end
+
+  defp side(ir, st, pol) do
+    if condition?(ir),
+      do: pred(ir, st, pol),
+      else: atom(IR.node(:eq, [ir, IR.node(:literal, [pol], "boolean")], "boolean"), st, true)
+  end
+
+  # An atomic condition: its core for the requested polarity, guarded so
+  # that every actor-side operand must be non-empty.
+  defp atom(ir, st, positive) do
+    case atom_(ir, st) do
+      {{pos, neg, operands}, st} ->
+        {guard(if(positive, do: pos, else: neg), operands), st}
+
+      {:error, st} ->
+        {:error, st}
+    end
+  end
+
+  defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
+    {[a, b], st} = values([l, r], st)
+    eq = eq_node(a, b, st)
+    neq = neq_node(a, b, st)
+    {all_ok(if(op == :eq, do: {eq, neq, [a, b]}, else: {neq, eq, [a, b]}), [a, b]), st}
+  end
+
+  defp atom_(%IR{op: op, args: [l, r]}, st) when is_map_key(@compare, op) do
+    {[a, b], st} = values([l, r], st)
+    node = {:op, Map.fetch!(@compare, op), a, b}
+    {all_ok({node, {:not, node}, [a, b]}, [a, b]), st}
+  end
+
+  # A reference is empty when the record it names is gone too (there are no
+  # foreign keys, so a deleted record's ID stays behind): check the
+  # relationship, not the ID attribute. On the actor side it tests the
+  # actor's own value, so only a logged-in actor is required.
+  defp atom_(%IR{op: :is_empty, args: [x]}, st) do
+    {node, st} = empty(x, st)
+    logged_in = if reads_actor?(x), do: [actor_id(st)], else: []
+    {all_ok({node, negate(node), logged_in}, [node]), st}
+  end
+
+  defp atom_(%IR{op: :logged_in}, st) do
+    missing = {:call, "is_nil", [actor_id(st)]}
+    {{{:not, missing}, missing, []}, st}
+  end
+
+  # `list contains item` is `item in list`. Its negation: an empty list (and
+  # an empty record-side item) contains nothing, so it matches; `not (x in
+  # list)` alone would be NULL.
+  defp atom_(%IR{op: :member, args: [list, item]}, st) do
     if list_type?(list.type) do
       {[l, i], st} = values([list, item], st)
 
       nil_item =
         if nonnull?(i, st) or actor?(i), do: [], else: [{:call, "is_nil", [i]}]
 
-      node = {:or, [{:call, "is_nil", [l]} | nil_item] ++ [{:not, {:op, "in", i, l}}]}
-      # An actor-side list may be empty for a logged-in actor; only a
-      # logged-out actor is denied.
-      logged_in = if actor?(l), do: [{:actor, [st.lookup.types["user"].pk]}], else: []
-      {all_ok(guard(node, logged_in ++ [i], st), [l, i]), st}
+      member = {:op, "in", i, l}
+      absent = {:or, [{:call, "is_nil", [l]} | nil_item] ++ [{:not, member}]}
+      {all_ok({member, absent, [l, i]}, [l, i]), st}
     else
       unsupported(st, {"contains on a value that is not a list", nil})
     end
   end
 
-  # `not x` for a yes/no value that may be empty: empty is not yes.
-  defp pred_(%IR{op: :not, args: [%IR{op: op, type: "boolean"} = x]}, st)
-       when op in @boolean_values do
-    {v, st} = value(x, st)
-    node = ok(v, &{:call, "is_distinct_from", [&1, {:value, true}]})
-    {ok(node, &guard(&1, [v], st)), st}
+  defp atom_(%IR{op: :text_contains, args: [text, part]}, st) do
+    {[t, p], st} = values([text, part], st)
+    contains = {:call, "contains", [t, p]}
+    absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
+    {all_ok({contains, absent, [t, p]}, [t, p]), st}
   end
 
-  defp pred_(%IR{op: :not, args: [x]}, st) do
-    {node, st} = pred(x, st)
-    {ok(node, &negate/1), st}
+  # A yes/no value: `x == true`; negated, empty is not yes.
+  defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
+    {v, st} = value(ir, st)
+    yes = {:op, "==", v, {:value, true}}
+    {all_ok({yes, {:call, "is_distinct_from", [v, {:value, true}]}, [v]}, [v]), st}
   end
 
-  defp pred_(%IR{op: :literal, args: [b]}, st) when is_boolean(b), do: {{:value, b}, st}
+  defp atom_(%IR{op: op}, st), do: unsupported(st, {"the condition #{inspect(op)}", nil})
 
-  defp pred_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
-    case {l, r} do
-      {%IR{op: :empty}, x} -> pred(empty_check(op, x), st)
-      {x, %IR{op: :empty}} -> pred(empty_check(op, x), st)
-      _ -> equality(op, l, r, st)
-    end
-  end
-
-  defp pred_(%IR{op: op, args: [l, r]}, st) when is_map_key(@compare, op) do
-    {[a, b], st} = values([l, r], st)
-    {all_ok({:op, Map.fetch!(@compare, op), a, b}, [a, b]), st}
-  end
-
-  # A reference is empty when the record it names is gone too (there are no
-  # foreign keys, so a deleted record's ID stays behind): check the
-  # relationship, not the ID attribute.
-  defp pred_(%IR{op: :is_empty, args: [%IR{op: :field} = x]} = ir, st) do
+  defp empty(%IR{op: :field} = x, st) do
     case {classify(x.type), path(x, [], st, :relationship)} do
       {%Type{kind: :ref, cardinality: :one}, {{:related, rels, rel}, st}} ->
         {{:not, {:call, "exists", [{:ref, rels, rel}, {:value, true}]}}, st}
@@ -363,39 +457,13 @@ defmodule BubbleEx.Target.Ash.Expressions do
         {{:call, "is_nil", [{:actor, path}]}, %{st | loads: MapSet.put(st.loads, path)}}
 
       _ ->
-        empty_value(ir, st)
+        empty_value(x, st)
     end
   end
 
-  defp pred_(%IR{op: :is_empty} = ir, st), do: empty_value(ir, st)
+  defp empty(x, st), do: empty_value(x, st)
 
-  defp pred_(%IR{op: :logged_in}, st) do
-    {node, st} = value(IR.node(:current_user, [], "user"), st)
-    {ok(node, &{:not, {:call, "is_nil", [&1]}}), st}
-  end
-
-  defp pred_(%IR{op: :member, args: [list, item]}, st) do
-    if list_type?(list.type) do
-      {[l, i], st} = values([list, item], st)
-      {all_ok({:op, "in", i, l}, [l, i]), st}
-    else
-      unsupported(st, {"contains on a value that is not a list", nil})
-    end
-  end
-
-  defp pred_(%IR{op: :text_contains, args: [text, part]}, st) do
-    {[t, p], st} = values([text, part], st)
-    {all_ok({:call, "contains", [t, p]}, [t, p]), st}
-  end
-
-  defp pred_(%IR{op: op, type: "boolean"} = ir, st) when op in @boolean_values do
-    {node, st} = value(ir, st)
-    {ok(node, &{:op, "==", &1, {:value, true}}), st}
-  end
-
-  defp pred_(%IR{op: op}, st), do: unsupported(st, {"the condition #{inspect(op)}", nil})
-
-  defp empty_value(%IR{args: [x]}, st) do
+  defp empty_value(x, st) do
     {node, st} = value(x, st)
 
     check =
@@ -413,6 +481,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {ok(node, check), st}
   end
 
+  defp actor_id(st), do: {:actor, [st.lookup.types["user"].pk]}
+
+  defp negate(:error), do: :error
   defp negate({:not, node}), do: node
   defp negate(node), do: {:not, node}
 
@@ -420,38 +491,48 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp empty_check(:neq, x), do: IR.node(:not, [IR.node(:is_empty, [x], "boolean")], "boolean")
 
   # `is` / `is not`. A side that cannot be empty (a literal, an option, the
-  # record's own ID) makes `==` exact. A side read from the actor must deny
-  # when it is empty (fail-safe: a logged-out actor, or an actor without
-  # the value, never matches), so `is` is `==` and `is not` is guarded.
-  # Only between two record-side values does Bubble's "empty is empty"
-  # (not verified against Bubble; WTF-384/385) give `is_not_distinct_from`.
-  defp equality(op, l, r, st) do
-    {[a, b], st} = values([l, r], st)
-    sides = {nonnull?(a, st), nonnull?(b, st), actor?(a) or actor?(b)}
-    {all_ok(equality_node(op, a, b, sides, st), [a, b]), st}
+  # record's own ID) or that is read from the actor makes `==`, which is
+  # false when a side is empty. Only between two record-side values does
+  # Bubble's "empty is empty" (not verified against Bubble; WTF-384/385)
+  # give `is_not_distinct_from`.
+  defp eq_node(a, b, st) do
+    if nonnull?(a, st) or nonnull?(b, st) or actor?(a) or actor?(b),
+      do: {:op, "==", a, b},
+      else: {:call, "is_not_distinct_from", [a, b]}
   end
 
-  defp equality_node(:eq, a, b, {false, false, false}, _st),
-    do: {:call, "is_not_distinct_from", [a, b]}
+  defp neq_node(a, b, st) do
+    if nonnull?(a, st) and nonnull?(b, st),
+      do: {:op, "!=", a, b},
+      else: {:call, "is_distinct_from", [a, b]}
+  end
 
-  defp equality_node(:eq, a, b, _sides, _st), do: {:op, "==", a, b}
-  defp equality_node(:neq, a, b, {true, true, _}, _st), do: {:op, "!=", a, b}
+  # `node`, required to have every actor-side operand non-empty. A core that
+  # is already NULL (so false) for an empty operand (`==`, `in`, ordering)
+  # needs no guard.
+  @null_false ["==", "in", ">", "<", ">=", "<="]
+  defp guard(:error, _operands), do: :error
+  defp guard({:op, op, _, _} = node, _operands) when op in @null_false, do: node
 
-  defp equality_node(:neq, a, b, _sides, st),
-    do: guard({:call, "is_distinct_from", [a, b]}, [a, b], st)
-
-  # `node`, required to have every actor-side operand non-empty.
-  defp guard(node, operands, _st) do
+  defp guard(node, operands) do
     case for(operand <- operands, operand != :error, actor?(operand), uniq: true, do: operand) do
       [] -> node
       actor -> {:and, Enum.map(actor, &{:not, {:call, "is_nil", [&1]}}) ++ [node]}
     end
   end
 
+  # Whether a compiled value, or an IR subtree, reads the actor.
   defp actor?({:actor, _}), do: true
   defp actor?({:op, _, l, r}), do: actor?(l) or actor?(r)
   defp actor?({:call, _, args}), do: Enum.any?(args, &actor?/1)
+  defp actor?({op, nodes}) when op in [:and, :or], do: Enum.any?(nodes, &actor?/1)
+  defp actor?({:not, node}), do: actor?(node)
   defp actor?(_), do: false
+
+  defp reads_actor?(%IR{op: op}) when op in [:current_user, :logged_in], do: true
+  defp reads_actor?(%IR{args: args}), do: Enum.any?(args, &reads_actor?/1)
+  defp reads_actor?(list) when is_list(list), do: Enum.any?(list, &reads_actor?/1)
+  defp reads_actor?(_), do: false
 
   defp nonnull?({:value, v}, _st), do: not is_nil(v)
   defp nonnull?({:ref, [], attr}, st), do: attr == st.lookup.types[st.resource].pk
@@ -507,9 +588,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {ok(node, &{:call, "string_downcase", [&1]}), st}
   end
 
-  # A predicate used as a value (e.g. compared with yes/no).
-  defp value_(%IR{op: op, type: "boolean"} = ir, st) when op not in @boolean_values,
-    do: pred(ir, st)
+  # A condition used as a value (compared with another value that reads no
+  # actor). One that reads the actor has no guard that survives being used
+  # as a value, so it is rejected.
+  defp value_(%IR{op: op, type: "boolean"} = ir, st) when op not in @boolean_values do
+    if reads_actor?(ir),
+      do: unsupported(st, {"a condition reading the current user used as a value", nil}),
+      else: pred(ir, st)
+  end
 
   defp value_(%IR{op: op}, st), do: unsupported(st, {"the value #{inspect(op)}", nil})
 

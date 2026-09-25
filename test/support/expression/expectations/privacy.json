@@ -349,6 +349,98 @@
       "expected": {
         "logged_out": [],
         "u1": [
+          "k4"
+        ],
+        "u2": [
+          "k1"
+        ],
+        "u3": [
+          "k4"
+        ]
+      },
+      "rule": "t_access_no_",
+      "type": "task",
+      "why": "(access doesn't contain the actor) is no: the actor is in access; logged out never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1"
+        ],
+        "u2": [
+          "k3"
+        ],
+        "u3": [
+          "k4"
+        ]
+      },
+      "rule": "u_not_owner_no_",
+      "type": "task",
+      "why": "(creator is not the actor) is no: the actor created it; logged out never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1"
+        ],
+        "u2": [
+          "k4"
+        ],
+        "u3": [
+          "k1"
+        ]
+      },
+      "rule": "v_public_is_",
+      "type": "task",
+      "why": "public is (access doesn't contain the actor): yes-and-absent or no-and-present; empty public is neither; logged out never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k3",
+          "k4"
+        ],
+        "u2": [
+          "k1",
+          "k3"
+        ],
+        "u3": [
+          "k3",
+          "k4"
+        ]
+      },
+      "rule": "w_public_is_not_",
+      "type": "task",
+      "why": "the negation of v_public_is_ (empty public still matches neither)"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k2",
+          "k3",
+          "k4"
+        ],
+        "u2": [],
+        "u3": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ]
+      },
+      "rule": "x_not_listed_",
+      "type": "task",
+      "why": "the actor's teams don't contain the task's team: an empty actor-side list denies (u2's is nil), an empty but present one contains nothing (u3)"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
           "m1"
         ],
         "u2": [],

@@ -1404,6 +1404,155 @@
             "view_all": true,
             "view_attachments": true
           }
+        },
+        "t_access_no_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_contains",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "No-access is no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "u_not_owner_no_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "not_equals",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Not-owner is no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "v_public_is_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "access_list_user",
+                    "next": {
+                      "args": {
+                        "type": "CurrentUser"
+                      },
+                      "name": "not_contains",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public is no-access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "w_public_is_not_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "access_list_user",
+                    "next": {
+                      "args": {
+                        "type": "CurrentUser"
+                      },
+                      "name": "not_contains",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public is not no-access",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "x_not_listed_": {
+          "condition": {
+            "next": {
+              "name": "teams_list_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "not_contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Team not listed",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
         }
       }
     },

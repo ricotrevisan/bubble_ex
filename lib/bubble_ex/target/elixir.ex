@@ -23,7 +23,8 @@ defmodule BubbleEx.Target.Elixir do
   `get_in(x, [Access.key(:a), Access.key(:b)])`. Records are compared by
   Bubble ID. Empty values follow `BubbleEx.Target.Ash.Expressions`: a
   comparison with a value read from the current user is false when that
-  value is empty; between other values empty equals empty (not verified
+  value is empty, in either polarity (negation is pushed down to the
+  comparisons); between other values empty equals empty (not verified
   against Bubble); an empty list contains nothing; `not` of an empty yes/no
   is true. `BubbleEx.Target.ElixirTest` holds both backends to one
   hand-authored expectation table.
@@ -77,6 +78,9 @@ defmodule BubbleEx.Target.Elixir do
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
                     is_email abs round to_text to_number)a
   @arithmetic ~w(add sub mul div mod)a
+  @conditions ~w(eq neq gt lt gte lte and or not is_empty logged_in member text_contains
+                 text_contains_words)a
+  @boolean_values [:field, :input, :fallback, :option_attribute, :option_label]
   @compare %{gt: :gt, lt: :lt, gte: :gte, lte: :lte}
 
   @doc """
@@ -224,80 +228,7 @@ defmodule BubbleEx.Target.Elixir do
 
   defp value(%IR{op: :field} = ir, st), do: path(ir, [], :value, st)
 
-  # `is` / `is not`, with the Ash backend's semantics
-  # (`BubbleEx.Target.Ash.Expressions`): a side read from the current user
-  # must not be empty (fail-safe), unless the other side is a value that
-  # cannot be empty; otherwise empty equals empty (Bubble's, unverified).
-  defp value(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
-    {[a, b], st} = Enum.map_reduce([l, r], st, &id_value/2)
-    compare = "(#{a} #{if op == :eq, do: "==", else: "!="} #{b})"
-
-    guarded =
-      if op == :eq and (nonnull?(l) or nonnull?(r)),
-        do: compare,
-        else: guard(compare, [{l, a}, {r, b}])
-
-    {all_ok(guarded, [a, b]), st}
-  end
-
-  defp value(%IR{op: op, args: [l, r]}, st) when is_map_key(@compare, op) do
-    {[a, b], st} = Enum.map_reduce([l, r], st, &value/2)
-    runtime(st, :compare, [inspect(Map.fetch!(@compare, op)), a, b])
-  end
-
-  defp value(%IR{op: op, args: args}, st) when op in [:and, :or] do
-    {parts, st} = Enum.map_reduce(args, st, &condition/2)
-    {all_ok("(" <> Enum.join(parts, " #{op} ") <> ")", parts), st}
-  end
-
-  # `list doesn't contain item`: an empty list contains nothing. Fail-safe
-  # for the current user as in the Ash backend: an empty item read from
-  # them, or a logged-out user reading their own list, never matches.
-  defp value(%IR{op: :not, args: [%IR{op: :member, args: [list, item]} = member]}, st) do
-    {part, st} = value(member, st)
-
-    logged_in =
-      if actor?(list), do: [{IR.node(:current_user, [], "user"), "current_user"}], else: []
-
-    case part do
-      :error ->
-        {:error, st}
-
-      part ->
-        {i, st} = id_value(item, st)
-        {guard("(not #{part})", logged_in ++ [{item, i}]), st}
-    end
-  end
-
-  # `not x` for a yes/no value that may be empty: empty is not yes; an
-  # empty value read from the current user never matches.
-  defp value(%IR{op: :not, args: [%IR{op: op, type: "boolean"} = x]}, st)
-       when op in [:field, :input, :fallback, :option_attribute, :option_label] do
-    {part, st} = value(x, st)
-    {ok(part, &guard("(#{&1} != true)", [{x, &1}])), st}
-  end
-
-  defp value(%IR{op: :not, args: [x]}, st) do
-    {part, st} = condition(x, st)
-    {ok(part, &"not #{&1}"), st}
-  end
-
-  defp value(%IR{op: :is_empty, args: [x]}, st) do
-    {part, st} = value(x, st)
-    runtime(st, :empty?, [part])
-  end
-
-  defp value(%IR{op: :logged_in}, st),
-    do: {"not is_nil(current_user)", bind(st, "current_user", :current_user, "user")}
-
-  defp value(%IR{op: :member, args: [list, item]}, st) do
-    if member_list?(list) do
-      {[l, i], st} = Enum.map_reduce([list, item], st, &id_value/2)
-      {all_ok("Enum.member?(#{l} || [], #{i})", [l, i]), st}
-    else
-      unsupported(st, {"contains on a list of records", nil})
-    end
-  end
+  defp value(%IR{op: op} = ir, st) when op in @conditions, do: cond(ir, st, true)
 
   defp value(%IR{op: :count, args: [list]}, st) do
     {l, st} = value(list, st)
@@ -352,22 +283,155 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp value(%IR{op: op, args: args}, st)
-       when op in [:format_boolean, :truncate, :split, :text_contains, :text_contains_words] do
+       when op in [:format_boolean, :truncate, :split] do
     {parts, st} = Enum.map_reduce(args, st, &value/2)
-    name = if op in [:text_contains, :text_contains_words], do: :"#{op}?", else: op
-    runtime(st, name, parts)
+    runtime(st, op, parts)
   end
 
   defp value(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
 
-  # A yes/no in a condition: predicates are booleans, other values may be nil.
-  defp condition(%IR{op: op} = ir, st)
-       when op in [:field, :input, :fallback, :option_attribute, :option_label] do
-    {part, st} = value(ir, st)
-    {ok(part, &"(#{&1} == true)"), st}
+  # --- conditions ---------------------------------------------------------------------
+
+  # A condition for `positive` or negated polarity, with the Ash backend's
+  # semantics (`BubbleEx.Target.Ash.Expressions`): negation is pushed down to
+  # the atomic comparisons (De Morgan) and every atom that reads an empty
+  # value from the current user is false in either polarity (fail-safe).
+  defp cond(%IR{op: op, args: args}, st, positive) when op in [:and, :or] do
+    {parts, st} = Enum.map_reduce(args, st, &cond(&1, &2, positive))
+    joiner = if positive, do: op, else: dual(op)
+    {all_ok("(" <> Enum.join(parts, " #{joiner} ") <> ")", parts), st}
   end
 
-  defp condition(ir, st), do: value(ir, st)
+  defp cond(%IR{op: :not, args: [x]}, st, positive), do: cond(x, st, not positive)
+
+  defp cond(%IR{op: :literal, args: [b]}, st, positive) when is_boolean(b),
+    do: {inspect(b == positive), st}
+
+  defp cond(%IR{op: op, args: [l, r]}, st, positive) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) -> cond(empty_check(op, r), st, positive)
+      match?(%IR{op: :empty}, r) -> cond(empty_check(op, l), st, positive)
+      condition_is_literal?(l, r) -> cond(r, st, literal_polarity(op, l, positive))
+      condition_is_literal?(r, l) -> cond(l, st, literal_polarity(op, r, positive))
+      boolean_equality?(l, r) -> boolean_equality(op, l, r, st, positive)
+      true -> atom(%IR{op: op, args: [l, r]}, st, positive)
+    end
+  end
+
+  defp cond(ir, st, positive), do: atom(ir, st, positive)
+
+  defp dual(:and), do: :or
+  defp dual(:or), do: :and
+
+  defp empty_check(:eq, x), do: IR.node(:is_empty, [x], "boolean")
+  defp empty_check(:neq, x), do: IR.node(:not, [IR.node(:is_empty, [x], "boolean")], "boolean")
+
+  # A condition (not a stored yes/no value) and a literal yes/no: `c is yes`
+  # is `c`, `c is no` is `not c`.
+  defp condition_is_literal?(%IR{op: :literal, args: [b]}, other) when is_boolean(b),
+    do: condition?(other)
+
+  defp condition_is_literal?(_literal, _other), do: false
+
+  defp literal_polarity(op, %IR{args: [b]}, positive), do: op == :eq == b == positive
+
+  defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
+  defp condition?(_ir), do: false
+
+  # Two yes/no sides, one a condition, reading the actor: expanded so that
+  # each side keeps its own guards (a stored yes/no side is `== true` /
+  # `== false`: empty is neither).
+  defp boolean_equality?(l, r),
+    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+
+  # `a is b` between yes/no conditions that read the current user.
+  defp boolean_equality(op, l, r, st, positive) do
+    {[lp, ln, rp, rn], st} =
+      Enum.map_reduce([{l, true}, {l, false}, {r, true}, {r, false}], st, fn {ir, pol}, st ->
+        side(ir, st, pol)
+      end)
+
+    source =
+      if op == :eq == positive,
+        do: "((#{lp} and #{rp}) or (#{ln} and #{rn}))",
+        else: "((#{lp} and #{rn}) or (#{ln} and #{rp}))"
+
+    {all_ok(source, [lp, ln, rp, rn]), st}
+  end
+
+  defp side(ir, st, pol) do
+    if condition?(ir),
+      do: cond(ir, st, pol),
+      else: atom(IR.node(:eq, [ir, IR.node(:literal, [pol], "boolean")], "boolean"), st, true)
+  end
+
+  defp atom(ir, st, positive) do
+    case atom_(ir, st) do
+      {{pos, neg, operands}, st} -> {guard(if(positive, do: pos, else: neg), operands), st}
+      {:error, st} -> {:error, st}
+    end
+  end
+
+  # `is` / `is not`: records compare by ID; empty equals empty unless a side
+  # is read from the current user (guarded).
+  defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
+    {[a, b], st} = Enum.map_reduce([l, r], st, &id_value/2)
+    {eq, neq} = {"(#{a} == #{b})", "(#{a} != #{b})"}
+    {pos, neg} = if op == :eq, do: {eq, neq}, else: {neq, eq}
+    {all_ok({pos, neg, [{l, a}, {r, b}]}, [a, b]), st}
+  end
+
+  # Ordering: false when either side is empty, in either polarity.
+  defp atom_(%IR{op: op, args: [l, r]}, st) when is_map_key(@compare, op) do
+    {[a, b], st} = Enum.map_reduce([l, r], st, &value/2)
+    {cmp, st} = runtime(st, :compare, [inspect(Map.fetch!(@compare, op)), a, b])
+
+    negated = ok(cmp, &"(not is_nil(#{a}) and not is_nil(#{b}) and not #{&1})")
+    {all_ok({cmp, negated, [{l, a}, {r, b}]}, [a, b, cmp]), st}
+  end
+
+  defp atom_(%IR{op: :is_empty, args: [x]}, st) do
+    {part, st} = value(x, st)
+    {empty, st} = runtime(st, :empty?, [part])
+    user = IR.node(:current_user, [], "user")
+    {_, st} = if reads_actor?(x), do: value(user, st), else: {nil, st}
+    logged_in = if reads_actor?(x), do: [{user, "current_user"}], else: []
+    {all_ok({empty, ok(empty, &"not #{&1}"), logged_in}, [empty]), st}
+  end
+
+  defp atom_(%IR{op: :logged_in}, st) do
+    st = bind(st, "current_user", :current_user, "user")
+    {{"not is_nil(current_user)", "is_nil(current_user)", []}, st}
+  end
+
+  defp atom_(%IR{op: :member, args: [list, item]}, st) do
+    if member_list?(list) do
+      {[l, i], st} = Enum.map_reduce([list, item], st, &id_value/2)
+      member = "Enum.member?(#{l} || [], #{i})"
+      {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [l, i]), st}
+    else
+      unsupported(st, {"contains on a list of records", nil})
+    end
+  end
+
+  defp atom_(%IR{op: op, args: args}, st) when op in [:text_contains, :text_contains_words] do
+    {parts, st} = Enum.map_reduce(args, st, &value/2)
+    {found, st} = runtime(st, :"#{op}?", parts)
+    {all_ok({found, ok(found, &"not #{&1}"), Enum.zip(args, parts)}, [found]), st}
+  end
+
+  # A yes/no value that may be empty: empty is not yes.
+  defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
+    {part, st} = value(ir, st)
+    {all_ok({"(#{part} == true)", "(#{part} != true)", [{ir, part}]}, [part]), st}
+  end
+
+  defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
+
+  defp reads_actor?(%IR{op: op}) when op in [:current_user, :logged_in], do: true
+  defp reads_actor?(%IR{args: args}), do: Enum.any?(args, &reads_actor?/1)
+  defp reads_actor?(list) when is_list(list), do: Enum.any?(list, &reads_actor?/1)
+  defp reads_actor?(_), do: false
 
   defp text(:error, st), do: {:error, st}
   defp text(part, st), do: runtime(st, :text, [part])
@@ -387,6 +451,8 @@ defmodule BubbleEx.Target.Elixir do
 
   # `source`, required to have every operand read from the current user
   # non-empty. `operands` are `{ir, source}` pairs.
+  defp guard(:error, _operands), do: :error
+
   defp guard(source, operands) do
     case for({ir, part} <- operands, actor?(ir), uniq: true, do: "not is_nil(#{part})") do
       [] -> source
@@ -398,10 +464,6 @@ defmodule BubbleEx.Target.Elixir do
   defp actor?(%IR{op: :current_user}), do: true
   defp actor?(%IR{op: :field, args: [base | _]}), do: actor?(base)
   defp actor?(_ir), do: false
-
-  defp nonnull?(%IR{op: :literal, args: [v]}), do: not is_nil(v)
-  defp nonnull?(%IR{op: op}) when op in [:option, :this], do: true
-  defp nonnull?(_ir), do: false
 
   defp record_type?(type), do: match?(%Type{kind: :ref, cardinality: :one}, classify(type))
 
