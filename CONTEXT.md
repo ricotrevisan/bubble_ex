@@ -96,6 +96,22 @@ _Avoid_: Rendered text, binding, Ash expression
 BubbleEx's own report that it could not read, parse, model or render part of an app faithfully (`BubbleEx.Diagnostic`). It has a registered code, a severity (how much the owner should care), an outcome (the data was preserved, degraded or unresolved), a stage, a subject of Bubble IDs and a JSON pointer into the source. It disappears as the tool improves; it is not a statement about the app. In expressions, the unmodeled source is always kept verbatim in a raw node.
 _Avoid_: Error, finding, warning
 
+**Symbol index**:
+A derived, disposable lookup of every symbol (data type, field, option, page, element, workflow, action, API call, privacy rule) in one app version and the reference edges between them, keyed by Bubble IDs only. It answers "who reads or writes this field" by lookup rather than search.
+_Avoid_: Database, model, search index
+
+**Symbol**:
+One named definition in the symbol index, identified by its kind and the Bubble IDs that locate it (e.g. a field by its data type and field ID). Display names are attributes, never identity.
+_Avoid_: Node, entity, name
+
+**Reference**:
+A directed edge from one symbol to another that it reads, writes, calls, types or grants access to.
+_Avoid_: Dependency (the inverse view), link, relationship (reserved for data-schema relationships)
+
+**Execution class**:
+Where a workflow's actions run: client only, server backed, or mixed.
+_Avoid_: Workflow type, backend/frontend
+
 ## Ecosystem
 
 **Plugin**:
