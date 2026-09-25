@@ -116,6 +116,15 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:model_duplicate_option_key, :warning, :degraded, :model,
      "an option value (not deleted) repeating the stable key of an earlier value in the same set"},
 
+    # --- WTF-368 expression compiler -----------------------------------------
+    # :model — BubbleEx.Expression.Typing / Compiler (stack-neutral IR)
+    {:expr_untyped_scope, :warning, :unresolved, :model,
+     "a context value (element, parent group, cell, page thing, previous step, …) whose type the element tree and workflow do not determine; it stays untyped"},
+    {:expr_unresolved_accessor, :warning, :unresolved, :model,
+     "an accessor that is neither a field of its subject's type, an element state nor a known operator; it stays untyped"},
+    {:expr_uncompiled, :warning, :unresolved, :model,
+     "an expression construct with no stack-neutral IR (a raw node, an unmodeled operator or constraint, an untyped operand); the expression is not compiled"},
+
     # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
     {:external_type_unresolved_root, :warning, :degraded, :target,
      "an external field whose type did not resolve; rendered as JSON"},
