@@ -173,33 +173,43 @@ defmodule BubbleEx.Target.Ash.Source do
   defp enum(enum, ctx) do
     values = Enum.map_join(enum.values, ", ", &enum_value/1)
 
-    lookup =
-      if enum.attributes == [] do
-        ""
-      else
-        entries =
-          Enum.map_join(enum.values, ", ", fn value ->
-            fields =
-              Enum.map_join(enum.attributes, ", ", fn attribute ->
-                key(attribute.name) <> literal(Map.get(value.attributes, attribute.name))
-              end)
-
-            literal(value.value) <> " => %{" <> fields <> "}"
-          end)
-
-        """
-
-        @attributes %{#{entries}}
-
-        @doc "The attribute values of `value`."
-        def attributes(value), do: Map.fetch!(@attributes, value)
-        """
-      end
-
     """
     defmodule #{module(enum.module, ctx)} do
       #{moduledoc(enum.description)}use Ash.Type.Enum, values: [#{values}]
-    #{lookup}end
+    #{attribute_lookup(enum)}end
+    """
+  end
+
+  defp attribute_lookup(%{attributes: []}), do: ""
+
+  # An option set with attributes but no values (WTF-394): Map.fetch!/2 on
+  # the empty map is a type warning on Elixir 1.20 (it always raises), so
+  # raise the same KeyError explicitly.
+  defp attribute_lookup(%{values: []}) do
+    """
+
+    @doc "The attribute values of `value`. This option set has no values, so it always raises."
+    def attributes(value), do: raise(KeyError, key: value, term: %{})
+    """
+  end
+
+  defp attribute_lookup(enum) do
+    entries =
+      Enum.map_join(enum.values, ", ", fn value ->
+        fields =
+          Enum.map_join(enum.attributes, ", ", fn attribute ->
+            key(attribute.name) <> literal(Map.get(value.attributes, attribute.name))
+          end)
+
+        literal(value.value) <> " => %{" <> fields <> "}"
+      end)
+
+    """
+
+    @attributes %{#{entries}}
+
+    @doc "The attribute values of `value`."
+    def attributes(value), do: Map.fetch!(@attributes, value)
     """
   end
 

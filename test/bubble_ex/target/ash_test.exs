@@ -25,7 +25,7 @@ defmodule BubbleEx.Target.AshTest do
                 Path.wildcard("test/support/target/ash/*.json"),
                 &{"target_" <> Path.basename(&1, ".json"), &1}
               )
-  @sources ~w(field_types option_sets external_types naming target_names target_defaults target_values target_policies)
+  @sources ~w(field_types option_sets external_types naming target_names target_defaults target_values target_policies target_valueless)
 
   defp load(path), do: path |> File.read!() |> Jason.decode!()
 
@@ -231,6 +231,17 @@ defmodule BubbleEx.Target.AshTest do
                %{value: "open", label: "Open", attributes: %{"color" => "#00aa00"}},
                %{value: "closed", label: "Closed", attributes: %{"color" => "#aa0000"}}
              ] = values
+    end
+
+    test "an option set with attributes but no values raises without an empty-map lookup" do
+      # WTF-394: Map.fetch!/2 on %{} is a type warning on Elixir 1.20.
+      project = project!(fixture("target_valueless"))
+
+      assert [%{module: "Enums.Tier", values: [], attributes: [_, _]}] = project.enums
+
+      {:ok, source} = Source.render(project)
+      assert source =~ "def attributes(value), do: raise(KeyError, key: value, term: %{})"
+      refute source =~ "@attributes %{}"
     end
 
     test "structured values are typed structs from the Model's parts; bounds stay unverified",
