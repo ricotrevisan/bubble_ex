@@ -98,8 +98,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
   Compiles the condition of every privacy rule in `model` against
   `project` (`BubbleEx.Target.Ash.map/3` of the same Model). Returns one
   entry per rule with a condition, in Model order: `%{type, rule, expr,
-  diagnostics}`, where `diagnostics` holds the expression's typing and IR
-  diagnostics (stage `:model`) and the target's. Rules of deleted or
+  ir, diagnostics}`, where `ir` is the compiled `BubbleEx.Expression.IR`
+  (nil when it does not compile) and `diagnostics` holds the expression's
+  typing and IR diagnostics (stage `:model`) and the target's. Rules of deleted or
   unmapped types are included with `expr: nil` and a diagnostic.
   """
   @spec privacy(Model.t(), Project.t()) :: {:ok, [map()]} | {:error, Error.t()}
@@ -144,6 +145,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
       %{
         type: type.id,
         rule: rule.id,
+        ir: compiled.ir,
         expr: expr,
         diagnostics: Diagnostic.normalize(compiled.diagnostics ++ diags)
       }

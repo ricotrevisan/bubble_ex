@@ -1,6 +1,30 @@
 {
+  "actor_loads": [],
+  "authorization_bypasses": [],
   "bubble_id": "synthetic-live",
   "diagnostics": [
+    {
+      "code": "ash_policies_unverified",
+      "details": {},
+      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {}
+    },
+    {
+      "code": "ash_privacy_rules_unavailable",
+      "details": {},
+      "message": "the source does not include order's privacy rules; every read is denied",
+      "outcome": "degraded",
+      "path": "/user_types/order",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "order"
+      }
+    },
     {
       "code": "ash_unresolved_reference",
       "details": {
@@ -18,6 +42,18 @@
       "subject": {
         "field": "items_list_custom_item",
         "type": "order"
+      }
+    },
+    {
+      "code": "ash_privacy_rules_unavailable",
+      "details": {},
+      "message": "the source does not include user's privacy rules; every read is denied",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "user"
       }
     },
     {
@@ -142,6 +178,7 @@
     },
     "version": 1
   },
+  "policies_verified": false,
   "resources": [
     {
       "actions": [
@@ -352,10 +389,87 @@
         }
       ],
       "bubble_name": "Order",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "buyer_id",
+            "items",
+            "kind"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "Order",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "forbid_if",
+            "source": {},
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "unavailable"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -572,10 +686,86 @@
         }
       ],
       "bubble_name": "User",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "email",
+            "name"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "User",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "forbid_if",
+            "source": {},
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "unavailable"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -601,7 +791,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "typed_structs": [],
   "types": []
 }

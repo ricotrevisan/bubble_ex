@@ -85,7 +85,10 @@ defmodule MyApp.External.Node do
 end
 
 defmodule MyApp.Shipment do
-  use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table "shipment"
@@ -147,11 +150,54 @@ defmodule MyApp.Shipment do
 
   actions do
     defaults [:read, :destroy, {:create, :*}, {:update, :*}]
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount.
+  policies do
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if always()
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if always()
+    end
+  end
+
+  field_policies do
+    field_policy [
+      :created_date,
+      :modified_date,
+      :creator_id,
+      :slug,
+      :address,
+      :blank,
+      :invalid,
+      :invalid_list,
+      :missing,
+      :nowhere,
+      :pings,
+      :tree
+    ] do
+      authorize_if always()
+    end
   end
 end
 
 defmodule MyApp.User do
-  use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table "user"
@@ -205,6 +251,33 @@ defmodule MyApp.User do
 
   actions do
     defaults [:read, :destroy, {:create, :*}, {:update, :*}]
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount.
+  policies do
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      forbid_if always()
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      forbid_if always()
+    end
+  end
+
+  field_policies do
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :email] do
+      forbid_if always()
+    end
   end
 end
 
@@ -214,5 +287,40 @@ defmodule MyApp do
   resources do
     resource MyApp.Shipment
     resource MyApp.User
+  end
+end
+
+defmodule MyApp.Privacy do
+  @moduledoc """
+  Privacy rules compiled from Bubble to Ash policies by bubble_ex (WTF-356).
+
+  NOT VERIFIED AGAINST BUBBLE. The policies rest on Bubble semantics not
+  yet confirmed by replaying the app (WTF-384/385): do not ship them to
+  users until they are. See `verified?/0`.
+  """
+
+  @doc "Whether the generated policies are verified against Bubble: not yet."
+  def verified?, do: false
+
+  @doc "The relationships of the actor that the policies read."
+  def actor_loads, do: []
+
+  @doc "The resource of the actor (Bubble's User)."
+  def actor_resource, do: MyApp.User
+
+  @doc """
+  Reads the actor (a user or a user ID) afresh with `actor_loads/0`,
+  bypassing authorization: the policies must see its current values.
+  Call it on every request and LiveView mount, never reuse a stored
+  actor. Returns nil (logged out) for nil or an unknown ID.
+  """
+  def load_actor(nil), do: nil
+  def load_actor(%{id: id}), do: load_actor(id)
+
+  def load_actor(id) when is_binary(id) do
+    case Ash.get(MyApp.User, id, load: actor_loads(), authorize?: false) do
+      {:ok, actor} -> actor
+      {:error, _} -> nil
+    end
   end
 end

@@ -1,6 +1,18 @@
 {
+  "actor_loads": [],
+  "authorization_bypasses": [],
   "bubble_id": "synthetic-privacy",
   "diagnostics": [
+    {
+      "code": "ash_policies_unverified",
+      "details": {},
+      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {}
+    },
     {
       "code": "missing_default_rule",
       "details": {},
@@ -11,6 +23,48 @@
       "stage": "parse",
       "subject": {
         "type": "draft"
+      }
+    },
+    {
+      "code": "ash_policy_relationship_unguarded",
+      "details": {
+        "relationship": "creator"
+      },
+      "message": "draft.Created By: loading creator is authorized by its destination's read policy, not by whether the user may view creator_id",
+      "outcome": "degraded",
+      "path": "/user_types/draft",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "Created By",
+        "type": "draft"
+      }
+    },
+    {
+      "code": "ash_policy_relationship_unguarded",
+      "details": {
+        "relationship": "creator"
+      },
+      "message": "note.Created By: loading creator is authorized by its destination's read policy, not by whether the user may view creator_id",
+      "outcome": "degraded",
+      "path": "/user_types/note",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "Created By",
+        "type": "note"
+      }
+    },
+    {
+      "code": "ash_policy_data_api_unmapped",
+      "details": {},
+      "message": "note is exposed through Bubble's Data API; no API actions are generated (the Data API is out of scope unless requested)",
+      "outcome": "degraded",
+      "path": "/user_types/note/exposed_api",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "type": "note"
       }
     }
   ],
@@ -28,6 +82,9 @@
           "_id": "id"
         },
         "module": "Draft",
+        "privacy_rules": {
+          "reviewers_": "privacy_rule_reviewers"
+        },
         "relationships": {
           "Created By": "creator"
         },
@@ -44,6 +101,10 @@
           "secret_text": "secret"
         },
         "module": "Note",
+        "privacy_rules": {
+          "admins_": "privacy_rule_admins",
+          "owner_": "privacy_rule_owner"
+        },
         "relationships": {
           "Created By": "creator"
         },
@@ -83,6 +144,7 @@
     },
     "version": 1
   },
+  "policies_verified": false,
   "resources": [
     {
       "actions": [
@@ -210,10 +272,151 @@
         }
       ],
       "bubble_name": "Draft",
+      "calculations": [
+        {
+          "description": "Bubble privacy rule \"Reviewers\" (reviewers_): its condition holds",
+          "expr": {
+            "actor_loads": [],
+            "arguments": [],
+            "expr": [
+              "op",
+              "==",
+              [
+                "actor",
+                [
+                  "admin"
+                ]
+              ],
+              [
+                "value",
+                true
+              ]
+            ],
+            "resource": "Draft",
+            "sort": [],
+            "source": {
+              "rule": "reviewers_",
+              "type": "draft"
+            }
+          },
+          "name": "privacy_rule_reviewers",
+          "source": {
+            "rule": "reviewers_",
+            "type": "draft"
+          }
+        }
+      ],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "reviewers_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_reviewers"
+              ]
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "Draft",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "reviewers_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_reviewers"
+              ]
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "forbid_if",
+            "source": {},
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [
+          "reviewers_"
+        ],
+        "data_api": {
+          "create": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "delete": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "exposed": null,
+          "modify": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ]
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "rules"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -414,10 +617,333 @@
         }
       ],
       "bubble_name": "Note",
+      "calculations": [
+        {
+          "description": "Bubble privacy rule \"Admins\" (admins_): its condition holds",
+          "expr": {
+            "actor_loads": [],
+            "arguments": [],
+            "expr": [
+              "op",
+              "==",
+              [
+                "actor",
+                [
+                  "admin"
+                ]
+              ],
+              [
+                "value",
+                true
+              ]
+            ],
+            "resource": "Note",
+            "sort": [],
+            "source": {
+              "rule": "admins_",
+              "type": "note"
+            }
+          },
+          "name": "privacy_rule_admins",
+          "source": {
+            "rule": "admins_",
+            "type": "note"
+          }
+        },
+        {
+          "description": "Bubble privacy rule \"Owner\" (owner_): its condition holds",
+          "expr": {
+            "actor_loads": [],
+            "arguments": [],
+            "expr": [
+              "op",
+              "==",
+              [
+                "ref",
+                [],
+                "creator_id"
+              ],
+              [
+                "actor",
+                [
+                  "id"
+                ]
+              ]
+            ],
+            "resource": "Note",
+            "sort": [],
+            "source": {
+              "rule": "owner_",
+              "type": "note"
+            }
+          },
+          "name": "privacy_rule_owner",
+          "source": {
+            "rule": "owner_",
+            "type": "note"
+          }
+        }
+      ],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        },
+        {
+          "accept": [
+            "body",
+            "secret"
+          ],
+          "description": "Bubble auto-binding: an input writes one field of the record",
+          "name": "auto_bind",
+          "type": "update"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "admins_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_admins"
+              ]
+            },
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "owner_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owner"
+              ]
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "secret"
+          ]
+        },
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "body"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "Note",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "admins_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_admins"
+              ]
+            },
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "owner_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owner"
+              ]
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        },
+        {
+          "action": "auto_bind",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "owner_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owner"
+              ]
+            }
+          ],
+          "description": "Auto-binding: a rule letting the user auto-bind some field holds",
+          "permission": "auto_binding"
+        },
+        {
+          "action": "auto_bind",
+          "changing": [
+            "body"
+          ],
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "owner_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owner"
+              ]
+            }
+          ],
+          "description": "Auto-binding changes body: a rule letting the user auto-bind it holds",
+          "permission": "auto_binding"
+        },
+        {
+          "action": "auto_bind",
+          "changing": [
+            "secret"
+          ],
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "owner_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owner"
+              ]
+            }
+          ],
+          "description": "Auto-binding changes secret: a rule letting the user auto-bind it holds",
+          "permission": "auto_binding"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "rules": [
+                "admins_"
+              ]
+            },
+            "test": [
+              "calculation",
+              "privacy_rule_admins"
+            ]
+          },
+          {
+            "kind": "authorize_if",
+            "source": {
+              "rules": [
+                "owner_"
+              ]
+            },
+            "test": [
+              "calculation",
+              "privacy_rule_owner"
+            ]
+          }
+        ],
+        "compiled_rules": [
+          "admins_",
+          "owner_"
+        ],
+        "data_api": {
+          "create": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "delete": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "admins_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_admins"
+              ]
+            }
+          ],
+          "exposed": true,
+          "modify": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "rules": [
+                  "owner_"
+                ]
+              },
+              "test": [
+                "calculation",
+                "privacy_rule_owner"
+              ]
+            }
+          ]
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "rules"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -593,10 +1119,93 @@
         }
       ],
       "bubble_name": "Public page",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "slug_text"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "PublicPage",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -788,10 +1397,94 @@
         }
       ],
       "bubble_name": "User",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "email",
+            "admin"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "User",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -817,7 +1510,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "typed_structs": [],
   "types": []
 }

@@ -42,6 +42,68 @@ defmodule BubbleEx.Target.Ash do
   Bubble's built-in User is always a resource: when the source does not
   define it, the Model's synthesized User (built-in fields only) is used.
 
+  ## Privacy rules (WTF-356)
+
+  Each resource gets Ash policies (`Ash.Policy.Authorizer`) derived from
+  its data type's privacy rules (`BubbleEx.Privacy`), as data in the
+  Project (`policies`, `field_policies`, `calculations`, `extra_actions`,
+  `privacy` on each `BubbleEx.Target.Ash.Resource`):
+
+  | Bubble | Ash |
+  |--------|-----|
+  | a rule's condition | a private boolean calculation `privacy_rule_<name>` (`expr(...)` compiled fail-safe by `BubbleEx.Target.Ash.Expressions`); every check tests one |
+  | direct view (a record reached by ID or through a reference) | the primary `:read` action: `policy action(:read)` authorizes records of which the user may view some field (`view_all`, or a non-empty `view_fields`); relationship loads and `Ash.get` use it |
+  | `search_for` ("find this in searches") | a `:search` read action: `policy action(:search)`. "Do a search for" lowers to it |
+  | `view_all` / `view_fields` | `field_policies`: one `field_policy` per group of attributes with the same grants (every attribute but the primary key); a hidden field reads as `%Ash.ForbiddenField{}` |
+  | `auto_binding` / `binding_fields` | an `:auto_bind` update accepting every bindable field: `policy action(:auto_bind)` (some auto-binding grant holds) and, per field, `policy [action(:auto_bind), changing_attributes([field])]` |
+  | `view_attachments` | not enforceable in Ash (file fields hold URLs; the file store must enforce it): the grant is kept as data (`privacy.attachments`), diagnosed when a type with file fields does not grant it to everyone |
+  | Data API (`exposed_api`, `create_api` / `modify_api` / `delete_api`) | out of scope unless requested (WTF-359 Q6): no API actions; the grants are kept as data (`privacy.data_api`), and an exposed type is diagnosed |
+  | a backend workflow set to ignore privacy rules | not a policy: `authorization_bypasses` (with an index, see `map/3`) records that its lowered reads need `authorize?: false` |
+  | writes by workflows | not governed by privacy rules; no policy authorizes `create`, `update` or `destroy`, so they are forbidden unless the caller bypasses authorization (fail-safe, for workflow lowering to decide) |
+
+  **Union.** A user holds a permission when any rule whose condition they
+  match grants it (checks are `authorize_if`, in rule order). The
+  `everyone` rule applies to users no other rule matches; when it grants a
+  permission, that grant becomes "no rule lacking the permission holds",
+  one negated condition compiled by the same compiler (so its actor guards
+  are kept; `:ash_policy_default_rule_negated`), or `always()` when no rule
+  lacks it. Field lists union the same way.
+
+  **Defaults.** A type the source lists without rules gets Bubble's public
+  defaults: view all, search and attachments for everyone, no auto-binding,
+  no Data API writes. A type whose rules the source cannot say (a live
+  payload) denies every read (`:ash_privacy_rules_unavailable`).
+
+  **Fail-safe.** Nothing is ever allowed on doubt. A rule whose condition
+  does not compile (`:ash_expr_unsupported`, an unmapped reference, a
+  missing condition) grants nothing (`:ash_policy_rule_denied`); an
+  `everyone` grant that would need it negated is denied too
+  (`:ash_policy_default_grant_denied`). A permission nobody holds is
+  `forbid_if always()`. A read whose policy is false for the actor before
+  running (e.g. logged out where every rule reads the actor) returns
+  `Ash.Error.Forbidden`; Bubble shows nothing, so treat it as empty.
+
+  **Actor loads.** `Project.actor_loads` lists the User relationships the
+  calculations read through `^actor(...)`. The rendered `<namespace>.Privacy`
+  module's `load_actor/1` reads the actor afresh with them (bypassing
+  authorization, so the policies see current values); call it on every
+  request and LiveView mount, so a role change is never served stale.
+
+  **Not verified (safety gate).** The policies rest on Bubble semantics that
+  the replay tests of WTF-384/385 have yet to confirm: empty-is-empty
+  between two record fields, `yes/no is no` on an empty field, `doesn't
+  contain` on an empty list, dangling references as empty, the `everyone`
+  rule applying only to users no other rule matches, built-in fields
+  (Created Date, Created By, ...) being hidden when `view_all` is false and
+  they are not listed, a record with no visible field being unreadable by
+  direct view, and absent permission flags meaning "not granted". Until
+  then `Project.policies_verified` is `false`, every non-empty Project
+  carries `:ash_policies_unverified`, the rendered policies carry a "NOT
+  VERIFIED" header and `<namespace>.Privacy.verified?/0` returns false:
+  **do not ship them to an app's users.** Loading a `belongs_to` whose ID
+  attribute a user may not view is authorized by the destination's read
+  policy only (`:ash_policy_relationship_unguarded`).
+
   ## Names (WTF-339)
 
   Names are derived by `BubbleEx.Target.Ash.Naming` in Bubble ID order
@@ -75,6 +137,7 @@ defmodule BubbleEx.Target.Ash do
     EnumAttribute,
     EnumValue,
     Naming,
+    Policies,
     Project,
     Relationship,
     Resource,
@@ -88,7 +151,8 @@ defmodule BubbleEx.Target.Ash do
 
   # Dependency pins for a project using the generated source: the versions
   # scripts/ash_compile_check.sh compiles and runs it against.
-  @versions [ash: "3.31.3", ash_postgres: "2.11.0"]
+  # Ash policies need a SAT solver: PicoSAT, as Ash recommends.
+  @versions [ash: "3.31.3", ash_postgres: "2.11.0", picosat_elixir: "0.2.3"]
   @names_version 1
 
   # Built-in fields: fixed names, claimed before the defined fields.
@@ -101,13 +165,14 @@ defmodule BubbleEx.Target.Ash do
     email: "email"
   }
 
-  @type option :: {:names, map()}
+  @type option :: {:names, map()} | {:index, BubbleEx.Index.t()}
 
   @doc """
   Dependency pins for a project that compiles the generated source, as Mix
-  dependency tuples: `[{:ash, "== 3.31.3"}, {:ash_postgres, "== 2.11.0"}]`.
-  The generated modules need nothing else (Ecto and Postgrex come with
-  AshPostgres). `scripts/ash_compile_check.sh` compiles and runs the
+  dependency tuples: `[{:ash, "== 3.31.3"}, {:ash_postgres, "== 2.11.0"},
+  {:picosat_elixir, "== 0.2.3"}]`. The generated modules need nothing else
+  (Ecto and Postgrex come with AshPostgres; the policies need Ash's SAT
+  solver, PicoSAT). `scripts/ash_compile_check.sh` compiles and runs the
   generated source against exactly these versions.
   """
   @spec versions() :: [{atom(), String.t()}]
@@ -123,13 +188,16 @@ defmodule BubbleEx.Target.Ash do
     * `:names` - a name map from an earlier mapping (`project.names`); its
       names are kept. An invalid map, or one giving two definitions in the
       same scope the same name, is an `:invalid_input` error.
+    * `:index` - a `BubbleEx.Index` of the same app: its workflows that run
+      ignoring privacy rules become `authorization_bypasses`
   """
   @spec map(Model.t(), list(), [option()]) :: {:ok, Project.t()} | {:error, Error.t()}
   def map(model, decisions \\ [], opts \\ [])
 
   def map(%Model{} = model, [], opts) when is_list(opts) do
-    with {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})) do
-      {:ok, build(model, names)}
+    with {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})),
+         {:ok, index} <- validate_index(Keyword.get(opts, :index)) do
+      {:ok, build(model, names, index)}
     end
   catch
     {:name_conflict, error} -> {:error, error}
@@ -149,7 +217,13 @@ defmodule BubbleEx.Target.Ash do
 
   # --- build ---------------------------------------------------------------------
 
-  defp build(model, names) do
+  defp validate_index(nil), do: {:ok, nil}
+  defp validate_index(%BubbleEx.Index{} = index), do: {:ok, index}
+
+  defp validate_index(_),
+    do: {:error, Error.new(:invalid_input, "the :index option must be a BubbleEx.Index")}
+
+  defp build(model, names, index) do
     {types, type_diags} = live(model.data_types, &type_subject/1, "data_type")
     {sets, set_diags} = live(model.option_sets, &%{option_set: &1.id}, "option_set")
 
@@ -172,19 +246,29 @@ defmodule BubbleEx.Target.Ash do
 
     typed_structs = structured(resources) ++ externals
 
-    %Project{
+    project = %Project{
       schema_version: Project.schema_version(),
       bubble_id: model.bubble_id,
       resources: resources,
       enums: enums,
       types: custom_types(resources, typed_structs),
       typed_structs: typed_structs,
-      names: ctx.names,
-      diagnostics:
-        Diagnostic.normalize(
-          model.diagnostics ++
-            type_diags ++ set_diags ++ enum_diags ++ resource_diags ++ external_diags
-        )
+      names: ctx.names
+    }
+
+    {project, policy_diags} = Policies.apply(project, model)
+    {bypasses, bypass_diags} = if index, do: Policies.bypasses(index), else: {[], []}
+
+    %{
+      project
+      | authorization_bypasses: bypasses,
+        diagnostics:
+          Diagnostic.normalize(
+            model.diagnostics ++
+              type_diags ++
+              set_diags ++
+              enum_diags ++ resource_diags ++ external_diags ++ policy_diags ++ bypass_diags
+          )
     }
   end
 
@@ -432,9 +516,13 @@ defmodule BubbleEx.Target.Ash do
       Enum.map(attributes, fn {id, name} -> {{:attribute, id}, name} end) ++
         Enum.map(relationships, fn {id, name} -> {{:relationship, id}, name} end)
 
+    # Privacy calculation names (WTF-356) are claimed after the fields, but
+    # a locked one is never given to a field.
+    rules = Map.get(entry, "privacy_rules", %{})
+
     %{
       locked: Map.new(locked),
-      used: MapSet.new(Map.values(attributes) ++ Map.values(relationships))
+      used: MapSet.new(Map.values(attributes) ++ Map.values(relationships) ++ Map.values(rules))
     }
   end
 
@@ -944,7 +1032,8 @@ defmodule BubbleEx.Target.Ash do
       {"module", :pascal, :module},
       {"table", :snake, :table},
       {"attributes", :names, :attribute},
-      {"relationships", :names, :attribute}
+      {"relationships", :names, :attribute},
+      {"privacy_rules", :names, :attribute}
     ],
     "enums" => [{"module", :pascal, :none}, {"attributes", :names, :field}],
     "external_types" => [{"module", :pascal, :none}, {"fields", :names, :field}]

@@ -24,9 +24,14 @@ defmodule BubbleEx.Target.Ash.Source do
   alias BubbleEx.Error
 
   alias BubbleEx.Target.Ash.{
+    Action,
     Attribute,
+    Calculation,
     CustomType,
     Expr,
+    FieldPolicy,
+    Policy,
+    PolicyCheck,
     Project,
     Relationship,
     Resource,
@@ -56,7 +61,19 @@ defmodule BubbleEx.Target.Ash.Source do
     defaults: 1,
     resource: 1,
     field: 2,
-    field: 3
+    field: 3,
+    calculate: 3,
+    calculate: 4,
+    policy: 1,
+    field_policy: 1,
+    authorize_if: 1,
+    forbid_if: 1,
+    description: 1,
+    accept: 1,
+    read: 1,
+    read: 2,
+    update: 1,
+    update: 2
   ]
 
   @header """
@@ -90,7 +107,7 @@ defmodule BubbleEx.Target.Ash.Source do
           Enum.map(project.enums, &enum(&1, ctx)) ++
           Enum.map(project.typed_structs, &typed_struct(&1, ctx)) ++
           Enum.map(project.resources, &resource(&1, ctx)) ++
-          [domain_module(project, ctx)]
+          [domain_module(project, ctx)] ++ privacy_module(project, ctx)
 
       source = @header <> "\n" <> Enum.join(modules, "\n\n")
 
@@ -210,7 +227,7 @@ defmodule BubbleEx.Target.Ash.Source do
   defp resource(%Resource{} = resource, ctx) do
     """
     defmodule #{module(resource.module, ctx)} do
-      #{moduledoc(resource.description)}use Ash.Resource, domain: #{ctx.domain}, data_layer: AshPostgres.DataLayer
+      #{moduledoc(resource.description)}use Ash.Resource, domain: #{ctx.domain}, data_layer: AshPostgres.DataLayer#{authorizers(resource)}
 
       postgres do
         table #{literal(resource.table)}
@@ -221,13 +238,107 @@ defmodule BubbleEx.Target.Ash.Source do
       attributes do
     #{Enum.map_join(resource.attributes, "\n", &attribute(&1, ctx))}
       end
-    #{relationships(resource.relationships, ctx)}#{identities(resource.identities)}
+    #{relationships(resource.relationships, ctx)}#{calculations(resource.calculations)}#{identities(resource.identities)}
       actions do
         defaults #{literal(resource.actions)}
+    #{Enum.map_join(resource.extra_actions, "\n", &action/1)}
       end
+    #{policies(resource, ctx)}#{field_policies(resource.field_policies)}end
+    """
+  end
+
+  defp authorizers(%Resource{policies: []}), do: ""
+  defp authorizers(%Resource{}), do: ", authorizers: [Ash.Policy.Authorizer]"
+
+  defp action(%Action{type: :read} = action) do
+    """
+    read #{atom(action.name)} do
+      #{description(action.description)}
     end
     """
   end
+
+  defp action(%Action{type: :update} = action) do
+    """
+    update #{atom(action.name)} do
+      #{description(action.description)}
+      accept [#{Enum.map_join(action.accept, ", ", &atom/1)}]
+    end
+    """
+  end
+
+  defp description(nil), do: ""
+  defp description(text), do: "description #{literal(text)}"
+
+  defp calculations([]), do: ""
+
+  defp calculations(calculations) do
+    lines =
+      Enum.map_join(calculations, "\n", fn %Calculation{} = c ->
+        options =
+          [{"public?", "false"}] ++
+            if(c.description, do: [{"description", literal(c.description)}], else: [])
+
+        "calculate #{atom(c.name)}, :boolean, #{expr(c.expr)}, #{options(options)}"
+      end)
+
+    "\ncalculations do\n#{lines}\nend\n"
+  end
+
+  @policies_header """
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount.
+  """
+
+  defp policies(%Resource{policies: []}, _ctx), do: ""
+
+  defp policies(%Resource{policies: policies}, _ctx) do
+    "\n" <>
+      @policies_header <> "policies do\n" <> Enum.map_join(policies, "\n", &policy/1) <> "\nend\n"
+  end
+
+  defp policy(%Policy{} = policy) do
+    condition =
+      case policy.changing do
+        nil ->
+          "action(#{atom(policy.action)})"
+
+        names ->
+          "[action(#{atom(policy.action)}), changing_attributes([#{Enum.map_join(names, ", ", &atom/1)}])]"
+      end
+
+    """
+    policy #{condition} do
+      #{description(policy.description)}
+    #{checks(policy.checks)}
+    end
+    """
+  end
+
+  defp field_policies([]), do: ""
+
+  defp field_policies(policies) do
+    body =
+      Enum.map_join(policies, "\n", fn %FieldPolicy{} = policy ->
+        """
+        field_policy [#{Enum.map_join(policy.fields, ", ", &atom/1)}] do
+        #{checks(policy.checks)}
+        end
+        """
+      end)
+
+    "\nfield_policies do\n" <> body <> "\nend\n"
+  end
+
+  defp checks(checks), do: Enum.map_join(checks, "\n", &check/1)
+
+  defp check(%PolicyCheck{kind: kind, test: :always}), do: "#{kind} always()"
+
+  defp check(%PolicyCheck{kind: kind, test: {:calculation, name}}),
+    do: "#{kind} expr(#{identifier!(name)})"
 
   defp attribute(%Attribute{} = attribute, ctx) do
     options =
@@ -310,6 +421,82 @@ defmodule BubbleEx.Target.Ash.Source do
       end
     end
     """
+  end
+
+  # The privacy helpers every generated app needs: whether the policies are
+  # verified (never, yet) and loading the actor with what they read.
+  defp privacy_module(%Project{resources: []}, _ctx), do: []
+
+  defp privacy_module(%Project{} = project, ctx) do
+    loads = load_tree(project.actor_loads)
+
+    load_actor =
+      case Enum.find(project.resources, &(&1.source[:type] == "user")) do
+        nil ->
+          ""
+
+        user ->
+          """
+
+          @doc "The resource of the actor (Bubble's User)."
+          def actor_resource, do: #{module(user.module, ctx)}
+
+          @doc \"\"\"
+          Reads the actor (a user or a user ID) afresh with `actor_loads/0`,
+          bypassing authorization: the policies must see its current values.
+          Call it on every request and LiveView mount, never reuse a stored
+          actor. Returns nil (logged out) for nil or an unknown ID.
+          \"\"\"
+          def load_actor(nil), do: nil
+          def load_actor(%{id: id}), do: load_actor(id)
+
+          def load_actor(id) when is_binary(id) do
+            case Ash.get(#{module(user.module, ctx)}, id, load: actor_loads(), authorize?: false) do
+              {:ok, actor} -> actor
+              {:error, _} -> nil
+            end
+          end
+          """
+      end
+
+    [
+      """
+      defmodule #{ctx.namespace}.Privacy do
+        @moduledoc \"\"\"
+        Privacy rules compiled from Bubble to Ash policies by bubble_ex (WTF-356).
+
+        NOT VERIFIED AGAINST BUBBLE. The policies rest on Bubble semantics not
+        yet confirmed by replaying the app (WTF-384/385): do not ship them to
+        users until they are. See `verified?/0`.
+        \"\"\"
+
+        @doc "Whether the generated policies are verified against Bubble: not yet."
+        def verified?, do: #{literal(project.policies_verified)}
+
+        @doc "The relationships of the actor that the policies read."
+        def actor_loads, do: #{loads}
+      #{load_actor}end
+      """
+    ]
+  end
+
+  # [["a", "b"], ["a"], ["c"]] -> "[a: [b: []], c: []]"
+  defp load_tree(paths) do
+    paths
+    |> Enum.reduce(%{}, fn path, tree -> put_in_tree(tree, path) end)
+    |> keyword_source()
+  end
+
+  defp put_in_tree(tree, []), do: tree
+
+  defp put_in_tree(tree, [key | rest]),
+    do: Map.update(tree, key, put_in_tree(%{}, rest), &put_in_tree(&1, rest))
+
+  defp keyword_source(tree) do
+    entries =
+      tree |> Enum.sort() |> Enum.map_join(", ", fn {k, sub} -> key(k) <> keyword_source(sub) end)
+
+    "[" <> entries <> "]"
   end
 
   # --- expressions ---------------------------------------------------------------

@@ -182,7 +182,29 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:ash_default_unmapped, :warning, :degraded, :target,
      "a field default with no Ash equivalent (e.g. a list, a reference, or a value of the wrong type); omitted"},
     {:ash_duplicate_enum_value, :warning, :degraded, :target,
-     "an option value repeating an earlier value's stable key; omitted from the enum"}
+     "an option value repeating an earlier value's stable key; omitted from the enum"},
+
+    # --- target:ash — BubbleEx.Target.Ash privacy policies (WTF-356) ----------
+    {:ash_policies_unverified, :warning, :degraded, :target,
+     "the generated Ash policies rest on Bubble semantics not yet verified against Bubble (WTF-384/385); not to be shipped to users until they are"},
+    {:ash_policy_rule_denied, :warning, :degraded, :target,
+     "a privacy rule whose condition does not compile (or is missing); it grants nothing"},
+    {:ash_policy_default_grant_denied, :warning, :degraded, :target,
+     "grants of the `everyone` rule that apply only when a rule whose condition does not compile fails to hold; denied"},
+    {:ash_policy_default_rule_negated, :info, :degraded, :target,
+     "grants of the `everyone` rule compiled as the negation of the rules lacking them; the negation denies when the actor lacks a value a condition reads (e.g. logged out)"},
+    {:ash_policy_field_unmapped, :info, :degraded, :target,
+     "a privacy rule's visible or auto-binding field list names a field the Ash project does not map; ignored"},
+    {:ash_privacy_rules_unavailable, :warning, :degraded, :target,
+     "a data type whose privacy rules the source does not include (e.g. a live payload); every read is denied"},
+    {:ash_policy_attachments_unenforced, :warning, :degraded, :target,
+     "Bubble's \"view attached files\" permission, not granted to everyone on a type with file fields; Ash cannot enforce it (the file store must)"},
+    {:ash_policy_data_api_unmapped, :info, :degraded, :target,
+     "a data type exposed through Bubble's Data API; no API actions or policies are generated (out of scope unless requested)"},
+    {:ash_policy_relationship_unguarded, :warning, :degraded, :target,
+     "a relationship whose ID attribute some users may not view; loading it is authorized by the destination's read policy only"},
+    {:ash_policy_bypass_required, :info, :degraded, :target,
+     "a workflow that runs ignoring privacy rules; lowered, its reads need an explicit authorization bypass (`authorize?: false`)"}
   ]
 
   @registry Map.new(@codes, fn {code, severity, outcome, stage, doc} ->

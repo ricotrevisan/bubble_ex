@@ -203,7 +203,8 @@ defmodule BubbleEx.DiagnosticTest do
 
     defp ash_diagnostics(app) do
       {:ok, model} = BubbleEx.Model.build(app)
-      {:ok, project} = BubbleEx.Target.Ash.map(model)
+      {:ok, index} = BubbleEx.Index.build(app)
+      {:ok, project} = BubbleEx.Target.Ash.map(model, [], index: index)
       Enum.filter(project.diagnostics, &(&1.stage == {:target, :ash}))
     end
 

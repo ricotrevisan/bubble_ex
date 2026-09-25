@@ -1,6 +1,18 @@
 {
+  "actor_loads": [],
+  "authorization_bypasses": [],
   "bubble_id": "synthetic-field-types",
   "diagnostics": [
+    {
+      "code": "ash_policies_unverified",
+      "details": {},
+      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {}
+    },
     {
       "code": "ash_date_interval_as_number",
       "details": {
@@ -148,6 +160,7 @@
     },
     "version": 1
   },
+  "policies_verified": false,
   "resources": [
     {
       "actions": [
@@ -300,10 +313,93 @@
         }
       ],
       "bubble_name": "Project",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "name"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "Project",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -1028,7 +1124,60 @@
         }
       ],
       "bubble_name": "Task",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "attachment",
+            "budget",
+            "checks",
+            "cover",
+            "dates",
+            "done",
+            "due",
+            "duration",
+            "estimate",
+            "files",
+            "images",
+            "labels",
+            "notes",
+            "owner_id",
+            "place",
+            "places",
+            "project_id",
+            "ranges",
+            "scores",
+            "status",
+            "subtasks",
+            "title",
+            "watchers",
+            "window"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [
         [
@@ -1040,6 +1189,64 @@
         ]
       ],
       "module": "Task",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [
+          "attachment",
+          "cover",
+          "files",
+          "images"
+        ],
+        "source": "public_default"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -1272,10 +1479,94 @@
         }
       ],
       "bubble_name": "User",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "name": "search",
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "email",
+            "nickname"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "User",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
       "relationships": [
         {
           "allow_nil?": true,
@@ -1301,7 +1592,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "typed_structs": [
     {
       "bubble_name": null,

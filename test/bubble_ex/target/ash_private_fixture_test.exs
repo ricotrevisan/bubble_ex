@@ -34,8 +34,9 @@ defmodule BubbleEx.Target.AshPrivateFixtureTest do
 
     app = SplitExport.load(path)
     {:ok, model} = Model.build(app)
-    {micros, {:ok, project}} = :timer.tc(fn -> Ash.map(model) end)
-    %{app: app, model: model, project: project, map_ms: div(micros, 1000)}
+    {:ok, index} = BubbleEx.Index.build(app)
+    {micros, {:ok, project}} = :timer.tc(fn -> Ash.map(model, [], index: index) end)
+    %{app: app, model: model, index: index, project: project, map_ms: div(micros, 1000)}
   end
 
   test "matches the recorded count snapshot", %{project: project, map_ms: ms} do
@@ -65,20 +66,40 @@ defmodule BubbleEx.Target.AshPrivateFixtureTest do
   end
 
   test "is deterministic across runs, permuted input and the name map",
-       %{app: app, model: model, project: project} do
+       %{app: app, model: model, index: index, project: project} do
     {:ok, source} = Source.render(project)
-    {:ok, again} = Ash.map(model)
+    {:ok, again} = Ash.map(model, [], index: index)
     assert Project.to_json(again) == Project.to_json(project)
     assert Source.render(again) == {:ok, source}
 
     :rand.seed(:exsss, {1, 2, 3})
     {:ok, permuted_model} = app |> PermutedJson.encode() |> Jason.decode!() |> Model.build()
-    {:ok, permuted} = Ash.map(permuted_model)
+    {:ok, permuted} = Ash.map(permuted_model, [], index: index)
     assert Project.to_json(permuted) == Project.to_json(project)
 
     names = project.names |> Jason.encode!() |> Jason.decode!()
-    {:ok, locked} = Ash.map(model, [], names: names)
+    {:ok, locked} = Ash.map(model, [], names: names, index: index)
     assert Project.to_json(locked) == Project.to_json(project)
+  end
+
+  test "every privacy rule of a mapped type compiles to a calculation or is itemized",
+       %{model: model, project: project} do
+    diagnosed =
+      for d <- project.diagnostics,
+          d.subject[:rule],
+          into: MapSet.new(),
+          do: {d.subject.type, d.subject.rule}
+
+    for resource <- project.resources,
+        type = Enum.find(model.data_types, &(&1.id == resource.source.type)),
+        rule <- type.rules,
+        not rule.default? do
+      assert rule.id in resource.privacy.compiled_rules or
+               {type.id, rule.id} in diagnosed,
+             "#{type.id}/#{rule.id}"
+    end
+
+    assert project.policies_verified == false
   end
 
   test "every live data type is a resource with a unique module and table",

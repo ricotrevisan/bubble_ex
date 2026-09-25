@@ -25,7 +25,7 @@ defmodule BubbleEx.Target.AshTest do
                 Path.wildcard("test/support/target/ash/*.json"),
                 &{"target_" <> Path.basename(&1, ".json"), &1}
               )
-  @sources ~w(field_types option_sets external_types naming target_names target_defaults target_values)
+  @sources ~w(field_types option_sets external_types naming target_names target_defaults target_values target_policies)
 
   defp load(path), do: path |> File.read!() |> Jason.decode!()
 
@@ -593,7 +593,7 @@ defmodule BubbleEx.Target.AshTest do
         assert elem(lock[app], 2) == version, "#{app}"
       end
 
-      assert Keyword.keys(Ash.versions()) == [:ash, :ash_postgres]
+      assert Keyword.keys(Ash.versions()) == [:ash, :ash_postgres, :picosat_elixir]
     end
 
     test "summary counts" do

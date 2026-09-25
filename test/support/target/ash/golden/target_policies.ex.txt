@@ -6,18 +6,200 @@
 #   mix igniter.new my_app --install ash,ash_postgres
 # then add these modules and run `mix ash.codegen --dev` while iterating.
 
-defmodule MyApp.Enums.Levels do
-  use Ash.Type.Enum, values: [{"id", [label: "id"]}, {"type", [label: "type"]}]
-end
-
-defmodule MyApp.ThingJoin do
+defmodule MyApp.Doc do
   use Ash.Resource,
     domain: MyApp,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "thing_join"
+    table "doc"
+    repo MyApp.Repo
+
+    references do
+      reference :creator, ignore?: true
+      reference :owner, ignore?: true
+    end
+  end
+
+  attributes do
+    attribute :id, :string,
+      primary_key?: true,
+      allow_nil?: false,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+
+    attribute :creator_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :slug, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :attachment, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :body, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :owner_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :public, :boolean, allow_nil?: true, writable?: true, public?: true
+
+    attribute :secret, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :title, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+  end
+
+  relationships do
+    belongs_to :creator, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+    end
+
+    belongs_to :owner, MyApp.User do
+      source_attribute :owner_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+    end
+  end
+
+  calculations do
+    calculate :privacy_rule_admin, :boolean, expr(^actor(:admin) == true),
+      public?: false,
+      description: "Bubble privacy rule \"Admin\" (admin_): its condition holds"
+
+    calculate :privacy_rule_owner, :boolean, expr(owner_id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Owner\" (owner_): its condition holds"
+
+    calculate :privacy_rule_public, :boolean, expr(public == true),
+      public?: false,
+      description: "Bubble privacy rule \"Public\" (public_): its condition holds"
+  end
+
+  actions do
+    defaults [:read, :destroy, {:create, :*}, {:update, :*}]
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+
+    update :auto_bind do
+      description "Bubble auto-binding: an input writes one field of the record"
+      accept [:body, :secret, :title]
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount.
+  policies do
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if always()
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+      authorize_if expr(privacy_rule_public)
+    end
+
+    policy action(:auto_bind) do
+      description "Auto-binding: a rule letting the user auto-bind some field holds"
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+    end
+
+    policy [action(:auto_bind), changing_attributes([:body])] do
+      description "Auto-binding changes body: a rule letting the user auto-bind it holds"
+      authorize_if expr(privacy_rule_owner)
+    end
+
+    policy [action(:auto_bind), changing_attributes([:secret])] do
+      description "Auto-binding changes secret: a rule letting the user auto-bind it holds"
+      authorize_if expr(privacy_rule_admin)
+    end
+
+    policy [action(:auto_bind), changing_attributes([:title])] do
+      description "Auto-binding changes title: a rule letting the user auto-bind it holds"
+      authorize_if expr(privacy_rule_owner)
+    end
+  end
+
+  field_policies do
+    field_policy [
+      :created_date,
+      :modified_date,
+      :creator_id,
+      :slug,
+      :attachment,
+      :owner_id,
+      :public,
+      :secret
+    ] do
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+    end
+
+    field_policy [:body] do
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+      authorize_if expr(privacy_rule_public)
+    end
+
+    field_policy [:title] do
+      authorize_if always()
+    end
+  end
+end
+
+defmodule MyApp.Memo do
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
+
+  postgres do
+    table "memo"
     repo MyApp.Repo
 
     references do
@@ -48,44 +230,7 @@ defmodule MyApp.ThingJoin do
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
 
-    attribute :done, :boolean, allow_nil?: true, writable?: true, public?: true
-
-    attribute :sort_thing_title, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :struct, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :id_field, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :inserted_at_field, :utc_datetime_usec,
-      allow_nil?: true,
-      writable?: true,
-      public?: true
-
-    attribute :title, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :title_2, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :type_field, :string,
+    attribute :text, :string,
       allow_nil?: true,
       writable?: true,
       public?: true,
@@ -119,43 +264,30 @@ defmodule MyApp.ThingJoin do
   policies do
     policy action(:read) do
       description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      authorize_if always()
+      forbid_if always()
     end
 
     policy action(:search) do
       description "Searches: the user may find the record in searches"
-      authorize_if always()
+      forbid_if always()
     end
   end
 
   field_policies do
-    field_policy [
-      :created_date,
-      :modified_date,
-      :creator_id,
-      :slug,
-      :done,
-      :sort_thing_title,
-      :struct,
-      :id_field,
-      :inserted_at_field,
-      :title,
-      :title_2,
-      :type_field
-    ] do
-      authorize_if always()
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :text] do
+      forbid_if always()
     end
   end
 end
 
-defmodule MyApp.Launch do
+defmodule MyApp.Note do
   use Ash.Resource,
     domain: MyApp,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "launch"
+    table "note"
     repo MyApp.Repo
 
     references do
@@ -186,7 +318,104 @@ defmodule MyApp.Launch do
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
 
+    attribute :hidden, :boolean, allow_nil?: true, writable?: true, public?: true
+
     attribute :text, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+  end
+
+  relationships do
+    belongs_to :creator, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+    end
+  end
+
+  calculations do
+    calculate :privacy_everyone_else, :boolean, expr(is_distinct_from(hidden, true)),
+      public?: false,
+      description: "The Bubble \"everyone else\" rule applies: none of the rules hidden_ holds"
+
+    calculate :privacy_rule_mine, :boolean, expr(creator_id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Mine\" (mine_): its condition holds"
+  end
+
+  actions do
+    defaults [:read, :destroy, {:create, :*}, {:update, :*}]
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount.
+  policies do
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if expr(privacy_rule_mine)
+      authorize_if expr(privacy_everyone_else)
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if expr(privacy_rule_mine)
+      authorize_if expr(privacy_everyone_else)
+    end
+  end
+
+  field_policies do
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :hidden, :text] do
+      authorize_if expr(privacy_rule_mine)
+      authorize_if expr(privacy_everyone_else)
+    end
+  end
+end
+
+defmodule MyApp.Team do
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
+
+  postgres do
+    table "team"
+    repo MyApp.Repo
+
+    references do
+      reference :creator, ignore?: true
+    end
+  end
+
+  attributes do
+    attribute :id, :string,
+      primary_key?: true,
+      allow_nil?: false,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+
+    attribute :creator_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :slug, :string,
       allow_nil?: true,
       writable?: true,
       public?: true,
@@ -236,171 +465,7 @@ defmodule MyApp.Launch do
   end
 
   field_policies do
-    field_policy [:created_date, :modified_date, :creator_id, :slug, :text, :name] do
-      authorize_if always()
-    end
-  end
-end
-
-defmodule MyApp.Thing do
-  use Ash.Resource,
-    domain: MyApp,
-    data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
-
-  postgres do
-    table "thing"
-    repo MyApp.Repo
-
-    references do
-      reference :creator, ignore?: true
-    end
-  end
-
-  attributes do
-    attribute :id, :string,
-      primary_key?: true,
-      allow_nil?: false,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-
-    attribute :creator_id, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :slug, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-  end
-
-  relationships do
-    belongs_to :creator, MyApp.User do
-      source_attribute :creator_id
-      destination_attribute :id
-      attribute_type :string
-      define_attribute? false
-      allow_nil? true
-      public? true
-    end
-  end
-
-  actions do
-    defaults [:read, :destroy, {:create, :*}, {:update, :*}]
-
-    read :search do
-      description "Bubble \"Do a search for\": the records the user may find in searches"
-    end
-  end
-
-  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
-  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
-  # the replay verification (WTF-384/385) confirms the semantics they rest on.
-  # Load the actor with the Privacy module's load_actor/1 on every request
-  # and LiveView mount.
-  policies do
-    policy action(:read) do
-      description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      authorize_if always()
-    end
-
-    policy action(:search) do
-      description "Searches: the user may find the record in searches"
-      authorize_if always()
-    end
-  end
-
-  field_policies do
-    field_policy [:created_date, :modified_date, :creator_id, :slug] do
-      authorize_if always()
-    end
-  end
-end
-
-defmodule MyApp.Thing2 do
-  use Ash.Resource,
-    domain: MyApp,
-    data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
-
-  postgres do
-    table "thing2"
-    repo MyApp.Repo
-
-    references do
-      reference :creator, ignore?: true
-    end
-  end
-
-  attributes do
-    attribute :id, :string,
-      primary_key?: true,
-      allow_nil?: false,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-
-    attribute :creator_id, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :slug, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-  end
-
-  relationships do
-    belongs_to :creator, MyApp.User do
-      source_attribute :creator_id
-      destination_attribute :id
-      attribute_type :string
-      define_attribute? false
-      allow_nil? true
-      public? true
-    end
-  end
-
-  actions do
-    defaults [:read, :destroy, {:create, :*}, {:update, :*}]
-
-    read :search do
-      description "Bubble \"Do a search for\": the records the user may find in searches"
-    end
-  end
-
-  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
-  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
-  # the replay verification (WTF-384/385) confirms the semantics they rest on.
-  # Load the actor with the Privacy module's load_actor/1 on every request
-  # and LiveView mount.
-  policies do
-    policy action(:read) do
-      description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      authorize_if always()
-    end
-
-    policy action(:search) do
-      description "Searches: the user may find the record in searches"
-      authorize_if always()
-    end
-  end
-
-  field_policies do
-    field_policy [:created_date, :modified_date, :creator_id, :slug] do
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :name] do
       authorize_if always()
     end
   end
@@ -449,6 +514,14 @@ defmodule MyApp.User do
       writable?: true,
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
+
+    attribute :admin, :boolean, allow_nil?: true, writable?: true, public?: true
+
+    attribute :name, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
   end
 
   relationships do
@@ -460,6 +533,12 @@ defmodule MyApp.User do
       allow_nil? true
       public? true
     end
+  end
+
+  calculations do
+    calculate :privacy_rule_me, :boolean, expr(id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Me\" (me_): its condition holds"
   end
 
   actions do
@@ -478,18 +557,22 @@ defmodule MyApp.User do
   policies do
     policy action(:read) do
       description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      forbid_if always()
+      authorize_if always()
     end
 
     policy action(:search) do
       description "Searches: the user may find the record in searches"
-      forbid_if always()
+      authorize_if expr(privacy_rule_me)
     end
   end
 
   field_policies do
-    field_policy [:created_date, :modified_date, :creator_id, :slug, :email] do
-      forbid_if always()
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :email, :admin] do
+      authorize_if expr(privacy_rule_me)
+    end
+
+    field_policy [:name] do
+      authorize_if always()
     end
   end
 end
@@ -498,10 +581,10 @@ defmodule MyApp do
   use Ash.Domain
 
   resources do
-    resource MyApp.ThingJoin
-    resource MyApp.Launch
-    resource MyApp.Thing
-    resource MyApp.Thing2
+    resource MyApp.Doc
+    resource MyApp.Memo
+    resource MyApp.Note
+    resource MyApp.Team
     resource MyApp.User
   end
 end
