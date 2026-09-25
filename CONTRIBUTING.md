@@ -33,6 +33,18 @@ This builds the Hex package, unpacks it into a temporary directory, and compiles
 and runs it from a fresh Mix project outside the checkout. The check downloads
 production dependencies and removes its temporary files when it finishes.
 
+When changing `BubbleEx.Target.Ash`, also compile its output:
+
+```bash
+scripts/ash_compile_check.sh
+```
+
+This renders every model fixture into a scratch Ash project
+(`_build/ash_compile_check`, pinned `ash`/`ash_postgres` matching bubble_wtf),
+runs `mix compile --warnings-as-errors` and dry-runs `mix ash.codegen`. It needs
+no database. With `BUBBLE_EX_PRIVATE_EXPORT` set it also compiles a private app
+export; CI runs it as the `ash-compile-check` job.
+
 ## Testing
 
 Tests are offline by default and do not require external services or credentials. Integration tests (tagged `:integration`) hit live Bubble.io endpoints and are
