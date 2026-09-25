@@ -46,6 +46,11 @@ defmodule BubbleEx.Index.Types do
   def data_type_key("custom." <> id) when id != "", do: id
   def data_type_key(_), do: nil
 
+  @doc "The Bubble type of a record of data type `key` (inverse of `data_type_key/1`)."
+  @spec record_type(String.t()) :: String.t()
+  def record_type("user"), do: "user"
+  def record_type(key), do: "custom." <> key
+
   @spec option_set_key(term()) :: String.t() | nil
   def option_set_key("list." <> item), do: option_set_key(item)
   def option_set_key("option." <> id) when id != "", do: id

@@ -7,6 +7,7 @@ defmodule BubbleEx.Index.Structure do
   # need: the owner symbol of each owner key, and each definition's own JSON
   # (children removed) for expression scanning.
 
+  alias BubbleEx.Diagnostic
   alias BubbleEx.Index.{Reference, Symbol}
   alias BubbleEx.Workflows.Source
 
@@ -16,6 +17,7 @@ defmodule BubbleEx.Index.Structure do
     {~w(element_definitions %ed), :reusable}
   ]
   @children ~w(elements %el workflows %wf)
+  @readable %{"%p3" => "pages", "%ed" => "element_definitions"}
 
   @type host :: %{symbol: Symbol.id(), value: map(), path: list()}
   @type t :: %{
@@ -23,7 +25,8 @@ defmodule BubbleEx.Index.Structure do
           references: [Reference.t()],
           owners: %{{String.t(), String.t()} => Symbol.id()},
           hosts: [host()],
-          bubble_ids: %{String.t() => Symbol.id()}
+          bubble_ids: %{String.t() => Symbol.id()},
+          diagnostics: [Diagnostic.t()]
         }
 
   @spec build(map()) :: t()
@@ -38,7 +41,7 @@ defmodule BubbleEx.Index.Structure do
           node <- owner(section, key, owner, kind),
           do: node
 
-    by_bubble_id = Map.new(nodes, &{&1.symbol.bubble_id, &1.symbol.id})
+    {by_bubble_id, diagnostics} = bubble_ids(nodes)
 
     reusables =
       for %{symbol: %{kind: :reusable} = s} <- nodes, into: %{}, do: {s.bubble_id, s.id}
@@ -48,8 +51,36 @@ defmodule BubbleEx.Index.Structure do
       references: Enum.flat_map(nodes, &instance_of(&1, reusables)),
       owners: for(%{owner_key: {_, _} = k, symbol: s} <- nodes, into: %{}, do: {k, s.id}),
       hosts: Enum.map(nodes, &%{symbol: &1.symbol.id, value: &1.own, path: &1.path}),
-      bubble_ids: by_bubble_id
+      bubble_ids: by_bubble_id,
+      diagnostics: diagnostics
     }
+  end
+
+  # Bubble ID -> symbol ID, for references by Bubble ID (`element_id`, …).
+  # When definitions of different kinds share a Bubble ID, the first by
+  # source path is used and the collision is diagnosed. (Same-kind duplicates
+  # share a symbol ID and are diagnosed when symbols are merged.)
+  defp bubble_ids(nodes) do
+    nodes
+    |> Enum.group_by(& &1.symbol.bubble_id, & &1.symbol)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map_reduce([], fn {bubble_id, symbols}, diags ->
+      [kept | others] = Enum.sort_by(symbols, & &1.path)
+
+      more =
+        for other <- others,
+            other.id != kept.id,
+            do:
+              Diagnostic.new(
+                :index_duplicate_symbol,
+                other.path,
+                "Bubble ID #{bubble_id} also names #{kept.id} (#{kept.path}); references by this ID resolve to it",
+                details: %{symbol: other.id, indexed: kept.id, indexed_path: kept.path}
+              )
+
+      {{bubble_id, kept.id}, diags ++ more}
+    end)
+    |> then(fn {pairs, diags} -> {Map.new(pairs), diags} end)
   end
 
   defp owner(section, key, owner, kind) do
@@ -63,7 +94,7 @@ defmodule BubbleEx.Index.Structure do
         bubble_id: bubble_id(owner, key),
         name: name(owner),
         path: Source.pointer(path),
-        attrs: compact(%{section: section, type: type(owner)})
+        attrs: compact(%{section: Map.get(@readable, section, section), type: type(owner)})
       },
       owner_key: {section, key},
       own: Map.drop(owner, @children),

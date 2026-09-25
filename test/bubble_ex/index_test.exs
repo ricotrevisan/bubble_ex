@@ -22,15 +22,16 @@ defmodule BubbleEx.IndexTest do
     test "cover every definition kind, keyed by stable Bubble IDs", %{index: index} do
       assert Index.summary(index).symbols == %{
                data_type: 3,
-               field: 12,
+               # 6 + 5 built-ins per type + the User's email: 6 + 15 + 1
+               field: 28,
                option_set: 2,
                option_value: 3,
                option_attribute: 1,
                page: 1,
                reusable: 1,
                element: 6,
-               workflow: 10,
-               action: 18,
+               workflow: 16,
+               action: 32,
                api_group: 1,
                api_call: 2,
                privacy_rule: 2
@@ -138,6 +139,7 @@ defmodule BubbleEx.IndexTest do
     test "privacy rules reference condition fields and granted fields", %{index: index} do
       assert edges(Index.references_from(index, "privacy_rule:task/member_")) == [
                {"privacy_rule:task/member_", :grants_binding, "field:task/done_boolean"},
+               {"privacy_rule:task/member_", :grants_view, "field:task/Slug"},
                {"privacy_rule:task/member_", :grants_view, "field:task/title_text"},
                {"privacy_rule:task/member_", :reads_field,
                 "field:task/workspace_custom_workspace"},
@@ -177,12 +179,86 @@ defmodule BubbleEx.IndexTest do
              )
     end
 
+    test "previous-step targets resolve to the step's result type before inference", %{
+      index: index
+    } do
+      # `workspace_custom_workspace` is on User and Task, so inference alone
+      # could not decide; the previous step (a NewThing of Task) does.
+      assert %Reference{attrs: %{operation: :update} = attrs} =
+               ref!(
+                 index,
+                 "action:aStepChange",
+                 :writes_field,
+                 "field:task/workspace_custom_workspace"
+               )
+
+      refute Map.has_key?(attrs, :target)
+
+      assert %Reference{attrs: %{operation: :delete}} =
+               ref!(index, "action:aStepDelete", :writes_type, "data_type:task")
+    end
+
+    test "inference ignores deleted fields and types", %{index: index} do
+      # Only the deleted `workspace.old_flag_boolean` has this key.
+      assert Index.references_from(index, "action:aDeletedField", [:writes_type, :writes_field]) ==
+               []
+
+      assert Enum.any?(
+               index.diagnostics,
+               &(&1.code == :index_unresolved_reference and
+                   &1.path == "/api/wfApiB/actions/9/properties/to_change")
+             )
+    end
+
+    test "list, current-user and copy actions write", %{index: index} do
+      assert %Reference{attrs: %{operation: :update}} =
+               ref!(index, "action:aChangeList", :writes_field, "field:task/done_boolean")
+
+      assert ref!(index, "action:aChangeList", :writes_type, "data_type:task")
+
+      assert %Reference{attrs: %{operation: :update}} =
+               ref!(index, "action:aMe", :writes_field, "field:user/name_text")
+
+      assert %Reference{attrs: %{operation: :insert}} =
+               ref!(index, "action:aCopy", :writes_type, "data_type:task")
+    end
+
+    test "custom events triggered on a reusable instance", %{index: index} do
+      assert %Reference{attrs: %{call: :direct}} =
+               ref!(index, "action:aNavReset", :calls_workflow, "workflow:wNavReset")
+
+      assert ref!(index, "action:aNavReset", :targets_element, "element:eNav")
+      assert %Symbol{parent: "reusable:rNav"} = wf!(index, "wNavReset")
+    end
+
+    test "built-in fields are symbols and are read like any field", %{index: index} do
+      assert %Symbol{attrs: %{builtin: :unique_id, value_type: "text"}, parent: "data_type:task"} =
+               Index.symbol(index, "field:task/_id")
+
+      assert %Symbol{attrs: %{builtin: :email}} = Index.symbol(index, "field:user/email")
+      assert ref!(index, "field:task/Created By", :field_type, "data_type:user")
+
+      assert %Reference{attrs: %{via: :constraint}} =
+               ref!(index, "element:eOpen", :reads_field, "field:task/_id")
+
+      assert %Reference{attrs: %{via: :expression}} =
+               ref!(index, "element:eOpen", :reads_field, "field:user/_id")
+
+      assert %Reference{attrs: %{via: :sort}} =
+               ref!(index, "element:eOpen", :reads_field, "field:task/Created Date")
+    end
+
     test "workflow calls carry their kind", %{index: index} do
       calls =
         for r <- index.references, r.kind == :calls_workflow, do: {r.from, r.to, r.attrs.call}
 
       assert Enum.sort(calls) == [
                {"action:aBack", "workflow:wApiA", :scheduled},
+               {"action:aCallPlugin", "workflow:wPluginOnly", :direct},
+               {"action:aHelper", "workflow:wHelper", :direct},
+               {"action:aLoopA", "workflow:wLoopB", :direct},
+               {"action:aLoopB", "workflow:wLoopA", :direct},
+               {"action:aNavReset", "workflow:wNavReset", :direct},
                {"action:aOnList", "workflow:wApiB", :list_scheduled},
                {"action:aPoll", "workflow:wNav", :scheduled},
                {"action:aRecur", "workflow:wApiC", :recurring},
@@ -205,21 +281,50 @@ defmodule BubbleEx.IndexTest do
       assert Index.references_from(index, "action:aScrollPage") == []
     end
 
-    test "ignore_privacy_rules flags references from flagged actions and backend workflows", %{
-      index: index
-    } do
-      assert %Reference{attrs: %{ignore_privacy_rules: true}} =
+    test "privacy: flags follow the workflow a reference is made in", %{index: index} do
+      # A frontend schedule action's own setting stays on the action and the
+      # call edge; its parameter expressions run with the caller's privacy.
+      assert %Symbol{attrs: %{ignore_privacy_rules: true}} =
+               Index.symbol(index, "action:aSchedule")
+
+      assert %Reference{attrs: attrs} =
                ref!(index, "action:aSchedule", :calls_workflow, "workflow:wApiA")
 
-      # Every reference made inside wApiB (which ignores privacy rules).
-      for action <- Index.children(index, "workflow:wApiB"),
-          ref <- Index.references_from(index, action.id),
-          do: assert(ref.attrs.ignore_privacy_rules, inspect(ref))
+      assert attrs == %{
+               call: :scheduled,
+               action_ignore_privacy_rules: true,
+               callee_ignore_privacy_rules: false
+             }
+
+      refute Map.has_key?(
+               ref!(index, "action:aSchedule", :reads_field, "field:user/name_text").attrs,
+               :ignore_privacy_rules
+             )
+
+      # The action and the callee disagree the other way round too.
+      assert %{action_ignore_privacy_rules: false, callee_ignore_privacy_rules: true} =
+               ref!(index, "action:aOnList", :calls_workflow, "workflow:wApiB").attrs
 
       refute Map.has_key?(
                ref!(index, "action:aOnList", :calls_workflow, "workflow:wApiB").attrs,
                :ignore_privacy_rules
              )
+
+      # Every reference made inside wApiB (which ignores privacy rules) and
+      # inside the custom event it triggers.
+      assert %{ignore_privacy_rules: true, runs_ignoring_privacy_rules: true} =
+               wf!(index, "wApiB").attrs
+
+      assert %{runs_ignoring_privacy_rules: true} = wf!(index, "wHelper").attrs
+      refute Map.has_key?(wf!(index, "wApiA").attrs, :runs_ignoring_privacy_rules)
+
+      for wf <- ~w(workflow:wApiB workflow:wHelper),
+          action <- Index.children(index, wf),
+          ref <- Index.references_from(index, action.id),
+          do: assert(ref.attrs.ignore_privacy_rules, inspect(ref))
+
+      assert %{callee_ignore_privacy_rules: true} =
+               ref!(index, "action:aHelper", :calls_workflow, "workflow:wHelper").attrs
     end
 
     test "every reference kind is exercised", %{index: index} do
@@ -245,8 +350,8 @@ defmodule BubbleEx.IndexTest do
 
       assert index.diagnostics == BubbleEx.Diagnostic.normalize(index.diagnostics)
 
-      # Built-in fields (`Slug`) are not field symbols and are not referenced.
-      refute ref!(index, "privacy_rule:task/member_", :grants_view, "field:task/Slug")
+      # Built-in fields are symbols, so granting `Slug` resolves.
+      assert ref!(index, "privacy_rule:task/member_", :grants_view, "field:task/Slug")
     end
   end
 
@@ -268,7 +373,14 @@ defmodule BubbleEx.IndexTest do
                "wLoad" => :client_only,
                "wTimer" => :client_only,
                "wNav" => :client_only,
-               "wPlugin" => :unknown
+               "wNavReset" => :client_only,
+               "wLoopA" => :client_only,
+               "wLoopB" => :client_only,
+               "wHelper" => :server_backed,
+               "wPlugin" => :unknown,
+               # Only triggers a plugin-only custom event: unknown, not client_only.
+               "wPluginCaller" => :unknown,
+               "wPluginOnly" => :unknown
              }
 
       assert wf!(index, "wPlugin").attrs.unclassified_actions == 1
@@ -290,12 +402,62 @@ defmodule BubbleEx.IndexTest do
                "wLoad" => [:event],
                "wTimer" => [:recurring],
                "wNav" => [:scheduled],
-               "wPlugin" => [:event]
+               "wNavReset" => [:direct],
+               "wLoopA" => [:direct],
+               "wLoopB" => [:direct],
+               "wHelper" => [:direct],
+               "wPlugin" => [:event],
+               "wPluginCaller" => [:event],
+               "wPluginOnly" => [:direct]
              }
     end
 
-    test "cycles are strongly connected components, including self-calls", %{index: index} do
-      assert Index.cycles(index) == [["workflow:wApiA", "workflow:wApiB"], ["workflow:wNav"]]
+    test "cycles are strongly connected components with their call kinds", %{index: index} do
+      assert [scheduled, loop, self] = Index.cycles(index)
+
+      assert scheduled == %{
+               workflows: ["workflow:wApiA", "workflow:wApiB"],
+               calls: [
+                 %{
+                   from: "workflow:wApiA",
+                   to: "workflow:wApiB",
+                   action: "action:aOnList",
+                   call: :list_scheduled
+                 },
+                 %{
+                   from: "workflow:wApiB",
+                   to: "workflow:wApiA",
+                   action: "action:aBack",
+                   call: :scheduled
+                 }
+               ],
+               call_kinds: [:list_scheduled, :scheduled],
+               synchronous: false
+             }
+
+      # Custom events triggering each other directly never end.
+      assert %{
+               workflows: ["workflow:wLoopA", "workflow:wLoopB"],
+               call_kinds: [:direct],
+               synchronous: true
+             } = loop
+
+      # A workflow scheduling itself is ordinary Bubble recursion.
+      assert %{workflows: ["workflow:wNav"], call_kinds: [:scheduled], synchronous: false} = self
+    end
+
+    test "a mixed cycle is synchronous only if its direct calls alone loop" do
+      app =
+        @app
+        |> put_in(
+          ["pages", "pgHome", "workflows", "wfLoopB", "actions", "0", "type"],
+          "ScheduleCustom"
+        )
+
+      {:ok, index} = Index.build(app)
+
+      assert %{call_kinds: [:direct, :scheduled], synchronous: false} =
+               Enum.find(Index.cycles(index), &("workflow:wLoopA" in &1.workflows))
     end
   end
 
@@ -364,7 +526,8 @@ defmodule BubbleEx.IndexTest do
              |> Enum.map(&{&1.workflow, &1.call})
              |> Enum.sort() == [
                {"workflow:wApiA", :scheduled},
-               {"workflow:wApiC", :recurring}
+               {"workflow:wApiC", :recurring},
+               {"workflow:wHelper", :direct}
              ]
     end
 
@@ -385,25 +548,88 @@ defmodule BubbleEx.IndexTest do
   end
 
   describe "determinism and hashes" do
-    test "identical output for the same input and for permuted key order", %{index: index} do
+    test "identical output for the same input", %{index: index} do
       {:ok, again} = Index.build(@app)
       assert Index.to_json(again) == Index.to_json(index)
-
-      permuted = @app |> shuffle() |> Jason.encode!() |> Jason.decode!()
-      {:ok, from_permuted} = Index.build(permuted)
-      assert from_permuted.content_sha256 == index.content_sha256
-      assert Index.to_json(from_permuted) == Index.to_json(index)
+      assert again.semantic_sha256 == index.semantic_sha256
     end
 
-    test "array element order does not reorder the index" do
-      # The same collections supplied as JSON arrays in reverse order.
-      app = update_in(@app, ["api"], &(&1 |> Map.values() |> Enum.reverse()))
-      {:ok, a} = Index.build(app)
-      {:ok, b} = Index.build(update_in(app, ["api"], &Enum.reverse/1))
-      assert Enum.map(a.symbols, & &1.id) == Enum.map(b.symbols, & &1.id)
-      # Paths name array positions; the edges themselves are the same, in order.
-      assert Enum.map(a.references, &{&1.from, &1.kind, &1.to}) ==
-               Enum.map(b.references, &{&1.from, &1.kind, &1.to})
+    test "collection order is not semantic: shuffled array collections index the same", %{
+      index: index
+    } do
+      # Workflow collections supplied as JSON arrays in several orders. Action
+      # order is semantic and kept.
+      for seed <- 1..5 do
+        :rand.seed(:exsss, {seed, seed, seed})
+
+        app =
+          @app
+          |> update_in(["api"], &(&1 |> Map.values() |> Enum.shuffle()))
+          |> update_in(["pages", "pgHome", "workflows"], &(&1 |> Map.values() |> Enum.shuffle()))
+
+        {:ok, shuffled} = Index.build(app)
+        assert shuffled.semantic_sha256 == index.semantic_sha256
+        assert Enum.map(shuffled.symbols, & &1.id) == Enum.map(index.symbols, & &1.id)
+        assert edge_set(shuffled) == edge_set(index)
+        # Paths and the source hash name positions, so the full hash differs.
+        refute shuffled.content_sha256 == index.content_sha256
+      end
+    end
+
+    test "the same app in readable and compact keys indexes the same" do
+      readable = %{
+        "user_types" => %{
+          "task" => %{
+            "display" => "Task",
+            "fields" => %{"title_text" => %{"display" => "Title", "value" => "text"}}
+          }
+        },
+        "pages" => %{
+          "pg" => %{
+            "id" => "pX",
+            "name" => "index",
+            "type" => "Page",
+            "elements" => %{
+              "t" => %{
+                "id" => "eX",
+                "type" => "Text",
+                "properties" => %{
+                  "text" => %{
+                    "type" => "Search",
+                    "properties" => %{"type_to_find" => "custom.task"},
+                    "next" => %{
+                      "type" => "Message",
+                      "name" => "first_element",
+                      "next" => %{"type" => "Message", "name" => "title_text"}
+                    }
+                  }
+                }
+              }
+            },
+            "workflows" => %{
+              "w" => %{
+                "id" => "wX",
+                "type" => "PageLoaded",
+                "actions" => %{
+                  "0" => %{
+                    "id" => "aX",
+                    "type" => "HideElement",
+                    "properties" => %{"element_id" => "eX"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, a} = Index.build(readable)
+      {:ok, b} = Index.build(compact(readable))
+      assert a.semantic_sha256 == b.semantic_sha256
+      assert edge_set(a) == edge_set(b)
+
+      assert Enum.map(a.symbols, &Map.delete(&1, :path)) ==
+               Enum.map(b.symbols, &Map.delete(&1, :path))
     end
 
     test "content hash covers content and carries format and source identity", %{index: index} do
@@ -420,8 +646,12 @@ defmodule BubbleEx.IndexTest do
       # A caption edit renames nothing: IDs are Bubble IDs.
       assert Enum.map(changed.symbols, & &1.id) == Enum.map(index.symbols, & &1.id)
 
+      # Captions are content: both hashes change.
+      refute changed.semantic_sha256 == index.semantic_sha256
+
       map = Index.to_map(index)
       assert map.content_sha256 == index.content_sha256
+      assert map.semantic_sha256 == index.semantic_sha256
       refute Map.has_key?(map, :lookup)
       assert Jason.decode!(Index.to_json(index))["schema_version"] == 1
     end
@@ -491,6 +721,23 @@ defmodule BubbleEx.IndexTest do
                Enum.filter(index.diagnostics, &(&1.code == :index_duplicate_symbol))
     end
 
+    test "a Bubble ID shared by definitions of different kinds is diagnosed" do
+      element = %{"id" => "pHome", "type" => "Text"}
+      app = put_in(@app, ["pages", "pgHome", "elements", "grpMain", "elements", "clash"], element)
+      {:ok, index} = Index.build(app)
+
+      assert [
+               %{
+                 code: :index_duplicate_symbol,
+                 path: "/pages/pgHome/elements/grpMain/elements/clash"
+               }
+             ] =
+               Enum.filter(index.diagnostics, &(&1.code == :index_duplicate_symbol))
+
+      # References by that Bubble ID resolve to the first definition by path.
+      assert Index.symbol(index, "element:pHome")
+    end
+
     test "empty app and invalid input" do
       assert {:ok, %Index{symbols: [], references: [], cycles: []}} = Index.build(%{})
       assert {:error, %Error{kind: :invalid_input}} = Index.build("nope")
@@ -516,14 +763,34 @@ defmodule BubbleEx.IndexTest do
     end
   end
 
-  # Rebuild every JSON object with its keys in reverse order.
-  defp shuffle(map) when is_map(map) do
-    map
-    |> Enum.sort_by(&elem(&1, 0), :desc)
-    |> Enum.map(fn {k, v} -> {k, shuffle(v)} end)
-    |> Jason.OrderedObject.new()
+  defp edge_set(index),
+    do: index.references |> Enum.map(&{&1.from, &1.kind, &1.to, &1.attrs}) |> Enum.sort()
+
+  @compact %{
+    "display" => "%d",
+    "fields" => "%f3",
+    "value" => "%v",
+    "pages" => "%p3",
+    "elements" => "%el",
+    "workflows" => "%wf",
+    "id" => "%id",
+    "type" => "%x",
+    "properties" => "%p",
+    "name" => "%nm",
+    "next" => "%n"
+  }
+
+  # The live payload's compact spelling of the keys the index reads. Data
+  # type and field keys are Bubble IDs, never renamed.
+  defp compact(map, parent \\ nil)
+
+  defp compact(map, parent) when is_map(map) do
+    Map.new(map, fn {k, v} ->
+      key = if parent in ["user_types", "fields", "%f3"], do: k, else: Map.get(@compact, k, k)
+      {key, compact(v, key)}
+    end)
   end
 
-  defp shuffle(list) when is_list(list), do: Enum.map(list, &shuffle/1)
-  defp shuffle(v), do: v
+  defp compact(list, _) when is_list(list), do: Enum.map(list, &compact(&1, nil))
+  defp compact(v, _), do: v
 end

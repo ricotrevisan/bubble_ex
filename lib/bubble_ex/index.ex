@@ -28,23 +28,36 @@ defmodule BubbleEx.Index do
   Data types, fields, option sets, option values, option set attributes,
   pages (and mobile views), reusable elements, elements, workflows (frontend
   and backend), actions, API Connector groups and calls, and privacy rules.
+
+  Every data type also has Bubble's built-in fields as field symbols
+  (`_id` - unique id, `Created By`, `Created Date`, `Modified Date`, `Slug`,
+  and `email` on User), with `attrs.builtin` naming them, so reads of them are
+  ordinary `:reads_field` references.
+
   Workflow symbols carry, in `attrs`:
 
-    * `event_type`, `backend` (defined in the backend `api` collection),
-      `public` (a backend workflow exposed as a public API endpoint) and
-      `ignore_privacy_rules` (a backend workflow that runs ignoring privacy
-      rules)
+    * `event_type`, `backend` (defined in the backend `api` collection) and
+      `public` (a backend workflow exposed as a public API endpoint)
+    * `ignore_privacy_rules` - a backend workflow's own setting, as supplied;
+      `runs_ignoring_privacy_rules: true` when it effectively runs ignoring
+      privacy rules (see below)
     * `execution_class` - where the workflow's actions run, including the
       custom events it triggers: `:client_only`, `:server_backed` or
       `:mixed`. Backend workflows are always `:server_backed`. Plugin and
       unknown actions are unclassified and counted in `unclassified_actions`;
-      a frontend workflow with only unclassified actions is `:unknown`.
+      a frontend workflow whose actions (including those of the custom events
+      it triggers) are all unclassified is `:unknown`.
     * `invocation_modes` - how the workflow can start: `:direct` (triggered
       by another workflow), `:scheduled` (scheduled by another workflow, alone
       or on a list), `:public_http` (public API endpoint), `:recurring`
-      (recurring schedule or timer), `:event` (a page/element/plugin event) and
-      `:database_trigger`. An empty list means nothing in the supplied data
-      invokes it.
+      (recurring schedule or `DoInterval` timer), `:event` (any page, element
+      or plugin event: clicks, page load, input changes, a condition becoming
+      true, log in/out, plugin events, …) and `:database_trigger`. An empty
+      list means nothing in the supplied data invokes it.
+
+  Recurring schedule actions are recognized by an explicit list of action
+  types that no available export contains yet; treat `:recurring` calls as
+  unverified until confirmed against one.
 
   ## References
 
@@ -66,27 +79,53 @@ defmodule BubbleEx.Index do
   | `:instance_of`    | element                       | reusable element           | |
 
   Expression hosts are pages, reusables, elements, workflows (their event and
-  conditions), actions and privacy rules (their conditions). Every reference
-  made from an action with `ignore_privacy_rules: true`, or from inside a
-  backend workflow that ignores privacy rules, carries
-  `ignore_privacy_rules: true`.
+  conditions), actions and privacy rules (their conditions).
 
-  A data action's target type comes from its type setting or the typed
-  expression of the thing it changes. When that expression's type is not
-  known (element data, previous steps, …) but exactly one data type has every
-  changed field, that type is the target and the edges carry
-  `target: :inferred`.
+  ## Privacy context
+
+  A backend workflow whose own `ignore_privacy_rules` is true runs ignoring
+  privacy rules, and so does a custom event triggered or scheduled from a
+  workflow that does. Every reference made inside such a workflow (its event
+  and actions) carries `ignore_privacy_rules: true`. A schedule action's own
+  setting stays on the action symbol; its `:calls_workflow` edge records
+  both `action_ignore_privacy_rules` (the action's setting, when supplied)
+  and `callee_ignore_privacy_rules` (whether the callee runs ignoring privacy
+  rules), because they can disagree. The action's parameter expressions are
+  evaluated in the caller's context and are not flagged by the action's
+  setting.
+
+  ## Data write targets
+
+  A data action's target type comes from its type setting, or from the typed
+  expression of the thing it changes or deletes. The result of an earlier
+  step (`Result of step N`) has that step's type when the step creates,
+  copies or changes records. When the type is still unknown (element data,
+  …) but exactly one data type that is not deleted has every changed field
+  (deleted fields excluded), that type is the target and the edges carry
+  `target: :inferred`. Otherwise the action gets an `:index_unresolved_reference`
+  diagnostic and no write edges.
 
   In database-trigger workflows, `This Thing` sources without a type
   (`CurrentDataItem`, `OldDataItem`) are read as the trigger's data type.
 
   ## Determinism and hashes
 
-  Symbols are sorted by ID and references by `(from, kind, to, path, attrs)`.
-  `source_sha256` is the canonical-JSON hash of the input (as in the workflow
-  inventory); `content_sha256` is the canonical-JSON hash of `to_map/1`
-  without itself, so equal content means equal hash. `schema_version`
-  changes whenever the output format does.
+  Symbols are sorted by ID and references by `(from, kind, to, path, attrs)`,
+  so the same input always gives byte-identical `to_json/1`.
+
+    * `source_sha256` - canonical-JSON hash of the input (as in the workflow
+      inventory). Any change to the supplied JSON changes it, including data
+      the index does not cover.
+    * `content_sha256` - canonical-JSON hash of the whole `to_map/1` (minus
+      the two index hashes). It includes `source_sha256`, source paths and
+      diagnostics, so it identifies this exact index of this exact input.
+    * `semantic_sha256` - hash of the reference graph only: symbols and
+      references without source paths, and cycles. It is unchanged when
+      definitions only move within the JSON (e.g. a collection supplied in
+      another order or key form) or when data outside the index changes, and
+      is what to compare to decide whether dependents need re-analysis.
+
+  `schema_version` changes whenever the output format does.
 
   ## Diagnostics
 
@@ -94,9 +133,9 @@ defmodule BubbleEx.Index do
   itself, normalized: `:index_unresolved_reference` (a reference to a symbol
   absent from the supplied data, or a data action whose target type cannot
   be resolved) and `:index_duplicate_symbol` (two definitions with the same
-  Bubble ID; the first by source path is kept). Their `subject` holds the
-  Bubble IDs involved (for a reference, its source's plus its target's) and
-  `details` the symbol IDs. Expression parse diagnostics stay with
+  Bubble ID; the first by source path is kept, and references by that Bubble
+  ID resolve to it). Their `subject` holds the Bubble IDs involved (for a
+  reference, its source's plus its target's) and `details` the symbol IDs. Expression parse diagnostics stay with
   `BubbleEx.Expression`.
   """
 
@@ -121,6 +160,7 @@ defmodule BubbleEx.Index do
     :schema_version,
     :source_sha256,
     :content_sha256,
+    :semantic_sha256,
     symbols: [],
     references: [],
     cycles: [],
@@ -132,11 +172,19 @@ defmodule BubbleEx.Index do
           schema_version: pos_integer(),
           source_sha256: String.t(),
           content_sha256: String.t(),
+          semantic_sha256: String.t() | nil,
           symbols: [Symbol.t()],
           references: [Reference.t()],
-          cycles: [[Symbol.id()]],
+          cycles: [cycle()],
           diagnostics: [Diagnostic.t()],
           lookup: map()
+        }
+
+  @type cycle :: %{
+          workflows: [Symbol.id()],
+          calls: [%{from: Symbol.id(), to: Symbol.id(), action: Symbol.id(), call: atom()}],
+          call_kinds: [atom()],
+          synchronous: boolean()
         }
 
   @type call :: %{workflow: Symbol.id(), action: Symbol.id(), call: atom(), attrs: map()}
@@ -151,14 +199,16 @@ defmodule BubbleEx.Index do
     with {:ok, inventory} <- BubbleEx.Workflows.inventory(app) do
       structure = Structure.build(app)
 
+      {model_symbols, model_refs} = DataModel.build(app)
+
       ctx = %{
         schema: Schema.from_app(app),
         owners: structure.owners,
         bubble_ids: structure.bubble_ids,
+        live_fields: live_fields(model_symbols),
         attrs: %{}
       }
 
-      {model_symbols, model_refs} = DataModel.build(app)
       host_refs = Enum.flat_map(structure.hosts, &Reads.scan(&1.value, &1.path, &1.symbol, ctx))
       {wf_symbols, wf_refs, wf_diags} = BubbleEx.Index.Workflows.build(inventory, ctx)
       {rule_symbols, rule_refs} = PrivacyRules.build(app, ctx)
@@ -168,8 +218,23 @@ defmodule BubbleEx.Index do
          inventory.source_sha256,
          model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols,
          model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs,
-         wf_diags
+         structure.diagnostics ++ wf_diags
        )}
+    end
+  end
+
+  # Fields of data types that are not deleted, excluding deleted fields.
+  defp live_fields(model_symbols) do
+    deleted =
+      for %{kind: :data_type, attrs: %{deleted: true}} = s <- model_symbols,
+          into: MapSet.new(),
+          do: s.id
+
+    for %{kind: :field, parent: "data_type:" <> type = parent} = f <- model_symbols,
+        not MapSet.member?(deleted, parent),
+        not Map.get(f.attrs, :deleted, false),
+        reduce: %{} do
+      acc -> Map.update(acc, type, MapSet.new([f.bubble_id]), &MapSet.put(&1, f.bubble_id))
     end
   end
 
@@ -208,12 +273,35 @@ defmodule BubbleEx.Index do
       content_sha256: "",
       symbols: symbols,
       references: refs,
-      cycles: Graph.cycles(call_graph(symbols, refs, by_id)),
+      cycles: find_cycles(symbols, refs, by_id),
       diagnostics: diagnostics
     }
 
-    hash = index |> to_map() |> Map.delete(:content_sha256) |> CanonicalJson.sha256()
-    %{index | content_sha256: hash, lookup: lookup(symbols, refs, by_id)}
+    hash =
+      index |> to_map() |> Map.drop([:content_sha256, :semantic_sha256]) |> CanonicalJson.sha256()
+
+    %{
+      index
+      | content_sha256: hash,
+        semantic_sha256: semantic_sha256(index),
+        lookup: lookup(symbols, refs, by_id)
+    }
+  end
+
+  # The reference graph only: symbols and references without source paths,
+  # and cycles. Unchanged by edits that only move definitions in the JSON
+  # (e.g. collection order) or touch data the index does not cover.
+  defp semantic_sha256(index) do
+    %{
+      schema_version: index.schema_version,
+      symbols: Enum.map(index.symbols, &(&1 |> Map.from_struct() |> Map.delete(:path))),
+      references:
+        index.references
+        |> Enum.sort_by(&{&1.from, &1.kind, &1.to, &1.attrs |> Enum.sort() |> inspect()})
+        |> Enum.map(&(&1 |> Map.from_struct() |> Map.delete(:path))),
+      cycles: index.cycles
+    }
+    |> CanonicalJson.sha256()
   end
 
   defp unique_symbols(symbols) do
@@ -236,22 +324,44 @@ defmodule BubbleEx.Index do
     end)
   end
 
-  defp call_graph(symbols, refs, by_id) do
+  # Workflow-to-workflow calls: `%{from, to, action, call}`.
+  defp workflow_calls(symbols, refs, by_id) do
+    workflows = for %{kind: :workflow} = s <- symbols, into: MapSet.new(), do: s.id
+
+    for %{kind: :calls_workflow, from: action, to: to, attrs: attrs} <- refs,
+        %{parent: caller} <- [by_id[action]],
+        MapSet.member?(workflows, caller),
+        do: %{from: caller, to: to, action: action, call: attrs.call}
+  end
+
+  defp find_cycles(symbols, refs, by_id) do
+    calls = workflow_calls(symbols, refs, by_id)
     base = for %{kind: :workflow} = s <- symbols, into: %{}, do: {s.id, []}
 
-    Enum.reduce(refs, base, fn
-      %{kind: :calls_workflow, from: from, to: to}, graph ->
-        case by_id[from] do
-          %{parent: caller} when is_binary(caller) and is_map_key(graph, caller) ->
-            Map.update!(graph, caller, &[to | &1])
+    graph =
+      Enum.reduce(calls, base, &Map.update(&2, &1.from, [&1.to], fn tos -> [&1.to | tos] end))
 
-          _ ->
-            graph
-        end
+    for members <- Graph.cycles(graph) do
+      set = MapSet.new(members)
 
-      _, graph ->
-        graph
-    end)
+      edges =
+        calls
+        |> Enum.filter(&(MapSet.member?(set, &1.from) and MapSet.member?(set, &1.to)))
+        |> Enum.sort_by(&{&1.from, &1.to, &1.action, &1.call})
+
+      direct =
+        Enum.reduce(edges, %{}, fn
+          %{call: :direct} = e, g -> Map.update(g, e.from, [e.to], &[e.to | &1])
+          _, g -> g
+        end)
+
+      %{
+        workflows: members,
+        calls: edges,
+        call_kinds: edges |> Enum.map(& &1.call) |> Enum.uniq() |> Enum.sort(),
+        synchronous: Graph.cycles(direct) != []
+      }
+    end
   end
 
   defp lookup(symbols, refs, by_id) do
@@ -282,6 +392,7 @@ defmodule BubbleEx.Index do
       schema_version: index.schema_version,
       source_sha256: index.source_sha256,
       content_sha256: index.content_sha256,
+      semantic_sha256: index.semantic_sha256,
       symbols: Enum.map(index.symbols, &Map.from_struct/1),
       references: Enum.map(index.references, &Map.from_struct/1),
       cycles: index.cycles,
@@ -415,9 +526,15 @@ defmodule BubbleEx.Index do
 
   @doc """
   Workflow call cycles: strongly connected components (Tarjan) of the call
-  graph with more than one workflow, or a workflow calling itself. Each
-  cycle and the list are sorted.
+  graph with more than one workflow, or a workflow calling itself.
+
+  Each cycle lists its `workflows`, the `calls` between them (caller,
+  callee, calling action and call kind), their `call_kinds`, and whether
+  `synchronous` is true: a loop made only of `:direct` calls exists, which
+  would run without end. A cycle through scheduled calls is ordinary Bubble
+  recursion (e.g. a backend workflow that schedules itself for the next
+  item). Cycles are sorted.
   """
-  @spec cycles(t()) :: [[Symbol.id()]]
+  @spec cycles(t()) :: [cycle()]
   def cycles(%__MODULE__{cycles: cycles}), do: cycles
 end

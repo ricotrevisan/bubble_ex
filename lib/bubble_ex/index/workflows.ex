@@ -6,7 +6,7 @@ defmodule BubbleEx.Index.Workflows do
   # reads; then the call graph, execution classes and invocation modes.
 
   alias BubbleEx.Diagnostic
-  alias BubbleEx.Index.{Reads, Reference, Symbol, Types}
+  alias BubbleEx.Index.{Reads, Reference, Symbol, Types, WorkflowAnalysis}
   alias BubbleEx.Workflows.Source
 
   # Action type -> {workflow property, call kind}.
@@ -18,19 +18,16 @@ defmodule BubbleEx.Index.Workflows do
     "ScheduleAPIEventOnList" => {"api_event", :list_scheduled}
   }
 
-  # Where each built-in action runs. Calls to custom events inherit the
-  # callee's class; plugin and unknown actions are unclassified.
-  @server ~w(NewThing ChangeThing DeleteThing DeleteListOfThings ChangeListOfThings CopyListOfThings
-             MakeChangeCurrentUser ScheduleAPIEvent ScheduleAPIEventOnList CancelScheduledAPIEvent
-             CancelListScheduledAPIEvent APIReturnData SignUp LogIn LogOut OAuthLogin CreateUserAccount
-             ResetPassword SendEmail SendMagicLink SetTemporaryPassword UpdateCredentials
-             DeleteUploadedFile)
-  @client ~w(ShowElement HideElement ToggleElement ResetInputs ResetGroup OpenURL ChangePage
-             SetCustomState SetFocusToElement DisplayGroupData DisplayListData AnimateElement
-             ListGoToPage ListClear ScrollToElement ScrollToListEntry RefreshPage PauseWFClient
-             TerminateWorkflow)
+  # UNVERIFIED (follow-up): no available export contains a recurring schedule, so
+  # these Bubble action type names are assumptions to confirm against one.
+  @recurring ~w(ScheduleAPIEventRecurring ScheduleRecurringAPIEvent)
 
-  @type ctx :: %{schema: map(), owners: map(), bubble_ids: map()}
+  @type ctx :: %{
+          schema: map(),
+          owners: map(),
+          bubble_ids: map(),
+          live_fields: %{String.t() => MapSet.t()}
+        }
 
   @spec build(map(), ctx()) :: {[Symbol.t()], [Reference.t()], [Diagnostic.t()]}
   def build(inventory, ctx) do
@@ -40,8 +37,15 @@ defmodule BubbleEx.Index.Workflows do
     refs = Enum.flat_map(built, & &1.references)
     diags = Enum.flat_map(built, & &1.diagnostics)
 
-    {classify(symbols, refs), refs, diags}
+    {symbols, refs} = WorkflowAnalysis.analyze(symbols, refs)
+    {symbols, refs, diags}
   end
+
+  @doc "Call kind of an action type: `{workflow property, kind}` or nil."
+  @spec call_kind(term()) :: {String.t(), atom()} | nil
+  def call_kind(type) when type in @recurring, do: {"api_event", :recurring}
+  def call_kind(type) when is_binary(type), do: @calls[type]
+  def call_kind(_), do: nil
 
   defp workflow(entry, ctx) do
     segments = segments(entry.path)
@@ -50,7 +54,6 @@ defmodule BubbleEx.Index.Workflows do
     wf_bubble_id = present(event.id) || to_string(entry.key)
     id = Symbol.id(:workflow, wf_bubble_id)
     backend? = match?(["api" | _], segments)
-    ignore? = backend? and props["ignore_privacy_rules"] == true
 
     symbol = %Symbol{
       id: id,
@@ -64,7 +67,7 @@ defmodule BubbleEx.Index.Workflows do
           event_type: event.type,
           backend: backend?,
           public: if(backend?, do: props["expose"] == true),
-          ignore_privacy_rules: if(ignore?, do: true)
+          ignore_privacy_rules: if(backend?, do: boolean(props["ignore_privacy_rules"]))
         })
     }
 
@@ -72,7 +75,7 @@ defmodule BubbleEx.Index.Workflows do
       Map.merge(ctx, %{
         trigger_type:
           if(event.type == "DatabaseTriggerEvent", do: text(props["data_trigger_type"])),
-        attrs: if(ignore?, do: %{ignore_privacy_rules: true}, else: %{}),
+        step_types: %{},
         subject: %{workflow: wf_bubble_id}
       })
 
@@ -82,10 +85,20 @@ defmodule BubbleEx.Index.Workflows do
       listens_to(event.type, props, id, entry.path, ctx) ++
         Reads.scan(event_raw, segments, id, wf_ctx)
 
-    actions =
+    # Each step's result type is known to the steps after it.
+    {actions, _} =
       entry.actions
       |> Enum.with_index()
-      |> Enum.map(fn {action, index} -> action(action, index, id, wf_bubble_id, wf_ctx) end)
+      |> Enum.map_reduce(wf_ctx, fn {action, index}, ctx ->
+        built = action(action, index, id, wf_bubble_id, ctx)
+
+        ctx =
+          if built.result_type && built.bubble_id,
+            do: %{ctx | step_types: Map.put(ctx.step_types, built.bubble_id, built.result_type)},
+            else: ctx
+
+        {built, ctx}
+      end)
 
     %{
       symbols: [symbol | Enum.flat_map(actions, & &1.symbols)],
@@ -100,9 +113,7 @@ defmodule BubbleEx.Index.Workflows do
     bubble_id = present(action.id) || "#{wf_bubble_id}/#{action.source_key}"
     id = Symbol.id(:action, bubble_id)
     segments = segments(action.path)
-    ignore? = props["ignore_privacy_rules"] == true
-    attrs = if ignore?, do: %{ignore_privacy_rules: true}, else: Map.get(ctx, :attrs, %{})
-    ctx = %{ctx | attrs: attrs}
+    ignore = boolean(props["ignore_privacy_rules"])
 
     symbol = %Symbol{
       id: id,
@@ -110,25 +121,32 @@ defmodule BubbleEx.Index.Workflows do
       bubble_id: bubble_id,
       parent: workflow_id,
       path: action.path,
-      attrs: compact(%{type: type, index: index, ignore_privacy_rules: if(ignore?, do: true)})
+      attrs: compact(%{type: type, index: index, ignore_privacy_rules: ignore})
     }
 
-    {writes, diags} = writes(type, props, id, segments, ctx)
+    {writes, diags, result_type} = writes(type, props, id, segments, ctx)
 
     own =
-      calls(type, props, id, segments) ++
+      calls(type, props, id, segments, ignore) ++
         api_action(type, id, action.path) ++
         targets(props, id, segments, ctx) ++ writes
 
-    own = Enum.map(own, &%{&1 | attrs: Map.merge(&1.attrs, attrs)})
     reads = Reads.scan(action.raw, segments, id, ctx)
 
-    %{symbols: [symbol], references: own ++ reads, diagnostics: diags}
+    %{
+      symbols: [symbol],
+      references: own ++ reads,
+      diagnostics: diags,
+      bubble_id: present(action.id),
+      result_type: result_type
+    }
   end
 
   # --- edges ------------------------------------------------------------------
 
-  defp calls(type, props, id, segments) do
+  # The action's own `ignore_privacy_rules` setting is recorded on the call
+  # edge; the privacy the callee runs with is its own (see WorkflowAnalysis).
+  defp calls(type, props, id, segments, ignore) do
     with {key, kind} <- call_kind(type),
          target when is_binary(target) <- present(props[key]) do
       [
@@ -137,25 +155,13 @@ defmodule BubbleEx.Index.Workflows do
           to: Symbol.id(:workflow, target),
           kind: :calls_workflow,
           path: Source.pointer(segments ++ ["properties", key]),
-          attrs: %{call: kind}
+          attrs: compact(%{call: kind, action_ignore_privacy_rules: ignore})
         }
       ]
     else
       _ -> []
     end
   end
-
-  # Recurring scheduling is recognized by type name; no sample of it exists in
-  # the fixtures this was built against.
-  defp call_kind(type) when is_binary(type) do
-    cond do
-      call = @calls[type] -> call
-      String.contains?(type, "Recurring") -> {"api_event", :recurring}
-      true -> nil
-    end
-  end
-
-  defp call_kind(_), do: nil
 
   defp api_action("apiconnector2-" <> ref, id, path) do
     case String.split(ref, ".", parts: 2) do
@@ -242,13 +248,15 @@ defmodule BubbleEx.Index.Workflows do
 
   # --- data writes --------------------------------------------------------------
 
+  # Returns the write edges, diagnostics, and the step's result type (the
+  # record(s) it creates or changes) for later previous-step references.
   defp writes(type, props, id, segments, ctx) do
     case write_target(type, props, ctx) do
       nil ->
-        {[], []}
+        {[], [], nil}
 
       {operation, nil, source_key} ->
-        case infer_type(operation, props, ctx.schema) do
+        case infer_type(operation, props, ctx.live_fields) do
           nil ->
             {[],
              [
@@ -259,24 +267,27 @@ defmodule BubbleEx.Index.Workflows do
                  subject: ctx.subject,
                  details: %{action: id, action_type: type}
                )
-             ]}
+             ], nil}
 
           data_type ->
-            write_refs(
-              operation,
-              data_type,
-              %{target: :inferred},
-              props,
-              id,
-              segments,
-              source_key
-            )
+            attrs = %{target: :inferred}
+            refs = write_refs(operation, data_type, attrs, props, id, segments, source_key)
+            {refs, [], result_type(type, data_type)}
         end
 
       {operation, data_type, source_key} ->
-        write_refs(operation, data_type, %{}, props, id, segments, source_key)
+        refs = write_refs(operation, data_type, %{}, props, id, segments, source_key)
+        {refs, [], result_type(type, data_type)}
     end
   end
+
+  defp result_type(type, data_type) when type in ~w(NewThing ChangeThing),
+    do: Types.record_type(data_type)
+
+  defp result_type(type, data_type) when type in ~w(CopyListOfThings ChangeListOfThings),
+    do: "list." <> Types.record_type(data_type)
+
+  defp result_type(_, _), do: nil
 
   defp write_refs(operation, data_type, attrs, props, id, segments, source_key) do
     type_ref = %Reference{
@@ -287,19 +298,19 @@ defmodule BubbleEx.Index.Workflows do
       attrs: Map.put(attrs, :operation, operation)
     }
 
-    {[type_ref | field_writes(props, operation, data_type, attrs, id, segments)], []}
+    [type_ref | field_writes(props, operation, data_type, attrs, id, segments)]
   end
 
   # When the changed thing's expression has no known type (element data,
-  # previous steps, …), the type is still certain if exactly one data type
-  # has every changed field.
-  defp infer_type(:update, props, schema) do
+  # …), the type is still certain if exactly one data type that is not
+  # deleted has every changed field (deleted fields excluded).
+  defp infer_type(:update, props, live_fields) do
     keys = for {_, %{"key" => key}} <- ordered(props["changes"]), is_binary(key), do: key
 
     candidates =
-      for {type, %{fields: fields}} <- schema,
+      for {type, fields} <- live_fields,
           keys != [],
-          Enum.all?(keys, &Map.has_key?(fields, &1)),
+          Enum.all?(keys, &MapSet.member?(fields, &1)),
           do: type
 
     case candidates do
@@ -335,6 +346,12 @@ defmodule BubbleEx.Index.Workflows do
       {:delete,
        Types.data_type_key(props["type_to_delete"]) ||
          Types.data_type_key(Reads.type_of(props["to_delete"], ctx)), "to_delete"}
+
+  defp write_target("CopyListOfThings", props, ctx),
+    do:
+      {:insert,
+       Types.data_type_key(props["type_to_copy"]) ||
+         Types.data_type_key(Reads.type_of(props["to_copy"], ctx)), "type_to_copy"}
 
   defp write_target(_, _, _), do: nil
 
@@ -376,124 +393,6 @@ defmodule BubbleEx.Index.Workflows do
 
   defp ordered(_), do: []
 
-  # --- execution class and invocation modes -----------------------------------
-
-  defp classify(symbols, refs) do
-    actions = for %{kind: :action} = s <- symbols, into: %{}, do: {s.id, s}
-    workflows = for %{kind: :workflow} = s <- symbols, into: %{}, do: {s.id, s}
-
-    calls =
-      for %{kind: :calls_workflow} = r <- refs,
-          caller = actions[r.from],
-          do: {caller.parent, r.to, r.attrs.call}
-
-    own = own_classes(symbols)
-
-    inherits =
-      for {from, to, kind} <- calls,
-          kind in [:direct, :scheduled],
-          Map.has_key?(workflows, to),
-          do: {from, to}
-
-    effective = propagate(own, inherits)
-    modes = modes(workflows, calls)
-
-    Enum.map(symbols, fn
-      %{kind: :workflow} = s ->
-        {classes, unknown} = Map.fetch!(effective, s.id)
-
-        attrs =
-          Map.merge(s.attrs, %{
-            execution_class: class(s, classes, unknown),
-            invocation_modes: Map.get(modes, s.id, []) |> Enum.uniq() |> Enum.sort()
-          })
-
-        attrs = if unknown > 0, do: Map.put(attrs, :unclassified_actions, unknown), else: attrs
-        %{s | attrs: attrs}
-
-      s ->
-        s
-    end)
-  end
-
-  defp own_classes(symbols) do
-    base = for %{kind: :workflow} = s <- symbols, into: %{}, do: {s.id, {MapSet.new(), 0}}
-
-    Enum.reduce(symbols, base, fn
-      %{kind: :action, parent: wf, attrs: attrs}, acc ->
-        Map.update!(acc, wf, &add_class(&1, action_class(attrs[:type])))
-
-      _, acc ->
-        acc
-    end)
-  end
-
-  defp add_class({classes, unknown}, :unknown), do: {classes, unknown + 1}
-  defp add_class(own, :inherit), do: own
-  defp add_class({classes, unknown}, class), do: {MapSet.put(classes, class), unknown}
-
-  defp action_class(type) when type in @server, do: :server
-  defp action_class(type) when type in @client, do: :client
-  defp action_class("apiconnector2-" <> _), do: :server
-
-  defp action_class(type) when is_binary(type) do
-    case call_kind(type) do
-      {"custom_event", _} -> :inherit
-      {_, _} -> :server
-      nil -> :unknown
-    end
-  end
-
-  defp action_class(_), do: :unknown
-
-  # A workflow that triggers a custom event runs that event's actions too.
-  # Iterate to a fixpoint (class sets only grow, so this terminates).
-  defp propagate(own, inherits) do
-    next =
-      Enum.reduce(inherits, own, fn {from, to}, acc ->
-        {callee, _} = Map.fetch!(acc, to)
-
-        Map.update!(acc, from, fn {classes, unknown} ->
-          {MapSet.union(classes, callee), unknown}
-        end)
-      end)
-
-    if next == own, do: own, else: propagate(next, inherits)
-  end
-
-  defp class(%{attrs: %{backend: true}}, _classes, _unknown), do: :server_backed
-
-  defp class(_s, classes, unknown) do
-    case {MapSet.member?(classes, :client), MapSet.member?(classes, :server)} do
-      {true, true} -> :mixed
-      {_, true} -> :server_backed
-      {true, false} -> :client_only
-      {false, false} when unknown > 0 -> :unknown
-      {false, false} -> :client_only
-    end
-  end
-
-  defp modes(workflows, calls) do
-    own =
-      for {id, s} <- workflows, into: %{} do
-        {id, event_modes(s.attrs[:event_type], s.attrs)}
-      end
-
-    Enum.reduce(calls, own, fn {_from, to, kind}, acc ->
-      if Map.has_key?(acc, to), do: Map.update!(acc, to, &[mode(kind) | &1]), else: acc
-    end)
-  end
-
-  defp event_modes("APIEvent", attrs), do: if(attrs[:public], do: [:public_http], else: [])
-  defp event_modes("CustomEvent", _), do: []
-  defp event_modes("DatabaseTriggerEvent", _), do: [:database_trigger]
-  defp event_modes("DoInterval", _), do: [:recurring]
-  defp event_modes(_, _), do: [:event]
-
-  defp mode(:direct), do: :direct
-  defp mode(:recurring), do: :recurring
-  defp mode(_scheduled), do: :scheduled
-
   # --- helpers ----------------------------------------------------------------
 
   defp owner(["api" | _], _ctx), do: nil
@@ -507,6 +406,9 @@ defmodule BubbleEx.Index.Workflows do
     |> tl()
     |> Enum.map(&(&1 |> String.replace("~1", "/") |> String.replace("~0", "~")))
   end
+
+  defp boolean(value) when is_boolean(value), do: value
+  defp boolean(_), do: nil
 
   defp present(value) when is_binary(value) and value != "", do: value
   defp present(_), do: nil

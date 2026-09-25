@@ -4,7 +4,7 @@ defmodule BubbleEx.Index.Reference do
 
   `from` and `to` are `BubbleEx.Index.Symbol` IDs. `to` may name a symbol
   absent from the index (a dangling reference, also reported as an
-  `:unresolved_reference` diagnostic). `path` is the RFC 6901 pointer of the
+  `:index_unresolved_reference` diagnostic). `path` is the RFC 6901 pointer of the
   source JSON that makes the reference (for expression reads, the outermost
   expression). `attrs` holds kind-specific facts; see `BubbleEx.Index` for the
   edge kinds.

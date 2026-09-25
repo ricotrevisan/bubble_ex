@@ -83,7 +83,7 @@ defmodule BubbleEx.Index.Reads do
   @doc "The Bubble type of an expression, e.g. the record a data action changes."
   @spec type_of(term(), ctx()) :: String.t() | nil
   def type_of(raw, ctx) do
-    case Expression.parse(bind_trigger(raw, ctx), schema: ctx.schema) do
+    case Expression.parse(bind_context(raw, ctx), schema: ctx.schema) do
       {:ok, %{ast: ast}} -> ast.type
       {:error, _} -> nil
     end
@@ -116,7 +116,7 @@ defmodule BubbleEx.Index.Reads do
   defp next?(map), do: Map.has_key?(map, "next") or Map.has_key?(map, "%n")
 
   defp reads(raw, ctx) do
-    case Expression.parse(bind_trigger(raw, ctx), schema: ctx.schema) do
+    case Expression.parse(bind_context(raw, ctx), schema: ctx.schema) do
       {:ok, %{ast: ast}} -> ast |> walk([], ctx) |> Enum.reverse()
       {:error, _} -> []
     end
@@ -124,7 +124,7 @@ defmodule BubbleEx.Index.Reads do
 
   # --- AST walk ---------------------------------------------------------------
 
-  defp walk(%Ast.Field{subject: subject, field: field, builtin: nil}, acc, ctx) do
+  defp walk(%Ast.Field{subject: subject, field: field}, acc, ctx) do
     acc = field_read(acc, subject.type, field, :expression)
     walk(subject, acc, ctx)
   end
@@ -230,48 +230,86 @@ defmodule BubbleEx.Index.Reads do
     end)
   end
 
-  defp constraint_field?(key),
-    do:
-      is_binary(key) and key != "_advanced_search_constraint" and
-        is_nil(Vocabulary.builtin_field(key))
+  defp constraint_field?(key), do: is_binary(key) and key != "_advanced_search_constraint"
 
   # `_dynamic_sort_field` means the sort field is chosen at run time.
   defp sort(%{"sort_field" => field}, type, acc) when is_binary(field) do
-    if is_nil(Vocabulary.builtin_field(field)) and not String.starts_with?(field, "_dynamic"),
-      do: field_read(acc, type, field, :sort),
-      else: acc
+    if String.starts_with?(field, "_dynamic"),
+      do: acc,
+      else: field_read(acc, type, field, :sort)
   end
 
   defp sort(_, _, acc), do: acc
 
-  # Bubble's User `email` is built in and absent from exported field lists.
+  # Built-in fields (`_id`, `Created Date`, a User's `email`, …) are field
+  # symbols too; see `BubbleEx.Index.DataModel`.
   defp field_read(acc, type, field, via) do
     case Types.data_type_key(type) do
       nil -> acc
-      "user" when field == "email" -> acc
       key -> [{:reads_field, Symbol.id(:field, [key, field]), %{via: via}} | acc]
     end
   end
 
-  # --- database triggers -------------------------------------------------------
+  # --- context types ----------------------------------------------------------
 
-  defp bind_trigger(raw, %{trigger_type: type}) when is_binary(type), do: bind(raw, type)
-  defp bind_trigger(raw, _ctx), do: raw
+  # Sources whose type comes from context rather than a `btype_id`: the
+  # record a database trigger fired for (`CurrentDataItem`/`OldDataItem` in a
+  # trigger workflow) and the result of an earlier step (`PreviousStep`) whose
+  # type is known. Adds the type to a copy of the expression before parsing.
+  defp bind_context(raw, ctx) do
+    trigger = Map.get(ctx, :trigger_type)
+    steps = Map.get(ctx, :step_types, %{})
 
-  defp bind(map, type) when is_map(map) do
-    map = Map.new(map, fn {k, v} -> {k, bind(v, type)} end)
+    if is_binary(trigger) or map_size(steps) > 0,
+      do: bind(raw, trigger, steps),
+      else: raw
+  end
 
-    if Source.value(map, ~w(type %x)) in @trigger_items do
-      {pkey, props} = Source.get(map, ~w(properties %p)) || {"properties", %{}}
+  # Returns the input itself (no copy) when nothing needs a type.
+  defp bind(map, trigger, steps) when is_map(map) do
+    map =
+      Enum.reduce(map, map, fn {k, v}, acc ->
+        case bind(v, trigger, steps) do
+          ^v -> acc
+          bound -> Map.put(acc, k, bound)
+        end
+      end)
 
-      if is_map(props) and not Map.has_key?(props, "btype_id"),
-        do: Map.put(map, pkey, Map.put(props, "btype_id", type)),
-        else: map
-    else
-      map
+    case context_type(Source.value(map, ~w(type %x)), props_of(map), trigger, steps) do
+      nil -> map
+      type -> put_btype(map, type)
     end
   end
 
-  defp bind(list, type) when is_list(list), do: Enum.map(list, &bind(&1, type))
-  defp bind(value, _type), do: value
+  defp bind(list, trigger, steps) when is_list(list) do
+    bound = Enum.map(list, &bind(&1, trigger, steps))
+    if bound == list, do: list, else: bound
+  end
+
+  defp bind(value, _trigger, _steps), do: value
+
+  defp props_of(map) do
+    case Source.value(map, ~w(properties %p)) do
+      props when is_map(props) -> props
+      _ -> %{}
+    end
+  end
+
+  defp put_btype(map, type) do
+    case Source.get(map, ~w(properties %p)) do
+      {_pkey, %{"btype_id" => _}} -> map
+      {pkey, props} when is_map(props) -> Map.put(map, pkey, Map.put(props, "btype_id", type))
+      nil -> Map.put(map, "properties", %{"btype_id" => type})
+      _ -> map
+    end
+  end
+
+  defp context_type(type, _props, trigger, _steps)
+       when type in @trigger_items and is_binary(trigger),
+       do: trigger
+
+  defp context_type("PreviousStep", %{"action_id" => step}, _trigger, steps),
+    do: Map.get(steps, step)
+
+  defp context_type(_, _, _, _), do: nil
 end

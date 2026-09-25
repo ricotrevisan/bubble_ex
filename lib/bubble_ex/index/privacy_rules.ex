@@ -56,7 +56,6 @@ defmodule BubbleEx.Index.PrivacyRules do
 
         {kind, key, fields} ->
           for field <- fields,
-              is_nil(BubbleEx.Expression.Vocabulary.builtin_field(field)),
               do: %Reference{
                 from: id,
                 to: Symbol.id(:field, [type_id, field]),

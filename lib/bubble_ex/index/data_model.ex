@@ -6,8 +6,11 @@ defmodule BubbleEx.Index.DataModel do
   # key forms: `.bubble` exports (`display`, `fields`, `value`, `deleted`) and
   # the live payload (`%d`, `%f3`, `%v`, `%del`).
 
+  alias BubbleEx.Expression.Vocabulary
   alias BubbleEx.Index.{Reference, Symbol, Types}
   alias BubbleEx.Workflows.Source
+
+  @builtins ["_id", "Created By", "Created Date", "Modified Date", "Slug"]
 
   @spec build(map()) :: {[Symbol.t()], [Reference.t()]}
   def build(app) do
@@ -49,7 +52,52 @@ defmodule BubbleEx.Index.DataModel do
         typed(:field, [key, fkey], fkey, field, id, fpath)
       end)
 
-    {[symbol | fields], refs}
+    {builtins, builtin_refs} = builtins(key, id, path, MapSet.new(fields, & &1.bubble_id))
+    {[symbol | fields ++ builtins], refs ++ builtin_refs}
+  end
+
+  # Every data type has Bubble's built-in fields (and every User an email),
+  # absent from exported field lists. They are symbols so reads of them (e.g.
+  # `unique id`) are references like any other. Their path is the type's.
+  defp builtins(key, parent, path, defined) do
+    names = if key == "user", do: @builtins ++ ["email"], else: @builtins
+
+    names
+    |> Enum.reject(&MapSet.member?(defined, &1))
+    |> Enum.map(fn name ->
+      {kind, value_type} = Vocabulary.builtin_field(name) || {:email, "text"}
+      id = Symbol.id(:field, [key, name])
+
+      symbol = %Symbol{
+        id: id,
+        kind: :field,
+        bubble_id: name,
+        name: name,
+        parent: parent,
+        path: Source.pointer(path),
+        attrs: %{value_type: value_type, builtin: kind}
+      }
+
+      refs =
+        case Types.target(value_type) do
+          nil ->
+            []
+
+          target ->
+            [
+              %Reference{
+                from: id,
+                to: target.id,
+                kind: :field_type,
+                path: Source.pointer(path),
+                attrs: %{list: false}
+              }
+            ]
+        end
+
+      {[symbol], refs}
+    end)
+    |> merge()
   end
 
   defp option_sets(sets) when is_map(sets) do
