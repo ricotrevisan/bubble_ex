@@ -42,15 +42,25 @@ defmodule BubbleEx.Characterization.DbSqlTsqlTest do
     assert sql =~ "[answer] NVARCHAR(MAX)"
   end
 
-  test "emits a named foreign key for the scalar custom reference", %{sql: sql} do
+  test "declares no foreign key and documents the references", %{sql: sql} do
+    refute sql =~ "FOREIGN KEY"
+
+    assert sql =~
+             "-- [custom].[Survey Response].[onboarding answer] -> [custom].[Onboarding Answer].[_id]"
+
+    assert sql =~ "-- [custom].[Survey Response].[status] -> [option].[Status Type].[db_value]"
+  end
+
+  test "with foreign_keys: :enforced, emits named foreign keys for both references" do
+    {:ok, db} = Reader.parse(@app)
+    {:ok, sql} = Tsql.encode(db, foreign_keys: :enforced)
+
     assert sql =~
              "ALTER TABLE [custom].[Survey Response]\n" <>
                "  ADD CONSTRAINT [FK_survey_response_onboarding_answer]\n" <>
                "  FOREIGN KEY ([onboarding answer])\n" <>
                "  REFERENCES [custom].[Onboarding Answer] ([_id]);"
-  end
 
-  test "emits a named foreign key for the option-set reference to db_value", %{sql: sql} do
     assert sql =~
              "ALTER TABLE [custom].[Survey Response]\n" <>
                "  ADD CONSTRAINT [FK_survey_response_status]\n" <>

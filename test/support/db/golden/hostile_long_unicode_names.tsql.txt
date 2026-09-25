@@ -41,9 +41,10 @@ CREATE TABLE [option].[Ölçü] (
   CONSTRAINT [PK_l] PRIMARY KEY ([db_value])
 );
 
-ALTER TABLE [custom].[Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end]
-  ADD CONSTRAINT [FK_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_very_long_name_end_]
-  FOREIGN KEY ([🧪])
-  REFERENCES [custom].[类型 🏷️] ([_id]);
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- [custom].[Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end].[Created By] -> [custom].[User].[_id]
+-- [custom].[Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end].[🧪] -> [custom].[类型 🏷️].[_id]
+-- [custom].[User].[Created By] -> [custom].[User].[_id]
+-- [custom].[类型 🏷️].[Created By] -> [custom].[User].[_id]
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

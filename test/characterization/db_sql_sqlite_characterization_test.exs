@@ -18,8 +18,8 @@ defmodule BubbleEx.Characterization.DbSqlSqliteTest do
     {:ok, sql: sql}
   end
 
-  test "emits the foreign-keys pragma preamble", %{sql: sql} do
-    assert sql =~ "PRAGMA foreign_keys = ON;"
+  test "emits no foreign-keys pragma by default", %{sql: sql} do
+    refute sql =~ "PRAGMA foreign_keys"
   end
 
   test "prefixes table names with their Bubble group", %{sql: sql} do
@@ -40,13 +40,24 @@ defmodule BubbleEx.Characterization.DbSqlSqliteTest do
     assert sql =~ ~s[PRIMARY KEY ("db_value")]
   end
 
-  test "declares the scalar custom reference as an inline foreign key", %{sql: sql} do
+  test "declares no foreign key and documents the references", %{sql: sql} do
+    refute sql =~ "FOREIGN KEY"
+
     assert sql =~
-             ~s[FOREIGN KEY ("onboarding answer") REFERENCES "custom__Onboarding Answer" ("_id")]
+             ~s[-- "custom__Survey Response"."onboarding answer" -> "custom__Onboarding Answer"."_id"]
+
+    assert sql =~ ~s[-- "custom__Survey Response"."status" -> "option__Status Type"."db_value"]
   end
 
-  test "declares the option-set reference to db_value as an inline foreign key", %{sql: sql} do
+  test "with foreign_keys: :enforced, declares the custom and option-set references inline" do
+    {:ok, db} = Reader.parse(@app)
+    {:ok, sql} = Sqlite.encode(db, foreign_keys: :enforced)
+
+    assert sql =~ "PRAGMA foreign_keys = ON;"
+
     assert sql =~
-             ~s[FOREIGN KEY ("status") REFERENCES "option__Status Type" ("db_value")]
+             ~s[FOREIGN KEY ("onboarding answer") REFERENCES "custom__Onboarding Answer" ("_id")]
+
+    assert sql =~ ~s[FOREIGN KEY ("status") REFERENCES "option__Status Type" ("db_value")]
   end
 end

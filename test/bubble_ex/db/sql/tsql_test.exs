@@ -83,7 +83,27 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
     assert sql =~ "[tags] NVARCHAR(MAX) /* list<text>: consider a junction table */,\n  [name]"
   end
 
-  test "emits a named foreign key for a scalar reference" do
+  test "documents a scalar reference in a comment without a foreign key by default" do
+    from =
+      col("ref", "owner", %{type: :reference, custom_type: "user"},
+        table_id: "t1",
+        table_name: "Thing"
+      )
+
+    to =
+      col("_id", "_id", %{type: :string},
+        table_id: "user",
+        table_name: "User",
+        primary_key: true
+      )
+
+    assert {:ok, sql} = Tsql.encode(thing_db([from], [{from, to, :one_to_one}]))
+    refute sql =~ "FOREIGN KEY"
+    assert sql =~ "-- [custom].[Thing].[owner] -> [custom].[User].[_id]"
+    assert sql =~ "[owner] NVARCHAR(450)"
+  end
+
+  test "emits a named foreign key for a scalar reference with foreign_keys: :enforced" do
     from =
       col("ref", "owner", %{type: :reference, custom_type: "user"},
         table_id: "t1",
@@ -98,7 +118,7 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
       )
 
     db = thing_db([from], [{from, to, :one_to_one}])
-    assert {:ok, sql} = Tsql.encode(db)
+    assert {:ok, sql} = Tsql.encode(db, foreign_keys: :enforced)
 
     assert sql =~
              "ALTER TABLE [custom].[Thing]\n" <>
@@ -118,7 +138,7 @@ defmodule BubbleEx.Db.Sql.TsqlTest do
       )
 
     db = thing_db([from], [{from, to, :one_to_many}])
-    assert {:ok, sql} = Tsql.encode(db)
+    assert {:ok, sql} = Tsql.encode(db, foreign_keys: :enforced)
     refute sql =~ "ADD CONSTRAINT [FK"
     assert sql =~ "[owners] NVARCHAR(MAX) /* list<ref>: consider a junction table */"
   end

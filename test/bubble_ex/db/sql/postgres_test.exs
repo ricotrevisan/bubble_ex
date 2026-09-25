@@ -64,9 +64,36 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     assert sql =~ ~s("tags" text[])
   end
 
-  test "emits a foreign key for a scalar reference" do
+  test "documents a scalar reference in a comment without a foreign key by default" do
+    {db, _from} = owner_db()
+    assert {:ok, sql} = Postgres.encode(db)
+
+    refute sql =~ "FOREIGN KEY"
+    assert sql =~ ~s[-- "custom"."Thing"."owner" -> "custom"."User"."_id"]
+  end
+
+  test "escapes line breaks in names inside the reference comment" do
+    {db, _from} = owner_db("own\nDROP TABLE x;\r--")
+    assert {:ok, sql} = Postgres.encode(db)
+
+    assert sql =~ ~s[-- "custom"."Thing"."own\\nDROP TABLE x;\\r--" -> "custom"."User"."_id"]
+    [_tables, comments] = String.split(sql, "-- References")
+    assert comments |> String.split("\n", trim: true) |> length() == 2
+  end
+
+  test "emits a foreign key for a scalar reference with foreign_keys: :enforced" do
+    {db, _from} = owner_db()
+    assert {:ok, sql} = Postgres.encode(db, foreign_keys: :enforced)
+
+    assert sql =~
+             ~s[ALTER TABLE "custom"."Thing" ADD FOREIGN KEY ("owner") REFERENCES "custom"."User" ("_id");]
+
+    refute sql =~ "-- References"
+  end
+
+  defp owner_db(name \\ "owner") do
     from =
-      col("ref", "owner", %{type: :reference, custom_type: "user"},
+      col("ref", name, %{type: :reference, custom_type: "user"},
         table_id: "t1",
         table_name: "Thing"
       )
@@ -78,11 +105,7 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
         primary_key: true
       )
 
-    db = thing_db([from], [{from, to, :one_to_one}])
-    assert {:ok, sql} = Postgres.encode(db)
-
-    assert sql =~
-             ~s[ALTER TABLE "custom"."Thing" ADD FOREIGN KEY ("owner") REFERENCES "custom"."User" ("_id");]
+    {thing_db([from], [{from, to, :one_to_one}]), from}
   end
 
   test "does not emit a foreign key for a list reference" do
@@ -96,8 +119,9 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
       )
 
     db = thing_db([from], [{from, to, :one_to_many}])
-    assert {:ok, sql} = Postgres.encode(db)
+    assert {:ok, sql} = Postgres.encode(db, foreign_keys: :enforced)
     refute sql =~ "ADD FOREIGN KEY"
+    refute sql =~ "-- References"
     assert sql =~ ~s("owners" text[])
   end
 

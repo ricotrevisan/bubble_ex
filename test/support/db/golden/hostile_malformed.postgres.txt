@@ -53,6 +53,11 @@ CREATE TABLE "option"."Bad values" (
   "Display" text,
   PRIMARY KEY ("db_value")
 );
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Listy"."Created By" -> "custom"."User"."_id"
+-- "custom"."Task"."Created By" -> "custom"."User"."_id"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
 --- diagnostics ---
 model_malformed_node /option_sets/bad_set
 model_malformed_node /option_sets/bad_value/values/v1

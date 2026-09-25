@@ -1,8 +1,6 @@
 -- SQLite DDL for Bubble app
--- NOTE: arrays stored as JSON text; FKs require PRAGMA foreign_keys = ON.
+-- NOTE: arrays stored as JSON text.
 -- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
-
-PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS "custom__Task" (
   "_id" TEXT NOT NULL,
@@ -20,9 +18,7 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "Created Date_2" TEXT,
   "created by_2" TEXT,
   "SLUG_2" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value"),
-  FOREIGN KEY ("created by_2") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__task_2" (
@@ -61,6 +57,13 @@ CREATE TABLE IF NOT EXISTS "option__TASK_3" (
   "Display" TEXT,
   PRIMARY KEY ("db_value")
 );
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom__Task"."Created By" -> "custom__User"."_id"
+-- "custom__Task"."Status" -> "option__Status"."db_value"
+-- "custom__Task"."created by_2" -> "custom__User"."_id"
+-- "custom__task_2"."Created By" -> "custom__User"."_id"
+-- "custom__User"."Created By" -> "custom__User"."_id"
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2

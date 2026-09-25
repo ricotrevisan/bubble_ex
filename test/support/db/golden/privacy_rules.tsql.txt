@@ -41,4 +41,10 @@ CREATE TABLE [custom].[User] (
   [Admin] BIT,
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- [custom].[Draft].[Created By] -> [custom].[User].[_id]
+-- [custom].[Note].[Created By] -> [custom].[User].[_id]
+-- [custom].[Public page].[Created By] -> [custom].[User].[_id]
+-- [custom].[User].[Created By] -> [custom].[User].[_id]
 --- diagnostics ---

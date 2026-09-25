@@ -44,17 +44,88 @@ defmodule BubbleEx.Db.Encoder do
   }
 
   @doc """
-  Whether a SQL encoder declares a foreign key for a Reader relationship:
-  a resolved scalar reference, except the built-in `Created By`. Bubble
-  keeps a record's creator after the user is deleted, and records created
-  by backend workflows or logged-out visitors may have none that exists,
-  so, as in `BubbleEx.Target.Ash` (WTF-338), it is a reference without a
-  constraint. List references have no foreign key either.
+  Whether a Reader relationship is a scalar reference a SQL encoder can
+  express as a column pointing at another table's key: resolved, live, and
+  not a list (list references are stored as arrays/JSON and never get a
+  constraint). Every such reference is either a foreign key
+  (`foreign_key?/2`) or documented in a SQL comment.
   """
-  @spec foreign_key?(BubbleEx.Db.Reader.relationship()) :: boolean()
-  def foreign_key?({from, to, _direction}) do
+  @spec scalar_reference?(BubbleEx.Db.Reader.relationship()) :: boolean()
+  def scalar_reference?({from, to, _direction}) do
     from != nil and to != nil and not from.deleted and not to.deleted and
-      Map.get(from.type, :is_array) != true and Map.get(from, :system) != :created_by
+      Map.get(from.type, :is_array) != true
+  end
+
+  @doc """
+  Whether a SQL encoder (PostgreSQL, SQLite, T-SQL) declares a foreign key
+  for a Reader relationship. This is the single decision point.
+
+  The `:foreign_keys` option picks the mode:
+
+    * `:none` (default) - no foreign key at all. Bubble has no referential
+      integrity: deleting a thing leaves every reference to it in place, so
+      real data holds dangling IDs, and a constraint would reject it on load.
+      As in `BubbleEx.Target.Ash` (WTF-338) and the Ecto migrations, each
+      reference is kept as a plain column and documented in a SQL comment.
+    * `:enforced` - a real foreign key on every scalar reference
+      (`scalar_reference?/1`) except the built-in `Created By`, for data that
+      has been cleaned of dangling references first. Bubble keeps a record's
+      creator after the user is deleted, and records made by backend
+      workflows or logged-out visitors may have none that exists, so
+      `Created By` stays a comment in both modes.
+  """
+  @spec foreign_key?(BubbleEx.Db.Reader.relationship(), keyword()) :: boolean()
+  def foreign_key?({from, _to, _direction} = relationship, opts \\ []) do
+    Keyword.get(opts, :foreign_keys, :none) == :enforced and scalar_reference?(relationship) and
+      Map.get(from, :system) != :created_by
+  end
+
+  @doc """
+  The scalar references (`scalar_reference?/1`) a SQL encoder keeps without
+  a foreign key under `opts` (see `foreign_key?/2`), in Reader order.
+  """
+  @spec unconstrained_references([BubbleEx.Db.Reader.relationship()], keyword()) ::
+          [BubbleEx.Db.Reader.relationship()]
+  def unconstrained_references(relationships, opts) do
+    Enum.filter(relationships, &(scalar_reference?(&1) and not foreign_key?(&1, opts)))
+  end
+
+  @doc """
+  The trailing SQL comment block that documents the scalar references kept
+  without a foreign key (`unconstrained_references/2`), one
+  `-- <from> -> <to>` line each, or `""` when there are none. `describe`
+  renders a `{from, to}` column pair in the dialect's quoting. Line breaks in
+  names are escaped so they cannot end the comment and run as SQL.
+  """
+  @spec reference_comments(
+          [BubbleEx.Db.Reader.relationship()],
+          keyword(),
+          (map(), map() -> String.t())
+        ) :: String.t()
+  def reference_comments(relationships, opts, describe) do
+    case unconstrained_references(relationships, opts) do
+      [] ->
+        ""
+
+      references ->
+        lines =
+          Enum.map(references, fn {from, to, _dir} ->
+            "-- " <> comment_safe(describe.(from, to))
+          end)
+
+        Enum.join(
+          ["-- References without a foreign key (Bubble does not enforce referential integrity):"] ++
+            lines,
+          "\n"
+        )
+    end
+  end
+
+  defp comment_safe(text) do
+    text
+    |> String.replace("\\", "\\\\")
+    |> String.replace("\r", "\\r")
+    |> String.replace("\n", "\\n")
   end
 
   @doc """
@@ -69,13 +140,20 @@ defmodule BubbleEx.Db.Encoder do
      Error.new(:unknown_format, "unknown schema format: #{inspect(format)}", %{format: format})}
   end
 
-  @doc "Renders a registered schema format and returns artifact-scoped diagnostics."
+  @doc """
+  Renders a registered schema format and returns artifact-scoped diagnostics.
+
+  Options include `:naming` (`:proper` or `:id`), `:external_types`,
+  `:external_type_capabilities` and, for the SQL formats, `:foreign_keys`
+  (`:none`, the default, or `:enforced`; see `foreign_key?/2`).
+  """
   @spec render(atom(), map(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
   def render(format, db_map, opts \\ []) do
     plan = BubbleEx.Db.Encoder.Plan.build(db_map, opts)
 
     with {:ok, module} <- module_for(format),
          {:ok, mode} <- external_type_mode(db_map, opts),
+         :ok <- validate_foreign_keys(opts),
          :ok <- validate_capabilities(format, opts),
          {:ok, content} <-
            module.encode(
@@ -105,6 +183,13 @@ defmodule BubbleEx.Db.Encoder do
     case Keyword.get(opts, :external_types, default) do
       mode when mode in [:preserve, :opaque, :legacy] -> {:ok, mode}
       mode -> {:error, Error.new(:invalid_input, "invalid external_types mode", %{mode: mode})}
+    end
+  end
+
+  defp validate_foreign_keys(opts) do
+    case Keyword.get(opts, :foreign_keys, :none) do
+      mode when mode in [:none, :enforced] -> :ok
+      mode -> {:error, Error.new(:invalid_input, "invalid foreign_keys mode", %{mode: mode})}
     end
   end
 

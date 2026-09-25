@@ -68,12 +68,13 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
   end
 
   test "the generated SQLite and PostgreSQL DDL loads", %{db: db} do
-    for naming <- [:proper, :id] do
-      {:ok, sqlite} = Encoder.render(:sqlite, db, naming: naming)
-      assert {"", 0} = Ddl.sqlite(sqlite.content), "SQLite DDL (#{naming}) does not load"
+    for naming <- [:proper, :id], foreign_keys <- [:none, :enforced] do
+      opts = [naming: naming, foreign_keys: foreign_keys]
+      {:ok, sqlite} = Encoder.render(:sqlite, db, opts)
+      assert {"", 0} = Ddl.sqlite(sqlite.content), "SQLite DDL #{inspect(opts)} does not load"
 
       if url = System.get_env("BUBBLE_EX_DDL_PG") do
-        {:ok, postgres} = Encoder.render(:postgres, db, naming: naming)
+        {:ok, postgres} = Encoder.render(:postgres, db, opts)
         assert {_, 0} = Ddl.postgres(url, postgres.content)
       end
     end

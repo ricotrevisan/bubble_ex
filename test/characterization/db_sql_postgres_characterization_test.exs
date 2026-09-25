@@ -36,13 +36,25 @@ defmodule BubbleEx.Characterization.DbSqlPostgresTest do
     assert sql =~ ~s[PRIMARY KEY ("db_value")]
   end
 
-  test "emits a foreign key for the scalar custom reference", %{sql: sql} do
+  test "declares no foreign key and documents the references", %{sql: sql} do
+    refute sql =~ "FOREIGN KEY"
+
     assert sql =~
-             ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("onboarding answer") REFERENCES "custom"."Onboarding Answer" ("_id");]
+             ~s[-- "custom"."Survey Response"."onboarding answer" -> "custom"."Onboarding Answer"."_id"]
+
+    assert sql =~ ~s[-- "custom"."Survey Response"."status" -> "option"."Status Type"."db_value"]
   end
 
-  test "emits a foreign key for the option-set reference to db_value", %{sql: sql} do
+  test "with foreign_keys: :enforced, emits foreign keys for the custom and option-set references" do
+    {:ok, db} = Reader.parse(@app)
+    {:ok, sql} = Postgres.encode(db, foreign_keys: :enforced)
+
+    assert sql =~
+             ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("onboarding answer") REFERENCES "custom"."Onboarding Answer" ("_id");]
+
     assert sql =~
              ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");]
+
+    assert sql =~ ~s[-- "custom"."Survey Response"."Created By" -> "custom"."User"."_id"]
   end
 end

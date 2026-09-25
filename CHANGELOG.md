@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **PostgreSQL, SQLite and T-SQL declare no foreign keys by default**
+  (WTF-392). Bubble has no referential integrity, so real data holds
+  dangling references, and the constraints on every scalar reference
+  rejected it on load. As in `:ash` (WTF-338) and the Ecto migrations, each
+  reference is now a plain column, listed in a trailing
+  `-- References without a foreign key ...` comment
+  (`-- <table>.<column> -> <table>.<key>`, line breaks in names escaped).
+  PostgreSQL loses its `ALTER TABLE ... ADD FOREIGN KEY` statements, T-SQL
+  its `ADD CONSTRAINT [FK_...]` statements (reference columns stay
+  `NVARCHAR(450)`), and SQLite its inline `FOREIGN KEY` clauses and the
+  `PRAGMA foreign_keys = ON;` preamble. A relaxed constraint (PostgreSQL
+  `NOT VALID`, T-SQL `WITH NOCHECK`) was rejected: both still check every new
+  insert. The new `foreign_keys: :enforced` option (`Db.Encoder.render/3`,
+  `fetch_app/2`, each SQL encoder's `encode/2`) restores the previous output
+  for cleaned data; `Created By` has no foreign key in either mode. An
+  unknown mode is an `:invalid_input` error. `Db.Encoder.foreign_key?/1`
+  becomes `foreign_key?/2` (the mode is its second argument), with
+  `scalar_reference?/1`, `unconstrained_references/2` and
+  `reference_comments/3` beside it.
 - **Every `BubbleEx.Db.Reader` table has Bubble's built-in fields**
   (WTF-379). After `_id`, each data type's table gets the Model's
   `DataType.system_fields`: `Created Date` and `Modified Date`

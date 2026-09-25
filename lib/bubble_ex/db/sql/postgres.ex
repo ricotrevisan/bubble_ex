@@ -2,8 +2,16 @@ defmodule BubbleEx.Db.Sql.Postgres do
   @moduledoc """
   Encodes a parsed Bubble database map (see `BubbleEx.Db.Reader`) into PostgreSQL
   DDL: a `CREATE SCHEMA` per table group, a `CREATE TABLE` (columns + primary key)
-  per table, and an `ALTER TABLE ... ADD FOREIGN KEY` per scalar reference
-  except the built-in `Created By` (see `BubbleEx.Db.Encoder.foreign_key?/1`).
+  per table, and a trailing `--` comment listing each scalar reference
+  (`"custom"."Order"."customer" -> "custom"."User"."_id"`).
+
+  By default (`foreign_keys: :none`) no foreign key is declared: Bubble has no
+  referential integrity, so real data holds dangling references that a
+  constraint would reject on load. A relaxed `NOT VALID` constraint would not
+  help, since PostgreSQL still checks it on every new insert. With
+  `foreign_keys: :enforced` each scalar reference except the built-in
+  `Created By` gets an `ALTER TABLE ... ADD FOREIGN KEY` instead (see
+  `BubbleEx.Db.Encoder.foreign_key?/2`).
 
   List/array references become native array columns (`text[]`) with no foreign-key
   constraint, mirroring how Bubble stores lists of ids on the record.
@@ -11,7 +19,7 @@ defmodule BubbleEx.Db.Sql.Postgres do
 
   @behaviour BubbleEx.Db.Encoder
 
-  @type opts :: [naming: :proper | :id | nil]
+  @type opts :: [naming: :proper | :id | nil, foreign_keys: :none | :enforced]
 
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
@@ -33,7 +41,8 @@ defmodule BubbleEx.Db.Sql.Postgres do
         encode_schemas(tables),
         encode_external_types(parsed_map, opts),
         Enum.map_join(tables, "\n\n", &encode_table(&1, opts)),
-        encode_foreign_keys(parsed_map, opts)
+        encode_foreign_keys(parsed_map, opts),
+        encode_references(parsed_map, opts)
       ]
       |> Enum.reject(&(&1 == ""))
 
@@ -70,9 +79,23 @@ defmodule BubbleEx.Db.Sql.Postgres do
   defp encode_foreign_keys(parsed_map, opts) do
     parsed_map
     |> Map.get(:relationships, [])
-    |> Enum.filter(&BubbleEx.Db.Encoder.foreign_key?/1)
+    |> Enum.filter(&BubbleEx.Db.Encoder.foreign_key?(&1, opts))
     |> Enum.map_join("\n", fn {from, to, _dir} -> encode_fk(from, to, opts) end)
   end
+
+  # Scalar references without a constraint, kept as documentation.
+  defp encode_references(parsed_map, opts) do
+    parsed_map
+    |> Map.get(:relationships, [])
+    |> BubbleEx.Db.Encoder.reference_comments(opts, fn from, to ->
+      qualified_column(from.table_group, ref_table_name(from, opts), column_name(from, opts)) <>
+        " -> " <>
+        qualified_column(to.table_group, ref_table_name(to, opts), column_name(to, opts))
+    end)
+  end
+
+  defp qualified_column(group, table, column),
+    do: qualified_table(group, table) <> "." <> quote_ident(column)
 
   defp encode_fk(from, to, opts) do
     "ALTER TABLE #{qualified_table(from.table_group, ref_table_name(from, opts))} " <>

@@ -271,6 +271,7 @@ defmodule BubbleEx.Apps.Enricher do
     base
     |> Keyword.put(:external_types, Keyword.get(opts, :external_types, :preserve))
     |> Keyword.put(:external_type_capabilities, scoped_capabilities)
+    |> Keyword.put(:foreign_keys, Keyword.get(opts, :foreign_keys, :none))
   end
 
   defp maybe_put_diagnostics(attrs, _key, []), do: attrs

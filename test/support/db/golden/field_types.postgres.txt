@@ -62,7 +62,11 @@ CREATE TABLE "option"."Status" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Owner") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Project"."Created By" -> "custom"."User"."_id"
+-- "custom"."Task"."Created By" -> "custom"."User"."_id"
+-- "custom"."Task"."Owner" -> "custom"."User"."_id"
+-- "custom"."Task"."Project" -> "custom"."Project"."_id"
+-- "custom"."Task"."Status" -> "option"."Status"."db_value"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
 --- diagnostics ---
