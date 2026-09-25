@@ -1,0 +1,33 @@
+{
+  "bubble_id": "synthetic-malformed-collections",
+  "data_types": [],
+  "diagnostics": [
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "option_sets must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets",
+      "severity": "error",
+      "stage": "model",
+      "subject": {}
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "user_types must be an object",
+      "outcome": "preserved",
+      "path": "/user_types",
+      "severity": "error",
+      "stage": "model",
+      "subject": {}
+    }
+  ],
+  "external_types": [],
+  "extra": {
+    "option_sets": "nope",
+    "user_types": []
+  },
+  "option_sets": [],
+  "schema_version": 1
+}

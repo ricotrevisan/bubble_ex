@@ -1,0 +1,66 @@
+{
+  "_id": "synthetic-live",
+  "option_sets": {
+    "kind": {
+      "%d": "Kind",
+      "attributes": {
+        "code": {
+          "%d": "Code",
+          "%v": "number"
+        }
+      },
+      "values": {
+        "k1": {
+          "%d": "Retail",
+          "code": 2,
+          "db_value": "retail",
+          "sort_factor": 2
+        },
+        "k2": {
+          "%d": "Wholesale",
+          "code": 1,
+          "db_value": "wholesale",
+          "sort_factor": 1
+        }
+      }
+    }
+  },
+  "user_types": {
+    "item": {
+      "%d": "Item",
+      "%del": true,
+      "%f3": {}
+    },
+    "order": {
+      "%d": "Order",
+      "%f3": {
+        "buyer_user": {
+          "%d": "Buyer",
+          "%v": "user"
+        },
+        "gone_text": {
+          "%d": "Gone",
+          "%del": true,
+          "%v": "text"
+        },
+        "items_list_custom_item": {
+          "%d": "Items",
+          "%v": "list.custom.item"
+        },
+        "kind_option_kind": {
+          "%d": "Kind",
+          "%v": "option.kind"
+        }
+      }
+    },
+    "user": {
+      "%d": "User",
+      "%f3": {
+        "name_text": {
+          "%d": "Name",
+          "%v": "text"
+        }
+      }
+    }
+  }
+}

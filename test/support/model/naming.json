@@ -1,0 +1,80 @@
+{
+  "_id": "synthetic-naming",
+  "option_sets": {
+    "os__40__levels": {
+      "display": "40. Levels",
+      "values": {
+        "a": {
+          "db_value": "id",
+          "display": "id",
+          "sort_factor": 1
+        },
+        "b": {
+          "db_value": "type",
+          "display": "type",
+          "sort_factor": 2
+        }
+      }
+    }
+  },
+  "user_types": {
+    "00__thing___join": {
+      "display": "00. Thing - Join",
+      "fields": {
+        "11__done_boolean": {
+          "display": "11. Done",
+          "value": "boolean"
+        },
+        "40__sort__thing_title_text": {
+          "display": "40. Sort: Thing Title",
+          "value": "text"
+        },
+        "__struct___text": {
+          "display": "__struct__",
+          "value": "text"
+        },
+        "id_text": {
+          "display": "id",
+          "value": "text"
+        },
+        "inserted_at_date": {
+          "display": "inserted_at",
+          "value": "date"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "title_text1": {
+          "display": "Title",
+          "value": "text"
+        },
+        "type_text": {
+          "display": "type",
+          "value": "text"
+        }
+      }
+    },
+    "launch": {
+      "display": "🚀 Launch",
+      "fields": {
+        "_text": {
+          "display": "🔥",
+          "value": "text"
+        },
+        "name_text": {
+          "display": "Name ✨",
+          "value": "text"
+        }
+      }
+    },
+    "thing": {
+      "display": "Thing",
+      "fields": {}
+    },
+    "thing0": {
+      "display": "Thing",
+      "fields": {}
+    }
+  }
+}
