@@ -18,7 +18,15 @@
     },
     "diagnostics": {
       "ash_deleted_omitted": 24,
+      "ash_expr_unmapped_reference": 1,
       "ash_opaque_value": 6,
+      "ash_policies_unverified": 1,
+      "ash_policy_attachments_unenforced": 5,
+      "ash_policy_bypass_required": 207,
+      "ash_policy_data_api_unmapped": 2,
+      "ash_policy_default_rule_negated": 2,
+      "ash_policy_field_unmapped": 8,
+      "ash_policy_relationship_unguarded": 220,
       "ash_unresolved_reference": 5,
       "exact_type_definition_missing": 7,
       "external_type_unresolved_root": 6,
@@ -29,6 +37,27 @@
     },
     "enum_values": 678,
     "enums": 141,
+    "privacy": {
+      "actor_loads": 2,
+      "authorization_bypasses": 207,
+      "auto_bind_actions": 25,
+      "calculations": 75,
+      "checks": {
+        "authorize_if always": 174,
+        "authorize_if calculation": 520,
+        "forbid_if always": 3
+      },
+      "field_policies": 100,
+      "policies": 414,
+      "resources": {
+        "public_default": 46,
+        "rules": 47
+      },
+      "rules": {
+        "compiled": 76,
+        "denied": 0
+      }
+    },
     "relationships": {
       "belongs_to": 386
     },
@@ -38,5 +67,5 @@
       "structured": 3
     }
   },
-  "schema_version": 1
+  "schema_version": 2
 }
