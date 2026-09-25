@@ -13,8 +13,10 @@ defmodule BubbleEx.Diagnostic do
       `:degraded` (mapped with some loss of meaning) or `:unresolved`
       (could not be mapped, e.g. a missing target).
     * `stage` - `:read | :parse | :model | {:target, format}`
-    * `subject` - the Bubble IDs involved, keyed by `:type`, `:field`,
-      `:rule`, `:workflow` and `:option_set`. IDs only, never display names.
+    * `subject` - the Bubble IDs involved, keyed by `:type` (data type),
+      `:option_set`, `:external_type` (API Connector type, e.g.
+      `"api.apiconnector2.bTa.bTb.obj"`), `:field`, `:rule` and `:workflow`.
+      IDs only, never display names.
     * `path` - RFC 6901 JSON pointer into the supplied source
     * `details` - code-specific data (e.g. the unresolved external type)
     * `message` - for people; not part of the diagnostic's identity
@@ -32,7 +34,7 @@ defmodule BubbleEx.Diagnostic do
   @type severity :: :error | :warning | :info
   @type outcome :: :preserved | :degraded | :unresolved
   @type stage :: :read | :parse | :model | {:target, atom()}
-  @type subject_key :: :type | :field | :rule | :workflow | :option_set
+  @type subject_key :: :type | :option_set | :external_type | :field | :rule | :workflow
   @type subject :: %{optional(subject_key()) => String.t()}
   @type key :: {stage(), atom(), subject(), String.t()}
 
@@ -50,7 +52,7 @@ defmodule BubbleEx.Diagnostic do
   @enforce_keys [:code, :severity, :outcome, :stage, :path, :message]
   defstruct [:code, :severity, :outcome, :stage, :path, :message, subject: %{}, details: %{}]
 
-  @subject_keys [:type, :option_set, :field, :rule, :workflow]
+  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow]
   @severity_rank %{error: 0, warning: 1, info: 2}
 
   @type option :: {:subject, subject()} | {:details, map()} | {:target, atom()}
@@ -133,7 +135,7 @@ defmodule BubbleEx.Diagnostic do
 
   defp sort_key(d) do
     {Map.fetch!(@severity_rank, d.severity), Enum.map(@subject_keys, &Map.get(d.subject, &1)),
-     Atom.to_string(d.code), d.path, stage_string(d.stage)}
+     Atom.to_string(d.code), d.path, stage_to_string(d.stage)}
   end
 
   @doc "Encodes a list of path segments as an RFC 6901 JSON pointer."
@@ -145,8 +147,10 @@ defmodule BubbleEx.Diagnostic do
     do: segment |> to_string() |> String.replace("~", "~0") |> String.replace("/", "~1")
 
   @doc """
-  JSON-ready map with string keys. `stage` is `"read"`, `"parse"`, `"model"`
-  or `"target:<format>"`.
+  JSON form: a map with string keys whose values are JSON primitives, so it
+  encodes and decodes back to the same shape. `details` is converted
+  recursively: keys become strings, atoms other than `true`/`false`/`nil`
+  become strings, and tuples become lists. `stage` uses `stage_to_string/1`.
   """
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = d) do
@@ -154,16 +158,56 @@ defmodule BubbleEx.Diagnostic do
       "code" => Atom.to_string(d.code),
       "severity" => Atom.to_string(d.severity),
       "outcome" => Atom.to_string(d.outcome),
-      "stage" => stage_string(d.stage),
-      "subject" => Map.new(d.subject, fn {k, v} -> {Atom.to_string(k), v} end),
+      "stage" => stage_to_string(d.stage),
+      "subject" => json(d.subject),
       "path" => d.path,
-      "details" => d.details,
+      "details" => json(d.details),
       "message" => d.message
     }
   end
 
-  defp stage_string({:target, target}), do: "target:#{target}"
-  defp stage_string(stage), do: Atom.to_string(stage)
+  defp json(map) when is_map(map) and not is_struct(map),
+    do: Map.new(map, fn {k, v} -> {json_key(k), json(v)} end)
+
+  defp json(list) when is_list(list), do: Enum.map(list, &json/1)
+  defp json(tuple) when is_tuple(tuple), do: tuple |> Tuple.to_list() |> json()
+  defp json(value) when value in [true, false, nil], do: value
+  defp json(atom) when is_atom(atom), do: Atom.to_string(atom)
+  defp json(value) when is_binary(value) or is_number(value), do: value
+  defp json(other), do: inspect(other)
+
+  defp json_key(key) when is_binary(key), do: key
+  defp json_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp json_key(key), do: to_string(key)
+
+  @doc """
+  Encodes a stage as text. The grammar is
+
+      stage  = "read" / "parse" / "model" / "target:" format
+      format = the target's format atom, e.g. "ash", "postgres"
+
+  `parse_stage/1` is the inverse.
+  """
+  @spec stage_to_string(stage()) :: String.t()
+  def stage_to_string({:target, target}) when is_atom(target), do: "target:#{target}"
+  def stage_to_string(stage) when stage in [:read, :parse, :model], do: Atom.to_string(stage)
+
+  @doc """
+  Parses the text form of a stage (see `stage_to_string/1`). Target formats
+  must be existing atoms, so untrusted input cannot create atoms.
+  """
+  @spec parse_stage(String.t()) :: {:ok, stage()} | :error
+  def parse_stage("read"), do: {:ok, :read}
+  def parse_stage("parse"), do: {:ok, :parse}
+  def parse_stage("model"), do: {:ok, :model}
+
+  def parse_stage("target:" <> format) when byte_size(format) > 0 do
+    {:ok, {:target, String.to_existing_atom(format)}}
+  rescue
+    ArgumentError -> :error
+  end
+
+  def parse_stage(_), do: :error
 
   defimpl Jason.Encoder do
     def encode(diagnostic, opts) do

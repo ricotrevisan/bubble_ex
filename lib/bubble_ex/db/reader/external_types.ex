@@ -295,11 +295,13 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
 
   # One diagnostic per occurrence. Its subject and path are the field whose
   # type descriptor raised it: a data-type or option-set field for a root
-  # occurrence, or an external type's field (`%{type: external_type_id,
-  # field: field_id}`) for a nested one. Nested definitions live inside the
-  # call's JSON-encoded `types` string, so `path` points at that string and
-  # `details.embedded_path` is a JSON pointer into its decoded value.
-  # Definition-level codes are about the external type itself.
+  # occurrence, or an external type's field (`%{external_type: id, field:
+  # field_id}`) for a nested one. Nested definitions live inside the call's
+  # JSON-encoded `types` string, so `path` points at that string and
+  # `details.embedded_path` is a JSON pointer into its decoded value. A nested
+  # diagnostic also keeps the data-type field it was reached from
+  # (`details.root`) and every hop from there (`details.via`, ending at the
+  # subject). Definition-level codes are about the external type itself.
   @definition_codes [:empty_definition, :call_metadata_inconsistent]
 
   defp warn(state, code, target, occurrence) do
@@ -316,7 +318,7 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
        when code in @definition_codes do
     member = if code == :call_metadata_inconsistent, do: "ret_value", else: "types"
     details = if member == "types", do: %{embedded_path: Diagnostic.pointer([id])}, else: %{}
-    {%{type: id}, call_path(attrs, id) ++ [member], details}
+    {%{external_type: id}, call_path(attrs, id) ++ [member], details}
   end
 
   defp locate(_code, _target, %{root: root, path: []}, attrs),
@@ -325,9 +327,12 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
   defp locate(_code, _target, %{root: root, path: path}, attrs) do
     %{external_type_id: type_id, field_id: field_id} = List.last(path)
 
-    {%{type: type_id, field: field_id}, call_path(attrs, type_id) ++ ["types"],
+    via = Enum.map(path, &%{external_type: &1.external_type_id, field: &1.field_id})
+
+    {%{external_type: type_id, field: field_id}, call_path(attrs, type_id) ++ ["types"],
      %{
        root: root_subject(root),
+       via: via,
        embedded_path: Diagnostic.pointer([type_id, "fields", field_id])
      }}
   end

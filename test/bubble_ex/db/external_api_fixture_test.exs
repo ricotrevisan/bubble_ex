@@ -53,8 +53,10 @@ defmodule BubbleEx.Db.ExternalApiFixtureTest do
 
     # The nested field whose type failed is the subject; the data-type field
     # that led there is kept in details.
-    assert %{type: "api.apiconnector2." <> _, field: _} = diagnostic.subject
+    assert %{external_type: "api.apiconnector2." <> _, field: _} = diagnostic.subject
     assert diagnostic.details.root == %{type: "parcel", field: "destination"}
+    assert [_ | _] = diagnostic.details.via
+    assert List.last(diagnostic.details.via) == diagnostic.subject
     assert diagnostic.path =~ ~r{^/settings/client_safe/apiconnector2/[^/]+/.+/types$}
   end
 end

@@ -205,7 +205,7 @@ defmodule BubbleEx.Db.Encoder do
       plan.nodes[source][:source_path] || "",
       "#{source} field #{field.id} is rendered as JSON",
       target: format,
-      subject: %{type: source, field: field.id},
+      subject: %{external_type: source, field: field.id},
       details: %{
         external_type: field.type.target,
         embedded_path: Diagnostic.pointer([source, "fields", field.id]),

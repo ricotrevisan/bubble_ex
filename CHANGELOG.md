@@ -17,8 +17,9 @@ All notable changes to this project are documented here.
   `%{kind: :external_type_resolution, category:, target:, occurrences:}` maps become
   one `:read` diagnostic per occurrence; `category` is the `code`, the target is in
   `details`, and the subject is the field whose descriptor failed (a nested
-  external-type field is `%{type: external_type_id, field: field_id}`, with the
-  originating data-type field in `details.root`). Columns gain `source_path`, and
+  external-type field is `%{external_type: id, field: field_id}`, with the
+  originating data-type field in `details.root` and every hop in `details.via`).
+  Columns gain `source_path`, and
   external types gain `source_path` (the pointer to their call's `types`).
 - `BubbleEx.Db.Encoder.Result.warnings` is now `diagnostics`. Rendering maps
   (`kind: :external_type_rendering`, `reason:`) become `{:target, format}`
@@ -30,10 +31,20 @@ All notable changes to this project are documented here.
   `:schema_warnings` / `:dbml_warnings`.
 - Expression and privacy diagnostics gain `outcome`, `stage`, `subject`
   (privacy: `%{type:, rule:}`) and `details`, and are returned sorted by severity.
-  Canonical expression hashes are unchanged.
+  Canonical expression hashes are unchanged. Values behind `:preserved` privacy
+  diagnostics are now actually kept: `Privacy.Rule` gains `extra` (unknown rule
+  members), `Privacy.DataType` gains `raw` (a data type that is not an object),
+  and a non-object `privacy_role` is kept in `DataType.extra`.
 - Workflow inventory schema v3: diagnostics are `BubbleEx.Diagnostic` records
   (atom codes; objects with the full field set in JSON) with the workflow ID as
-  subject. See `docs/workflows.md`.
+  subject for collection entries. `unresolved_order`, `alias_collision`,
+  `malformed_node` and `uninterpreted_field` from the inventory are renamed
+  `workflow_*` with their own severity and outcome. Diagnostic lists are
+  deduplicated, so `coverage.diagnostics` now counts records after dedup. See
+  `docs/workflows.md`.
+- `Diagnostic.to_map/1` (and JSON encoding) makes `details` JSON-stable: string
+  keys and primitive values throughout. Stages encode as `"read"`, `"parse"`,
+  `"model"` or `"target:<format>"`; `Diagnostic.parse_stage/1` reverses this.
 
 ### Added
 

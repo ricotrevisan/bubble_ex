@@ -71,6 +71,147 @@ defmodule BubbleEx.DiagnosticTest do
       end
     end
 
+    # Runtime backstop for the static scan: run every emitter over the
+    # committed fixtures plus an adversarial payload, and check each emitted
+    # diagnostic against the registry.
+    test "every diagnostic emitted over the fixtures is registered and consistent" do
+      emitted = sweep()
+      assert length(emitted) > 50
+
+      for d <- emitted do
+        assert {:ok, entry} = Codes.fetch(d.code), "unregistered #{inspect(d.code)}"
+        assert d.severity == entry.severity, inspect(d.code)
+        assert d.outcome == entry.outcome, inspect(d.code)
+
+        case d.stage do
+          {:target, format} -> assert entry.stage == :target and is_atom(format)
+          stage -> assert stage == entry.stage, inspect(d.code)
+        end
+      end
+
+      covered = emitted |> Enum.map(& &1.code) |> MapSet.new()
+      assert MapSet.size(covered) >= 30, inspect(MapSet.to_list(covered))
+    end
+
+    defp sweep do
+      apps =
+        Enum.map(
+          BubbleEx.SampleHelper.available_json_samples(),
+          &BubbleEx.SampleHelper.load_json_sample/1
+        ) ++
+          [BubbleEx.Test.ExternalApiTypeFixture.app(), adversarial_app()]
+
+      workflow_docs =
+        "test/support/workflows/*.json"
+        |> Path.wildcard()
+        |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
+
+      Enum.flat_map(apps, &app_diagnostics/1) ++
+        Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
+        Enum.flat_map(expression_samples(), &expression_diagnostics/1)
+    end
+
+    defp app_diagnostics(app) do
+      # The Reader requires object data types (Privacy is swept on the full app).
+      reader_app = Map.update(app, "user_types", %{}, &Map.filter(&1, fn {_, t} -> is_map(t) end))
+      {:ok, db} = Reader.parse(reader_app)
+
+      rendered =
+        for format <- [:dbml, :postgres, :sqlite, :tsql, :ecto, :ash, :zod, :xano, :convex],
+            mode <- [:preserve, :opaque, :legacy],
+            {:ok, result} = Encoder.render(format, db, external_types: mode),
+            d <- result.diagnostics,
+            do: d
+
+      privacy =
+        case Privacy.parse(app) do
+          {:ok, p} -> p.diagnostics
+          {:error, _} -> []
+        end
+
+      db.diagnostics ++ rendered ++ privacy
+    end
+
+    defp inventory_diagnostics(doc) do
+      {:ok, inventory} = Workflows.inventory(doc)
+
+      nested =
+        for w <- inventory.workflows ++ inventory.unclassified_definitions,
+            a <- w.actions,
+            d <- a.diagnostics,
+            do: d
+
+      inventory.diagnostics ++ nested
+    end
+
+    defp expression_diagnostics(raw) do
+      {:ok, e} = Expression.parse(raw)
+      e.diagnostics
+    end
+
+    defp expression_samples do
+      message = fn name, extra -> Map.merge(%{"type" => "Message", "name" => name}, extra) end
+
+      [
+        %{"type" => "CurrentUser", "next" => message.("mystery", %{"args" => 1})},
+        %{"type" => "NoSuchSource"},
+        %{"type" => "CurrentUser", "%x" => "CurrentUser"},
+        %{"type" => "CurrentUser", "next" => "oops"},
+        %{"type" => "CurrentUser", "next" => message.("is_empty", %{"args" => 1})},
+        %{"type" => "CurrentUser", "next" => message.("nope", %{})},
+        %{"type" => "TextExpression", "entries" => %{"b" => "x", "a" => "y"}},
+        %{"type" => "CurrentUser", "odd" => 1},
+        %{"type" => "GetElement", "next" => message.("value", %{})},
+        []
+      ]
+    end
+
+    defp adversarial_app do
+      %{
+        "_id" => "adversarial",
+        "user_types" => %{
+          "broken" => "not a type",
+          "task" => %{
+            "display" => "Task",
+            "fields" => %{
+              "payload" => %{"display" => "P", "value" => "api.apiconnector2.none.call.X"}
+            },
+            "exposed_api" => "yes",
+            "privacy_role" => %{
+              "x_" => %{
+                "permissions" => %{"view_all" => "yes", "export" => true},
+                "priority" => 1
+              },
+              "y_" => "oops"
+            }
+          },
+          "list" => %{"display" => "L", "fields" => %{}, "privacy_role" => []}
+        },
+        "pages" => %{
+          "home" => %{
+            "workflows" => %{
+              "w" => %{
+                "type" => "Mystery",
+                "%x" => "Mystery",
+                "odd" => 1,
+                "properties" => "bad",
+                "actions" => %{
+                  "b" => 1,
+                  "a" => %{"type" => "ShowElement", "properties" => %{"element_id" => "gone"}}
+                }
+              },
+              "v" => %{"type" => "PageLoaded", "actions" => "bad"},
+              "u" => %{"type" => "PageLoaded"}
+            }
+          },
+          "bad" => false,
+          "meta" => %{"name" => "meta"}
+        },
+        "element_definitions" => %{"r" => %{"workflows" => 5}},
+        "history" => %{"entry" => %{"type" => "Mystery", "actions" => []}}
+      }
+    end
+
     test "the moduledoc table lists every code" do
       {:docs_v1, _, _, _, %{"en" => doc}, _, _} = Code.fetch_docs(Codes)
       for code <- Codes.all(), do: assert(doc =~ "`#{inspect(code)}`")
@@ -186,6 +327,48 @@ defmodule BubbleEx.DiagnosticTest do
            } = Jason.decode!(json)
   end
 
+  test "details and subject survive a JSON round trip unchanged" do
+    d =
+      Diagnostic.new(:connector_missing, ["x"], "m",
+        subject: %{external_type: "api.apiconnector2.a.b.C", field: "f"},
+        details: %{
+          external_type: "api.apiconnector2.a.b.D",
+          root: %{type: "item", field: "payload"},
+          via: [%{external_type: "api.apiconnector2.a.b.C", field: "f"}],
+          mode: :preserve,
+          flags: [true, false, nil, 1.5],
+          pair: {:a, "b"}
+        }
+      )
+
+    map = Diagnostic.to_map(d)
+    assert map |> Jason.encode!() |> Jason.decode!() == map
+
+    assert map["details"]["via"] == [
+             %{"external_type" => "api.apiconnector2.a.b.C", "field" => "f"}
+           ]
+
+    assert map["details"]["mode"] == "preserve"
+    assert map["details"]["pair"] == ["a", "b"]
+    assert d |> Jason.encode!() |> Jason.decode!() == map
+  end
+
+  describe "stage text form" do
+    test "round-trips every stage" do
+      for stage <- [:read, :parse, :model, {:target, :ash}, {:target, :postgres}] do
+        assert {:ok, ^stage} = stage |> Diagnostic.stage_to_string() |> Diagnostic.parse_stage()
+      end
+
+      assert Diagnostic.stage_to_string({:target, :ash}) == "target:ash"
+    end
+
+    test "rejects unknown text without creating atoms" do
+      for text <- ["", "target:", "load", "Target:ash", "target:no_such_format_wtf360_xyz"] do
+        assert Diagnostic.parse_stage(text) == :error
+      end
+    end
+  end
+
   describe "Reader conversion" do
     @nested "api.apiconnector2.conn.call.Parent"
     @child "api.apiconnector2.gone.call.Child"
@@ -241,6 +424,25 @@ defmodule BubbleEx.DiagnosticTest do
 
       assert [
                %Diagnostic{
+                 code: :connector_missing,
+                 stage: :read,
+                 outcome: :unresolved,
+                 subject: %{external_type: @nested, field: "child"},
+                 path: ^types_path,
+                 details: %{
+                   external_type: @child,
+                   root: %{type: "item", field: "payload"},
+                   via: [%{external_type: @nested, field: "child"}],
+                   embedded_path: "/api.apiconnector2.conn.call.Parent/fields/child"
+                 }
+               },
+               %Diagnostic{
+                 code: :field_type_unsupported,
+                 subject: %{external_type: @nested, field: "odd"},
+                 path: ^types_path,
+                 details: %{descriptor: "weird"}
+               },
+               %Diagnostic{
                  code: :invalid_descriptor,
                  stage: :read,
                  severity: :warning,
@@ -248,23 +450,6 @@ defmodule BubbleEx.DiagnosticTest do
                  subject: %{option_set: "status", field: "x"},
                  path: "/option_sets/status/attributes/x/%v",
                  details: %{descriptor: "api."}
-               },
-               %Diagnostic{
-                 code: :connector_missing,
-                 outcome: :unresolved,
-                 subject: %{type: @nested, field: "child"},
-                 path: ^types_path,
-                 details: %{
-                   external_type: @child,
-                   root: %{type: "item", field: "payload"},
-                   embedded_path: "/api.apiconnector2.conn.call.Parent/fields/child"
-                 }
-               },
-               %Diagnostic{
-                 code: :field_type_unsupported,
-                 subject: %{type: @nested, field: "odd"},
-                 path: ^types_path,
-                 details: %{descriptor: "weird"}
                }
              ] = db.diagnostics
     end
@@ -286,7 +471,7 @@ defmodule BubbleEx.DiagnosticTest do
 
       assert %Diagnostic{
                stage: {:target, :postgres},
-               subject: %{type: @nested, field: "child"},
+               subject: %{external_type: @nested, field: "child"},
                path: "/settings/client_safe/apiconnector2/conn/calls/call/types"
              } = Enum.find(result.diagnostics, &(&1.code == :external_type_unresolved_nested))
 
@@ -324,6 +509,26 @@ defmodule BubbleEx.DiagnosticTest do
       assert [%{subject: %{type: "task", rule: "x_"}}] = rule.diagnostics
       assert Expression.sha256(direct.ast) == Expression.sha256(rule.condition)
       refute elem(Expression.canonical(direct.ast), 1) =~ "diagnostic"
+    end
+  end
+
+  test "unclassified candidates carry their source key in details, not as a workflow ID" do
+    payload = %{
+      "pages" => %{
+        "home" => %{
+          "workflows" => %{},
+          "history" => %{"entry_7" => %{"type" => "Mystery", "actions" => []}}
+        }
+      }
+    }
+
+    assert {:ok, inventory} = Workflows.inventory(payload)
+    assert [candidate] = inventory.unclassified_definitions
+    assert [_ | _] = candidate.diagnostics
+
+    for d <- candidate.diagnostics do
+      refute Map.has_key?(d.subject, :workflow)
+      assert d.details.source_key == "entry_7"
     end
   end
 
