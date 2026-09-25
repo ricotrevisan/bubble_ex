@@ -427,7 +427,8 @@ defmodule BubbleEx.HTTPBudgetTest do
 
     assert {:error, %BubbleEx.Error{context: %{reason: :body_too_large}}} =
              BubbleEx.HTTP.fetch_page(public_url(port),
-               max_body_length: 4
+               max_body_length: 4,
+               max_retries: 0
              )
 
     assert_receive {:connection_end, {:error, :closed}}, 3000
