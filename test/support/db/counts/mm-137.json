@@ -54,7 +54,7 @@
       }
     },
     "ecto": {
-      "bytes": 369028,
+      "bytes": 391184,
       "lines": 10964,
       "target_diagnostics": {
         "db_converted_name_suffixed": 9,

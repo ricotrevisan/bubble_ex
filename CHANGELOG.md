@@ -269,10 +269,16 @@ All notable changes to this project are documented here.
   `bubbleId2`; a Zod table const does not take an API Connector type's.
   Ecto names are cut to 63 characters (PostgreSQL's identifier limit), which
   also keeps module atoms under the VM's 255, so the long-name fixture now
-  compiles. Each suffix is a `db_converted_name_suffixed` diagnostic (stage
-  `{:target, format}`). The SQL formats, DBML and Zod field keys keep display
-  names and are unchanged. `scripts/ash_compile_check.sh` also compiles the
-  Ecto output of every schema fixture.
+  compiles; each cut name is a `db_converted_name_truncated` diagnostic. Every
+  Ecto `create index` now has an explicit `name:` (Ecto's default
+  `<table>_<fk>_index`, cut to 63 characters and claimed beside the table
+  names, since PostgreSQL keeps tables and indexes in one namespace: a cut
+  index name could otherwise repeat its own table's). Each suffix is a
+  `db_converted_name_suffixed` diagnostic (stage `{:target, format}`). The
+  SQL formats, DBML and Zod field keys keep display names and are
+  unchanged. `scripts/ash_compile_check.sh` also compiles the Ecto output
+  of every schema fixture and, with `ASH_COMPILE_CHECK_DB`, runs its
+  migrations.
 
 - Preserve snapshot stylesheet cascade order, adopted styles, embedded frame
   state and local frame assets. Restore captured scroll offsets with a fixed,

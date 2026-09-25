@@ -99,7 +99,7 @@ defmodule BubbleEx.Db.EctoTest do
     assert code =~
              "belongs_to :owner, MyApp.User, foreign_key: :owner_id, references: :_id, type: :string"
 
-    assert code =~ "create index(\"thing\", [:owner_id])"
+    assert code =~ "create index(\"thing\", [:owner_id], name: \"thing_owner_id_index\")"
     assert code =~ "rec |> cast(attrs, [:owner_id])"
   end
 

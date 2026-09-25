@@ -34,8 +34,8 @@ defmodule MyApp.Repo.Migrations.CreateNode do
       add :children, {:array, :string}
       add :parent_id, :string
     end
-    create index("node", [:created_by_id])
-    create index("node", [:parent_id])
+    create index("node", [:created_by_id], name: "node_created_by_id_index")
+    create index("node", [:parent_id], name: "node_parent_id_index")
   end
 end
 
@@ -73,7 +73,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 --- diagnostics ---

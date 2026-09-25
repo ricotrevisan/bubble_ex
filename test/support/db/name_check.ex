@@ -8,7 +8,8 @@ defmodule BubbleEx.Test.NameCheck do
   #     Elixir syntax); per schema, the primary key, `field`, `embeds_*`,
   #     `belongs_to` names and their foreign keys (Ecto rejects a repeat at
   #     compile time); per migration, the `add` columns (PostgreSQL rejects
-  #     a repeat); across the file, module and table names.
+  #     a repeat); across the file, module and table names, and the
+  #     PostgreSQL relations (tables and indexes, cut to 63 bytes).
   #   * Convex: table keys of `defineSchema`, field keys per `defineTable`
   #     and per external `v.object`, and `const` names (TS1117 / TS2451).
   #   * Zod: `export const` / `export type` names and keys per object.
@@ -35,10 +36,28 @@ defmodule BubbleEx.Test.NameCheck do
 
     tables = collect(ast, &schema_table/1)
 
+    # PostgreSQL keeps tables and indexes in one namespace and cuts every
+    # identifier to 63 bytes.
+    relations = collect(ast, &relation/1) |> Enum.map(&binary_part(&1, 0, min(63, byte_size(&1))))
+
     repeated(names) ++
       repeated(Enum.map(modules, &"module #{elem(&1, 0)}")) ++
-      repeated(Enum.map(tables, &"table #{&1}"))
+      repeated(Enum.map(tables, &"table #{&1}")) ++
+      repeated(Enum.map(relations, &"relation #{&1}"))
   end
+
+  defp relation({:create, _, [{:table, _, [name | _]} | _]}) when is_binary(name), do: [name]
+
+  defp relation({:create, _, [{:index, _, [table, columns | rest]}]}) when is_binary(table) do
+    default = Enum.join([table | Enum.map(columns, &Atom.to_string/1)] ++ ["index"], "_")
+
+    case rest do
+      [opts] -> [opts |> Keyword.get(:name, default) |> to_string()]
+      [] -> [default]
+    end
+  end
+
+  defp relation(_), do: nil
 
   defp scoped(module, names), do: Enum.map(names, &"#{module}: #{&1}")
 

@@ -103,25 +103,23 @@ defmodule BubbleEx.Db.Ecto do
   @impl true
   @spec names(map(), keyword()) :: Names.t()
   def names(parsed_map, opts \\ []) do
-    references =
-      MapSet.new(scalar_relationships(parsed_map), fn {from, _to, _dir} -> key(from) end)
+    relationships = scalar_relationships(parsed_map)
+    references = MapSet.new(relationships, fn {from, _to, _dir} -> key(from) end)
+    tables = parsed_map |> Map.get(:tables, []) |> Enum.reject(&(&1.group == :api))
 
-    parsed_map
-    |> Map.get(:tables, [])
-    |> Enum.reject(&(&1.group == :api))
-    |> Names.build(
+    Names.build(tables,
       reserved: [{:module, "Repo"}],
       table: fn table ->
         name = by_naming(opts, table.name, table.id)
         module = Naming.pascal_case(name)
         table_name = Naming.snake_case(name)
 
-        fn n ->
-          [
-            {:module, Naming.variant(module, n, "", @max_name)},
-            {:table, Naming.variant(table_name, n, "_", @max_name)}
-          ]
-        end
+        {fn n ->
+           [
+             {:module, Naming.variant(module, n, "", @max_name)},
+             {:table, Naming.variant(table_name, n, "_", @max_name)}
+           ]
+         end, module}
       end,
       column: fn column ->
         # Naming.snake_case/2 preserves the single leading underscore,
@@ -129,15 +127,31 @@ defmodule BubbleEx.Db.Ecto do
         field = Naming.snake_case(by_naming(opts, column.name, column.id))
 
         if MapSet.member?(references, key(column)) do
-          fn n ->
-            association = Naming.variant(field, n, "_", @max_name - 3)
-            [association, association <> "_id"]
-          end
+          {fn n ->
+             association = Naming.variant(field, n, "_", @max_name - 3)
+             [association, association <> "_id"]
+           end, field}
         else
-          &[Naming.variant(field, &1, "_", @max_name)]
+          {&[Naming.variant(field, &1, "_", @max_name)], field}
         end
-      end
+      end,
+      extra: &index_names(&1, tables, relationships)
     )
+  end
+
+  # Index names are PostgreSQL relations, in the tables' namespace, so they
+  # are claimed as `{:table, name}` after the tables: Ecto's default
+  # `<table>_<fk>_index`, cut to 63 characters (a cut name could otherwise
+  # repeat its own table's, or another index's).
+  defp index_names(names, tables, relationships) do
+    for table <- tables,
+        {from, _to, _dir} <- relationships,
+        from.table_id == table.id and from.table_group == table.group do
+      [_module, {:table, table_name}] = Names.table(names, table)
+      [_association, fk] = Names.column(names, from)
+      base = "#{table_name}_#{fk}_index"
+      {{:index, key(from)}, &[{:table, Naming.variant(base, &1, "_", @max_name)}]}
+    end
   end
 
   defp key(column), do: {column.table_group, column.table_id, column.id}
@@ -301,7 +315,16 @@ defmodule BubbleEx.Db.Ecto do
   defp migration_type(type), do: ecto_type(type)
 
   defp index_line({from, _to, _dir}, table_str, opts) do
-    "    create index(#{quoted(table_str)}, [:#{fk_column(from, opts)}])"
+    "    create index(#{quoted(table_str)}, [:#{fk_column(from, opts)}], name: #{quoted(index_name(from, opts))})"
+  end
+
+  # `names/2`'s index name; a hand-built db map's reference it does not
+  # cover gets Ecto's default.
+  defp index_name(from, opts) do
+    case Names.extra(name_plan(opts), {:index, key(from)}) do
+      [{:table, name}] -> name
+      nil -> "#{table_name(from, opts)}_#{fk_column(from, opts)}_index"
+    end
   end
 
   # Type mapping (IR -> Ecto) ---------------------------------------------------

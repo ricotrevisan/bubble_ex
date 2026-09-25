@@ -13,6 +13,8 @@
 #     e.g. ecto://postgres:postgres@localhost:5432): generates and runs the
 #     migrations in one database per fixture, then scripts/ash_compile_check/
 #     runtime.exs inserts and reads back sample rows for every resource
+#     and scripts/ash_compile_check/ecto_migrate.exs runs the Db.Ecto
+#     migrations in one database per fixture and naming
 #
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
 # mm-137). The scratch project lives in _build/ash_compile_check (or
@@ -23,7 +25,8 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 scratch="${ASH_COMPILE_CHECK_DIR:-$root/_build/ash_compile_check}"
 
 mkdir -p "$scratch"
-cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" "$scratch/"
+cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
+  "$root/scripts/ash_compile_check/ecto_migrate.exs" "$scratch/"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch"
@@ -68,6 +71,7 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix ecto.create --quiet
   mix ecto.migrate --quiet
   mix run runtime.exs
+  mix run ecto_migrate.exs
 else
   echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
 fi

@@ -36,9 +36,9 @@ defmodule MyApp.Repo.Migrations.CreateOrder do
       add :items, {:array, :string}
       add :kind_id, :string
     end
-    create index("order", [:created_by_id])
-    create index("order", [:buyer_id])
-    create index("order", [:kind_id])
+    create index("order", [:created_by_id], name: "order_created_by_id_index")
+    create index("order", [:buyer_id], name: "order_buyer_id_index")
+    create index("order", [:kind_id], name: "order_kind_id_index")
   end
 end
 
@@ -78,7 +78,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :email, :string
       add :name, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 

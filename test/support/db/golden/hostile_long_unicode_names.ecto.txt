@@ -38,8 +38,8 @@ defmodule MyApp.Repo.Migrations.CreateVeryLongNameVeryLongNameVeryLongNameVeryLo
       add :xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, :string
       add :n_c_d, :string
     end
-    create index("very_long_name_very_long_name_very_long_name_very_long_name_ver", [:created_by_id])
-    create index("very_long_name_very_long_name_very_long_name_very_long_name_ver", [:field_id])
+    create index("very_long_name_very_long_name_very_long_name_very_long_name_ver", [:created_by_id], name: "very_long_name_very_long_name_very_long_name_very_long_name_v_2")
+    create index("very_long_name_very_long_name_very_long_name_very_long_name_ver", [:field_id], name: "very_long_name_very_long_name_very_long_name_very_long_name_v_3")
   end
 end
 
@@ -77,7 +77,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 
@@ -113,7 +113,7 @@ defmodule MyApp.Repo.Migrations.CreateTable do
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("field", [:created_by_id])
+    create index("field", [:created_by_id], name: "field_created_by_id_index")
   end
 end
 
@@ -146,4 +146,6 @@ defmodule MyApp.Repo.Migrations.CreateL do
   end
 end
 --- diagnostics ---
+db_converted_name_truncated /user_types/tâche_ü
+db_converted_name_truncated /user_types/tâche_ü/fields/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff_text/value
 model_synthesized_user_type /user_types/user

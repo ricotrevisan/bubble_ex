@@ -81,6 +81,14 @@ for {name, app} <- ecto_fixtures ++ ecto_private, naming <- [:proper, :id] do
   File.write!(Path.join(ecto_lib, "#{name}_#{naming}.ex"), result.content)
 end
 
+# The repo ecto_migrate.exs runs those migrations with (not in ecto_repos:
+# it is started per database).
+File.write!(Path.join(ecto_lib, "repo.ex"), """
+defmodule EctoCheck.Repo do
+  use Ecto.Repo, otp_app: :ash_compile_check, adapter: Ecto.Adapters.Postgres
+end
+""")
+
 IO.puts("rendered #{2 * length(ecto_fixtures ++ ecto_private)} Db.Ecto schemas")
 
 deps = Enum.map_join(BubbleEx.Target.Ash.versions(), ", ", &inspect/1)

@@ -30,7 +30,7 @@ defmodule MyApp.Repo.Migrations.CreateDraft do
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("draft", [:created_by_id])
+    create index("draft", [:created_by_id], name: "draft_created_by_id_index")
   end
 end
 
@@ -70,7 +70,7 @@ defmodule MyApp.Repo.Migrations.CreateNote do
       add :body, :string
       add :secret, :string
     end
-    create index("note", [:created_by_id])
+    create index("note", [:created_by_id], name: "note_created_by_id_index")
   end
 end
 
@@ -108,7 +108,7 @@ defmodule MyApp.Repo.Migrations.CreatePublicPage do
       add :slug, :string
       add :slug_text, :string
     end
-    create index("public_page", [:created_by_id])
+    create index("public_page", [:created_by_id], name: "public_page_created_by_id_index")
   end
 end
 
@@ -148,7 +148,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :email, :string
       add :admin, :boolean
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 --- diagnostics ---

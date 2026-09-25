@@ -144,6 +144,8 @@ defmodule BubbleEx.Diagnostic.Codes do
     # Convex, Xano, Zod).
     {:db_converted_name_suffixed, :info, :degraded, :target,
      "a table or column whose name, converted to the target's case convention, repeats an earlier one's (a built-in field's, or a foreign key's); rendered with the next free suffix, assigned in Bubble ID order"},
+    {:db_converted_name_truncated, :info, :degraded, :target,
+     "a table or column whose converted name is longer than the target allows (Ecto: 63 characters, PostgreSQL's identifier limit); cut, keeping any suffix that makes it unique"},
 
     # --- target:ash — BubbleEx.Target.Ash (WTF-362) ---------------------------
     # Also emits the shared external_type_unresolved_root/_nested and

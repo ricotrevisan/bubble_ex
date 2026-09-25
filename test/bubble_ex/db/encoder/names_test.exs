@@ -49,7 +49,9 @@ defmodule BubbleEx.Db.Encoder.NamesTest do
     assert result.content =~ "field :owner_id, :string"
     assert result.content =~ "belongs_to :owner_2, MyApp.User, foreign_key: :owner_2_id"
     assert result.content =~ "add :owner_2_id, :string"
-    assert result.content =~ ~s{create index("post", [:owner_2_id])}
+
+    assert result.content =~
+             ~s{create index("post", [:owner_2_id], name: "post_owner_2_id_index")}
 
     assert suffixed(result) == [
              {"BlogPost", "BlogPost2"},
@@ -237,5 +239,41 @@ defmodule BubbleEx.Db.Encoder.NamesTest do
     [module] = Regex.run(~r/defmodule MyApp\.(\w+) do/, content, capture: :all_but_first)
     assert String.length(module) == 63
     assert NameCheck.duplicates(:ecto, content) == []
+  end
+
+  test "Ecto index names never repeat a table's or another index's after the cut" do
+    # A 63-character table: `<table>_created_by_id_index` cut to 63 is the
+    # table's own name, so each index takes the next free variant.
+    long = String.duplicate("b", 70)
+
+    {:ok, db} =
+      Reader.parse(%{
+        "user_types" => %{
+          "t" => %{
+            "display" => long,
+            "fields" => %{"a_user" => %{"display" => "Owner", "value" => "user"}}
+          }
+        }
+      })
+
+    result = render(db, :ecto)
+    table = String.duplicate("b", 63)
+
+    assert result.content =~ ~s{create table("#{table}", primary_key: false)}
+
+    assert result.content =~
+             ~s{create index("#{table}", [:created_by_id], name: "#{String.duplicate("b", 61)}_2")}
+
+    assert result.content =~
+             ~s{create index("#{table}", [:owner_id], name: "#{String.duplicate("b", 61)}_3")}
+
+    assert NameCheck.duplicates(:ecto, result.content) == []
+
+    truncated =
+      for d <- result.diagnostics, d.code == :db_converted_name_truncated, do: d.details
+
+    assert [%{name: name, rendered: rendered, length: 70, scope: "table"}] = truncated
+    assert name == String.duplicate("B", 1) <> String.duplicate("b", 69)
+    assert String.length(rendered) == 63
   end
 end

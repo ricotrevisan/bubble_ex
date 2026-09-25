@@ -30,7 +30,7 @@ defmodule MyApp.Repo.Migrations.CreateBlogPost do
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("blog_post", [:created_by_id])
+    create index("blog_post", [:created_by_id], name: "blog_post_created_by_id_index")
   end
 end
 
@@ -82,9 +82,9 @@ defmodule MyApp.Repo.Migrations.CreatePost do
       add :owner_2_id, :string
       add :bubble_id, :string
     end
-    create index("post", [:created_by_id])
-    create index("post", [:created_by_2_id])
-    create index("post", [:owner_2_id])
+    create index("post", [:created_by_id], name: "post_created_by_id_index")
+    create index("post", [:created_by_2_id], name: "post_created_by_2_id_index")
+    create index("post", [:owner_2_id], name: "post_owner_2_id_index")
   end
 end
 
@@ -120,7 +120,7 @@ defmodule MyApp.Repo.Migrations.CreateRepo2 do
       add :created_by_id, :string
       add :slug, :string
     end
-    create index("repo_2", [:created_by_id])
+    create index("repo_2", [:created_by_id], name: "repo_2_created_by_id_index")
   end
 end
 
@@ -158,7 +158,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 

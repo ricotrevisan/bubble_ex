@@ -40,7 +40,7 @@ defmodule MyApp.Repo.Migrations.CreateInvoice do
       add :state, :string
       add :total, :float
     end
-    create index("invoice", [:created_by_id])
+    create index("invoice", [:created_by_id], name: "invoice_created_by_id_index")
   end
 end
 
@@ -78,7 +78,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :slug, :string
       add :email, :string
     end
-    create index("user", [:created_by_id])
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
   end
 end
 --- diagnostics ---

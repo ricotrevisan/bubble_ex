@@ -33,13 +33,16 @@ defmodule BubbleEx.Db.Encoder.Names do
   alias BubbleEx.Db.Naming
   alias BubbleEx.Diagnostic
 
-  defstruct tables: %{}, columns: %{}, suffixed: []
+  defstruct tables: %{}, columns: %{}, extra: %{}, suffixed: [], truncated: []
 
   @type variants() :: (pos_integer() -> [term()])
+  @type item() :: {:table | :column, map(), [term()], [term()]}
   @type t() :: %__MODULE__{
           tables: %{{atom(), String.t()} => [term()]},
           columns: %{{atom(), String.t(), String.t()} => [term()]},
-          suffixed: [{:table | :column, map(), [term()], [term()]}]
+          extra: %{term() => [term()]},
+          suffixed: [item()],
+          truncated: [{:table | :column, map(), String.t(), [term()]}]
         }
 
   @doc """
@@ -47,59 +50,91 @@ defmodule BubbleEx.Db.Encoder.Names do
   skipped). Options:
 
     * `:table` (required) - `fn table -> variants end`, the names a table
-      needs for its `n`th variant (`BubbleEx.Db.Naming.dedupe/2`)
-    * `:column` - `fn column -> variants end`; without it columns keep the
-      names the encoder gives them (it does not convert them)
+      needs for its `n`th variant (`BubbleEx.Db.Naming.dedupe/2`), or
+      `{variants, uncut}` when the variants are cut to a maximum length
+      (`uncut` is the first name before the cut; a cut is reported)
+    * `:column` - the same for a column; without it columns keep the names
+      the encoder gives them (it does not convert them)
     * `:reserved` - names already taken in the table scope
+    * `:extra` - `fn names -> [{key, variants}] end`, more names claimed in
+      the table scope once tables and columns have theirs (e.g. Ecto index
+      names, which PostgreSQL keeps in the tables' namespace); read them
+      with `extra/2`
   """
   @spec build([map()], keyword()) :: t()
   def build(tables, spec) do
-    table_variants = Keyword.fetch!(spec, :table)
-    column_variants = Keyword.get(spec, :column)
+    table_spec = Keyword.fetch!(spec, :table)
+    column_spec = Keyword.get(spec, :column)
+    table_items = Enum.map(tables, &{:table, table_key(&1), &1, table_spec.(&1)})
 
     {table_names, table_suffixed} =
-      tables
-      |> Enum.map(&{table_key(&1), table_variants.(&1)})
-      |> Naming.dedupe(Keyword.get(spec, :reserved, []))
+      claim(table_items, Keyword.get(spec, :reserved, []))
 
-    by_key = Map.new(tables, &{table_key(&1), &1})
+    {columns, column_items, column_suffixed} =
+      if column_spec,
+        do: columns(tables, column_spec),
+        else: {%{}, [], []}
 
-    {columns, column_suffixed} =
-      if column_variants,
-        do: columns(tables, column_variants),
-        else: {%{}, []}
+    names = %__MODULE__{
+      tables: table_names,
+      columns: columns,
+      suffixed: table_suffixed ++ column_suffixed,
+      truncated: truncated(table_items, table_names) ++ truncated(column_items, columns)
+    }
 
-    suffixed =
-      Enum.map(table_suffixed, fn {key, first, chosen} ->
-        {:table, Map.fetch!(by_key, key), first, chosen}
-      end) ++ column_suffixed
+    case Keyword.get(spec, :extra) do
+      nil ->
+        names
 
-    %__MODULE__{tables: table_names, columns: columns, suffixed: suffixed}
+      extra ->
+        used = Keyword.get(spec, :reserved, []) ++ Enum.concat(Map.values(table_names))
+        {extra_names, _suffixed} = extra.(names) |> Naming.dedupe(used)
+        %{names | extra: extra_names}
+    end
   end
 
-  defp columns(tables, column_variants) do
-    Enum.reduce(tables, {%{}, []}, fn table, {names, suffixed} ->
+  defp claim(items, reserved) do
+    by_key = Map.new(items, fn {scope, key, item, _spec} -> {key, {scope, item}} end)
+
+    {names, suffixed} =
+      items
+      |> Enum.map(fn {_scope, key, _item, spec} -> {key, variants(spec)} end)
+      |> Naming.dedupe(reserved)
+
+    {names,
+     Enum.map(suffixed, fn {key, first, chosen} ->
+       {scope, item} = Map.fetch!(by_key, key)
+       {scope, item, first, chosen}
+     end)}
+  end
+
+  defp variants({variants, _uncut}), do: variants
+  defp variants(variants), do: variants
+
+  # Items whose first name was cut: `{scope, item, uncut, names}`.
+  defp truncated(items, names) do
+    for {scope, key, item, {variants, uncut}} <- items,
+        primary(variants.(1)) != uncut,
+        do: {scope, item, uncut, Map.fetch!(names, key)}
+  end
+
+  defp columns(tables, column_spec) do
+    Enum.reduce(tables, {%{}, [], []}, fn table, {names, all_items, suffixed} ->
       {builtin, rest} =
         table.columns
         |> Enum.reject(& &1.deleted)
         |> Enum.split_with(&(&1.primary_key or Map.get(&1, :system) != nil))
 
-      ordered = builtin ++ rest
-      by_key = Map.new(ordered, &{column_key(&1), &1})
+      items = Enum.map(builtin ++ rest, &{:column, column_key(&1), &1, column_spec.(&1)})
+      {table_names, table_suffixed} = claim(items, [])
 
-      {table_names, table_suffixed} =
-        ordered
-        |> Enum.map(&{column_key(&1), column_variants.(&1)})
-        |> Naming.dedupe()
-
-      table_suffixed =
-        Enum.map(table_suffixed, fn {key, first, chosen} ->
-          {:column, Map.fetch!(by_key, key), first, chosen}
-        end)
-
-      {Map.merge(names, table_names), suffixed ++ table_suffixed}
+      {Map.merge(names, table_names), all_items ++ items, suffixed ++ table_suffixed}
     end)
   end
+
+  @doc "The names `build/2`'s `:extra` claimed for `key`, or nil."
+  @spec extra(t(), term()) :: [term()] | nil
+  def extra(%__MODULE__{extra: extra}, key), do: Map.get(extra, key)
 
   @doc """
   The names of a table, given the table or any of its columns (e.g. the
@@ -115,10 +150,12 @@ defmodule BubbleEx.Db.Encoder.Names do
 
   @doc """
   One `:db_converted_name_suffixed` diagnostic (stage `{:target, format}`)
-  per table or column that did not keep its first name.
+  per table or column that did not keep its first name, and one
+  `:db_converted_name_truncated` per table or column whose name was cut to
+  the target's maximum length.
   """
   @spec diagnostics(t(), atom()) :: [Diagnostic.t()]
-  def diagnostics(%__MODULE__{suffixed: suffixed}, format) do
+  def diagnostics(%__MODULE__{suffixed: suffixed, truncated: truncated}, format) do
     Enum.map(suffixed, fn {scope, item, first, chosen} ->
       name = primary(first)
       rendered = primary(chosen)
@@ -131,7 +168,24 @@ defmodule BubbleEx.Db.Encoder.Names do
         subject: subject(scope, item),
         details: %{name: name, rendered: rendered, scope: Atom.to_string(scope)}
       )
-    end)
+    end) ++
+      Enum.map(truncated, fn {scope, item, uncut, chosen} ->
+        rendered = primary(chosen)
+
+        Diagnostic.new(
+          :db_converted_name_truncated,
+          path(scope, item),
+          "#{scope} name #{inspect(uncut)} is longer than the target allows; rendered as #{inspect(rendered)}",
+          target: format,
+          subject: subject(scope, item),
+          details: %{
+            name: uncut,
+            rendered: rendered,
+            length: String.length(uncut),
+            scope: Atom.to_string(scope)
+          }
+        )
+      end)
   end
 
   defp primary([{_namespace, name} | _]), do: name
