@@ -143,8 +143,14 @@ defmodule BubbleEx.Diagnostic do
   def pointer(pointer) when is_binary(pointer), do: pointer
   def pointer(path) when is_list(path), do: Enum.map_join(path, "", &("/" <> escape(&1)))
 
-  defp escape(segment),
-    do: segment |> to_string() |> String.replace("~", "~0") |> String.replace("/", "~1")
+  # Most Bubble keys contain neither `~` nor `/`; skip the replacements then.
+  defp escape(segment) do
+    segment = to_string(segment)
+
+    if String.contains?(segment, ["~", "/"]),
+      do: segment |> String.replace("~", "~0") |> String.replace("/", "~1"),
+      else: segment
+  end
 
   @doc """
   JSON form: a map with string keys whose values are JSON primitives, so it
