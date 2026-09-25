@@ -162,7 +162,7 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
     fields
     |> Enum.reject(fn {id, _} -> id == "_ignore" end)
     |> Enum.sort_by(fn {id, data} ->
-      {if(is_list(data["path"]), do: data["path"], else: ["\uffff"]), id}
+      {if(is_list(get(data, "path")), do: get(data, "path"), else: ["\uffff"]), id}
     end)
     |> Enum.map_reduce(state, fn {field_id, data}, state ->
       path = root_occurrence.path ++ [%{external_type_id: parent_id, field_id: field_id}]
@@ -171,13 +171,18 @@ defmodule BubbleEx.Db.Reader.ExternalTypes do
       {type, state} = resolve_value(raw, occurrence, state)
 
       state =
-        if is_binary(data["caption"]) and is_list(data["path"]),
+        if is_binary(get(data, "caption")) and is_list(get(data, "path")),
           do: state,
           else: warn(state, :incomplete_field_metadata, external_target(parent_id), occurrence)
 
-      {%{id: field_id, caption: data["caption"], path: data["path"], type: type}, state}
+      {%{id: field_id, caption: get(data, "caption"), path: get(data, "path"), type: type}, state}
     end)
   end
+
+  # A registry field definition that is not an object has no members (its
+  # type is then diagnosed as malformed).
+  defp get(data, key) when is_map(data), do: Map.get(data, key)
+  defp get(_data, _key), do: nil
 
   defp field_descriptor(data, occurrence, state) when is_map(data) do
     values = [data["ret_btype"], data["ret_value"]] |> Enum.filter(&is_binary/1)
