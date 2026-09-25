@@ -39,11 +39,14 @@ When changing `BubbleEx.Target.Ash`, also compile its output:
 scripts/ash_compile_check.sh
 ```
 
-This renders every model fixture into a scratch Ash project
-(`_build/ash_compile_check`, pinned `ash`/`ash_postgres` matching bubble_wtf),
-runs `mix compile --warnings-as-errors` and dry-runs `mix ash.codegen`. It needs
-no database. With `BUBBLE_EX_PRIVATE_EXPORT` set it also compiles a private app
-export; CI runs it as the `ash-compile-check` job.
+This renders every fixture into a scratch Ash project
+(`_build/ash_compile_check`, dependencies from `BubbleEx.Target.Ash.versions/0`),
+runs `mix compile --warnings-as-errors` and dry-runs `mix ash.codegen`, which
+needs no database. With `ASH_COMPILE_CHECK_DB` set to a PostgreSQL URL (e.g.
+`ecto://postgres:postgres@localhost:5432`) it also runs the migrations and
+round-trips sample rows through every resource. With `BUBBLE_EX_PRIVATE_EXPORT`
+set it also checks a private app export. CI runs it as the `ash-compile-check`
+job.
 
 ## Testing
 

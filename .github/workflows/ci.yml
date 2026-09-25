@@ -34,10 +34,22 @@ jobs:
         run: scripts/package_consumer_smoke.sh
 
   ash-compile-check:
-    # Renders every model fixture through BubbleEx.Target.Ash and compiles the
-    # source in a scratch project with pinned ash/ash_postgres, then dry-runs
-    # migration generation (no database needed). See scripts/ash_compile_check.sh.
+    # Renders every fixture through BubbleEx.Target.Ash, compiles the source in
+    # a scratch project pinned to Target.Ash.versions/0, checks the generated
+    # migrations, runs them and round-trips sample rows through every
+    # resource. See scripts/ash_compile_check.sh.
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ASH_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:5432
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1

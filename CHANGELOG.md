@@ -19,8 +19,11 @@ All notable changes to this project are documented here.
   instead of resources, list references are ordered `{:array, :string}` of
   Bubble IDs, scalar references are `belongs_to` with no database foreign
   key, strings are untrimmed, structured values and known API types are
-  `Ash.TypedStruct`s, names follow WTF-339 (see `BubbleEx.Target.Ash.Naming`)
-  and the primary key is `id`.
+  `Ash.TypedStruct`s, values with no usable shape use a generated
+  `Types.JsonValue` (any JSON value, jsonb) instead of `:map`, date intervals
+  are `:float` milliseconds, lists of dates migrate at microsecond precision,
+  names follow WTF-339 (see `BubbleEx.Target.Ash.Naming`) and the primary key
+  is `id`.
 - One diagnostic type, `BubbleEx.Diagnostic`, replaces `BubbleEx.Expression.Diagnostic`
   (removed, no alias) and the Reader's and encoders' warning maps. It carries a
   stable `code`, `severity`, `outcome` (`:preserved | :degraded | :unresolved`),
@@ -73,9 +76,13 @@ All notable changes to this project are documented here.
   edits in Bubble do not rename code. `decisions` must be `[]` until WTF-352.
   `BubbleEx.Target.Ash.Source.render/2` prints a Project; a `mix xref` test
   keeps it independent of the Model and the Reader.
-- `scripts/ash_compile_check.sh` (and the `ash-compile-check` CI job) compiles
-  the generated source of every model fixture in a scratch project with
-  pinned `ash` 3.31.3 / `ash_postgres` 2.11.0 and dry-runs `mix ash.codegen`.
+- `BubbleEx.Target.Ash.versions/0`: the `ash` / `ash_postgres` pins for
+  projects using the generated source (3.31.3 / 2.11.0).
+- `scripts/ash_compile_check.sh` (and the `ash-compile-check` CI job, with a
+  PostgreSQL service) compiles the generated source of every fixture against
+  `Target.Ash.versions/0`, checks the generated migrations (no foreign keys,
+  microsecond date lists), runs them, and inserts and reads back sample rows
+  for every resource.
 
 - Deterministic model-refinement analyzers through `BubbleEx.Findings.analyze/2`
   / `BubbleEx.model_findings/2`. They emit `BubbleEx.Finding`s, a type separate
