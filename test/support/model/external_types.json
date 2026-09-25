@@ -50,6 +50,10 @@
           "display": "Invalid",
           "value": "api.not_a_connector"
         },
+        "invalid_list_api": {
+          "display": "Invalid list",
+          "value": "list.api.not_a_connector"
+        },
         "missing_api": {
           "display": "Missing",
           "value": "api.apiconnector2.geo.lookup.Missing"

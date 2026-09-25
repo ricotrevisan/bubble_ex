@@ -46,6 +46,7 @@
           }
         }
       ],
+      "synthesized": false,
       "system_fields": [
         {
           "comment": null,
@@ -297,6 +298,7 @@
           }
         }
       ],
+      "synthesized": false,
       "system_fields": [
         {
           "comment": null,
@@ -433,6 +435,7 @@
       "privacy": "none",
       "raw": null,
       "rules": [],
+      "synthesized": false,
       "system_fields": [
         {
           "comment": null,
@@ -569,6 +572,7 @@
       "privacy": "none",
       "raw": null,
       "rules": [],
+      "synthesized": false,
       "system_fields": [
         {
           "comment": null,

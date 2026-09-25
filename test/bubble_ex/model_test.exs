@@ -70,10 +70,12 @@ defmodule BubbleEx.ModelTest do
       end
     end
 
-    # Re-emit each fixture's text with every object's members shuffled
-    # (embedded API Connector registries too, so they are different strings;
-    # see BubbleEx.Test.PermutedJson), decode it and rebuild: the Model's
-    # bytes must not change. The inputs are checked to really differ.
+    # Re-emit each fixture's text with every object's members shuffled,
+    # decode it and rebuild: the Model's bytes must not change. Decoded maps
+    # keep no member order, so for most of the app this proves only that the
+    # text's member order cannot leak into the Model. The embedded API
+    # Connector registries are re-encoded shuffled too, and those are
+    # genuinely different input strings (see the next test).
     test "permuted source text gives identical bytes" do
       for name <- @fixtures do
         app = load(name)
@@ -93,6 +95,59 @@ defmodule BubbleEx.ModelTest do
         end
       end
     end
+
+    # A genuinely different construction of the same app: the live payload's
+    # compact keys (`%d`, `%f3`, `%v`, `%del`) instead of the export's
+    # readable ones. Only source pointers and the privacy availability (an
+    # export says "no rules", the live payload cannot say) may differ.
+    test "the compact key form gives the same Model apart from pointers" do
+      for name <-
+            ~w(field_types option_sets missing_and_deleted naming hostile_self_reference hostile_type_cycle hostile_long_unicode_names) do
+        app = load(name)
+        {:ok, readable} = Model.build(app)
+        {:ok, compact} = app |> compact() |> Model.build()
+        refute compact(app) == app
+        assert comparable(compact) == comparable(readable), name
+      end
+    end
+
+    defp compact(app) do
+      app
+      |> Map.update("user_types", %{}, &map_values(&1, fn type -> compact_type(type) end))
+      |> Map.update("option_sets", %{}, &map_values(&1, fn set -> compact_set(set) end))
+    end
+
+    @names %{"display" => "%d", "deleted" => "%del"}
+
+    defp compact_type(type) do
+      type
+      |> rename(Map.put(@names, "fields", "%f3"))
+      |> Map.update("%f3", %{}, &map_values(&1, fn f -> compact_field(f) end))
+    end
+
+    defp compact_set(set) do
+      set
+      |> rename(@names)
+      |> Map.update("attributes", %{}, &map_values(&1, fn a -> compact_field(a) end))
+      |> Map.update("values", %{}, &map_values(&1, fn v -> rename(v, @names) end))
+    end
+
+    defp map_values(map, fun), do: Map.new(map, fn {k, v} -> {k, fun.(v)} end)
+
+    defp compact_field(field), do: rename(field, Map.put(@names, "value", "%v"))
+
+    defp rename(map, names), do: Map.new(map, fn {k, v} -> {Map.get(names, k, k), v} end)
+
+    defp comparable(model) do
+      map = model |> Model.to_map() |> drop_keys(~w(path privacy))
+      Map.update!(map, "diagnostics", &Enum.sort_by(&1, fn d -> Jason.encode!(d) end))
+    end
+
+    defp drop_keys(map, keys) when is_map(map),
+      do: map |> Map.drop(keys) |> Map.new(fn {k, v} -> {k, drop_keys(v, keys)} end)
+
+    defp drop_keys(list, keys) when is_list(list), do: Enum.map(list, &drop_keys(&1, keys))
+    defp drop_keys(value, _keys), do: value
 
     test "embedded registries are really permuted" do
       :rand.seed(:exsss, {1, 2, 3})
@@ -172,7 +227,14 @@ defmodule BubbleEx.ModelTest do
     end
 
     test "self references and cycles between data types are references by ID" do
-      [node] = build!("hostile_self_reference").data_types
+      model = build!("hostile_self_reference")
+
+      assert Enum.map(model.data_types, &{&1.id, &1.synthesized}) == [
+               {"node", false},
+               {"user", true}
+             ]
+
+      node = Model.data_type(model, "node")
 
       assert Enum.all?(
                node.fields,
@@ -180,8 +242,9 @@ defmodule BubbleEx.ModelTest do
              )
 
       cycle = build!("hostile_type_cycle")
-      assert Enum.map(cycle.data_types, &hd(&1.fields).type.target) == ["b", "c", "a"]
-      assert cycle.diagnostics == []
+      types = Enum.reject(cycle.data_types, & &1.synthesized)
+      assert Enum.map(types, &hd(&1.fields).type.target) == ["b", "c", "a"]
+      assert Enum.map(cycle.diagnostics, & &1.code) == [:model_synthesized_user_type]
     end
 
     test "the live payload key form reads like an export" do
@@ -252,6 +315,15 @@ defmodule BubbleEx.ModelTest do
                diagnostics(model, :model_unresolved_target)
     end
 
+    test "undeclared option-value members stay in extra with their own code", %{model: model} do
+      assert [%Diagnostic{severity: :warning, outcome: :preserved} = d] =
+               diagnostics(model, :model_undeclared_option_attribute_value)
+
+      assert d.details == %{value: "bAh", attribute: "tooltip"}
+      assert d.path == "/option_sets/priority/values/bAh/tooltip"
+      assert diagnostics(model, :model_uninterpreted_member) == []
+    end
+
     test "deleted option sets are kept", %{model: model} do
       assert %OptionSet{deleted: true, values: []} = Model.option_set(model, "legacy")
     end
@@ -306,8 +378,13 @@ defmodule BubbleEx.ModelTest do
       assert %Type{kind: :external, resolved: false} = field_type(shipment, "missing_api")
       assert %Type{kind: :external, resolved: false} = field_type(shipment, "nowhere_api")
 
-      assert %Type{kind: :opaque, cardinality: :unknown, source: "api.not_a_connector"} =
+      assert %Type{kind: :opaque, cardinality: :one, source: "api.not_a_connector"} =
                field_type(shipment, "invalid_api")
+
+      # Bubble's own `list.` prefix fixes the cardinality even when the API
+      # descriptor is invalid.
+      assert %Type{kind: :opaque, cardinality: :many, source: "list.api.not_a_connector"} =
+               field_type(shipment, "invalid_list_api")
 
       assert %Type{kind: :external, cardinality: :many} = field_type(shipment, "pings_list_api")
       assert Enum.find(shipment.fields, &(&1.id == "old_api")).deleted
@@ -341,13 +418,68 @@ defmodule BubbleEx.ModelTest do
       codes = model.diagnostics |> Enum.map(&{&1.stage, &1.code}) |> Enum.sort()
 
       assert codes == [
+               model: :model_synthesized_user_type,
                read: :connector_missing,
                read: :empty_definition,
                read: :exact_type_definition_missing,
                read: :field_type_unsupported,
                read: :incomplete_field_metadata,
+               read: :invalid_descriptor,
                read: :invalid_descriptor
              ]
+    end
+  end
+
+  describe "the built-in User type" do
+    test "is synthesized when the source lacks it, so user references resolve" do
+      model = build!("missing_and_deleted")
+      user = Model.data_type(model, "user")
+      assert %DataType{synthesized: true, name: "User", fields: [], privacy: :unavailable} = user
+      assert Enum.map(user.system_fields, & &1.system) |> List.last() == :email
+
+      assert {:ok, %Field{type: %Type{kind: :ref, target: "user", resolved: true}}} =
+               Model.field(model, "invoice", "Created By")
+
+      assert [%Diagnostic{subject: %{type: "user"}, severity: :info, stage: :model}] =
+               diagnostics(model, :model_synthesized_user_type)
+
+      refute Map.has_key?(Model.schema(model), "user")
+    end
+
+    test "is not synthesized when defined" do
+      model = build!("field_types")
+      refute Model.data_type(model, "user").synthesized
+      assert diagnostics(model, :model_synthesized_user_type) == []
+    end
+  end
+
+  describe "structured values" do
+    test "the catalog names the component parts of each structured type" do
+      task = Model.data_type(build!("field_types"), "task")
+
+      assert Type.components(field_type(task, "place_geographic_address")) == [
+               %{id: "formatted_address", base: :text},
+               %{id: "lat", base: :number},
+               %{id: "lng", base: :number}
+             ]
+
+      assert Enum.map(Type.components(field_type(task, "window_date_range")), & &1.id) ==
+               ~w(start end)
+
+      assert Enum.map(Type.components(field_type(task, "budget_number_range")), & &1.id) ==
+               ~w(min max)
+
+      assert Type.components(field_type(task, "duration_dateinterval")) == []
+      assert Type.components(field_type(task, "title_text")) == []
+
+      assert BubbleEx.Model.Structured.fetch(:date_range).bounds == %{
+               start: :unverified,
+               end: :unverified
+             }
+
+      for type <- task.fields,
+          type.type.kind == :structured,
+          do: assert(BubbleEx.Model.Structured.fetch(type.type.base))
     end
   end
 
@@ -398,7 +530,7 @@ defmodule BubbleEx.ModelTest do
                ])
 
       assert Model.data_type(model, "launch").name == "🚀 Launch"
-      assert Enum.map(model.data_types, & &1.id) == ~w(00__thing___join launch thing thing0)
+      assert Enum.map(model.data_types, & &1.id) == ~w(00__thing___join launch thing thing0 user)
 
       keys = model |> Model.to_map() |> all_keys() |> MapSet.new()
 
@@ -417,14 +549,17 @@ defmodule BubbleEx.ModelTest do
       assert %Type{kind: :ref, target: "类型", resolved: true} =
                field_type(type, "emoji_🧪_custom_类型")
 
-      assert model.diagnostics == []
+      assert Enum.map(model.diagnostics, & &1.code) == [:model_synthesized_user_type]
     end
   end
 
   describe "hostile input" do
     test "an empty app is an empty Model" do
-      assert {:ok, %Model{data_types: [], option_sets: [], external_types: [], diagnostics: []}} =
+      assert {:ok, %Model{data_types: [user], option_sets: [], external_types: []} = model} =
                Model.build(%{})
+
+      assert %DataType{id: "user", synthesized: true, fields: []} = user
+      assert Enum.map(model.diagnostics, & &1.code) == [:model_synthesized_user_type]
     end
 
     test "non-objects are an error, not a crash" do
