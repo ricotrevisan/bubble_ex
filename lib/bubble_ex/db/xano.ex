@@ -64,8 +64,25 @@ defmodule BubbleEx.Db.Xano do
       |> prepare_tables(opts)
       |> Enum.map(&encode_table(&1, rel_index, external_index, opts))
 
-    {:ok, Jason.encode!([@note | tables], pretty: true) <> "\n"}
+    {:ok, Jason.encode!([@note | Enum.map(tables, &ordered/1)], pretty: true) <> "\n"}
   end
+
+  # Atom-keyed maps iterate in atom-table order on OTP 26+, which depends on
+  # which modules happened to intern the atoms first. Emit a fixed key order
+  # so the output is byte-stable.
+  @key_order [:name, :fields, :type, :values, :children, :description, :style]
+
+  defp ordered(%{} = map) do
+    known = Enum.filter(@key_order, &Map.has_key?(map, &1))
+    rest = map |> Map.keys() |> Kernel.--(@key_order) |> Enum.sort()
+
+    (known ++ rest)
+    |> Enum.map(&{&1, ordered(Map.fetch!(map, &1))})
+    |> Jason.OrderedObject.new()
+  end
+
+  defp ordered(list) when is_list(list), do: Enum.map(list, &ordered/1)
+  defp ordered(value), do: value
 
   defp encode_table(table, rel_index, external_index, opts) do
     fields =
