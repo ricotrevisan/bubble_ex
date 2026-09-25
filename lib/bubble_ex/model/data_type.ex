@@ -8,7 +8,8 @@ defmodule BubbleEx.Model.DataType do
       included, in Bubble ID order
     * `system_fields` - Bubble's built-in fields every record has: unique id
       (`_id`), `Created Date`, `Modified Date`, `Created By`, `Slug`, and
-      `email` on User
+      `email` on User. A defined field with a built-in's Bubble ID replaces
+      it unless that field is deleted or malformed.
     * `deleted` - deleted in the editor; the type is kept
     * `synthesized` - true only for the User type (`"user"`) when the source
       does not define it. User is built into every Bubble app, so references

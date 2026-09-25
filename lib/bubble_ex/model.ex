@@ -126,12 +126,14 @@ defmodule BubbleEx.Model do
 
   @doc """
   A field of data type `type_id` by Bubble ID, including built-in fields
-  (e.g. `"Created Date"`, `"_id"`).
+  (e.g. `"Created Date"`, `"_id"`). A live defined field comes first, then a
+  built-in field, then a deleted or malformed one.
   """
   @spec field(t(), String.t(), String.t()) :: {:ok, Field.t()} | :error
   def field(model, type_id, field_id) do
     with %DataType{} = type <- data_type(model, type_id),
-         %Field{} = field <- Enum.find(type.fields ++ type.system_fields, &(&1.id == field_id)) do
+         {live, gone} = Enum.split_with(type.fields, &(not &1.deleted and is_nil(&1.raw))),
+         %Field{} = field <- Enum.find(live ++ type.system_fields ++ gone, &(&1.id == field_id)) do
       {:ok, field}
     else
       _ -> :error

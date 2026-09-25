@@ -711,6 +711,37 @@ defmodule BubbleEx.Db.ReaderTest do
              ]
     end
 
+    test "only a live field replaces the built-in field with its Bubble ID" do
+      app = %{
+        "user_types" => %{
+          "task" => %{
+            "display" => "Task",
+            "fields" => %{
+              "Slug" => %{"display" => "Old slug", "value" => "text", "deleted" => true},
+              "Created Date" => "not an object",
+              "Modified Date" => %{"display" => "Touched", "value" => "text"}
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Model.build(app)
+      system = BubbleEx.Model.data_type(model, "task").system_fields
+      assert Enum.map(system, & &1.id) == ["_id", "Created Date", "Created By", "Slug"]
+      assert {:ok, %{system: :slug}} = BubbleEx.Model.field(model, "task", "Slug")
+
+      {:ok, db} = Reader.parse(app)
+      task = Enum.find(db.tables, &(&1.id == "task"))
+
+      assert Enum.map(task.columns, &{&1.id, &1.name, &1.system}) == [
+               {"_id", "_id", :unique_id},
+               {"Created Date", "Created Date", :created_date},
+               {"Created By", "Created By", :created_by},
+               {"Slug", "Slug", :slug},
+               {"Modified Date", "Touched", nil}
+             ]
+    end
+
     test "a missing display name falls back to the Bubble ID" do
       {:ok, db} = Reader.parse(@export)
       task = Enum.find(db.tables, &(&1.id == "task"))
