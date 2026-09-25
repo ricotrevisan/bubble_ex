@@ -1,0 +1,178 @@
+# schema module
+defmodule MyApp.Task do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "task" do
+    field :title, :string
+    field :title_2, :boolean
+    field :_id_2, :string
+    field :tags, {:array, :string}
+    field :gone, :string
+    field :retired, :string
+    belongs_to :status, MyApp.Status, foreign_key: :status_id, references: :db_value, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:title, :title_2, :_id_2, :tags, :gone, :retired, :status_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTask do
+  use Ecto.Migration
+
+  def change do
+    create table("task", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :title, :string
+      add :title_2, :boolean
+      add :_id_2, :string
+      add :tags, {:array, :string}
+      add :gone, :string
+      add :retired, :string
+      add :status_id, :string
+    end
+    create index("task", [:status_id])
+  end
+end
+
+# schema module
+defmodule MyApp.Task2 do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "task_2" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTask2 do
+  use Ecto.Migration
+
+  def change do
+    create table("task_2", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, []) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Status do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "status" do
+    field :display, :string
+    field :db_value_2, :string
+    field :display_2, :string
+    field :rank_2, :string
+    field :rank, :boolean
+    field :rank_3, :float
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display, :db_value_2, :display_2, :rank_2, :rank, :rank_3]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateStatus do
+  use Ecto.Migration
+
+  def change do
+    create table("status", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+      add :db_value_2, :string
+      add :display_2, :string
+      add :rank_2, :string
+      add :rank, :boolean
+      add :rank_3, :float
+    end
+  end
+end
+
+# schema module
+defmodule MyApp.Task3 do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "task_3" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTask3 do
+  use Ecto.Migration
+
+  def change do
+    create table("task_3", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

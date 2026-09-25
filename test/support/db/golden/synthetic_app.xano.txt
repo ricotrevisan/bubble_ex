@@ -52,7 +52,7 @@
         "name": "status",
         "type": "enum",
         "values": [],
-        "description": "enum:status_type (option values not in IR)",
+        "description": "enum:status_type (option values not rendered)",
         "style": "single"
       }
     ]

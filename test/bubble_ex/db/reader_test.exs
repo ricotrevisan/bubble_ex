@@ -617,7 +617,6 @@ defmodule BubbleEx.Db.ReaderTest do
     test "parse/1 is project/2 of the Model" do
       {:ok, model} = BubbleEx.Model.build(@export)
       assert Reader.parse(@export) == {:ok, Reader.project(model, @export)}
-      assert Reader.project(model, @export).diagnostics == model.diagnostics
     end
 
     test "drops deleted types, option sets and fields in the export key form" do
@@ -690,13 +689,84 @@ defmodule BubbleEx.Db.ReaderTest do
         app = @fixture |> File.read!() |> Jason.decode!()
         {:ok, model} = BubbleEx.Model.build(app)
         assert {:ok, db} = Reader.parse(app)
-        assert db.diagnostics == model.diagnostics
+        assert Enum.all?(db.diagnostics, &(&1 in model.diagnostics))
 
         for format <- ~w(dbml postgres sqlite tsql ecto zod xano convex)a do
           assert {:ok, %{content: content}} = BubbleEx.Db.Encoder.render(format, db)
           assert is_binary(content)
         end
       end
+    end
+  end
+
+  describe "projection keeps the table view loadable" do
+    @collisions "test/support/db/fixtures/collisions.json" |> File.read!() |> Jason.decode!()
+
+    setup do
+      {:ok, db} = Reader.parse(@collisions)
+      %{db: db}
+    end
+
+    defp names(db, id), do: Enum.find(db.tables, &(&1.id == id)).columns |> Enum.map(& &1.name)
+
+    test "column names are unique per table, case-insensitively, key columns first", %{db: db} do
+      assert names(db, "task") ==
+               ["_id", "Title", "title_2", "_ID_2", "Tags", "Gone", "Retired", "Status"]
+
+      # Suffixes follow Bubble ID order and skip names already taken.
+      assert names(db, "status") ==
+               ["db_value", "Display", "DB_VALUE_2", "Display_2", "Rank_2", "Rank", "Rank_3"]
+
+      for table <- db.tables do
+        folded = Enum.map(table.columns, &String.downcase(&1.name))
+        assert folded == Enum.uniq(folded)
+      end
+    end
+
+    test "table names are unique across groups, data types first", %{db: db} do
+      assert Enum.map(db.tables, &{&1.id, &1.name}) == [
+               {"task", "Task"},
+               {"task_copy", "task_2"},
+               {"user", "User"},
+               {"status", "Status"},
+               {"task_os", "TASK_3"}
+             ]
+    end
+
+    test "a repeated option key keeps only its first value", %{db: db} do
+      status = Enum.find(db.tables, &(&1.id == "status"))
+      assert Enum.map(status.values, &{&1.id, &1.db_value}) == [{"v1", "open"}, {"v3", "closed"}]
+
+      assert {:db_duplicate_option_value_dropped, "/option_sets/status/values/v2", _,
+              subject: %{option_set: "status"}, details: %{value: "v2", key: "open"}} =
+               Enum.find(
+                 db.projection_diagnostics,
+                 &(elem(&1, 0) == :db_duplicate_option_value_dropped)
+               )
+    end
+
+    test "references to deleted definitions keep their column and are diagnosed", %{db: db} do
+      for field <- ~w(e_gone_custom_gone f_retired_option_retired) do
+        assert {_, nil, :many_to_one} =
+                 Enum.find(db.relationships, fn {from, _, _} -> from.id == field end)
+      end
+
+      notes = for {:db_reference_to_omitted, _, _, opts} <- db.projection_diagnostics, do: opts
+      assert Enum.map(notes, & &1[:details].target) == ["gone", "retired"]
+    end
+
+    test "Encoder.render emits the projection's diagnostics for its target", %{db: db} do
+      {:ok, result} = BubbleEx.Db.Encoder.render(:sqlite, db)
+      suffixed = Enum.filter(result.diagnostics, &(&1.code == :db_name_suffixed))
+      assert length(suffixed) == 7
+      assert Enum.all?(suffixed, &(&1.stage == {:target, :sqlite}))
+    end
+
+    test "only diagnostics about the tables are kept, not privacy or expression ones", %{db: db} do
+      {:ok, model} = BubbleEx.Model.build(@collisions)
+      assert Enum.any?(model.diagnostics, &(&1.stage == :parse))
+      refute Enum.any?(db.diagnostics, &(&1.stage == :parse))
+      assert Enum.all?(db.diagnostics, &(&1 in model.diagnostics))
     end
   end
 end

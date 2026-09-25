@@ -13,7 +13,7 @@ export const TaskSchema = z.object({
   _id: z.string(),
   'Done?': z.boolean().nullish(),
   Project: z.string().nullish(), // reference -> project
-  Status: z.string().nullish(), // enum -> status option set (values not in IR)
+  Status: z.string().nullish(), // enum -> status option set (values not rendered)
   Title: z.string().nullish(),
 });
 

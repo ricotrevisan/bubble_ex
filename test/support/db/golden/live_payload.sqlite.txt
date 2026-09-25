@@ -27,3 +27,4 @@ CREATE TABLE IF NOT EXISTS "option__Kind" (
   PRIMARY KEY ("db_value")
 );
 --- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

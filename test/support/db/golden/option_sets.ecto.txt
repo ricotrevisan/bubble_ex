@@ -161,6 +161,7 @@ defmodule MyApp.Repo.Migrations.CreatePriority do
 end
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
 model_duplicate_option_key /option_sets/priority/values/bAg
 model_option_key_missing /option_sets/priority/values/bAf
 model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip

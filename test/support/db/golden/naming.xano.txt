@@ -42,7 +42,7 @@
         "style": "single"
       },
       {
-        "name": "title",
+        "name": "title_2",
         "type": "text",
         "style": "single"
       },
@@ -86,7 +86,7 @@
     ]
   },
   {
-    "name": "thing",
+    "name": "thing_2",
     "fields": [
       {
         "name": "_id",
@@ -125,4 +125,6 @@
   }
 ]
 --- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
 model_synthesized_user_type /user_types/user

@@ -15,14 +15,14 @@
         "name": "channels",
         "type": "enum",
         "values": [],
-        "description": "enum:channel (option values not in IR)",
+        "description": "enum:channel (option values not rendered)",
         "style": "list"
       },
       {
         "name": "priority",
         "type": "enum",
         "values": [],
-        "description": "enum:priority (option values not in IR)",
+        "description": "enum:priority (option values not rendered)",
         "style": "single"
       }
     ]
@@ -72,7 +72,7 @@
         "name": "parent",
         "type": "enum",
         "values": [],
-        "description": "enum:ghost_set (option values not in IR)",
+        "description": "enum:ghost_set (option values not rendered)",
         "style": "single"
       }
     ]
@@ -95,7 +95,7 @@
         "name": "channels",
         "type": "enum",
         "values": [],
-        "description": "enum:channel (option values not in IR)",
+        "description": "enum:channel (option values not rendered)",
         "style": "list"
       },
       {
@@ -107,7 +107,7 @@
         "name": "escalates_to",
         "type": "enum",
         "values": [],
-        "description": "enum:priority (option values not in IR)",
+        "description": "enum:priority (option values not rendered)",
         "style": "single"
       },
       {
@@ -130,6 +130,7 @@
 ]
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
 model_duplicate_option_key /option_sets/priority/values/bAg
 model_option_key_missing /option_sets/priority/values/bAf
 model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip

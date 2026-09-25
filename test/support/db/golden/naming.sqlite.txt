@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS "custom__00. Thing - Join" (
   "id" TEXT,
   "inserted_at" TEXT,
   "Title" TEXT,
-  "Title" TEXT,
+  "Title_2" TEXT,
   "type" TEXT,
   PRIMARY KEY ("_id")
 );
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS "custom__Thing" (
   PRIMARY KEY ("_id")
 );
 
-CREATE TABLE IF NOT EXISTS "custom__Thing" (
+CREATE TABLE IF NOT EXISTS "custom__Thing_2" (
   "_id" TEXT NOT NULL,
   PRIMARY KEY ("_id")
 );
@@ -45,4 +45,6 @@ CREATE TABLE IF NOT EXISTS "option__40. Levels" (
   PRIMARY KEY ("db_value")
 );
 --- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
 model_synthesized_user_type /user_types/user

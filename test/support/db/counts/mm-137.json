@@ -34,61 +34,77 @@
   },
   "formats": {
     "convex": {
-      "bytes": 98912,
+      "bytes": 99398,
       "lines": 2639,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
       }
     },
     "dbml": {
-      "bytes": 104024,
+      "bytes": 104026,
       "lines": 3189,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_target_opaque": 6,
         "external_type_unresolved_root": 6
       }
     },
     "ecto": {
-      "bytes": 325418,
+      "bytes": 325424,
       "lines": 10126,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
       }
     },
     "postgres": {
-      "bytes": 114311,
+      "bytes": 114313,
       "lines": 3288,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
       }
     },
     "sqlite": {
-      "bytes": 104948,
+      "bytes": 104950,
       "lines": 3290,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_target_opaque": 6,
         "external_type_unresolved_root": 6
       }
     },
     "tsql": {
-      "bytes": 158564,
+      "bytes": 158848,
       "lines": 4553,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_target_opaque": 6,
         "external_type_unresolved_root": 6
       }
     },
     "xano": {
-      "bytes": 261605,
+      "bytes": 262093,
       "lines": 11764,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
       }
     },
     "zod": {
-      "bytes": 126944,
+      "bytes": 127432,
       "lines": 3333,
       "target_diagnostics": {
+        "db_name_suffixed": 1,
+        "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
       }
     }

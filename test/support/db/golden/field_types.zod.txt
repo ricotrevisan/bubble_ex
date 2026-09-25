@@ -22,7 +22,7 @@ export const TaskSchema = z.object({
   Estimate: z.number().nullish(),
   Files: z.array(z.string()).nullish(),
   Images: z.array(z.string()).nullish(),
-  Labels: z.array(z.string()).nullish(), // enum -> status option set (values not in IR)
+  Labels: z.array(z.string()).nullish(), // enum -> status option set (values not rendered)
   Notes: z.array(z.string()).nullish(),
   Owner: z.string().nullish(), // reference -> user
   Place: z.object({}).passthrough().nullish(), // bubble_geo_address (structured Bubble type)
@@ -30,7 +30,7 @@ export const TaskSchema = z.object({
   Project: z.string().nullish(), // reference -> project
   Ranges: z.array(z.object({}).passthrough()).nullish(), // bubble_date_range (structured Bubble type)
   Scores: z.array(z.number()).nullish(),
-  Status: z.string().nullish(), // enum -> status option set (values not in IR)
+  Status: z.string().nullish(), // enum -> status option set (values not rendered)
   Subtasks: z.array(z.string()).nullish(), // reference -> task
   Title: z.string().nullish(),
   Watchers: z.array(z.string()).nullish(), // reference -> user

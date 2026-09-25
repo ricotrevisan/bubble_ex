@@ -27,7 +27,7 @@
         "name": "kind",
         "type": "enum",
         "values": [],
-        "description": "enum:kind (option values not in IR)",
+        "description": "enum:kind (option values not rendered)",
         "style": "single"
       }
     ]
@@ -71,3 +71,4 @@
   }
 ]
 --- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

@@ -13,12 +13,12 @@ defmodule MyApp.N00ThingJoin do
     field :id, :string
     field :inserted_at, :utc_datetime_usec
     field :title, :string
-    field :title, :string
+    field :title_2, :string
     field :type, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:n11_done, :n40_sort_thing_title, :_struct, :id, :inserted_at, :title, :title, :type]) |> validate_required([:_id])
+    rec |> cast(attrs, [:n11_done, :n40_sort_thing_title, :_struct, :id, :inserted_at, :title, :title_2, :type]) |> validate_required([:_id])
   end
 end
 
@@ -35,7 +35,7 @@ defmodule MyApp.Repo.Migrations.CreateN00ThingJoin do
       add :id, :string
       add :inserted_at, :utc_datetime_usec
       add :title, :string
-      add :title, :string
+      add :title_2, :string
       add :type, :string
     end
   end
@@ -101,14 +101,14 @@ defmodule MyApp.Repo.Migrations.CreateThing do
 end
 
 # schema module
-defmodule MyApp.Thing do
+defmodule MyApp.Thing2 do
   use Ecto.Schema
   import Ecto.Changeset
 
   @primary_key {:_id, :string, autogenerate: false}
   @foreign_key_type :string
 
-  schema "thing" do
+  schema "thing_2" do
 
   end
 
@@ -118,11 +118,11 @@ defmodule MyApp.Thing do
 end
 
 # migration
-defmodule MyApp.Repo.Migrations.CreateThing do
+defmodule MyApp.Repo.Migrations.CreateThing2 do
   use Ecto.Migration
 
   def change do
-    create table("thing", primary_key: false) do
+    create table("thing_2", primary_key: false) do
       add :_id, :string, primary_key: true
     end
   end
@@ -185,4 +185,6 @@ defmodule MyApp.Repo.Migrations.CreateN40Levels do
   end
 end
 --- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
 model_synthesized_user_type /user_types/user

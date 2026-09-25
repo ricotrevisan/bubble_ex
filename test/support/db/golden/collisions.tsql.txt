@@ -1,0 +1,61 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Task] (
+  [_id] NVARCHAR(450),
+  [Title] NVARCHAR(MAX),
+  [title_2] BIT,
+  [_ID_2] NVARCHAR(MAX),
+  [Tags] NVARCHAR(MAX) /* list<text>: consider a junction table */,
+  [Gone] NVARCHAR(450),
+  [Retired] NVARCHAR(450),
+  [Status] NVARCHAR(450),
+  CONSTRAINT [PK_task] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[task_2] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_task_2] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Status] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  [DB_VALUE_2] NVARCHAR(MAX),
+  [Display_2] NVARCHAR(MAX),
+  [Rank_2] NVARCHAR(MAX),
+  [Rank] BIT,
+  [Rank_3] FLOAT,
+  CONSTRAINT [PK_status] PRIMARY KEY ([db_value])
+);
+
+CREATE TABLE [option].[TASK_3] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  CONSTRAINT [PK_task_3] PRIMARY KEY ([db_value])
+);
+
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_status]
+  FOREIGN KEY ([Status])
+  REFERENCES [option].[Status] ([db_value]);
+--- diagnostics ---
+db_duplicate_option_value_dropped /option_sets/status/values/v2
+model_duplicate_option_key /option_sets/status/values/v2
+db_reference_to_omitted /user_types/task/fields/e_gone_custom_gone/value
+db_reference_to_omitted /user_types/task/fields/f_retired_option_retired/value
+db_name_suffixed /option_sets/status/attributes/key_text
+db_name_suffixed /option_sets/status/attributes/label_text
+db_name_suffixed /option_sets/status/attributes/rank_n_number
+db_name_suffixed /option_sets/task_os
+db_name_suffixed /user_types/task/fields/b_title_boolean
+db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task_copy
+model_synthesized_user_type /user_types/user

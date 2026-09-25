@@ -19,6 +19,7 @@ defmodule BubbleEx.Characterization.DbGoldenTest do
 
   @fixtures Enum.sort(
               Path.wildcard("test/support/model/*.json") ++
+                Path.wildcard("test/support/db/fixtures/*.json") ++
                 ~w(test/support/samples/synthetic_app.json test/support/samples/synthetic_export.json)
             )
 

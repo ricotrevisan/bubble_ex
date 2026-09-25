@@ -33,7 +33,7 @@
         "name": "state",
         "type": "enum",
         "values": [],
-        "description": "enum:ghost_state (option values not in IR)",
+        "description": "enum:ghost_state (option values not rendered)",
         "style": "single"
       },
       {
@@ -56,6 +56,7 @@
   }
 ]
 --- diagnostics ---
+db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
 model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
 model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
 model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value

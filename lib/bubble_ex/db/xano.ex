@@ -12,8 +12,8 @@ defmodule BubbleEx.Db.Xano do
   shape. References degrade to `text` and enums use Xano's native `enum` type
   (with an empty placeholder `values` config), both carrying a `description` that
   records the relationship/option-set that could not be expressed automatically,
-  because Xano links relationships in its GUI and the IR carries no option-set
-  member values.
+  because Xano links relationships in its GUI. The option-set member values are
+  in the Reader's `table.values` but are not rendered into the enum config.
 
   ## Format caveat
 
@@ -137,8 +137,8 @@ defmodule BubbleEx.Db.Xano do
   defp style(%{is_array: true}), do: "list"
   defp style(_type), do: "single"
 
-  # Enums use Xano's native `enum` type; the IR has no member values, so emit an
-  # empty placeholder `values` config to be filled in once known.
+  # Enums use Xano's native `enum` type with an empty placeholder `values`
+  # config (the member values are not rendered).
   defp maybe_enum_values(field, %{type: :enum}), do: Map.put(field, :values, [])
   defp maybe_enum_values(field, _type), do: field
 
@@ -174,7 +174,7 @@ defmodule BubbleEx.Db.Xano do
         to -> snake(ref_table_name(to, opts))
       end
 
-    "enum:#{name} (option values not in IR)"
+    "enum:#{name} (option values not rendered)"
   end
 
   # Maps `from` column id => `to` column for references and enums.

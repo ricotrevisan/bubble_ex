@@ -95,7 +95,7 @@ defmodule BubbleEx.Db.ZodTest do
     assert {:ok, schema} = Zod.encode(db)
 
     assert schema =~
-             "  status: z.string().nullish(), // enum -> status_type option set (values not in IR)"
+             "  status: z.string().nullish(), // enum -> status_type option set (values not rendered)"
   end
 
   test "quotes field keys that are not valid JS identifiers" do

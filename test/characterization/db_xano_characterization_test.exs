@@ -97,7 +97,7 @@ defmodule BubbleEx.Characterization.DbXanoTest do
              "type" => "enum",
              "style" => "single",
              "values" => [],
-             "description" => "enum:status_type (option values not in IR)"
+             "description" => "enum:status_type (option values not rendered)"
            }
   end
 
@@ -106,7 +106,7 @@ defmodule BubbleEx.Characterization.DbXanoTest do
     assert json =~ ~s("type": "decimal")
     assert json =~ ~s("style": "single")
     assert json =~ "\"description\": \"ref:onboarding_answer._id (link manually in Xano)\""
-    assert json =~ "\"description\": \"enum:status_type (option values not in IR)\""
+    assert json =~ "\"description\": \"enum:status_type (option values not rendered)\""
     assert String.ends_with?(json, "\n")
   end
 end

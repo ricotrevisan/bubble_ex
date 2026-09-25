@@ -3,7 +3,7 @@ GO
 
 CREATE TABLE [custom].[Node] (
   [_id] NVARCHAR(450),
-  [Children] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Children] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   [Parent] NVARCHAR(450),
   CONSTRAINT [PK_node] PRIMARY KEY ([_id])
 );

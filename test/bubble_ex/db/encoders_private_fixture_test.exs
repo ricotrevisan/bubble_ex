@@ -13,12 +13,14 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
   #
-  # BUBBLE_EX_DB_COUNTS names another snapshot file (for another app).
+  # BUBBLE_EX_DB_COUNTS names another snapshot file (for another app). The
+  # SQLite DDL is loaded in memory; with BUBBLE_EX_DDL_PG set (see
+  # BubbleEx.Characterization.DbDdlTest) the PostgreSQL DDL is loaded too.
   use ExUnit.Case, async: true
 
   alias BubbleEx.{CanonicalJson, Model}
   alias BubbleEx.Db.{Encoder, Reader}
-  alias BubbleEx.Test.SplitExport
+  alias BubbleEx.Test.{Ddl, SplitExport}
 
   @moduletag :private_fixture
   @moduletag timeout: :infinity
@@ -55,14 +57,26 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
     assert counts == recorded, "counts changed; update #{snapshot} with a reason"
   end
 
-  test "the projection keeps every live definition of the Model", %{app: app, db: db} do
+  test "the projection keeps every live definition", %{app: app, db: db} do
     {:ok, model} = Model.build(app)
     live_types = Enum.count(model.data_types, &(not &1.deleted and is_nil(&1.raw)))
     live_sets = Enum.count(model.option_sets, &(not &1.deleted and is_nil(&1.raw)))
 
     assert Enum.count(db.tables, &(&1.group == :custom)) == live_types
     assert Enum.count(db.tables, &(&1.group == :option)) == live_sets
-    assert db.diagnostics == model.diagnostics
+    assert Enum.all?(db.diagnostics, &(&1 in model.diagnostics))
+  end
+
+  test "the generated SQLite and PostgreSQL DDL loads", %{db: db} do
+    for naming <- [:proper, :id] do
+      {:ok, sqlite} = Encoder.render(:sqlite, db, naming: naming)
+      assert {"", 0} = Ddl.sqlite(sqlite.content), "SQLite DDL (#{naming}) does not load"
+
+      if url = System.get_env("BUBBLE_EX_DDL_PG") do
+        {:ok, postgres} = Encoder.render(:postgres, db, naming: naming)
+        assert {_, 0} = Ddl.postgres(url, postgres.content)
+      end
+    end
   end
 
   defp counts(db) do

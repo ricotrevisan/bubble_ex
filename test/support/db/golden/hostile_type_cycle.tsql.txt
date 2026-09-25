@@ -9,7 +9,7 @@ CREATE TABLE [custom].[A] (
 
 CREATE TABLE [custom].[B] (
   [_id] NVARCHAR(450),
-  [C] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [C] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   CONSTRAINT [PK_b] PRIMARY KEY ([_id])
 );
 

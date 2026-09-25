@@ -26,3 +26,4 @@ Table option."Kind" {
 
 Ref: custom."Order"."Buyer" > custom."User"."_id"
 Ref: custom."Order"."Kind" > option."Kind"."db_value"--- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

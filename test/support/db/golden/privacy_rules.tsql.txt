@@ -25,4 +25,3 @@ CREATE TABLE [custom].[User] (
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 --- diagnostics ---
-missing_default_rule /user_types/draft/privacy_role

@@ -31,9 +31,11 @@ defmodule BubbleEx.Db.Ecto do
   Ecto has no array foreign-key: the relational semantics of a Bubble list field
   are lost (a join table would be more correct but needs a synthetic key).
 
-  Enums/option sets are lossy: the IR carries no member values, so `Ecto.Enum` is
-  impossible. Each option set renders as its own sibling schema module with a
-  `:string` primary key, referenced through `belongs_to`.
+  Option sets render as their own sibling schema module keyed by the values'
+  stable `db_value` (a `:string` primary key, with a `display` field and the
+  declared attributes), referenced through `belongs_to`. The member values are
+  in the Reader's `table.values` (seed data), but this encoder does not render
+  them as an `Ecto.Enum`.
 
   `:api` group tables (external placeholders) are skipped, mirroring
   `BubbleEx.Db.Sql.Postgres`.

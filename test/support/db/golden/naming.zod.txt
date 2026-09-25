@@ -9,7 +9,7 @@ export const _00ThingJoinSchema = z.object({
   id: z.string().nullish(),
   inserted_at: z.string().datetime().nullish(),
   Title: z.string().nullish(),
-  Title: z.string().nullish(),
+  Title_2: z.string().nullish(),
   type: z.string().nullish(),
 });
 
@@ -31,12 +31,12 @@ export const ThingSchema = z.object({
 
 export type Thing = z.infer<typeof ThingSchema>;
 
-// Thing
-export const ThingSchema = z.object({
+// Thing_2
+export const Thing2Schema = z.object({
   _id: z.string(),
 });
 
-export type Thing = z.infer<typeof ThingSchema>;
+export type Thing2 = z.infer<typeof Thing2Schema>;
 
 // User
 export const UserSchema = z.object({
@@ -53,4 +53,6 @@ export const _40LevelsSchema = z.object({
 
 export type _40Levels = z.infer<typeof _40LevelsSchema>;
 --- diagnostics ---
+db_name_suffixed /user_types/00__thing___join/fields/title_text1
+db_name_suffixed /user_types/thing0
 model_synthesized_user_type /user_types/user

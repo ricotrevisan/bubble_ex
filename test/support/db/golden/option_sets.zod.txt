@@ -3,8 +3,8 @@ import { z } from 'zod';
 // Ticket
 export const TicketSchema = z.object({
   _id: z.string(),
-  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not in IR)
-  Priority: z.string().nullish(), // enum -> priority option set (values not in IR)
+  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not rendered)
+  Priority: z.string().nullish(), // enum -> priority option set (values not rendered)
 });
 
 export type Ticket = z.infer<typeof TicketSchema>;
@@ -28,7 +28,7 @@ export type Channel = z.infer<typeof ChannelSchema>;
 export const OrphanSchema = z.object({
   db_value: z.string(),
   Display: z.string().nullish(),
-  Parent: z.string().nullish(), // enum -> ghost_set option set (values not in IR)
+  Parent: z.string().nullish(), // enum -> ghost_set option set (values not rendered)
 });
 
 export type Orphan = z.infer<typeof OrphanSchema>;
@@ -37,9 +37,9 @@ export type Orphan = z.infer<typeof OrphanSchema>;
 export const PrioritySchema = z.object({
   db_value: z.string(),
   Display: z.string().nullish(),
-  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not in IR)
+  Channels: z.array(z.string()).nullish(), // enum -> channel option set (values not rendered)
   Color: z.string().nullish(),
-  'Escalates to': z.string().nullish(), // enum -> priority option set (values not in IR)
+  'Escalates to': z.string().nullish(), // enum -> priority option set (values not rendered)
   Icon: z.string().nullish(),
   Urgent: z.boolean().nullish(),
   Weight: z.number().nullish(),
@@ -48,6 +48,7 @@ export const PrioritySchema = z.object({
 export type Priority = z.infer<typeof PrioritySchema>;
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
 model_duplicate_option_key /option_sets/priority/values/bAg
 model_option_key_missing /option_sets/priority/values/bAf
 model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip

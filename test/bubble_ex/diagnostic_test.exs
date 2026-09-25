@@ -21,6 +21,8 @@ defmodule BubbleEx.DiagnosticTest do
         # Model.External.Resolver warn/fail_node
         ~r/\bwarn\((?:state,\s*)?:(\w+)/,
         ~r/\bfail_node\((?:state,\s*)?\w+,\s*:(\w+)/,
+        # Reader projection diagnostics {:code, path, message, opts}
+        ~r/\{:(db_\w+),\s/,
         # Encoder root_code/4 clauses
         ~r/defp \w+_code\([^\n]*?\)(?:\s+when [^\n]*)?,?\s*do:\s*:(\w+)/
       ]

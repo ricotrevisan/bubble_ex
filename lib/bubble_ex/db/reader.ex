@@ -31,8 +31,21 @@ defmodule BubbleEx.Db.Reader do
       order; within a table the injected columns come first, then fields in
       Bubble ID order. Relationships follow column order.
     * A display name the source does not supply falls back to the Bubble ID.
+      Names stay usable as SQL identifiers: table names are unique across
+      all tables and column names within a table, case-insensitively and
+      never a key column's; a repeat gets the first free `_2`, `_3`, ...
+      suffix, in Bubble ID order (data types before option sets).
+    * An option value repeating an earlier value's stable key is left out of
+      `values`, so `db_value` stays a key.
     * `external_types` are the API Connector types reachable from the
-      projected columns; `diagnostics` are the Model's (every stage).
+      projected columns.
+    * `diagnostics` are the Model's diagnostics about the tables: stages
+      `:read` and `:model`, and the privacy parse's type-level
+      `:malformed_node` / `:uninterpreted_field`, not privacy-rule or
+      expression ones. `projection_diagnostics` are what the projection itself
+      changed (`:db_name_suffixed`, `:db_duplicate_option_value_dropped`,
+      `:db_reference_to_omitted`); `BubbleEx.Db.Encoder.render/3` emits them
+      at stage `{:target, format}`.
 
   ## Column types
 
@@ -112,12 +125,20 @@ defmodule BubbleEx.Db.Reader do
           values: [option_value()]
         }
 
+  @typedoc """
+  A diagnostic the projection records for `BubbleEx.Db.Encoder.render/3` to
+  emit at stage `{:target, format}`: the arguments of `BubbleEx.Diagnostic.new/4`
+  without the target.
+  """
+  @type projection_diagnostic() :: {atom(), String.t(), String.t(), keyword()}
+
   @type db_map() :: %{
           bubble_id: String.t() | nil,
           tables: [table()],
           relationships: [relationship()],
           external_types: [map()],
-          diagnostics: [Diagnostic.t()]
+          diagnostics: [Diagnostic.t()],
+          projection_diagnostics: [projection_diagnostic()]
         }
 
   # Primary-key column IDs, matched when resolving references.
@@ -152,59 +173,107 @@ defmodule BubbleEx.Db.Reader do
   """
   @spec project(Model.t(), map()) :: db_map()
   def project(%Model{} = model, source \\ %{}) do
-    tables =
-      Enum.flat_map(model.data_types, &data_type_table(&1, source)) ++
-        Enum.flat_map(model.option_sets, &option_set_table(&1, source))
+    defs =
+      for(%DataType{deleted: false, raw: nil} = t <- model.data_types, do: {:custom, t}) ++
+        for %OptionSet{deleted: false, raw: nil} = s <- model.option_sets, do: {:option, s}
+
+    {named, _taken, name_notes} =
+      Enum.reduce(defs, {[], MapSet.new(), []}, fn {group, def}, {acc, taken, notes} ->
+        {name, taken, notes} = claim(def.name || def.id, taken, notes, name_note(group, def))
+        {[{group, def, name} | acc], taken, notes}
+      end)
+
+    {tables, table_notes} =
+      named |> Enum.reverse() |> Enum.map(&table(&1, source)) |> Enum.unzip()
 
     columns = Enum.flat_map(tables, & &1.columns)
     pks = for c <- columns, c.primary_key, into: %{}, do: {{c.table_group, c.table_id}, c}
+    {relationships, relationship_notes} = relationships(columns, pks, omitted(model))
 
     %{
       bubble_id: model.bubble_id,
       tables: tables,
-      relationships: relationships(columns, pks),
+      relationships: relationships,
       external_types: external_types(model.external_types, columns),
-      diagnostics: model.diagnostics
+      diagnostics: Enum.filter(model.diagnostics, &relevant?/1),
+      projection_diagnostics:
+        Enum.reverse(name_notes) ++ List.flatten(table_notes) ++ relationship_notes
     }
+  end
+
+  # The Model's diagnostics about what the tables show: API Connector types
+  # (`:read`), data types, fields and option sets (`:model`), and data types
+  # that are malformed or carry unexpected members (the privacy parse's
+  # type-level `:parse` codes). Privacy-rule and expression diagnostics are
+  # not about the tables.
+  defp relevant?(%Diagnostic{stage: stage}) when stage in [:read, :model], do: true
+
+  defp relevant?(%Diagnostic{stage: :parse, code: code, subject: subject, path: path})
+       when code in [:malformed_node, :uninterpreted_field] do
+    Map.keys(subject) == [:type] and not String.contains?(path, "/privacy_role")
+  end
+
+  defp relevant?(_diagnostic), do: false
+
+  # Definitions the Model has but the tables leave out (deleted or malformed).
+  defp omitted(model) do
+    (for(%DataType{} = t <- model.data_types, t.deleted or not is_nil(t.raw), do: {:custom, t.id}) ++
+       for(
+         %OptionSet{} = s <- model.option_sets,
+         s.deleted or not is_nil(s.raw),
+         do: {:option, s.id}
+       ))
+    |> MapSet.new()
   end
 
   # --- tables ------------------------------------------------------------------
 
-  defp data_type_table(%DataType{deleted: true}, _source), do: []
-  defp data_type_table(%DataType{raw: raw}, _source) when not is_nil(raw), do: []
+  defp table({:custom, %DataType{} = type, name}, source) do
+    table = %{id: type.id, name: name, group: :custom}
 
-  defp data_type_table(%DataType{} = type, source) do
-    table = %{id: type.id, name: type.name || type.id, group: :custom}
-    pk = injected(table, @custom_pk, "_id", type.path)
+    {columns, notes} =
+      columns(table, [injected(table, @custom_pk, "_id", type.path)], type.fields, source)
 
-    [
-      Map.merge(table, %{
-        columns: [pk | fields(table, type.fields, [@custom_pk], source)],
-        values: []
-      })
-    ]
+    {Map.merge(table, %{columns: columns, values: []}), notes}
   end
 
-  defp option_set_table(%OptionSet{deleted: true}, _source), do: []
-  defp option_set_table(%OptionSet{raw: raw}, _source) when not is_nil(raw), do: []
+  defp table({:option, %OptionSet{} = set, name}, source) do
+    table = %{id: set.id, name: name, group: :option}
 
-  defp option_set_table(%OptionSet{} = set, source) do
-    table = %{id: set.id, name: set.name || set.id, group: :option}
-    injected = [@option_pk, @option_display]
+    keys = [
+      injected(table, @option_pk, "db_value", set.path),
+      %{injected(table, @option_display, "Display", set.path) | primary_key: false}
+    ]
 
-    columns =
-      [
-        injected(table, @option_pk, "db_value", set.path),
-        %{injected(table, @option_display, "Display", set.path) | primary_key: false}
-        | fields(table, set.attributes, injected, source)
-      ]
+    {columns, column_notes} = columns(table, keys, set.attributes, source)
+    {values, value_notes} = values(set)
+    {Map.merge(table, %{columns: columns, values: values}), column_notes ++ value_notes}
+  end
 
-    values =
-      for %{deleted: false, raw: nil} = value <- set.values do
-        %{id: value.id, name: value.name, db_value: value.key}
-      end
+  # The option set's values that are not deleted, one per stable key: a value
+  # repeating an earlier value's key (in the Model's order) is left out, so
+  # `db_value` stays a key.
+  defp values(set) do
+    {values, _keys, notes} =
+      Enum.reduce(set.values, {[], MapSet.new(), []}, fn
+        %{deleted: false, raw: nil} = value, {acc, keys, notes} ->
+          if MapSet.member?(keys, value.key) do
+            note =
+              {:db_duplicate_option_value_dropped, value.path,
+               "option value #{inspect(value.id)} repeats the key #{inspect(value.key)}; left out of the table's values",
+               subject: %{option_set: set.id}, details: %{value: value.id, key: value.key}}
 
-    [Map.merge(table, %{columns: columns, values: values})]
+            {acc, keys, [note | notes]}
+          else
+            row = %{id: value.id, name: value.name, db_value: value.key}
+            {[row | acc], MapSet.put(keys, value.key), notes}
+          end
+
+        _value, acc ->
+          acc
+      end)
+
+    {Enum.reverse(values), Enum.reverse(notes)}
   end
 
   defp injected(table, id, name, path) do
@@ -222,22 +291,73 @@ defmodule BubbleEx.Db.Reader do
     }
   end
 
-  defp fields(table, fields, reserved, source) do
-    for %Field{deleted: false, raw: nil} = field <- fields, field.id not in reserved do
-      %{
-        table_id: table.id,
-        table_name: table.name,
-        table_group: table.group,
-        id: field.id,
-        name: field.name || field.id,
-        type: column_type(field.type),
-        primary_key: false,
-        deleted: false,
-        default: field.default,
-        source_path:
-          Resolver.descriptor_pointer(source, table.group, table.id, field.id) || field.path
-      }
+  # The injected key columns, then the live fields in Bubble ID order. A field
+  # whose Bubble ID is a key column's is left out (the key stands for it). A
+  # field whose display name repeats an earlier column's, case-insensitively
+  # (SQL identifiers are), gets the first free `_2`, `_3`, ... suffix.
+  defp columns(table, keys, fields, source) do
+    key_ids = Enum.map(keys, & &1.id)
+    taken = MapSet.new(keys, &fold(&1.name))
+
+    {columns, _taken, notes} =
+      for(%Field{deleted: false, raw: nil} = f <- fields, f.id not in key_ids, do: f)
+      |> Enum.reduce({[], taken, []}, fn field, {acc, taken, notes} ->
+        subject = subject(table.group, table.id, field.id)
+        note = &name_note(&1, &2, field.path, subject, "field")
+        {name, taken, notes} = claim(field.name || field.id, taken, notes, note)
+        {[column(table, field, name, source) | acc], taken, notes}
+      end)
+
+    {keys ++ Enum.reverse(columns), Enum.reverse(notes)}
+  end
+
+  defp column(table, field, name, source) do
+    %{
+      table_id: table.id,
+      table_name: table.name,
+      table_group: table.group,
+      id: field.id,
+      name: name,
+      type: column_type(field.type),
+      primary_key: false,
+      deleted: false,
+      default: field.default,
+      source_path:
+        Resolver.descriptor_pointer(source, table.group, table.id, field.id) || field.path
+    }
+  end
+
+  defp subject(:custom, owner, field), do: %{type: owner, field: field}
+  defp subject(:option, owner, field), do: %{option_set: owner, field: field}
+
+  # Claims `name` against `taken` (case-folded names): the name itself, or
+  # the first free `name_2`, `name_3`, ... A suffixed name adds
+  # `note.(name, claimed)` to `notes`.
+  defp claim(name, taken, notes, note) do
+    if MapSet.member?(taken, fold(name)) do
+      claimed =
+        2
+        |> Stream.iterate(&(&1 + 1))
+        |> Stream.map(&"#{name}_#{&1}")
+        |> Enum.find(&(not MapSet.member?(taken, fold(&1))))
+
+      {claimed, MapSet.put(taken, fold(claimed)), [note.(name, claimed) | notes]}
+    else
+      {name, MapSet.put(taken, fold(name)), notes}
     end
+  end
+
+  defp fold(name), do: String.downcase(name)
+
+  defp name_note(group, def) do
+    subject = if group == :custom, do: %{type: def.id}, else: %{option_set: def.id}
+    &name_note(&1, &2, def.path, subject, "table")
+  end
+
+  defp name_note(name, claimed, path, subject, scope) do
+    {:db_name_suffixed, path,
+     "#{scope} name #{inspect(name)} repeats an earlier #{scope}'s; rendered as #{inspect(claimed)}",
+     subject: subject, details: %{name: name, rendered: claimed, scope: scope}}
   end
 
   # --- column types ------------------------------------------------------------
@@ -277,16 +397,31 @@ defmodule BubbleEx.Db.Reader do
   # --- relationships -----------------------------------------------------------
 
   # A reference links to the referenced table's primary key: `_id` for a data
-  # type, `db_value` for an option set. A target that is not projected
-  # (undefined or deleted) leaves `to` nil. A single reference is
+  # type, `db_value` for an option set. A target that is not projected leaves
+  # `to` nil: an undefined one is the Model's `model_unresolved_target`; a
+  # deleted or malformed one is noted here. A single reference is
   # many-to-one; a list of references many-to-many.
-  defp relationships(columns, pks) do
-    for %{type: %{type: kind, custom_type: target} = type} = column <- columns,
-        kind in [:reference, :enum] do
-      group = if kind == :enum, do: :option, else: :custom
-      direction = if type[:is_array], do: :many_to_many, else: :many_to_one
-      {column, pks[{group, target}], direction}
-    end
+  defp relationships(columns, pks, omitted) do
+    relationships =
+      for %{type: %{type: kind, custom_type: target} = type} = column <- columns,
+          kind in [:reference, :enum] do
+        group = if kind == :enum, do: :option, else: :custom
+        direction = if type[:is_array], do: :many_to_many, else: :many_to_one
+        {column, pks[{group, target}], direction, {group, target}}
+      end
+
+    notes =
+      for {from, nil, _direction, {group, target} = key} <- relationships,
+          MapSet.member?(omitted, key) do
+        kind = if group == :custom, do: "data_type", else: "option_set"
+
+        {:db_reference_to_omitted, from.source_path,
+         "#{String.replace(kind, "_", " ")} #{inspect(target)} is deleted or malformed; #{from.table_id}.#{from.id} keeps its column but has no relationship",
+         subject: subject(from.table_group, from.table_id, from.id),
+         details: %{target: target, target_kind: kind}}
+      end
+
+    {Enum.map(relationships, fn {from, to, direction, _} -> {from, to, direction} end), notes}
   end
 
   # --- external types ----------------------------------------------------------

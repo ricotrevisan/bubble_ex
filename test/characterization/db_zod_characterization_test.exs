@@ -42,7 +42,7 @@ defmodule BubbleEx.Characterization.DbZodTest do
 
   test "renders an option-set reference as z.string() with an enum comment", %{schema: schema} do
     assert schema =~
-             "  status: z.string().nullish(), // enum -> status_type option set (values not in IR)"
+             "  status: z.string().nullish(), // enum -> status_type option set (values not rendered)"
   end
 
   test "emits the option-set table schema keyed on its db_value PK", %{schema: schema} do

@@ -5,7 +5,7 @@ CREATE TABLE [custom].[Invoice] (
   [_id] NVARCHAR(450),
   [Archive] NVARCHAR(450),
   [Customer] NVARCHAR(450),
-  [Lines] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Lines] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   [State] NVARCHAR(450),
   [Total] FLOAT,
   CONSTRAINT [PK_invoice] PRIMARY KEY ([_id])
@@ -16,6 +16,7 @@ CREATE TABLE [custom].[User] (
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 --- diagnostics ---
+db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
 model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
 model_unresolved_target /user_types/invoice/fields/lines_list_custom_ghost_line/value
 model_unresolved_target /user_types/invoice/fields/old_ref_custom_ghost/value

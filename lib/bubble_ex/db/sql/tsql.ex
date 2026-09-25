@@ -13,7 +13,7 @@ defmodule BubbleEx.Db.Sql.Tsql do
 
   SQL Server has no native array type, so Bubble list fields (`is_array: true`)
   become a single `NVARCHAR(MAX)` column annotated with a
-  `-- list<...>: consider a junction table` comment and carry no foreign-key
+  `/* list<...>: consider a junction table */` comment and carry no foreign-key
   constraint, mirroring how the Postgres encoder drops list references.
   """
 
@@ -93,7 +93,7 @@ defmodule BubbleEx.Db.Sql.Tsql do
 
   # List fields collapse to a single text column with a junction-table hint.
   defp which_type(%{type: %{is_array: true} = type}, _opts),
-    do: "NVARCHAR(MAX)  -- list<#{base_type_name(type)}>: consider a junction table"
+    do: "NVARCHAR(MAX) /* list<#{base_type_name(type)}>: consider a junction table */"
 
   # Key-bearing columns stay indexable at NVARCHAR(450); everything else NVARCHAR(MAX).
   defp which_type(%{type: %{type: :reference}}, _opts), do: "NVARCHAR(450)"

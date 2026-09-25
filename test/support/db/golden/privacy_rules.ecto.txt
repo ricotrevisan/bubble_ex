@@ -115,4 +115,3 @@ defmodule MyApp.Repo.Migrations.CreateUser do
   end
 end
 --- diagnostics ---
-missing_default_rule /user_types/draft/privacy_role

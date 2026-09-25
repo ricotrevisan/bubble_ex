@@ -6,7 +6,7 @@ GO
 CREATE TABLE [custom].[Order] (
   [_id] NVARCHAR(450),
   [Buyer] NVARCHAR(450),
-  [Items] NVARCHAR(MAX)  -- list<ref>: consider a junction table,
+  [Items] NVARCHAR(MAX) /* list<ref>: consider a junction table */,
   [Kind] NVARCHAR(450),
   CONSTRAINT [PK_order] PRIMARY KEY ([_id])
 );
@@ -33,3 +33,4 @@ ALTER TABLE [custom].[Order]
   FOREIGN KEY ([Kind])
   REFERENCES [option].[Kind] ([db_value]);
 --- diagnostics ---
+db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

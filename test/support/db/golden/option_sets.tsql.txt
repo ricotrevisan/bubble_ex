@@ -5,7 +5,7 @@ GO
 
 CREATE TABLE [custom].[Ticket] (
   [_id] NVARCHAR(450),
-  [Channels] NVARCHAR(MAX)  -- list<enum>: consider a junction table,
+  [Channels] NVARCHAR(MAX) /* list<enum>: consider a junction table */,
   [Priority] NVARCHAR(450),
   CONSTRAINT [PK_ticket] PRIMARY KEY ([_id])
 );
@@ -31,7 +31,7 @@ CREATE TABLE [option].[Orphan] (
 CREATE TABLE [option].[Priority] (
   [db_value] NVARCHAR(450),
   [Display] NVARCHAR(MAX),
-  [Channels] NVARCHAR(MAX)  -- list<enum>: consider a junction table,
+  [Channels] NVARCHAR(MAX) /* list<enum>: consider a junction table */,
   [Color] NVARCHAR(MAX),
   [Escalates to] NVARCHAR(450),
   [Icon] NVARCHAR(MAX),
@@ -50,6 +50,7 @@ ALTER TABLE [option].[Priority]
   REFERENCES [option].[Priority] ([db_value]);
 --- diagnostics ---
 model_unresolved_target /option_sets/orphan/attributes/parent/value
+db_duplicate_option_value_dropped /option_sets/priority/values/bAg
 model_duplicate_option_key /option_sets/priority/values/bAg
 model_option_key_missing /option_sets/priority/values/bAf
 model_undeclared_option_attribute_value /option_sets/priority/values/bAh/tooltip

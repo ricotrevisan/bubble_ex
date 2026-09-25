@@ -15,7 +15,7 @@ export const SurveyResponseSchema = z.object({
   answer: z.string().nullish(),
   'onboarding answer': z.string().nullish(), // reference -> onboarding_answer
   rating: z.number().nullish(),
-  status: z.string().nullish(), // enum -> status_type option set (values not in IR)
+  status: z.string().nullish(), // enum -> status_type option set (values not rendered)
 });
 
 export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;

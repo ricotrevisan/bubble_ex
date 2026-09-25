@@ -71,12 +71,18 @@ defmodule BubbleEx.Db.Encoder do
       diagnostics =
         Diagnostic.normalize(
           Map.get(db_map, :diagnostics, []) ++
+            projection_diagnostics(db_map, format) ++
             root_diagnostics(db_map, format, mode, plan) ++
             graph_diagnostics(plan, format, mode, opts)
         )
 
       {:ok, %Result{format: format, content: content, diagnostics: diagnostics}}
     end
+  end
+
+  defp projection_diagnostics(db_map, format) do
+    for {code, path, message, opts} <- Map.get(db_map, :projection_diagnostics, []),
+        do: Diagnostic.new(code, path, message, Keyword.put(opts, :target, format))
   end
 
   defp external_type_mode(db_map, opts) do

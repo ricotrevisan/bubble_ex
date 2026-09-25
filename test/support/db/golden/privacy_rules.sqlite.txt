@@ -28,4 +28,3 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   PRIMARY KEY ("_id")
 );
 --- diagnostics ---
-missing_default_rule /user_types/draft/privacy_role
