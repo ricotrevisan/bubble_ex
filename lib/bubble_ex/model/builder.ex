@@ -30,12 +30,18 @@ defmodule BubbleEx.Model.Builder do
   def build(app) do
     {types, types_extra, types_diags} = collection(app, "user_types")
     {sets, sets_extra, sets_diags} = collection(app, "option_sets")
-    known = %{ref: MapSet.new(Map.keys(types)), option: MapSet.new(Map.keys(sets))}
+    # User is built into every Bubble app: always a known target.
+    known = %{
+      ref: types |> Map.keys() |> MapSet.new() |> MapSet.put("user"),
+      option: MapSet.new(Map.keys(sets))
+    }
 
     {privacy, privacy_diags} = privacy(types)
 
     {data_types, type_diags} =
       types |> sorted() |> Enum.map(&data_type(&1, privacy, known)) |> unzip()
+
+    {data_types, user_diags} = ensure_user(data_types, types, known)
 
     {option_sets, set_diags} =
       sets |> sorted() |> Enum.map(&option_set(&1, known)) |> unzip()
@@ -50,7 +56,9 @@ defmodule BubbleEx.Model.Builder do
       extra: Map.merge(types_extra, sets_extra),
       diagnostics:
         Diagnostic.normalize(
-          types_diags ++ sets_diags ++ privacy_diags ++ type_diags ++ set_diags ++ read_diags
+          types_diags ++
+            sets_diags ++
+            privacy_diags ++ type_diags ++ user_diags ++ set_diags ++ read_diags
         )
     }
   end
@@ -124,6 +132,31 @@ defmodule BubbleEx.Model.Builder do
     }
 
     {type, diags ++ field_diags}
+  end
+
+  defp ensure_user(data_types, types, _known) when is_map_key(types, "user"),
+    do: {data_types, []}
+
+  defp ensure_user(data_types, _types, known) do
+    path = ["user_types", "user"]
+
+    user = %DataType{
+      id: "user",
+      name: "User",
+      path: pointer(path),
+      synthesized: true,
+      system_fields: system_fields("user", path, MapSet.new(), known)
+    }
+
+    diag =
+      Diagnostic.new(
+        :model_synthesized_user_type,
+        path,
+        "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+        subject: %{type: "user"}
+      )
+
+    {Enum.sort_by([user | data_types], & &1.id), [diag]}
   end
 
   # Bubble's built-in fields: every record has them, and every User an email.
@@ -329,7 +362,7 @@ defmodule BubbleEx.Model.Builder do
       extra: extra
     }
 
-    {value, key_diags ++ uninterpreted(extra, path, subject, "option value")}
+    {value, key_diags ++ undeclared(extra, path, subject, id)}
   end
 
   # Values that are not deleted and share a stable key: every one after the
@@ -395,6 +428,20 @@ defmodule BubbleEx.Model.Builder do
         path ++ [key],
         "unexpected #{what} member #{inspect(key)}",
         subject: subject
+      )
+    end
+  end
+
+  # Option-value members that name no declared attribute (e.g. values left
+  # behind by a deleted attribute). Kept in `extra`.
+  defp undeclared(extra, path, subject, value_id) do
+    for key <- extra |> Map.keys() |> Enum.sort() do
+      Diagnostic.new(
+        :model_undeclared_option_attribute_value,
+        path ++ [key],
+        "option value member #{inspect(key)} names no declared attribute",
+        subject: subject,
+        details: %{value: value_id, attribute: key}
       )
     end
   end

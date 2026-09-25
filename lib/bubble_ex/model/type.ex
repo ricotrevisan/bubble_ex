@@ -9,7 +9,8 @@ defmodule BubbleEx.Model.Type do
       * `:file_ref` - an uploaded file; `base` is `:file` or `:image`
       * `:structured` - a named structured Bubble value; `base` is
         `:geographic_address`, `:date_range`, `:number_range` or
-        `:date_interval`
+        `:date_interval`, whose parts are in `BubbleEx.Model.Structured`
+        (`components/1`)
       * `:ref` - a record of the data type `target`
       * `:option` - a value of the option set `target`
       * `:external` - a value of the API Connector type `target`
@@ -82,6 +83,17 @@ defmodule BubbleEx.Model.Type do
   end
 
   def classify(descriptor), do: {unknown(descriptor), :malformed}
+
+  @doc """
+  The component parts of a `:structured` type from
+  `BubbleEx.Model.Structured` (e.g. a geographic address's
+  `formatted_address`, `lat` and `lng`); `[]` for other kinds.
+  """
+  @spec components(t()) :: [BubbleEx.Model.Structured.component()]
+  def components(%__MODULE__{kind: :structured, base: base}),
+    do: BubbleEx.Model.Structured.fetch(base).components
+
+  def components(%__MODULE__{}), do: []
 
   @doc "Whether the type names another definition (`:ref`, `:option` or `:external`)."
   @spec reference?(t()) :: boolean()

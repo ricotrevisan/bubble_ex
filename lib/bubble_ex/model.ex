@@ -17,6 +17,10 @@ defmodule BubbleEx.Model do
   value, reference to a data type, option set or external type (resolved or
   not), or an opaque/unknown value kept verbatim.
 
+  User is built into every Bubble app, so a source without a User type gets
+  a synthesized one (`DataType.synthesized`) and references to `user` always
+  resolve.
+
   Target stacks map from the Model; it contains no target-language names,
   types or keys. Identity is the Bubble ID; display names are attributes and
   are kept verbatim. Deleted types, fields, option sets, values and
@@ -138,11 +142,11 @@ defmodule BubbleEx.Model do
   The Model's data types as a `BubbleEx.Expression.Schema` (field lookup for
   typing expressions): every defined field with its display name and source
   type descriptor. Built-in fields are resolved by the expression schema
-  itself.
+  itself. A synthesized User type is left out: its fields are unknown.
   """
   @spec schema(t()) :: BubbleEx.Expression.Schema.t()
   def schema(%__MODULE__{data_types: types}) do
-    for %DataType{raw: nil} = type <- types, into: %{} do
+    for %DataType{raw: nil, synthesized: false} = type <- types, into: %{} do
       fields =
         for field <- type.fields, is_nil(field.raw), into: %{} do
           value = if is_binary(field.type.source), do: field.type.source
@@ -219,6 +223,7 @@ defmodule BubbleEx.Model do
     %{
       "data_types" => length(model.data_types),
       "deleted_data_types" => Enum.count(model.data_types, & &1.deleted),
+      "synthesized_data_types" => Enum.count(model.data_types, & &1.synthesized),
       "malformed_data_types" => Enum.count(model.data_types, &(not is_nil(&1.raw))),
       "fields" => length(fields),
       "deleted_fields" => Enum.count(fields, & &1.deleted),

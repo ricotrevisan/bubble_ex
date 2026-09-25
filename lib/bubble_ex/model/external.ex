@@ -62,7 +62,11 @@ defmodule BubbleEx.Model.External do
   end
 
   defp patch(field, nil), do: field
-  defp patch(field, type), do: %{field | type: type}
+
+  # The `list.` prefix is Bubble's own, so the field's cardinality is certain
+  # even when the Reader cannot tell it (`:unknown` for an invalid `api.`
+  # descriptor).
+  defp patch(field, type), do: %{field | type: %{type | cardinality: field.type.cardinality}}
 
   # The Reader reads only these members; everything else is left out so a
   # malformed section elsewhere in the app cannot reach it.
