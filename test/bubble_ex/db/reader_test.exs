@@ -755,9 +755,15 @@ defmodule BubbleEx.Db.ReaderTest do
     defp names(db, id), do: Enum.find(db.tables, &(&1.id == id)).columns |> Enum.map(& &1.name)
 
     test "column names are unique per table, case-insensitively, key columns first", %{db: db} do
+      # Bubble's built-in fields keep their names; a defined field repeating
+      # one is suffixed.
       assert names(db, "task") ==
                ["_id", "Created Date", "Modified Date", "Created By", "Slug"] ++
-                 ["Title", "title_2", "_ID_2", "Tags", "Gone", "Retired", "Status"]
+                 ["Title", "title_2", "_ID_2", "Tags", "Gone", "Retired", "Status"] ++
+                 ["Created Date_2", "created by_2", "SLUG_2"]
+
+      assert names(db, "user") ==
+               ["_id", "Created Date", "Modified Date", "Created By", "Slug", "email", "Email_2"]
 
       # Suffixes follow Bubble ID order and skip names already taken.
       assert names(db, "status") ==
@@ -804,7 +810,7 @@ defmodule BubbleEx.Db.ReaderTest do
     test "Encoder.render emits the projection's diagnostics for its target", %{db: db} do
       {:ok, result} = BubbleEx.Db.Encoder.render(:sqlite, db)
       suffixed = Enum.filter(result.diagnostics, &(&1.code == :db_name_suffixed))
-      assert length(suffixed) == 7
+      assert length(suffixed) == 11
       assert Enum.all?(suffixed, &(&1.stage == {:target, :sqlite}))
     end
 

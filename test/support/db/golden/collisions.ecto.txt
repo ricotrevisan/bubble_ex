@@ -18,10 +18,13 @@ defmodule MyApp.Task do
     field :gone, :string
     field :retired, :string
     belongs_to :status, MyApp.Status, foreign_key: :status_id, references: :db_value, type: :string
+    field :created_date_2, :utc_datetime_usec
+    belongs_to :created_by_2, MyApp.User, foreign_key: :created_by_2_id, references: :_id, type: :string
+    field :slug_2, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :title, :title_2, :_id_2, :tags, :gone, :retired, :status_id]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :title, :title_2, :_id_2, :tags, :gone, :retired, :status_id, :created_date_2, :created_by_2_id, :slug_2]) |> validate_required([:_id])
   end
 end
 
@@ -43,9 +46,13 @@ defmodule MyApp.Repo.Migrations.CreateTask do
       add :gone, :string
       add :retired, :string
       add :status_id, :string
+      add :created_date_2, :utc_datetime_usec
+      add :created_by_2_id, :string
+      add :slug_2, :string
     end
     create index("task", [:created_by_id])
     create index("task", [:status_id])
+    create index("task", [:created_by_2_id])
   end
 end
 
@@ -99,10 +106,11 @@ defmodule MyApp.User do
     belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
     field :slug, :string
     field :email, :string
+    field :email_2, :string
   end
 
   def changeset(rec, attrs) do
-    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email, :email_2]) |> validate_required([:_id])
   end
 end
 
@@ -118,6 +126,7 @@ defmodule MyApp.Repo.Migrations.CreateUser do
       add :created_by_id, :string
       add :slug, :string
       add :email, :string
+      add :email_2, :string
     end
     create index("user", [:created_by_id])
   end
@@ -201,5 +210,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

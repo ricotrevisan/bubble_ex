@@ -14,6 +14,9 @@ CREATE TABLE "custom"."Task" (
   "Gone" text,
   "Retired" text,
   "Status" text,
+  "Created Date_2" timestamptz,
+  "created by_2" text,
+  "SLUG_2" text,
   PRIMARY KEY ("_id")
 );
 
@@ -33,6 +36,7 @@ CREATE TABLE "custom"."User" (
   "Created By" text,
   "Slug" text,
   "email" text,
+  "Email_2" text,
   PRIMARY KEY ("_id")
 );
 
@@ -55,6 +59,7 @@ CREATE TABLE "option"."TASK_3" (
 
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
+ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("created by_2") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."task_2" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
@@ -68,5 +73,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

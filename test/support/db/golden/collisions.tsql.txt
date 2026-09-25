@@ -16,6 +16,9 @@ CREATE TABLE [custom].[Task] (
   [Gone] NVARCHAR(450),
   [Retired] NVARCHAR(450),
   [Status] NVARCHAR(450),
+  [Created Date_2] DATETIME2,
+  [created by_2] NVARCHAR(450),
+  [SLUG_2] NVARCHAR(MAX),
   CONSTRAINT [PK_task] PRIMARY KEY ([_id])
 );
 
@@ -35,6 +38,7 @@ CREATE TABLE [custom].[User] (
   [Created By] NVARCHAR(450),
   [Slug] NVARCHAR(MAX),
   [email] NVARCHAR(MAX),
+  [Email_2] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
 
@@ -63,6 +67,10 @@ ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_status]
   FOREIGN KEY ([Status])
   REFERENCES [option].[Status] ([db_value]);
+ALTER TABLE [custom].[Task]
+  ADD CONSTRAINT [FK_task_created_by_2]
+  FOREIGN KEY ([created by_2])
+  REFERENCES [custom].[User] ([_id]);
 ALTER TABLE [custom].[task_2]
   ADD CONSTRAINT [FK_task_2_created_by]
   FOREIGN KEY ([Created By])
@@ -82,5 +90,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

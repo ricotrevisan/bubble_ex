@@ -17,9 +17,13 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "Gone" TEXT,
   "Retired" TEXT,
   "Status" TEXT,
+  "Created Date_2" TEXT,
+  "created by_2" TEXT,
+  "SLUG_2" TEXT,
   PRIMARY KEY ("_id"),
   FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
-  FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value")
+  FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value"),
+  FOREIGN KEY ("created by_2") REFERENCES "custom__User" ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__task_2" (
@@ -39,6 +43,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
+  "Email_2" TEXT,
   PRIMARY KEY ("_id"),
   FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
 );
@@ -70,5 +75,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

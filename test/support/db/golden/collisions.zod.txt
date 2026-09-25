@@ -14,6 +14,9 @@ export const TaskSchema = z.object({
   Gone: z.string().nullish(), // reference -> gone
   Retired: z.string().nullish(), // enum -> retired option set (values not rendered)
   Status: z.string().nullish(), // enum -> status option set (values not rendered)
+  'Created Date_2': z.string().datetime().nullish(),
+  'created by_2': z.string().nullish(), // reference -> user
+  SLUG_2: z.string().nullish(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;
@@ -37,6 +40,7 @@ export const UserSchema = z.object({
   'Created By': z.string().nullish(), // reference -> user
   Slug: z.string().nullish(),
   email: z.string().nullish(),
+  Email_2: z.string().nullish(),
 });
 
 export type User = z.infer<typeof UserSchema>;
@@ -72,5 +76,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text

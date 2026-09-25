@@ -18,6 +18,9 @@ Table custom."Task" {
 	"Gone" gone.id
 	"Retired" retired.id
 	"Status" status.id
+	"Created Date_2" datetime
+	"created by_2" user.id
+	"SLUG_2" varchar
 
 }
 Table custom."task_2" {
@@ -35,6 +38,7 @@ Table custom."User" {
 	"Created By" user.id
 	"Slug" varchar
 	"email" varchar
+	"Email_2" varchar
 
 }
 Table option."Status" {
@@ -55,6 +59,7 @@ Table option."TASK_3" {
 
 Ref: custom."Task"."Created By" > custom."User"."_id"
 Ref: custom."Task"."Status" > option."Status"."db_value"
+Ref: custom."Task"."created by_2" > custom."User"."_id"
 Ref: custom."task_2"."Created By" > custom."User"."_id"
 Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
@@ -67,5 +72,8 @@ db_name_suffixed /option_sets/status/attributes/rank_n_number
 db_name_suffixed /option_sets/task_os
 db_name_suffixed /user_types/task/fields/b_title_boolean
 db_name_suffixed /user_types/task/fields/c_id_text
+db_name_suffixed /user_types/task/fields/h_created_date
+db_name_suffixed /user_types/task/fields/i_created_by_user
+db_name_suffixed /user_types/task/fields/j_slug_text
 db_name_suffixed /user_types/task_copy
-model_synthesized_user_type /user_types/user
+db_name_suffixed /user_types/user/fields/email_text
