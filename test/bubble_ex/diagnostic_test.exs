@@ -107,6 +107,7 @@ defmodule BubbleEx.DiagnosticTest do
         |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
 
       Enum.flat_map(apps, &app_diagnostics/1) ++
+        Enum.flat_map(apps, &index_diagnostics/1) ++
         Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
         Enum.flat_map(expression_samples(), &expression_diagnostics/1)
     end
@@ -130,6 +131,11 @@ defmodule BubbleEx.DiagnosticTest do
         end
 
       db.diagnostics ++ rendered ++ privacy
+    end
+
+    defp index_diagnostics(app) do
+      {:ok, index} = BubbleEx.Index.build(app)
+      index.diagnostics
     end
 
     defp inventory_diagnostics(doc) do

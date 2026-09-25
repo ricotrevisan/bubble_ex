@@ -48,6 +48,24 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Build a deterministic symbol and reference index through `BubbleEx.Index` /
+  `BubbleEx.symbol_index/1`. Symbols (data types, fields, option sets and
+  values, pages, reusables, elements, workflows, actions, API Connector calls,
+  privacy rules) are keyed by stable Bubble IDs; reference edges cover field
+  types, expression reads, privacy-rule field references, data writes
+  (insert/update/delete per field), workflow calls with their kind, API calls
+  and element targets. Workflows carry an execution class and invocation modes,
+  and the call graph's cycles are reported (Tarjan SCC). Queries answer who
+  reads or writes a field, which privacy rules reference it, what depends on a
+  data type, and a workflow's callers, callees and writes. Cycles carry the
+  kind of each call, so scheduled recursion is told apart from synchronous
+  loops. Built-in fields (unique id, dates, Created By, Slug) are symbols.
+  The index has a schema version, a content hash and a semantic hash of the
+  reference graph that ignores source positions.
+
+- Workflow inventory: previous-step references inside list-form workflow
+  collections no longer raise.
+
 - Parse data-type privacy rules through `BubbleEx.Privacy` /
   `BubbleEx.privacy_rules/1`: conditions, permissions and per-field visibility.
   Conditions and other Bubble expressions parse into a typed, stack-neutral AST

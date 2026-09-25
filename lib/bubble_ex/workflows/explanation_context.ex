@@ -244,8 +244,17 @@ defmodule BubbleEx.Workflows.ExplanationContext do
   defp at(value, []), do: value
   defp at(value, [key | rest]) when is_map(value), do: at(Map.get(value, key), rest)
 
-  defp at(value, [key | rest]) when is_list(value),
-    do: at(Enum.at(value, String.to_integer(key)), rest)
+  # Path segments are integers for list entries, or strings when parsed from
+  # a pointer.
+  defp at(value, [key | rest]) when is_list(value) and is_integer(key),
+    do: at(Enum.at(value, key), rest)
+
+  defp at(value, [key | rest]) when is_list(value) do
+    case Integer.parse(key) do
+      {index, ""} -> at(Enum.at(value, index), rest)
+      _ -> nil
+    end
+  end
 
   defp at(_, _), do: nil
 end

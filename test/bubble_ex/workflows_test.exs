@@ -65,6 +65,33 @@ defmodule BubbleEx.WorkflowsTest do
     assert w.raw == workflow
   end
 
+  test "previous-step references resolve inside list-form collections" do
+    workflow = %{
+      "id" => "wf",
+      "type" => "APIEvent",
+      "actions" => [
+        %{
+          "id" => "created",
+          "type" => "NewThing",
+          "properties" => %{"thing_type" => "custom.task"}
+        },
+        %{
+          "type" => "ChangeThing",
+          "properties" => %{
+            "to_change" => %{
+              "type" => "PreviousStep",
+              "properties" => %{"action_id" => "created"}
+            }
+          }
+        }
+      ]
+    }
+
+    assert {:ok, i} = Workflows.inventory(%{"api" => [workflow]})
+    assert [%{path: "/api/0", actions: [_, change]}] = i.workflows
+    assert [%{kind: "action", status: "resolved"}] = change.references
+  end
+
   test "compact workflow and condition keys are supported without mistaking width for workflows" do
     w = %{
       "%x" => "ButtonClicked",
