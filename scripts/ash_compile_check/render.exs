@@ -195,6 +195,9 @@ import Config
 base = System.get_env("ASH_COMPILE_CHECK_DB", "ecto://postgres:postgres@localhost:5432")
 
 config :ash_compile_check, ecto_repos: [#{repos}], ash_domains: [#{domains}]
+# Required since Ash 3.33 (EEF-CVE-2026-82752); the generated source sets no
+# string length constraints, so the choice changes nothing it does.
+config :ash, default_string_length_count: :codepoints
 config :logger, level: :warning
 #{repo_config}
 """)

@@ -119,9 +119,12 @@ defmodule BubbleEx.Target.Ash do
   then `Project.policies_verified` is `false`, every non-empty Project
   carries `:ash_policies_unverified`, the rendered policies carry a "NOT
   VERIFIED" header and `<namespace>.Privacy.verified?/0` returns false:
-  **do not ship them to an app's users.** The pinned Ash (3.31.3) also has
-  published security advisories: a version bump is a separate ticket and
-  a ship blocker.
+  **do not ship them to an app's users.** Ash is pinned at 3.33.11
+  (WTF-397), past the policy advisories EEF-CVE-2026-86338, -82747 and
+  -82746. On it, the field-policy gaps above (aggregates over hidden
+  fields, sorts through a relationship), aggregates skipping a read
+  action's `before_action` hooks and the gated-relationship under-grant
+  are unchanged; re-check them on every bump.
 
   ## Names (WTF-339)
 
@@ -171,7 +174,7 @@ defmodule BubbleEx.Target.Ash do
   # Dependency pins for a project using the generated source: the versions
   # scripts/ash_compile_check.sh compiles and runs it against.
   # Ash policies need a SAT solver: PicoSAT, as Ash recommends.
-  @versions [ash: "3.31.3", ash_postgres: "2.11.0", picosat_elixir: "0.2.3"]
+  @versions [ash: "3.33.11", ash_postgres: "2.13.1", picosat_elixir: "0.2.3"]
   @names_version 1
 
   # Built-in fields: fixed names, claimed before the defined fields.
@@ -188,11 +191,16 @@ defmodule BubbleEx.Target.Ash do
 
   @doc """
   Dependency pins for a project that compiles the generated source, as Mix
-  dependency tuples: `[{:ash, "== 3.31.3"}, {:ash_postgres, "== 2.11.0"},
+  dependency tuples: `[{:ash, "== 3.33.11"}, {:ash_postgres, "== 2.13.1"},
   {:picosat_elixir, "== 0.2.3"}]`. The generated modules need nothing else
   (Ecto and Postgrex come with AshPostgres; the policies need Ash's SAT
   solver, PicoSAT). `scripts/ash_compile_check.sh` compiles and runs the
   generated source against exactly these versions.
+
+  Ash 3.33 refuses to compile a resource until the project sets
+  `config :ash, default_string_length_count: :codepoints` (or `:mixed`).
+  The generated source sets no string length constraints, so either
+  choice leaves it unchanged; `:codepoints` is Ash's recommendation.
   """
   @spec versions() :: [{atom(), String.t()}]
   def versions, do: Enum.map(@versions, fn {app, version} -> {app, "== " <> version} end)

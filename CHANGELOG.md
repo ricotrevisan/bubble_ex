@@ -612,6 +612,21 @@ All notable changes to this project are documented here.
 
 ### Security
 
+- `BubbleEx.Target.Ash.versions/0` pins Ash 3.33.11 and AshPostgres 2.13.1
+  (were 3.31.3 / 2.11.0; WTF-397), past the policy advisories
+  EEF-CVE-2026-86338 (forbidden calculations and aggregates not set to nil),
+  -82747 (a runtime read policy returns denied records) and -82746
+  (`update_many`'s atomic path skips policies), and the other Ash, AshSql
+  and Postgrex advisories fixed since. The compile check's lock follows
+  (ash_sql 0.7.6, postgrex 0.22.4). Projects using the generated source must
+  now set `config :ash, default_string_length_count: :codepoints` (Ash 3.33
+  requires it); the generated source is unchanged. Re-checked on the new
+  version: aggregates over hidden fields through `:search` (`min`/`max`
+  still return hidden values), sorts through a relationship (still ordered
+  by the destination's hidden fields), aggregates skipping a read action's
+  `before_action` hooks, and filters through gated relationships matching
+  nothing: all unchanged, so `sortable?: false`, the generated caveats and
+  `:ash_policy_aggregates_unguarded` stay.
 - Link destinations use a safe scheme allowlist. CSS values that can escape a
   declaration or fetch a remote URL are omitted with explicit findings.
 - Cross-origin public assets must resolve to public HTTP(S) destinations. The
