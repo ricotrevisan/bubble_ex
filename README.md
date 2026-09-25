@@ -114,6 +114,13 @@ compact keys; unmodeled pieces are kept verbatim and itemized as diagnostics.
 The live payload does not contain privacy rules, so its data types are reported
 as unavailable rather than rule-free.
 
+Every diagnostic BubbleEx returns — from the Reader, the expression and privacy
+parsers, the workflow inventory and the schema encoders — is a
+`%BubbleEx.Diagnostic{}` with a stable `code`, a registry-assigned `severity`
+and `outcome` (`:preserved`, `:degraded` or `:unresolved`), a `stage`, a
+`subject` of Bubble IDs and an RFC 6901 `path` into the source. The codes are
+listed in `BubbleEx.Diagnostic.Codes`.
+
 ```elixir
 {:ok, %{ast: ast, diagnostics: []}} = BubbleEx.Expression.parse(condition)
 {:ok, text} = BubbleEx.Expression.render(ast)
@@ -340,10 +347,10 @@ containers without expansion, or `:legacy` for pre-feature API-field output.
 
 ```elixir
 {:ok, app} = BubbleEx.fetch_app("my-app", format: :zod, external_types: :preserve)
-app.schema_warnings # structured warnings, present only when non-empty
+app.schema_diagnostics # [%BubbleEx.Diagnostic{}], present only when non-empty
 ```
 
-DBML diagnostics are returned separately in `:dbml_warnings`. BubbleEx never
+DBML diagnostics are returned separately in `:dbml_diagnostics`. BubbleEx never
 infers type members from response samples. Version-sensitive output is opt-in
 through `external_type_capabilities`, for example `%{tsql: [:native_json]}`.
 Target limitations are localized: PostgreSQL uses composites where possible;
@@ -367,7 +374,7 @@ Formats are pluggable. Each is a module implementing the `BubbleEx.Db.Encoder`
 behaviour — `encode(db_map, opts) :: {:ok, String.t()} | {:error, %BubbleEx.Error{}}`
 over the universal map produced by `BubbleEx.Db.Reader.parse/1` — registered in
 `BubbleEx.Db.Encoder`. `BubbleEx.Db.Encoder.render/3` additionally returns
-structured warnings with the generated content. To add a target, implement the
+the Reader's and the target's diagnostics with the generated content. To add a target, implement the
 behaviour and register its `:format` atom.
 
 ## Scanning for Secrets

@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- One diagnostic type, `BubbleEx.Diagnostic`, replaces `BubbleEx.Expression.Diagnostic`
+  (removed, no alias) and the Reader's and encoders' warning maps. It carries a
+  stable `code`, `severity`, `outcome` (`:preserved | :degraded | :unresolved`),
+  `stage` (`:read | :parse | :model | {:target, format}`), a `subject` of Bubble
+  IDs, an RFC 6901 `path`, `details` and `message`. Severity, outcome and stage
+  come from one registry, `BubbleEx.Diagnostic.Codes`. Lists are deduplicated on
+  `{stage, code, subject, path}` and ordered by severity, subject, code and path.
+- `BubbleEx.Db.Reader.parse/1`: the `:warnings` key is now `:diagnostics`. The old
+  `%{kind: :external_type_resolution, category:, target:, occurrences:}` maps become
+  one `:read` diagnostic per occurrence; `category` is the `code`, the target is in
+  `details`, and the subject is the field whose descriptor failed (a nested
+  external-type field is `%{type: external_type_id, field: field_id}`, with the
+  originating data-type field in `details.root`). Columns gain `source_path`, and
+  external types gain `source_path` (the pointer to their call's `types`).
+- `BubbleEx.Db.Encoder.Result.warnings` is now `diagnostics`. Rendering maps
+  (`kind: :external_type_rendering`, `reason:`) become `{:target, format}`
+  diagnostics with codes `:external_type_unresolved_root`,
+  `:external_type_unresolved_nested`, `:external_type_target_opaque`,
+  `:external_type_cycle_edge`, `:external_type_opaque_mode` and
+  `:external_type_legacy_mode`.
+- App results use `:schema_diagnostics` / `:dbml_diagnostics` instead of
+  `:schema_warnings` / `:dbml_warnings`.
+- Expression and privacy diagnostics gain `outcome`, `stage`, `subject`
+  (privacy: `%{type:, rule:}`) and `details`, and are returned sorted by severity.
+  Canonical expression hashes are unchanged.
+- Workflow inventory schema v3: diagnostics are `BubbleEx.Diagnostic` records
+  (atom codes; objects with the full field set in JSON) with the workflow ID as
+  subject. See `docs/workflows.md`.
+
 ### Added
 
 - Parse data-type privacy rules through `BubbleEx.Privacy` /
