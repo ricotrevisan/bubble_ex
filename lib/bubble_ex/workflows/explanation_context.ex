@@ -1,6 +1,7 @@
 defmodule BubbleEx.Workflows.ExplanationContext do
   @moduledoc false
   alias BubbleEx.AppTree.Expr.Explanation, as: Expression
+  alias BubbleEx.Model.{Builder, DataType, Field, Type}
   alias BubbleEx.Workflows.{Node, Source}
 
   @spec new(map(), list()) :: map()
@@ -133,47 +134,39 @@ defmodule BubbleEx.Workflows.ExplanationContext do
       do:
         Expression.unknown(id, path, "Ambiguous receiver data type for field #{inspect(id)}")
         |> Map.delete(:raw)
-        |> Map.put(:evidence, candidates),
+        |> Map.put(:evidence, Enum.map(candidates, &Map.delete(&1, :field))),
       else: field_result(candidates, id, path)
   end
 
   defp field(_, id, path, _),
     do: Expression.unavailable(path, "Field/operator #{inspect(id)}; receiver type unavailable")
 
+  # The Model's field `id` of the data type defined at `definition.path`
+  # (fields that are not JSON objects are left out), with its source as
+  # evidence.
   defp field_candidates(definition, id, index) do
-    source = at_pointer(index.payload, definition.path)
-
-    Enum.flat_map(~w(fields %f3), fn key ->
-      fields = Map.get(source, key)
-
-      if is_map(fields),
-        do:
-          field_candidate(
-            Map.get(fields, id),
-            definition.path <> "/" <> key <> Source.pointer([id])
-          ),
-        else: []
-    end)
+    for %DataType{path: path, synthesized: false, fields: fields} <- index.model.data_types,
+        path == definition.path,
+        %Field{id: ^id, raw: nil} = field <- fields,
+        do: %{path: field.path, raw: at_pointer(index.payload, field.path), field: field}
   end
 
-  defp field_candidate(raw, path) when is_map(raw), do: [%{path: path, raw: raw}]
-  defp field_candidate(_, _), do: []
-
   defp field_result(candidates, id, path) do
+    evidence = Enum.map(candidates, &Map.delete(&1, :field))
+
     case candidates do
-      [candidate] ->
-        name = unique_value(candidate.raw, ~w(display %d))
-        field_type = unique_value(candidate.raw, ~w(value %v))
+      [%{field: field, raw: raw}] ->
+        {name, field_type} = name_and_type(field, raw)
 
         status =
-          if is_binary(name) and is_binary(field_type) and not deleted?(candidate.raw),
+          if is_binary(name) and is_binary(field_type) and not field.deleted,
             do: "fully_supported",
             else: "partial"
 
         Expression.record("field_name", id, path, status, "#{inspect(name || id)} [#{id}]")
         |> Map.delete(:raw)
         |> Map.put(:path, Source.pointer(path))
-        |> Map.put(:evidence, candidates)
+        |> Map.put(:evidence, evidence)
         |> Map.put(:data_type, type_id(field_type))
 
       [] ->
@@ -182,8 +175,16 @@ defmodule BubbleEx.Workflows.ExplanationContext do
       _ ->
         Expression.unknown(id, path, "Ambiguous field #{inspect(id)}")
         |> Map.delete(:raw)
-        |> Map.put(:evidence, candidates)
+        |> Map.put(:evidence, evidence)
     end
+  end
+
+  # A name or type supplied in both key forms is not guessed between.
+  defp name_and_type(%Field{} = field, raw) do
+    conflicting = Builder.conflicting_forms(raw)
+    name = if :name not in conflicting, do: field.name
+    source = if :type not in conflicting, do: field.type.source
+    {name, if(is_binary(source), do: source)}
   end
 
   defp unique_value(raw, keys) when is_map(raw) do
@@ -195,7 +196,6 @@ defmodule BubbleEx.Workflows.ExplanationContext do
 
   defp unique_value(_, _), do: nil
 
-  defp deleted?(raw), do: Source.value(raw, ~w(deleted %del)) == true
   defp ref_status(%{status: "resolved"}), do: "fully_supported"
   defp ref_status(%{status: "unavailable"}), do: "unavailable"
   defp ref_status(_), do: "unresolved"
@@ -226,8 +226,15 @@ defmodule BubbleEx.Workflows.ExplanationContext do
   end
 
   defp reference_type(_, _, _, _), do: nil
-  defp type_id("custom." <> id), do: id
-  defp type_id(id) when is_binary(id), do: id
+  # The data type a record descriptor names (`"custom.task"` -> `"task"`);
+  # other descriptors as supplied.
+  defp type_id(descriptor) when is_binary(descriptor) do
+    case {Type.list_item(descriptor), Type.reference(descriptor)} do
+      {nil, {:data_type, id}} -> id
+      _ -> descriptor
+    end
+  end
+
   defp type_id(_), do: nil
 
   @spec at_pointer(map(), String.t()) :: term()

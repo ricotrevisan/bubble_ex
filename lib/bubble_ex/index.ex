@@ -13,7 +13,10 @@ defmodule BubbleEx.Index do
       BubbleEx.Index.cycles(index)
 
   The index is a disposable derived cache: rebuild it from the app JSON
-  whenever the app changes. It is keyed purely by stable Bubble IDs (see
+  whenever the app changes. Data types, fields, option sets, API Connector
+  groups and calls and privacy rules are read through `BubbleEx.Model`; pass a
+  Model already built from the same app as `model:` to build it only once.
+  It is keyed purely by stable Bubble IDs (see
   `BubbleEx.Index.Symbol`), never by display names, and it is stack-neutral:
   it states what the Bubble app references, not how any target stack should
   represent it.
@@ -139,8 +142,7 @@ defmodule BubbleEx.Index do
   `BubbleEx.Expression`.
   """
 
-  alias BubbleEx.{CanonicalJson, Diagnostic, Error}
-  alias BubbleEx.Expression.Schema
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
 
   alias BubbleEx.Index.{
     DataModel,
@@ -161,6 +163,7 @@ defmodule BubbleEx.Index do
     :source_sha256,
     :content_sha256,
     :semantic_sha256,
+    :model,
     symbols: [],
     references: [],
     cycles: [],
@@ -173,6 +176,7 @@ defmodule BubbleEx.Index do
           source_sha256: String.t(),
           content_sha256: String.t(),
           semantic_sha256: String.t() | nil,
+          model: Model.t() | nil,
           symbols: [Symbol.t()],
           references: [Reference.t()],
           cycles: [cycle()],
@@ -193,16 +197,27 @@ defmodule BubbleEx.Index do
   @spec schema_version() :: pos_integer()
   def schema_version, do: @schema_version
 
-  @doc "Builds the index from decoded app JSON."
-  @spec build(term()) :: {:ok, t()} | {:error, Error.t()}
-  def build(app) do
-    with {:ok, inventory} <- BubbleEx.Workflows.inventory(app) do
+  @doc """
+  Builds the index from decoded app JSON.
+
+  ## Options
+
+    * `:model` - a `BubbleEx.Model` already built from the same app (checked
+      with `BubbleEx.Model.matches?/3` against the app's canonical hash, which
+      the index computes once anyway; otherwise `:invalid_input`). Without
+      it the Model is built here. Either way the index keeps it in `model`
+      (not part of `to_map/1`), so `BubbleEx.Findings` reuses it.
+  """
+  @spec build(term(), [{:model, Model.t()}]) :: {:ok, t()} | {:error, Error.t()}
+  def build(app, opts \\ []) do
+    with {:ok, inventory, model} <-
+           BubbleEx.Workflows.inventory_and_model(app, model: Keyword.get(opts, :model)) do
       structure = Structure.build(app)
 
-      {model_symbols, model_refs} = DataModel.build(app)
+      {model_symbols, model_refs} = DataModel.build(model)
 
       ctx = %{
-        schema: Schema.from_app(app),
+        schema: Model.schema(model),
         owners: structure.owners,
         bubble_ids: structure.bubble_ids,
         live_fields: live_fields(model_symbols),
@@ -211,15 +226,17 @@ defmodule BubbleEx.Index do
 
       host_refs = Enum.flat_map(structure.hosts, &Reads.scan(&1.value, &1.path, &1.symbol, ctx))
       {wf_symbols, wf_refs, wf_diags} = BubbleEx.Index.Workflows.build(inventory, ctx)
-      {rule_symbols, rule_refs} = PrivacyRules.build(app, ctx)
+      {rule_symbols, rule_refs} = PrivacyRules.build(model, ctx)
 
-      {:ok,
-       assemble(
-         inventory.source_sha256,
-         model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols,
-         model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs,
-         structure.diagnostics ++ wf_diags
-       )}
+      index =
+        assemble(
+          inventory.source_sha256,
+          model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols,
+          model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs,
+          structure.diagnostics ++ wf_diags
+        )
+
+      {:ok, %{index | model: model}}
     end
   end
 

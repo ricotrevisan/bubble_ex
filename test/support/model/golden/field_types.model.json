@@ -1,5 +1,6 @@
 {
   "bubble_id": "synthetic-field-types",
+  "connectors": [],
   "data_types": [
     {
       "comment": null,
@@ -960,5 +961,5 @@
       ]
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

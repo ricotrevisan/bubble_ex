@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **The Index, Findings, Workflows explanations and expression schema read
+  the data model only through `BubbleEx.Model`** (WTF-380).
+  `Expression.Schema.from_app/1` and `from_user_types/1` are removed: use
+  `BubbleEx.Model.schema/1`. `Privacy.parse/2` types conditions against the
+  Model's pre-privacy schema (the `:schema` option; `BubbleEx.Model.build/1`
+  passes it, so there is still one parser and no cycle). `Index.build/2`,
+  `Findings.analyze/2` (`:model`) and `Workflows.inventory/2` take a prebuilt
+  Model, checked with the new `Model.matches?/3` (`Model.for_app/3`) against
+  the Model's new `source_sha256` (the canonical hash of the app it was
+  built from; not in `to_map/1`), so a stale Model is rejected and a
+  pipeline builds the Model and hashes the app once; the index keeps it in `Index.model` (not
+  serialized) and Findings reuses it. The Model gains `connectors` (API
+  Connector groups and calls, `Model.Connector`/`Model.ConnectorCall`, calls
+  under `calls` or placed directly in the group, with decoded `types`
+  registries), which the API Connector type resolver now reads instead of
+  the settings, and
+  `Model.Type` descriptor helpers (`reference/1`, `list_item/1`, `list?/1`,
+  `listed/1`, `record/1`); `Model.schema_version/0` is 2. Index, Findings,
+  Workflows and expression outputs are unchanged on every fixture and on the
+  private mm-137 export, except that an option value whose `db_value` is
+  `""` is now keyed by its Bubble ID in the index, as the Model keys it
+  (`:model_option_key_missing`), instead of by the empty string, and calls
+  placed directly in their group are now `:api_call` symbols (their
+  `:field_type` references no longer dangle). `Model.build/2` now hashes the
+  app (about 1.7 s on a large app); pass `source_sha256:` when it is known.
+
 - **PostgreSQL, SQLite and T-SQL declare no foreign keys by default**
   (WTF-392). Bubble has no referential integrity, so real data holds
   dangling references, and the constraints on every scalar reference

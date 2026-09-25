@@ -17,6 +17,17 @@ defmodule BubbleEx.WorkflowsTest do
     }
   end
 
+  test "reuses a prebuilt Model of the same payload, and rejects another app's" do
+    payload = File.read!("test/support/samples/synthetic_export.json") |> Jason.decode!()
+    {:ok, model} = BubbleEx.Model.build(payload)
+    assert Workflows.inventory(payload, model: model) == Workflows.inventory(payload)
+
+    {:ok, other} = BubbleEx.Model.build(%{"user_types" => %{"other" => %{}}})
+
+    assert {:error, %Error{kind: :invalid_input}} =
+             Workflows.inventory(payload, model: other)
+  end
+
   test "accounts for page, reusable and backend workflows, including unknown types" do
     payload = File.read!("test/support/samples/synthetic_export.json") |> Jason.decode!()
     assert {:ok, i} = Workflows.inventory(payload)

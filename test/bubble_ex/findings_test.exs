@@ -448,6 +448,26 @@ defmodule BubbleEx.FindingsTest do
                Findings.analyze(@app, index: other)
     end
 
+    test "reuses a prebuilt Model of the same app, and rejects another app's", %{result: result} do
+      {:ok, model} = BubbleEx.Model.build(@app)
+      assert {:ok, ^result} = Findings.analyze(@app, model: model)
+
+      {:ok, other} = BubbleEx.Model.build(%{"user_types" => %{"other" => %{}}})
+
+      assert {:error, %Error{kind: :invalid_input}} = Findings.analyze(@app, model: other)
+
+      # A stale Model of the same app (one field's type changed since), with
+      # or without a matching index.
+      [type | _] = @app["user_types"] |> Map.keys() |> Enum.sort()
+      [field | _] = @app["user_types"][type]["fields"] |> Map.keys() |> Enum.sort()
+      edited = put_in(@app, ["user_types", type, "fields", field, "value"], "number")
+      {:ok, edited_index} = Index.build(edited)
+      assert {:error, %Error{kind: :invalid_input}} = Findings.analyze(edited, model: model)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Findings.analyze(edited, model: model, index: edited_index)
+    end
+
     test "a proposal change changes proposal_sha256 but not the ID", %{findings: fs} do
       {:ok, changed} =
         @app

@@ -18,16 +18,6 @@ defmodule BubbleEx.Db.OneInterpretationTest do
 
   # file (or directory) => why it may use those members or descriptors.
   @allowed %{
-    "lib/bubble_ex/index/data_model.ex" =>
-      "WTF-380: the symbol index reads data types, fields and option sets itself",
-    "lib/bubble_ex/index/types.ex" =>
-      "WTF-380: the symbol index classifies type descriptors itself",
-    "lib/bubble_ex/findings/" =>
-      "WTF-380: analyzers match the index's raw value-type descriptors",
-    "lib/bubble_ex/workflows/explanation_context.ex" =>
-      "WTF-380: resolves `custom.` record types of workflow parameters",
-    "lib/bubble_ex/expression/schema.ex" =>
-      "WTF-380: field lookup for typing expressions; Privacy (inside the Model's reading) needs it before a Model exists; the Model's equivalent is Model.schema/1",
     "lib/bubble_ex/expression/" =>
       "expression value types (`list.` wrapping of expression results) and the expression key aliases, not definitions",
     "lib/bubble_ex/db/reader.ex" =>
@@ -63,6 +53,14 @@ defmodule BubbleEx.Db.OneInterpretationTest do
 
   defp allowed?(file), do: Enum.any?(Map.keys(@allowed), &String.starts_with?(file, &1))
 
+  # Known blind spots (the patterns below miss them): whole literal
+  # descriptors (`"list.text"`), `String.replace_prefix(x, "custom.", …)` and
+  # descriptors built by interpolation (`"api.apiconnector2.#{g}.#{c}"`). As
+  # of WTF-380 they occur in lib/bubble_ex/findings/id_in_text.ex (`"list.text"`),
+  # lib/bubble_ex/index/subject.ex (interpolation), lib/bubble_ex/db/dbml.ex
+  # and lib/bubble_ex/workflows/node.ex (`replace_prefix`), besides
+  # lib/bubble_ex/expression/ (allowlisted) and comments. Widening the check
+  # to them means routing those through `BubbleEx.Model.Type` first.
   defp patterns do
     keys = Enum.map_join(@keys, "|", &Regex.escape/1)
 

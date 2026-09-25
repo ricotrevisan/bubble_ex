@@ -44,7 +44,7 @@ defmodule BubbleEx.Expression do
 
   ## Options
 
-    * `:schema` - field lookup from `BubbleEx.Expression.Schema.from_app/1`,
+    * `:schema` - field lookup (`BubbleEx.Model.schema/1`),
       used to type field chains. Without it, accessors on records are kept as
       diagnosed `Ast.Property` nodes.
     * `:this_type` - Bubble type of `This Thing` (e.g. `"custom.task"`).

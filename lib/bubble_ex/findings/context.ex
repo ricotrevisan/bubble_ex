@@ -1,15 +1,15 @@
 defmodule BubbleEx.Findings.Context do
   @moduledoc false
 
-  # Facts every analyzer shares: the app JSON, its symbol index and schema,
+  # Facts every analyzer shares: the app JSON, its symbol index and its
+  # Model's schema,
   # the live (not deleted) fields of each data type with the live data types
   # they reference (missing and deleted targets are not references here), and helpers to read the value expression of a field write and to
   # list the workflows, pages, reusables and privacy rules a set of symbols
   # belongs to.
 
-  alias BubbleEx.Expression
+  alias BubbleEx.{Expression, Index, Model}
   alias BubbleEx.Expression.{Ast, Schema}
-  alias BubbleEx.Index
   alias BubbleEx.Index.{Reference, Symbol, Types}
 
   @enforce_keys [:app, :index, :schema, :fields, :targets]
@@ -25,8 +25,8 @@ defmodule BubbleEx.Findings.Context do
           targets: %{Symbol.id() => target()}
         }
 
-  @spec build(map(), Index.t()) :: t()
-  def build(app, index) do
+  @spec build(map(), Index.t(), Model.t()) :: t()
+  def build(app, index, %Model{} = model) do
     deleted_types =
       for %{kind: :data_type, attrs: %{deleted: true}} = s <- index.symbols,
           into: MapSet.new(),
@@ -51,7 +51,7 @@ defmodule BubbleEx.Findings.Context do
     %__MODULE__{
       app: app,
       index: index,
-      schema: Schema.from_app(app),
+      schema: Model.schema(model),
       fields: fields,
       targets: targets
     }
@@ -94,20 +94,28 @@ defmodule BubbleEx.Findings.Context do
   @doc "The value at RFC 6901 `pointer` in the app JSON, or nil."
   @spec fetch(t(), String.t()) :: term()
   def fetch(ctx, pointer) do
+    case lookup(ctx, pointer) do
+      {:ok, value} -> value
+      :error -> nil
+    end
+  end
+
+  # `{:ok, value}` at `pointer` (a present `null` included), or `:error`.
+  defp lookup(ctx, pointer) do
     pointer
     |> Index.Workflows.segments()
-    |> Enum.reduce_while(ctx.app, fn
-      segment, map when is_map(map) ->
-        {:cont, Map.get(map, segment)}
+    |> Enum.reduce_while({:ok, ctx.app}, fn
+      segment, {:ok, map} when is_map(map) ->
+        {:cont, Map.fetch(map, segment)}
 
-      segment, list when is_list(list) ->
+      segment, {:ok, list} when is_list(list) ->
         case Integer.parse(segment) do
-          {i, ""} -> {:cont, Enum.at(list, i)}
-          _ -> {:halt, nil}
+          {i, ""} -> {:cont, {:ok, Enum.at(list, i)}}
+          _ -> {:halt, :error}
         end
 
       _, _ ->
-        {:halt, nil}
+        {:halt, :error}
     end)
   end
 
@@ -119,10 +127,10 @@ defmodule BubbleEx.Findings.Context do
   """
   @spec write_value(t(), Reference.t()) :: {Ast.t(), [Reference.t()]} | nil
   def write_value(ctx, %Reference{kind: :writes_field} = write) do
-    with %{"value" => raw} <- fetch(ctx, write.path),
-         {:ok, %{ast: ast}} <- Expression.parse(raw, parse_opts(ctx, write)) do
-      prefix = write.path <> "/value"
+    prefix = write.path <> "/value"
 
+    with {:ok, raw} <- lookup(ctx, prefix),
+         {:ok, %{ast: ast}} <- Expression.parse(raw, parse_opts(ctx, write)) do
       reads =
         ctx.index
         |> Index.references_from(write.from, [:reads_field])

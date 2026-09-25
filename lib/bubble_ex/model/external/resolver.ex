@@ -4,10 +4,11 @@ defmodule BubbleEx.Model.External.Resolver do
   # The one reading of API Connector (`api.apiconnector2.…`) types. Given the
   # `api.` descriptors of data-type fields and option-set attributes (the
   # roots), it resolves each against the call's `types` registry in the app
-  # JSON, depth-first, and returns the external-type nodes reached and one
+  # JSON (the Model's `BubbleEx.Model.Connector` calls), depth-first, and returns the external-type nodes reached and one
   # `BubbleEx.Diagnostic` (stage `:read`) per occurrence it could not read
   # faithfully. `BubbleEx.Model.External` converts the result into Model
-  # structs; nothing else reads API Connector settings.
+  # structs. API Connector settings are read once, into the Model's
+  # connectors; this reads the calls from there.
 
   @prefix "api.apiconnector2."
   @scalars %{
@@ -19,6 +20,7 @@ defmodule BubbleEx.Model.External.Resolver do
   }
 
   alias BubbleEx.Diagnostic
+  alias BubbleEx.Model.{Connector, ConnectorCall}
 
   @type group :: :custom | :option
   @type root :: %{group: group(), owner: String.t(), field: String.t(), descriptor: term()}
@@ -33,14 +35,21 @@ defmodule BubbleEx.Model.External.Resolver do
             }
 
   @doc """
-  Resolves `roots` against `attrs` (the app JSON, either key form). Returns
+  Resolves `roots` against the `connectors`' calls; `attrs` (data types and
+  option sets of the app JSON, either key form) locates root diagnostics. Returns
   each root's value keyed by `{group, owner, field}`, the external-type nodes
   reached (in ID order) and the normalized diagnostics.
   """
-  @spec resolve([root()], map()) ::
+  @spec resolve([root()], map(), [Connector.t()]) ::
           {%{{group(), String.t(), String.t()} => value()}, [map()], [Diagnostic.t()]}
-  def resolve(roots, attrs) do
-    state = %{attrs: attrs, nodes: %{}, failures: %{}, diagnostics: []}
+  def resolve(roots, attrs, connectors) do
+    state = %{
+      attrs: attrs,
+      connectors: Map.new(connectors, &{&1.id, &1}),
+      nodes: %{},
+      failures: %{},
+      diagnostics: []
+    }
 
     {values, state} =
       Enum.map_reduce(roots, state, fn root, state ->
@@ -133,7 +142,7 @@ defmodule BubbleEx.Model.External.Resolver do
 
     state = put_in(state.nodes[id], placeholder)
 
-    if conflicting_definition?(state.attrs, id) do
+    if conflicting_definition?(state.connectors, id) do
       node = %{placeholder | resolution: :conflicted}
 
       state
@@ -145,12 +154,12 @@ defmodule BubbleEx.Model.External.Resolver do
   end
 
   defp resolve_registry_node(state, id, connector_id, call_id, occurrence) do
-    case registry_for(state.attrs, connector_id, call_id) do
+    case registry_for(state.connectors, connector_id, call_id) do
       {:error, category} ->
         fail_node(state, id, category, occurrence)
 
       {:ok, call, registry} ->
-        source_path = Diagnostic.pointer(call_path(state.attrs, id) ++ ["types"])
+        source_path = call_path(state.connectors, id) <> "/types"
 
         state
         |> put_in([:nodes, id, :source_path], source_path)
@@ -235,60 +244,31 @@ defmodule BubbleEx.Model.External.Resolver do
   defp field_descriptor(_, occurrence, state),
     do: {nil, warn(state, :field_type_malformed, raw_target(nil), occurrence)}
 
-  defp registry_for(attrs, connector_id, call_id) do
-    connectors = get_in(attrs, ["settings", "client_safe", "apiconnector2"])
-    fetch_connector(connectors, connector_id, call_id)
-  end
-
-  defp fetch_connector(connectors, _connector_id, _call_id) when not is_map(connectors),
-    do: {:error, :connector_missing}
-
-  defp fetch_connector(connectors, connector_id, call_id) do
+  defp registry_for(connectors, connector_id, call_id) do
     case Map.fetch(connectors, connector_id) do
-      {:ok, connector} when is_map(connector) -> fetch_registry(connector, call_id)
-      _ -> {:error, :connector_missing}
+      {:ok, connector} -> call_registry(Connector.call(connector, call_id))
+      :error -> {:error, :connector_missing}
     end
   end
 
-  defp fetch_registry(connector, call_id) do
-    with {:ok, call} when is_map(call) <- fetch_call(connector, call_id),
-         types when is_binary(types) and byte_size(types) > 0 <- call["types"] do
-      decode_registry(call, types)
-    else
-      :error -> {:error, :call_missing}
-      nil -> {:error, :registry_unavailable}
-      "" -> {:error, :registry_unavailable}
-      _ -> {:error, :registry_malformed}
-    end
-  end
+  defp call_registry(nil), do: {:error, :call_missing}
 
-  defp decode_registry(call, types) do
-    case Jason.decode(types) do
-      {:ok, registry} when is_map(registry) -> {:ok, call, registry}
-      _ -> {:error, :registry_malformed}
-    end
-  end
+  defp call_registry(%ConnectorCall{raw: nil, registry: registry} = call) when is_map(registry),
+    do: {:ok, call, registry}
 
-  defp fetch_call(connector, call_id) do
-    case Map.fetch(connector, call_id) do
-      :error -> fetch_nested_call(connector["calls"], call_id)
-      result -> result
-    end
-  end
+  defp call_registry(%ConnectorCall{raw: nil, types: types}) when types in [nil, ""],
+    do: {:error, :registry_unavailable}
 
-  defp fetch_nested_call(calls, call_id) when is_map(calls), do: Map.fetch(calls, call_id)
-  defp fetch_nested_call(_, _), do: :error
+  defp call_registry(_), do: {:error, :registry_malformed}
 
-  defp conflicting_definition?(attrs, id) do
-    attrs
-    |> get_in(["settings", "client_safe", "apiconnector2"])
-    |> all_calls()
+  # Whether more than one call defines `id`, differently.
+  defp conflicting_definition?(connectors, id) do
+    connectors
+    |> Map.values()
+    |> Enum.flat_map(& &1.calls)
     |> Enum.flat_map(fn call ->
-      with types when is_binary(types) <- call["types"],
-           {:ok, registry} when is_map(registry) <- Jason.decode(types),
-           {:ok, definition} <- Map.fetch(registry, id) do
-        [definition]
-      else
+      case call.registry do
+        %{^id => definition} -> [definition]
         _ -> []
       end
     end)
@@ -297,21 +277,8 @@ defmodule BubbleEx.Model.External.Resolver do
     |> Kernel.>(1)
   end
 
-  defp all_calls(connectors) when is_map(connectors) do
-    connectors
-    |> Map.values()
-    |> Enum.filter(&is_map/1)
-    |> Enum.flat_map(fn connector ->
-      direct = connector |> Map.delete("calls") |> Map.values()
-      nested = if is_map(connector["calls"]), do: Map.values(connector["calls"]), else: []
-      Enum.filter(direct ++ nested, &is_map/1)
-    end)
-  end
-
-  defp all_calls(_), do: []
-
   defp advisory_warning(id, call, occurrence, state) do
-    case call["ret_value"] do
+    case call.returns do
       ^id -> state
       _ -> warn(state, :call_metadata_inconsistent, external_target(id), occurrence)
     end
@@ -349,7 +316,7 @@ defmodule BubbleEx.Model.External.Resolver do
   @definition_codes [:empty_definition, :call_metadata_inconsistent]
 
   defp warn(state, code, target, occurrence) do
-    {subject, path, located} = locate(code, target, occurrence, state.attrs)
+    {subject, path, located} = locate(code, target, occurrence, state)
     details = target_details(target) |> Map.merge(located)
 
     diagnostic =
@@ -358,22 +325,22 @@ defmodule BubbleEx.Model.External.Resolver do
     %{state | diagnostics: [diagnostic | state.diagnostics]}
   end
 
-  defp locate(code, %{type: :external_type, id: id}, _occurrence, attrs)
+  defp locate(code, %{type: :external_type, id: id}, _occurrence, state)
        when code in @definition_codes do
     member = if code == :call_metadata_inconsistent, do: "ret_value", else: "types"
     details = if member == "types", do: %{embedded_path: Diagnostic.pointer([id])}, else: %{}
-    {%{external_type: id}, call_path(attrs, id) ++ [member], details}
+    {%{external_type: id}, call_path(state.connectors, id) <> "/" <> member, details}
   end
 
-  defp locate(_code, _target, %{root: root, path: []}, attrs),
-    do: {root_subject(root), root_path(attrs, root), %{}}
+  defp locate(_code, _target, %{root: root, path: []}, state),
+    do: {root_subject(root), root_path(state.attrs, root), %{}}
 
-  defp locate(_code, _target, %{root: root, path: path}, attrs) do
+  defp locate(_code, _target, %{root: root, path: path}, state) do
     %{external_type_id: type_id, field_id: field_id} = List.last(path)
 
     via = Enum.map(path, &%{external_type: &1.external_type_id, field: &1.field_id})
 
-    {%{external_type: type_id, field: field_id}, call_path(attrs, type_id) ++ ["types"],
+    {%{external_type: type_id, field: field_id}, call_path(state.connectors, type_id) <> "/types",
      %{
        root: root_subject(root),
        via: via,
@@ -391,14 +358,16 @@ defmodule BubbleEx.Model.External.Resolver do
       Diagnostic.pointer([if(group == :option, do: "option_sets", else: "user_types"), id])
   end
 
-  defp call_path(attrs, id) do
+  # JSON pointer to the call an external type `id` names (where it would be
+  # placed directly in its group when there is no such call).
+  defp call_path(connectors, id) do
     {connector_id, call_id} = identity_parts(id)
-    base = ["settings", "client_safe", "apiconnector2", connector_id]
 
-    case get_in(attrs, ["settings", "client_safe", "apiconnector2", connector_id]) do
-      %{^call_id => _} -> base ++ [call_id]
-      %{"calls" => %{^call_id => _}} -> base ++ ["calls", call_id]
-      _ -> base ++ [call_id]
+    with {:ok, connector} <- Map.fetch(connectors, connector_id),
+         %ConnectorCall{path: path} <- Connector.call(connector, call_id) do
+      path
+    else
+      _ -> Diagnostic.pointer(["settings", "client_safe", "apiconnector2", connector_id, call_id])
     end
   end
 

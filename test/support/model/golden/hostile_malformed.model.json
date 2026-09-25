@@ -1,5 +1,41 @@
 {
   "bubble_id": "synthetic-malformed",
+  "connectors": [
+    {
+      "auth": null,
+      "calls": [
+        {
+          "id": "defs",
+          "method": null,
+          "name": null,
+          "path": "/settings/client_safe/apiconnector2/bad/defs",
+          "placement": "direct",
+          "publish_as": null,
+          "raw": null,
+          "registry": {
+            "api.apiconnector2.bad.defs.T": {
+              "caption": "T",
+              "fields": {
+                "fine": {
+                  "caption": "Fine",
+                  "path": [
+                    "fine"
+                  ],
+                  "ret_btype": "text"
+                },
+                "odd": "not a field"
+              }
+            }
+          },
+          "returns": "api.apiconnector2.bad.defs.T",
+          "types": null
+        }
+      ],
+      "id": "bad",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/bad"
+    }
+  ],
   "data_types": [
     {
       "comment": null,
@@ -999,5 +1035,5 @@
       "values": []
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

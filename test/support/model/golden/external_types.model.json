@@ -1,5 +1,212 @@
 {
   "bubble_id": "synthetic-external-types",
+  "connectors": [
+    {
+      "auth": null,
+      "calls": [
+        {
+          "id": "lookup",
+          "method": null,
+          "name": null,
+          "path": "/settings/client_safe/apiconnector2/geo/lookup",
+          "placement": "direct",
+          "publish_as": null,
+          "raw": null,
+          "registry": {
+            "api.apiconnector2.geo.lookup.Address": {
+              "caption": "Address",
+              "fields": {
+                "_ignore": {
+                  "caption": "Ignored",
+                  "path": [
+                    "ignored"
+                  ],
+                  "ret_btype": "text"
+                },
+                "lat": {
+                  "caption": "Latitude",
+                  "path": [
+                    "lat"
+                  ],
+                  "ret_btype": "number"
+                },
+                "lines": {
+                  "caption": "Lines",
+                  "path": [
+                    "lines"
+                  ],
+                  "ret_btype": "list.text"
+                },
+                "seen": {
+                  "caption": "Seen",
+                  "path": [
+                    "seen"
+                  ],
+                  "ret_btype": "date_unix"
+                },
+                "street": {
+                  "caption": "Street",
+                  "path": [
+                    "street"
+                  ],
+                  "ret_btype": "text"
+                },
+                "verified": {
+                  "caption": "Verified",
+                  "path": [
+                    "verified"
+                  ],
+                  "ret_btype": "boolean"
+                }
+              }
+            }
+          },
+          "returns": "api.apiconnector2.geo.lookup.Address",
+          "types": null
+        }
+      ],
+      "id": "geo",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/geo"
+    },
+    {
+      "auth": null,
+      "calls": [
+        {
+          "id": "ping",
+          "method": null,
+          "name": null,
+          "path": "/settings/client_safe/apiconnector2/graph/ping",
+          "placement": "direct",
+          "publish_as": null,
+          "raw": null,
+          "registry": {
+            "api.apiconnector2.graph.ping.A": {
+              "caption": "A",
+              "fields": {
+                "at": {
+                  "caption": "At",
+                  "path": [
+                    "at"
+                  ],
+                  "ret_btype": "date"
+                },
+                "b": {
+                  "caption": "B",
+                  "path": [
+                    "b"
+                  ],
+                  "ret_btype": "api.apiconnector2.graph.pong.B"
+                }
+              }
+            }
+          },
+          "returns": "api.apiconnector2.graph.ping.A",
+          "types": null
+        },
+        {
+          "id": "pong",
+          "method": null,
+          "name": null,
+          "path": "/settings/client_safe/apiconnector2/graph/pong",
+          "placement": "direct",
+          "publish_as": null,
+          "raw": null,
+          "registry": {
+            "api.apiconnector2.graph.pong.B": {
+              "caption": "B",
+              "fields": {
+                "a": {
+                  "caption": "A",
+                  "path": [
+                    "a"
+                  ],
+                  "ret_btype": "api.apiconnector2.graph.ping.A"
+                },
+                "blob": {
+                  "caption": null,
+                  "path": [
+                    "blob"
+                  ],
+                  "ret_btype": "mystery"
+                }
+              }
+            }
+          },
+          "returns": "api.apiconnector2.graph.pong.B",
+          "types": null
+        }
+      ],
+      "id": "graph",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/graph"
+    },
+    {
+      "auth": null,
+      "calls": [
+        {
+          "id": "blank",
+          "method": null,
+          "name": null,
+          "path": "/settings/client_safe/apiconnector2/misc/blank",
+          "placement": "direct",
+          "publish_as": null,
+          "raw": null,
+          "registry": {
+            "api.apiconnector2.misc.blank.Empty": {
+              "caption": "Empty",
+              "fields": {}
+            }
+          },
+          "returns": "api.apiconnector2.misc.blank.Empty",
+          "types": null
+        }
+      ],
+      "id": "misc",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/misc"
+    },
+    {
+      "auth": null,
+      "calls": [
+        {
+          "id": "walk",
+          "method": null,
+          "name": null,
+          "path": "/settings/client_safe/apiconnector2/tree/walk",
+          "placement": "direct",
+          "publish_as": null,
+          "raw": null,
+          "registry": {
+            "api.apiconnector2.tree.walk.Node": {
+              "caption": "Node",
+              "fields": {
+                "children": {
+                  "caption": "Children",
+                  "path": [
+                    "children"
+                  ],
+                  "ret_btype": "list.api.apiconnector2.tree.walk.Node"
+                },
+                "label": {
+                  "caption": "Label",
+                  "path": [
+                    "label"
+                  ],
+                  "ret_btype": "text"
+                }
+              }
+            }
+          },
+          "returns": "api.apiconnector2.tree.walk.Node",
+          "types": null
+        }
+      ],
+      "id": "tree",
+      "name": null,
+      "path": "/settings/client_safe/apiconnector2/tree"
+    }
+  ],
   "data_types": [
     {
       "comment": null,
@@ -831,5 +1038,5 @@
   ],
   "extra": {},
   "option_sets": [],
-  "schema_version": 1
+  "schema_version": 2
 }

@@ -747,6 +747,29 @@ defmodule BubbleEx.IndexTest do
     test "is reachable from the top-level API" do
       assert {:ok, %Index{}} = BubbleEx.symbol_index(@app)
     end
+
+    # WTF-380: the Model is built once and passed through.
+    test "reuses a prebuilt Model of the same app, and rejects another app's" do
+      {:ok, index} = Index.build(@app)
+      {:ok, model} = BubbleEx.Model.build(@app)
+      assert {:ok, with_model} = Index.build(@app, model: model)
+      assert Index.to_json(with_model) == Index.to_json(index)
+      assert with_model.model == model
+
+      {:ok, other} = BubbleEx.Model.build(%{"user_types" => %{"other" => %{}}})
+
+      assert {:error, %Error{kind: :invalid_input}} = Index.build(@app, model: other)
+      assert {:error, %Error{kind: :invalid_input}} = Index.build(@app, model: :nope)
+
+      # A stale Model of the same app (one field's type changed since).
+      [type | _] = @app["user_types"] |> Map.keys() |> Enum.sort()
+      [field | _] = @app["user_types"][type]["fields"] |> Map.keys() |> Enum.sort()
+      edited = put_in(@app, ["user_types", type, "fields", field, "value"], "number")
+      assert {:error, %Error{kind: :invalid_input}} = Index.build(edited, model: model)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               BubbleEx.Workflows.inventory(edited, model: model)
+    end
   end
 
   describe "Tarjan SCC" do

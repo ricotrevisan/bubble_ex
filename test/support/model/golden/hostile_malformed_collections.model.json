@@ -1,5 +1,6 @@
 {
   "bubble_id": "synthetic-malformed-collections",
+  "connectors": [],
   "data_types": [
     {
       "comment": null,
@@ -178,5 +179,5 @@
     "user_types": []
   },
   "option_sets": [],
-  "schema_version": 1
+  "schema_version": 2
 }
