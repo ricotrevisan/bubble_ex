@@ -110,3 +110,67 @@ defmodule RuntimeCheck do
 end
 
 RuntimeCheck.run()
+
+# Every compiled privacy-rule condition (<namespace>.PrivacyFilters, see
+# render.exs) runs as a read filter against the rows above: logged out and
+# as each stored user, loaded with the filter's `actor_loads`. It must
+# execute in PostgreSQL and agree with Ash's in-memory evaluation of the
+# same filter over the same rows (loaded as the filter's relationship
+# paths need).
+defmodule FilterRuntimeCheck do
+  require Ash.Query
+
+  def run do
+    entries =
+      for domain <- Application.fetch_env!(:ash_compile_check, :ash_domains),
+          module = Module.concat(domain, PrivacyFilters),
+          Code.ensure_loaded?(module),
+          entry <- module.all(),
+          do: entry
+
+    {runs, failures} =
+      Enum.reduce(entries, {0, []}, fn entry, {runs, failures} ->
+        # The sample rows include a user whose Bubble ID is "" (hostile; real
+        # Bubble IDs are never empty). Ash's in-memory evaluator reads that
+        # ID as nil when comparing it with an attribute across a relationship
+        # (e.g. `parent.assignee_id`) while PostgreSQL keeps "", so that actor
+        # is left out of the comparison.
+        users = Ash.read!(entry.actor, authorize?: false, load: entry.actor_loads)
+        actors = [nil | Enum.reject(users, &(&1.id == ""))]
+
+        Enum.reduce(actors, {runs, failures}, fn actor, {runs, failures} ->
+          {runs + 1, check(entry, actor) ++ failures}
+        end)
+      end)
+
+    if failures != [] do
+      Enum.each(failures, &IO.puts/1)
+      raise "privacy filter runtime check failed: #{length(failures)} failures"
+    end
+
+    IO.puts("privacy filter runtime check passed: #{length(entries)} filters, #{runs} reads")
+  end
+
+  defp check(entry, actor) do
+    filled = Ash.Expr.fill_template(entry.filter, actor: actor)
+    selected = entry.resource |> Ash.Query.filter(^filled) |> Ash.read!(authorize?: false)
+
+    all = Ash.read!(entry.resource, authorize?: false)
+    parsed = Ash.Filter.parse!(entry.resource, filled)
+    domain = Ash.Resource.Info.domain(entry.resource)
+    {:ok, matched} = Ash.Filter.Runtime.filter_matches(domain, all, parsed)
+
+    if ids(selected) == ids(matched),
+      do: [],
+      else: [
+        "#{entry.type}/#{entry.rule} as #{inspect(actor && actor.id)}: SQL selected " <>
+          "#{inspect(ids(selected))}, in memory #{inspect(ids(matched))}"
+      ]
+  rescue
+    error -> ["#{entry.type}/#{entry.rule}: #{Exception.message(error)}"]
+  end
+
+  defp ids(records), do: records |> Enum.map(& &1.id) |> Enum.sort()
+end
+
+FilterRuntimeCheck.run()

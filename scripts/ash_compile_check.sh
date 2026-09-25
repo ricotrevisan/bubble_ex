@@ -7,10 +7,15 @@
 #   * mix ash.codegen --dry-run: migration generation needs no database; it
 #     must create no foreign keys and store lists of dates at microsecond
 #     precision
+#   * scripts/ash_compile_check/filters.exs: every compiled privacy-rule
+#     condition (rendered as expr(...) into <namespace>.PrivacyFilters and
+#     compiled above) builds an AshPostgres query, logged out and with a
+#     sample actor
 #   * with ASH_COMPILE_CHECK_DB set (a PostgreSQL URL without a database,
 #     e.g. ecto://postgres:postgres@localhost:5432): generates and runs the
 #     migrations in one database per fixture, then scripts/ash_compile_check/
-#     runtime.exs inserts and reads back sample rows for every resource
+#     runtime.exs inserts and reads back sample rows for every resource and
+#     runs every privacy filter against them for each actor
 #
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
 # mm-137). The scratch project lives in _build/ash_compile_check (or
@@ -21,7 +26,8 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 scratch="${ASH_COMPILE_CHECK_DIR:-$root/_build/ash_compile_check}"
 
 mkdir -p "$scratch"
-cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" "$scratch/"
+cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
+  "$root/scripts/ash_compile_check/filters.exs" "$scratch/"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch"
@@ -59,6 +65,9 @@ fi
 
 tables="$(grep -c "create table(" <<<"$codegen" || true)"
 echo "ash compile check passed: generated migrations create $tables tables"
+
+# Compiled privacy-rule conditions (WTF-368) resolve against the resources.
+mix run filters.exs
 
 if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix ash.codegen compile_check >/dev/null

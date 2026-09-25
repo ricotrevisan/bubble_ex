@@ -124,6 +124,11 @@ defmodule BubbleEx.Diagnostic.Codes do
      "an accessor that is neither a field of its subject's type, an element state nor a known operator; it stays untyped"},
     {:expr_uncompiled, :warning, :unresolved, :model,
      "an expression construct with no stack-neutral IR (a raw node, an unmodeled operator or constraint, an untyped operand); the expression is not compiled"},
+    # target:ash — BubbleEx.Target.Ash.Expressions
+    {:ash_expr_unsupported, :warning, :unresolved, :target,
+     "an expression IR construct with no `Ash.Expr` mapping (e.g. a path through a list of things, a context input in a privacy rule); the expression is not compiled"},
+    {:ash_expr_unmapped_reference, :warning, :unresolved, :target,
+     "an expression reading a data type, field or option value the Ash project does not map (deleted, malformed or missing); the expression is not compiled"},
 
     # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
     {:external_type_unresolved_root, :warning, :degraded, :target,

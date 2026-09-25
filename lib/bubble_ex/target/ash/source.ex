@@ -26,6 +26,7 @@ defmodule BubbleEx.Target.Ash.Source do
   alias BubbleEx.Target.Ash.{
     Attribute,
     CustomType,
+    Expr,
     Project,
     Relationship,
     Resource,
@@ -309,6 +310,77 @@ defmodule BubbleEx.Target.Ash.Source do
       end
     end
     """
+  end
+
+  # --- expressions ---------------------------------------------------------------
+
+  @doc """
+  Prints a `BubbleEx.Target.Ash.Expr` as `expr(...)` source, e.g.
+  `expr(creator_id == ^actor(:id))`. The call needs `require Ash.Expr`
+  and `import Ash.Expr` (as inside a resource's `policies` or a query).
+  """
+  @spec expr(Expr.t()) :: String.t()
+  def expr(%Expr{expr: node}), do: "expr(" <> print(node, 0) <> ")"
+
+  # Elixir operator precedence, loosest first: `or`, `and`, `==`/`!=`,
+  # ordering, `in`, `+`/`-`, `*`/`/`. A child binding looser than its
+  # parent is parenthesized; `not` takes a parenthesized operand unless it
+  # is a call or a reference.
+  @precedence %{
+    or: 1,
+    and: 2,
+    ==: 3,
+    !=: 3,
+    >: 4,
+    <: 4,
+    >=: 4,
+    <=: 4,
+    in: 5,
+    +: 6,
+    -: 6,
+    *: 7,
+    /: 7
+  }
+
+  defp print({:or, nodes}, outer),
+    do: group(Enum.map_join(nodes, " or ", &print(&1, 1)), 1, outer)
+
+  defp print({:and, nodes}, outer),
+    do: group(Enum.map_join(nodes, " and ", &print(&1, 2)), 2, outer)
+
+  defp print({:op, op, left, right}, outer) do
+    level = Map.fetch!(@precedence, String.to_existing_atom(op))
+    group("#{print(left, level)} #{op} #{print(right, level + 1)}", level, outer)
+  end
+
+  defp print({:not, node}, _outer), do: "not " <> print(node, 99)
+
+  defp print({:call, name, args}, _outer) do
+    if Regex.match?(@identifier, name),
+      do: name <> "(" <> Enum.map_join(args, ", ", &print(&1, 0)) <> ")",
+      else: raise(ArgumentError, "invalid function name #{inspect(name)}")
+  end
+
+  defp print({:ref, relationships, attribute}, _outer) do
+    Enum.each([attribute | relationships], &identifier!/1)
+    Enum.join(relationships ++ [attribute], ".")
+  end
+
+  defp print({:actor, [name]}, _outer), do: "^actor(#{atom(name)})"
+
+  defp print({:actor, path}, _outer),
+    do: "^actor([" <> Enum.map_join(path, ", ", &atom/1) <> "])"
+
+  defp print({:arg, name}, _outer), do: "^arg(#{atom(name)})"
+  defp print({:value, value}, _outer), do: literal(value)
+
+  defp group(text, level, outer) when level < outer, do: "(" <> text <> ")"
+  defp group(text, _level, _outer), do: text
+
+  defp identifier!(name) do
+    if Regex.match?(@identifier, name),
+      do: name,
+      else: raise(ArgumentError, "invalid reference name #{inspect(name)}")
   end
 
   # --- printing --------------------------------------------------------------------

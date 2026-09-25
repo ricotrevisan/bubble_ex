@@ -33,7 +33,8 @@ This builds the Hex package, unpacks it into a temporary directory, and compiles
 and runs it from a fresh Mix project outside the checkout. The check downloads
 production dependencies and removes its temporary files when it finishes.
 
-When changing `BubbleEx.Target.Ash`, also compile its output:
+When changing `BubbleEx.Target.Ash` (or the expression compiler that feeds
+`BubbleEx.Target.Ash.Expressions`), also compile its output:
 
 ```bash
 scripts/ash_compile_check.sh
@@ -42,9 +43,13 @@ scripts/ash_compile_check.sh
 This renders every fixture into a scratch Ash project
 (`_build/ash_compile_check`, dependencies from `BubbleEx.Target.Ash.versions/0`),
 runs `mix compile --warnings-as-errors` and dry-runs `mix ash.codegen`, which
-needs no database. With `ASH_COMPILE_CHECK_DB` set to a PostgreSQL URL (e.g.
-`ecto://postgres:postgres@localhost:5432`) it also runs the migrations and
-round-trips sample rows through every resource. With `BUBBLE_EX_PRIVATE_EXPORT`
+needs no database. Each fixture's compiled privacy-rule conditions are printed
+as `expr(...)` into a `PrivacyFilters` module and must build AshPostgres
+queries. With `ASH_COMPILE_CHECK_DB` set to a PostgreSQL URL (e.g.
+`ecto://postgres:postgres@localhost:5432`) it also runs the migrations,
+round-trips sample rows through every resource and runs every privacy filter
+against them, requiring PostgreSQL and Ash's in-memory evaluation to agree.
+With `BUBBLE_EX_PRIVATE_EXPORT`
 set it also checks a private app export. CI runs it as the `ash-compile-check`
 job.
 
