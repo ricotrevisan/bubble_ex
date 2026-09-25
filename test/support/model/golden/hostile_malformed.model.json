@@ -25,7 +25,7 @@
                   ],
                   "ret_btype": "text"
                 },
-                "odd": "not a field"
+                "odd": null
               }
             }
           },

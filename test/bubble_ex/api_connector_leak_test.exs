@@ -1,9 +1,11 @@
 defmodule BubbleEx.ApiConnectorLeakTest do
   # WTF-396: API Connector calls hold credentials in URLs (user info, paths,
-  # query strings), header and parameter values (private or not) and bodies.
-  # The Model reads only hosts, names and `private` flags, so none of those
-  # reach the Model, the Index or the Findings built on them. The fixture
-  # (both key forms) marks every value that must not leak with `SECRET`.
+  # query strings), header and parameter values (private or not) and bodies,
+  # and real response data in their `types` registries (`sample_value`s from
+  # "initialize call"). The Model reads only hosts, names, `private` flags
+  # and type shapes, so none of those reach the Model, its diagnostics, the
+  # Index or the Findings built on them. The fixture (both key forms) marks
+  # every value that must not leak with `SECRET`.
   use ExUnit.Case, async: true
 
   alias BubbleEx.{Findings, Index, Model}
@@ -29,7 +31,11 @@ defmodule BubbleEx.ApiConnectorLeakTest do
     "#",
     "[endpoint]",
     "[id]",
-    "<amount>"
+    "<amount>",
+    "@",
+    "424242",
+    "sample_value",
+    "raw_response"
   ]
 
   setup_all do
@@ -43,7 +49,11 @@ defmodule BubbleEx.ApiConnectorLeakTest do
       outputs: %{
         model: Model.to_json(model),
         index: Index.to_json(index),
-        findings: findings |> Findings.to_map() |> Jason.encode!()
+        findings: findings |> Findings.to_map() |> Jason.encode!(),
+        diagnostics:
+          (model.diagnostics ++ index.diagnostics ++ findings.diagnostics)
+          |> Enum.map(&BubbleEx.Diagnostic.to_map/1)
+          |> Jason.encode!()
       }
     }
   end
@@ -94,5 +104,33 @@ defmodule BubbleEx.ApiConnectorLeakTest do
              Index.symbol(index, "api_group:gExport").attrs
 
     assert Index.symbol(index, "api_call:gExport/cWholeUrl").attrs == %{method: "get"}
+  end
+
+  test "response types keep their shape and still resolve", %{model: model} do
+    call = model.connectors |> hd() |> Model.Connector.call("cTyped")
+
+    assert call.registry == %{
+             "api.apiconnector2.gExport.cTyped.Other" => nil,
+             "api.apiconnector2.gExport.cTyped.Resp" => %{
+               "caption" => "Response",
+               "fields" => %{
+                 "count" => %{"caption" => "Count", "path" => ["count"], "ret_btype" => "number"},
+                 "email" => %{"caption" => "Email", "path" => ["email"], "ret_btype" => "text"},
+                 "odd" => nil,
+                 "token" => %{"caption" => "Token", "path" => ["token"], "ret_btype" => "text"}
+               }
+             }
+           }
+
+    resp = Model.external_type(model, "api.apiconnector2.gExport.cTyped.Resp")
+    assert resp.resolution == :resolved
+    assert Enum.map(resp.fields, & &1.id) == ~w(count email token odd)
+
+    # cBadTypes (malformed `types`) and cStringCall (not an object).
+    assert Enum.count(model.diagnostics, &(&1.code == :registry_malformed)) == 2
+
+    gexport = hd(model.connectors)
+    assert Model.Connector.call(gexport, "cBadTypes").types == :malformed
+    assert Model.Connector.call(gexport, "cStringCall").raw == :string
   end
 end

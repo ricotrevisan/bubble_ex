@@ -61,17 +61,23 @@ defmodule BubbleEx.Model.ConnectorCall do
     * `parameters` - its `BubbleEx.Model.ConnectorParameter`s (headers, URL,
       body and query parameters), by location then Bubble ID
     * `publish_as` - how it is used as supplied (`"data"` or `"action"`)
-    * `returns` - the type descriptor it returns (`ret_value`), as supplied
-    * `registry` - its types registry (`types`, JSON text) decoded, from
-      which `BubbleEx.Model.ExternalType`s are resolved; nil when `types` is
-      not the JSON text of an object
-    * `types` - `types` as supplied when it is not (absent, empty or
-      malformed), else nil
+    * `returns` - the type descriptor it returns (`ret_value`) when it is a
+      string, verbatim
+    * `registry` - its types registry (`types`, JSON text) decoded to type
+      shapes only, from which `BubbleEx.Model.ExternalType`s are resolved:
+      type ID => `%{"caption", "fields"}`, each field `%{"caption", "path",
+      "ret_btype", "ret_value"}` (members kept only when well-typed; a
+      definition or field that is not an object is nil). Everything else,
+      notably the "initialize call" response's `sample_value`s, is dropped.
+      Nil when `types` is not the JSON text of an object
+    * `types` - `:malformed` when `types` is present, not empty and not the
+      JSON text of an object (its content is not kept), else nil
     * `placement` - `:nested` (under the group's `calls`) or `:direct` (a
       member of the group itself)
     * `path` - JSON pointer to the call
-    * `raw` - the call itself when it is not a JSON object (only under
-      `calls`); then it has only `id`, `placement` and `path`
+    * `raw` - when the call is not a JSON object (only under `calls`), what
+      it is instead (`:string`, `:number`, `:boolean`, `:null`, `:array`),
+      never its content; then it has only `id`, `placement` and `path`
   """
 
   @enforce_keys [:id, :path, :placement]
@@ -97,12 +103,12 @@ defmodule BubbleEx.Model.ConnectorCall do
           publish_as: String.t() | nil,
           host: String.t() | nil,
           parameters: [BubbleEx.Model.ConnectorParameter.t()],
-          returns: term(),
+          returns: String.t() | nil,
           registry: map() | nil,
-          types: term(),
+          types: :malformed | nil,
           placement: :direct | :nested,
           path: String.t(),
-          raw: term()
+          raw: :string | :number | :boolean | :null | :array | :other | nil
         }
 end
 
@@ -119,8 +125,8 @@ defmodule BubbleEx.Model.ConnectorParameter do
       `shared_params`)
     * `name` - its key (`key`, live payload `%k`), verbatim; nil when absent
       (Bubble strips the key of some private headers) or not a name: a
-      header key that is not an HTTP token, or any key spanning lines or
-      longer than 128 characters
+      header key that is not an HTTP token, or another key holding `=`, `:`
+      or whitespace, empty or longer than 128 characters
     * `private` - Bubble's `private` flag: its value is a secret kept on the
       server
     * `path` - JSON pointer to it

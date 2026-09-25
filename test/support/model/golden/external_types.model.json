@@ -131,7 +131,6 @@
                   "ret_btype": "api.apiconnector2.graph.ping.A"
                 },
                 "blob": {
-                  "caption": null,
                   "path": [
                     "blob"
                   ],

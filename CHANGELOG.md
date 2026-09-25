@@ -17,7 +17,19 @@ All notable changes to this project are documented here.
   Index and Findings). Index `api_call` symbols carry `host`, `headers`
   (names) and `parameters`; `api_group` symbols the shared ones.
   `Model.summary/1` counts API connectors, calls (named, with a host) and
-  parameters; `Model.schema_version/0` is 3. Finding IDs and proposal hashes
+  parameters; `Model.schema_version/0` is 3. A URL with an `@` anywhere
+  after `//` has no host (user info may end past `/`, `?` or `#`).
+  Non-header parameter names holding `=`, `:` or whitespace are dropped.
+- **The Model no longer keeps API Connector response data** (security
+  review of WTF-396; present since WTF-380). `ConnectorCall.registry` keeps
+  only type shapes (definition `caption` and `fields`; field `caption`,
+  `path`, `ret_btype`, `ret_value`): Bubble's "initialize call"
+  `sample_value`s and every other member are dropped. `types` is now
+  `:malformed` instead of the malformed text, `raw` the JSON type of a call
+  that is not an object instead of its content, and `returns` only a
+  string. External types, their diagnostics and the data types are
+  identical on every fixture and on mm-137; `source_sha256` still hashes
+  the app input. Finding IDs and proposal hashes
   are unchanged on the private mm-137 export.
 
 ### Changed (breaking)

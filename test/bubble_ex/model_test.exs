@@ -794,6 +794,12 @@ defmodule BubbleEx.ModelTest do
                {"gExport", "cHostParam"} => "[tenant].crm.example",
                {"gExport", "cWholeUrl"} => nil,
                {"gExport", "cSlashPassword"} => nil,
+               {"gExport", "cUserInfo"} => nil,
+               {"gExport", "cHashUserInfo"} => nil,
+               {"gExport", "cQueryUserInfo"} => nil,
+               {"gExport", "cTyped"} => "api.typed.example",
+               {"gExport", "cBadTypes"} => nil,
+               {"gExport", "cStringCall"} => nil,
                {"gLive", "cSend"} => "api.mail.example",
                {"gLive", "cNoName"} => "hooks.example"
              }
@@ -835,7 +841,10 @@ defmodule BubbleEx.ModelTest do
       host = &Model.ConnectorReader.host/1
       assert host.("https://api.example.com") == "api.example.com"
       assert host.("  HTTPS://Api.Example.com:443/x?y=1") == "Api.Example.com"
-      assert host.("https://a:b@api.example.com/") == "api.example.com"
+      assert host.("https://a:b@api.example.com/") == nil
+      assert host.("https://sk_live_ABC123#@api.x.com/") == nil
+      assert host.("https://user:1234?@api.x.com") == nil
+      assert host.("https://api.x.com/?to=a@b.example") == nil
       assert host.("https://[region].api.example.com:[port]/x") == "[region].api.example.com"
       assert host.("https://api.example.com/users/@me") == nil
       assert host.("https://a:1/b@api.example.com") == nil
@@ -844,6 +853,7 @@ defmodule BubbleEx.ModelTest do
       assert host.("https://") == nil
       assert host.("https://[::1]/") == nil
       assert host.("https://bad host.example") == nil
+      assert host.("https://api.example.com#frag") == "api.example.com"
       assert host.(nil) == nil
     end
   end

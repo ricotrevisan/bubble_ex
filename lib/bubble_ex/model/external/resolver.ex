@@ -256,7 +256,7 @@ defmodule BubbleEx.Model.External.Resolver do
   defp call_registry(%ConnectorCall{raw: nil, registry: registry} = call) when is_map(registry),
     do: {:ok, call, registry}
 
-  defp call_registry(%ConnectorCall{raw: nil, types: types}) when types in [nil, ""],
+  defp call_registry(%ConnectorCall{raw: nil, types: nil}),
     do: {:error, :registry_unavailable}
 
   defp call_registry(_), do: {:error, :registry_malformed}

@@ -34,18 +34,19 @@ defmodule BubbleEx.Model.ConnectorReader do
 
   @doc """
   The host of `url`: what follows `scheme://` up to the first `/`, `?` or
-  `#`, without user info or port. Bubble `[parameter]` placeholders are kept
+  `#`, without port. Bubble `[parameter]` placeholders are kept
   as supplied. Nil when `url` has no scheme, starts with a placeholder, has
-  an `@` in its path (where user info might end), or its host is anything
-  but dot-separated labels of letters, digits, `-`, `_` and placeholders.
+  an `@` anywhere after `//` (user info, which may hold credentials and end
+  past a `/`, `?` or `#`), or its host is anything but dot-separated labels
+  of letters, digits, `-`, `_` and placeholders.
   """
   @spec host(term()) :: String.t() | nil
   def host(url) when is_binary(url) do
-    with [_, authority, rest] <-
-           Regex.run(~r{\A\s*[A-Za-z][A-Za-z0-9+.\-]*://([^/?#\\]*)([^?#]*)}, url),
-         # An `@` after the authority may end user info that holds a `/`.
-         false <- String.contains?(rest, "@"),
-         host_port = authority |> String.split("@") |> List.last(),
+    with [_, after_scheme] <- Regex.run(~r{\A\s*[A-Za-z][A-Za-z0-9+.\-]*://(.*)\z}s, url),
+         # User info (and so credentials) may end anywhere: at the host, or
+         # past a `/`, `?` or `#` it contains. Any `@` means no host.
+         false <- String.contains?(after_scheme, "@"),
+         [host_port | _] <- String.split(after_scheme, ["/", "?", "#", "\\"], parts: 2),
          host = String.replace(host_port, ~r/:(?:\d*|\[[^\[\]]*\])\z/, ""),
          true <- host?(host) do
       host
@@ -94,7 +95,8 @@ defmodule BubbleEx.Model.ConnectorReader do
   end
 
   defp call(id, call, placement, path) when is_map(call) do
-    registry = registry(Map.get(call, "types"))
+    types = Map.get(call, "types")
+    registry = registry(types)
 
     %ConnectorCall{
       id: id,
@@ -103,16 +105,24 @@ defmodule BubbleEx.Model.ConnectorReader do
       publish_as: first_text(call, ["publish_as"]),
       host: host(Map.get(call, "url")),
       parameters: parameters(call, @call_parameters ++ [{"params", :param}], path),
-      returns: Map.get(call, "ret_value"),
+      returns: first_text(call, ["ret_value"]),
       registry: registry,
-      types: if(is_nil(registry), do: Map.get(call, "types")),
+      types: if(is_nil(registry) and types not in [nil, ""], do: :malformed),
       placement: placement,
       path: pointer(path)
     }
   end
 
   defp call(id, call, placement, path),
-    do: %ConnectorCall{id: id, placement: placement, path: pointer(path), raw: call}
+    do: %ConnectorCall{id: id, placement: placement, path: pointer(path), raw: json_type(call)}
+
+  # What a call that is not an object is, never its content.
+  defp json_type(value) when is_binary(value), do: :string
+  defp json_type(value) when is_number(value), do: :number
+  defp json_type(value) when is_boolean(value), do: :boolean
+  defp json_type(nil), do: :null
+  defp json_type(value) when is_list(value), do: :array
+  defp json_type(_), do: :other
 
   # Every parameter of `owner`'s `collections`, by location then Bubble ID.
   # A `params` entry flagged `querystring` goes in the query string.
@@ -136,7 +146,8 @@ defmodule BubbleEx.Model.ConnectorReader do
 
   # Header names are HTTP tokens; anything else (e.g. `Authorization: Bearer
   # …` typed into the key) is not a name and is dropped. Other names are
-  # kept unless they span lines or are implausibly long.
+  # dropped when they hold `=`, `:` or whitespace (a `key=value` or
+  # `key: value` pair) or are implausibly long.
   @token ~r/\A[!#$%&'*+.^_`|~0-9A-Za-z\-]{1,128}\z/
   defp parameter_name(nil, _), do: nil
 
@@ -144,19 +155,63 @@ defmodule BubbleEx.Model.ConnectorReader do
     do: if(Regex.match?(@token, name), do: name)
 
   defp parameter_name(name, _) do
-    if String.length(name) <= 128 and not String.match?(name, ~r/[\x00-\x1f\x7f]/u),
+    if String.length(name) in 1..128 and not String.match?(name, ~r/[=:\s\x00-\x1f\x7f]/u),
       do: name
   end
 
-  # A types registry is the JSON text of an object.
+  # A types registry is the JSON text of an object: type ID => definition.
+  # Only its type shapes are kept. Bubble stores the "initialize call"
+  # response in it too (fields' `sample_value`: real response data), and
+  # that, like any other member, is dropped.
   defp registry(types) when is_binary(types) do
     case Jason.decode(types) do
-      {:ok, registry} when is_map(registry) -> registry
-      _ -> nil
+      {:ok, registry} when is_map(registry) ->
+        Map.new(registry, fn {id, d} -> {id, definition(d)} end)
+
+      _ ->
+        nil
     end
   end
 
   defp registry(_), do: nil
+
+  # A definition keeps its caption and its fields' shapes; one that is not
+  # an object (or its `fields` when not an object) becomes nil, which the
+  # resolver diagnoses just the same.
+  defp definition(definition) when is_map(definition) do
+    fields =
+      case Map.get(definition, "fields") do
+        fields when is_map(fields) -> Map.new(fields, fn {id, f} -> {id, registry_field(f)} end)
+        _ -> nil
+      end
+
+    definition |> Map.take(["caption"]) |> keep_text(["caption"]) |> put_some("fields", fields)
+  end
+
+  defp definition(_), do: nil
+
+  @field_shape ~w(caption ret_btype ret_value)
+  defp registry_field(field) when is_map(field) do
+    field
+    |> Map.take(@field_shape)
+    |> keep_text(@field_shape)
+    |> put_some("path", response_path(Map.get(field, "path")))
+  end
+
+  defp registry_field(_), do: nil
+
+  # A response path is a list of keys and indices.
+  defp response_path(path) when is_list(path) do
+    if Enum.all?(path, &(is_binary(&1) or is_integer(&1))), do: path
+  end
+
+  defp response_path(_), do: nil
+
+  defp keep_text(map, keys),
+    do: Map.reject(map, fn {k, v} -> k in keys and not is_binary(v) end)
+
+  defp put_some(map, _key, nil), do: map
+  defp put_some(map, key, value), do: Map.put(map, key, value)
 
   defp entries(map),
     do: map |> Map.filter(fn {k, _} -> is_binary(k) end) |> Enum.sort_by(&elem(&1, 0))
