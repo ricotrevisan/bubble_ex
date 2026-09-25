@@ -2,7 +2,8 @@ defmodule BubbleEx.Db.Sql.Postgres do
   @moduledoc """
   Encodes a parsed Bubble database map (see `BubbleEx.Db.Reader`) into PostgreSQL
   DDL: a `CREATE SCHEMA` per table group, a `CREATE TABLE` (columns + primary key)
-  per table, and an `ALTER TABLE ... ADD FOREIGN KEY` per scalar reference.
+  per table, and an `ALTER TABLE ... ADD FOREIGN KEY` per scalar reference
+  except the built-in `Created By` (see `BubbleEx.Db.Encoder.foreign_key?/1`).
 
   List/array references become native array columns (`text[]`) with no foreign-key
   constraint, mirroring how Bubble stores lists of ids on the record.
@@ -69,10 +70,7 @@ defmodule BubbleEx.Db.Sql.Postgres do
   defp encode_foreign_keys(parsed_map, opts) do
     parsed_map
     |> Map.get(:relationships, [])
-    |> Enum.filter(fn {from, to, _dir} ->
-      from != nil and to != nil and not from.deleted and not to.deleted and
-        Map.get(from.type, :is_array) != true
-    end)
+    |> Enum.filter(&BubbleEx.Db.Encoder.foreign_key?/1)
     |> Enum.map_join("\n", fn {from, to, _dir} -> encode_fk(from, to, opts) end)
   end
 

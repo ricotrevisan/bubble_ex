@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "created by_2" TEXT,
   "SLUG_2" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value"),
   FOREIGN KEY ("created by_2") REFERENCES "custom__User" ("_id")
 );
@@ -32,8 +31,7 @@ CREATE TABLE IF NOT EXISTS "custom__task_2" (
   "Modified Date" TEXT,
   "Created By" TEXT,
   "Slug" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -44,8 +42,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Slug" TEXT,
   "email" TEXT,
   "Email_2" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Status" (

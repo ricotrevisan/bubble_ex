@@ -27,15 +27,6 @@ CREATE TABLE [custom].[User] (
   [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
-
-ALTER TABLE [custom].[Shipment]
-  ADD CONSTRAINT [FK_shipment_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
 external_type_unresolved_root /user_types/shipment/fields/invalid_api/value

@@ -64,14 +64,6 @@ CREATE TABLE [option].[Status] (
   CONSTRAINT [PK_status] PRIMARY KEY ([db_value])
 );
 
-ALTER TABLE [custom].[Project]
-  ADD CONSTRAINT [FK_project_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Task]
-  ADD CONSTRAINT [FK_task_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_owner]
   FOREIGN KEY ([Owner])
@@ -84,8 +76,4 @@ ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_status]
   FOREIGN KEY ([Status])
   REFERENCES [option].[Status] ([db_value]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---

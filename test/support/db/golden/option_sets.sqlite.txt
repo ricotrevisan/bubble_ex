@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS "custom__Ticket" (
   "Channels" TEXT,  -- list<TEXT>; store as JSON
   "Priority" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Priority") REFERENCES "option__Priority" ("db_value")
 );
 
@@ -24,8 +23,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Channel" (

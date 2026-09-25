@@ -57,11 +57,8 @@ CREATE TABLE "option"."TASK_3" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("created by_2") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."task_2" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2

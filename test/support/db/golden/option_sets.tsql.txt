@@ -50,17 +50,9 @@ CREATE TABLE [option].[Priority] (
 );
 
 ALTER TABLE [custom].[Ticket]
-  ADD CONSTRAINT [FK_ticket_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Ticket]
   ADD CONSTRAINT [FK_ticket_priority]
   FOREIGN KEY ([Priority])
   REFERENCES [option].[Priority] ([db_value]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 ALTER TABLE [option].[Priority]
   ADD CONSTRAINT [FK_priority_escalates_to]
   FOREIGN KEY ([Escalates to])

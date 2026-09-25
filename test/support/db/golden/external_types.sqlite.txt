@@ -18,8 +18,7 @@ CREATE TABLE IF NOT EXISTS "custom__Shipment" (
   "Nowhere" TEXT CHECK ("Nowhere" IS NULL OR json_valid("Nowhere")),
   "Pings" TEXT CHECK ("Pings" IS NULL OR json_valid("Pings")),
   "Tree" TEXT CHECK ("Tree" IS NULL OR json_valid("Tree")),
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -29,8 +28,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 --- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types

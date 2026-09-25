@@ -21,8 +21,6 @@ CREATE TABLE "custom"."User" (
   PRIMARY KEY ("_id")
 );
 
-ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Node" ADD FOREIGN KEY ("Parent") REFERENCES "custom"."Node" ("_id");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

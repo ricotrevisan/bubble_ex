@@ -62,10 +62,7 @@ CREATE TABLE "option"."Status" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Project" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Owner") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Project") REFERENCES "custom"."Project" ("_id");
 ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Status") REFERENCES "option"."Status" ("db_value");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---

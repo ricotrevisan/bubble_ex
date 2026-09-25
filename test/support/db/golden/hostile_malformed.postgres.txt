@@ -53,10 +53,6 @@ CREATE TABLE "option"."Bad values" (
   "Display" text,
   PRIMARY KEY ("db_value")
 );
-
-ALTER TABLE "custom"."Listy" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."Task" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_malformed_node /option_sets/bad_set
 model_malformed_node /option_sets/bad_value/values/v1

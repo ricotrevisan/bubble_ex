@@ -40,11 +40,7 @@ CREATE TABLE "custom"."User" (
   PRIMARY KEY ("_id")
 );
 
-ALTER TABLE "custom"."A" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."A" ADD FOREIGN KEY ("B") REFERENCES "custom"."B" ("_id");
-ALTER TABLE "custom"."B" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."C" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."C" ADD FOREIGN KEY ("A") REFERENCES "custom"."A" ("_id");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

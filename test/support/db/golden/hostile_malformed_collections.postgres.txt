@@ -9,8 +9,6 @@ CREATE TABLE "custom"."User" (
   "email" text,
   PRIMARY KEY ("_id")
 );
-
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_malformed_node /option_sets
 model_malformed_node /user_types

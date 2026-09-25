@@ -807,6 +807,16 @@ defmodule BubbleEx.Db.ReaderTest do
       assert Enum.map(notes, & &1[:details].target) == ["gone", "retired"]
     end
 
+    test "SQL has no foreign key on the built-in Created By, only on defined references",
+         %{db: db} do
+      for format <- [:postgres, :sqlite, :tsql] do
+        {:ok, %{content: sql}} = BubbleEx.Db.Encoder.render(format, db)
+        fks = sql |> String.split("\n") |> Enum.filter(&(&1 =~ "FOREIGN KEY"))
+        refute Enum.any?(fks, &(&1 =~ ~r/Created By[\]"]\)/)), "#{format}: #{inspect(fks)}"
+        assert Enum.any?(fks, &(&1 =~ "created by_2")), "#{format}: #{inspect(fks)}"
+      end
+    end
+
     test "Encoder.render emits the projection's diagnostics for its target", %{db: db} do
       {:ok, result} = BubbleEx.Db.Encoder.render(:sqlite, db)
       suffixed = Enum.filter(result.diagnostics, &(&1.code == :db_name_suffixed))

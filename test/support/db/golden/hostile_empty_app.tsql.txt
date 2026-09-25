@@ -10,10 +10,5 @@ CREATE TABLE [custom].[User] (
   [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
-
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

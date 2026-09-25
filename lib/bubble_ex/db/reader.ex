@@ -22,14 +22,17 @@ defmodule BubbleEx.Db.Reader do
       (`BubbleEx.Model.DataType.system_fields`): `Created Date` and
       `Modified Date` (dates), `Created By` (a reference to User, so a
       relationship), `Slug` (text), and `email` (text) on User, named as
-      the Model names them. Option tables get a `db_value` primary-key column (the value's stable
-      key, `BubbleEx.Model.OptionValue.key`) and a `display` column (its
-      display text), then the declared attributes.
+      the Model names them. A column's `system` is its built-in role
+      (`BubbleEx.Model.Field.system`, `:unique_id` for `_id`), nil for
+      declared fields and option-set columns. Option tables get a
+      `db_value` primary-key column (the value's stable key,
+      `BubbleEx.Model.OptionValue.key`) and a `display` column (its display
+      text), then the declared attributes.
     * Deleted and malformed fields and attributes are left out. A declared
       field whose Bubble ID is a primary-key or `display` column's is left
-      out too (the injected column stands for it). A declared field whose
-      Bubble ID is a built-in field's replaces it (the Model keeps only the
-      declared one).
+      out too (the injected column stands for it). A live declared field
+      whose Bubble ID is a built-in field's replaces it (the Model keeps
+      only the declared one).
     * `values` are an option set's values that are not deleted, in the
       Model's order (`sort_factor`, then Bubble ID), with `db_value` holding
       the stable key.
@@ -119,7 +122,8 @@ defmodule BubbleEx.Db.Reader do
           primary_key: boolean(),
           deleted: false,
           default: term(),
-          source_path: String.t() | nil
+          source_path: String.t() | nil,
+          system: Field.system() | nil
         }
 
   @type relationship_direction() :: :many_to_one | :many_to_many
@@ -303,7 +307,8 @@ defmodule BubbleEx.Db.Reader do
       primary_key: true,
       deleted: false,
       default: nil,
-      source_path: path
+      source_path: path,
+      system: if(id == @custom_pk, do: :unique_id)
     }
   end
 
@@ -340,7 +345,8 @@ defmodule BubbleEx.Db.Reader do
       deleted: false,
       default: field.default,
       source_path:
-        Resolver.descriptor_pointer(source, table.group, table.id, field.id) || field.path
+        Resolver.descriptor_pointer(source, table.group, table.id, field.id) || field.path,
+      system: field.system
     }
   end
 

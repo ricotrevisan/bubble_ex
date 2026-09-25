@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS "custom__A" (
   "Slug" TEXT,
   "B" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("B") REFERENCES "custom__B" ("_id")
 );
 
@@ -23,8 +22,7 @@ CREATE TABLE IF NOT EXISTS "custom__B" (
   "Created By" TEXT,
   "Slug" TEXT,
   "C" TEXT,  -- list<TEXT>; store as JSON
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__C" (
@@ -35,7 +33,6 @@ CREATE TABLE IF NOT EXISTS "custom__C" (
   "Slug" TEXT,
   "A" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("A") REFERENCES "custom__A" ("_id")
 );
 
@@ -46,8 +43,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

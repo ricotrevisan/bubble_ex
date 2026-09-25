@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS "custom__Invoice" (
   "Lines" TEXT,  -- list<TEXT>; store as JSON
   "State" TEXT,
   "Total" REAL,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -26,8 +25,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 --- diagnostics ---
 db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value

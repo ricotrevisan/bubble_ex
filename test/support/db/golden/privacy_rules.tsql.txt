@@ -41,21 +41,4 @@ CREATE TABLE [custom].[User] (
   [Admin] BIT,
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
-
-ALTER TABLE [custom].[Draft]
-  ADD CONSTRAINT [FK_draft_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Note]
-  ADD CONSTRAINT [FK_note_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Public page]
-  ADD CONSTRAINT [FK_public_page_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---

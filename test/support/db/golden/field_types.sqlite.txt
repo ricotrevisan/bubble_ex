@@ -11,8 +11,7 @@ CREATE TABLE IF NOT EXISTS "custom__Project" (
   "Created By" TEXT,
   "Slug" TEXT,
   "Name" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Task" (
@@ -46,7 +45,6 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "Watchers" TEXT,  -- list<TEXT>; store as JSON
   "Window" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Owner") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Project") REFERENCES "custom__Project" ("_id"),
   FOREIGN KEY ("Status") REFERENCES "option__Status" ("db_value")
@@ -60,8 +58,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Slug" TEXT,
   "email" TEXT,
   "Nickname" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Status" (

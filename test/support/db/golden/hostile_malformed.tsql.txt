@@ -50,19 +50,6 @@ CREATE TABLE [option].[Bad values] (
   [Display] NVARCHAR(MAX),
   CONSTRAINT [PK_bad_values] PRIMARY KEY ([db_value])
 );
-
-ALTER TABLE [custom].[Listy]
-  ADD CONSTRAINT [FK_listy_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Task]
-  ADD CONSTRAINT [FK_task_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 model_malformed_node /option_sets/bad_set
 model_malformed_node /option_sets/bad_value/values/v1

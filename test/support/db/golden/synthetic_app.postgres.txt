@@ -42,10 +42,7 @@ CREATE TABLE "option"."Status Type" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Onboarding Answer" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("onboarding answer") REFERENCES "custom"."Onboarding Answer" ("_id");
 ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

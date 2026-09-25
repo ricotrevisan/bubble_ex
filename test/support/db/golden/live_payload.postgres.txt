@@ -31,9 +31,7 @@ CREATE TABLE "option"."Kind" (
   PRIMARY KEY ("db_value")
 );
 
-ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Buyer") REFERENCES "custom"."User" ("_id");
 ALTER TABLE "custom"."Order" ADD FOREIGN KEY ("Kind") REFERENCES "option"."Kind" ("db_value");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 db_reference_to_omitted /user_types/order/%f3/items_list_custom_item/%v

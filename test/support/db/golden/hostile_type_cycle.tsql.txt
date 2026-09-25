@@ -42,28 +42,12 @@ CREATE TABLE [custom].[User] (
 );
 
 ALTER TABLE [custom].[A]
-  ADD CONSTRAINT [FK_a_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[A]
   ADD CONSTRAINT [FK_a_b]
   FOREIGN KEY ([B])
   REFERENCES [custom].[B] ([_id]);
-ALTER TABLE [custom].[B]
-  ADD CONSTRAINT [FK_b_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[C]
-  ADD CONSTRAINT [FK_c_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 ALTER TABLE [custom].[C]
   ADD CONSTRAINT [FK_c_a]
   FOREIGN KEY ([A])
   REFERENCES [custom].[A] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

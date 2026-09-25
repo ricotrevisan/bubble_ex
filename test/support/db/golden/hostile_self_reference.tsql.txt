@@ -23,16 +23,8 @@ CREATE TABLE [custom].[User] (
 );
 
 ALTER TABLE [custom].[Node]
-  ADD CONSTRAINT [FK_node_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Node]
   ADD CONSTRAINT [FK_node_parent]
   FOREIGN KEY ([Parent])
   REFERENCES [custom].[Node] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS "custom__Order" (
   "Items" TEXT,  -- list<TEXT>; store as JSON
   "Kind" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Buyer") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("Kind") REFERENCES "option__Kind" ("db_value")
 );
@@ -27,8 +26,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Slug" TEXT,
   "email" TEXT,
   "Name" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Kind" (

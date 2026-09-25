@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS "custom__Draft" (
   "Modified Date" TEXT,
   "Created By" TEXT,
   "Slug" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Note" (
@@ -22,8 +21,7 @@ CREATE TABLE IF NOT EXISTS "custom__Note" (
   "Slug" TEXT,
   "Body" TEXT,
   "Secret" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Public page" (
@@ -33,8 +31,7 @@ CREATE TABLE IF NOT EXISTS "custom__Public page" (
   "Created By" TEXT,
   "Slug" TEXT,
   "Slug text" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -45,7 +42,6 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Slug" TEXT,
   "email" TEXT,
   "Admin" INTEGER,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 --- diagnostics ---

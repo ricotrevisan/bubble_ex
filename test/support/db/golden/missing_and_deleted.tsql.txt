@@ -24,15 +24,6 @@ CREATE TABLE [custom].[User] (
   [email] NVARCHAR(MAX),
   CONSTRAINT [PK_user] PRIMARY KEY ([_id])
 );
-
-ALTER TABLE [custom].[Invoice]
-  ADD CONSTRAINT [FK_invoice_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
 model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value

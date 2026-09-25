@@ -60,24 +60,12 @@ CREATE TABLE [option].[TASK_3] (
 );
 
 ALTER TABLE [custom].[Task]
-  ADD CONSTRAINT [FK_task_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_status]
   FOREIGN KEY ([Status])
   REFERENCES [option].[Status] ([db_value]);
 ALTER TABLE [custom].[Task]
   ADD CONSTRAINT [FK_task_created_by_2]
   FOREIGN KEY ([created by_2])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[task_2]
-  ADD CONSTRAINT [FK_task_2_created_by]
-  FOREIGN KEY ([Created By])
-  REFERENCES [custom].[User] ([_id]);
-ALTER TABLE [custom].[User]
-  ADD CONSTRAINT [FK_user_created_by]
-  FOREIGN KEY ([Created By])
   REFERENCES [custom].[User] ([_id]);
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2

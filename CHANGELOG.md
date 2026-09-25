@@ -17,8 +17,10 @@ All notable changes to this project are documented here.
   (`Created Date_2`, `db_name_suffixed`). Per encoder: **DBML** four more
   columns per table (five on User) and a `Ref:` from each table's
   `"Created By"` to `"User"."_id"`; **PostgreSQL / SQLite / T-SQL** the
-  columns (`timestamptz` / `TEXT` / `DATETIME2` dates) and a foreign key from
-  `"Created By"` to User's `_id` (User's is to itself); **Ecto**
+  columns (`timestamptz` / `TEXT` / `DATETIME2` dates), with no foreign key
+  on `"Created By"` (as in `:ash`: a creator can be a deleted user, or none
+  for records made by backend workflows or logged-out visitors;
+  `Db.Encoder.foreign_key?/1`); **Ecto**
   `field :created_date`, `:modified_date`, `:slug` (`:email`),
   `belongs_to :created_by, User, foreign_key: :created_by_id`, the migration
   columns and a `created_by_id` index; **Zod** nullish `'Created Date'`,
@@ -27,8 +29,10 @@ All notable changes to this project are documented here.
   `ref:user._id` text field), `slug`, `email`; **Convex** `createdDate`,
   `modifiedDate` (`v.float64()`), `createdBy` (re-key to `v.id`), `slug`,
   `email`. Names follow each format's usual rules, so they are not `:ash`'s
-  (`creator` / `creator_id`), and the SQL formats keep a foreign key that
-  `:ash` leaves out.
+  (`creator` / `creator_id`). Reader columns gain `system`, the built-in
+  role (`:unique_id`, `:created_by`, ...) or nil. A deleted or malformed
+  defined field no longer hides the built-in field with its Bubble ID in
+  the Model (`DataType.system_fields`); only a live one replaces it.
 - **`BubbleEx.Db.Reader`'s tables are a projection of `BubbleEx.Model`**
   (WTF-365). The Reader no longer reads data types, fields or option sets
   itself (a test forbids it), so DBML, PostgreSQL, SQLite, T-SQL, Ecto, Zod,
@@ -222,10 +226,6 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
-- Xano output lists each table's and field's keys in a fixed order (`name`,
-  `type`, `values`, `description`, `style`, `children`). It used to follow
-  atom creation order, so `children` moved before or after `style` between
-  runs.
 - Preserve snapshot stylesheet cascade order, adopted styles, embedded frame
   state and local frame assets. Restore captured scroll offsets with a fixed,
   CSP-hashed initializer while continuing to remove source execution. Keep

@@ -44,6 +44,20 @@ defmodule BubbleEx.Db.Encoder do
   }
 
   @doc """
+  Whether a SQL encoder declares a foreign key for a Reader relationship:
+  a resolved scalar reference, except the built-in `Created By`. Bubble
+  keeps a record's creator after the user is deleted, and records created
+  by backend workflows or logged-out visitors may have none that exists,
+  so, as in `BubbleEx.Target.Ash` (WTF-338), it is a reference without a
+  constraint. List references have no foreign key either.
+  """
+  @spec foreign_key?(BubbleEx.Db.Reader.relationship()) :: boolean()
+  def foreign_key?({from, to, _direction}) do
+    from != nil and to != nil and not from.deleted and not to.deleted and
+      Map.get(from.type, :is_array) != true and Map.get(from, :system) != :created_by
+  end
+
+  @doc """
   Resolves a format atom to its encoder module, or an `:unknown_format` error.
   """
   @spec module_for(atom()) :: {:ok, module()} | {:error, Error.t()}

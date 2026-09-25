@@ -18,8 +18,7 @@ CREATE TABLE IF NOT EXISTS "custom__00. Thing - Join" (
   "Title" TEXT,
   "Title_2" TEXT,
   "type" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__🚀 Launch" (
@@ -30,8 +29,7 @@ CREATE TABLE IF NOT EXISTS "custom__🚀 Launch" (
   "Slug" TEXT,
   "🔥" TEXT,
   "Name ✨" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Thing" (
@@ -40,8 +38,7 @@ CREATE TABLE IF NOT EXISTS "custom__Thing" (
   "Modified Date" TEXT,
   "Created By" TEXT,
   "Slug" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Thing_2" (
@@ -50,8 +47,7 @@ CREATE TABLE IF NOT EXISTS "custom__Thing_2" (
   "Modified Date" TEXT,
   "Created By" TEXT,
   "Slug" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -61,8 +57,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__40. Levels" (

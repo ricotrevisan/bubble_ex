@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS "custom__Onboarding Answer" (
   "Slug" TEXT,
   "label" TEXT,
   "score" REAL,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Survey Response" (
@@ -27,7 +26,6 @@ CREATE TABLE IF NOT EXISTS "custom__Survey Response" (
   "rating" REAL,
   "status" TEXT,
   PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id"),
   FOREIGN KEY ("onboarding answer") REFERENCES "custom__Onboarding Answer" ("_id"),
   FOREIGN KEY ("status") REFERENCES "option__Status Type" ("db_value")
 );
@@ -39,8 +37,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Status Type" (

@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS "custom__Listy" (
   "Modified Date" TEXT,
   "Created By" TEXT,
   "Slug" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__Task" (
@@ -28,8 +27,7 @@ CREATE TABLE IF NOT EXISTS "custom__Task" (
   "OK" TEXT,
   "Quantum" TEXT,
   "Untyped" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "custom__User" (
@@ -39,8 +37,7 @@ CREATE TABLE IF NOT EXISTS "custom__User" (
   "Created By" TEXT,
   "Slug" TEXT,
   "email" TEXT,
-  PRIMARY KEY ("_id"),
-  FOREIGN KEY ("Created By") REFERENCES "custom__User" ("_id")
+  PRIMARY KEY ("_id")
 );
 
 CREATE TABLE IF NOT EXISTS "option__Bad value" (

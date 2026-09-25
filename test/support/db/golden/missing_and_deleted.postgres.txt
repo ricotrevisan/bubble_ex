@@ -23,9 +23,6 @@ CREATE TABLE "custom"."User" (
   "email" text,
   PRIMARY KEY ("_id")
 );
-
-ALTER TABLE "custom"."Invoice" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
-ALTER TABLE "custom"."User" ADD FOREIGN KEY ("Created By") REFERENCES "custom"."User" ("_id");
 --- diagnostics ---
 db_reference_to_omitted /user_types/invoice/fields/archive_custom_archive/value
 model_unresolved_target /user_types/invoice/fields/customer_custom_ghost/value
