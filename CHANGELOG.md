@@ -184,6 +184,34 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Privacy rules compiled to Ash policies (WTF-356). `BubbleEx.Target.Ash.map/3`
+  now gives every resource `policies` (a keyed primary `:read` for direct
+  view: a separate policy with the generated `<namespace>.Privacy.KeyedRead`
+  check allows only records selected by primary key or loaded through a
+  relationship, for reads and aggregates alike; a new `:search` read for Bubble searches, an `:auto_bind` update with a policy
+  per bindable field), `field_policies` (per-field visibility, the union of
+  the rules showing each field) and private boolean `calculations`, one per
+  rule condition (compiled fail-safe by `Target.Ash.Expressions`) and one
+  per "everyone else" grant. Types without rules get Bubble's public
+  defaults; a type whose rules the source lacks denies every read; a
+  condition that does not compile grants nothing. Attachments and the Data
+  API are kept as data and diagnosed; with the new `:index` option,
+  workflows ignoring privacy rules become `authorization_bypasses`.
+  `Project.actor_loads` and the rendered `<namespace>.Privacy.load_actor/1`
+  load the actor afresh. **Safety gate:** `Project.policies_verified` is
+  always `false`, every Project carries `:ash_policies_unverified`, and the
+  rendered policies say "NOT VERIFIED AGAINST BUBBLE" until the WTF-384/385
+  replay. `Project.schema_version` is 2; `Target.Ash.versions/0` adds
+  `picosat_elixir` (Ash's SAT solver for policies). New diagnostic codes
+  `ash_policies_unverified`, `ash_policy_*` and
+  `ash_privacy_rules_unavailable`. The "everyone else" negation also
+  requires the record values it reads to be non-empty, so it can only
+  under-grant. Aggregates over fields some users may not view are not
+  covered by Ash field policies: documented and diagnosed
+  (`ash_policy_aggregates_unguarded`). `scripts/ash_compile_check.sh` runs
+  `policies.exs`: every resource read through its policies, and a
+  hand-authored persona table for the policy fixture.
+
 - Typed expression compiler (WTF-368). `BubbleEx.Expression.Typing` resolves
   the type of every expression node from the Model and the app's element tree
   (`BubbleEx.Expression.Tree`): parent groups, repeating-group cells, page

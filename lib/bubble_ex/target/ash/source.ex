@@ -24,9 +24,14 @@ defmodule BubbleEx.Target.Ash.Source do
   alias BubbleEx.Error
 
   alias BubbleEx.Target.Ash.{
+    Action,
     Attribute,
+    Calculation,
     CustomType,
     Expr,
+    FieldPolicy,
+    Policy,
+    PolicyCheck,
     Project,
     Relationship,
     Resource,
@@ -56,7 +61,24 @@ defmodule BubbleEx.Target.Ash.Source do
     defaults: 1,
     resource: 1,
     field: 2,
-    field: 3
+    field: 3,
+    calculate: 3,
+    calculate: 4,
+    filter: 1,
+    prepare: 1,
+    primary?: 1,
+    sortable?: 1,
+    private_fields: 1,
+    policy: 1,
+    field_policy: 1,
+    authorize_if: 1,
+    forbid_if: 1,
+    description: 1,
+    accept: 1,
+    read: 1,
+    read: 2,
+    update: 1,
+    update: 2
   ]
 
   @header """
@@ -89,8 +111,9 @@ defmodule BubbleEx.Target.Ash.Source do
         Enum.map(project.types, &custom_type(&1, ctx)) ++
           Enum.map(project.enums, &enum(&1, ctx)) ++
           Enum.map(project.typed_structs, &typed_struct(&1, ctx)) ++
+          keyed_read_module(project, ctx) ++
           Enum.map(project.resources, &resource(&1, ctx)) ++
-          [domain_module(project, ctx)]
+          [domain_module(project, ctx)] ++ privacy_module(project, ctx)
 
       source = @header <> "\n" <> Enum.join(modules, "\n\n")
 
@@ -210,24 +233,129 @@ defmodule BubbleEx.Target.Ash.Source do
   defp resource(%Resource{} = resource, ctx) do
     """
     defmodule #{module(resource.module, ctx)} do
-      #{moduledoc(resource.description)}use Ash.Resource, domain: #{ctx.domain}, data_layer: AshPostgres.DataLayer
+      #{moduledoc(resource.description)}use Ash.Resource, domain: #{ctx.domain}, data_layer: AshPostgres.DataLayer#{authorizers(resource)}
 
       postgres do
         table #{literal(resource.table)}
         repo #{ctx.repo}
-    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships)}
+    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships ++ resource.privacy_relationships)}
       end
 
       attributes do
     #{Enum.map_join(resource.attributes, "\n", &attribute(&1, ctx))}
       end
-    #{relationships(resource.relationships, ctx)}#{identities(resource.identities)}
+    #{relationships(resource.relationships ++ resource.privacy_relationships, ctx)}#{calculations(resource.calculations)}#{identities(resource.identities)}
       actions do
         defaults #{literal(resource.actions)}
+    #{Enum.map_join(resource.extra_actions, "\n", &action(&1, ctx))}
       end
+    #{policies(resource, ctx)}#{field_policies(resource.field_policies, ctx)}end
+    """
+  end
+
+  defp authorizers(%Resource{policies: []}), do: ""
+  defp authorizers(%Resource{}), do: ", authorizers: [Ash.Policy.Authorizer]"
+
+  defp action(%Action{type: :read} = action, _ctx) do
+    """
+    read #{atom(action.name)} do
+      #{description(action.description)}#{if action.primary?, do: "\nprimary? true", else: ""}
     end
     """
   end
+
+  defp action(%Action{type: :update} = action, _ctx) do
+    """
+    update #{atom(action.name)} do
+      #{description(action.description)}
+      accept [#{Enum.map_join(action.accept, ", ", &atom/1)}]
+    end
+    """
+  end
+
+  defp description(nil), do: ""
+  defp description(text), do: "description #{literal(text)}"
+
+  defp calculations([]), do: ""
+
+  defp calculations(calculations) do
+    lines =
+      Enum.map_join(calculations, "\n", fn %Calculation{} = c ->
+        options =
+          [{"public?", "false"}] ++
+            if(c.description, do: [{"description", literal(c.description)}], else: [])
+
+        "calculate #{atom(c.name)}, :boolean, #{expr(c.expr)}, #{options(options)}"
+      end)
+
+    "\ncalculations do\n#{lines}\nend\n"
+  end
+
+  @policies_header """
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount. Enumerate records only through :search; :read
+  # returns records by primary key. Field policies do not guard code: a
+  # filter, sort or calculation written in code (not *_input) that reads a
+  # field the actor may not view still sees its value, so lowered searches
+  # must not reference such fields directly, nor the private *_for_privacy
+  # relationships. Aggregates (count, min, max, sum, ...) over a field are
+  # not covered by field policies either: never aggregate a field the actor
+  # may not view.
+  """
+
+  defp policies(%Resource{policies: []}, _ctx), do: ""
+
+  defp policies(%Resource{policies: policies}, ctx) do
+    "\n" <>
+      @policies_header <>
+      "policies do\n" <> Enum.map_join(policies, "\n", &policy(&1, ctx)) <> "\nend\n"
+  end
+
+  defp policy(%Policy{} = policy, ctx) do
+    condition =
+      case policy.changing do
+        nil ->
+          "action(#{atom(policy.action)})"
+
+        names ->
+          "[action(#{atom(policy.action)}), changing_attributes([#{Enum.map_join(names, ", ", &atom/1)}])]"
+      end
+
+    """
+    policy #{condition} do
+      #{description(policy.description)}
+    #{checks(policy.checks, ctx)}
+    end
+    """
+  end
+
+  defp field_policies([], _ctx), do: ""
+
+  defp field_policies(policies, ctx) do
+    body =
+      Enum.map_join(policies, "\n", fn %FieldPolicy{} = policy ->
+        """
+        field_policy [#{Enum.map_join(policy.fields, ", ", &atom/1)}] do
+        #{checks(policy.checks, ctx)}
+        end
+        """
+      end)
+
+    "\nfield_policies do\nprivate_fields :hide\n\n" <> body <> "\nend\n"
+  end
+
+  defp checks(checks, ctx), do: Enum.map_join(checks, "\n", &check(&1, ctx))
+
+  defp check(%PolicyCheck{kind: kind, test: :always}, _ctx), do: "#{kind} always()"
+
+  defp check(%PolicyCheck{kind: kind, test: :keyed}, ctx),
+    do: "#{kind} #{ctx.namespace}.Privacy.KeyedRead"
+
+  defp check(%PolicyCheck{kind: kind, test: {:calculation, name}}, _ctx),
+    do: "#{kind} expr(#{identifier!(name)})"
 
   defp attribute(%Attribute{} = attribute, ctx) do
     options =
@@ -283,9 +411,16 @@ defmodule BubbleEx.Target.Ash.Source do
       define_attribute? #{literal(r.define_attribute?)}
       allow_nil? #{literal(r.allow_nil?)}
       public? #{literal(r.public?)}
+      sortable? #{literal(r.sortable?)}#{gate(r.gate)}
     end
     """
   end
+
+  defp gate(nil), do: ""
+  defp gate(:never), do: "\nfilter expr(false)"
+
+  defp gate({:visible_if, calcs}),
+    do: "\nfilter expr(parent(" <> Enum.map_join(calcs, " or ", &identifier!/1) <> "))"
 
   defp identities([]), do: ""
 
@@ -310,6 +445,145 @@ defmodule BubbleEx.Target.Ash.Source do
       end
     end
     """
+  end
+
+  # The policy check of every keyed `:read`: the read, or
+  # aggregate, selects records by primary key at the top level (`id == x`,
+  # `id in [...]`, and-ed with anything), or loads a relationship.
+  defp keyed_read_module(project, ctx) do
+    if Enum.any?(project.resources, fn r -> Enum.any?(r.extra_actions, & &1.keyed?) end) do
+      [
+        """
+        defmodule #{ctx.namespace}.Privacy.KeyedRead do
+          @moduledoc \"\"\"
+          Policy check: an authorized read (or aggregate) of the primary `:read`
+          must select records by primary key (`Ash.get`) or load them through a
+          relationship; direct view in Bubble reaches a record through a
+          reference, never by listing. Otherwise it is forbidden. Enumerate
+          and count with `:search`.
+          Generated by bubble_ex (WTF-356); NOT VERIFIED AGAINST BUBBLE.
+          \"\"\"
+          use Ash.Policy.SimpleCheck
+
+          alias Ash.Query.{BooleanExpression, Ref}
+          alias Ash.Query.Operator.{Eq, In}
+
+          @impl true
+          def describe(_opts), do: "the read selects records by primary key"
+
+          # A policy check, not a preparation: it also sees aggregate queries
+          # (count, exists, max, ...), which run no read hooks. A
+          # relationship load (`accessing_from`) is keyed by the source
+          # records' IDs, possibly as `id == parent(...)`.
+          @impl true
+          def match?(_actor, %{query: %Ash.Query{} = query}, _opts) do
+            query.context[:accessing_from] != nil or
+              keyed?(query.filter && query.filter.expression, query.resource)
+          end
+
+          def match?(_actor, _context, _opts), do: false
+
+          defp keyed?(%BooleanExpression{op: :and, left: left, right: right}, resource),
+            do: keyed?(left, resource) or keyed?(right, resource)
+
+          defp keyed?(%Eq{left: %Ref{relationship_path: [], attribute: a}, right: v}, resource),
+            do: key?(a, resource) and not Ash.Expr.expr?(v)
+
+          defp keyed?(%Eq{left: v, right: %Ref{relationship_path: [], attribute: a}}, resource),
+            do: key?(a, resource) and not Ash.Expr.expr?(v)
+
+          defp keyed?(%In{left: %Ref{relationship_path: [], attribute: a}, right: v}, resource),
+            do: key?(a, resource) and not Ash.Expr.expr?(v)
+
+          defp keyed?(_expression, _resource), do: false
+
+          defp key?(attribute, resource),
+            do: [name(attribute)] == Ash.Resource.Info.primary_key(resource)
+
+          defp name(%{name: name}), do: name
+          defp name(name), do: name
+        end
+        """
+      ]
+    else
+      []
+    end
+  end
+
+  # The privacy helpers every generated app needs: whether the policies are
+  # verified (never, yet) and loading the actor with what they read.
+  defp privacy_module(%Project{resources: []}, _ctx), do: []
+
+  defp privacy_module(%Project{} = project, ctx) do
+    loads = load_tree(project.actor_loads)
+
+    load_actor =
+      case Enum.find(project.resources, &(&1.source[:type] == "user")) do
+        nil ->
+          ""
+
+        user ->
+          """
+
+          @doc "The resource of the actor (Bubble's User)."
+          def actor_resource, do: #{module(user.module, ctx)}
+
+          @doc \"\"\"
+          Reads the actor (a user or a user ID) afresh with `actor_loads/0`,
+          bypassing authorization: the policies must see its current values.
+          Call it on every request and LiveView mount, never reuse a stored
+          actor. Returns nil (logged out) for nil or an unknown ID.
+          \"\"\"
+          def load_actor(nil), do: nil
+          def load_actor(%{id: id}), do: load_actor(id)
+
+          def load_actor(id) when is_binary(id) do
+            case Ash.get(#{module(user.module, ctx)}, id, load: actor_loads(), authorize?: false) do
+              {:ok, actor} -> actor
+              {:error, _} -> nil
+            end
+          end
+          """
+      end
+
+    [
+      """
+      defmodule #{ctx.namespace}.Privacy do
+        @moduledoc \"\"\"
+        Privacy rules compiled from Bubble to Ash policies by bubble_ex (WTF-356).
+
+        NOT VERIFIED AGAINST BUBBLE. The policies rest on Bubble semantics not
+        yet confirmed by replaying the app (WTF-384/385): do not ship them to
+        users until they are. See `verified?/0`.
+        \"\"\"
+
+        @doc "Whether the generated policies are verified against Bubble: not yet."
+        def verified?, do: #{literal(project.policies_verified)}
+
+        @doc "The relationships of the actor that the policies read."
+        def actor_loads, do: #{loads}
+      #{load_actor}end
+      """
+    ]
+  end
+
+  # [["a", "b"], ["a"], ["c"]] -> "[a: [b: []], c: []]"
+  defp load_tree(paths) do
+    paths
+    |> Enum.reduce(%{}, fn path, tree -> put_in_tree(tree, path) end)
+    |> keyword_source()
+  end
+
+  defp put_in_tree(tree, []), do: tree
+
+  defp put_in_tree(tree, [key | rest]),
+    do: Map.update(tree, key, put_in_tree(%{}, rest), &put_in_tree(&1, rest))
+
+  defp keyword_source(tree) do
+    entries =
+      tree |> Enum.sort() |> Enum.map_join(", ", fn {k, sub} -> key(k) <> keyword_source(sub) end)
+
+    "[" <> entries <> "]"
   end
 
   # --- expressions ---------------------------------------------------------------

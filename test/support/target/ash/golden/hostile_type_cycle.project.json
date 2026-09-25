@@ -1,6 +1,50 @@
 {
+  "actor_loads": [],
+  "authorization_bypasses": [],
   "bubble_id": null,
   "diagnostics": [
+    {
+      "code": "ash_policies_unverified",
+      "details": {},
+      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {}
+    },
+    {
+      "code": "ash_policy_aggregates_unguarded",
+      "details": {
+        "fields": [
+          "created_date",
+          "modified_date",
+          "creator_id",
+          "slug",
+          "email"
+        ]
+      },
+      "message": "user: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, email reads values some users may not view",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "user"
+      }
+    },
+    {
+      "code": "ash_privacy_rules_unavailable",
+      "details": {},
+      "message": "the source does not include user's privacy rules; every read is denied",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "user"
+      }
+    },
     {
       "code": "model_synthesized_user_type",
       "details": {},
@@ -76,6 +120,9 @@
           "email": "email"
         },
         "module": "User",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy"
+        },
         "relationships": {
           "Created By": "creator"
         },
@@ -84,10 +131,10 @@
     },
     "version": 1
   },
+  "policies_verified": false,
   "resources": [
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -239,10 +286,117 @@
         }
       ],
       "bubble_name": "A",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "b_id"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "A",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -251,9 +405,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "a"
@@ -267,9 +423,11 @@
           "define_attribute?": false,
           "destination": "B",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "b",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "b_custom_b",
             "type": "a"
@@ -285,7 +443,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -445,10 +602,117 @@
         }
       ],
       "bubble_name": "B",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "c"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "B",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -457,9 +721,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "b"
@@ -475,7 +741,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -627,10 +892,117 @@
         }
       ],
       "bubble_name": "C",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "a_id"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "C",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -639,9 +1011,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "c"
@@ -655,9 +1029,11 @@
           "define_attribute?": false,
           "destination": "A",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "a",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "a_custom_a",
             "type": "c"
@@ -673,7 +1049,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -822,10 +1197,128 @@
         }
       ],
       "bubble_name": "User",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "email"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "User",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "forbid_if",
+            "source": {},
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "unavailable"
+      },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "sortable?": false,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -834,9 +1327,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": "never",
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "user"
@@ -851,7 +1346,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "typed_structs": [],
   "types": []
 }

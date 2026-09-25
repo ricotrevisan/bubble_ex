@@ -15,6 +15,20 @@ defmodule BubbleEx.Target.Ash.Project do
       follows the structs its fields use
     * `names` - the per-app name map (see "Name map"), updated with every
       name this mapping derived
+    * `policies_verified` - always `false`: the generated policies (each
+      resource's `policies`, `field_policies` and privacy `calculations`)
+      are **not verified against Bubble**. They must not be shipped to an
+      app's users before the replay verification of WTF-384/385 confirms
+      the Bubble semantics they rest on (see `BubbleEx.Target.Ash`,
+      "Privacy rules"). Nothing sets it to `true` yet.
+    * `actor_loads` - relationship paths of the User resource that the
+      privacy calculations read through `^actor(...)` (e.g.
+      `[["active_membership"]]`), sorted: the actor must be loaded with
+      them, afresh, on every request and LiveView mount
+    * `authorization_bypasses` - `BubbleEx.Target.Ash.Bypass`es: workflows
+      that run ignoring privacy rules in Bubble and so need an explicit
+      authorization bypass (`authorize?: false`) when they are lowered;
+      empty unless an index was given to `BubbleEx.Target.Ash.map/3`
     * `diagnostics` - the Model's diagnostics plus the mapping's (stage
       `{:target, :ash}`), normalized
 
@@ -41,7 +55,9 @@ defmodule BubbleEx.Target.Ash.Project do
             "module" => "Task",
             "table" => "task",
             "attributes" => %{"_id" => "id", "title_text" => "title", "project_custom_project" => "project_id"},
-            "relationships" => %{"project_custom_project" => "project"}
+            "relationships" => %{"project_custom_project" => "project"},
+            "privacy_rules" => %{"owner_" => "privacy_rule_owner"},
+            "privacy_relationships" => %{"project_custom_project" => "project_for_privacy"}
           }
         },
         "enums" => %{"status" => %{"module" => "Status", "attributes" => %{"color" => "color"}}},
@@ -50,9 +66,9 @@ defmodule BubbleEx.Target.Ash.Project do
   """
 
   alias BubbleEx.{CanonicalJson, Diagnostic}
-  alias BubbleEx.Target.Ash.{CustomType, Resource, TypedStruct}
+  alias BubbleEx.Target.Ash.{Bypass, CustomType, Resource, TypedStruct}
 
-  @schema_version 1
+  @schema_version 2
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -63,6 +79,9 @@ defmodule BubbleEx.Target.Ash.Project do
     types: [],
     typed_structs: [],
     names: %{},
+    policies_verified: false,
+    actor_loads: [],
+    authorization_bypasses: [],
     diagnostics: []
   ]
 
@@ -76,6 +95,9 @@ defmodule BubbleEx.Target.Ash.Project do
           types: [CustomType.t()],
           typed_structs: [TypedStruct.t()],
           names: map(),
+          policies_verified: false,
+          actor_loads: [[String.t()]],
+          authorization_bypasses: [Bypass.t()],
           diagnostics: [Diagnostic.t()]
         }
 
@@ -112,7 +134,8 @@ defmodule BubbleEx.Target.Ash.Project do
   Aggregate counts, with string keys (for reports and count snapshots):
   resources, attributes by Ash type (`enum`, `typed_struct` and `json_value`
   for generated modules), relationships by kind, database references by mode,
-  enums and their values, typed structs by source, and diagnostics by code.
+  enums and their values, typed structs by source, privacy (see
+  `privacy_summary/1`) and diagnostics by code.
   """
   @spec summary(t()) :: map()
   def summary(%__MODULE__{} = project) do
@@ -130,9 +153,50 @@ defmodule BubbleEx.Target.Ash.Project do
       "enums" => length(project.enums),
       "enum_values" => project.enums |> Enum.map(&length(&1.values)) |> Enum.sum(),
       "typed_structs" => frequencies(project.typed_structs, &source_key(&1.source)),
+      "privacy" => privacy_summary(project),
       "diagnostics" => frequencies(project.diagnostics, &Atom.to_string(&1.code))
     }
   end
+
+  @doc """
+  Privacy counts, with string keys: resources by privacy source
+  (`rules`, `public_default`, `unavailable`), rules by outcome (`compiled`,
+  `denied`: a condition that does not compile, so the rule grants nothing),
+  policies, their checks by test, field policies, privacy calculations,
+  gated relationships (each with a private twin),
+  auto-binding actions, actor loads and authorization bypasses.
+  """
+  @spec privacy_summary(t()) :: map()
+  def privacy_summary(%__MODULE__{} = project) do
+    privacy = Enum.map(project.resources, & &1.privacy)
+    policies = Enum.flat_map(project.resources, & &1.policies)
+    field_policies = Enum.flat_map(project.resources, & &1.field_policies)
+    checks = Enum.flat_map(policies ++ field_policies, & &1.checks)
+
+    %{
+      "resources" => frequencies(privacy, &Atom.to_string(&1.source)),
+      "rules" => %{
+        "compiled" => privacy |> Enum.map(&length(&1.compiled_rules)) |> Enum.sum(),
+        "denied" => privacy |> Enum.map(&length(&1.denied_rules)) |> Enum.sum()
+      },
+      "policies" => length(policies),
+      "field_policies" => length(field_policies),
+      "checks" => frequencies(checks, &check_key/1),
+      "calculations" => project.resources |> Enum.map(&length(&1.calculations)) |> Enum.sum(),
+      "gated_relationships" =>
+        project.resources |> Enum.map(&length(&1.privacy_relationships)) |> Enum.sum(),
+      "auto_bind_actions" =>
+        Enum.count(project.resources, fn r ->
+          Enum.any?(r.extra_actions, &(&1.name == "auto_bind"))
+        end),
+      "actor_loads" => length(project.actor_loads),
+      "authorization_bypasses" => length(project.authorization_bypasses)
+    }
+  end
+
+  defp check_key(%{kind: kind, test: :always}), do: "#{kind} always"
+  defp check_key(%{kind: kind, test: :keyed}), do: "#{kind} keyed"
+  defp check_key(%{kind: kind, test: {:calculation, _}}), do: "#{kind} calculation"
 
   defp module_kinds(project) do
     Map.new(project.enums, &{&1.module, "enum"})
@@ -169,10 +233,33 @@ defmodule BubbleEx.Target.Ash.Resource do
       migrate at second precision
     * `actions` - the `defaults` action list, e.g.
       `[:read, :destroy, create: :*, update: :*]`
+    * `extra_actions` - `BubbleEx.Target.Ash.Action`s beyond the defaults
+      (the `:search` read and the `:auto_bind` update of privacy rules)
+    * `calculations` - `BubbleEx.Target.Ash.Calculation`s: the private
+      boolean calculations the policies test (one per privacy rule, one
+      per "everyone else" grant)
+    * `policies` - `BubbleEx.Target.Ash.Policy`s (`policies do`); with
+      any policy the resource uses `Ash.Policy.Authorizer`
+    * `field_policies` - `BubbleEx.Target.Ash.FieldPolicy`s
+    * `privacy_relationships` - private, ungated `belongs_to` twins of the
+      relationships whose ID attribute some users may not view (their
+      `filter` gates them): only the privacy calculations and the actor
+      loads read through them (see `BubbleEx.Target.Ash`, "Privacy rules")
+    * `privacy` - the `BubbleEx.Target.Ash.ResourcePrivacy` the policies
+      were derived from
     * `description` - text for the module's documentation, or nil
   """
 
-  alias BubbleEx.Target.Ash.{Attribute, Identity, Relationship}
+  alias BubbleEx.Target.Ash.{
+    Action,
+    Attribute,
+    Calculation,
+    FieldPolicy,
+    Identity,
+    Policy,
+    Relationship,
+    ResourcePrivacy
+  }
 
   @enforce_keys [:module, :table, :source]
   defstruct [
@@ -186,7 +273,13 @@ defmodule BubbleEx.Target.Ash.Resource do
     relationships: [],
     identities: [],
     migration_types: [],
-    actions: [:read, :destroy, create: :*, update: :*]
+    actions: [:read, :destroy, create: :*, update: :*],
+    extra_actions: [],
+    calculations: [],
+    policies: [],
+    field_policies: [],
+    privacy_relationships: [],
+    privacy: nil
   ]
 
   @type t :: %__MODULE__{
@@ -200,8 +293,206 @@ defmodule BubbleEx.Target.Ash.Resource do
           relationships: [Relationship.t()],
           identities: [Identity.t()],
           migration_types: [{String.t(), BubbleEx.Target.Ash.Project.type()}],
-          actions: keyword() | [atom() | {atom(), term()}]
+          actions: keyword() | [atom() | {atom(), term()}],
+          extra_actions: [Action.t()],
+          calculations: [Calculation.t()],
+          policies: [Policy.t()],
+          field_policies: [FieldPolicy.t()],
+          privacy_relationships: [Relationship.t()],
+          privacy: ResourcePrivacy.t() | nil
         }
+end
+
+defmodule BubbleEx.Target.Ash.Action do
+  @moduledoc """
+  An action beyond a resource's `defaults`.
+
+    * `type` - `:read` or `:update`; `name` - the action name
+    * `primary?` - the primary action of its type
+    * `keyed?` - a read that, when authorized, is forbidden unless its
+      filter selects records by primary key (`id == x` or `id in [...]`,
+      at the top level) or it loads a relationship: its policy starts with
+      `authorize_if <namespace>.Privacy.KeyedRead` in its own policy, a policy check, so
+      aggregates (count, exists, ...) are held to it too. Relationship
+      loads and `Ash.get` are keyed
+    * `accept` - attribute names an update accepts (`[]` for a read)
+    * `description` - the action's `description`
+  """
+
+  @enforce_keys [:type, :name]
+  defstruct [:type, :name, :description, primary?: false, keyed?: false, accept: []]
+
+  @type t :: %__MODULE__{
+          type: :read | :update,
+          name: String.t(),
+          primary?: boolean(),
+          keyed?: boolean(),
+          accept: [String.t()],
+          description: String.t() | nil
+        }
+end
+
+defmodule BubbleEx.Target.Ash.Calculation do
+  @moduledoc """
+  A private boolean expression calculation (`calculate name, :boolean,
+  expr(...), public?: false`) that a policy or field policy tests.
+
+    * `name` - the calculation name
+    * `expr` - the `BubbleEx.Target.Ash.Expr` it computes; `^actor(...)`
+      templates read the query's actor
+    * `source` - `%{type: _, rule: _}` for a privacy rule's condition, or
+      `%{type: _, except_rules: [...]}` for "no rule in the list matches"
+      (the `everyone` rule's grants, see `BubbleEx.Target.Ash`)
+    * `description` - the calculation's description
+  """
+
+  alias BubbleEx.Target.Ash.Expr
+
+  @enforce_keys [:name, :expr, :source]
+  defstruct [:name, :expr, :source, :description]
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          expr: Expr.t(),
+          source: map(),
+          description: String.t() | nil
+        }
+end
+
+defmodule BubbleEx.Target.Ash.PolicyCheck do
+  @moduledoc """
+  One check of a policy or field policy, in order: the first check that
+  decides wins.
+
+    * `kind` - `:authorize_if` or `:forbid_if`
+    * `test` - `:always`; `:keyed` (the `<namespace>.Privacy.KeyedRead`
+      check: the read selects by primary key or loads a relationship); or
+      `{:calculation, name}`: the resource's boolean calculation `name` is
+      true for the record
+    * `source` - what grants it: `%{rules: [rule_id]}` for a rule,
+      `%{default: true, except_rules: [...]}` for the `everyone` rule's
+      grant to users no listed rule matches, `%{default: true}` for Bubble's
+      public defaults or an unconditional `everyone` grant, `%{}` for a
+      denial
+  """
+
+  @enforce_keys [:kind, :test]
+  defstruct [:kind, :test, source: %{}]
+
+  @type t :: %__MODULE__{
+          kind: :authorize_if | :forbid_if,
+          test: :always | :keyed | {:calculation, String.t()},
+          source: map()
+        }
+end
+
+defmodule BubbleEx.Target.Ash.Policy do
+  @moduledoc """
+  A policy (`policy <condition> do ... end`).
+
+    * `action` - the action name the policy applies to
+    * `changing` - attribute names: the policy applies only when the
+      action changes one of them (`changing_attributes([...])`); nil for
+      every call of the action
+    * `description` - the policy's `description`
+    * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
+    * `permission` - the Bubble permission it enforces (`:view`,
+      `:search_for`, `:auto_binding`), or `:keyed` for the key requirement
+      of the primary `:read`
+  """
+
+  alias BubbleEx.Target.Ash.PolicyCheck
+
+  @enforce_keys [:action, :checks, :permission]
+  defstruct [:action, :changing, :description, :checks, :permission]
+
+  @type t :: %__MODULE__{
+          action: String.t(),
+          changing: [String.t()] | nil,
+          description: String.t() | nil,
+          checks: [PolicyCheck.t()],
+          permission: atom()
+        }
+end
+
+defmodule BubbleEx.Target.Ash.FieldPolicy do
+  @moduledoc """
+  A field policy (`field_policy [fields] do ... end`): who may read the
+  listed attributes. Fields a check does not authorize read as
+  `%Ash.ForbiddenField{}`.
+
+    * `fields` - attribute names, in attribute order
+    * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
+  """
+
+  alias BubbleEx.Target.Ash.PolicyCheck
+
+  @enforce_keys [:fields, :checks]
+  defstruct [:fields, :checks, :description]
+
+  @type t :: %__MODULE__{
+          fields: [String.t()],
+          checks: [PolicyCheck.t()],
+          description: String.t() | nil
+        }
+end
+
+defmodule BubbleEx.Target.Ash.ResourcePrivacy do
+  @moduledoc """
+  The privacy facts a resource's policies were derived from.
+
+    * `source` - `:rules` (the type's own privacy rules), `:public_default`
+      (a type the source lists without rules: Bubble's public defaults) or
+      `:unavailable` (the source cannot say, e.g. a live payload: every
+      access is denied)
+    * `compiled_rules` / `denied_rules` - rule IDs whose condition compiled,
+      and those that grant nothing because it did not (or is missing)
+    * `attachments` - `BubbleEx.Target.Ash.PolicyCheck`s for Bubble's "view
+      attached files", which Ash cannot enforce (file fields are URLs; the
+      file store must): data for the owner and later lowering only
+    * `file_fields` - the attribute names holding files or images
+    * `data_api` - the Data API: `%{exposed: boolean | nil, create: checks,
+      modify: checks, delete: checks}`. No API action is generated (the
+      Data API is out of scope, WTF-359 Q6); data only
+  """
+
+  @enforce_keys [:source]
+  defstruct [
+    :source,
+    compiled_rules: [],
+    denied_rules: [],
+    attachments: [],
+    file_fields: [],
+    data_api: %{exposed: nil, create: [], modify: [], delete: []}
+  ]
+
+  @type t :: %__MODULE__{
+          source: :rules | :public_default | :unavailable,
+          compiled_rules: [String.t()],
+          denied_rules: [String.t()],
+          attachments: [BubbleEx.Target.Ash.PolicyCheck.t()],
+          file_fields: [String.t()],
+          data_api: map()
+        }
+end
+
+defmodule BubbleEx.Target.Ash.Bypass do
+  @moduledoc """
+  A workflow that runs ignoring privacy rules in Bubble (a backend workflow
+  set to ignore them, or a custom event it triggers): when lowered, its
+  reads need an explicit authorization bypass (`authorize?: false`).
+  Recorded here, not generated: workflow lowering is a later step.
+
+    * `workflow` - the workflow's Bubble ID
+    * `own` - true when its own setting says so; false when it inherits it
+      from a caller
+    * `types` - data type IDs it reads or searches, sorted
+  """
+
+  @enforce_keys [:workflow]
+  defstruct [:workflow, own: false, types: []]
+
+  @type t :: %__MODULE__{workflow: String.t(), own: boolean(), types: [String.t()]}
 end
 
 defmodule BubbleEx.Target.Ash.Attribute do
@@ -264,6 +555,14 @@ defmodule BubbleEx.Target.Ash.Relationship do
     * `db_reference` - `:ignore` (no database foreign key: AshPostgres
       `references … ignore?: true`) or `:foreign_key`
     * `source` - `%{type: _, field: _}` Bubble IDs
+    * `sortable?` - false when privacy policies are generated (WTF-356):
+      Ash applies field policies to a resource's own fields in `sort_input`
+      but not to fields reached through a relationship, so sorting by
+      `rel.hidden_field` would order by a value the actor may not view
+    * `gate` - nil, or who may follow it (WTF-356): `{:visible_if, calcs}`
+      (`filter expr(parent(a or b))`: one of the source record's privacy
+      calculations holds, those authorizing its ID attribute) or `:never`
+      (`filter expr(false)`)
   """
 
   @enforce_keys [:kind, :name, :destination, :source_attribute, :source]
@@ -278,7 +577,9 @@ defmodule BubbleEx.Target.Ash.Relationship do
     define_attribute?: false,
     allow_nil?: true,
     public?: true,
-    db_reference: :ignore
+    db_reference: :ignore,
+    sortable?: true,
+    gate: nil
   ]
 
   @type t :: %__MODULE__{
@@ -292,7 +593,9 @@ defmodule BubbleEx.Target.Ash.Relationship do
           allow_nil?: boolean(),
           public?: boolean(),
           db_reference: :ignore | :foreign_key,
-          source: map()
+          source: map(),
+          sortable?: boolean(),
+          gate: nil | :never | {:visible_if, [String.t()]}
         }
 end
 

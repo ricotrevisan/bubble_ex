@@ -57,9 +57,9 @@ defmodule RuntimeCheck do
       record =
         resource
         |> Ash.Changeset.for_create(:create, input)
-        |> Ash.create!()
+        |> Ash.create!(authorize?: false)
 
-      read = Ash.get!(resource, Map.fetch!(input, pk))
+      read = Ash.get!(resource, Map.fetch!(input, pk), authorize?: false)
 
       for a <- attributes,
           {:ok, expected} = Ash.Type.cast_input(a.type, input[a.name], a.constraints),
@@ -218,7 +218,7 @@ defmodule ExpectationCheck do
 
     for {type, rows} <- doc["records"], row <- rows do
       input = Map.new(row, fn {k, v} -> {String.to_existing_atom(k), v} end)
-      resources |> Map.fetch!(type) |> Ash.Changeset.for_create(:create, input) |> Ash.create!()
+      resources |> Map.fetch!(type) |> Ash.Changeset.for_create(:create, input) |> Ash.create!(authorize?: false)
     end
 
     table = Map.new(doc["records"], fn {type, rows} -> {type, Enum.map(rows, & &1["id"])} end)

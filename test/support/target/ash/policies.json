@@ -1,0 +1,419 @@
+{
+  "_comment": "Policy fixture for BubbleEx.Target.Ash privacy policies (WTF-356). All data invented. Expectations: expectations/policies.json.",
+  "_id": "policies-fixture",
+  "api": {
+    "wfSweep": {
+      "actions": {
+        "0": {
+          "id": "aSweep",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "public_boolean",
+                "value": false
+              }
+            },
+            "to_change": {
+              "next": {
+                "name": "first_element",
+                "type": "Message"
+              },
+              "properties": {
+                "constraints": {},
+                "type_to_find": "custom.doc"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wSweep",
+      "properties": {
+        "ignore_privacy_rules": true,
+        "wf_name": "sweep-docs"
+      },
+      "type": "APIEvent"
+    }
+  },
+  "element_definitions": {},
+  "option_sets": {},
+  "pages": {},
+  "user_types": {
+    "board": {
+      "display": "Board",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "lead_": {
+          "condition": {
+            "next": {
+              "name": "owner_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "next": {
+                      "name": "lead_user",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owned by my team's lead",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "doc": {
+      "display": "Doc",
+      "exposed_api": true,
+      "fields": {
+        "attachment_file": {
+          "display": "Attachment",
+          "value": "file"
+        },
+        "body_text": {
+          "display": "Body",
+          "value": "text"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        },
+        "public_boolean": {
+          "display": "Public",
+          "value": "boolean"
+        },
+        "secret_text": {
+          "display": "Secret",
+          "value": "text"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "admin_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Admin",
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": {
+              "0": "secret_text"
+            },
+            "delete_api": true,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "title_text"
+            }
+          }
+        },
+        "owner_": {
+          "condition": {
+            "next": {
+              "name": "owner_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": true,
+            "binding_fields": {
+              "0": "title_text",
+              "1": "body_text"
+            },
+            "modify_api": true,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "public_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "name": "is_true",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "title_text",
+              "1": "body_text",
+              "2": "gone_text"
+            }
+          }
+        },
+        "raw_": {
+          "condition": {
+            "next": {
+              "name": "name_text",
+              "next": {
+                "args": "x",
+                "name": "mystery_operator",
+                "next": {
+                  "name": "is_not_empty",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Raw (unsupported)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "memo": {
+      "display": "Memo",
+      "fields": {
+        "text_text": {
+          "display": "Text",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "raw_": {
+          "condition": {
+            "next": {
+              "name": "name_text",
+              "next": {
+                "args": "x",
+                "name": "mystery_operator",
+                "next": {
+                  "name": "is_not_empty",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "CurrentUser"
+          },
+          "display": "Raw (unsupported)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "note": {
+      "display": "Note",
+      "fields": {
+        "hidden_boolean": {
+          "display": "Hidden",
+          "value": "boolean"
+        },
+        "text_text": {
+          "display": "Text",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "hidden_": {
+          "condition": {
+            "next": {
+              "name": "hidden_boolean",
+              "next": {
+                "name": "is_true",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Hidden",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false
+          }
+        },
+        "mine_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Mine",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "team": {
+      "display": "Team",
+      "fields": {
+        "lead_user": {
+          "display": "Lead",
+          "value": "user"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "admin_boolean": {
+          "display": "Admin",
+          "value": "boolean"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "name_text"
+            }
+          }
+        },
+        "me_": {
+          "condition": {
+            "next": {
+              "args": {
+                "type": "CurrentUser"
+              },
+              "name": "equals",
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Me",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    }
+  }
+}

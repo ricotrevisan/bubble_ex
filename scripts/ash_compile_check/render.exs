@@ -9,8 +9,9 @@
 # the schema golden fixtures) is written beside it, so the compile step
 # checks it too.
 #
-# Each fixture's compiled privacy-rule conditions
-# (BubbleEx.Target.Ash.Expressions.privacy/2) are printed with
+# Each fixture's compiled privacy-rule conditions (the rule calculations
+# of the generated policies, from BubbleEx.Target.Ash.Expressions.privacy/2)
+# are printed with
 # BubbleEx.Target.Ash.Source.expr/1 into a `<namespace>.PrivacyFilters`
 # module, as a policy's `authorize_if expr(...)` would hold them, so
 # `mix compile` checks them too; filters.exs and runtime.exs use them.
@@ -108,8 +109,13 @@ rendered =
 
     user = Enum.find(project.resources, &(&1.source.type == "user")).module
 
-    {:ok, privacy} = BubbleEx.Target.Ash.Expressions.privacy(model, project)
-    filters = Enum.filter(privacy, & &1.expr)
+    # The rule calculations the policies test (their relationship paths go
+    # through the private *_for_privacy twins), as filters.
+    filters =
+      for resource <- project.resources,
+          calc <- resource.calculations,
+          rule = calc.source[:rule],
+          do: %{type: calc.source.type, rule: rule, expr: calc.expr}
 
     File.write!(
       Path.join(lib, name <> ".ex"),

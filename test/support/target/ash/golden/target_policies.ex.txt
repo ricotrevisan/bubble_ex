@@ -6,18 +6,6 @@
 #   mix igniter.new my_app --install ash,ash_postgres
 # then add these modules and run `mix ash.codegen --dev` while iterating.
 
-defmodule MyApp.Enums.Tier do
-  use Ash.Type.Enum, values: [{"Gold Tier", [label: "Gold"]}, {"silver", [label: "Silver"]}]
-
-  @attributes %{
-    "Gold Tier" => %{nil_field: "n", rank: 1, rank_2: nil},
-    "silver" => %{nil_field: nil, rank: nil, rank_2: 2}
-  }
-
-  @doc "The attribute values of `value`."
-  def attributes(value), do: Map.fetch!(@attributes, value)
-end
-
 defmodule MyApp.Privacy.KeyedRead do
   @moduledoc """
   Policy check: an authorized read (or aggregate) of the primary `:read`
@@ -68,18 +56,21 @@ defmodule MyApp.Privacy.KeyedRead do
   defp name(name), do: name
 end
 
-defmodule MyApp.DomainResource do
+defmodule MyApp.Board do
   use Ash.Resource,
     domain: MyApp,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "domain_resource"
+    table "board"
     repo MyApp.Repo
 
     references do
       reference :creator, ignore?: true
+      reference :owner, ignore?: true
+      reference :creator_for_privacy, ignore?: true
+      reference :owner_for_privacy, ignore?: true
     end
   end
 
@@ -105,6 +96,18 @@ defmodule MyApp.DomainResource do
       writable?: true,
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
+
+    attribute :name, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :owner_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
   end
 
   relationships do
@@ -116,7 +119,48 @@ defmodule MyApp.DomainResource do
       allow_nil? true
       public? true
       sortable? false
+      filter expr(parent(privacy_rule_owned_by_my_team_s_lead))
     end
+
+    belongs_to :owner, MyApp.User do
+      source_attribute :owner_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+      sortable? false
+      filter expr(parent(privacy_rule_owned_by_my_team_s_lead))
+    end
+
+    belongs_to :creator_for_privacy, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+      sortable? false
+    end
+
+    belongs_to :owner_for_privacy, MyApp.User do
+      source_attribute :owner_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+      sortable? false
+    end
+  end
+
+  calculations do
+    calculate :privacy_rule_owned_by_my_team_s_lead,
+              :boolean,
+              expr(owner_id == ^actor([:team_for_privacy, :lead_id])),
+              public?: false,
+              description:
+                "Bubble privacy rule \"Owned by my team's lead\" (lead_): its condition holds"
   end
 
   actions do
@@ -152,38 +196,39 @@ defmodule MyApp.DomainResource do
 
     policy action(:read) do
       description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      authorize_if always()
+      authorize_if expr(privacy_rule_owned_by_my_team_s_lead)
     end
 
     policy action(:search) do
       description "Searches: the user may find the record in searches"
-      authorize_if always()
+      authorize_if expr(privacy_rule_owned_by_my_team_s_lead)
     end
   end
 
   field_policies do
     private_fields :hide
 
-    field_policy [:created_date, :modified_date, :creator_id, :slug] do
-      authorize_if always()
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :name, :owner_id] do
+      authorize_if expr(privacy_rule_owned_by_my_team_s_lead)
     end
   end
 end
 
-defmodule MyApp.N3dGadget do
+defmodule MyApp.Doc do
   use Ash.Resource,
     domain: MyApp,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "n3d_gadget"
+    table "doc"
     repo MyApp.Repo
 
     references do
       reference :creator, ignore?: true
-      reference :creator_2, ignore?: true
-      reference :widget, ignore?: true
+      reference :owner, ignore?: true
+      reference :creator_for_privacy, ignore?: true
+      reference :owner_for_privacy, ignore?: true
     end
   end
 
@@ -205,6 +250,32 @@ defmodule MyApp.N3dGadget do
       constraints: [trim?: false, allow_empty?: true]
 
     attribute :slug, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :attachment, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :body, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :owner_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :public, :boolean, allow_nil?: true, writable?: true, public?: true
+
+    attribute :secret, :string,
       allow_nil?: true,
       writable?: true,
       public?: true,
@@ -215,73 +286,6 @@ defmodule MyApp.N3dGadget do
       writable?: true,
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
-
-    attribute :title_2, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :title_3, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :cafe_strasse, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :first_name, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :creator_2_id, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :n3_5_inch, :float, allow_nil?: true, writable?: true, public?: true
-
-    attribute :slug_2, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :struct, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :n2fa_code, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :updated_at_field, :utc_datetime_usec,
-      allow_nil?: true,
-      writable?: true,
-      public?: true
-
-    attribute :widget_id, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :widget_id_2, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
   end
 
   relationships do
@@ -293,27 +297,53 @@ defmodule MyApp.N3dGadget do
       allow_nil? true
       public? true
       sortable? false
+      filter expr(parent(privacy_rule_admin or privacy_rule_owner))
     end
 
-    belongs_to :creator_2, MyApp.User do
-      source_attribute :creator_2_id
+    belongs_to :owner, MyApp.User do
+      source_attribute :owner_id
       destination_attribute :id
       attribute_type :string
       define_attribute? false
       allow_nil? true
       public? true
       sortable? false
+      filter expr(parent(privacy_rule_admin or privacy_rule_owner))
     end
 
-    belongs_to :widget, MyApp.RepoResource do
-      source_attribute :widget_id
+    belongs_to :creator_for_privacy, MyApp.User do
+      source_attribute :creator_id
       destination_attribute :id
       attribute_type :string
       define_attribute? false
       allow_nil? true
-      public? true
+      public? false
       sortable? false
     end
+
+    belongs_to :owner_for_privacy, MyApp.User do
+      source_attribute :owner_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+      sortable? false
+    end
+  end
+
+  calculations do
+    calculate :privacy_rule_admin, :boolean, expr(^actor(:admin) == true),
+      public?: false,
+      description: "Bubble privacy rule \"Admin\" (admin_): its condition holds"
+
+    calculate :privacy_rule_owner, :boolean, expr(owner_id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Owner\" (owner_): its condition holds"
+
+    calculate :privacy_rule_public, :boolean, expr(public == true),
+      public?: false,
+      description: "Bubble privacy rule \"Public\" (public_): its condition holds"
   end
 
   actions do
@@ -326,6 +356,11 @@ defmodule MyApp.N3dGadget do
 
     read :search do
       description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+
+    update :auto_bind do
+      description "Bubble auto-binding: an input writes one field of the record"
+      accept [:body, :secret, :title]
     end
   end
 
@@ -354,7 +389,30 @@ defmodule MyApp.N3dGadget do
 
     policy action(:search) do
       description "Searches: the user may find the record in searches"
-      authorize_if always()
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+      authorize_if expr(privacy_rule_public)
+    end
+
+    policy action(:auto_bind) do
+      description "Auto-binding: a rule letting the user auto-bind some field holds"
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+    end
+
+    policy [action(:auto_bind), changing_attributes([:body])] do
+      description "Auto-binding changes body: a rule letting the user auto-bind it holds"
+      authorize_if expr(privacy_rule_owner)
+    end
+
+    policy [action(:auto_bind), changing_attributes([:secret])] do
+      description "Auto-binding changes secret: a rule letting the user auto-bind it holds"
+      authorize_if expr(privacy_rule_admin)
+    end
+
+    policy [action(:auto_bind), changing_attributes([:title])] do
+      description "Auto-binding changes title: a rule letting the user auto-bind it holds"
+      authorize_if expr(privacy_rule_owner)
     end
   end
 
@@ -366,135 +424,35 @@ defmodule MyApp.N3dGadget do
       :modified_date,
       :creator_id,
       :slug,
-      :title,
-      :title_2,
-      :title_3,
-      :cafe_strasse,
-      :first_name,
-      :creator_2_id,
-      :n3_5_inch,
-      :slug_2,
-      :struct,
-      :n2fa_code,
-      :updated_at_field,
-      :widget_id,
-      :widget_id_2
+      :attachment,
+      :owner_id,
+      :public,
+      :secret
     ] do
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+    end
+
+    field_policy [:body] do
+      authorize_if expr(privacy_rule_admin)
+      authorize_if expr(privacy_rule_owner)
+      authorize_if expr(privacy_rule_public)
+    end
+
+    field_policy [:title] do
       authorize_if always()
     end
   end
 end
 
-defmodule MyApp.RepoResource do
+defmodule MyApp.Memo do
   use Ash.Resource,
     domain: MyApp,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "repo_resource"
-    repo MyApp.Repo
-
-    references do
-      reference :creator, ignore?: true
-    end
-  end
-
-  attributes do
-    attribute :id, :string,
-      primary_key?: true,
-      allow_nil?: false,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
-
-    attribute :creator_id, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-
-    attribute :slug, :string,
-      allow_nil?: true,
-      writable?: true,
-      public?: true,
-      constraints: [trim?: false, allow_empty?: true]
-  end
-
-  relationships do
-    belongs_to :creator, MyApp.User do
-      source_attribute :creator_id
-      destination_attribute :id
-      attribute_type :string
-      define_attribute? false
-      allow_nil? true
-      public? true
-      sortable? false
-    end
-  end
-
-  actions do
-    defaults [:destroy, {:create, :*}, {:update, :*}]
-
-    read :read do
-      description "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden"
-      primary? true
-    end
-
-    read :search do
-      description "Bubble \"Do a search for\": the records the user may find in searches"
-    end
-  end
-
-  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
-  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
-  # the replay verification (WTF-384/385) confirms the semantics they rest on.
-  # Load the actor with the Privacy module's load_actor/1 on every request
-  # and LiveView mount. Enumerate records only through :search; :read
-  # returns records by primary key. Field policies do not guard code: a
-  # filter, sort or calculation written in code (not *_input) that reads a
-  # field the actor may not view still sees its value, so lowered searches
-  # must not reference such fields directly, nor the private *_for_privacy
-  # relationships. Aggregates (count, min, max, sum, ...) over a field are
-  # not covered by field policies either: never aggregate a field the actor
-  # may not view.
-  policies do
-    policy action(:read) do
-      description "Direct view reaches records by primary key or through a relationship, never by listing"
-      authorize_if MyApp.Privacy.KeyedRead
-    end
-
-    policy action(:read) do
-      description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      authorize_if always()
-    end
-
-    policy action(:search) do
-      description "Searches: the user may find the record in searches"
-      authorize_if always()
-    end
-  end
-
-  field_policies do
-    private_fields :hide
-
-    field_policy [:created_date, :modified_date, :creator_id, :slug] do
-      authorize_if always()
-    end
-  end
-end
-
-defmodule MyApp.User do
-  use Ash.Resource,
-    domain: MyApp,
-    data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
-
-  postgres do
-    table "user"
+    table "memo"
     repo MyApp.Repo
 
     references do
@@ -526,7 +484,7 @@ defmodule MyApp.User do
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
 
-    attribute :email, :string,
+    attribute :text, :string,
       allow_nil?: true,
       writable?: true,
       public?: true,
@@ -601,8 +559,438 @@ defmodule MyApp.User do
   field_policies do
     private_fields :hide
 
-    field_policy [:created_date, :modified_date, :creator_id, :slug, :email] do
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :text] do
       forbid_if always()
+    end
+  end
+end
+
+defmodule MyApp.Note do
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
+
+  postgres do
+    table "note"
+    repo MyApp.Repo
+
+    references do
+      reference :creator, ignore?: true
+      reference :creator_for_privacy, ignore?: true
+    end
+  end
+
+  attributes do
+    attribute :id, :string,
+      primary_key?: true,
+      allow_nil?: false,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+
+    attribute :creator_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :slug, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :hidden, :boolean, allow_nil?: true, writable?: true, public?: true
+
+    attribute :text, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+  end
+
+  relationships do
+    belongs_to :creator, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+      sortable? false
+      filter expr(parent(privacy_rule_mine or privacy_everyone_else))
+    end
+
+    belongs_to :creator_for_privacy, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+      sortable? false
+    end
+  end
+
+  calculations do
+    calculate :privacy_everyone_else,
+              :boolean,
+              expr(is_distinct_from(hidden, true) and not is_nil(hidden)),
+              public?: false,
+              description:
+                "The Bubble \"everyone else\" rule applies: none of the rules hidden_ holds"
+
+    calculate :privacy_rule_mine, :boolean, expr(creator_id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Mine\" (mine_): its condition holds"
+  end
+
+  actions do
+    defaults [:destroy, {:create, :*}, {:update, :*}]
+
+    read :read do
+      description "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden"
+      primary? true
+    end
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount. Enumerate records only through :search; :read
+  # returns records by primary key. Field policies do not guard code: a
+  # filter, sort or calculation written in code (not *_input) that reads a
+  # field the actor may not view still sees its value, so lowered searches
+  # must not reference such fields directly, nor the private *_for_privacy
+  # relationships. Aggregates (count, min, max, sum, ...) over a field are
+  # not covered by field policies either: never aggregate a field the actor
+  # may not view.
+  policies do
+    policy action(:read) do
+      description "Direct view reaches records by primary key or through a relationship, never by listing"
+      authorize_if MyApp.Privacy.KeyedRead
+    end
+
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if expr(privacy_rule_mine)
+      authorize_if expr(privacy_everyone_else)
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if expr(privacy_rule_mine)
+      authorize_if expr(privacy_everyone_else)
+    end
+  end
+
+  field_policies do
+    private_fields :hide
+
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :hidden, :text] do
+      authorize_if expr(privacy_rule_mine)
+      authorize_if expr(privacy_everyone_else)
+    end
+  end
+end
+
+defmodule MyApp.Team do
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
+
+  postgres do
+    table "team"
+    repo MyApp.Repo
+
+    references do
+      reference :creator, ignore?: true
+      reference :lead, ignore?: true
+    end
+  end
+
+  attributes do
+    attribute :id, :string,
+      primary_key?: true,
+      allow_nil?: false,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+
+    attribute :creator_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :slug, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :lead_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :name, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+  end
+
+  relationships do
+    belongs_to :creator, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+      sortable? false
+    end
+
+    belongs_to :lead, MyApp.User do
+      source_attribute :lead_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+      sortable? false
+    end
+  end
+
+  actions do
+    defaults [:destroy, {:create, :*}, {:update, :*}]
+
+    read :read do
+      description "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden"
+      primary? true
+    end
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount. Enumerate records only through :search; :read
+  # returns records by primary key. Field policies do not guard code: a
+  # filter, sort or calculation written in code (not *_input) that reads a
+  # field the actor may not view still sees its value, so lowered searches
+  # must not reference such fields directly, nor the private *_for_privacy
+  # relationships. Aggregates (count, min, max, sum, ...) over a field are
+  # not covered by field policies either: never aggregate a field the actor
+  # may not view.
+  policies do
+    policy action(:read) do
+      description "Direct view reaches records by primary key or through a relationship, never by listing"
+      authorize_if MyApp.Privacy.KeyedRead
+    end
+
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if always()
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if always()
+    end
+  end
+
+  field_policies do
+    private_fields :hide
+
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :lead_id, :name] do
+      authorize_if always()
+    end
+  end
+end
+
+defmodule MyApp.User do
+  use Ash.Resource,
+    domain: MyApp,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
+
+  postgres do
+    table "user"
+    repo MyApp.Repo
+
+    references do
+      reference :creator, ignore?: true
+      reference :team, ignore?: true
+      reference :creator_for_privacy, ignore?: true
+      reference :team_for_privacy, ignore?: true
+    end
+  end
+
+  attributes do
+    attribute :id, :string,
+      primary_key?: true,
+      allow_nil?: false,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :created_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+    attribute :modified_date, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: true
+
+    attribute :creator_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :slug, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :email, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :admin, :boolean, allow_nil?: true, writable?: true, public?: true
+
+    attribute :name, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+
+    attribute :team_id, :string,
+      allow_nil?: true,
+      writable?: true,
+      public?: true,
+      constraints: [trim?: false, allow_empty?: true]
+  end
+
+  relationships do
+    belongs_to :creator, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+      sortable? false
+      filter expr(parent(privacy_rule_me))
+    end
+
+    belongs_to :team, MyApp.Team do
+      source_attribute :team_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? true
+      sortable? false
+      filter expr(parent(privacy_rule_me))
+    end
+
+    belongs_to :creator_for_privacy, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+      sortable? false
+    end
+
+    belongs_to :team_for_privacy, MyApp.Team do
+      source_attribute :team_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+      sortable? false
+    end
+  end
+
+  calculations do
+    calculate :privacy_rule_me, :boolean, expr(id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Me\" (me_): its condition holds"
+  end
+
+  actions do
+    defaults [:destroy, {:create, :*}, {:update, :*}]
+
+    read :read do
+      description "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden"
+      primary? true
+    end
+
+    read :search do
+      description "Bubble \"Do a search for\": the records the user may find in searches"
+    end
+  end
+
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356).
+  # NOT VERIFIED AGAINST BUBBLE: do not ship these policies to users before
+  # the replay verification (WTF-384/385) confirms the semantics they rest on.
+  # Load the actor with the Privacy module's load_actor/1 on every request
+  # and LiveView mount. Enumerate records only through :search; :read
+  # returns records by primary key. Field policies do not guard code: a
+  # filter, sort or calculation written in code (not *_input) that reads a
+  # field the actor may not view still sees its value, so lowered searches
+  # must not reference such fields directly, nor the private *_for_privacy
+  # relationships. Aggregates (count, min, max, sum, ...) over a field are
+  # not covered by field policies either: never aggregate a field the actor
+  # may not view.
+  policies do
+    policy action(:read) do
+      description "Direct view reaches records by primary key or through a relationship, never by listing"
+      authorize_if MyApp.Privacy.KeyedRead
+    end
+
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if always()
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if expr(privacy_rule_me)
+    end
+  end
+
+  field_policies do
+    private_fields :hide
+
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :email, :admin, :team_id] do
+      authorize_if expr(privacy_rule_me)
+    end
+
+    field_policy [:name] do
+      authorize_if always()
     end
   end
 end
@@ -611,9 +999,11 @@ defmodule MyApp do
   use Ash.Domain
 
   resources do
-    resource MyApp.DomainResource
-    resource MyApp.N3dGadget
-    resource MyApp.RepoResource
+    resource MyApp.Board
+    resource MyApp.Doc
+    resource MyApp.Memo
+    resource MyApp.Note
+    resource MyApp.Team
     resource MyApp.User
   end
 end
@@ -631,7 +1021,7 @@ defmodule MyApp.Privacy do
   def verified?, do: false
 
   @doc "The relationships of the actor that the policies read."
-  def actor_loads, do: []
+  def actor_loads, do: [team_for_privacy: []]
 
   @doc "The resource of the actor (Bubble's User)."
   def actor_resource, do: MyApp.User

@@ -1,6 +1,18 @@
 {
+  "actor_loads": [],
+  "authorization_bypasses": [],
   "bubble_id": "synthetic-target-values",
   "diagnostics": [
+    {
+      "code": "ash_policies_unverified",
+      "details": {},
+      "message": "the generated policies are not verified against Bubble (WTF-384/385); do not ship them to users",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {}
+    },
     {
       "code": "ash_default_unmapped",
       "details": {
@@ -49,6 +61,38 @@
       "subject": {
         "field": "odd_value",
         "type": "event"
+      }
+    },
+    {
+      "code": "ash_policy_aggregates_unguarded",
+      "details": {
+        "fields": [
+          "created_date",
+          "modified_date",
+          "creator_id",
+          "slug",
+          "email"
+        ]
+      },
+      "message": "user: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, email reads values some users may not view",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "user"
+      }
+    },
+    {
+      "code": "ash_privacy_rules_unavailable",
+      "details": {},
+      "message": "the source does not include user's privacy rules; every read is denied",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "user"
       }
     },
     {
@@ -173,6 +217,9 @@
           "email": "email"
         },
         "module": "User",
+        "privacy_relationships": {
+          "Created By": "creator_for_privacy"
+        },
         "relationships": {
           "Created By": "creator"
         },
@@ -196,10 +243,10 @@
     },
     "version": 1
   },
+  "policies_verified": false,
   "resources": [
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -561,7 +608,57 @@
         }
       ],
       "bubble_name": "Event",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "occurrences",
+            "gap",
+            "gaps",
+            "host_id",
+            "odd",
+            "phase",
+            "phases",
+            "place",
+            "span",
+            "starts",
+            "venues"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [
         [
@@ -573,6 +670,73 @@
         ]
       ],
       "module": "Event",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -581,9 +745,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "event"
@@ -597,9 +763,11 @@
           "define_attribute?": false,
           "destination": "Venue",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "host",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "host_custom_venue",
             "type": "event"
@@ -615,7 +783,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -764,10 +931,128 @@
         }
       ],
       "bubble_name": "User",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "email"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "User",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "forbid_if",
+              "source": {},
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "forbid_if",
+            "source": {},
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "unavailable"
+      },
+      "privacy_relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator_for_privacy",
+          "public?": false,
+          "sortable?": false,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
       "relationships": [
         {
           "allow_nil?": true,
@@ -776,9 +1061,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": "never",
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "user"
@@ -794,7 +1081,6 @@
     },
     {
       "actions": [
-        "read",
         "destroy",
         [
           "create",
@@ -943,10 +1229,117 @@
         }
       ],
       "bubble_name": "Venue",
+      "calculations": [],
       "description": null,
+      "extra_actions": [
+        {
+          "accept": [],
+          "description": "Direct view: records reached by primary key (Ash.get, relationship loads); an authorized read or aggregate that does not select by primary key is forbidden",
+          "keyed?": true,
+          "name": "read",
+          "primary?": true,
+          "type": "read"
+        },
+        {
+          "accept": [],
+          "description": "Bubble \"Do a search for\": the records the user may find in searches",
+          "keyed?": false,
+          "name": "search",
+          "primary?": false,
+          "type": "read"
+        }
+      ],
+      "field_policies": [
+        {
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": null,
+          "fields": [
+            "created_date",
+            "modified_date",
+            "creator_id",
+            "slug",
+            "name"
+          ]
+        }
+      ],
       "identities": [],
       "migration_types": [],
       "module": "Venue",
+      "policies": [
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "keyed"
+            }
+          ],
+          "description": "Direct view reaches records by primary key or through a relationship, never by listing",
+          "permission": "keyed"
+        },
+        {
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Direct view (by ID, or through a reference): the user may view some field of the record",
+          "permission": "view"
+        },
+        {
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {
+                "default": true
+              },
+              "test": "always"
+            }
+          ],
+          "description": "Searches: the user may find the record in searches",
+          "permission": "search_for"
+        }
+      ],
+      "privacy": {
+        "attachments": [
+          {
+            "kind": "authorize_if",
+            "source": {
+              "default": true
+            },
+            "test": "always"
+          }
+        ],
+        "compiled_rules": [],
+        "data_api": {
+          "create": [],
+          "delete": [],
+          "exposed": null,
+          "modify": []
+        },
+        "denied_rules": [],
+        "file_fields": [],
+        "source": "public_default"
+      },
+      "privacy_relationships": [],
       "relationships": [
         {
           "allow_nil?": true,
@@ -955,9 +1348,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "gate": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
+          "sortable?": false,
           "source": {
             "field": "Created By",
             "type": "venue"
@@ -972,7 +1367,7 @@
       "table": "venue"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "typed_structs": [
     {
       "bubble_name": null,
