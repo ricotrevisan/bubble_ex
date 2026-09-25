@@ -8,6 +8,9 @@ defmodule BubbleEx.Privacy.Rule do
   Rules are not ordered or exclusive: a user receives the union (logical OR)
   of the permissions of every rule whose condition they match, including the
   union of their visible and auto-binding field lists.
+
+  Rule members other than `display`, `comment`, `condition` and `permissions`
+  are kept verbatim in `extra` (and diagnosed as `:uninterpreted_field`).
   """
 
   alias BubbleEx.Diagnostic
@@ -23,6 +26,7 @@ defmodule BubbleEx.Privacy.Rule do
     :permissions,
     :path,
     default?: false,
+    extra: %{},
     diagnostics: []
   ]
 
@@ -34,6 +38,7 @@ defmodule BubbleEx.Privacy.Rule do
           condition: Ast.t() | nil,
           permissions: Permissions.t() | nil,
           path: String.t(),
+          extra: map(),
           diagnostics: [Diagnostic.t()]
         }
 end

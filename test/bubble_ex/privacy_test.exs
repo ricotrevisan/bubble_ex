@@ -203,6 +203,9 @@ defmodule BubbleEx.PrivacyTest do
     test "unexpected rule members are diagnosed" do
       privacy = parse!(with_rule(%{"condition" => %{"type" => "CurrentUser"}, "priority" => 1}))
 
+      # :uninterpreted_field is :preserved: the member is kept on the rule.
+      assert %Rule{extra: %{"priority" => 1}} = rule!(privacy, "task", "x_")
+
       assert [
                %Diagnostic{
                  code: :uninterpreted_field,
@@ -213,10 +216,32 @@ defmodule BubbleEx.PrivacyTest do
     end
 
     test "malformed privacy_role" do
-      app = put_in(@app, ["user_types", "task", "privacy_role"], [])
+      app = put_in(@app, ["user_types", "task", "privacy_role"], ["kept"])
       privacy = parse!(app)
-      assert %DataType{availability: :unavailable, rules: []} = type!(privacy, "task")
-      assert [%Diagnostic{code: :malformed_node}] = privacy.diagnostics
+
+      assert %DataType{
+               availability: :unavailable,
+               rules: [],
+               extra: %{"privacy_role" => ["kept"]}
+             } =
+               type!(privacy, "task")
+
+      assert [%Diagnostic{code: :malformed_node, outcome: :preserved}] = privacy.diagnostics
+    end
+
+    test "a data type that is not an object is kept verbatim" do
+      app = put_in(@app, ["user_types", "broken"], "not a type")
+      privacy = parse!(app)
+
+      assert %DataType{availability: :unavailable, raw: "not a type"} = type!(privacy, "broken")
+      assert type!(privacy, "task").raw == nil
+
+      assert [%Diagnostic{code: :malformed_node, outcome: :preserved, subject: %{type: "broken"}}] =
+               Enum.filter(privacy.diagnostics, &(&1.subject[:type] == "broken"))
+    end
+
+    test "known rule members are not duplicated into extra" do
+      assert Enum.all?(type!(parse!(), "task").rules, &(&1.extra == %{}))
     end
   end
 

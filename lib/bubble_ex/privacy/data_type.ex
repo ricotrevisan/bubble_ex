@@ -21,7 +21,9 @@ defmodule BubbleEx.Privacy.DataType do
   `exposed_api` is the type-level Data API switch; the rule-level
   `create_via_api` / `modify_via_api` / `delete_via_api` flags only take effect
   when it is true. `deleted` marks a type deleted in the editor. Other
-  type-level members are kept in `extra` and diagnosed.
+  type-level members, and a `privacy_role` that is not an object, are kept
+  verbatim in `extra` and diagnosed. A data type that is not an object at all
+  is kept verbatim in `raw` (otherwise `nil`).
   """
 
   alias BubbleEx.Diagnostic
@@ -38,6 +40,7 @@ defmodule BubbleEx.Privacy.DataType do
     deleted: nil,
     rules: [],
     extra: %{},
+    raw: nil,
     diagnostics: []
   ]
 
@@ -48,6 +51,7 @@ defmodule BubbleEx.Privacy.DataType do
           exposed_api: boolean() | nil,
           deleted: boolean() | nil,
           extra: map(),
+          raw: term(),
           availability: :present | :none | :unavailable,
           path: String.t(),
           rules: [Rule.t()],

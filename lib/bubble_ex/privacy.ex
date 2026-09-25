@@ -65,13 +65,14 @@ defmodule BubbleEx.Privacy do
     %{base | diagnostics: subject(diags ++ more, %{type: id})}
   end
 
-  defp data_type(id, _type, _schema) do
+  defp data_type(id, type, _schema) do
     path = ["user_types", id]
 
     %DataType{
       id: id,
       availability: :unavailable,
       path: Diagnostic.pointer(path),
+      raw: type,
       diagnostics: [
         Diagnostic.new(:malformed_node, path, "data type must be an object", subject: %{type: id})
       ]
@@ -103,9 +104,11 @@ defmodule BubbleEx.Privacy do
 
   defp rules(other, _type, base, path, _schema) do
     message = "privacy_role must be an object: #{inspect(other)}"
+    base = %{base | extra: Map.put(base.extra, "privacy_role", other)}
     {base, [Diagnostic.new(:malformed_node, path ++ ["privacy_role"], message)]}
   end
 
+  @known ~w(display comment condition permissions)
   @type_members ~w(display %d fields %f3 privacy_role comment exposed_api deleted %del)
 
   # Type-level members other than fields and rules. Unknown or ill-typed ones
@@ -164,6 +167,7 @@ defmodule BubbleEx.Privacy do
       condition: condition,
       permissions: permissions,
       path: Diagnostic.pointer(path),
+      extra: Map.drop(raw, @known),
       diagnostics: subject(cdiags ++ pdiags ++ extras(raw, path), %{type: type_id, rule: id})
     }
   end
@@ -202,7 +206,6 @@ defmodule BubbleEx.Privacy do
   defp condition(_raw, path, _type_id, _schema, _id),
     do: {nil, [Diagnostic.new(:missing_condition, path, "non-default rule has no condition")]}
 
-  @known ~w(display comment condition permissions)
   defp extras(raw, path) do
     for key <- raw |> Map.keys() |> Enum.sort(),
         key not in @known,
