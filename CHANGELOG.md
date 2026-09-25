@@ -6,6 +6,29 @@ All notable changes to this project are documented here.
 
 ### Changed (breaking)
 
+- **Every `BubbleEx.Db.Reader` table has Bubble's built-in fields**
+  (WTF-379). After `_id`, each data type's table gets the Model's
+  `DataType.system_fields`: `Created Date` and `Modified Date`
+  (`:utc_datetime_usec`), `Created By` (a `:reference` to User, so a
+  many-to-one relationship to `User._id`), `Slug` (`:string`), and `email`
+  (`:string`) on User, so the synthesized User is no longer just `_id`. They
+  are claimed before the defined fields: a defined field repeating one of
+  these names, case-insensitively, gets the next free suffix
+  (`Created Date_2`, `db_name_suffixed`). Per encoder: **DBML** four more
+  columns per table (five on User) and a `Ref:` from each table's
+  `"Created By"` to `"User"."_id"`; **PostgreSQL / SQLite / T-SQL** the
+  columns (`timestamptz` / `TEXT` / `DATETIME2` dates) and a foreign key from
+  `"Created By"` to User's `_id` (User's is to itself); **Ecto**
+  `field :created_date`, `:modified_date`, `:slug` (`:email`),
+  `belongs_to :created_by, User, foreign_key: :created_by_id`, the migration
+  columns and a `created_by_id` index; **Zod** nullish `'Created Date'`,
+  `'Modified Date'` (ISO datetimes), `'Created By'`, `Slug`, `email`;
+  **Xano** `created_date` / `modified_date` timestamps, `created_by` (a
+  `ref:user._id` text field), `slug`, `email`; **Convex** `createdDate`,
+  `modifiedDate` (`v.float64()`), `createdBy` (re-key to `v.id`), `slug`,
+  `email`. Names follow each format's usual rules, so they are not `:ash`'s
+  (`creator` / `creator_id`), and the SQL formats keep a foreign key that
+  `:ash` leaves out.
 - **`BubbleEx.Db.Reader`'s tables are a projection of `BubbleEx.Model`**
   (WTF-365). The Reader no longer reads data types, fields or option sets
   itself (a test forbids it), so DBML, PostgreSQL, SQLite, T-SQL, Ecto, Zod,
@@ -199,6 +222,10 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Xano output lists each table's and field's keys in a fixed order (`name`,
+  `type`, `values`, `description`, `style`, `children`). It used to follow
+  atom creation order, so `children` moved before or after `style` between
+  runs.
 - Preserve snapshot stylesheet cascade order, adopted styles, embedded frame
   state and local frame assets. Restore captured scroll offsets with a fixed,
   CSP-hashed initializer while continuing to remove source execution. Keep
