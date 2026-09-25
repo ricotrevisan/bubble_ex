@@ -1,0 +1,31 @@
+{
+  "user_types": {
+    "a": {
+      "display": "A",
+      "fields": {
+        "b_custom_b": {
+          "display": "B",
+          "value": "custom.b"
+        }
+      }
+    },
+    "b": {
+      "display": "B",
+      "fields": {
+        "c_list_custom_c": {
+          "display": "C",
+          "value": "list.custom.c"
+        }
+      }
+    },
+    "c": {
+      "display": "C",
+      "fields": {
+        "a_custom_a": {
+          "display": "A",
+          "value": "custom.a"
+        }
+      }
+    }
+  }
+}

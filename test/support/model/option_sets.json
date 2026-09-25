@@ -1,0 +1,145 @@
+{
+  "_id": "synthetic-option-sets",
+  "option_sets": {
+    "channel": {
+      "display": "Channel",
+      "values": {
+        "email": {
+          "db_value": "email",
+          "display": "Email",
+          "sort_factor": 1
+        },
+        "sms": {
+          "db_value": "sms",
+          "display": "SMS",
+          "sort_factor": 1
+        }
+      }
+    },
+    "legacy": {
+      "deleted": true,
+      "display": "Legacy",
+      "values": {}
+    },
+    "orphan": {
+      "attributes": {
+        "parent": {
+          "display": "Parent",
+          "value": "option.ghost_set"
+        }
+      },
+      "display": "Orphan",
+      "values": {}
+    },
+    "priority": {
+      "attributes": {
+        "channels": {
+          "display": "Channels",
+          "value": "list.option.channel"
+        },
+        "color": {
+          "creation_source": "editor",
+          "display": "Color",
+          "value": "text"
+        },
+        "escalates_to": {
+          "display": "Escalates to",
+          "value": "option.priority"
+        },
+        "icon": {
+          "display": "Icon",
+          "value": "image"
+        },
+        "retired": {
+          "deleted": true,
+          "display": "Retired",
+          "value": "text"
+        },
+        "urgent": {
+          "display": "Urgent",
+          "value": "boolean"
+        },
+        "weight": {
+          "display": "Weight",
+          "value": "number"
+        }
+      },
+      "comment": "How urgent a ticket is",
+      "creation_source": "editor",
+      "display": "Priority",
+      "values": {
+        "bAa": {
+          "color": "grey",
+          "db_value": "low",
+          "display": "Low",
+          "sort_factor": 3,
+          "urgent": false,
+          "weight": 1
+        },
+        "bAb": {
+          "channels": [
+            "email",
+            "sms"
+          ],
+          "color": "red",
+          "db_value": "high",
+          "display": "High",
+          "escalates_to": "critical",
+          "sort_factor": 1,
+          "urgent": true,
+          "weight": 10
+        },
+        "bAc": {
+          "color": "amber",
+          "db_value": "medium",
+          "display": "Medium",
+          "sort_factor": 2,
+          "weight": 5.5
+        },
+        "bAd": {
+          "db_value": "critical",
+          "display": "Critical",
+          "icon": "//cdn.example.invalid/critical.png",
+          "sort_factor": 0,
+          "urgent": true
+        },
+        "bAe": {
+          "db_value": "old",
+          "deleted": true,
+          "display": "Old",
+          "sort_factor": 4
+        },
+        "bAf": {
+          "display": "Unkeyed",
+          "sort_factor": 5
+        },
+        "bAg": {
+          "db_value": "high",
+          "display": "High again",
+          "sort_factor": 6
+        },
+        "bAh": {
+          "db_value": "stale",
+          "display": "Stale",
+          "sort_factor": 7,
+          "tooltip": "attribute no longer declared"
+        }
+      }
+    }
+  },
+  "user_types": {
+    "ticket": {
+      "display": "Ticket",
+      "fields": {
+        "channels_list_option_channel": {
+          "display": "Channels",
+          "value": "list.option.channel"
+        },
+        "priority_option_priority": {
+          "display": "Priority",
+          "value": "option.priority"
+        }
+      }
+    }
+  }
+}

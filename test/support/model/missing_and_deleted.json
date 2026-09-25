@@ -1,0 +1,64 @@
+{
+  "_id": "synthetic-missing-deleted",
+  "option_sets": {
+    "retired": {
+      "deleted": true,
+      "display": "Retired",
+      "values": {
+        "x": {
+          "db_value": "x",
+          "deleted": true,
+          "display": "X",
+          "sort_factor": 1
+        }
+      }
+    }
+  },
+  "user_types": {
+    "archive": {
+      "deleted": true,
+      "display": "Archive",
+      "fields": {
+        "label_text": {
+          "display": "Label",
+          "value": "text"
+        }
+      }
+    },
+    "invoice": {
+      "display": "Invoice",
+      "fields": {
+        "archive_custom_archive": {
+          "display": "Archive",
+          "value": "custom.archive"
+        },
+        "customer_custom_ghost": {
+          "display": "Customer",
+          "value": "custom.ghost"
+        },
+        "lines_list_custom_ghost_line": {
+          "display": "Lines",
+          "value": "list.custom.ghost_line"
+        },
+        "old_ref_custom_ghost": {
+          "deleted": true,
+          "display": "Old ref",
+          "value": "custom.ghost"
+        },
+        "old_total_number": {
+          "deleted": true,
+          "display": "Old total",
+          "value": "number"
+        },
+        "state_option_ghost_state": {
+          "display": "State",
+          "value": "option.ghost_state"
+        },
+        "total_number": {
+          "display": "Total",
+          "value": "number"
+        }
+      }
+    }
+  }
+}

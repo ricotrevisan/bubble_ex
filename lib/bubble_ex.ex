@@ -203,6 +203,10 @@ defmodule BubbleEx do
           {:ok, BubbleEx.Findings.t()} | {:error, BubbleEx.Error.t()}
   def model_findings(app, opts \\ []), do: BubbleEx.Findings.analyze(app, opts)
 
+  @doc "Builds the stack-neutral data model of decoded app JSON. See `BubbleEx.Model`."
+  @spec data_model(term()) :: {:ok, BubbleEx.Model.t()} | {:error, BubbleEx.Error.t()}
+  def data_model(app), do: BubbleEx.Model.build(app)
+
   @doc "Exports supplied workflow data to JSON and Markdown in an empty output directory."
   @spec export_workflows(term(), String.t()) :: {:ok, map()} | {:error, BubbleEx.Error.t()}
   def export_workflows(payload, out_dir), do: BubbleEx.Workflows.export(payload, out_dir)

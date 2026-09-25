@@ -1,0 +1,41 @@
+{
+  "option_sets": {
+    "ölçü": {
+      "display": "Ölçü",
+      "values": {
+        "ü": {
+          "db_value": "ü",
+          "display": "Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü Ü ",
+          "sort_factor": 1
+        }
+      }
+    }
+  },
+  "user_types": {
+    "tâche_ü": {
+      "display": "Ωvery long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name very long name end",
+      "fields": {
+        "a/b~c_text": {
+          "display": "slash/and~tilde",
+          "value": "text"
+        },
+        "emoji_🧪_custom_类型": {
+          "display": "🧪",
+          "value": "custom.类型"
+        },
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff_text": {
+          "display": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "value": "text"
+        },
+        "名前_text": {
+          "display": "名前 — ✓ ünïcödé",
+          "value": "text"
+        }
+      }
+    },
+    "类型": {
+      "display": "类型 🏷️",
+      "fields": {}
+    }
+  }
+}

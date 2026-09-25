@@ -91,6 +91,11 @@ defmodule BubbleEx.DiagnosticTest do
 
       covered = emitted |> Enum.map(& &1.code) |> MapSet.new()
       assert MapSet.size(covered) >= 30, inspect(MapSet.to_list(covered))
+
+      # The Model's own fixtures exercise every Model code.
+      model_codes = Enum.filter(Codes.all(), &String.starts_with?(Atom.to_string(&1), "model_"))
+      assert model_codes != []
+      assert model_codes -- MapSet.to_list(covered) == []
     end
 
     defp sweep do
@@ -106,8 +111,15 @@ defmodule BubbleEx.DiagnosticTest do
         |> Path.wildcard()
         |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
 
+      # The Model's fixtures include hostile shapes the Reader cannot take.
+      model_apps =
+        "test/support/model/*.json"
+        |> Path.wildcard()
+        |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
+
       Enum.flat_map(apps, &app_diagnostics/1) ++
         Enum.flat_map(apps, &index_diagnostics/1) ++
+        Enum.flat_map(apps ++ model_apps, &model_diagnostics/1) ++
         Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
         Enum.flat_map(expression_samples(), &expression_diagnostics/1)
     end
@@ -131,6 +143,11 @@ defmodule BubbleEx.DiagnosticTest do
         end
 
       db.diagnostics ++ rendered ++ privacy
+    end
+
+    defp model_diagnostics(app) do
+      {:ok, model} = BubbleEx.Model.build(app)
+      model.diagnostics
     end
 
     defp index_diagnostics(app) do

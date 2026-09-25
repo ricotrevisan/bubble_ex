@@ -1,0 +1,1003 @@
+{
+  "bubble_id": "synthetic-malformed",
+  "data_types": [
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "broken",
+      "name": null,
+      "path": "/user_types/broken",
+      "privacy": "unavailable",
+      "raw": "not a type",
+      "rules": [],
+      "synthesized": false,
+      "system_fields": []
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "counted",
+      "name": null,
+      "path": "/user_types/counted",
+      "privacy": "unavailable",
+      "raw": 42,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": []
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {
+        "fields": [
+          "not",
+          "a",
+          "map"
+        ]
+      },
+      "fields": [],
+      "id": "listy",
+      "name": "Listy",
+      "path": "/user_types/listy",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/listy",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/listy",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/listy",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/listy",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/listy",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {
+        "surprise": {
+          "x": 1
+        }
+      },
+      "fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "bad",
+          "name": null,
+          "path": "/user_types/task/fields/bad",
+          "raw": "not a field",
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "unknown",
+            "resolved": null,
+            "source": null,
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "empty_custom",
+          "name": "Empty custom",
+          "path": "/user_types/task/fields/empty_custom",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "unknown",
+            "resolved": null,
+            "source": "custom.",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {
+            "secret_sauce": {
+              "k": [
+                1,
+                2
+              ]
+            }
+          },
+          "id": "extra_member",
+          "name": "Extra member",
+          "path": "/user_types/task/fields/extra_member",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "nested_list",
+          "name": "Nested list",
+          "path": "/user_types/task/fields/nested_list",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "unknown",
+            "resolved": null,
+            "source": "list.list.text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "numeric_type",
+          "name": "Numeric type",
+          "path": "/user_types/task/fields/numeric_type",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "unknown",
+            "resolved": null,
+            "source": 7,
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "odd_api",
+          "name": "Odd API",
+          "path": "/user_types/task/fields/odd_api",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "external",
+            "resolved": true,
+            "source": "api.apiconnector2.bad.defs.T",
+            "target": "api.apiconnector2.bad.defs.T"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "ok_text",
+          "name": "OK",
+          "path": "/user_types/task/fields/ok_text",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "quantum",
+          "name": "Quantum",
+          "path": "/user_types/task/fields/quantum",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "unknown",
+            "resolved": null,
+            "source": "quantum_state",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "untyped",
+          "name": "Untyped",
+          "path": "/user_types/task/fields/untyped",
+          "raw": null,
+          "system": null,
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "unknown",
+            "resolved": null,
+            "source": null,
+            "target": null
+          }
+        }
+      ],
+      "id": "task",
+      "name": "Task",
+      "path": "/user_types/task",
+      "privacy": "none",
+      "raw": null,
+      "rules": [],
+      "synthesized": false,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/task",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    },
+    {
+      "comment": null,
+      "deleted": false,
+      "exposed_api": null,
+      "extra": {},
+      "fields": [],
+      "id": "user",
+      "name": "User",
+      "path": "/user_types/user",
+      "privacy": "unavailable",
+      "raw": null,
+      "rules": [],
+      "synthesized": true,
+      "system_fields": [
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "_id",
+          "name": "_id",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "unique_id",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created Date",
+          "name": "Created Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Modified Date",
+          "name": "Modified Date",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "modified_date",
+          "type": {
+            "base": "date",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "date",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Created By",
+          "name": "Created By",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "created_by",
+          "type": {
+            "base": null,
+            "cardinality": "one",
+            "kind": "ref",
+            "resolved": true,
+            "source": "user",
+            "target": "user"
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "Slug",
+          "name": "Slug",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "slug",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "comment": null,
+          "creation_source": null,
+          "default": null,
+          "deleted": false,
+          "extra": {},
+          "id": "email",
+          "name": "email",
+          "path": "/user_types/user",
+          "raw": null,
+          "system": "email",
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "option set must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_set",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_set"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {
+        "value": "v1"
+      },
+      "message": "option value must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_value/values/v1",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "attributes must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_values/attributes",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_values"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "values must be an object",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_values/values",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_values"
+      }
+    },
+    {
+      "code": "malformed_node",
+      "details": {},
+      "message": "data type must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/broken",
+      "severity": "error",
+      "stage": "parse",
+      "subject": {
+        "type": "broken"
+      }
+    },
+    {
+      "code": "malformed_node",
+      "details": {},
+      "message": "data type must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/counted",
+      "severity": "error",
+      "stage": "parse",
+      "subject": {
+        "type": "counted"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "fields must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/listy/fields",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "type": "listy"
+      }
+    },
+    {
+      "code": "model_malformed_node",
+      "details": {},
+      "message": "field must be an object",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/bad",
+      "severity": "error",
+      "stage": "model",
+      "subject": {
+        "field": "bad",
+        "type": "task"
+      }
+    },
+    {
+      "code": "field_type_malformed",
+      "details": {
+        "descriptor": null,
+        "embedded_path": "/api.apiconnector2.bad.defs.T/fields/odd",
+        "root": {
+          "field": "odd_api",
+          "type": "task"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.bad.defs.T",
+            "field": "odd"
+          }
+        ]
+      },
+      "message": "missing or malformed external field type: nil",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/bad/defs/types",
+      "severity": "warning",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "field": "odd"
+      }
+    },
+    {
+      "code": "model_option_key_missing",
+      "details": {
+        "db_value": "",
+        "value": "v2"
+      },
+      "message": "option value has no db_value; its Bubble ID \"v2\" is used",
+      "outcome": "degraded",
+      "path": "/option_sets/bad_value/values/v2",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "uninterpreted_field",
+      "details": {},
+      "message": "unexpected data type member \"surprise\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/surprise",
+      "severity": "warning",
+      "stage": "parse",
+      "subject": {
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "custom."
+      },
+      "message": "unsupported type descriptor \"custom.\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/empty_custom/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "empty_custom",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "list.list.text"
+      },
+      "message": "unsupported type descriptor \"list.list.text\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/nested_list/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "nested_list",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_malformed_field_type",
+      "details": {},
+      "message": "missing or malformed type descriptor: 7",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/numeric_type/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "numeric_type",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_unsupported_field_type",
+      "details": {
+        "descriptor": "quantum_state"
+      },
+      "message": "unsupported type descriptor \"quantum_state\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/quantum/value",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "quantum",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_malformed_field_type",
+      "details": {},
+      "message": "missing or malformed type descriptor: nil",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/untyped",
+      "severity": "warning",
+      "stage": "model",
+      "subject": {
+        "field": "untyped",
+        "type": "task"
+      }
+    },
+    {
+      "code": "incomplete_field_metadata",
+      "details": {
+        "embedded_path": "/api.apiconnector2.bad.defs.T/fields/odd",
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "root": {
+          "field": "odd_api",
+          "type": "task"
+        },
+        "via": [
+          {
+            "external_type": "api.apiconnector2.bad.defs.T",
+            "field": "odd"
+          }
+        ]
+      },
+      "message": "external type field lacks a caption or path: api.apiconnector2.bad.defs.T",
+      "outcome": "degraded",
+      "path": "/settings/client_safe/apiconnector2/bad/defs/types",
+      "severity": "info",
+      "stage": "read",
+      "subject": {
+        "external_type": "api.apiconnector2.bad.defs.T",
+        "field": "odd"
+      }
+    },
+    {
+      "code": "model_uninterpreted_member",
+      "details": {},
+      "message": "unexpected option set member \"flavor\"",
+      "outcome": "preserved",
+      "path": "/option_sets/bad_value/flavor",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "option_set": "bad_value"
+      }
+    },
+    {
+      "code": "model_uninterpreted_member",
+      "details": {},
+      "message": "unexpected field member \"secret_sauce\"",
+      "outcome": "preserved",
+      "path": "/user_types/task/fields/extra_member/secret_sauce",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "field": "extra_member",
+        "type": "task"
+      }
+    },
+    {
+      "code": "model_synthesized_user_type",
+      "details": {},
+      "message": "the source defines no User type; Bubble's built-in User is modeled with its built-in fields only",
+      "outcome": "degraded",
+      "path": "/user_types/user",
+      "severity": "info",
+      "stage": "model",
+      "subject": {
+        "type": "user"
+      }
+    }
+  ],
+  "external_types": [
+    {
+      "call": "defs",
+      "connector": "bad",
+      "fields": [
+        {
+          "cycle": false,
+          "id": "fine",
+          "name": "Fine",
+          "response_path": [
+            "fine"
+          ],
+          "type": {
+            "base": "text",
+            "cardinality": "one",
+            "kind": "scalar",
+            "resolved": null,
+            "source": "text",
+            "target": null
+          }
+        },
+        {
+          "cycle": false,
+          "id": "odd",
+          "name": null,
+          "response_path": null,
+          "type": {
+            "base": null,
+            "cardinality": "unknown",
+            "kind": "opaque",
+            "resolved": null,
+            "source": null,
+            "target": null
+          }
+        }
+      ],
+      "id": "api.apiconnector2.bad.defs.T",
+      "name": "T",
+      "path": "/settings/client_safe/apiconnector2/bad/defs/types",
+      "resolution": "resolved"
+    }
+  ],
+  "extra": {},
+  "option_sets": [
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {},
+      "id": "bad_set",
+      "name": null,
+      "path": "/option_sets/bad_set",
+      "raw": "nope",
+      "values": []
+    },
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {
+        "flavor": "mint"
+      },
+      "id": "bad_value",
+      "name": "Bad value",
+      "path": "/option_sets/bad_value",
+      "raw": null,
+      "values": [
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "v1",
+          "key": "v1",
+          "name": null,
+          "path": "/option_sets/bad_value/values/v1",
+          "raw": 5,
+          "sort_factor": null
+        },
+        {
+          "attributes": {},
+          "comment": null,
+          "deleted": false,
+          "extra": {},
+          "id": "v2",
+          "key": "v2",
+          "name": "Two",
+          "path": "/option_sets/bad_value/values/v2",
+          "raw": null,
+          "sort_factor": "second"
+        }
+      ]
+    },
+    {
+      "attributes": [],
+      "comment": null,
+      "creation_source": null,
+      "deleted": false,
+      "extra": {
+        "attributes": [
+          "x"
+        ],
+        "values": "oops"
+      },
+      "id": "bad_values",
+      "name": "Bad values",
+      "path": "/option_sets/bad_values",
+      "raw": null,
+      "values": []
+    }
+  ],
+  "schema_version": 1
+}

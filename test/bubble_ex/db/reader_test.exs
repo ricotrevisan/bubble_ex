@@ -303,6 +303,33 @@ defmodule BubbleEx.Db.ReaderTest do
                 "/user_types/item/%f3/ghost/%v"}
              ]
     end
+
+    test "a registry field definition that is not an object is opaque, not a crash" do
+      shape = "api.apiconnector2.alpha.call.Shape"
+
+      attrs = %{
+        "user_types" => %{"item" => %{"%d" => "Item", "%f3" => %{"s" => %{"%v" => shape}}}},
+        "settings" => %{
+          "client_safe" => %{
+            "apiconnector2" => %{
+              "alpha" => %{
+                "call" => %{
+                  "ret_value" => shape,
+                  "types" => Jason.encode!(%{shape => %{"fields" => %{"odd" => "not a field"}}})
+                }
+              }
+            }
+          }
+        }
+      }
+
+      assert {:ok, db} = Reader.parse(attrs)
+      [node] = db.external_types
+      assert [%{id: "odd", type: %{type: :opaque_external}}] = node.fields
+
+      assert db.diagnostics |> Enum.map(& &1.code) |> Enum.sort() ==
+               [:field_type_malformed, :incomplete_field_metadata]
+    end
   end
 
   describe "parse/1 relationship targets" do

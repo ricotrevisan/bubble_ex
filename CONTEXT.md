@@ -80,6 +80,14 @@ _Avoid_: Column, property, attribute
 A typed connection between data types inferred from a field that references another type.
 _Avoid_: Association, foreign key
 
+**Model**:
+The typed, stack-neutral description of one app version's data (`BubbleEx.Model`): data types, their fields and built-in fields, option sets, API Connector types and privacy rules, each field with its content type. It records what Bubble has, keyed by Bubble IDs; display names are attributes, and deleted definitions are kept and flagged. Target stacks map from it and own every target-language name.
+_Avoid_: Schema, Ash model, normalized model
+
+**Content type**:
+The Bubble type of a field's value in the model: a scalar, file reference, structured value, a reference to a data type, option set or API type (resolved or not), or an opaque value kept verbatim. Stated in Bubble's terms, never a target's.
+_Avoid_: Column type, Ash type
+
 **Database diagram**:
 A DBML representation of an app's data schema, including its data types, fields, and relationships.
 _Avoid_: Data schema, payload
