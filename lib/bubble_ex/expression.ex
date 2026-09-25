@@ -13,7 +13,8 @@ defmodule BubbleEx.Expression do
       {:ok, "Current User's admin is yes"} = BubbleEx.Expression.render(ast)
 
   Unmodeled operators and sources are kept verbatim as `Ast.Raw` nodes and
-  itemized in `diagnostics`; parsing never drops input. `to_bubble/1`
+  itemized in `diagnostics` (`BubbleEx.Diagnostic`, stage `:parse`); parsing
+  never drops input. Diagnostics are not part of the canonical form. `to_bubble/1`
   re-emits the source JSON (its canonical JSON equals the source's).
 
   `canonical/1` / `sha256/1` identify what an expression says. They ignore
@@ -24,8 +25,8 @@ defmodule BubbleEx.Expression do
   inside verbatim payloads are compared as supplied.
   """
 
-  alias BubbleEx.{CanonicalJson, Error}
-  alias BubbleEx.Expression.{Ast, Diagnostic, Encoder, Parser, Schema, Semantic, Text}
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error}
+  alias BubbleEx.Expression.{Ast, Encoder, Parser, Schema, Semantic, Text}
 
   @enforce_keys [:ast, :diagnostics]
   defstruct [:ast, :diagnostics]
@@ -62,7 +63,7 @@ defmodule BubbleEx.Expression do
       }
 
       {ast, diagnostics} = Parser.parse(raw, Keyword.get(opts, :path, []), ctx)
-      {:ok, %__MODULE__{ast: ast, diagnostics: diagnostics}}
+      {:ok, %__MODULE__{ast: ast, diagnostics: Diagnostic.normalize(diagnostics)}}
     else
       {:error, Error.new(:invalid_input, "expected decoded JSON with string map keys")}
     end

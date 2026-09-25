@@ -92,9 +92,9 @@ _Avoid_: Policy, RLS rule, permission
 The typed, stack-neutral tree of a Bubble expression (sources, field chains, operators). It describes Bubble semantics only; target stacks compile from it.
 _Avoid_: Rendered text, binding, Ash expression
 
-**Expression diagnostic**:
-A structured note, keyed by JSON pointer, about part of an expression or privacy rule that is unmodeled, malformed or unresolved. The unmodeled source is always kept verbatim in a raw node.
-_Avoid_: Error, finding
+**Diagnostic**:
+BubbleEx's own report that it could not read, parse, model or render part of an app faithfully (`BubbleEx.Diagnostic`). It has a registered code, a severity (how much the owner should care), an outcome (the data was preserved, degraded or unresolved), a stage, a subject of Bubble IDs and a JSON pointer into the source. It disappears as the tool improves; it is not a statement about the app. In expressions, the unmodeled source is always kept verbatim in a raw node.
+_Avoid_: Error, finding, warning
 
 ## Ecosystem
 

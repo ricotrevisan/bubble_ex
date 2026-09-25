@@ -1,0 +1,139 @@
+defmodule BubbleEx.Diagnostic.Codes do
+  # The single registry of diagnostic codes. Severity, outcome and stage are
+  # properties of a code, never of a call site: `BubbleEx.Diagnostic.new/4`
+  # reads them from here and raises on an unregistered code. A test scans
+  # `lib/` for emitted codes and requires this registry to match exactly.
+
+  @codes [
+    # --- :read — BubbleEx.Db.Reader (API Connector types) -------------------
+    {:invalid_descriptor, :warning, :degraded, :read,
+     "an `api.` type descriptor that is not a valid API Connector type; kept as an opaque external value"},
+    {:field_type_unsupported, :warning, :degraded, :read,
+     "an external field type outside the known scalars and API Connector types; kept as an opaque external value"},
+    {:field_type_malformed, :warning, :degraded, :read,
+     "an external field type that is missing or not a string; kept as an opaque external value"},
+    {:conflicting_duplicate_definition, :warning, :unresolved, :read,
+     "an API Connector type defined differently by more than one call"},
+    {:connector_missing, :warning, :unresolved, :read,
+     "the API Connector named by an external type is absent"},
+    {:call_missing, :warning, :unresolved, :read,
+     "the API Connector call named by an external type is absent"},
+    {:registry_unavailable, :warning, :unresolved, :read,
+     "the API Connector call has no `types` registry"},
+    {:registry_malformed, :warning, :unresolved, :read,
+     "the API Connector call's `types` registry is not a JSON object"},
+    {:exact_type_definition_missing, :warning, :unresolved, :read,
+     "the call's `types` registry has no usable definition for the external type"},
+    {:empty_definition, :info, :preserved, :read,
+     "an external type defined with no fields; modeled as an empty object"},
+    {:incomplete_field_metadata, :info, :degraded, :read,
+     "an external type field without a caption or path"},
+    {:call_metadata_inconsistent, :info, :preserved, :read,
+     "the call's `ret_value` names a different type than the one resolved"},
+
+    # --- :parse — BubbleEx.Expression, BubbleEx.Privacy, BubbleEx.Workflows ---
+    {:unknown_operator, :error, :preserved, :parse,
+     "an operator outside the expression vocabulary; kept verbatim as `Ast.Raw`"},
+    {:unknown_source, :error, :preserved, :parse,
+     "a source type outside the expression vocabulary; kept verbatim as `Ast.Raw`"},
+    {:unexpected_shape, :error, :preserved, :parse,
+     "a known operator or source with missing or extra operands; kept verbatim as `Ast.Raw`"},
+    {:malformed_node, :error, :preserved, :parse,
+     "a value of the wrong JSON kind (not an expression, rule, data type or workflow object)"},
+    {:alias_collision, :error, :preserved, :parse,
+     "the same key spelled both readable and compact; both values kept"},
+    {:unresolved_order, :error, :preserved, :parse,
+     "map-keyed entries (text parts, actions) whose order cannot be established"},
+    {:invalid_permission, :error, :preserved, :parse,
+     "privacy-rule permissions that are not an object, a boolean or a field list; kept in `extra`"},
+    {:uninterpreted_field, :warning, :preserved, :parse,
+     "an unexpected member, kept for round-trip but not modeled"},
+    {:unknown_constraint, :warning, :preserved, :parse,
+     "a search or filter constraint operator outside the vocabulary; its source is kept"},
+    {:unknown_permission, :warning, :preserved, :parse,
+     "an unmodeled privacy-rule permission; kept in `extra`"},
+    {:unresolved_field, :warning, :unresolved, :parse,
+     "a field name absent from the subject's data type"},
+    {:missing_condition, :warning, :unresolved, :parse,
+     "a non-default privacy rule without a condition"},
+    {:missing_default_rule, :warning, :unresolved, :parse,
+     "a privacy rule set without an `everyone` rule"},
+    {:unresolved_property, :info, :unresolved, :parse,
+     "an accessor on a subject of unknown type (element state, plugin or API field)"},
+    {:malformed_owner, :warning, :preserved, :parse,
+     "a workflow owner that is not an object; its workflow availability is unknown"},
+    {:malformed_collection, :warning, :preserved, :parse,
+     "a workflow collection that is not a map or list; value kept"},
+    {:malformed_actions, :warning, :preserved, :parse,
+     "a workflow `actions` value that is not a map or list; value kept"},
+    {:malformed_properties, :warning, :preserved, :parse,
+     "event or action properties that are not an object; value kept"},
+    {:unsupported_type, :warning, :preserved, :parse,
+     "an event or action type outside the explanation vocabulary"},
+    {:unresolved_reference, :warning, :unresolved, :parse,
+     "a workflow reference (element, page, action, data type, …) that is missing or ambiguous"},
+    {:unresolved_condition, :warning, :unresolved, :parse,
+     "a workflow condition that is not a proven, fully supported boolean"},
+    {:unavailable_data, :info, :unresolved, :parse,
+     "a workflow scope whose data was not supplied"},
+    {:actions_unavailable, :info, :unresolved, :parse, "a workflow without an `actions` field"},
+    {:unclassified_definition, :info, :preserved, :parse,
+     "an action-bearing definition outside known workflow collections, kept as a candidate"},
+    {:properties_not_evaluated, :info, :preserved, :parse,
+     "event or action properties kept verbatim without evaluating their runtime semantics"},
+
+    # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
+    {:external_type_unresolved_root, :warning, :degraded, :target,
+     "an external field whose type did not resolve; rendered as JSON"},
+    {:external_type_unresolved_nested, :warning, :degraded, :target,
+     "an external type field whose nested type did not resolve; rendered as JSON"},
+    {:external_type_target_opaque, :info, :degraded, :target,
+     "the target cannot express external type shapes; rendered as JSON"},
+    {:external_type_cycle_edge, :info, :degraded, :target,
+     "a recursive external type edge the target cannot express; rendered as JSON"},
+    {:external_type_opaque_mode, :info, :degraded, :target,
+     "`external_types: :opaque` was selected; rendered as JSON"},
+    {:external_type_legacy_mode, :info, :degraded, :target,
+     "`external_types: :legacy` was selected; rendered in the legacy form"}
+  ]
+
+  @registry Map.new(@codes, fn {code, severity, outcome, stage, doc} ->
+              {code, %{severity: severity, outcome: outcome, stage: stage, doc: doc}}
+            end)
+
+  if map_size(@registry) != length(@codes), do: raise("duplicate diagnostic code")
+
+  @table Enum.map_join(@codes, "\n", fn {code, severity, outcome, stage, doc} ->
+           stage = if stage == :target, do: "`{:target, format}`", else: "`#{inspect(stage)}`"
+
+           "| `#{inspect(code)}` | `#{inspect(severity)}` | `#{inspect(outcome)}` | #{stage} | #{doc} |"
+         end)
+
+  @moduledoc """
+  The single diagnostic code registry. Each code fixes the severity, outcome
+  and stage of every `BubbleEx.Diagnostic` that carries it.
+
+  | Code | Severity | Outcome | Stage | Meaning |
+  |------|----------|---------|-------|---------|
+  #{@table}
+  """
+
+  @type entry :: %{
+          severity: BubbleEx.Diagnostic.severity(),
+          outcome: BubbleEx.Diagnostic.outcome(),
+          stage: :read | :parse | :model | :target,
+          doc: String.t()
+        }
+
+  @doc "Every registered code, in registry order."
+  @spec all() :: [atom()]
+  def all, do: Enum.map(@codes, &elem(&1, 0))
+
+  @doc "The registry entry for `code`, or `:error`."
+  @spec fetch(atom()) :: {:ok, entry()} | :error
+  def fetch(code), do: Map.fetch(@registry, code)
+
+  @doc "Whether `code` is registered."
+  @spec registered?(atom()) :: boolean()
+  def registered?(code), do: is_map_key(@registry, code)
+end

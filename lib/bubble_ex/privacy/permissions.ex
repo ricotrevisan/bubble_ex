@@ -15,7 +15,7 @@ defmodule BubbleEx.Privacy.Permissions do
   """
 
   alias BubbleEx.AppTree.Expr.Explanation
-  alias BubbleEx.Expression.Diagnostic
+  alias BubbleEx.Diagnostic
 
   @flags %{
     "view_all" => :view_all,

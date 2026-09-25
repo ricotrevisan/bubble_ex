@@ -10,7 +10,8 @@ defmodule BubbleEx.Privacy.Rule do
   union of their visible and auto-binding field lists.
   """
 
-  alias BubbleEx.Expression.{Ast, Diagnostic}
+  alias BubbleEx.Diagnostic
+  alias BubbleEx.Expression.Ast
   alias BubbleEx.Privacy.Permissions
 
   @enforce_keys [:id, :path]

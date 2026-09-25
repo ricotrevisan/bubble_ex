@@ -1,8 +1,7 @@
 defmodule BubbleEx.PrivacyTest do
   use ExUnit.Case, async: true
 
-  alias BubbleEx.{CanonicalJson, Error, Expression, Privacy, SampleHelper}
-  alias BubbleEx.Expression.Diagnostic
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Expression, Privacy, SampleHelper}
 
   alias BubbleEx.Expression.Ast.{
     Check,
@@ -82,6 +81,9 @@ defmodule BubbleEx.PrivacyTest do
                %Diagnostic{
                  code: :missing_default_rule,
                  severity: :warning,
+                 outcome: :unresolved,
+                 stage: :parse,
+                 subject: %{type: "task"},
                  path: "/user_types/task/privacy_role"
                }
              ] =
@@ -181,6 +183,8 @@ defmodule BubbleEx.PrivacyTest do
       assert [
                %Diagnostic{
                  code: :unknown_operator,
+                 outcome: :preserved,
+                 subject: %{type: "task", rule: "x_"},
                  path: "/user_types/task/privacy_role/x_/condition/next"
                }
              ] =
@@ -279,11 +283,14 @@ defmodule BubbleEx.PrivacyTest do
       assert %Permissions{view_all: nil, view_fields: nil, extra: ^perms} =
                rule!(privacy, "task", "x_").permissions
 
+      # Errors sort before warnings.
       assert Enum.map(privacy.diagnostics, &{&1.code, &1.path}) == [
-               {:unknown_permission, "/user_types/task/privacy_role/x_/permissions/export"},
                {:invalid_permission, "/user_types/task/privacy_role/x_/permissions/view_all"},
-               {:invalid_permission, "/user_types/task/privacy_role/x_/permissions/view_fields"}
+               {:invalid_permission, "/user_types/task/privacy_role/x_/permissions/view_fields"},
+               {:unknown_permission, "/user_types/task/privacy_role/x_/permissions/export"}
              ]
+
+      assert Enum.all?(privacy.diagnostics, &(&1.subject == %{type: "task", rule: "x_"}))
     end
 
     test "field lists may be arrays" do

@@ -24,7 +24,7 @@ defmodule BubbleEx.Privacy.DataType do
   type-level members are kept in `extra` and diagnosed.
   """
 
-  alias BubbleEx.Expression.Diagnostic
+  alias BubbleEx.Diagnostic
   alias BubbleEx.Privacy.Rule
 
   @enforce_keys [:id, :availability, :path]

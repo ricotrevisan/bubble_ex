@@ -112,8 +112,7 @@ defmodule BubbleEx.Workflows.Source do
   defp metadata_entry?(_), do: false
 
   @spec pointer(list()) :: String.t()
-  def pointer(path), do: Enum.map_join(path, "", &("/" <> escape(to_string(&1))))
-  defp escape(key), do: key |> String.replace("~", "~0") |> String.replace("/", "~1")
+  defdelegate pointer(path), to: BubbleEx.Diagnostic
 
   @spec get(term(), [String.t()]) :: {String.t(), term()} | nil
   def get(value, keys) when is_map(value) do
@@ -132,6 +131,6 @@ defmodule BubbleEx.Workflows.Source do
     end
   end
 
-  @spec diagnostic(String.t(), list(), String.t()) :: map()
-  def diagnostic(code, path, message), do: %{code: code, path: pointer(path), message: message}
+  @spec diagnostic(atom(), list(), String.t()) :: BubbleEx.Diagnostic.t()
+  def diagnostic(code, path, message), do: BubbleEx.Diagnostic.new(code, path, message)
 end

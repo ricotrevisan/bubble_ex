@@ -22,8 +22,8 @@ defmodule BubbleEx.WorkflowsTest do
     assert {:ok, i} = Workflows.inventory(payload)
     assert i.coverage.workflow_entries == 4
     assert i.coverage.action_entries == 7
-    assert Enum.any?(i.diagnostics, &(&1.code == "unsupported_type"))
-    assert Enum.any?(i.diagnostics, &(&1.code == "malformed_owner"))
+    assert Enum.any?(i.diagnostics, &(&1.code == :unsupported_type))
+    assert Enum.any?(i.diagnostics, &(&1.code == :malformed_owner))
     assert Enum.all?(i.workflows, &(at_pointer(payload, &1.path) == &1.raw))
 
     assert Enum.all?(
@@ -111,9 +111,9 @@ defmodule BubbleEx.WorkflowsTest do
              )
 
     assert i.coverage.workflow_entries == 2
-    assert Enum.any?(i.diagnostics, &(&1.code == "malformed_node"))
-    assert Enum.any?(i.diagnostics, &(&1.code == "malformed_actions"))
-    assert Enum.any?(i.diagnostics, &(&1.code == "malformed_properties"))
+    assert Enum.any?(i.diagnostics, &(&1.code == :malformed_node))
+    assert Enum.any?(i.diagnostics, &(&1.code == :malformed_actions))
+    assert Enum.any?(i.diagnostics, &(&1.code == :malformed_properties))
   end
 
   test "malformed action entries and unknown ordering are never dropped or assigned invented order" do
@@ -126,7 +126,7 @@ defmodule BubbleEx.WorkflowsTest do
       assert [w] = i.workflows
       assert w.ordering == "unresolved"
       assert length(w.actions) == map_size(actions)
-      assert Enum.any?(i.diagnostics, &(&1.code == "unresolved_order"))
+      assert Enum.any?(i.diagnostics, &(&1.code == :unresolved_order))
     end
   end
 
@@ -253,7 +253,7 @@ defmodule BubbleEx.WorkflowsTest do
 
     assert {:ok, %{workflows: [w], diagnostics: diagnostics}} = Workflows.inventory(payload)
     assert w.ordering == "unavailable"
-    assert Enum.any?(diagnostics, &(&1.code == "alias_collision"))
+    assert Enum.any?(diagnostics, &(&1.code == :alias_collision))
     assert w.raw["%x"] == "FutureEvent"
   end
 
@@ -270,7 +270,7 @@ defmodule BubbleEx.WorkflowsTest do
     assert [%{raw: ^candidate}] = i.unclassified_definitions
     assert i.coverage.unclassified_candidates == 1
     assert i.coverage.workflow_entries == 0
-    assert Enum.any?(i.diagnostics, &(&1.code == "unclassified_definition"))
+    assert Enum.any?(i.diagnostics, &(&1.code == :unclassified_definition))
   end
 
   test "explicit null properties are malformed and malformed-owner pointers locate retained values" do
@@ -282,7 +282,7 @@ defmodule BubbleEx.WorkflowsTest do
 
     assert Enum.any?(
              i.diagnostics,
-             &(&1.code == "malformed_properties" and
+             &(&1.code == :malformed_properties and
                  &1.path == "/pages/home/workflows/w/properties")
            )
 

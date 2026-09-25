@@ -97,7 +97,7 @@ defmodule BubbleEx.Workflows.Explanation do
             do: [],
             else: [
               Source.diagnostic(
-                "unresolved_condition",
+                :unresolved_condition,
                 path ++ [key],
                 "Condition includes unavailable or uninterpreted source; never treated as unconditional."
               )

@@ -1,6 +1,7 @@
 defmodule BubbleEx.Workflows.Node do
   @moduledoc false
 
+  alias BubbleEx.Diagnostic
   alias BubbleEx.Workflows.{Explanation, ExplanationContext, Source}
 
   @events %{
@@ -108,8 +109,10 @@ defmodule BubbleEx.Workflows.Node do
 
   @spec workflow(term(), list(), map()) :: map()
   def workflow(value, path, index) do
+    id = workflow_id(value, path)
     event = node(value, path, index, @events)
     {actions, ordering, findings} = actions(value, path, index)
+    actions = Enum.map(actions, &%{&1 | diagnostics: put_workflow(&1.diagnostics, id)})
 
     %{
       path: Source.pointer(path),
@@ -119,9 +122,24 @@ defmodule BubbleEx.Workflows.Node do
       actions: actions,
       action_metadata: Source.metadata(Source.value(value, ["actions"]), path ++ ["actions"]),
       ordering: ordering,
-      diagnostics: event.diagnostics ++ findings ++ Enum.flat_map(actions, & &1.diagnostics)
+      diagnostics:
+        (event.diagnostics ++ findings ++ Enum.flat_map(actions, & &1.diagnostics))
+        |> put_workflow(id)
+        |> Diagnostic.normalize()
     }
   end
+
+  # A workflow's Bubble ID is its collection key; array entries carry it as `id`.
+  defp workflow_id(value, path) do
+    case {List.last(path), Source.value(value, ["id", "%id"])} do
+      {key, _} when is_binary(key) -> key
+      {_, id} when is_binary(id) -> id
+      _ -> nil
+    end
+  end
+
+  defp put_workflow(diagnostics, nil), do: diagnostics
+  defp put_workflow(diagnostics, id), do: Diagnostic.put_subject(diagnostics, %{workflow: id})
 
   defp actions(value, path, index) do
     case Source.get(value, ["actions"]) do
@@ -129,7 +147,7 @@ defmodule BubbleEx.Workflows.Node do
         {[], "unavailable",
          [
            Source.diagnostic(
-             "actions_unavailable",
+             :actions_unavailable,
              path,
              "Actions field is absent; no action list can be inferred."
            )
@@ -149,7 +167,7 @@ defmodule BubbleEx.Workflows.Node do
         {[], "unresolved",
          [
            Source.diagnostic(
-             "malformed_actions",
+             :malformed_actions,
              path ++ [key],
              "Expected an action map or list; original value retained in workflow raw."
            )
@@ -171,7 +189,7 @@ defmodule BubbleEx.Workflows.Node do
       {entries, "unresolved",
        [
          Source.diagnostic(
-           "unresolved_order",
+           :unresolved_order,
            path,
            "Map keys do not establish an unambiguous numeric action order. Display uses lexical keys, not execution order."
          )
@@ -197,11 +215,11 @@ defmodule BubbleEx.Workflows.Node do
           if ref.status == "resolved",
             do: [],
             else: [
-              %{
-                code: "unresolved_reference",
-                path: ref.path,
-                message: "Reference is #{ref.status}; raw value retained."
-              }
+              Source.diagnostic(
+                :unresolved_reference,
+                ref.path,
+                "Reference is #{ref.status}; raw value retained."
+              )
             ]
         end)
 
@@ -237,14 +255,14 @@ defmodule BubbleEx.Workflows.Node do
       conditions: [],
       references: [],
       raw: value,
-      diagnostics: [Source.diagnostic("malformed_node", path, "Expected an object.")]
+      diagnostics: [Source.diagnostic(:malformed_node, path, "Expected an object.")]
     }
   end
 
   defp unsupported(nil, path),
     do: [
       Source.diagnostic(
-        "unsupported_type",
+        :unsupported_type,
         path,
         "Event/action type is not in the supported explanation vocabulary."
       )
@@ -259,7 +277,7 @@ defmodule BubbleEx.Workflows.Node do
   defp properties_findings({key, props}, path) when is_map(props) do
     [
       Source.diagnostic(
-        "properties_not_evaluated",
+        :properties_not_evaluated,
         path ++ [key],
         "Properties and expressions are retained exactly. Labels and references do not validate their Bubble runtime semantics."
       )
@@ -269,7 +287,7 @@ defmodule BubbleEx.Workflows.Node do
   defp properties_findings({key, _}, path),
     do: [
       Source.diagnostic(
-        "malformed_properties",
+        :malformed_properties,
         path ++ [key],
         "Properties are not an object; value retained."
       )
@@ -282,7 +300,7 @@ defmodule BubbleEx.Workflows.Node do
     |> Enum.sort()
     |> Enum.map(
       &Source.diagnostic(
-        "uninterpreted_field",
+        :uninterpreted_field,
         path ++ [&1],
         "Field retained without semantic interpretation."
       )
@@ -295,8 +313,8 @@ defmodule BubbleEx.Workflows.Node do
       if Enum.count(keys, &Map.has_key?(value, &1)) > 1,
         do: [
           Source.diagnostic(
-            "alias_collision",
-            path,
+            :alias_collision,
+            path ++ [hd(keys)],
             "Multiple representations of #{hd(keys)} are present; the named field is displayed, all source values retained."
           )
         ],

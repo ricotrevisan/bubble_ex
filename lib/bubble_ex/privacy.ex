@@ -17,8 +17,8 @@ defmodule BubbleEx.Privacy do
   `diagnostics` itemizes everything not fully modeled, across all rules.
   """
 
-  alias BubbleEx.{Error, Expression}
-  alias BubbleEx.Expression.{Diagnostic, Schema}
+  alias BubbleEx.{Diagnostic, Error, Expression}
+  alias BubbleEx.Expression.Schema
   alias BubbleEx.Privacy.{DataType, Permissions, Rule}
 
   @enforce_keys [:data_types, :diagnostics]
@@ -36,10 +36,9 @@ defmodule BubbleEx.Privacy do
       |> Enum.map(fn {id, type} -> data_type(id, type, schema) end)
 
     diagnostics =
-      Enum.flat_map(
-        data_types,
-        &(&1.diagnostics ++ Enum.flat_map(&1.rules, fn r -> r.diagnostics end))
-      )
+      data_types
+      |> Enum.flat_map(&(&1.diagnostics ++ Enum.flat_map(&1.rules, fn r -> r.diagnostics end)))
+      |> Diagnostic.normalize()
 
     {:ok, %__MODULE__{data_types: data_types, diagnostics: diagnostics}}
   end
@@ -63,7 +62,7 @@ defmodule BubbleEx.Privacy do
       )
 
     {base, more} = rules(Map.get(type, "privacy_role", :absent), type, base, path, schema)
-    %{base | diagnostics: diags ++ more}
+    %{base | diagnostics: subject(diags ++ more, %{type: id})}
   end
 
   defp data_type(id, _type, _schema) do
@@ -73,7 +72,9 @@ defmodule BubbleEx.Privacy do
       id: id,
       availability: :unavailable,
       path: Diagnostic.pointer(path),
-      diagnostics: [Diagnostic.new(:malformed_node, path, "data type must be an object")]
+      diagnostics: [
+        Diagnostic.new(:malformed_node, path, "data type must be an object", subject: %{type: id})
+      ]
     }
   end
 
@@ -163,15 +164,20 @@ defmodule BubbleEx.Privacy do
       condition: condition,
       permissions: permissions,
       path: Diagnostic.pointer(path),
-      diagnostics: cdiags ++ pdiags ++ extras(raw, path)
+      diagnostics: subject(cdiags ++ pdiags ++ extras(raw, path), %{type: type_id, rule: id})
     }
   end
 
-  defp rule(id, raw, path, _type_id, _schema) do
+  defp rule(id, raw, path, type_id, _schema) do
     {condition, diags} =
       Expression.Parser.raw(raw, :malformed_node, path, "privacy rule must be an object")
 
-    %Rule{id: id, condition: condition, path: Diagnostic.pointer(path), diagnostics: diags}
+    %Rule{
+      id: id,
+      condition: condition,
+      path: Diagnostic.pointer(path),
+      diagnostics: subject(diags, %{type: type_id, rule: id})
+    }
   end
 
   defp condition(%{"condition" => raw}, path, type_id, schema, _id) when not is_nil(raw) do
@@ -207,6 +213,9 @@ defmodule BubbleEx.Privacy do
             "unexpected rule member #{inspect(key)}"
           )
   end
+
+  defp subject(diagnostics, subject),
+    do: diagnostics |> Diagnostic.put_subject(subject) |> Diagnostic.normalize()
 
   defp name(type), do: text(type["display"]) || text(type["%d"])
 

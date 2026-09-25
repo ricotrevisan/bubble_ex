@@ -6,7 +6,7 @@ defmodule BubbleEx.Workflows do
   """
 
   alias BubbleEx.AppTree.Writer
-  alias BubbleEx.{CanonicalJson, Error}
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error}
   alias BubbleEx.Workflows.{Node, Report, Source}
 
   @doc """
@@ -38,13 +38,14 @@ defmodule BubbleEx.Workflows do
     candidates = Enum.flat_map(candidates, &workflow_entries(&1, index))
 
     diagnostics =
-      Enum.flat_map(scopes, & &1.diagnostics) ++
-        Enum.flat_map(workflows ++ candidates, & &1.diagnostics)
+      (Enum.flat_map(scopes, & &1.diagnostics) ++
+         Enum.flat_map(workflows ++ candidates, & &1.diagnostics))
+      |> Diagnostic.normalize()
 
     {:ok,
      %{
        explanation_coverage: explanation_coverage(workflows),
-       schema_version: 2,
+       schema_version: 3,
        explanation_vocabulary_version: 1,
        scope: "supplied_data_only",
        execution: "never",
@@ -107,7 +108,7 @@ defmodule BubbleEx.Workflows do
       count: 1,
       diagnostics: [
         Source.diagnostic(
-          "unclassified_definition",
+          :unclassified_definition,
           c.path,
           "Action-bearing definition outside known workflow collections retained as a candidate; its role is not inferred."
         )
@@ -123,7 +124,7 @@ defmodule BubbleEx.Workflows do
       raw: c.value,
       diagnostics: [
         Source.diagnostic(
-          "malformed_owner",
+          :malformed_owner,
           c.path,
           "Expected an owner object/map; source retained and workflow availability is unknown."
         )
@@ -138,7 +139,7 @@ defmodule BubbleEx.Workflows do
       count: nil,
       diagnostics: [
         Source.diagnostic(
-          "unavailable_data",
+          :unavailable_data,
           c.path,
           "Workflow data was not supplied for this scope."
         )
@@ -163,7 +164,7 @@ defmodule BubbleEx.Workflows do
       raw: c.value,
       diagnostics: [
         Source.diagnostic(
-          "malformed_collection",
+          :malformed_collection,
           c.path,
           "Expected a workflow map or list; value retained."
         )
