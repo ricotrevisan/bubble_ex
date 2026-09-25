@@ -20,7 +20,12 @@
 #     runs every privacy filter against them for each actor; then it seeds
 #     the expression fixture's discriminating rows and requires every privacy
 #     filter to select exactly the records in its hand-authored expectation
-#     table (test/support/expression/expectations/privacy.json); and
+#     table (test/support/expression/expectations/privacy.json); then
+#     scripts/ash_compile_check/policies.exs reads every resource through
+#     its generated policies (WTF-356) logged out and as stored users, and
+#     requires the policy fixture's reads, visible fields and auto-binding
+#     updates to match its hand-authored expectation table
+#     (test/support/target/ash/expectations/policies.json); and
 #     scripts/ash_compile_check/ecto_migrate.exs runs the Db.Ecto
 #     migrations in one database per fixture and naming
 #
@@ -35,8 +40,10 @@ scratch="${ASH_COMPILE_CHECK_DIR:-$root/_build/ash_compile_check}"
 mkdir -p "$scratch"
 cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
   "$root/scripts/ash_compile_check/filters.exs" \
+  "$root/scripts/ash_compile_check/policies.exs" \
   "$root/scripts/ash_compile_check/ecto_migrate.exs" "$scratch/"
 cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectations.json"
+cp "$root/test/support/target/ash/expectations/policies.json" "$scratch/policy_expectations.json"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch"
@@ -84,6 +91,7 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix ecto.create --quiet
   mix ecto.migrate --quiet
   mix run runtime.exs
+  mix run policies.exs
   mix run ecto_migrate.exs
 else
   echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"

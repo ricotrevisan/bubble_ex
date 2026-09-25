@@ -48,7 +48,10 @@ as `expr(...)` into a `PrivacyFilters` module and must build AshPostgres
 queries. With `ASH_COMPILE_CHECK_DB` set to a PostgreSQL URL (e.g.
 `ecto://postgres:postgres@localhost:5432`) it also runs the migrations,
 round-trips sample rows through every resource and runs every privacy filter
-against them, requiring PostgreSQL and Ash's in-memory evaluation to agree.
+against them, requiring PostgreSQL and Ash's in-memory evaluation to agree,
+then reads every resource through its generated privacy policies and checks
+the policy fixture against its hand-authored persona table
+(`test/support/target/ash/expectations/policies.json`).
 With `BUBBLE_EX_PRIVATE_EXPORT`
 set it also checks a private app export. CI runs it as the `ash-compile-check`
 job.

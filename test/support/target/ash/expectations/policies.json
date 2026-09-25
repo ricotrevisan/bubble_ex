@@ -1,0 +1,482 @@
+{
+  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role), u2 (owner / creator), u3 (admin), u4 (every field empty). For each type and read action (:read is direct view, :search is Bubble's searches), the records each persona reads and the fields it may view ('all': every attribute but the primary key). auto_bind: whether the :auto_bind update is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies.",
+  "auto_bind": [
+    {
+      "actor": "u2",
+      "allowed": true,
+      "changes": {
+        "title": "x"
+      },
+      "record": "d1",
+      "type": "doc",
+      "why": "owner may auto-bind title"
+    },
+    {
+      "actor": "u2",
+      "allowed": false,
+      "changes": {
+        "secret": "x"
+      },
+      "record": "d1",
+      "type": "doc",
+      "why": "owner may not auto-bind secret"
+    },
+    {
+      "actor": "u3",
+      "allowed": true,
+      "changes": {
+        "secret": "x"
+      },
+      "record": "d1",
+      "type": "doc",
+      "why": "admin may auto-bind secret"
+    },
+    {
+      "actor": "u3",
+      "allowed": false,
+      "changes": {
+        "title": "x"
+      },
+      "record": "d1",
+      "type": "doc",
+      "why": "admin may not auto-bind title"
+    },
+    {
+      "actor": "u1",
+      "allowed": false,
+      "changes": {
+        "body": "x"
+      },
+      "record": "d2",
+      "type": "doc",
+      "why": "no auto-binding rule holds"
+    },
+    {
+      "actor": "logged_out",
+      "allowed": false,
+      "changes": {
+        "title": "x"
+      },
+      "record": "d2",
+      "type": "doc",
+      "why": "logged out"
+    },
+    {
+      "actor": "u4",
+      "allowed": false,
+      "changes": {
+        "title": "x"
+      },
+      "record": "d1",
+      "type": "doc",
+      "why": "empty user"
+    }
+  ],
+  "creates": [
+    {
+      "actor": "u3",
+      "allowed": false,
+      "input": {
+        "id": "d9",
+        "title": "New"
+      },
+      "type": "doc",
+      "why": "privacy rules grant no writes; create is forbidden unless authorization is bypassed"
+    }
+  ],
+  "reads": [
+    {
+      "action": "read",
+      "expected": {
+        "logged_out": {
+          "d1": [
+            "title"
+          ],
+          "d2": [
+            "title",
+            "body"
+          ],
+          "d3": [
+            "title"
+          ]
+        },
+        "u1": {
+          "d1": [
+            "title"
+          ],
+          "d2": [
+            "title",
+            "body"
+          ],
+          "d3": [
+            "title"
+          ]
+        },
+        "u2": {
+          "d1": "all",
+          "d2": [
+            "title",
+            "body"
+          ],
+          "d3": [
+            "title"
+          ]
+        },
+        "u3": {
+          "d1": "all",
+          "d2": "all",
+          "d3": "all"
+        },
+        "u4": {
+          "d1": [
+            "title"
+          ],
+          "d2": [
+            "title",
+            "body"
+          ],
+          "d3": [
+            "title"
+          ]
+        }
+      },
+      "type": "doc",
+      "why": "every rule and everyone grant some field, so direct view is always allowed; fields: title for everyone, body when public, all for the owner and admins"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {
+          "d2": [
+            "title",
+            "body"
+          ]
+        },
+        "u1": {
+          "d2": [
+            "title",
+            "body"
+          ]
+        },
+        "u2": {
+          "d1": "all",
+          "d2": [
+            "title",
+            "body"
+          ]
+        },
+        "u3": {
+          "d1": "all",
+          "d2": "all",
+          "d3": "all"
+        },
+        "u4": {
+          "d2": [
+            "title",
+            "body"
+          ]
+        }
+      },
+      "type": "doc",
+      "why": "everyone may not search; public docs, the owner's and (for admins) all docs are found; raw_ does not compile and grants nothing"
+    },
+    {
+      "action": "read",
+      "expected": {
+        "logged_out": {
+          "n1": "all",
+          "n3": "all"
+        },
+        "u1": {
+          "n1": "all",
+          "n3": "all"
+        },
+        "u2": {
+          "n1": "all",
+          "n2": "all",
+          "n3": "all"
+        },
+        "u3": {
+          "n1": "all",
+          "n3": "all"
+        },
+        "u4": {
+          "n1": "all",
+          "n3": "all"
+        }
+      },
+      "type": "note",
+      "why": "everyone else sees notes that are not hidden (empty hidden is not yes); the creator also sees their hidden note"
+    },
+    {
+      "action": "read",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "memo",
+      "why": "everyone's grant applies only when raw_ does not hold, and raw_ does not compile: denied for all"
+    },
+    {
+      "action": "read",
+      "expected": {
+        "logged_out": {
+          "t1": "all"
+        },
+        "u1": {
+          "t1": "all"
+        },
+        "u2": {
+          "t1": "all"
+        },
+        "u3": {
+          "t1": "all"
+        },
+        "u4": {
+          "t1": "all"
+        }
+      },
+      "type": "team",
+      "why": "no privacy rules: Bubble's public defaults"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {
+          "n1": "all",
+          "n3": "all"
+        },
+        "u1": {
+          "n1": "all",
+          "n3": "all"
+        },
+        "u2": {
+          "n1": "all",
+          "n2": "all",
+          "n3": "all"
+        },
+        "u3": {
+          "n1": "all",
+          "n3": "all"
+        },
+        "u4": {
+          "n1": "all",
+          "n3": "all"
+        }
+      },
+      "type": "note",
+      "why": "everyone else sees notes that are not hidden (empty hidden is not yes); the creator also sees their hidden note"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {},
+        "u1": {},
+        "u2": {},
+        "u3": {},
+        "u4": {}
+      },
+      "type": "memo",
+      "why": "everyone's grant applies only when raw_ does not hold, and raw_ does not compile: denied for all"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {
+          "t1": "all"
+        },
+        "u1": {
+          "t1": "all"
+        },
+        "u2": {
+          "t1": "all"
+        },
+        "u3": {
+          "t1": "all"
+        },
+        "u4": {
+          "t1": "all"
+        }
+      },
+      "type": "team",
+      "why": "no privacy rules: Bubble's public defaults"
+    },
+    {
+      "action": "read",
+      "expected": {
+        "logged_out": {
+          "u1": [
+            "name"
+          ],
+          "u2": [
+            "name"
+          ],
+          "u3": [
+            "name"
+          ],
+          "u4": [
+            "name"
+          ]
+        },
+        "u1": {
+          "u1": "all",
+          "u2": [
+            "name"
+          ],
+          "u3": [
+            "name"
+          ],
+          "u4": [
+            "name"
+          ]
+        },
+        "u2": {
+          "u1": [
+            "name"
+          ],
+          "u2": "all",
+          "u3": [
+            "name"
+          ],
+          "u4": [
+            "name"
+          ]
+        },
+        "u3": {
+          "u1": [
+            "name"
+          ],
+          "u2": [
+            "name"
+          ],
+          "u3": "all",
+          "u4": [
+            "name"
+          ]
+        },
+        "u4": {
+          "u1": [
+            "name"
+          ],
+          "u2": [
+            "name"
+          ],
+          "u3": [
+            "name"
+          ],
+          "u4": "all"
+        }
+      },
+      "type": "user",
+      "why": "everyone sees a user's name; a user sees all of their own fields"
+    },
+    {
+      "action": "search",
+      "expected": {
+        "logged_out": {},
+        "u1": {
+          "u1": "all"
+        },
+        "u2": {
+          "u2": "all"
+        },
+        "u3": {
+          "u3": "all"
+        },
+        "u4": {
+          "u4": "all"
+        }
+      },
+      "type": "user",
+      "why": "only the user themselves is found in searches"
+    }
+  ],
+  "records": {
+    "doc": [
+      {
+        "attachment": "https://files.invalid/d1.pdf",
+        "body": "B1",
+        "id": "d1",
+        "owner_id": "u2",
+        "public": false,
+        "secret": "S1",
+        "title": "T1"
+      },
+      {
+        "attachment": null,
+        "body": "B2",
+        "id": "d2",
+        "owner_id": null,
+        "public": true,
+        "secret": "S2",
+        "title": "T2"
+      },
+      {
+        "attachment": null,
+        "body": null,
+        "id": "d3",
+        "owner_id": "gone-user",
+        "public": null,
+        "secret": "S3",
+        "title": ""
+      }
+    ],
+    "memo": [
+      {
+        "id": "m1",
+        "text": "M1"
+      }
+    ],
+    "note": [
+      {
+        "creator_id": null,
+        "hidden": false,
+        "id": "n1",
+        "text": "N1"
+      },
+      {
+        "creator_id": "u2",
+        "hidden": true,
+        "id": "n2",
+        "text": "N2"
+      },
+      {
+        "creator_id": "gone-user",
+        "hidden": null,
+        "id": "n3",
+        "text": "N3"
+      }
+    ],
+    "team": [
+      {
+        "id": "t1",
+        "name": "Red"
+      }
+    ],
+    "user": [
+      {
+        "admin": false,
+        "id": "u1",
+        "name": "Ann"
+      },
+      {
+        "admin": false,
+        "id": "u2",
+        "name": "Bo"
+      },
+      {
+        "admin": true,
+        "id": "u3",
+        "name": "Cy"
+      },
+      {
+        "admin": null,
+        "id": "u4",
+        "name": ""
+      }
+    ]
+  }
+}
