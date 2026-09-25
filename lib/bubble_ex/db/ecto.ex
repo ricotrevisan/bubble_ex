@@ -39,15 +39,29 @@ defmodule BubbleEx.Db.Ecto do
 
   `:api` group tables (external placeholders) are skipped, mirroring
   `BubbleEx.Db.Sql.Postgres`.
+
+  Names are unique after conversion (`names/2`, `BubbleEx.Db.Encoder.Names`):
+  per schema, the fields, associations and foreign keys (a user field
+  `created_by_id` does not take the built-in `Created By`'s foreign key; it
+  becomes `created_by_id_2`); across tables, the modules (never `Repo`, the
+  app's repo) and table names. A later name that repeats an earlier one
+  takes the next free `_2`, `_3`, ... (`Foo2` for modules). Names are at
+  most 63 characters (PostgreSQL's identifier limit, which also keeps
+  every atom under the VM's), cut before the suffix.
   """
 
   @behaviour BubbleEx.Db.Encoder
 
+  alias BubbleEx.Db.Encoder.Names
   alias BubbleEx.Db.Naming
 
   @type opts :: [naming: :proper | :id, namespace: String.t()]
 
   @default_namespace "MyApp"
+
+  # PostgreSQL truncates longer identifiers (NAMEDATALEN - 1); module
+  # segments share the limit, which keeps their atoms under 255 characters.
+  @max_name 63
 
   @impl true
   @spec encode(map(), opts()) :: {:ok, String.t()}
@@ -57,7 +71,10 @@ defmodule BubbleEx.Db.Ecto do
         BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
       end)
 
-    opts = Keyword.put(opts, :_external_plan, plan)
+    opts =
+      opts
+      |> Keyword.put(:_external_plan, plan)
+      |> Keyword.put(:_names, names(parsed_map, opts))
 
     tables =
       parsed_map
@@ -76,6 +93,54 @@ defmodule BubbleEx.Db.Ecto do
 
     {:ok, Enum.reject([external, body], &(&1 == "")) |> Enum.join("\n\n") |> Kernel.<>("\n")}
   end
+
+  @doc """
+  The schema's names after conversion, unique per scope (see the moduledoc
+  and `BubbleEx.Db.Encoder.Names`): a table's `[{:module, segment}, {:table,
+  name}]`, a column's `[field]`, or `[association, foreign_key]` for a
+  scalar reference.
+  """
+  @impl true
+  @spec names(map(), keyword()) :: Names.t()
+  def names(parsed_map, opts \\ []) do
+    references =
+      MapSet.new(scalar_relationships(parsed_map), fn {from, _to, _dir} -> key(from) end)
+
+    parsed_map
+    |> Map.get(:tables, [])
+    |> Enum.reject(&(&1.group == :api))
+    |> Names.build(
+      reserved: [{:module, "Repo"}],
+      table: fn table ->
+        name = by_naming(opts, table.name, table.id)
+        module = Naming.pascal_case(name)
+        table_name = Naming.snake_case(name)
+
+        fn n ->
+          [
+            {:module, Naming.variant(module, n, "", @max_name)},
+            {:table, Naming.variant(table_name, n, "_", @max_name)}
+          ]
+        end
+      end,
+      column: fn column ->
+        # Naming.snake_case/2 preserves the single leading underscore,
+        # keeping Bubble's `_id` primary key its conventional name.
+        field = Naming.snake_case(by_naming(opts, column.name, column.id))
+
+        if MapSet.member?(references, key(column)) do
+          fn n ->
+            association = Naming.variant(field, n, "_", @max_name - 3)
+            [association, association <> "_id"]
+          end
+        else
+          &[Naming.variant(field, &1, "_", @max_name)]
+        end
+      end
+    )
+  end
+
+  defp key(column), do: {column.table_group, column.table_id, column.id}
 
   # Only scalar references become associations/indexes; list references have no
   # array foreign-key in Ecto, mirroring how Postgres skips array FKs.
@@ -170,9 +235,13 @@ defmodule BubbleEx.Db.Ecto do
     "    belongs_to :#{name}, #{target}, foreign_key: :#{fk}, references: :#{references}, type: :string"
   end
 
-  # The single source of truth for a reference's foreign-key column name. Schema,
-  # migration, index, and changeset all derive the column from here so they agree.
-  defp fk_column(from, opts), do: field_name(from, opts) <> "_id"
+  # The single source of truth for a reference's foreign-key column name
+  # (`names/2`: `<field>_id`). Schema, migration, index, and changeset all
+  # derive the column from here so they agree.
+  defp fk_column(from, opts) do
+    [_association, fk] = Names.column(name_plan(opts), from)
+    fk
+  end
 
   # Reference columns cast their FK column (`<field>_id`), not the association
   # name, keeping the changeset consistent with the schema and migration.
@@ -367,16 +436,34 @@ defmodule BubbleEx.Db.Ecto do
   defp namespace(opts), do: Keyword.get(opts, :namespace, @default_namespace)
 
   # :proper (default) derives from display names; :id uses the Bubble ids.
-  defp module_name(table, opts), do: Naming.pascal_case(by_naming(opts, table.name, table.id))
+  # Every name comes from `names/2`.
+  defp name_plan(opts), do: Keyword.fetch!(opts, :_names)
 
-  defp ref_module_name(column, opts),
-    do: Naming.pascal_case(by_naming(opts, column.table_name, column.table_id))
+  defp module_name(table, opts) do
+    [{:module, module}, _table] = Names.table(name_plan(opts), table)
+    module
+  end
 
-  defp table_name(table, opts), do: Naming.snake_case(by_naming(opts, table.name, table.id))
+  # A reference's target is a rendered table's primary key; one the names do
+  # not cover (a hand-built db map) is converted on its own.
+  defp ref_module_name(column, opts) do
+    case Names.table(name_plan(opts), column) do
+      [{:module, module}, _table] -> module
+      nil -> Naming.pascal_case(by_naming(opts, column.table_name, column.table_id))
+    end
+  end
 
-  # Naming.snake_case/2 preserves the single leading underscore, keeping
-  # Bubble's `_id` primary key its conventional name.
-  defp field_name(column, opts), do: Naming.snake_case(by_naming(opts, column.name, column.id))
+  defp table_name(table, opts) do
+    [_module, {:table, name}] = Names.table(name_plan(opts), table)
+    name
+  end
+
+  defp field_name(column, opts) do
+    case Names.column(name_plan(opts), column) do
+      [name | _] -> name
+      nil -> Naming.snake_case(by_naming(opts, column.name, column.id))
+    end
+  end
 
   defp by_naming(opts, proper, id) do
     case Keyword.get(opts, :naming, :proper) do

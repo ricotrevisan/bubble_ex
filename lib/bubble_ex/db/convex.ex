@@ -22,10 +22,16 @@ defmodule BubbleEx.Db.Convex do
 
   Display names are sanitized into valid camelCase TypeScript identifiers. The
   `:naming` opt selects the source: `:proper` (default) uses Bubble display names,
-  `:id` uses the raw Bubble ids.
+  `:id` uses the raw Bubble ids. Names are unique after conversion (`names/2`,
+  `BubbleEx.Db.Encoder.Names`): table keys across the schema, field keys per
+  table, where the primary key (`bubbleId`) and the built-in fields keep
+  theirs and a later repeat takes the next free `2`, `3`, ... (`createdBy2`).
   """
 
   @behaviour BubbleEx.Db.Encoder
+
+  alias BubbleEx.Db.Encoder.Names
+  alias BubbleEx.Db.Naming
 
   @type opts :: [naming: :proper | :id, external_types: :preserve | :opaque | :legacy]
 
@@ -47,7 +53,10 @@ defmodule BubbleEx.Db.Convex do
         BubbleEx.Db.Encoder.Plan.build(parsed_map, opts)
       end)
 
-    opts = Keyword.put(opts, :_external_plan, plan)
+    opts =
+      opts
+      |> Keyword.put(:_external_plan, plan)
+      |> Keyword.put(:_names, names(parsed_map, opts))
 
     tables =
       parsed_map
@@ -69,17 +78,35 @@ defmodule BubbleEx.Db.Convex do
     {:ok, schema}
   end
 
+  @doc """
+  The table and field keys after conversion, unique per scope (see the
+  moduledoc and `BubbleEx.Db.Encoder.Names`), each `[key]`.
+  """
+  @impl true
+  @spec names(map(), keyword()) :: Names.t()
+  def names(parsed_map, opts \\ []) do
+    parsed_map
+    |> Map.get(:tables, [])
+    |> Enum.reject(&(&1.group == :api))
+    |> Names.build(
+      table: &variants(identifier(table_name(&1, opts))),
+      column: &variants(identifier(field_name(&1, opts)))
+    )
+  end
+
+  defp variants(key), do: &[Naming.variant(key, &1, "")]
+
   defp encode_table(table, opts) do
     columns = Enum.reject(table.columns, & &1.deleted)
 
     field_lines = Enum.map_join(columns, "\n", &encode_field(&1, opts))
-    name = identifier(table_name(table, opts))
+    [name] = Names.table(Keyword.fetch!(opts, :_names), table)
 
     "  #{name}: defineTable({\n#{field_lines}\n  }),\n"
   end
 
   defp encode_field(column, opts) do
-    name = identifier(field_name(column, opts))
+    [name] = Names.column(Keyword.fetch!(opts, :_names), column)
     base = "    #{name}: #{convex_type(column.type, opts)},"
 
     case field_comment(column.type, column.primary_key) do

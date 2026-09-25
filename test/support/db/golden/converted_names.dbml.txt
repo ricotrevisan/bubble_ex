@@ -1,0 +1,61 @@
+Project "synthetic-converted-names" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Blog Post" {
+	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+
+}
+Table custom."Post" {
+	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"created_date" datetime
+	"Created-By" user.id
+	"created_by_id" varchar
+	"Foo Bar" varchar
+	"foo-bar" float
+	"Owner ID" varchar
+	"Owner" user.id
+	"bubble_id" varchar
+
+}
+Table custom."Repo" {
+	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+
+}
+Table custom."User" {
+	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
+
+}
+Table option."Blog-Post" {
+	"db_value" varchar [pk]
+	"Display" varchar
+
+}
+
+Ref: custom."Blog Post"."Created By" > custom."User"."_id"
+Ref: custom."Post"."Created By" > custom."User"."_id"
+Ref: custom."Post"."Created-By" > custom."User"."_id"
+Ref: custom."Post"."Owner" > custom."User"."_id"
+Ref: custom."Repo"."Created By" > custom."User"."_id"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
+model_synthesized_user_type /user_types/user

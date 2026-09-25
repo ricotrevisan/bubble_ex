@@ -31,6 +31,15 @@ defmodule BubbleEx.Db.Encoder do
   @callback encode(db_map :: map(), opts :: keyword()) ::
               {:ok, String.t()} | {:error, Error.t()}
 
+  @doc """
+  The names an encoder derives by case conversion, unique per scope
+  (`BubbleEx.Db.Encoder.Names`). Implemented by the encoders that convert
+  names; `render/3` reports the suffixed ones.
+  """
+  @callback names(db_map :: map(), opts :: keyword()) :: BubbleEx.Db.Encoder.Names.t()
+
+  @optional_callbacks names: 2
+
   # format atom => encoder module. New adapters register here.
   @formats %{
     dbml: BubbleEx.Db.Dbml,
@@ -199,21 +208,26 @@ defmodule BubbleEx.Db.Encoder do
          {:ok, mode} <- external_type_mode(db_map, opts),
          :ok <- validate_options(format, opts),
          :ok <- validate_capabilities(format, opts),
-         {:ok, content} <-
-           module.encode(
-             db_map,
-             opts |> Keyword.put(:external_types, mode) |> Keyword.put(:_external_plan, plan)
-           ) do
+         encoder_opts =
+           opts |> Keyword.put(:external_types, mode) |> Keyword.put(:_external_plan, plan),
+         {:ok, content} <- module.encode(db_map, encoder_opts) do
       diagnostics =
         Diagnostic.normalize(
           Map.get(db_map, :diagnostics, []) ++
             projection_diagnostics(db_map, format) ++
+            name_diagnostics(module, db_map, format, encoder_opts) ++
             root_diagnostics(db_map, format, mode, plan) ++
             graph_diagnostics(plan, format, mode, opts)
         )
 
       {:ok, %Result{format: format, content: content, diagnostics: diagnostics}}
     end
+  end
+
+  defp name_diagnostics(module, db_map, format, opts) do
+    if function_exported?(module, :names, 2),
+      do: db_map |> module.names(opts) |> BubbleEx.Db.Encoder.Names.diagnostics(format),
+      else: []
   end
 
   defp projection_diagnostics(db_map, format) do

@@ -20,7 +20,7 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
 
   alias BubbleEx.{CanonicalJson, Model}
   alias BubbleEx.Db.{Encoder, Reader}
-  alias BubbleEx.Test.{Ddl, SplitExport}
+  alias BubbleEx.Test.{Ddl, NameCheck, SplitExport}
 
   @moduletag :private_fixture
   @moduletag timeout: :infinity
@@ -77,6 +77,15 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
         {:ok, postgres} = Encoder.render(:postgres, db, opts)
         assert {_, 0} = Ddl.postgres(url, postgres.content)
       end
+    end
+  end
+
+  test "the converting encoders repeat no name (WTF-391)", %{db: db} do
+    for format <- ~w(ecto convex xano zod)a, naming <- [:proper, :id] do
+      {:ok, result} = Encoder.render(format, db, naming: naming)
+
+      assert NameCheck.duplicates(format, result.content) == [],
+             "#{format} (#{naming}) repeats a name"
     end
   end
 

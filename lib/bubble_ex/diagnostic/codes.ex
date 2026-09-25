@@ -139,6 +139,12 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:db_reference_to_omitted, :warning, :degraded, :target,
      "a reference to a deleted or malformed data type or option set; its column is kept but it has no relationship or foreign key"},
 
+    # --- {:target, format} — BubbleEx.Db.Encoder.Names (WTF-391) -------------
+    # Emitted by Encoder.render/3 for the encoders that convert names (Ecto,
+    # Convex, Xano, Zod).
+    {:db_converted_name_suffixed, :info, :degraded, :target,
+     "a table or column whose name, converted to the target's case convention, repeats an earlier one's (a built-in field's, or a foreign key's); rendered with the next free suffix, assigned in Bubble ID order"},
+
     # --- target:ash — BubbleEx.Target.Ash (WTF-362) ---------------------------
     # Also emits the shared external_type_unresolved_root/_nested and
     # external_type_cycle_edge codes above, with target :ash.

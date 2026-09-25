@@ -3,7 +3,9 @@
 # model and target fixture into a scratch Ash project whose dependencies are
 # BubbleEx.Target.Ash.versions/0 (mix.lock pins the rest), then
 #
-#   * mix compile --warnings-as-errors
+#   * mix compile --warnings-as-errors, which also compiles the
+#     BubbleEx.Db.Ecto schemas and migrations of every schema golden fixture
+#     (WTF-391: no repeated field, association or foreign key)
 #   * mix ash.codegen --dry-run: migration generation needs no database; it
 #     must create no foreign keys and store lists of dates at microsecond
 #     precision

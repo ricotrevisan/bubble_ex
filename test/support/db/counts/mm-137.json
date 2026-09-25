@@ -34,9 +34,10 @@
   },
   "formats": {
     "convex": {
-      "bytes": 112999,
+      "bytes": 113006,
       "lines": 3012,
       "target_diagnostics": {
+        "db_converted_name_suffixed": 7,
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
@@ -53,9 +54,10 @@
       }
     },
     "ecto": {
-      "bytes": 368974,
+      "bytes": 369028,
       "lines": 10964,
       "target_diagnostics": {
+        "db_converted_name_suffixed": 9,
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
@@ -91,18 +93,20 @@
       }
     },
     "xano": {
-      "bytes": 304965,
+      "bytes": 304975,
       "lines": 13722,
       "target_diagnostics": {
+        "db_converted_name_suffixed": 5,
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
       }
     },
     "zod": {
-      "bytes": 145319,
+      "bytes": 145328,
       "lines": 3706,
       "target_diagnostics": {
+        "db_converted_name_suffixed": 3,
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
         "external_type_unresolved_root": 12
