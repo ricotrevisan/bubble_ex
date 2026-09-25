@@ -10,7 +10,7 @@
       "exact_type_definition_missing": 7,
       "invalid_descriptor": 8,
       "model_option_key_missing": 9,
-      "model_uninterpreted_member": 40,
+      "model_undeclared_option_attribute_value": 40,
       "model_unresolved_target": 4
     },
     "external_fields": 0,
@@ -22,10 +22,11 @@
       "external": 3,
       "file_ref": 9,
       "list external": 4,
+      "list opaque": 1,
       "list option": 19,
       "list ref": 100,
       "list scalar": 9,
-      "opaque": 8,
+      "opaque": 7,
       "option": 114,
       "ref": 304,
       "scalar": 683,
@@ -48,6 +49,7 @@
       "one": 298,
       "unresolved": 4
     },
+    "synthesized_data_types": 0,
     "system_fields": 486
   },
   "schema_version": 1
