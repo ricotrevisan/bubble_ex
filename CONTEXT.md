@@ -136,6 +136,10 @@ _Avoid_: Dependency (the inverse view), link, relationship (reserved for data-sc
 A proposed improvement to an app's data model, found by a deterministic analyzer from the symbol index (`BubbleEx.Finding`), e.g. a denormalized sort field that could be derived. It has a registered kind and category (a *decision* for the owner, or a performance *hint*), a subject of Bubble IDs, evidence, a stack-neutral proposal, a confidence, a stable ID and a proposal hash that changes when the proposal does. Unlike a diagnostic it is a statement about the app, not about the tool.
 _Avoid_: Diagnostic, secret finding, recommendation
 
+**Decision**:
+An owner's recorded choice about a generated project (`BubbleEx.Decision`): accept, reject or modify a model finding, rename a target name, or accept a behavioural difference (parity exception). Records are append-only revisions of a key; each records the hashes it was made against (`proposal_sha256`, `basis_sha256`), and its state (active, stale, orphaned, superseded, expired) is computed against every new snapshot, never stored. Only the choice and its parameters are generation inputs.
+_Avoid_: Deviation, override, approval
+
 **Execution class**:
 Where a workflow's actions run: client only, server backed, or mixed.
 _Avoid_: Workflow type, backend/frontend

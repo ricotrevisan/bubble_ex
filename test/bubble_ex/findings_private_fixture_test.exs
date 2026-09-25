@@ -74,6 +74,22 @@ defmodule BubbleEx.FindingsPrivateFixtureTest do
     end
   end
 
+  test "an accept of every finding round-trips and resolves active", %{
+    index: index,
+    result: result
+  } do
+    decisions =
+      for f <- result.findings do
+        {:ok, d} = BubbleEx.Decision.for_finding(f, :accept)
+        assert {:ok, ^d} = d |> BubbleEx.Decision.to_json() |> BubbleEx.Decision.from_json()
+        d
+      end
+
+    {:ok, resolved} = BubbleEx.Decision.resolve(decisions, result.findings, index: index)
+    assert Enum.all?(resolved.entries, &(&1.state == :active))
+    assert resolved.undecided == []
+  end
+
   test "finds the expected findings", %{result: result} do
     expected =
       "BUBBLE_EX_FINDINGS_EXPECT"

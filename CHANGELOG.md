@@ -6,6 +6,27 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Owner decisions: `BubbleEx.Decision`** (WTF-400, D-1 of WTF-352). One
+  stack-neutral envelope with kinds `finding` (accept / reject / modify a
+  finding's proposal), `rename` (a target name for a slot: `module`,
+  `table`, `attribute`, `relationship`, `calculation`, `enum_module`,
+  `endpoint_path`) and `parity_exception`; a strict, canonical JSON codec
+  (`schema_version` 1); keys derived from the finding ID or a hash of the
+  identity; append-only revisions (the highest revision of a key is
+  current). `Decision.Params` is the closed `modify` whitelist per
+  transform; anything else is `:invalid_input`. `resolve/3` computes each
+  record's state (`:active`, `:stale`, `:orphaned`, `:superseded`,
+  `:expired`, with reasons) and the undecided decision findings;
+  `applicable/2` lists what generation may apply (active accepts, modifies
+  and renames, and undecided hints by default); `decisions_sha256/1` hashes
+  only the generation inputs, so audit-only revisions do not change it.
+- **`Finding.basis_sha256`** and **`Index.subject_sha256/2`**: the hash of
+  the content (kind, Bubble ID, parent, attributes; no paths or display
+  names) of a finding's subject and evidence symbols, set by
+  `Findings.analyze/2` and included in `Finding.to_map/1`. It changes when
+  e.g. a copied field's type changes and not on caption edits. Finding IDs
+  and `proposal_sha256` are unchanged on every fixture and on mm-137.
+
 - **API Connector call names from live payloads, URL hosts and header and
   parameter names** (WTF-396). `Model.ConnectorCall` reads its name in both
   key forms (`name`, live `%nm`) and gains `host` (the URL's host only: no

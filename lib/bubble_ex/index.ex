@@ -446,6 +446,32 @@ defmodule BubbleEx.Index do
   @spec symbol(t(), Symbol.id()) :: Symbol.t() | nil
   def symbol(%__MODULE__{lookup: lookup}, id), do: Map.get(lookup.symbols, id)
 
+  @doc """
+  SHA-256 of the content of the symbols `ids`: each symbol's `id`, `kind`,
+  `bubble_id`, `parent` and `attrs`, without its source `path` or display
+  `name`. It changes when one of them changes content (a field's value
+  type, a workflow's settings, a symbol appearing or disappearing: an ID
+  absent from the index hashes as `%{id, missing: true}`), and not when
+  definitions move in the JSON or are renamed in the Bubble editor. The
+  order and duplicates of `ids` do not matter.
+
+  This is the per-subject hash decisions (`BubbleEx.Decision`) and plans
+  record to notice that what they were made against has changed.
+  """
+  @spec subject_sha256(t(), [Symbol.id()]) :: String.t()
+  def subject_sha256(%__MODULE__{} = index, ids) when is_list(ids) do
+    ids
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.map(fn id ->
+      case symbol(index, id) do
+        nil -> %{id: id, missing: true}
+        s -> %{id: s.id, kind: s.kind, bubble_id: s.bubble_id, parent: s.parent, attrs: s.attrs}
+      end
+    end)
+    |> CanonicalJson.sha256()
+  end
+
   @doc "All symbols of `kind`, sorted by ID."
   @spec symbols(t(), Symbol.kind()) :: [Symbol.t()]
   def symbols(%__MODULE__{symbols: symbols}, kind), do: Enum.filter(symbols, &(&1.kind == kind))
