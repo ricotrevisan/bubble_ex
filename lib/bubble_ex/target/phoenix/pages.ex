@@ -1745,8 +1745,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp navigation_button?(%Node{kind: :button} = node, ctx),
     do: override(node, "destination", ctx) != nil
 
-  defp navigation_button?(_node, _ctx), do: false
-
   defp choices(node) do
     case resolved(node, "choices") do
       choices when is_list(choices) -> choices
