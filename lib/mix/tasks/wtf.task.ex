@@ -14,10 +14,10 @@ defmodule Mix.Tasks.Wtf.Task do
       mix wtf.task release ID --agent A
       mix wtf.task complete ID --agent A [--evidence PATH]… [--attest N=TEXT]…
                                           [--waive N=REASON]… [--app APP_ID]
-                                          [--trusted-reviewer R]…
+                                          [--reviewer-waivers R]…
       mix wtf.task review ID --reviewer R --summary TEXT
       mix wtf.task note ID --agent A (--needs-decision TEXT | --info TEXT | --resolve N)
-      mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--trusted-reviewer R]… [--json]
+      mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--reviewer-waivers R]… [--json]
       mix wtf.task sync NEW_PLAN.json      # diff against .wtf/plan.json, then replace it
       mix wtf.task sync --from OLD_PLAN.json   # .wtf/plan.json is already the new plan
 
@@ -34,7 +34,7 @@ defmodule Mix.Tasks.Wtf.Task do
   Reviewer labels and git author emails are spoofable hints. A verdict
   others can rely on (WTF-signed plans and results, CI verification,
   reviews as pull-request approvals) is WTF-411, "WTF trusted
-  verification anchor". `--trusted-reviewer` only tells
+  verification anchor". `--reviewer-waivers` only tells
   `BubbleEx.Verify.Result.evaluate/3` whose reviewer waivers to count.
 
     * `next` - ready top-level tasks in plan order: not done, claimed by
@@ -78,6 +78,7 @@ defmodule Mix.Tasks.Wtf.Task do
     attest: :keep,
     waive: :keep,
     app: :string,
+    reviewer_waivers: :keep,
     trusted_reviewer: :keep,
     reviewer: :string,
     summary: :string,
@@ -93,6 +94,10 @@ defmodule Mix.Tasks.Wtf.Task do
       do: Mix.raise("mix wtf.task is a development tool; not in MIX_ENV=prod")
 
     {opts, args, invalid} = OptionParser.parse(argv, strict: @switches)
+
+    if Keyword.has_key?(opts, :trusted_reviewer),
+      do: Mix.raise("--trusted-reviewer was renamed --reviewer-waivers (nothing here is trusted)")
+
     if invalid != [], do: Mix.raise("unknown options: #{inspect(invalid)}")
 
     root = Keyword.get(opts, :root, ".")
@@ -276,7 +281,7 @@ defmodule Mix.Tasks.Wtf.Task do
       now: now,
       evidence: Keyword.get_values(opts, :evidence),
       app: opts[:app],
-      reviewers: Keyword.get_values(opts, :trusted_reviewer)
+      reviewers: Keyword.get_values(opts, :reviewer_waivers)
     ]
   end
 

@@ -36,7 +36,9 @@ defmodule BubbleEx.Tasks.State do
       against
     * `evidence` - one entry per criterion from the last completion:
       its binding, outcome and the evidence files (`refs`: repository
-      path and SHA-256; never file contents or command output)
+      path and SHA-256; never file contents or command output), and
+      `source_only` for the weaker bindings that read the source rather
+      than run it (`BubbleEx.Target.Phoenix.Checks`)
     * `review` - `{reviewer, at, summary, basis}`: the independent
       review; `basis` pins the task's `source_sha256` and the evidence
       (`evidence_sha256/1`) of what it reviewed (`of`), so a review of

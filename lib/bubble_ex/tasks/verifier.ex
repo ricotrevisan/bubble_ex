@@ -274,7 +274,7 @@ defmodule BubbleEx.Tasks.Verifier do
 
   defp criterion(_board, criterion, ctx, cache) do
     {outcome, cache} = ctx.checks.run(criterion, ctx, cache)
-    {Map.merge(%{advisory: false, output: nil, refs: []}, outcome), cache}
+    {Map.merge(%{source_only: false, output: nil, refs: []}, outcome), cache}
   end
 
   defp attested(board, %{id: n} = c, ctx, cache) do
@@ -578,7 +578,7 @@ defmodule BubbleEx.Tasks.Verifier do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false
+      source_only: false
     }
 
   defp failed(binding, detail),
@@ -588,7 +588,7 @@ defmodule BubbleEx.Tasks.Verifier do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false
+      source_only: false
     }
 
   defp error(message, context \\ %{}), do: {:error, Error.new(:invalid_input, message, context)}

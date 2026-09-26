@@ -13,9 +13,9 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file (the manifest itself is unsigned) |
   | `compiles` | `mix compile --warnings-as-errors`: undefined and deprecated calls are compiler warnings, so they fail it |
   | `lint` | `mix format --check-formatted`, and `mix credo --strict` when the project has Credo (`deps/credo`) |
-  | `traceability` | every listed element is a `data-bubble-id="<id>"` attribute in `lib/` outside comments (Elixir, `<%!-- --%>`, `<%# %>` and HTML comments are removed first), and every listed page or reusable is rendered by its tagged tests (see Tagged tests; the generated LiveView tests assert each `data-bubble-id` with `has_element?`). With no page or reusable listed, only the source is checked (`advisory: true`: weaker) |
+  | `traceability` | every listed element is a `data-bubble-id="<id>"` attribute in `lib/` outside comments (Elixir, `<%!-- --%>`, `<%# %>` and HTML comments are removed first), and every listed page or reusable is rendered by its tagged tests (see Tagged tests; the generated LiveView tests assert each `data-bubble-id` with `has_element?`). With no page or reusable listed, only the source is checked (`source_only: true`: a weaker binding) |
   | `render_smoke` | no `TODO(bubble:` placeholder left for the listed elements or in the files tracing the listed surfaces, and the tests tagged with each of them pass |
-  | `step_order` | `advisory: true` (weaker: comments, not code): in `lib/`, exactly one `# bubble:workflow <id>` comment, followed (before the next workflow marker) by one `# bubble:step N <Type>` comment per action, in order, read with `Code.string_to_quoted_with_comments/2` |
+  | `step_order` | `source_only: true` (a weaker binding: comments, not code): in `lib/`, exactly one `# bubble:workflow <id>` comment, followed (before the next workflow marker) by one `# bubble:step N <Type>` comment per action, in order, read with `Code.string_to_quoted_with_comments/2` |
   | `unit_test` | the tests tagged with each listed workflow pass |
   | `request_shape` | the tests tagged with each listed API call pass |
   | `deterministic` | passing `deterministic` `BubbleEx.Verify.Result`s naming the task (the generator renders twice) |
@@ -152,7 +152,8 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
       surfaces == [] ->
         # Nothing renders the elements here: the source is all there is.
-        {%{pass(binding, "#{length(elements)} Bubble IDs in the source") | advisory: true}, cache}
+        {%{pass(binding, "#{length(elements)} Bubble IDs in the source") | source_only: true},
+         cache}
 
       true ->
         # The surfaces' render tests (the generated LiveView tests assert
@@ -202,7 +203,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
           expected = steps |> Enum.with_index(1) |> Enum.map(fn {type, n} -> {n, type} end)
 
           if found == expected,
-            do: %{pass(binding, "#{length(steps)} steps in order") | advisory: true},
+            do: %{pass(binding, "#{length(steps)} steps in order") | source_only: true},
             else:
               fail(
                 binding,
@@ -525,7 +526,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false
+      source_only: false
     }
 
   defp fail(binding, detail),
@@ -535,7 +536,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false
+      source_only: false
     }
 
   defp manifest(ctx) do

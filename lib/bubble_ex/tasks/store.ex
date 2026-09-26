@@ -44,21 +44,31 @@ defmodule BubbleEx.Tasks.Store do
   """
   @spec write_atomic(Path.t(), iodata()) :: :ok
   def write_atomic(path, content) do
-    File.mkdir_p!(Path.dirname(path))
     suffix = 12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    write_atomic(path, content, suffix)
+  end
+
+  @doc false
+  # With a given temporary suffix (tests plant a file at the temporary path).
+  def write_atomic(path, content, suffix) do
+    File.mkdir_p!(Path.dirname(path))
     tmp = Path.join(Path.dirname(path), ".#{Path.basename(path)}.#{suffix}.tmp")
 
     # :exclusive is O_CREAT|O_EXCL: it never follows or reuses an existing
     # file or symlink at the temporary path.
-    {:ok, io} = File.open(tmp, [:write, :exclusive, :binary])
+    case File.open(tmp, [:write, :exclusive, :binary]) do
+      {:ok, io} ->
+        try do
+          :ok = IO.binwrite(io, content)
+        after
+          File.close(io)
+        end
 
-    try do
-      :ok = IO.binwrite(io, content)
-    after
-      File.close(io)
+        File.rename!(tmp, path)
+
+      {:error, reason} ->
+        raise File.Error, reason: reason, action: "create the temporary file", path: tmp
     end
-
-    File.rename!(tmp, path)
   end
 
   @doc """

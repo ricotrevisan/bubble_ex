@@ -12,7 +12,7 @@ All notable changes to this project are documented here.
   blocked and waiting ones; `coordinate` edges shown), `show`, `claim` /
   `release` (time-limited), `complete` (binds every abstract criterion to a
   check and refuses unless all pass; records evidence), `review`
-  (independent reviewer, never an implementer), `note` (`--needs-decision`
+  (reviewer label is not an implementer label; spoofable, see WTF-411), `note` (`--needs-decision`
   blocks the task until resolved), `audit` (re-runs done tasks' checks,
   failures become `needs_reverify`) and `sync` (applies `Plan.diff/2` to
   the task states; writes only `.wtf/`). State is one canonical JSON file

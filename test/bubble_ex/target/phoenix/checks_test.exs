@@ -113,7 +113,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
     end
 
     test "elements are data-bubble-id attributes outside comments", %{tmp_dir: root} do
-      assert %{status: :pass, advisory: true} =
+      assert %{status: :pass, source_only: true} =
                run(
                  :traceability,
                  %{"elements" => ~w(element:eA element:eB element:eE)},
@@ -147,7 +147,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
         ~s(defmodule T do\n  @moduletag bubble: "page:pHome"\nend\n)
       )
 
-      assert %{status: :pass, advisory: false, detail: detail} =
+      assert %{status: :pass, source_only: false, detail: detail} =
                run(:traceability, args, ctx(root))
 
       assert detail =~ "rendered by the tests of page:pHome"
@@ -229,7 +229,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
 
       args = &%{"workflow" => &1, "steps" => &2}
 
-      assert %{status: :pass, advisory: true} =
+      assert %{status: :pass, source_only: true} =
                run(:step_order, args.("workflow:wA", ~w(ChangeThing SendEmail)), ctx(root))
 
       assert %{

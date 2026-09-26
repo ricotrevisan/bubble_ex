@@ -163,6 +163,10 @@ defmodule Mix.Tasks.Wtf.TaskTest do
     assert %{"mode" => "advisory", "flipped" => []} = Jason.decode!(output())
 
     assert_raise Mix.Error, ~r/unknown options/, fn -> wtf(root, ["audit", "--trusted"]) end
+
+    assert_raise Mix.Error, ~r/renamed --reviewer-waivers/, fn ->
+      wtf(root, ["audit", "--trusted-reviewer", "r1"])
+    end
   end
 
   test "is a development tool", %{tmp_dir: root} do
