@@ -32,7 +32,10 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
       and `visible_fields` (the fields whose value is not an
       `%Ash.ForbiddenField{}`, as Bubble field IDs); `search` reads the
       `:search` action and observes the `record_set` (seed keys). The
-      observations must equal the expected recording's
+      observations must equal the expected recording's. Then an unkeyed
+      `:read` (a listing, not by primary key) must be forbidden or find
+      nothing: the generated `KeyedRead` check (target-side only, never an
+      observation)
     * with `WTF_VERIFY_OBSERVATIONS` set to a directory, each test first
       writes what it observed as `<dir>/<test module>/<scenario id>.json`
       (`bubble_ex.verify.observations`, see `observations_dir/2` and
@@ -543,7 +546,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
       the Ecto sandbox, rolled back after the module; each test loads the
       persona's actor with `#{ctx.namespace}.Privacy.load_actor/1` and checks
       what it can read by primary key (`:read`) and through `:search`, and
-      which fields it sees, against the expected recording. With
+      which fields it sees, against the expected recording; an unkeyed
+      `:read` must list nothing. With
       #{@env} set to a directory, every test writes its observations to
       `<dir>/#{ctx.module}/<scenario id>.json` for bubble_ex to turn into
       verification results.
@@ -604,6 +608,22 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
         assert observed == expected,
                "\#{scenario}: the policies disagree with the expected recording " <>
                  "(missing: \#{inspect(expected -- observed)}, unexpected: \#{inspect(observed -- expected)})"
+
+        unkeyed_read_denied(scenario, resource, actor)
+      end
+
+      # `:read` returns records by primary key only (the KeyedRead check):
+      # an unkeyed listing is forbidden (or finds nothing), whatever the
+      # persona may view. Target-side only: Bubble has no such read.
+      defp unkeyed_read_denied(scenario, resource, actor) do
+        query = Ash.Query.for_read(resource, :read, %{}, actor: actor)
+
+        case Ash.read(query, actor: actor) do
+          {:error, %Ash.Error.Forbidden{}} -> :ok
+          {:ok, []} -> :ok
+          {:ok, records} -> flunk("\#{scenario}: an unkeyed :read listed \#{length(records)} records")
+          {:error, error} -> flunk("\#{scenario}: unkeyed :read: \#{Exception.message(error)}")
+        end
       end
 
       defp actor(persona) do

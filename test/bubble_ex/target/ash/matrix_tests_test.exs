@@ -54,6 +54,9 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
     assert out.source =~ "load_actor"
     assert out.source =~ "Ash.Query.for_read(resource, :search"
     assert out.source =~ "Ash.ForbiddenField"
+    # an unkeyed :read must list nothing (the KeyedRead check)
+    assert out.source =~ "unkeyed_read_denied(scenario, resource, actor)"
+    assert out.source =~ "Ash.Query.for_read(resource, :read, %{}, actor: actor)"
     assert out.source =~ "never Bubble-verified"
 
     assert out.source =~

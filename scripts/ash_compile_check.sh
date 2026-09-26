@@ -37,13 +37,16 @@
 #     relationship, refined numbers are bigint/numeric columns, and an
 #     attribute renamed after the name lock keeps its column; then
 #   * the generated privacy-matrix tests (BubbleEx.Target.Ash.MatrixTests,
-#     WTF-383; rendered by render.exs from each fixture with privacy rules,
-#     and the private export, with BubbleEx.Verify.Matrix's seed, scenarios
-#     and model recordings) run with `mix test` in the scratch project's
-#     test environment, on databases of their own in the Ecto sandbox,
-#     writing their observations; scripts/ash_compile_check/
-#     matrix_results.exs turns them into BubbleEx.Verify.Results, scores
-#     them with Result.evaluate/3 and prints the counts; any mismatch fails
+#     WTF-383; scripts/ash_compile_check/matrix_render.exs synthesizes
+#     BubbleEx.Verify.Matrix's seed, scenarios and model recordings for each
+#     fixture with privacy rules, and the private export, in the background
+#     while the scratch project compiles, and generates the tests) run with
+#     `mix test` in the scratch project's test environment (the same build:
+#     build_per_environment: false), on databases of their own in the Ecto
+#     sandbox, writing their observations; they also require an unkeyed
+#     :read to list nothing; scripts/ash_compile_check/matrix_results.exs
+#     turns the observations into BubbleEx.Verify.Results, scores them with
+#     Result.evaluate/3 and prints the counts; any mismatch fails
 #
 # All of the above maps with privacy: :unverified (the policies). Then the
 # same fixtures are rendered with privacy: :omit (Target.Ash's default, what
@@ -77,6 +80,15 @@ cp "$root/test/support/target/ash/expectations/policies.json" "$scratch/policy_e
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch" unverified
+
+# The privacy-matrix tests (slow to synthesize) render in the background
+# while the scratch project compiles; waited for before `mix test`.
+matrix_pid=""
+if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
+  MIX_ENV=test mix run scripts/ash_compile_check/matrix_render.exs "$scratch" \
+    >"$scratch/matrix_render.log" 2>&1 &
+  matrix_pid=$!
+fi
 
 cd "$scratch"
 mix deps.get
@@ -134,6 +146,15 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   MIX_ENV=test mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
   MIX_ENV=test mix ecto.create --quiet
   MIX_ENV=test mix ecto.migrate --quiet
+  matrix_render_status=0
+  wait "$matrix_pid" || matrix_render_status=$?
+  cat "$scratch/matrix_render.log"
+
+  if [[ "$matrix_render_status" != 0 ]]; then
+    echo "rendering the privacy-matrix tests failed" >&2
+    exit 1
+  fi
+
   rm -rf observations
   matrix_status=0
   WTF_VERIFY_OBSERVATIONS="$scratch/observations" MIX_ENV=test mix test --warnings-as-errors ||
