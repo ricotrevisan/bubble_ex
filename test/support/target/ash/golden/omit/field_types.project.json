@@ -1,9 +1,11 @@
 {
   "actor_loads": [],
   "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "synthetic-field-types",
   "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "ash_date_interval_as_number",

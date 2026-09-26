@@ -5,9 +5,11 @@
     ]
   ],
   "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "policies-fixture",
   "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "unknown_operator",
@@ -857,7 +859,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "board"
@@ -875,7 +877,7 @@
           "kind": "belongs_to",
           "name": "owner_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "owner_user",
             "type": "board"
@@ -1723,7 +1725,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "doc"
@@ -1741,7 +1743,7 @@
           "kind": "belongs_to",
           "name": "owner_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "owner_user",
             "type": "doc"
@@ -2095,7 +2097,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "memo"
@@ -2616,7 +2618,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "note"
@@ -3437,7 +3439,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"
@@ -3455,7 +3457,7 @@
           "kind": "belongs_to",
           "name": "team_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "team_custom_team",
             "type": "user"

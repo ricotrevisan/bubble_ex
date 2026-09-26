@@ -11,30 +11,38 @@ All notable changes to this project are documented here.
   `Decision.Applied`); raw decision records, stale entries (recorded basis
   differs from the finding's hashes), inconsistent keys, subjects missing
   from the Model, proposals that no longer fit it, two transforms of one
-  field and unsupported transforms (cut 2/3, including `add_indexes` hints
-  applied by default) are `:invalid_input`. `refine_number_type` stores
+  field, `automatic` entries that are not undecided hints and owner
+  decisions on unsupported transforms (cut 2/3) are `:invalid_input`;
+  undecided hints with an unsupported transform (e.g. `add_indexes`) are
+  deferred: `project.deferred` and an `:ash_decision_deferred` warning.
+  `map/3` trusts its caller to have resolved the set (documented). `refine_number_type` stores
   `:integer` or `:decimal`; `derive_from_related` replaces the attribute
   by a public calculation of the same (locked) name over the relationship
   path; `rename` overrides a name-map slot with kind/subject, validity,
   reserved-name and collision checks; after the name lock a renamed
   attribute keeps its column (name map `columns`, rendered `source:`) and
-  a table rename is an error; `endpoint_path` is an error. New
-  `project.applied` (key, transform, subject, decision and finding IDs,
-  hashes) and `project.decisions_sha256` (required option with
-  decisions); diagnostics `:ash_decision_applied` and
+  a table rename is an error; before the lock a rename that would displace
+  another definition's name is an error listing the displaced names
+  (renaming both swaps them); `endpoint_path` is an error. New
+  `project.applied` (key, transform, subject, finding ID, hashes; no
+  record IDs), `project.applied_sha256`, `project.deferred` and
+  `project.decisions_sha256` (required option with decisions);
+  diagnostics `:ash_decision_applied`, `:ash_decision_deferred` and
   `:ash_name_overridden`. `Decision.Applied` gains the finding's
   `proposal_sha256` / `basis_sha256` and the decision's `basis`;
   `Decision.reserved_module?/1` is public. `Calculation` gains `kind`,
   `type`, `constraints` and `public?`; `Attribute` gains `column`;
   `Project.schema_version/0` is 4 and `Project.summary/1` counts
-  `applied` and `derived_calculations` (privacy `calculations` counts
+  `applied`, `deferred` and `derived_calculations` (privacy `calculations` counts
   privacy calculations only; `summary/1` no longer fails on an `:omit`
   project). With `privacy: :unverified` a derived field keeps its field's
   field policies, reads through the ungated twin of a gated relationship
-  and is never auto-bound. `scripts/ash_compile_check.sh` renders two
+  (the private twins are now sortable, so a derived field sorts;
+  `sort_input` still cannot name them) and is never auto-bound. `scripts/ash_compile_check.sh` renders two
   decided fixtures and (`decisions.exs`) checks in PostgreSQL that derived
-  fields have no column and read back, and that refined numbers are
-  bigint / numeric columns.
+  fields have no column, read back and sort (and `sort_input` cannot sort
+  through the twin or the public relationship), and that refined numbers
+  are bigint / numeric columns.
 - **Owner decisions: `BubbleEx.Decision`** (WTF-400, D-1 of WTF-352). One
   stack-neutral envelope with kinds `finding` (accept / reject / modify a
   finding's proposal, or acknowledge a stale or orphaned decision),

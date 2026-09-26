@@ -1,9 +1,11 @@
 {
   "actor_loads": [],
   "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "synthetic-malformed",
   "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "model_malformed_node",
@@ -1613,7 +1615,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"

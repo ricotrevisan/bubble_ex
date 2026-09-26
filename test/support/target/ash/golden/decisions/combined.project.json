@@ -4,7 +4,6 @@
     {
       "automatic": false,
       "basis_sha256": "04d623213fccb544221cbd98e46d4f8c1c0ddfae79b0e471b72f9c44fd6114d7",
-      "decision_id": "dec_be0ded99",
       "finding_id": "denormalized_field:10af1394be0ded99",
       "key": "finding:denormalized_field:10af1394be0ded99",
       "kind": "finding",
@@ -20,7 +19,6 @@
     {
       "automatic": false,
       "basis_sha256": "f7db5b7c1959a42e3ba3068e101ddb07f9779ee5fb024d6959d7d0cc5feb963c",
-      "decision_id": "dec_2538ef9c",
       "finding_id": "denormalized_field:68936c1f2538ef9c",
       "key": "finding:denormalized_field:68936c1f2538ef9c",
       "kind": "finding",
@@ -36,7 +34,6 @@
     {
       "automatic": false,
       "basis_sha256": "2f25e4e8c15941b9f59f2c0afe87f5859bbc04477a91cbc4bb626d1f225a9b60",
-      "decision_id": "dec_8a7c3aac",
       "finding_id": "number_type:568835fc8a7c3aac",
       "key": "finding:number_type:568835fc8a7c3aac",
       "kind": "finding",
@@ -54,7 +51,6 @@
     {
       "automatic": false,
       "basis_sha256": "ab4f4d170a5f5ec211073f53cbfa663bdf27058c264753a08184fedf3cf07ca5",
-      "decision_id": "dec_1a0cab43",
       "finding_id": "number_type:b12d14841a0cab43",
       "key": "finding:number_type:b12d14841a0cab43",
       "kind": "finding",
@@ -70,7 +66,6 @@
     {
       "automatic": false,
       "basis_sha256": null,
-      "decision_id": "dec_rename_team_name",
       "finding_id": null,
       "key": "rename:0b4183e24fd597eb",
       "kind": "rename",
@@ -89,7 +84,6 @@
     {
       "automatic": false,
       "basis_sha256": null,
-      "decision_id": "dec_rename_team",
       "finding_id": null,
       "key": "rename:526d2eb31f82db23",
       "kind": "rename",
@@ -108,7 +102,6 @@
     {
       "automatic": false,
       "basis_sha256": null,
-      "decision_id": "dec_rename_todo_item",
       "finding_id": null,
       "key": "rename:85d55659fe704595",
       "kind": "rename",
@@ -126,7 +119,6 @@
     {
       "automatic": false,
       "basis_sha256": null,
-      "decision_id": "dec_rename_headline",
       "finding_id": null,
       "key": "rename:994d0c9fa4fa4c5a",
       "kind": "rename",
@@ -145,7 +137,6 @@
     {
       "automatic": false,
       "basis_sha256": null,
-      "decision_id": "dec_rename_Initiative",
       "finding_id": null,
       "key": "rename:fc12d0b83c794b43",
       "kind": "rename",
@@ -161,9 +152,11 @@
       "transform": "rename"
     }
   ],
+  "applied_sha256": "5b0f55c0c9d14fba9cd2a91575f943745b258391477cb49dbf7d03b619eb4387",
   "authorization_bypasses": [],
   "bubble_id": "synthfindings",
   "decisions_sha256": "8ca3bcf1dd1b516b963dea9848dbb289191d3585bd385a1f41074b7006e0e441",
+  "deferred": [],
   "diagnostics": [
     {
       "code": "ash_privacy_omitted",

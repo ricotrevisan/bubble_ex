@@ -40,6 +40,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
           refine: %{{String.t(), String.t()} => map()},
           derive: %{{String.t(), String.t()} => map()},
           applied: [map()],
+          deferred: [map()],
+          owners: [tuple()],
           diagnostics: [Diagnostic.t()]
         }
 
@@ -52,6 +54,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
          :ok <- unique_keys(decisions),
          decisions = Enum.sort_by(decisions, & &1.key),
          {:ok, checked} <- collect(decisions, &check(&1, ctx)),
+         {deferred, checked} = Enum.split_with(checked, &(elem(&1, 0) == :defer)),
          :ok <- one_per_field(checked),
          fields =
            for({op, a, subject, data} <- checked, op != :rename, do: {op, subject, a, data}),
@@ -67,8 +70,12 @@ defmodule BubbleEx.Target.Ash.Decisions do
          names: names,
          refine: refine,
          derive: derive,
-         applied: Enum.map(decisions, &record/1),
-         diagnostics: Enum.flat_map(fields, &field_diag(&1, ctx)) ++ rename_diags
+         applied: Enum.map(checked, &record(elem(&1, 1))),
+         deferred: Enum.map(deferred, &record(elem(&1, 1))),
+         owners: for({:rename, a, _, _} <- checked, do: owner(a.params.slot, a.subject)),
+         diagnostics:
+           Enum.flat_map(fields, &field_diag(&1, ctx)) ++
+             rename_diags ++ Enum.map(deferred, &deferred_diag(elem(&1, 1), ctx))
        }}
     end
   end
@@ -113,12 +120,10 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   defp check(%Applied{kind: :finding} = a, ctx) do
-    with :ok <- supported(a),
+    with :ok <- known(a),
          :ok <- finding_identity(a),
-         :ok <- fresh(a),
-         {:ok, subject, field} <- subject_field(a, ctx),
-         :ok <- proposal_field(a, subject) do
-      transform(a, subject, field, ctx)
+         :ok <- fresh(a) do
+      if a.transform in @supported, do: supported_finding(a, ctx), else: unsupported_finding(a)
     end
   end
 
@@ -130,6 +135,24 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   defp check(%Applied{} = a, _ctx),
     do: error("unknown applied decision kind", %{key: a.key, kind: inspect(a.kind)})
+
+  defp supported_finding(a, ctx) do
+    with {:ok, subject, field} <- subject_field(a, ctx),
+         :ok <- proposal_field(a, subject),
+         do: transform(a, subject, field, ctx)
+  end
+
+  # A hint nobody decided is deferred until a later cut applies its
+  # transform (reported, never silent); an owner's decision on an
+  # unsupported transform is an error.
+  defp unsupported_finding(%Applied{automatic: true} = a), do: {:ok, {:defer, a, a.subject, nil}}
+  defp unsupported_finding(a), do: supported(a)
+
+  defp known(%Applied{transform: transform} = a) do
+    if transform in @supported or Map.has_key?(@later, transform),
+      do: :ok,
+      else: error("unknown transform", %{key: a.key, transform: inspect(transform)})
+  end
 
   defp supported(%Applied{transform: transform}) when transform in @supported, do: :ok
 
@@ -187,9 +210,15 @@ defmodule BubbleEx.Target.Ash.Decisions do
   # An active decision was recorded against the finding's current hashes;
   # a hint applied by default was recorded against nothing.
   defp fresh(%Applied{automatic: true} = a) do
-    if a.basis == nil and a.decision_id == nil and hash?(a.proposal_sha256),
+    hint? =
+      case Kinds.fetch(finding_kind(a.finding_id, a.subject)) do
+        {:ok, %{category: :hint}} -> true
+        _ -> false
+      end
+
+    if hint? and a.basis == nil and a.decision_id == nil and hash?(a.proposal_sha256),
       do: :ok,
-      else: error("an automatic entry is a hint nobody decided", %{key: a.key})
+      else: error("an automatic entry must be a hint nobody decided", %{key: a.key})
   end
 
   defp fresh(%Applied{} = a) do
@@ -642,6 +671,57 @@ defmodule BubbleEx.Target.Ash.Decisions do
   defp put_path(map, [key | rest], name),
     do: Map.put(map, key, put_path(Map.get(map, key, %{}), rest, name))
 
+  # The name map entry a rename (and what follows from it: a module's
+  # derived table, a relationship's `_id` attribute and privacy twin) owns.
+  defp owner(slot, %{type: t}) when slot in [:module, :table], do: {"resources", t}
+  defp owner(:module, %{external_type: id}), do: {"external_types", id}
+  defp owner(:enum_module, %{option_set: s}), do: {"enums", s}
+  defp owner(:attribute, %{option_set: s, field: f}), do: {"enums", s, f}
+  defp owner(_slot, %{type: t, field: f}), do: {"resources", t, f}
+  defp owner(_slot, subject), do: {:other, subject}
+
+  @doc false
+  # Before the lock a rename may take a name another definition would
+  # have been given; that definition would silently get a suffixed name,
+  # locked at first publish. `baseline` is the name map mapped without the
+  # renames: every name that differs and is not the renames' own is an
+  # error.
+  @spec displaced(map(), map(), [tuple()]) :: :ok | {:error, Error.t()}
+  def displaced(names, baseline, owners) do
+    owners = MapSet.new(owners)
+    final = flatten(names)
+
+    moved =
+      for {path, owner, from} <- baseline |> flatten() |> Map.values(),
+          not MapSet.member?(owners, owner),
+          (to = elem(Map.get(final, path, {nil, nil, nil}), 2)) != from,
+          do: %{path: Enum.join(path, "/"), from: from, to: to}
+
+    if moved == [],
+      do: :ok,
+      else:
+        error(
+          "a rename takes a name another definition is given; rename that one too, " <>
+            "or choose another name",
+          %{displaced: moved}
+        )
+  end
+
+  defp flatten(names) do
+    for section <- ~w(resources enums external_types),
+        {id, entry} <- Map.get(names, section, %{}),
+        {key, value} <- entry,
+        {path, owner, name} <- members(section, id, key, value),
+        into: %{},
+        do: {path, {path, owner, name}}
+  end
+
+  defp members(section, id, key, name) when is_binary(name),
+    do: [{[section, id, key], {section, id}, name}]
+
+  defp members(section, id, key, map) when is_map(map),
+    do: for({sub, name} <- map, do: {[section, id, key, sub], {section, id, sub}, name})
+
   # --- records and diagnostics -----------------------------------------------------
 
   defp record(%Applied{} = a) do
@@ -651,7 +731,6 @@ defmodule BubbleEx.Target.Ash.Decisions do
       transform: a.transform,
       subject: a.subject,
       target: a.target,
-      decision_id: a.decision_id,
       finding_id: a.finding_id,
       automatic: a.automatic,
       params: a.params,
@@ -690,6 +769,24 @@ defmodule BubbleEx.Target.Ash.Decisions do
         }
       )
     ]
+  end
+
+  defp deferred_diag(a, ctx) do
+    path =
+      case Map.fetch(ctx.types, a.subject[:type]) do
+        {:ok, type} -> type.path
+        :error -> ""
+      end
+
+    Diagnostic.new(
+      :ash_decision_deferred,
+      path,
+      "the #{a.transform} hint #{a.key} applies by default but Target.Ash does not apply " <>
+        "#{a.transform} yet (#{Map.fetch!(@later, a.transform)} of WTF-352); deferred",
+      target: :ash,
+      subject: a.subject,
+      details: %{key: a.key, transform: a.transform}
+    )
   end
 
   defp rename_diag(a, details, path) do

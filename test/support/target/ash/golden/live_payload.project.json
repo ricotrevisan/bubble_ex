@@ -1,9 +1,11 @@
 {
   "actor_loads": [],
   "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "synthetic-live",
   "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "ash_policies_unverified",
@@ -565,7 +567,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "order"
@@ -583,7 +585,7 @@
           "kind": "belongs_to",
           "name": "buyer_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "buyer_user",
             "type": "order"
@@ -932,7 +934,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"

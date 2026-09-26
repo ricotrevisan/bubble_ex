@@ -216,9 +216,12 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
 
       assert source =~ "use Ash.Policy.SimpleCheck"
 
-      # Ash does not apply field policies to relationship-path sorts.
+      # Ash does not apply field policies to relationship-path sorts; the
+      # private twins stay sortable (sort_input cannot name them) so a
+      # derived field reading through one sorts.
       assert Enum.all?(project.resources, fn r ->
-               Enum.all?(r.relationships ++ r.privacy_relationships, &(&1.sortable? == false))
+               Enum.all?(r.relationships, &(&1.sortable? == false)) and
+                 Enum.all?(r.privacy_relationships, &(&1.sortable? and not &1.public?))
              end)
     end
 

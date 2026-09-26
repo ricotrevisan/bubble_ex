@@ -116,9 +116,11 @@ defmodule BubbleEx.Target.Ash do
   searches must reference only fields the searcher may view. Aggregates
   (count, min, max, sum, list, first, ...) over a field are not covered by
   field policies either (`:ash_policy_aggregates_unguarded`): generated
-  code must not aggregate a field the actor may not view. Relationships are
-  generated `sortable?: false`: Ash applies field policies to a resource's
-  own fields in `sort_input`, not to fields reached through a relationship.
+  code must not aggregate a field the actor may not view. Public
+  relationships are generated `sortable?: false`: Ash applies field
+  policies to a resource's own fields in `sort_input`, not to fields
+  reached through a relationship. The private twins stay sortable
+  (`sort_input` cannot name them), so a derived field sorts.
   The primary `:read`'s key requirement is a policy check
   (a policy, `authorize_if <namespace>.Privacy.KeyedRead`), so it holds for
   aggregate queries too.
@@ -172,7 +174,11 @@ defmodule BubbleEx.Target.Ash do
         )
 
   **Input contract.** A list of `BubbleEx.Decision.Applied` structs, each
-  with a unique key. Anything else is `:invalid_input`, never ignored:
+  with a unique key, from `resolve/3` and `applicable/2` over this
+  snapshot's findings. `map/3` trusts that: it checks each entry's
+  consistency against itself and the Model, but it cannot re-resolve the
+  set (it has no findings or records), and it records `decisions_sha256`
+  without verifying it. Anything else is `:invalid_input`, never ignored:
 
     * a `BubbleEx.Decision` record (unresolved: it may be stale, orphaned
       or superseded), or any other term
@@ -180,11 +186,13 @@ defmodule BubbleEx.Target.Ash do
       and proposal disagree, that lacks the finding's `proposal_sha256` and
       `basis_sha256`, or whose recorded `basis` differs from them (a stale
       decision: `applicable/2` never lists one)
-    * a transform Target.Ash does not apply yet (`derive_count`,
-      `text_to_reference`, `derive_reverse_relationship`, `add_indexes`,
-      `normalize_list_to_join`, `membership_policy`). Hint findings apply
-      by default (`automatic`), so an app with `add_indexes` hints needs
-      them rejected (or left out) until a later cut applies them
+    * an owner's decision on a transform Target.Ash does not apply yet
+      (`derive_count`, `text_to_reference`, `derive_reverse_relationship`,
+      `add_indexes`, `normalize_list_to_join`, `membership_policy`). A hint
+      nobody decided (`automatic`) with such a transform is not an error:
+      it is deferred, listed in `project.deferred` with an
+      `:ash_decision_deferred` warning
+    * an `automatic` entry that is not an undecided hint
     * a subject missing from the Model or deleted, or a proposal that no
       longer fits it (not a number field, a derivation that is not a path
       of references to the source's type, a source of another type): the
@@ -223,11 +231,16 @@ defmodule BubbleEx.Target.Ash do
   only: a renamed attribute keeps its column (the name map's `columns`,
   rendered `source: :column`), and a table rename is an error. The
   returned `project.names` holds the overrides, so it can be stored and
-  passed back.
+  passed back. Before the lock a rename may not take the name another
+  definition is given (it would get a suffixed name, locked at first
+  publish): that is an error listing the displaced names; rename both in
+  one set to swap names.
 
   **Record.** `project.applied` lists every applied decision (key, kind,
-  transform, subject, decision and finding IDs, parameters and the
-  finding's hashes); `project.decisions_sha256` pins the decision set; each
+  transform, subject, finding ID, parameters and the finding's hashes; no
+  record IDs, which are audit data) and `project.applied_sha256` hashes
+  it; `project.deferred` lists the deferred hints;
+  `project.decisions_sha256` records the decision set; each
   applied finding adds an `:ash_decision_applied` diagnostic and each
   rename an `:ash_name_overridden` one. Both privacy modes apply the same
   decisions: with `privacy: :unverified` a derived field stands for the
@@ -243,7 +256,7 @@ defmodule BubbleEx.Target.Ash do
   `external_type_*` codes), normalized.
   """
 
-  alias BubbleEx.{Diagnostic, Error, Model}
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
   alias BubbleEx.Model.{DataType, ExternalType, Field, OptionSet, OptionValue, Structured, Type}
 
   alias BubbleEx.Target.Ash.{
@@ -347,7 +360,13 @@ defmodule BubbleEx.Target.Ash do
          {:ok, index} <- validate_index(Keyword.get(opts, :index)),
          {:ok, sha} <- validate_decisions_sha256(Keyword.get(opts, :decisions_sha256), decisions),
          {:ok, plan} <- Decisions.plan(model, decisions, names) do
-      {:ok, build(model, plan, index, privacy, sha)}
+      project = build(model, plan, index, privacy, sha)
+
+      undisplaced(
+        project,
+        fn -> build(model, %{plan | names: names}, index, privacy, sha) end,
+        plan
+      )
     end
   catch
     {:name_conflict, error} -> {:error, error}
@@ -393,6 +412,25 @@ defmodule BubbleEx.Target.Ash do
          Error.new(:invalid_input, "the :decisions_sha256 option must be a SHA-256 hex digest")}
   end
 
+  # Renames before the lock must not move another definition's name:
+  # compare with the mapping without them.
+  defp undisplaced(project, _baseline, %{owners: []}), do: {:ok, project}
+
+  defp undisplaced(project, baseline, plan) do
+    with :ok <- Decisions.displaced(project.names, baseline.().names, plan.owners),
+         do: {:ok, project}
+  end
+
+  # What was applied, pinned (records hold no audit metadata).
+  defp applied_sha256(_applied, nil), do: nil
+
+  defp applied_sha256(applied, _decisions_sha256),
+    do:
+      %Project{schema_version: 0, applied: applied}
+      |> Project.to_map()
+      |> Map.fetch!("applied")
+      |> CanonicalJson.sha256()
+
   defp build(model, plan, index, privacy, decisions_sha256) do
     names = plan.names
 
@@ -429,6 +467,8 @@ defmodule BubbleEx.Target.Ash do
       names: ctx.names,
       privacy: privacy,
       applied: plan.applied,
+      applied_sha256: applied_sha256(plan.applied, decisions_sha256),
+      deferred: plan.deferred,
       decisions_sha256: decisions_sha256
     }
 

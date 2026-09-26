@@ -161,10 +161,13 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     unsortable = &%{&1 | sortable?: false}
 
+    # The private twins stay sortable: `sort_input` cannot name a private
+    # relationship, and a derived field (a public calculation guarded by
+    # its own field policy) reads through them and must sort.
     resource = %{
       resource
       | relationships: Enum.map(relationships, unsortable),
-        privacy_relationships: privacy |> Enum.reverse() |> Enum.map(unsortable)
+        privacy_relationships: Enum.reverse(privacy)
     }
 
     {resource, entry, twins}

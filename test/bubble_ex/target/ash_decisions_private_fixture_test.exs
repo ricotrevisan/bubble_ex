@@ -67,6 +67,9 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
 
     %{
       model: model,
+      index: index,
+      findings: findings,
+      records: records,
       resolved: resolved,
       applied: applied,
       sha: sha,
@@ -80,6 +83,30 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     assert Resolved.blocking(resolved) == []
     assert Enum.any?(applied, &(&1.transform == :derive_from_related))
     refute Enum.any?(applied, & &1.automatic)
+  end
+
+  test "with the hints left undecided they are deferred, not applied",
+       %{model: model, index: index, findings: findings, records: records, project: project} do
+    hint_ids = for f <- findings, f.category == :hint, into: MapSet.new(), do: f.id
+    decided = Enum.reject(records, &MapSet.member?(hint_ids, &1.basis.finding_id))
+    {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
+    applied = Decision.applicable(resolved, findings)
+    automatic = Enum.filter(applied, & &1.automatic)
+    assert automatic != [] and Enum.all?(automatic, &(&1.transform == :add_indexes))
+
+    {:ok, auto} =
+      Ash.map(model, applied,
+        index: index,
+        privacy: :unverified,
+        decisions_sha256: Decision.decisions_sha256(decided)
+      )
+
+    assert length(auto.deferred) == length(automatic)
+    assert length(auto.deferred) == MapSet.size(hint_ids)
+    assert auto.applied == project.applied
+    assert auto.applied_sha256 == project.applied_sha256
+    assert Enum.count(auto.diagnostics, &(&1.code == :ash_decision_deferred)) == length(automatic)
+    IO.puts("\ntarget ash (decided, hints undecided): #{length(auto.deferred)} deferred")
   end
 
   test "a derived field is a calculation with its locked name, not a column",
@@ -111,6 +138,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       "schema_version" => Project.schema_version(),
       "project_sha256" => CanonicalJson.sha256(Project.to_map(project)),
       "decisions_sha256" => sha,
+      "applied_sha256" => project.applied_sha256,
       "counts" => Project.summary(project)
     }
 

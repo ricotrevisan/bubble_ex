@@ -17,6 +17,7 @@
     "db_references": {
       "ignore": 386
     },
+    "deferred": {},
     "derived_calculations": 0,
     "diagnostics": {
       "ash_deleted_omitted": 24,

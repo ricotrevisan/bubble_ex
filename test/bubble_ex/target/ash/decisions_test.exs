@@ -415,11 +415,29 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
                inspect(applied.params)
       end
 
-      # before the lock, a definition without a name yields: its derived
-      # name avoids the override
-      {:ok, preview} = map(model, [rename(%{type: "project"}, "module", "Workspace")])
-      assert resource(preview, "project").module == "Workspace"
-      assert resource(preview, "workspace").module == "Workspace2"
+      # before the lock, a rename may not displace another definition's
+      # name (it would be suffixed, then locked at first publish)
+      {:error, error} = map(model, [rename(%{type: "project"}, "module", "Workspace")])
+      assert error.message =~ "another definition"
+
+      assert %{path: "resources/workspace/module", from: "Workspace", to: "Workspace2"} in error.context.displaced
+
+      {:error, error} =
+        map(model, [rename(%{type: "project", field: "title_text"}, "attribute", "note")])
+
+      assert [%{path: "resources/project/attributes/note_text", from: "note", to: "note_2"}] =
+               error.context.displaced
+
+      # renaming both swaps them
+      swap = [
+        rename(%{type: "project"}, "module", "Workspace"),
+        rename(%{type: "workspace"}, "module", "Project")
+      ]
+
+      {:ok, swapped} = map(model, swap)
+      assert resource(swapped, "project").module == "Workspace"
+      assert resource(swapped, "workspace").module == "Project"
+      assert resource(swapped, "project").table == "workspace"
 
       # a derived field is renamed as a calculation
       %{model: model, applied: applied, decisions_sha256: sha} = DecidedFixture.build(:derive)
@@ -440,6 +458,12 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
                "decisions must be resolved first"
 
       assert map(faithful(), [%{transform: :rename}]) |> message() =~ "Decision.Applied"
+    end
+
+    test "an automatic entry must be an undecided hint" do
+      [derive | _] = DecidedFixture.build(:derive).applied |> Enum.filter(&(&1.kind == :finding))
+      forged = %{derive | automatic: true, basis: nil, decision_id: nil}
+      assert map(faithful(), [forged]) |> message() =~ "must be a hint"
     end
 
     test "a stale entry is rejected" do
@@ -467,14 +491,29 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       assert Ash.map(model, applied, decisions_sha256: sha) |> message() =~ "not in the Model"
     end
 
-    test "unsupported transforms are errors, including hints applied by default" do
+    test "unsupported hints applied by default are deferred; decided ones are errors" do
       %{model: model, index: index, findings: findings} = DecidedFixture.build(:refine)
       now = ~U[2026-09-26 00:00:00Z]
       {:ok, resolved} = Decision.resolve([], findings, index: index, now: now)
       automatic = Decision.applicable(resolved, findings)
+      assert [_, _] = automatic
       assert Enum.all?(automatic, &(&1.automatic and &1.transform == :add_indexes))
 
-      assert map(model, automatic) |> message() =~ "does not apply add_indexes yet"
+      {:ok, project} = map(model, automatic)
+      assert project.applied == []
+      assert Enum.map(project.deferred, & &1.key) == Enum.map(automatic, & &1.key)
+      assert Project.summary(project)["deferred"] == %{"add_indexes" => 2}
+
+      deferred = for d <- project.diagnostics, d.code == :ash_decision_deferred, do: d
+      assert length(deferred) == 2
+      assert Enum.all?(deferred, &(&1.severity == :warning))
+
+      # an owner's accept of the same hint is an error
+      hint = Enum.find(findings, &(&1.kind == :search_index))
+      {:ok, accept} = Decision.for_finding(hint, :accept)
+      {:ok, resolved} = Decision.resolve([accept], findings, index: index, now: now)
+      decided = resolved |> Decision.applicable(findings) |> Enum.reject(& &1.automatic)
+      assert map(model, decided) |> message() =~ "does not apply add_indexes yet"
 
       list = Enum.find(findings, &(&1.kind == :list_relationship))
       {:ok, accept} = Decision.for_finding(list, :accept)
@@ -535,7 +574,7 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
         finding = Map.fetch!(by_id, record.finding_id)
         assert record.proposal_sha256 == finding.proposal_sha256
         assert record.basis_sha256 == finding.basis_sha256
-        assert is_binary(record.decision_id)
+        refute Map.has_key?(record, :decision_id)
       end
 
       assert Project.summary(project)["applied"] == %{
@@ -545,6 +584,19 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
              }
 
       assert Project.summary(project)["derived_calculations"] == 2
+      assert project.deferred == []
+
+      assert project.applied_sha256 ==
+               project |> Project.to_map() |> Map.fetch!("applied") |> CanonicalJson.sha256()
+
+      # record IDs are audit data: another one changes nothing
+      %{model: model} = DecidedFixture.build(:combined)
+
+      renumbered =
+        Enum.map(applied, &%{&1 | decision_id: &1.decision_id && &1.decision_id <> "x"})
+
+      {:ok, again} = Ash.map(model, renumbered, decisions_sha256: sha)
+      assert Project.to_json(again) == Project.to_json(project)
 
       codes = Enum.frequencies_by(project.diagnostics, & &1.code)
       assert codes[:ash_decision_applied] == 4

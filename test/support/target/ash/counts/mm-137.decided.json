@@ -1,4 +1,5 @@
 {
+  "applied_sha256": "cc0819949b38a138f7d24a1f30ceefa3b9b6843b75f8fdee74033fe4aa10bd40",
   "counts": {
     "applied": {
       "derive_from_related": 1
@@ -19,6 +20,7 @@
     "db_references": {
       "ignore": 386
     },
+    "deferred": {},
     "derived_calculations": 1,
     "diagnostics": {
       "ash_decision_applied": 1,
@@ -75,6 +77,6 @@
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "d37a13f03efd7b7c1b3d05501d28913bd49ff74af76a361fa7308b77a7b64f64",
+  "project_sha256": "5e2f3db2ab722fe0f3c4de9f46581dde8c62bcea10486590e79b7b48241735c1",
   "schema_version": 4
 }

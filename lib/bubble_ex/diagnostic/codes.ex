@@ -187,6 +187,8 @@ defmodule BubbleEx.Diagnostic.Codes do
     # --- target:ash — BubbleEx.Target.Ash owner decisions (WTF-352, WTF-401) ---
     {:ash_decision_applied, :info, :degraded, :target,
      "an owner decision changed how a field is mapped (a number stored as an integer or decimal, a copied field derived as a calculation); the project departs from the source-faithful mapping on purpose"},
+    {:ash_decision_deferred, :warning, :unresolved, :target,
+     "a hint that applies by default (e.g. `add_indexes`) whose transform Target.Ash does not apply yet; not applied, listed in `project.deferred`"},
     {:ash_name_overridden, :info, :preserved, :target,
      "an owner rename decision set a generated name; after the name lock only Elixir names change, and a renamed attribute keeps its column (`source:`)"},
 

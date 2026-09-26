@@ -216,6 +216,11 @@ decision_expectations =
                 resource_module: namespace <> "." <> r.module,
                 calculation: c.name,
                 relationship: rel,
+                # the public relationship a private twin stands for
+                public_relationship:
+                  Enum.find_value(r.relationships, fn p ->
+                    if p.source == relationship.source, do: p.name
+                  end),
                 source_attribute: relationship.source_attribute,
                 destination: namespace <> "." <> destination.module,
                 attribute: attribute

@@ -1,9 +1,11 @@
 {
   "actor_loads": [],
   "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "policies-fixture",
   "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "unknown_operator",

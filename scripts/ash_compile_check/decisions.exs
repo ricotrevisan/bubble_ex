@@ -10,7 +10,10 @@
 #     floats stay double precision
 #   * every derived calculation reads the related record's value back from
 #     PostgreSQL: loaded, and as a filter (evaluated in SQL), for a record
-#     whose relationship is set and one whose relationship is empty (nil)
+#     whose relationship is set and one whose relationship is empty (nil);
+#     it sorts (Ash.Query.sort and sort_input, nils last / descending), and
+#     sort_input cannot sort through the private `*_for_privacy` twin it
+#     reads through, nor through the unsortable public relationship
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos),
     not match?({:error, {:already_started, _}}, repo.start_link()),
@@ -110,7 +113,40 @@ defmodule DecisionsCheck do
       |> Ash.read!(authorize?: false)
       |> Enum.map(&Map.fetch!(&1, pk))
 
+    ids = [Map.fetch!(linked, pk), Map.fetch!(empty, pk)]
+    ours = Ash.Query.do_filter(resource, [{pk, [in: ids]}])
+
+    sorted =
+      ours
+      |> Ash.Query.sort([{calc, :asc_nils_last}])
+      |> Ash.read!(authorize?: false)
+      |> Enum.map(&Map.fetch!(&1, pk))
+
+    sorted_input =
+      ours
+      |> Ash.Query.sort_input("-" <> d["calculation"])
+      |> Ash.read(authorize?: false)
+
+    # sort_input cannot reach through a private twin, nor a public
+    # relationship with privacy policies (unsortable)
+    through =
+      for rel <- Enum.uniq([d["relationship"], d["public_relationship"]]),
+          rel != nil,
+          d["relationship"] != d["public_relationship"],
+          match?(
+            {:ok, _},
+            ours
+            |> Ash.Query.sort_input("#{rel}.#{d["attribute"]}")
+            |> Ash.read(authorize?: false)
+          ),
+          do: rel
+
     [
+      {sorted == ids, "sorts to #{inspect(sorted)}"},
+      {match?({:ok, [_, _]}, sorted_input) and
+         Enum.map(elem(sorted_input, 1), &Map.fetch!(&1, pk)) == Enum.reverse(ids),
+       "sort_input gives #{inspect(sorted_input |> elem(1) |> List.wrap() |> Enum.map(&(is_map(&1) && Map.get(&1, pk))))}"},
+      {through == [], "sort_input reaches through #{inspect(through)}"},
       {Enum.map(loaded, &Map.fetch!(&1, calc)) == [value, nil],
        "loads #{inspect(Enum.map(loaded, &Map.fetch!(&1, calc)))}"},
       {filtered == [Map.fetch!(linked, pk)], "filters to #{inspect(filtered)}"}

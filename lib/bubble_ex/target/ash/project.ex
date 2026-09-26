@@ -36,11 +36,19 @@ defmodule BubbleEx.Target.Ash.Project do
       empty unless an index was given to `BubbleEx.Target.Ash.map/3`
     * `applied` - the owner decisions applied (see `BubbleEx.Target.Ash`,
       "Decisions"), sorted by key: `%{key, kind, transform, subject, target,
-      decision_id, finding_id, automatic, params, proposal_sha256,
-      basis_sha256}`, so a manifest, plan or verification can cite them
+      finding_id, automatic, params, proposal_sha256, basis_sha256}`, so a
+      manifest, plan or verification can cite them. No audit metadata (the
+      record ID): an audit-only revision changes nothing here
+    * `applied_sha256` - SHA-256 of the canonical JSON of `applied`: what
+      was actually applied; nil when mapped without decisions
+    * `deferred` - hints that apply by default but whose transform
+      Target.Ash does not apply yet (e.g. `add_indexes` before cut 2),
+      shaped like `applied`; each has an `:ash_decision_deferred` warning
     * `decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision set the applied decisions come from, as passed to
-      `BubbleEx.Target.Ash.map/3`; nil when mapped without decisions
+      `BubbleEx.Target.Ash.map/3` (recorded, not verified: `map/3` trusts
+      its caller to have resolved that set); nil when mapped without
+      decisions
     * `diagnostics` - the Model's diagnostics plus the mapping's (stage
       `{:target, :ash}`), normalized
 
@@ -101,6 +109,8 @@ defmodule BubbleEx.Target.Ash.Project do
     actor_loads: [],
     authorization_bypasses: [],
     applied: [],
+    applied_sha256: nil,
+    deferred: [],
     decisions_sha256: nil,
     diagnostics: []
   ]
@@ -120,6 +130,8 @@ defmodule BubbleEx.Target.Ash.Project do
           actor_loads: [[String.t()]],
           authorization_bypasses: [Bypass.t()],
           applied: [map()],
+          applied_sha256: String.t() | nil,
+          deferred: [map()],
           decisions_sha256: String.t() | nil,
           diagnostics: [Diagnostic.t()]
         }
@@ -182,6 +194,7 @@ defmodule BubbleEx.Target.Ash.Project do
         |> Enum.flat_map(& &1.calculations)
         |> Enum.count(&(&1.kind == :derived)),
       "applied" => frequencies(project.applied, &Atom.to_string(&1.transform)),
+      "deferred" => frequencies(project.deferred, &Atom.to_string(&1.transform)),
       "privacy" => privacy_summary(project),
       "diagnostics" => frequencies(project.diagnostics, &Atom.to_string(&1.code))
     }
@@ -619,7 +632,9 @@ defmodule BubbleEx.Target.Ash.Relationship do
     * `sortable?` - false when privacy policies are generated (WTF-356):
       Ash applies field policies to a resource's own fields in `sort_input`
       but not to fields reached through a relationship, so sorting by
-      `rel.hidden_field` would order by a value the actor may not view
+      `rel.hidden_field` would order by a value the actor may not view.
+      The private `*_for_privacy` twins stay sortable: `sort_input` cannot
+      name a private relationship, and a derived field reads through them
     * `gate` - nil, or who may follow it (WTF-356): `{:visible_if, calcs}`
       (`filter expr(parent(a or b))`: one of the source record's privacy
       calculations holds, those authorizing its ID attribute) or `:never`

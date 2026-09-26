@@ -224,7 +224,6 @@ defmodule MyApp.Initiative do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
 
     belongs_to :team_for_privacy, MyApp.Workspace do
@@ -234,7 +233,6 @@ defmodule MyApp.Initiative do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 
@@ -719,7 +717,6 @@ defmodule MyApp.Workspace do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 
