@@ -202,7 +202,7 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
 
       for line <- String.split(bodies, "\n"),
           String.trim_leading(line) |> String.starts_with?("# bubble:") do
-        refute line =~ " "
+        refute line =~ "\u2028"
       end
     end
   end
