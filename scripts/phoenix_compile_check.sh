@@ -49,7 +49,7 @@ for fixture in $fixtures; do
     first=0
   fi
 
-  mix compile --warnings-as-errors --force
+  mix compile --warnings-as-errors
 
   rm -rf priv/resource_snapshots
   find priv/repo/migrations -name '*.exs' ! -name '20260101000000_add_oban_jobs_table.exs' -delete

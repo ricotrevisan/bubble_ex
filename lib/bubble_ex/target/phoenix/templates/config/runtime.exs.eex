@@ -50,9 +50,38 @@ if config_env() == :prod do
     http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}],
     secret_key_base: secret_key_base
 
-  # Configure a production mailer adapter here, e.g.
+  # Sign-in links are emailed: production needs a real Swoosh adapter (the
+  # Local adapter is disabled in config/prod.exs). API adapters (Postmark,
+  # Mailgun, SendGrid, Resend, ...) use the bundled Req client; SMTP needs
+  # the :gen_smtp dependency. E.g.
   #
-  #     config :<%= @app %>, <%= @module %>.Mailer,
-  #       adapter: Swoosh.Adapters.Postmark,
-  #       api_key: System.fetch_env!("POSTMARK_API_KEY")
+  #     MAILER_ADAPTER=Swoosh.Adapters.Postmark MAILER_API_KEY=... MAILER_FROM=noreply@acme.test
+  mailer_adapter =
+    System.get_env("MAILER_ADAPTER") ||
+      raise """
+      environment variable MAILER_ADAPTER is missing: sign-in emails need a
+      Swoosh adapter, e.g. MAILER_ADAPTER=Swoosh.Adapters.Postmark with
+      MAILER_API_KEY (and MAILER_DOMAIN for Mailgun).
+      """
+
+  mailer_adapter = Module.concat([mailer_adapter])
+
+  unless Code.ensure_loaded?(mailer_adapter) do
+    raise "MAILER_ADAPTER #{inspect(mailer_adapter)} is not an available Swoosh adapter"
+  end
+
+  mailer_from =
+    System.get_env("MAILER_FROM") ||
+      raise "environment variable MAILER_FROM (the sender address) is missing"
+
+  config :<%= @app %>,
+         <%= @module %>.Mailer,
+         [adapter: mailer_adapter] ++
+           for(
+             {key, var} <- [api_key: "MAILER_API_KEY", domain: "MAILER_DOMAIN"],
+             value = System.get_env(var),
+             do: {key, value}
+           )
+
+  config :<%= @app %>, :mailer_from, {<%= inspect(@name) %>, mailer_from}
 end

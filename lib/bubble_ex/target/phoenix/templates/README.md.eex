@@ -16,9 +16,9 @@ app's data model.
 
 `.wtf/generated.json` lists the **generated** files with their SHA-256.
 They are derived from the Bubble app (the Ash resources, enums and types,
-the User's authentication, the token resource, the workflow API entry
-point, the Tailwind theme tokens in `assets/css/bubble.css` and the name
-map `.wtf/names.json`). Regeneration overwrites them, so do not edit them
+the token resource, `Accounts.Resources`, the workflow API entry point, the
+Tailwind theme tokens in `assets/css/bubble.css` and the name map
+`.wtf/names.json`). Regeneration overwrites them, so do not edit them
 by hand: a hand edit is detected and blocks regeneration. Change the
 Bubble app or record an owner decision instead.
 
@@ -36,15 +36,29 @@ then yours. Regeneration never overwrites it.
 - Names are locked in `.wtf/names.json` at first generation, so later caption
   edits in Bubble do not rename code.
 
+## Authorization: none yet
+
+The resources are generated with `privacy: :omit`: they have **no
+authorization**. Bubble's privacy rules are not enforced, so any code path
+that reads a resource sees every record. Add Ash policies before exposing
+any resource through an API, a LiveView or a controller.
+
 ## Sign-in
 
 Users sign in with a magic link (AshAuthentication). No password material
-is read from Bubble. `<%= @module %>.Accounts.MagicLinkSender` enqueues an
-Oban job that emails the link; configure a production mailer adapter in
-`config/runtime.exs`.
+is read from Bubble, and only stored users can sign in. Emails match
+case-insensitively (the User email is a trimmed `:ci_string`, unique).
+`<%= @module %>.Accounts.UserAuthentication` (owned) holds the
+authentication configuration; tune it there.
+`<%= @module %>.Accounts.MagicLinkSender` enqueues an Oban job (unique per
+email for a minute) that emails the link, encrypted in the job's
+arguments. Throttle requests per IP at your proxy if you need to.
 
 ## Configuration
 
-Production reads its secrets from the environment: `DATABASE_URL`,
-`SECRET_KEY_BASE`, `TOKEN_SIGNING_SECRET` (generate both with
-`mix phx.gen.secret`), `PHX_HOST` and `PORT`.
+Production reads its secrets from the environment and refuses to boot
+without them: `DATABASE_URL`, `SECRET_KEY_BASE`, `TOKEN_SIGNING_SECRET`
+(generate both with `mix phx.gen.secret`), `MAILER_ADAPTER` (a Swoosh
+adapter such as `Swoosh.Adapters.Postmark`), `MAILER_FROM`, and the
+adapter's `MAILER_API_KEY` / `MAILER_DOMAIN`. Optional: `PHX_HOST`, `PORT`,
+`POOL_SIZE`.

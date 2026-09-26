@@ -1,15 +1,34 @@
 defmodule <%= @module %>.Accounts.MagicLinkEmail do
-  @moduledoc "Emails a magic sign-in link."
+  @moduledoc """
+  Emails a magic sign-in link. Its `link` argument is the sign-in URL
+  encrypted with `Phoenix.Token.encrypt/4`; one job per email a minute.
+  """
 
-  use Oban.Worker, queue: :mailers, max_attempts: 3
+  use Oban.Worker,
+    queue: :mailers,
+    max_attempts: 3,
+    unique: [period: 60, keys: [:email]]
 
   import Swoosh.Email
 
+  # AshAuthentication's magic link tokens live 10 minutes.
+  @max_age 600
+
+  @doc false
+  def salt, do: "magic link email"
+
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"email" => email, "url" => url}}) do
+  def perform(%Oban.Job{args: %{"email" => email, "link" => link}}) do
+    case Phoenix.Token.decrypt(<%= @web %>.Endpoint, salt(), link, max_age: @max_age) do
+      {:ok, url} -> deliver(email, url)
+      {:error, reason} -> {:cancel, reason}
+    end
+  end
+
+  defp deliver(email, url) do
     new()
     |> to(email)
-    |> from({<%= inspect(@name) %>, "noreply@example.com"})
+    |> from(Application.fetch_env!(:<%= @app %>, :mailer_from))
     |> subject("Your sign-in link")
     |> text_body("""
     Hi,

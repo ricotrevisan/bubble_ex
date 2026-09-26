@@ -2,11 +2,12 @@ defmodule <%= @module %>.Repo do
   use AshPostgres.Repo, otp_app: :<%= @app %>
 
   def installed_extensions do
-    # The generated resources use Ash's SQL functions.
-    ["ash-functions"]
+    # Ash's SQL functions, and citext for the case-insensitive User email.
+    ["ash-functions", "citext"]
   end
 
+  # Nothing generated needs more than PostgreSQL 14 (CI tests on 16).
   def min_pg_version do
-    %Version{major: 16, minor: 0, patch: 0}
+    %Version{major: 14, minor: 0, patch: 0}
   end
 end

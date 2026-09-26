@@ -49,7 +49,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           clean?: boolean(),
           modified: [String.t()],
           missing: [String.t()],
-          unchanged: [String.t()]
+          unchanged: [String.t()],
+          stale: [String.t()]
         }
 
   @doc "The manifest's path in the project."
@@ -113,12 +114,25 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   has its recorded SHA-256 is `modified` (a hand edit), an absent one
   `missing`. `clean?` is true when neither is found. Owned files are not
   checked.
+
+  With `previous:` (the manifest the files were generated with, when
+  `manifest` is a new generation's), `stale` lists the files the previous
+  generation made that the new one no longer does and that are still
+  present: a packager removes them (after checking them against the
+  previous manifest). Otherwise `stale` is `[]`.
   """
-  @spec check(String.t() | map(), %{String.t() => binary()} | Path.t()) ::
+  @spec check(String.t() | map(), %{String.t() => binary()} | Path.t(), keyword()) ::
           {:ok, report()} | {:error, Error.t()}
-  def check(manifest, files) do
+  def check(manifest, files, opts \\ []) do
     with {:ok, manifest} <- decode(manifest),
-         {:ok, read} <- reader(files) do
+         {:ok, read} <- reader(files),
+         {:ok, previous} <- previous(Keyword.get(opts, :previous)) do
+      stale =
+        for {path, _hash} <- Enum.sort(previous),
+            not Map.has_key?(manifest["generated"], path),
+            read.(path) != nil,
+            do: path
+
       statuses =
         for {path, hash} <- Enum.sort(manifest["generated"]),
             do: {status(read.(path), hash), path}
@@ -130,9 +144,16 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
          clean?: Map.keys(by) -- [:unchanged] == [],
          modified: Map.get(by, :modified, []),
          missing: Map.get(by, :missing, []),
-         unchanged: Map.get(by, :unchanged, [])
+         unchanged: Map.get(by, :unchanged, []),
+         stale: stale
        }}
     end
+  end
+
+  defp previous(nil), do: {:ok, %{}}
+
+  defp previous(manifest) do
+    with {:ok, %{"generated" => generated}} <- decode(manifest), do: {:ok, generated}
   end
 
   defp status(nil, _hash), do: :missing

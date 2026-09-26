@@ -471,7 +471,11 @@ files["mix.exs"]
 Generated files (the Ash layer, the workflow API entry point, the theme
 tokens, `.wtf/names.json`) are listed with their SHA-256 and the input
 hashes in `.wtf/generated.json` and are regenerated; everything else is
-owned: scaffolded once, never overwritten. `scripts/phoenix_compile_check.sh`
+owned: scaffolded once, never overwritten (the authentication settings are
+an owned `Spark.Dsl.Fragment` the generated User includes). Pass
+`previous:` (the older manifest) to `check_manifest/3` to also list stale
+generated files to remove. The resources have **no authorization**
+(`privacy: :omit`): add Ash policies before exposing them. `scripts/phoenix_compile_check.sh`
 builds, migrates and tests the rendered application of every fixture.
 
 ### DBML / database diagram (legacy options)

@@ -4,9 +4,7 @@ defmodule <%= @web %>.SmokeTest do
   use <%= @web %>.ConnCase, async: true
   use Oban.Testing, repo: <%= @module %>.Repo
 
-  import Swoosh.TestAssertions
-
-  alias <%= @module %>.Accounts.MagicLinkEmail
+  alias <%= @module %>.Accounts.{MagicLinkEmail, Resources}
 
   test "the home page renders", %{conn: conn} do
     assert html_response(get(conn, ~p"/"), 200) =~ "Sign in"
@@ -18,33 +16,59 @@ defmodule <%= @web %>.SmokeTest do
 
   test "an unknown workflow is not found", %{conn: conn} do
     conn = post(conn, "/api/1.1/wf/no_such_workflow", %{})
-    assert %{"status" => "NOT_FOUND"} = json_response(conn, 404)
+    assert json_response(conn, 404) == %{"status" => "NOT_FOUND", "message" => "Workflow not found"}
   end
 
-  test "a stored user signs in with a magic link", %{conn: conn} do
-    email = "owner@example.com"
-    Ash.Seed.seed!(<%= @module %>.<%= @user %>, %{id: "1700000000000x100000000000000001", <%= @email %>: email})
+  describe "magic-link sign-in" do
+    setup do
+      Ash.Seed.seed!(
+        Resources.user(),
+        Map.new([{:id, "1700000000000x100000000000000001"}, {Resources.email_field(), "Owner@Example.com"}])
+      )
 
-    strategy = AshAuthentication.Info.strategy!(<%= @module %>.<%= @user %>, :magic_link)
-    assert :ok = AshAuthentication.Strategy.action(strategy, :request, %{"<%= @email %>" => email})
+      :ok
+    end
 
-    assert [%{args: %{"url" => url} = args}] = all_enqueued(worker: MagicLinkEmail)
-    assert :ok = perform_job(MagicLinkEmail, args)
-    assert_email_sent(to: email)
+    test "a stored user signs in once per link, whatever the email's case", %{conn: conn} do
+      # Different case and surrounding whitespace still match.
+      assert :ok = request_link("  owner@EXAMPLE.com ")
 
-    token = url |> URI.parse() |> Map.fetch!(:path) |> Path.basename()
-    conn = post(conn, "/auth/user/magic_link", %{"token" => token})
-    assert redirected_to(conn) == ~p"/"
+      assert [%{args: %{"email" => "owner@example.com", "link" => link} = args}] =
+               all_enqueued(worker: MagicLinkEmail)
+
+      # The job holds the link encrypted, never the sign-in URL.
+      refute link =~ "magic_link"
+
+      assert :ok = perform_job(MagicLinkEmail, args)
+      assert_received {:email, %{to: [{_, "owner@example.com"}], text_body: body}}
+      [url] = Regex.run(~r{https?://\S+}, body)
+      token = url |> URI.parse() |> Map.fetch!(:path) |> Path.basename()
+
+      conn = post(conn, "/auth/user/magic_link", %{"token" => token})
+      assert redirected_to(conn) == ~p"/"
+
+      # A link works once.
+      replay = post(build_conn(), "/auth/user/magic_link", %{"token" => token})
+      assert redirected_to(replay) == ~p"/sign-in"
+    end
+
+    test "repeated requests for one email send one link a minute" do
+      assert :ok = request_link("owner@example.com")
+      assert :ok = request_link("OWNER@example.com")
+      assert [_one] = all_enqueued(worker: MagicLinkEmail)
+    end
+
+    test "an unknown email gets no link" do
+      assert :ok = request_link("nobody@example.com")
+      assert [] = all_enqueued(worker: MagicLinkEmail)
+    end
   end
 
-  test "an unknown email gets no link" do
-    strategy = AshAuthentication.Info.strategy!(<%= @module %>.<%= @user %>, :magic_link)
+  defp request_link(email) do
+    strategy = AshAuthentication.Info.strategy!(Resources.user(), :magic_link)
 
-    assert :ok =
-             AshAuthentication.Strategy.action(strategy, :request, %{
-               "<%= @email %>" => "nobody@example.com"
-             })
-
-    assert [] = all_enqueued(worker: MagicLinkEmail)
+    AshAuthentication.Strategy.action(strategy, :request, %{
+      to_string(Resources.email_field()) => email
+    })
   end
 end

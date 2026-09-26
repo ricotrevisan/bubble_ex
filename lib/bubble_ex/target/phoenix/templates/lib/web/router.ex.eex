@@ -33,14 +33,14 @@ defmodule <%= @web %>.Router do
 
     get "/", PageController, :home
 
-    auth_routes AuthController, <%= @module %>.<%= @user %>, path: "/auth"
+    auth_routes AuthController, <%= @module %>.Accounts.Resources.user(), path: "/auth"
     sign_out_route AuthController
 
     sign_in_route auth_routes_prefix: "/auth",
                   on_mount: [{<%= @web %>.LiveUserAuth, :live_no_user}],
                   overrides: [AshAuthentication.Phoenix.Overrides.Default]
 
-    magic_sign_in_route(<%= @module %>.<%= @user %>, :magic_link,
+    magic_sign_in_route(<%= @module %>.Accounts.Resources.user(), :magic_link,
       auth_routes_prefix: "/auth",
       overrides: [AshAuthentication.Phoenix.Overrides.Default]
     )

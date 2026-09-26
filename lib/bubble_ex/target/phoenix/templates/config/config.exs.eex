@@ -27,9 +27,10 @@ config :<%= @app %>, Oban,
   repo: <%= @module %>.Repo,
   plugins: [Oban.Plugins.Pruner]
 
-# Emails are stored locally (see /dev/mailbox) until a production adapter is
-# configured in config/runtime.exs.
+# Emails are stored locally (see /dev/mailbox) in development; production
+# requires a real adapter (MAILER_ADAPTER, see config/runtime.exs).
 config :<%= @app %>, <%= @module %>.Mailer, adapter: Swoosh.Adapters.Local
+config :<%= @app %>, :mailer_from, {<%= inspect(@name) %>, "noreply@example.com"}
 
 config :esbuild,
   version: "<%= @esbuild %>",

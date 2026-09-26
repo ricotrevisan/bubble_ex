@@ -21,10 +21,11 @@ defmodule BubbleEx.Target.Ash.Source do
       It is referenced, not generated.
     * `:extend` - extra DSL for some resources, for a target that wraps
       the Ash layer in a framework (e.g. `BubbleEx.Target.Phoenix` adds
-      AshAuthentication to the User): a map from a resource's relative
-      module to `%{extensions: [module], dsl: source}`. The extensions are
-      added to its `use Ash.Resource` and the DSL source is printed at the
-      end of the resource, verbatim. Default `%{}`
+      its AshAuthentication fragment to the User): a map from a resource's
+      relative module to `%{extensions: [module], fragments: [module], dsl:
+      source}` (each key optional). The extensions and `Spark.Dsl.Fragment`s
+      are added to its `use Ash.Resource` and the DSL source is printed at
+      the end of the resource, verbatim. Default `%{}`
     * `:extra_resources` - fully qualified modules of resources defined
       elsewhere that the domain lists after the Project's, default `[]`
   """
@@ -110,7 +111,11 @@ defmodule BubbleEx.Target.Ash.Source do
   # then add these modules and run `mix ash.codegen --dev` while iterating.
   """
 
-  @type extension :: %{extensions: [String.t()], dsl: String.t()}
+  @type extension :: %{
+          optional(:extensions) => [String.t()],
+          optional(:fragments) => [String.t()],
+          optional(:dsl) => String.t()
+        }
   @type option ::
           {:namespace, String.t()}
           | {:domain, String.t()}
@@ -178,11 +183,22 @@ defmodule BubbleEx.Target.Ash.Source do
   defp check_extend(extend, _project),
     do: {:error, Error.new(:invalid_input, "extend must be a map, got #{inspect(extend)}")}
 
-  defp check_extension({module, %{extensions: extensions, dsl: dsl}}, modules)
-       when is_binary(module) and is_list(extensions) and is_binary(dsl) do
-    if module in modules,
-      do: check_aliases(:extend, extensions),
-      else: {:error, Error.new(:invalid_input, "extend: no resource #{inspect(module)}")}
+  defp check_extension({module, %{} = entry}, modules) when is_binary(module) do
+    extensions = Map.get(entry, :extensions, [])
+    fragments = Map.get(entry, :fragments, [])
+
+    cond do
+      Map.keys(entry) -- [:extensions, :fragments, :dsl] != [] or
+          not is_binary(Map.get(entry, :dsl, "")) ->
+        {:error, Error.new(:invalid_input, "invalid extend entry #{inspect({module, entry})}")}
+
+      module not in modules ->
+        {:error, Error.new(:invalid_input, "extend: no resource #{inspect(module)}")}
+
+      true ->
+        with :ok <- check_aliases(:extend, extensions),
+             do: check_aliases(:extend, fragments)
+    end
   end
 
   defp check_extension(entry, _modules),
@@ -335,18 +351,18 @@ defmodule BubbleEx.Target.Ash.Source do
   end
 
   defp extensions(%Resource{module: module}, ctx) do
-    case ctx.extend do
-      %{^module => %{extensions: [_ | _] = extensions}} ->
-        ", extensions: [" <> Enum.join(extensions, ", ") <> "]"
+    entry = Map.get(ctx.extend, module, %{})
 
-      _ ->
-        ""
-    end
+    for key <- [:extensions, :fragments],
+        modules = Map.get(entry, key, []),
+        modules != [],
+        into: "",
+        do: ", #{key}: [" <> Enum.join(modules, ", ") <> "]"
   end
 
   defp extra_dsl(%Resource{module: module}, ctx) do
     case ctx.extend do
-      %{^module => %{dsl: dsl}} -> "\n" <> dsl <> "\n"
+      %{^module => %{dsl: dsl}} when dsl != "" -> "\n" <> dsl <> "\n"
       _ -> ""
     end
   end

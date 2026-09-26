@@ -9,6 +9,7 @@ defmodule BubbleEx.Target.PhoenixTest do
   @generated [
     ".wtf/names.json",
     "assets/css/bubble.css",
+    "lib/acme_import/accounts/resources.ex",
     "lib/acme_import/accounts/token.ex",
     "lib/acme_import/domain.ex",
     "lib/acme_import/enums/status.ex",
@@ -35,6 +36,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     "lib/acme_import/accounts/magic_link_email.ex",
     "lib/acme_import/accounts/magic_link_sender.ex",
     "lib/acme_import/accounts/secrets.ex",
+    "lib/acme_import/accounts/user_authentication.ex",
     "lib/acme_import/application.ex",
     "lib/acme_import/mailer.ex",
     "lib/acme_import/repo.ex",
@@ -112,22 +114,35 @@ defmodule BubbleEx.Target.PhoenixTest do
       for resource <- ~w(Invoice Invoice2 Tag User Accounts.Token),
           do: assert(domain =~ "resource AcmeImport.#{resource}")
 
-      assert files["lib/acme_import/repo.ex"] =~ ~s(["ash-functions"])
+      assert files["lib/acme_import/repo.ex"] =~ ~s(["ash-functions", "citext"])
+      assert files["lib/acme_import/repo.ex"] =~ "%Version{major: 14"
       assert files["lib/acme_import/enums/status.ex"] =~ ~s({"open", [label: "Open"]})
     end
 
-    test "adds magic-link authentication to the User" do
+    test "adds magic-link authentication to the User through an owned fragment" do
       files = render!()
       user = files["lib/acme_import/user.ex"]
 
-      assert user =~ "extensions: [AshAuthentication]"
+      assert user =~ "fragments: [AcmeImport.Accounts.UserAuthentication]"
       assert user =~ "identity :unique_email, [:email]"
-      assert user =~ "magic_link do"
-      assert user =~ "identity_field :email"
-      assert user =~ "registration_enabled? false"
-      assert user =~ "sender AcmeImport.Accounts.MagicLinkSender"
-      assert user =~ "token_resource AcmeImport.Accounts.Token"
-      refute user =~ "password"
+      # case-insensitive and trimmed, so case and whitespace never block sign-in
+      assert user =~
+               ~r/attribute :email, :ci_string,[^\n]*\n[^a]*.*trim\?: true, allow_empty\?: false/s
+
+      refute user =~ "authentication do"
+
+      auth = files["lib/acme_import/accounts/user_authentication.ex"]
+      assert auth =~ "use Spark.Dsl.Fragment, of: Ash.Resource, extensions: [AshAuthentication]"
+      assert auth =~ "magic_link do"
+      assert auth =~ "identity_field Resources.email_field()"
+      assert auth =~ "registration_enabled? false"
+      assert auth =~ "sender AcmeImport.Accounts.MagicLinkSender"
+      assert auth =~ "token_resource AcmeImport.Accounts.Token"
+      refute auth =~ ~r/^\s*password do/m
+
+      resources = files["lib/acme_import/accounts/resources.ex"]
+      assert resources =~ "def user, do: AcmeImport.User"
+      assert resources =~ "def email_field, do: :email"
 
       token = files["lib/acme_import/accounts/token.ex"]
       assert token =~ "extensions: [AshAuthentication.TokenResource]"
@@ -135,11 +150,17 @@ defmodule BubbleEx.Target.PhoenixTest do
 
       sender = files["lib/acme_import/accounts/magic_link_sender.ex"]
       assert sender =~ "use AshAuthentication.Sender"
+      assert sender =~ "Phoenix.Token.encrypt("
       assert sender =~ "Oban.insert!"
+      assert files["lib/acme_import/accounts/magic_link_email.ex"] =~ "unique: [period: 60"
+
+      # Owned code names the User only through Accounts.Resources.
+      for path <- @owned,
+          do: refute(files[path] =~ "AcmeImport.User", "#{path} names the User")
 
       router = files["lib/acme_import_web/router.ex"]
-      assert router =~ "auth_routes AuthController, AcmeImport.User"
-      assert router =~ "magic_sign_in_route(AcmeImport.User, :magic_link"
+      assert router =~ "auth_routes AuthController, AcmeImport.Accounts.Resources.user()"
+      assert router =~ "magic_sign_in_route(AcmeImport.Accounts.Resources.user(), :magic_link"
       assert router =~ ~s(scope "/api/1.1/wf", AcmeImportWeb)
       assert router =~ ~s(match :*, "/:name", WorkflowApiController, :dispatch)
     end
@@ -161,9 +182,12 @@ defmodule BubbleEx.Target.PhoenixTest do
       }
 
       files = render!(project)
-      assert files["lib/acme_import/user.ex"] =~ "identity_field :login_email"
       assert files["lib/acme_import/user.ex"] =~ "identity :unique_email, [:login_email]"
-      assert files["test/acme_import_web/smoke_test.exs"] =~ "login_email: email"
+      assert files["lib/acme_import/user.ex"] =~ "attribute :login_email, :ci_string"
+      assert files["lib/acme_import/accounts/resources.ex"] =~ "def email_field, do: :login_email"
+
+      # the owned files do not change
+      assert Map.take(files, @owned) == Map.take(render!(), @owned)
     end
 
     test "pins the Ash versions and the framework without PicoSAT" do
@@ -197,8 +221,12 @@ defmodule BubbleEx.Target.PhoenixTest do
 
       runtime = files["config/runtime.exs"]
 
-      for var <- ~w(DATABASE_URL SECRET_KEY_BASE TOKEN_SIGNING_SECRET),
-          do: assert(runtime =~ ~s|System.get_env("#{var}")|)
+      for var <- ~w(DATABASE_URL SECRET_KEY_BASE TOKEN_SIGNING_SECRET MAILER_ADAPTER MAILER_FROM),
+          do: assert(runtime =~ ~r/System.get_env\("#{var}"\) \|\|\s+raise/)
+
+      # production never falls back to the local mailbox
+      assert files["config/prod.exs"] =~ "config :swoosh, local: false"
+      assert runtime =~ "adapter: mailer_adapter"
 
       # Development secrets differ per environment and app, and never
       # appear in the production configuration.
@@ -226,6 +254,21 @@ defmodule BubbleEx.Target.PhoenixTest do
               content =~ ~r/@plugin\s+"daisyui|:daisyui|Overrides\.DaisyUI|btn-primary/,
               path
             )
+    end
+
+    test "the workflow API does not echo the requested name" do
+      controller = render!()["lib/acme_import_web/controllers/workflow_api_controller.ex"]
+      assert controller =~ "def dispatch(conn, _params)"
+      refute controller =~ ~s("name")
+    end
+
+    test "says the resources have no authorization" do
+      files = render!()
+      assert files["README.md"] =~ "**no\nauthorization**"
+
+      for path <-
+            ~w(lib/acme_import/invoice.ex lib/acme_import/user.ex lib/acme_import/domain.ex),
+          do: assert(files[path] =~ "NO authorization", path)
     end
 
     test "ignores the plan content key" do
@@ -262,7 +305,14 @@ defmodule BubbleEx.Target.PhoenixTest do
     test "rejects invalid options, unverified privacy and claimed names" do
       project = representative_project()
 
-      for opts <- [[module: "acme"], [module: "Acme.Web"], [app: "Acme"], [app: "phoenix"]],
+      for opts <- [
+            [module: "acme"],
+            [module: "Acme.Web"],
+            [module: "Task"],
+            [module: "Ecto"],
+            [app: "Acme"],
+            [app: "phoenix"]
+          ],
           do:
             assert(
               {:error, %BubbleEx.Error{kind: :invalid_input}} = Phoenix.render(project, opts)
@@ -300,6 +350,10 @@ defmodule BubbleEx.Target.PhoenixTest do
       # an application name a dependency has
       assert Phoenix.module_name("Phoenix") == "PhoenixApp"
       assert Phoenix.module_name("oban") == "ObanApp"
+
+      # an Elixir or dependency module
+      for name <- ~w(Task Stream Config Calendar Registry Logger Mix ExUnit Ecto Plug Enum),
+          do: assert(Phoenix.module_name(name) == name <> "App")
 
       project = representative_project()
 
@@ -405,6 +459,31 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert missing == ["assets/css/bubble.css"]
     end
 
+    test "check_manifest/3 lists stale generated files with the previous manifest" do
+      files = render!()
+      old = files[".wtf/generated.json"]
+
+      # the next generation no longer makes the Tag resource
+      project = representative_project()
+
+      next =
+        render!(%{project | resources: Enum.reject(project.resources, &(&1.module == "Tag"))})
+
+      new = next[".wtf/generated.json"]
+
+      assert {:ok, %{stale: ["lib/acme_import/tag.ex"]}} =
+               Phoenix.check_manifest(new, files, previous: old)
+
+      assert {:ok, %{stale: []}} = Phoenix.check_manifest(new, files)
+
+      assert {:ok, %{stale: []}} =
+               Phoenix.check_manifest(new, Map.delete(files, "lib/acme_import/tag.ex"),
+                 previous: old
+               )
+
+      assert {:error, _} = Phoenix.check_manifest(new, files, previous: "not json")
+    end
+
     @tag :tmp_dir
     test "check_manifest/2 reads a project directory", %{tmp_dir: dir} do
       files = render!()
@@ -450,12 +529,19 @@ defmodule BubbleEx.Target.PhoenixTest do
       {:ok, source} =
         Source.render(project,
           namespace: "Acme",
-          extend: %{"Tag" => %{extensions: ["Some.Extension"], dsl: "custom_section do\nend"}},
+          extend: %{
+            "Tag" => %{
+              extensions: ["Some.Extension"],
+              fragments: ["Acme.Tag.Fragment"],
+              dsl: "custom_section do\nend"
+            }
+          },
           extra_resources: ["Acme.Extra"]
         )
 
       [tag] = Regex.run(~r/defmodule Acme.Tag do.*?\nend\n/s, source)
       assert tag =~ "extensions: [Some.Extension]"
+      assert tag =~ "fragments: [Acme.Tag.Fragment]"
       assert tag =~ "custom_section do"
       refute source =~ ~r/defmodule Acme.Invoice do[^\n]*\n[^\n]*extensions/
       assert source =~ "resource Acme.Extra"
@@ -464,6 +550,8 @@ defmodule BubbleEx.Target.PhoenixTest do
             {%{"Nope" => %{extensions: [], dsl: ""}}, []},
             {%{"Tag" => %{extensions: ["not an alias"], dsl: ""}}, []},
             {%{"Tag" => :bad}, []},
+            {%{"Tag" => %{other: 1}}, []},
+            {%{"Tag" => %{fragments: ["bad alias"]}}, []},
             {:bad, []},
             {%{}, ["lowercase"]},
             {%{}, :bad}

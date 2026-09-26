@@ -79,7 +79,7 @@ sign-in). The dependencies are locked by
 `BubbleEx.Target.Phoenix.deps/1`, refresh it with
 `PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1`. `PHOENIX_COMPILE_CHECK_FIXTURES`
 limits the run to some fixtures. CI runs it as the `phoenix-compile-check`
-job on Elixir 1.18 and 1.20.
+job: every fixture on Elixir 1.18, a representative subset on 1.20.
 
 ## Testing
 

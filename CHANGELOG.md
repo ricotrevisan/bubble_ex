@@ -21,18 +21,27 @@ All notable changes to this project are documented here.
   `Accounts.Token`, an Oban-backed sender stub and Swoosh mailer), an
   endpoint, router with sign-in routes and `/api/1.1/wf/:name`, Tailwind v4
   layouts with `@theme` tokens in `assets/css/bubble.css` (no daisyUI), a
-  `.gitignore` with `.wtf/plan.key`, and a smoke test. Generated files (the
-  Ash modules, token resource, workflow API entry point, theme tokens,
-  `.wtf/names.json`) carry a header and are listed with their SHA-256 in
-  `.wtf/generated.json` (`BubbleEx.Target.Phoenix.Manifest`, with the
-  project, decisions and applied hashes and the bubble_ex version); every
-  other file is owned (scaffold once). `check_manifest/2` detects hand
-  edits (file map or project directory). `Target.Ash.Source.render/2`
-  gains `:extend` (extensions and DSL for a resource) and
-  `:extra_resources`; the Ash pins move to `Target.Ash.Versions`
+  `.gitignore` with `.wtf/plan.key`, and a smoke test. The User email
+  becomes a trimmed `:ci_string` (citext, PostgreSQL 14+) so case and
+  whitespace never block sign-in; the authentication DSL is an owned
+  `Spark.Dsl.Fragment` (`Accounts.UserAuthentication`); owned code reaches
+  the User through the generated `Accounts.Resources`; magic-link jobs are
+  unique per email for a minute and hold the link encrypted; production
+  refuses to boot without `MAILER_ADAPTER` / `MAILER_FROM`; root modules
+  that would shadow Elixir or dependency modules (`Task`, `Ecto`…) get an
+  `App` suffix. Generated files (the Ash modules, with a "no authorization"
+  warning, the token resource, `Accounts.Resources`, workflow API entry
+  point, theme tokens, `.wtf/names.json`) carry a header and are listed
+  with their SHA-256 in `.wtf/generated.json`
+  (`BubbleEx.Target.Phoenix.Manifest`, with the project, decisions and
+  applied hashes and the bubble_ex version); every other file is owned
+  (scaffold once). `check_manifest/3` detects hand edits (file map or
+  project directory) and, with `previous:`, stale generated files.
+  `Target.Ash.Source.render/2` gains `:extend` (extensions, fragments and
+  DSL for a resource) and `:extra_resources`; the Ash pins move to `Target.Ash.Versions`
   (`Target.Ash.versions/1` delegates). `scripts/phoenix_compile_check.sh`
-  (CI job `phoenix-compile-check`, Elixir 1.18 and 1.20) renders every
-  fixture, compiles with `--warnings-as-errors`, generates and checks the
+  (CI job `phoenix-compile-check`: every fixture on Elixir 1.18, a subset
+  on 1.20) renders the fixtures, compiles with `--warnings-as-errors`, generates and checks the
   migrations and runs the smoke test against PostgreSQL.
 
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides

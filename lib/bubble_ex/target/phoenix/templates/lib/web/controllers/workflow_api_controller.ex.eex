@@ -9,9 +9,9 @@ defmodule <%= @web %>.WorkflowApiController do
   """
   use <%= @web %>, :controller
 
-  def dispatch(conn, %{"name" => name}) do
+  def dispatch(conn, _params) do
     conn
     |> put_status(:not_found)
-    |> json(%{"status" => "NOT_FOUND", "message" => "Workflow not found: " <> name})
+    |> json(%{"status" => "NOT_FOUND", "message" => "Workflow not found"})
   end
 end

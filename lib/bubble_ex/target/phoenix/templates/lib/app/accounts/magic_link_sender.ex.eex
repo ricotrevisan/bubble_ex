@@ -1,14 +1,24 @@
 defmodule <%= @module %>.Accounts.MagicLinkSender do
   @moduledoc """
-  Sends a magic sign-in link (AshAuthentication's magic link strategy).
+  Sends a magic sign-in link (AshAuthentication's magic link strategy) by
+  enqueueing `<%= @module %>.Accounts.MagicLinkEmail`.
 
-  Delivery is asynchronous (`<%= @module %>.Accounts.MagicLinkEmail`, an Oban
-  job) so the time a request takes does not reveal whether the email
-  belongs to a user.
+  The link is encrypted in the job's arguments (`Phoenix.Token.encrypt/4`
+  with the endpoint's secret), so the Oban table never holds a usable
+  sign-in URL. The job is unique per email for a minute, which throttles
+  repeated requests for one address; throttle per client IP at your proxy
+  or with a plug if you need more.
+
+  Delivery happens in the job, so mail latency does not show in the
+  request. The request still stores the token (`store_all_tokens?`) for a
+  known email only, a small timing difference; see AshAuthentication's
+  magic link guide on account enumeration.
   """
 
   use AshAuthentication.Sender
   use <%= @web %>, :verified_routes
+
+  alias <%= @module %>.Accounts.MagicLinkEmail
 
   @impl AshAuthentication.Sender
   def send(user_or_email, token, _opts) do
@@ -18,8 +28,11 @@ defmodule <%= @module %>.Accounts.MagicLinkSender do
         email -> email
       end
 
-    %{"email" => to_string(email), "url" => url(~p"/magic_link/#{token}")}
-    |> <%= @module %>.Accounts.MagicLinkEmail.new()
+    url = url(~p"/magic_link/#{token}")
+    link = Phoenix.Token.encrypt(<%= @web %>.Endpoint, MagicLinkEmail.salt(), url)
+
+    %{"email" => email |> to_string() |> String.downcase(), "link" => link}
+    |> MagicLinkEmail.new()
     |> Oban.insert!()
 
     :ok
