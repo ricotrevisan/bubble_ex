@@ -1666,6 +1666,7 @@ defmodule BubbleEx.FrontendTest do
               "floating_reference" => "bottom",
               "floating_reference_horizontal_resp" => "center",
               "float_zindex" => "front",
+              "zindex" => 3,
               "is_visible" => false
             },
             "states" => %{"0" => %{"condition" => "x"}},
@@ -1693,7 +1694,7 @@ defmodule BubbleEx.FrontendTest do
                },
                "backdrop" => %{"color" => "rgba(0,0,0,0.5)", "blur" => 4},
                "dismiss" => [],
-               "layer" => 7
+               "z_index" => 7
              }
 
       assert by["pop2"].runtime["placement"] == %{
@@ -1738,7 +1739,8 @@ defmodule BubbleEx.FrontendTest do
                  "horizontal" => "center"
                },
                "dismiss" => [],
-               "layer" => "front"
+               "z_index" => 3,
+               "plane" => "front"
              }
 
       assert by["bar2"].runtime["initial"] == "visible"

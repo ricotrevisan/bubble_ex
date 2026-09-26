@@ -21,6 +21,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:malformed_call` | API call | `index/2`: the call or its types registry is not an object |
   | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`); `:runtime_container` when it is a container whose normalized content is rendered at runtime (a dynamic Repeating Group, a Table) |
   | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain, so its event wiring cannot be generated yet (`detail.element`) |
+  | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
   | `:trigger_dropped` | workflow | `BubbleEx.Plan.build/5`: a dropped plugin's event triggered it and it runs other actions, so it needs a new trigger (`detail.plugin`) |
   | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
@@ -42,7 +43,8 @@ defmodule BubbleEx.Plan.Residue do
 
   @reasons ~w(uncompiled_expression plugin_element plugin_action plugin_event unsupported_action
               unsupported_event auth_action unresolved_reference dynamic_url oauth malformed_call
-              runtime_container no_native_lowering trigger_not_normalized style_condition
+              runtime_container no_native_lowering trigger_not_normalized
+              trigger_in_runtime_template style_condition
               plugin_style trigger_dropped reads_dropped_plugin)a
 
   # Events with a known wiring (page, element and backend events).
@@ -314,7 +316,9 @@ defmodule BubbleEx.Plan.Residue do
 
   A workflow listening to an element the normalized frontend does not
   contain is `:trigger_not_normalized`: its body may compile, but its event
-  cannot be wired to generated markup.
+  cannot be wired to generated markup. One listening to an element of a
+  runtime container's template is `:trigger_in_runtime_template`: the
+  element is normalized, but it is generated only with its container.
   """
   @spec frontend(Normalized.t() | nil, Index.t()) :: [t()]
   def frontend(nil, _index), do: []
@@ -333,17 +337,64 @@ defmodule BubbleEx.Plan.Residue do
         _ -> []
       end
     end)
-    |> Enum.concat(triggers(index, normalized_ids(model)))
+    |> Enum.concat(triggers(index, normalized_ids(model), runtime_template_ids(model)))
     |> Enum.uniq()
     |> sort()
   end
 
-  defp triggers(index, present) do
+  defp triggers(index, present, templates) do
     for %{kind: :workflow, id: id} <- index.symbols,
         %{to: "element:" <> element = to} <- Index.references_from(index, id, [:listens_to]),
         Index.symbol(index, to),
-        not MapSet.member?(present, element),
-        do: entry(id, :trigger_not_normalized, %{element: to})
+        entry = trigger(id, to, element, present, templates),
+        entry != nil,
+        do: entry
+  end
+
+  defp trigger(id, to, element, present, templates) do
+    cond do
+      not MapSet.member?(present, element) ->
+        entry(id, :trigger_not_normalized, %{element: to})
+
+      Map.has_key?(templates, element) ->
+        entry(id, :trigger_in_runtime_template, %{
+          element: to,
+          container: "element:" <> templates[element]
+        })
+
+      true ->
+        nil
+    end
+  end
+
+  @doc """
+  The Bubble IDs of every node inside a runtime container's template (the
+  normalized content of a placeholder container such as a dynamic Repeating
+  Group, a Table or a plugin container, nested ones included), each mapped
+  to the Bubble ID of its outermost container. They are normalized but not
+  generated until their container is.
+  """
+  @spec runtime_template_ids(Normalized.t()) :: %{String.t() => String.t()}
+  def runtime_template_ids(%Normalized{} = model) do
+    (model.pages ++ model.reusables)
+    |> Enum.flat_map(&template_members(&1, nil))
+    |> Map.new()
+  end
+
+  defp template_members(%Node{} = node, container) do
+    own =
+      if container && node.source.bubble_id, do: [{node.source.bubble_id, container}], else: []
+
+    inner =
+      case {container, node} do
+        {nil, %Node{kind: :placeholder, runtime: %{"boundary" => "container"}}} ->
+          node.source.bubble_id
+
+        _ ->
+          container
+      end
+
+    own ++ Enum.flat_map(node.children, &template_members(&1, inner))
   end
 
   @doc """

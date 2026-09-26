@@ -701,7 +701,7 @@ defmodule BubbleEx.Frontend.Normalize do
         )
     }
     |> put_present("backdrop", popup_backdrop(raw))
-    |> put_present("layer", layer_index(raw))
+    |> put_present("z_index", layer_index(raw))
   end
 
   # A Group Focus opens below its reference element, shifted by its offsets
@@ -725,7 +725,7 @@ defmodule BubbleEx.Frontend.Normalize do
       },
       "dismiss" => ["outside_click"]
     }
-    |> put_present("layer", layer_index(raw))
+    |> put_present("z_index", layer_index(raw))
   end
 
   # A Floating Group is pinned to viewport edges and starts as authored
@@ -744,8 +744,13 @@ defmodule BubbleEx.Frontend.Normalize do
       },
       "dismiss" => []
     }
-    |> put_present("layer", Payload.prop(raw, "float_zindex"))
+    |> put_present("z_index", layer_index(raw))
+    |> put_present("plane", plane(Payload.prop(raw, "float_zindex")))
   end
+
+  # A Floating Group floats in front of or behind the page's other elements.
+  defp plane(value) when value in ["front", "back"], do: value
+  defp plane(_value), do: nil
 
   defp popup_backdrop(raw) do
     backdrop =

@@ -12,19 +12,27 @@ All notable changes to this project are documented here.
   Floating Group anchor, not only always-visible top-right) and reusables
   with those bases keep their children. A new stack-neutral `runtime` field
   on `Normalized.Node` describes overlay behavior (initial state, workflow
-  toggling, modality, placement, dismissal, backdrop, layer) and marks the
+  toggling, modality, placement, dismissal, backdrop, numeric `z_index`, a
+  Floating Group's `plane` front/back) and marks the
   content of placeholder containers (dynamic Repeating Groups, Tables,
   plugin containers), now normalized as a runtime template the static
   export does not render. The static exporter emits Popup and Group Focus
   closed with `hidden` and `data-overlay` (shared CSS keeps them hidden),
   places an opened Popup fixed and centered and a Group Focus with CSS anchor
-  positioning; `test/support/fidelity/overlay-states.mjs` checks opened
+  positioning (behind `@supports (anchor-name: --x)`, static position
+  otherwise); a Floating Group pinned to both vertical edges spans the
+  viewport height. `test/support/fidelity/overlay-states.mjs` checks opened
   geometry against `bptvorpv`'s committed source observation. Normalized
   schema version 3. `Plan.Residue`: `:runtime_container` now means a
-  placeholder container with runtime content (`detail.variant`). mm-137
-  plan coverage: elements generated 3,359 → 6,274 of 8,455, not normalized
-  3,620 → 1, workflows blocked by `trigger_not_normalized` 832 → 0,
-  frontend workflows auto 824 → 1,348 of 2,275.
+  placeholder container with runtime content (`detail.variant`); a workflow
+  listening to an element of such a template is the new
+  `:trigger_in_runtime_template`; plan element coverage counts template
+  elements as `in_runtime_template` / `generated_in_runtime_template`, never
+  `generated`. mm-137 plan coverage: elements generated 3,359 → 5,360 of
+  8,455 (1,288 more in runtime templates), not normalized 3,620 → 1,
+  workflows blocked by `trigger_not_normalized` 832 → 0 (203 now
+  `trigger_in_runtime_template`), frontend workflows auto 824 → 1,179 of
+  2,275.
 
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits

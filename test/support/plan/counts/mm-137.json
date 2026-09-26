@@ -14,6 +14,7 @@
         "plugin_style": 8,
         "runtime_container": 306,
         "style_condition": 14,
+        "trigger_in_runtime_template": 203,
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
@@ -129,9 +130,9 @@
           "total": 157
         },
         "workflow": {
-          "auto": 1591,
+          "auto": 1422,
           "closed": 0,
-          "open": 1319,
+          "open": 1488,
           "total": 2910
         }
       },
@@ -160,10 +161,12 @@
           "workflow": 2
         },
         "elements": {
-          "generated": 6274,
+          "generated": 5360,
+          "generated_in_runtime_template": 914,
+          "in_runtime_template": 1288,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 2180,
+          "residue": 1806,
           "total": 8455
         },
         "plugins": {
@@ -182,12 +185,13 @@
           "total": 635
         },
         "workflows_frontend": {
-          "auto": 1348,
+          "auto": 1179,
           "closed": 0,
-          "open": 927,
+          "open": 1096,
           "total": 2275
         },
         "workflows_removed": 0,
+        "workflows_trigger_in_runtime_template": 203,
         "workflows_trigger_not_normalized": 0
       }
     }
@@ -207,6 +211,7 @@
         "plugin_style": 8,
         "runtime_container": 306,
         "style_condition": 14,
+        "trigger_in_runtime_template": 203,
         "uncompiled_expression": 2934,
         "unresolved_reference": 90,
         "unsupported_action": 5,
@@ -316,9 +321,9 @@
           "total": 157
         },
         "workflow": {
-          "auto": 1436,
+          "auto": 1317,
           "closed": 0,
-          "open": 1474,
+          "open": 1593,
           "total": 2910
         }
       },
@@ -347,10 +352,12 @@
           "workflow": 2
         },
         "elements": {
-          "generated": 6174,
+          "generated": 5284,
+          "generated_in_runtime_template": 890,
+          "in_runtime_template": 1288,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 2280,
+          "residue": 1882,
           "total": 8455
         },
         "plugins": {
@@ -369,12 +376,13 @@
           "total": 635
         },
         "workflows_frontend": {
-          "auto": 1243,
+          "auto": 1124,
           "closed": 0,
-          "open": 1032,
+          "open": 1151,
           "total": 2275
         },
         "workflows_removed": 0,
+        "workflows_trigger_in_runtime_template": 203,
         "workflows_trigger_not_normalized": 0
       }
     },
@@ -392,6 +400,7 @@
         "plugin_style": 8,
         "runtime_container": 306,
         "style_condition": 14,
+        "trigger_in_runtime_template": 203,
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
@@ -501,9 +510,9 @@
           "total": 157
         },
         "workflow": {
-          "auto": 1591,
+          "auto": 1422,
           "closed": 0,
-          "open": 1319,
+          "open": 1488,
           "total": 2910
         }
       },
@@ -532,10 +541,12 @@
           "workflow": 2
         },
         "elements": {
-          "generated": 6274,
+          "generated": 5360,
+          "generated_in_runtime_template": 914,
+          "in_runtime_template": 1288,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 2180,
+          "residue": 1806,
           "total": 8455
         },
         "plugins": {
@@ -554,12 +565,13 @@
           "total": 635
         },
         "workflows_frontend": {
-          "auto": 1348,
+          "auto": 1179,
           "closed": 0,
-          "open": 927,
+          "open": 1096,
           "total": 2275
         },
         "workflows_removed": 0,
+        "workflows_trigger_in_runtime_template": 203,
         "workflows_trigger_not_normalized": 0
       }
     }

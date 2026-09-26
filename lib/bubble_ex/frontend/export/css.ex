@@ -334,13 +334,26 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp rule({%Node{} = node, parent_mode}, opts) do
     id = prefixed_id(node, opts)
 
+    selector = "[data-exporter-id=\"#{escape(id)}\"]"
+    {anchored, anchor_name} = anchor_css(node, Keyword.get(opts, :anchors, %{}))
+
     decls =
       node
       |> css_map(parent_mode)
-      |> Map.merge(anchor_css(node, Keyword.get(opts, :anchors, %{})))
+      |> Map.merge(anchor_name)
       |> declarations_from_paint()
 
-    if decls == "", do: "", else: "[data-exporter-id=\"#{escape(id)}\"] {\n#{decls}}\n"
+    base = if decls == "", do: "", else: "#{selector} {\n#{decls}}\n"
+    base <> anchored_rule(selector, anchored)
+  end
+
+  # Browsers without CSS anchor positioning keep the overlay at its static
+  # position instead of losing `top`/`left` to unresolvable `anchor()` values.
+  defp anchored_rule(_selector, anchored) when anchored == %{}, do: ""
+
+  defp anchored_rule(selector, anchored) do
+    decls = anchored |> declarations_from_paint() |> String.replace("\n  ", "\n    ")
+    "@supports (anchor-name: --x) {\n  #{selector} {\n  #{decls}  }\n}\n"
   end
 
   # A Group Focus is placed against its reference element with CSS anchor
@@ -361,34 +374,36 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp short_hash(value),
     do: :sha256 |> :crypto.hash(value) |> Base.encode16(case: :lower) |> binary_part(0, 16)
 
-  defp anchor_css(%Node{runtime: %{"overlay" => "group_focus"} = runtime} = node, anchors) do
+  # `{anchored, anchor_name}`: the overlay's anchor-positioned declarations
+  # and the node's own `anchor-name` when an overlay references it.
+  defp anchor_css(%Node{exporter_id: id} = node, anchors) do
+    own =
+      case anchors[id] do
+        name when is_binary(name) -> %{"anchor-name" => name}
+        _ -> %{}
+      end
+
+    {anchored(node, anchors), own}
+  end
+
+  defp anchored(%Node{runtime: %{"overlay" => "group_focus"} = runtime}, anchors) do
     placement = runtime["placement"] || %{}
     ref = get_in(placement, ["reference", "exporter_id"])
 
-    own =
-      if Map.has_key?(anchors, node.exporter_id),
-        do: %{"anchor-name" => anchors[node.exporter_id]},
-        else: %{}
-
     case anchors[ref] do
       name when is_binary(name) ->
-        Map.merge(own, %{
+        %{
           "position-anchor" => name,
           "top" => "calc(anchor(bottom) + #{css_size(placement["offset_top"] || 0)})",
           "left" => "calc(anchor(left) + #{css_size(placement["offset_left"] || 0)})"
-        })
+        }
 
       _ ->
-        own
+        %{}
     end
   end
 
-  defp anchor_css(%Node{exporter_id: id}, anchors) do
-    case anchors[id] do
-      name when is_binary(name) -> %{"anchor-name" => name}
-      _ -> %{}
-    end
-  end
+  defp anchored(_node, _anchors), do: %{}
 
   defp prefixed_id(node, opts) do
     case Keyword.get(opts, :exporter_id_override) do
@@ -487,8 +502,9 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp put_floating_axis(css, value, :vertical) when value in ["top", "bottom"],
     do: Map.put(css, value, "0")
 
+  # Pinned to both edges, the group spans the viewport height.
   defp put_floating_axis(css, "both", :vertical),
-    do: css |> Map.put("top", "0") |> Map.put("bottom", "0")
+    do: css |> Map.put("top", "0") |> Map.put("bottom", "0") |> Map.put("height", "auto")
 
   defp put_floating_axis(css, value, :horizontal) when value in ["left", "right"],
     do: Map.put(css, value, "0")

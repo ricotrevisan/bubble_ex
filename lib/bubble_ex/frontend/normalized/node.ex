@@ -9,7 +9,9 @@ defmodule BubbleEx.Frontend.Normalized.Node do
   #     `"initial"` (`"hidden"` or `"visible"`), `"toggle"` (`"workflow"`: shown
   #     and hidden by workflow actions), `"modal"`, `"placement"` (`"anchor"`
   #     `"viewport"` or `"element"` with its `"reference"`), `"dismiss"`
-  #     (`"escape"`, `"outside_click"`), and optional `"backdrop"` / `"layer"`.
+  #     (`"escape"`, `"outside_click"`), and optional `"backdrop"`, `"z_index"`
+  #     (numeric stacking order) and, for a Floating Group, `"plane"`
+  #     (`"front"` or `"back"` of the page's other elements).
   #   * `"boundary" => "container"` - a placeholder container whose content is
   #     rendered at runtime (a dynamic Repeating Group, a Table, a plugin
   #     container): its `children` are the normalized content, a per-item

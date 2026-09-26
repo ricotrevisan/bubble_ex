@@ -1594,6 +1594,11 @@ defmodule BubbleEx.Frontend.ExportTest do
               },
               "elements" => %{"t" => text.("bar-text", "Floating bar")}
             },
+            "rail" => %{
+              "id" => "rail",
+              "type" => "FloatingGroup",
+              "properties" => %{"floating_reference" => "both", "height" => 200}
+            },
             "list" => %{
               "id" => "list",
               "type" => "RepeatingGroup",
@@ -1635,16 +1640,32 @@ defmodule BubbleEx.Frontend.ExportTest do
         capture: :all_but_first
       )
 
+    # Without anchor positioning support the Group Focus keeps its static
+    # position: anchor placement is guarded by @supports.
     focus = rule.("focus")
     assert focus =~ "position: absolute;"
-    assert focus =~ "position-anchor: #{anchor_name};"
-    assert focus =~ "top: calc(anchor(bottom) + 6px);"
-    assert focus =~ "left: calc(anchor(left) + -20px);"
+    refute focus =~ "anchor("
+    focus_id = Regex.escape(by["focus"].exporter_id)
+
+    [anchored] =
+      Regex.run(
+        ~r/@supports \(anchor-name: --x\) \{\s*\[data-exporter-id="#{focus_id}"\] \{([^}]*)\}\s*\}/s,
+        css,
+        capture: :all_but_first
+      )
+
+    assert anchored =~ "position-anchor: #{anchor_name};"
+    assert anchored =~ "top: calc(anchor(bottom) + 6px);"
+    assert anchored =~ "left: calc(anchor(left) + -20px);"
 
     bar = rule.("bar")
     assert bar =~ "position: fixed;"
     assert bar =~ "bottom: 0;" and bar =~ "margin-left: auto;" and bar =~ "margin-right: auto;"
     refute bar =~ "top: 0;"
+
+    rail = rule.("rail")
+    assert rail =~ "top: 0;" and rail =~ "bottom: 0;" and rail =~ "height: auto;"
+    assert by["rail"].runtime["placement"]["vertical"] == "both"
 
     # The dynamic list stays a placeholder: its template is in the model only.
     assert [%{kind: :text}] = by["list"].children

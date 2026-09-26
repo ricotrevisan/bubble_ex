@@ -120,7 +120,8 @@ initial state (`hidden` for Popup and Group Focus, whatever `is_visible`
 says, as measured above), that workflows toggle it, modality, placement
 (viewport-centered with a 100px top, or vertically centered; below a
 reference element plus `offset_top`/`offset_left`; pinned viewport edges),
-dismissal (Escape unless prevented; outside click), backdrop and layer.
+dismissal (Escape unless prevented; outside click), backdrop, numeric
+`z_index` and a Floating Group's `plane` (front or back).
 
 The static exporter emits Popup and Group Focus closed with the HTML `hidden`
 attribute and `data-overlay`; shared CSS keeps `[data-overlay][hidden]`
@@ -130,7 +131,9 @@ measures as, so every initial-state case is unchanged. Their content stays
 in the document so a runtime (LiveView `JS.toggle_attribute`, a small
 script) opens them by removing the attribute, with no re-render. Group Focus
 placement uses CSS anchor positioning (`anchor-name` on the reference,
-`position-anchor` and `anchor()` on the overlay), so no script is emitted.
+`position-anchor` and `anchor()` on the overlay, inside `@supports
+(anchor-name: --x)` so other browsers keep its static position), so no
+script is emitted.
 
 `test/support/fidelity/overlay-states.mjs` checks that contract against the
 committed source observation of `bptvorpv`: it removes `hidden` from the
