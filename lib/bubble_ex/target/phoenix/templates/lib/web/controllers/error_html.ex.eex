@@ -1,0 +1,8 @@
+defmodule <%= @web %>.ErrorHTML do
+  @moduledoc "Renders HTML errors (see config/config.exs)."
+  use <%= @web %>, :html
+
+  def render(template, _assigns) do
+    Phoenix.Controller.status_message_from_template(template)
+  end
+end

@@ -1,0 +1,17 @@
+defmodule <%= @module %>.Accounts.Token do
+  @moduledoc "AshAuthentication's tokens (magic links, sessions)."
+
+  use Ash.Resource,
+    domain: <%= @module %>.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshAuthentication.TokenResource]
+
+  postgres do
+    table "<%= @token_table %>"
+    repo <%= @module %>.Repo
+  end
+
+  actions do
+    defaults [:read, :destroy]
+  end
+end

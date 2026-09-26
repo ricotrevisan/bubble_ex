@@ -1,0 +1,56 @@
+defmodule <%= @web %>.Router do
+  use <%= @web %>, :router
+  use AshAuthentication.Phoenix.Router
+
+  import AshAuthentication.Plug.Helpers
+
+  pipeline :browser do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {<%= @web %>.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :load_from_session
+  end
+
+  pipeline :api do
+    plug :accepts, ["json"]
+    plug :load_from_bearer
+    plug :set_actor, :user
+  end
+
+  # Bubble's workflow API: /api/1.1/wf/<name> (WTF-359 Q6). The generated
+  # <%= @web %>.WorkflowApiController dispatches to the lowered workflows.
+  scope "/api/1.1/wf", <%= @web %> do
+    pipe_through :api
+
+    match :*, "/:name", WorkflowApiController, :dispatch
+  end
+
+  scope "/", <%= @web %> do
+    pipe_through :browser
+
+    get "/", PageController, :home
+
+    auth_routes AuthController, <%= @module %>.Accounts.Resources.user(), path: "/auth"
+    sign_out_route AuthController
+
+    sign_in_route auth_routes_prefix: "/auth",
+                  on_mount: [{<%= @web %>.LiveUserAuth, :live_no_user}],
+                  overrides: [AshAuthentication.Phoenix.Overrides.Default]
+
+    magic_sign_in_route(<%= @module %>.Accounts.Resources.user(), :magic_link,
+      auth_routes_prefix: "/auth",
+      overrides: [AshAuthentication.Phoenix.Overrides.Default]
+    )
+  end
+
+  if Application.compile_env(:<%= @app %>, :dev_routes) do
+    scope "/dev" do
+      pipe_through :browser
+
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+end

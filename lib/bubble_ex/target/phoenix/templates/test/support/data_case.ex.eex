@@ -1,0 +1,26 @@
+defmodule <%= @module %>.DataCase do
+  @moduledoc """
+  The test case for tests that use the data layer, in the SQL sandbox.
+  """
+
+  use ExUnit.CaseTemplate
+
+  using do
+    quote do
+      alias <%= @module %>.Repo
+
+      import <%= @module %>.DataCase
+    end
+  end
+
+  setup tags do
+    <%= @module %>.DataCase.setup_sandbox(tags)
+    :ok
+  end
+
+  @doc "Sets up the sandbox based on the test tags."
+  def setup_sandbox(tags) do
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(<%= @module %>.Repo, shared: not tags[:async])
+    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+  end
+end

@@ -88,6 +88,10 @@ _Avoid_: Schema, Ash model, normalized model
 The Ash version of a Model as plain data (`BubbleEx.Target.Ash.Project`): resources, attributes, relationships, enums, typed structs and diagnostics, derived by `BubbleEx.Target.Ash.map/3`. Renderers only print it.
 _Avoid_: Schema, generated code
 
+**Generated file / owned file**:
+In a rendered project (`BubbleEx.Target.Phoenix`), a generated file is derived from the Bubble app and rewritten by every generation; `.wtf/generated.json` records its SHA-256 so hand edits are detected. An owned file is scaffolded once and then belongs to the owner: never overwritten.
+_Avoid_: Template, user code
+
 **Name map**:
 The per-app record of which target name each Bubble ID was given, locked at first generation so caption edits in Bubble do not rename code.
 _Avoid_: Naming option, alias table

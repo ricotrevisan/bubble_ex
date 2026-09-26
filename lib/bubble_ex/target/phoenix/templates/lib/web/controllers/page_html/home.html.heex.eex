@@ -1,0 +1,4 @@
+<Layouts.app flash={@flash} current_user={@current_user}>
+  <h1 class="text-2xl font-semibold">{<%= inspect(@name) %>}</h1>
+  <p>Generated from a Bubble app by bubble_ex.</p>
+</Layouts.app>

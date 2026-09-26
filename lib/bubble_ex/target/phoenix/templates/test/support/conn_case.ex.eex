@@ -1,0 +1,24 @@
+defmodule <%= @web %>.ConnCase do
+  @moduledoc """
+  The test case for tests that need a connection, in the SQL sandbox.
+  """
+
+  use ExUnit.CaseTemplate
+
+  using do
+    quote do
+      @endpoint <%= @web %>.Endpoint
+
+      use <%= @web %>, :verified_routes
+
+      import Plug.Conn
+      import Phoenix.ConnTest
+      import <%= @web %>.ConnCase
+    end
+  end
+
+  setup tags do
+    <%= @module %>.DataCase.setup_sandbox(tags)
+    {:ok, conn: Phoenix.ConnTest.build_conn()}
+  end
+end
