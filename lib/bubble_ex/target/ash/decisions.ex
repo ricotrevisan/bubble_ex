@@ -1,31 +1,47 @@
 defmodule BubbleEx.Target.Ash.Decisions do
   @moduledoc false
 
-  # Owner decisions applied by `BubbleEx.Target.Ash.map/3` (WTF-352 §4, cut
-  # 1). `plan/3` validates the applicable decisions against the Model and
-  # the name map and returns the name map with the rename overrides, the
-  # field transforms, the `project.applied` records and the diagnostics;
-  # `apply/2` rewrites the mapped resources. The input contract and the
-  # semantics are documented in `BubbleEx.Target.Ash` ("Decisions").
+  # Owner decisions applied by `BubbleEx.Target.Ash.map/3` (WTF-352 §4,
+  # cuts 1 and 2). `plan/3` validates the applicable decisions against the
+  # Model and the name map and returns the name map with the rename
+  # overrides, the field transforms, the indexes, the `project.applied`
+  # and `project.deferred` records and the diagnostics; `apply/2` rewrites
+  # the mapped resources (`text_to_reference` is mapped by
+  # `BubbleEx.Target.Ash` itself, which names the new relationship). The
+  # input contract and the semantics are documented in
+  # `BubbleEx.Target.Ash` ("Decisions").
 
   alias BubbleEx.{Decision, Diagnostic, Error, Finding, Model}
   alias BubbleEx.Decision.Applied
   alias BubbleEx.Finding.Kinds
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Model.{ExternalType, Type}
-  alias BubbleEx.Target.Ash.{Calculation, Expr, Naming, Resource}
+  alias BubbleEx.Target.Ash.{Aggregate, Calculation, Expr, Index, Naming, Relationship, Resource}
 
-  @supported [:refine_number_type, :derive_from_related, :rename]
+  @supported [
+    :refine_number_type,
+    :derive_from_related,
+    :rename,
+    :derive_count,
+    :text_to_reference,
+    :derive_reverse_relationship,
+    :add_indexes
+  ]
 
   # Transforms a later cut of Target.Ash will apply (WTF-352 §4.2).
   @later %{
-    derive_count: "cut 2",
-    text_to_reference: "cut 2",
-    derive_reverse_relationship: "cut 2",
-    add_indexes: "cut 2",
     normalize_list_to_join: "cut 3",
     membership_policy: "cut 3"
   }
+
+  # Field transforms: each drops or changes one field's attribute.
+  @field_ops [:refine, :derive, :count, :text_ref, :reverse]
+
+  # Index methods per access pattern (`BubbleEx.Findings.SearchIndex`).
+  @btree_access [:equality, :range, :sort]
+
+  # PostgreSQL identifiers are at most 63 bytes.
+  @max_identifier 63
 
   @number_types [:integer, :decimal]
 
@@ -39,10 +55,15 @@ defmodule BubbleEx.Target.Ash.Decisions do
   # The generated `<namespace>.Privacy` module (privacy: :unverified).
   @generated_modules ~w(Privacy)
 
+  @type field_key :: {String.t(), String.t()}
   @type plan :: %{
           names: map(),
-          refine: %{{String.t(), String.t()} => map()},
-          derive: %{{String.t(), String.t()} => map()},
+          refine: %{field_key() => map()},
+          derive: %{field_key() => map()},
+          count: %{field_key() => map()},
+          text_ref: %{field_key() => map()},
+          reverse: %{field_key() => map()},
+          indexes: %{String.t() => [map()]},
           applied: [map()],
           deferred: [map()],
           owners: [tuple()],
@@ -62,28 +83,41 @@ defmodule BubbleEx.Target.Ash.Decisions do
          {deferred, checked} = Enum.split_with(checked, &(elem(&1, 0) == :defer)),
          :ok <- one_per_field(checked),
          fields =
-           for({op, a, subject, data} <- checked, op != :rename, do: {op, subject, a, data}),
-         refine =
-           for({:refine, s, a, data} <- fields, into: %{}, do: {s, Map.put(data, :key, a.key)}),
-         derive =
-           for({:derive, s, a, data} <- fields, into: %{}, do: {s, Map.put(data, :key, a.key)}),
-         :ok <- stored_sources(derive),
-         ctx = Map.put(ctx, :derive, derive),
+           for({op, a, subject, data} <- checked, op in @field_ops, do: {op, subject, a, data}),
+         ops = Map.new(@field_ops, fn op -> {op, field_map(fields, op)} end),
+         ctx = Map.merge(ctx, ops),
+         :ok <- stored_sources(ctx),
+         {:ok, indexes, index_deferred, index_diags} <- indexes(checked, ctx),
          {:ok, names, rename_diags} <- renames(checked, names, ctx) do
+      applied =
+        for {op, a, _, _} <- checked,
+            op != :indexes or Map.has_key?(indexes, a.key),
+            do: record(a)
+
       {:ok,
-       %{
+       Map.merge(ops, %{
          names: names,
-         refine: refine,
-         derive: derive,
-         applied: Enum.map(checked, &record(elem(&1, 1))),
-         deferred: Enum.map(deferred, &record(elem(&1, 1))),
+         indexes: indexes |> Map.values() |> Enum.group_by(& &1.type, & &1.indexes),
+         applied: applied,
+         deferred:
+           Enum.sort_by(
+             Enum.map(deferred, &Map.put(record(elem(&1, 1)), :indexes, nil)) ++ index_deferred,
+             & &1.key
+           ),
          owners: for({:rename, a, _, _} <- checked, do: owner(a.params.slot, a.subject)),
          diagnostics:
            Enum.flat_map(fields, &field_diag(&1, ctx)) ++
+             index_diags ++
              rename_diags ++ Enum.map(deferred, &deferred_diag(elem(&1, 1), ctx))
-       }}
+       })
+       |> Map.update!(:indexes, fn by_type ->
+         Map.new(by_type, fn {t, lists} -> {t, List.flatten(lists)} end)
+       end)}
     end
   end
+
+  defp field_map(fields, op),
+    do: for({^op, s, a, data} <- fields, into: %{}, do: {s, Map.put(data, :key, a.key)})
 
   # --- the input contract ----------------------------------------------------------
 
@@ -140,6 +174,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   defp check(%Applied{} = a, _ctx),
     do: error("unknown applied decision kind", %{key: a.key, kind: inspect(a.kind)})
+
+  defp supported_finding(%Applied{transform: :add_indexes} = a, ctx), do: type_indexes(a, ctx)
 
   defp supported_finding(a, ctx) do
     with {:ok, subject, field} <- subject_field(a, ctx),
@@ -269,7 +305,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   defp proposal_field(a, {t, f}) do
-    if a.proposal[:field] == Symbol.id(:field, [t, f]),
+    key = if a.transform == :derive_reverse_relationship, do: :drop_field, else: :field
+
+    if a.proposal[key] == Symbol.id(:field, [t, f]),
       do: :ok,
       else: error("the proposal is about another field", %{key: a.key})
   end
@@ -323,6 +361,83 @@ defmodule BubbleEx.Target.Ash.Decisions do
          {:ok, source, source_field} <- source(a, source, owner, ctx),
          :ok <- same_type(a, field, source_field) do
       {:ok, {:derive, a, subject, %{via: via, source: source}}}
+    end
+  end
+
+  # derive_count: a number field that counts a list of the same record or
+  # of a record reached through references (`via` may be empty).
+  defp transform(%Applied{transform: :derive_count} = a, subject, field, ctx) do
+    with {:ok, via, source} <- count_derivation(a),
+         :ok <- countable(a, field),
+         {:ok, via, owner} <- walk(a, elem(subject, 0), via, ctx),
+         {:ok, source, source_field} <- source(a, source, owner, ctx),
+         :ok <- list_source(a, source_field) do
+      {:ok, {:count, a, subject, %{via: via, source: source}}}
+    end
+  end
+
+  # text_to_reference: a text field (or list of texts) holding unique IDs
+  # of one mapped data type.
+  defp transform(%Applied{transform: :text_to_reference} = a, subject, field, ctx) do
+    target = a.proposal[:target_type]
+    cardinality = a.proposal[:cardinality]
+
+    cond do
+      field.system != nil or
+          not match?(
+            %Type{kind: :scalar, base: :text, cardinality: c} when c in [:one, :many],
+            field.type
+          ) ->
+        error("text_to_reference needs a text field; the decision is stale", %{key: a.key})
+
+      cardinality != field.type.cardinality ->
+        error("the proposal's cardinality is not the field's; the decision is stale", %{
+          key: a.key
+        })
+
+      target == nil ->
+        error(
+          "the finding names no target type: decide it with modify target_type " <>
+            "(one of the finding's target types)",
+          %{key: a.key}
+        )
+
+      true ->
+        case target do
+          "data_type:" <> t when is_map_key(ctx.types, t) ->
+            {:ok, {:text_ref, a, subject, %{target: t, cardinality: cardinality}}}
+
+          _ ->
+            error("the target type is not a mapped data type; the decision is stale", %{
+              key: a.key,
+              target_type: target
+            })
+        end
+    end
+  end
+
+  # derive_reverse_relationship: a list of A on B that mirrors A's scalar
+  # reference to B becomes a has_many.
+  defp transform(
+         %Applied{transform: :derive_reverse_relationship} = a,
+         {b, _} = subject,
+         field,
+         ctx
+       ) do
+    with %{source_type: "data_type:" <> from, via: via} when is_binary(via) <-
+           a.proposal[:relationship] || :none,
+         %Type{kind: :ref, cardinality: :many, target: ^from} <- field.type,
+         true <- Map.has_key?(ctx.types, from),
+         {:ok, {^from, r}} <- Map.fetch(ctx.symbols, via),
+         %Type{kind: :ref, cardinality: :one, target: ^b} <- ctx.fields[{from, r}].type do
+      {:ok, {:reverse, a, subject, %{via: {from, r}}}}
+    else
+      _ ->
+        error(
+          "derive_reverse_relationship needs a list of a mapped type whose reference points " <>
+            "back to this one; the decision is stale",
+          %{key: a.key}
+        )
     end
   end
 
@@ -398,10 +513,200 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   defp content(%Type{} = t), do: {t.kind, t.base, t.target, t.cardinality}
 
+  defp count_derivation(%Applied{proposal: %{derivation: %{via: via, source_field: s}}} = a)
+       when is_list(via) and is_binary(s) do
+    if Enum.all?(via, &is_binary/1), do: {:ok, via, s}, else: no_count(a)
+  end
+
+  defp count_derivation(a), do: no_count(a)
+
+  defp no_count(a),
+    do: error("derive_count needs a derivation naming the counted list", %{key: a.key})
+
+  defp countable(a, field) do
+    case field.type do
+      %Type{kind: :scalar, base: :number, cardinality: :one} ->
+        :ok
+
+      _ ->
+        error("derive_count needs a number field; the decision is stale", %{key: a.key})
+    end
+  end
+
+  defp list_source(a, source_field) do
+    case source_field.type do
+      %Type{cardinality: :many} ->
+        :ok
+
+      _ ->
+        error("the counted field is not a list; the decision is stale", %{key: a.key})
+    end
+  end
+
+  # --- indexes (add_indexes) -------------------------------------------------------
+
+  # The type and its indexes' columns must be live fields of it; which
+  # index is created is decided later, with every field transform known.
+  defp type_indexes(%Applied{subject: %{type: t} = subject} = a, ctx)
+       when map_size(subject) == 1 do
+    with {:ok, _type} <- fetch_live(ctx.types, t, a),
+         true <-
+           a.proposal[:type] == "data_type:" <> t ||
+             error("the proposal is about another data type", %{key: a.key}),
+         {:ok, indexes} <- index_columns(a, t, ctx) do
+      {:ok, {:indexes, a, subject, %{type: t, indexes: indexes}}}
+    end
+  end
+
+  defp type_indexes(a, _ctx),
+    do: error("add_indexes needs a data type subject", %{key: a.key, subject: a.subject})
+
+  defp fetch_live(map, id, a) do
+    case Map.fetch(map, id) do
+      {:ok, item} -> {:ok, item}
+      :error -> missing(a)
+    end
+  end
+
+  defp index_columns(a, t, ctx) do
+    a.proposal
+    |> Map.get(:indexes, [])
+    |> Enum.with_index()
+    |> collect(fn {index, i} ->
+      index
+      |> Map.get(:columns, [])
+      |> collect(&index_column(&1, t, a, i, ctx))
+      |> case do
+        {:ok, []} -> stale_index(a, i)
+        {:ok, columns} -> {:ok, %{position: i, columns: columns}}
+        error -> error
+      end
+    end)
+  end
+
+  defp index_column(%{field: symbol, access: access}, t, a, i, ctx) do
+    case Map.fetch(ctx.symbols, symbol) do
+      {:ok, {^t, _} = field} -> {:ok, %{field: field, access: access}}
+      _ -> stale_index(a, i)
+    end
+  end
+
+  defp index_column(_column, _t, a, i, _ctx), do: stale_index(a, i)
+
+  defp stale_index(a, i),
+    do:
+      error(
+        "an index names a field that is not in the Model (or not of its data type); the " <>
+          "decision is stale",
+        %{key: a.key, index: i}
+      )
+
+  # Each index's physical form, or why it is deferred: `{:ok, created,
+  # deferred records, diagnostics}` where `created` maps each decision key
+  # with at least one index to `%{type, indexes}`.
+  defp indexes(checked, ctx) do
+    derived = derived_fields(ctx)
+
+    {created, deferred, diags} =
+      for {:indexes, a, _, %{type: t, indexes: indexes}} <- checked,
+          reduce: {%{}, [], []} do
+        {created, deferred, diags} ->
+          resolved = Enum.map(indexes, &{&1, index_method(&1, derived, ctx)})
+          made = for {index, {:ok, method}} <- resolved, do: {index, method}
+          skipped = for {index, {:defer, reason}} <- resolved, do: {index, reason}
+
+          created =
+            if made == [],
+              do: created,
+              else: Map.put(created, a.key, %{type: t, indexes: merge_indexes(made, a.key, t)})
+
+          deferred =
+            if skipped == [],
+              do: deferred,
+              else: [
+                Map.put(record(a), :indexes, Enum.map(skipped, &elem(&1, 0).position))
+                | deferred
+              ]
+
+          diags =
+            diags ++
+              index_applied_diag(a, made, ctx) ++
+              index_deferred_diag(a, skipped, ctx)
+
+          {created, deferred, diags}
+      end
+
+    {:ok, created, deferred, diags}
+  end
+
+  # The fields a decision of this set no longer stores.
+  defp derived_fields(ctx),
+    do: MapSet.new(Map.keys(ctx.derive) ++ Map.keys(ctx.count) ++ Map.keys(ctx.reverse))
+
+  defp index_method(%{columns: columns}, derived, ctx) do
+    types = Enum.map(columns, &ctx.fields[&1.field].type)
+    access = Enum.map(columns, & &1.access)
+
+    cond do
+      Enum.any?(columns, &MapSet.member?(derived, &1.field)) ->
+        {:defer, "a field it covers is derived by a decision and has no column"}
+
+      Enum.all?(access, &(&1 in @btree_access)) ->
+        {:ok, :btree}
+
+      true ->
+        single_method(access, types)
+    end
+  end
+
+  # One column searched another way than by value.
+  defp single_method([:substring], types) do
+    if text?(types),
+      do: {:ok, :trigram},
+      else: {:defer, "substring search on a field that is not text"}
+  end
+
+  defp single_method([:full_text], types) do
+    if text?(types),
+      do: {:ok, :full_text},
+      else: {:defer, "keyword search on a field that is not text"}
+  end
+
+  defp single_method([:membership], types) do
+    if match?([%Type{cardinality: :many}], types),
+      do: {:ok, :gin},
+      else: {:defer, "membership in a field that is not a list"}
+  end
+
+  defp single_method([:geo], _types) do
+    {:defer,
+     "geographic search needs PostGIS; geographic addresses are stored as JSON and the " <>
+       "generated project has no geographic index"}
+  end
+
+  defp single_method([_, _ | _] = access, _types),
+    do: {:defer, "#{Enum.join(access, ", ")} cannot share one index"}
+
+  defp single_method(access, _types), do: {:defer, "no index for the access #{inspect(access)}"}
+
+  defp text?(types), do: match?([%Type{kind: :scalar, base: :text, cardinality: :one}], types)
+
+  # Indexes with the same method and columns are one index, listing every
+  # position it serves.
+  defp merge_indexes(made, key, t) do
+    made
+    |> Enum.group_by(fn {index, method} -> {method, Enum.map(index.columns, & &1.field)} end)
+    |> Enum.map(fn {{method, fields}, group} ->
+      positions = group |> Enum.map(&elem(&1, 0).position) |> Enum.sort()
+      %{key: key, type: t, method: method, fields: fields, positions: positions}
+    end)
+    |> Enum.sort_by(&hd(&1.positions))
+  end
+
   # A field takes one finding transform.
   defp one_per_field(checked) do
     checked
-    |> Enum.filter(&(elem(&1, 0) != :rename))
+    |> Enum.filter(&(elem(&1, 0) in @field_ops))
     |> Enum.frequencies_by(&elem(&1, 2))
     |> Enum.find(fn {_, n} -> n > 1 end)
     |> case do
@@ -411,17 +716,21 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   # A calculation reads stored values: a derived field's source is not
-  # derived itself.
-  defp stored_sources(derive) do
-    case Enum.find(derive, fn {_, d} -> Map.has_key?(derive, d.source) end) do
+  # derived itself (a count over a list derived as a has_many is an
+  # aggregate, the one supported combination).
+  defp stored_sources(ctx) do
+    derived = MapSet.new(Map.keys(ctx.derive) ++ Map.keys(ctx.count))
+
+    case Enum.find(ctx.derive, fn {_, d} -> MapSet.member?(derived, d.source) end) do
       nil ->
         :ok
 
       {{t, f}, d} ->
-        error("a derived field's source is derived too", %{
-          key: d.key,
-          subject: %{type: t, field: f}
-        })
+        error(
+          "a derived field's source is derived too; deriving from a derived field is not " <>
+            "supported",
+          %{key: d.key, subject: %{type: t, field: f}}
+        )
     end
   end
 
@@ -504,7 +813,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
     entry = get_in(names, ["resources", t]) || %{}
 
     with {:ok, field} <- live(ctx.fields, {t, f}),
-         :ok <- reference(field, ctx),
+         :ok <- reference(field, {t, f}, ctx),
          :ok <- snake_name(name, :attribute),
          :ok <- free_in_resource(entry, {"relationships", f}, name) do
       entry = put_member(entry, "relationships", f, name)
@@ -518,7 +827,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
     with {:ok, field} <- live(ctx.fields, {t, f}),
          true <-
-           Map.has_key?(ctx.derive, {t, f}) ||
+           (Map.has_key?(ctx.derive, {t, f}) or Map.has_key?(ctx.count, {t, f})) ||
              {:error, "a calculation rename needs a field derived by a decision in this set", %{}},
          :ok <- snake_name(name, :attribute),
          :ok <- free_in_resource(entry, {"attributes", f}, name) do
@@ -554,18 +863,34 @@ defmodule BubbleEx.Target.Ash.Decisions do
   defp not_key(_field), do: :ok
 
   defp stored(ctx, subject) do
-    if Map.has_key?(ctx.derive, subject),
-      do: {:error, "the field is derived by a decision: rename its calculation", %{}},
-      else: :ok
+    cond do
+      Map.has_key?(ctx.derive, subject) or Map.has_key?(ctx.count, subject) ->
+        {:error, "the field is derived by a decision: rename its calculation", %{}}
+
+      Map.has_key?(ctx.reverse, subject) ->
+        {:error, "the list is derived as a has_many by a decision; renaming it is not supported",
+         %{}}
+
+      true ->
+        :ok
+    end
   end
 
-  defp reference(field, ctx) do
+  defp reference(field, {t, f}, ctx) do
     case field.type do
       %Type{kind: :ref, cardinality: :one, target: target} when is_map_key(ctx.types, target) ->
         :ok
 
       _ ->
-        {:error, "a relationship rename needs a reference to a mapped data type", %{}}
+        case ctx.text_ref[{t, f}] do
+          %{cardinality: :one} ->
+            :ok
+
+          _ ->
+            {:error,
+             "a relationship rename needs a reference to a mapped data type (or a text field " <>
+               "made one by a decision in this set)", %{}}
+        end
     end
   end
 
@@ -740,9 +1065,15 @@ defmodule BubbleEx.Target.Ash.Decisions do
       automatic: a.automatic,
       params: a.params,
       proposal_sha256: a.proposal_sha256,
-      basis_sha256: a.basis_sha256
+      basis_sha256: a.basis_sha256,
+      rewrite_reads: rewrite_reads(a)
     }
   end
+
+  defp rewrite_reads(%Applied{transform: :derive_reverse_relationship, proposal: p}),
+    do: p |> Map.get(:rewrite_reads, []) |> Enum.sort()
+
+  defp rewrite_reads(_a), do: []
 
   defp field_diag({:refine, {t, f}, a, %{to: to}}, ctx) do
     [
@@ -771,6 +1102,121 @@ defmodule BubbleEx.Target.Ash.Decisions do
           transform: a.transform,
           via: Enum.map(via, fn {vt, vf} -> Symbol.id(:field, [vt, vf]) end),
           source_field: Symbol.id(:field, [st, sf])
+        }
+      )
+    ]
+  end
+
+  defp field_diag({:count, {t, f}, a, %{via: via, source: {st, sf}}}, ctx) do
+    [
+      Diagnostic.new(
+        :ash_decision_applied,
+        ctx.fields[{t, f}].path,
+        "#{t}.#{f} counts #{st}.#{sf} (owner decision #{a.key}); it is not stored and " <>
+          "cannot be written",
+        target: :ash,
+        subject: %{type: t, field: f},
+        details: %{
+          key: a.key,
+          transform: a.transform,
+          via: Enum.map(via, fn {vt, vf} -> Symbol.id(:field, [vt, vf]) end),
+          source_field: Symbol.id(:field, [st, sf]),
+          aggregate: Map.has_key?(ctx.reverse, {st, sf})
+        }
+      )
+    ]
+  end
+
+  defp field_diag({:text_ref, {t, f}, a, %{target: target, cardinality: c}}, ctx) do
+    what =
+      if c == :one,
+        do: "a belongs_to #{target} (no foreign key)",
+        else: "a list of #{target} IDs"
+
+    [
+      Diagnostic.new(
+        :ash_decision_applied,
+        ctx.fields[{t, f}].path,
+        "#{t}.#{f} holds #{target} IDs and is #{what} (owner decision #{a.key}); the loader " <>
+          "must convert its text values to IDs",
+        target: :ash,
+        subject: %{type: t, field: f},
+        details: %{key: a.key, transform: a.transform, target: target, cardinality: c}
+      )
+    ]
+  end
+
+  defp field_diag({:reverse, {t, f}, a, %{via: {vt, vf}}}, ctx) do
+    [
+      Diagnostic.new(
+        :ash_decision_applied,
+        ctx.fields[{t, f}].path,
+        "#{t}.#{f} is a has_many of #{vt} through #{vt}.#{vf} (owner decision #{a.key}); " <>
+          "the list is not stored, and its reads need rewriting",
+        target: :ash,
+        subject: %{type: t, field: f},
+        details: %{
+          key: a.key,
+          transform: a.transform,
+          via: Symbol.id(:field, [vt, vf]),
+          rewrite_reads: rewrite_reads(a)
+        }
+      )
+    ]
+  end
+
+  defp index_applied_diag(_a, [], _ctx), do: []
+
+  defp index_applied_diag(a, made, ctx) do
+    %{type: t} = a.subject
+
+    [
+      Diagnostic.new(
+        :ash_decision_applied,
+        ctx.types[t].path,
+        "#{length(made)} index(es) of #{t} from #{a.key}" <>
+          if(a.automatic, do: " (a hint, applied by default)", else: " (owner decision)"),
+        target: :ash,
+        subject: a.subject,
+        details: %{
+          key: a.key,
+          transform: a.transform,
+          automatic: a.automatic,
+          indexes: Enum.map(made, &elem(&1, 0).position)
+        }
+      )
+    ]
+  end
+
+  # One warning per decision (diagnostics are unique per subject and code).
+  defp index_deferred_diag(_a, [], _ctx), do: []
+
+  defp index_deferred_diag(a, skipped, ctx) do
+    %{type: t} = a.subject
+
+    why =
+      Enum.map_join(skipped, "; ", fn {index, reason} -> "index #{index.position}: #{reason}" end)
+
+    [
+      Diagnostic.new(
+        :ash_decision_deferred,
+        ctx.types[t].path,
+        "#{length(skipped)} index(es) of #{a.key} are not created (#{why}); deferred",
+        target: :ash,
+        subject: a.subject,
+        details: %{
+          key: a.key,
+          transform: a.transform,
+          indexes:
+            Enum.map(skipped, fn {index, reason} ->
+              %{
+                index: index.position,
+                access: Enum.map(index.columns, & &1.access),
+                fields:
+                  Enum.map(index.columns, fn %{field: {ft, ff}} -> Symbol.id(:field, [ft, ff]) end),
+                reason: reason
+              }
+            end)
         }
       )
     ]
@@ -814,13 +1260,19 @@ defmodule BubbleEx.Target.Ash.Decisions do
   # --- applying to the mapped resources --------------------------------------------
 
   @doc false
-  # Refines number attributes, then replaces derived attributes by
-  # calculations reading the related record.
+  # Refines number attributes; replaces derived attributes by calculations
+  # (reading the related record, or counting a list), counts over a derived
+  # has_many by aggregates, and reverse lists by has_many relationships;
+  # then adds the indexes.
   @spec apply([Resource.t()], plan()) :: [Resource.t()]
-  def apply(resources, %{refine: refine, derive: derive}) do
-    resources = Enum.map(resources, &refine_resource(&1, refine))
+  def apply(resources, plan) do
+    resources = Enum.map(resources, &refine_resource(&1, plan.refine))
     by_type = Map.new(resources, &{&1.source.type, &1})
-    Enum.map(resources, &derive_resource(&1, derive, by_type))
+
+    resources
+    |> Enum.map(&derive_resource(&1, plan, by_type))
+    |> Enum.map(&index_resource(&1, Map.get(plan.indexes, &1.source.type, [])))
+    |> unique_index_names()
   end
 
   defp refine_resource(%Resource{} = resource, refine) do
@@ -842,47 +1294,239 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   defp number_default(default, _to), do: default
 
-  defp derive_resource(%Resource{} = resource, derive, by_type) do
-    t = resource.source.type
-
-    {derived, kept} =
-      Enum.split_with(resource.attributes, &Map.has_key?(derive, {t, &1.source[:field]}))
-
-    calculations =
-      Enum.map(derived, fn a ->
-        d = Map.fetch!(derive, {t, a.source.field})
-        {path, owner} = relationship_path(d.via, by_type)
-        {st, sf} = d.source
-        ^owner = st
-        source = Enum.find(by_type[st].attributes, &(&1.source[:field] == sf))
-
-        %Calculation{
-          name: a.name,
-          kind: :derived,
-          type: source.type,
-          constraints: source.constraints,
-          public?: true,
-          source: %{type: t, field: a.source.field},
-          description:
-            "Derived from #{Enum.join(path ++ [source.name], ".")} " <>
-              "(owner decision #{d.key}); not stored",
-          expr: %Expr{
-            resource: resource.module,
-            source: %{type: t, field: a.source.field},
-            expr: {:ref, path, source.name}
-          }
-        }
+  # Each attribute a decision derives becomes, in attribute order, a
+  # calculation, an aggregate or a has_many.
+  defp derive_resource(%Resource{} = resource, plan, by_type) do
+    {items, kept} =
+      Enum.reduce(resource.attributes, {[], []}, fn a, {items, kept} ->
+        case derived_item(resource, a, plan, by_type) do
+          nil -> {items, [a | kept]}
+          item -> {[item | items], kept}
+        end
       end)
 
-    %{resource | attributes: kept, calculations: calculations ++ resource.calculations}
+    items = Enum.reverse(items)
+
+    %{
+      resource
+      | attributes: Enum.reverse(kept),
+        calculations: for(%Calculation{} = c <- items, do: c) ++ resource.calculations,
+        aggregates: resource.aggregates ++ for(%Aggregate{} = g <- items, do: g),
+        relationships: resource.relationships ++ for(%Relationship{} = r <- items, do: r)
+    }
   end
 
-  defp relationship_path(via, by_type) do
-    Enum.map_reduce(via, nil, fn {vt, vf}, _ ->
-      rel = Enum.find(by_type[vt].relationships, &(&1.source.field == vf))
+  defp derived_item(resource, a, plan, by_type) do
+    key = {resource.source.type, a.source[:field]}
+
+    cond do
+      Map.has_key?(plan.derive, key) ->
+        derived_calculation(resource, a, plan.derive[key], by_type)
+
+      Map.has_key?(plan.count, key) ->
+        count(resource, a, plan.count[key], plan, by_type)
+
+      Map.has_key?(plan.reverse, key) ->
+        has_many(resource, a, plan.reverse[key], by_type)
+
+      true ->
+        nil
+    end
+  end
+
+  defp derived_calculation(resource, a, d, by_type) do
+    t = resource.source.type
+    {path, owner} = relationship_path(d.via, by_type, t)
+    {st, sf} = d.source
+    ^owner = st
+    source = attribute_of(by_type[st], sf)
+
+    %Calculation{
+      name: a.name,
+      kind: :derived,
+      type: source.type,
+      constraints: source.constraints,
+      public?: true,
+      source: %{type: t, field: a.source.field},
+      description:
+        "Derived from #{Enum.join(path ++ [source.name], ".")} " <>
+          "(owner decision #{d.key}); not stored",
+      expr: %Expr{
+        resource: resource.module,
+        source: %{type: t, field: a.source.field},
+        expr: {:ref, path, source.name}
+      }
+    }
+  end
+
+  # A count of a list derived as a has_many is an aggregate over it;
+  # otherwise the length of the stored list (0 when it is empty or nil,
+  # as Bubble counts).
+  defp count(resource, a, d, plan, by_type) do
+    t = resource.source.type
+    {path, owner} = relationship_path(d.via, by_type, t)
+    {st, sf} = d.source
+    ^owner = st
+    list = attribute_of(by_type[st], sf)
+    field = %{type: t, field: a.source.field}
+    what = Enum.join(path ++ [list.name], ".")
+
+    if Map.has_key?(plan.reverse, d.source) do
+      %Aggregate{
+        name: a.name,
+        path: path ++ [list.name],
+        source: field,
+        description: "The count of #{what} (owner decision #{d.key}); not stored"
+      }
+    else
+      %Calculation{
+        name: a.name,
+        kind: :derived,
+        type: :integer,
+        public?: true,
+        source: field,
+        description: "The length of #{what} (owner decision #{d.key}); not stored",
+        expr: %Expr{
+          resource: resource.module,
+          source: field,
+          expr: {:call, "length", [{:op, "||", {:ref, path, list.name}, {:value, []}}]}
+        }
+      }
+    end
+  end
+
+  # B's list of A becomes `has_many <list name>, A`, from B's primary key
+  # to A's reference attribute.
+  defp has_many(resource, a, %{via: {from, r}}, by_type) do
+    destination = by_type[from]
+    pk = Enum.find(resource.attributes, & &1.primary_key?)
+
+    %Relationship{
+      kind: :has_many,
+      name: a.name,
+      destination: destination.module,
+      source_attribute: pk.name,
+      destination_attribute: attribute_of(destination, r).name,
+      source: %{type: resource.source.type, field: a.source.field}
+    }
+  end
+
+  defp attribute_of(resource, field),
+    do: Enum.find(resource.attributes, &(&1.source[:field] == field))
+
+  defp relationship_path(via, by_type, from) do
+    Enum.map_reduce(via, from, fn {vt, vf}, _ ->
+      rel =
+        Enum.find(by_type[vt].relationships, &(&1.kind == :belongs_to and &1.source.field == vf))
+
       target = Enum.find(Map.values(by_type), &(&1.module == rel.destination))
       {rel.name, target.source.type}
     end)
+  end
+
+  # --- indexes ---------------------------------------------------------------------
+
+  defp index_resource(resource, []), do: resource
+
+  defp index_resource(%Resource{} = resource, planned) do
+    columns = Map.new(resource.attributes, &{&1.source[:field], &1.column || &1.name})
+
+    indexes =
+      planned
+      |> Enum.map(fn index ->
+        cols = Enum.map(index.fields, fn {_t, f} -> Map.fetch!(columns, f) end)
+        physical(index.method, resource.table, cols, index)
+      end)
+      |> Enum.uniq_by(&{&1.method, &1.columns})
+
+    %{resource | indexes: resource.indexes ++ indexes}
+  end
+
+  defp physical(:btree, table, cols, index),
+    do: index_struct(index, table, cols, :btree, cols, nil, nil, "index")
+
+  defp physical(:gin, table, cols, index),
+    do: index_struct(index, table, cols, :gin, cols, "gin", nil, "gin_index")
+
+  defp physical(:trigram, table, [col] = cols, index),
+    do:
+      index_struct(
+        index,
+        table,
+        cols,
+        :trigram,
+        [quote_ident(col) <> " gin_trgm_ops"],
+        "gin",
+        nil,
+        "trgm_index"
+      )
+
+  defp physical(:full_text, table, [col] = cols, index) do
+    expression = "to_tsvector('simple'::regconfig, coalesce(#{quote_ident(col)}, ''))"
+    index_struct(index, table, cols, :full_text, [expression], "gin", expression, "fts_index")
+  end
+
+  defp index_struct(index, table, cols, method, fields, using, expression, suffix) do
+    %Index{
+      name: index_name(table, cols, suffix),
+      method: method,
+      columns: cols,
+      fields: fields,
+      using: using,
+      expression: expression,
+      source: %{type: index.type, key: index.key, index: index.positions}
+    }
+  end
+
+  # Index names are unique in a PostgreSQL schema, not per table: a name
+  # two tables would share (`a_b` + `c`, `a` + `b_c`) gets a hash of its
+  # table and definition.
+  defp unique_index_names(resources) do
+    taken =
+      resources |> Enum.flat_map(& &1.indexes) |> Enum.frequencies_by(& &1.name)
+
+    Enum.map(
+      resources,
+      &%{&1 | indexes: Enum.map(&1.indexes, fn i -> unshared(i, &1, taken) end)}
+    )
+  end
+
+  defp unshared(index, resource, taken) do
+    if taken[index.name] > 1,
+      do: %{index | name: hashed_name(resource.table, index)},
+      else: index
+  end
+
+  defp hashed_name(table, index) do
+    seed = Enum.join([table, index.method | index.fields], "|")
+    hash = :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 8)
+    keep = @max_identifier - byte_size(hash) - byte_size("_index") - 2
+    prefix = index.name |> binary_part(0, min(keep, byte_size(index.name))) |> valid_utf8()
+    Enum.join([String.trim_trailing(prefix, "_"), hash, "index"], "_")
+  end
+
+  defp quote_ident(name), do: "\"" <> String.replace(name, "\"", "\"\"") <> "\""
+
+  # `<table>_<columns>_<suffix>`, or cut with a hash of the whole name so it
+  # stays unique within 63 bytes.
+  defp index_name(table, cols, suffix) do
+    name = Enum.join([table | cols] ++ [suffix], "_")
+
+    if byte_size(name) <= @max_identifier do
+      name
+    else
+      hash = :crypto.hash(:sha256, name) |> Base.encode16(case: :lower) |> binary_part(0, 8)
+      keep = @max_identifier - byte_size(suffix) - byte_size(hash) - 2
+      prefix = name |> binary_part(0, keep) |> String.trim_trailing("_") |> valid_utf8()
+      Enum.join([prefix, hash, suffix], "_")
+    end
+  end
+
+  # A cut in the middle of a character drops its bytes.
+  defp valid_utf8(binary) do
+    if String.valid?(binary),
+      do: binary,
+      else: valid_utf8(binary_part(binary, 0, byte_size(binary) - 1))
   end
 
   # --- the Model -------------------------------------------------------------------

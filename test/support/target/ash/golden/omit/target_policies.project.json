@@ -55,6 +55,7 @@
     }
   ],
   "enums": [],
+  "extensions": [],
   "names": {
     "enums": {},
     "external_types": {},
@@ -183,6 +184,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -361,6 +363,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Board",
       "policies": [],
@@ -423,6 +426,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -696,6 +700,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Doc",
       "policies": [],
@@ -758,6 +763,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -907,6 +913,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Memo",
       "policies": [],
@@ -951,6 +958,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1117,6 +1125,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Note",
       "policies": [],
@@ -1161,6 +1170,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1339,6 +1349,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Team",
       "policies": [],
@@ -1401,6 +1412,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1622,6 +1634,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "User",
       "policies": [],
@@ -1672,7 +1685,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "typed_structs": [],
   "types": []
 }

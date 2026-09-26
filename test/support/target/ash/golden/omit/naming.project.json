@@ -67,6 +67,7 @@
       ]
     }
   ],
+  "extensions": [],
   "names": {
     "enums": {
       "os__40__levels": {
@@ -175,6 +176,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -488,6 +490,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "ThingJoin",
       "policies": [],
@@ -532,6 +535,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -707,6 +711,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Launch",
       "policies": [],
@@ -751,6 +756,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -874,6 +880,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Thing",
       "policies": [],
@@ -918,6 +925,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1041,6 +1049,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Thing2",
       "policies": [],
@@ -1085,6 +1094,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1234,6 +1244,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "User",
       "policies": [],
@@ -1266,7 +1277,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "typed_structs": [],
   "types": []
 }

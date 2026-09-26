@@ -36,14 +36,25 @@ defmodule BubbleEx.Target.Ash.Project do
       empty unless an index was given to `BubbleEx.Target.Ash.map/3`
     * `applied` - the owner decisions applied (see `BubbleEx.Target.Ash`,
       "Decisions"), sorted by key: `%{key, kind, transform, subject, target,
-      finding_id, automatic, params, proposal_sha256, basis_sha256}`, so a
-      manifest, plan or verification can cite them. No audit metadata (the
-      record ID): an audit-only revision changes nothing here
+      finding_id, automatic, params, proposal_sha256, basis_sha256,
+      rewrite_reads}`, so a manifest, plan or verification can cite them.
+      `rewrite_reads` lists the symbols whose reads a lowering must rewrite
+      (`derive_reverse_relationship`: the finding's `rewrite_reads`, reads
+      of the dropped list), else `[]`. No audit metadata (the record ID):
+      an audit-only revision changes nothing here
     * `applied_sha256` - SHA-256 of the canonical JSON of `applied`: what
       was actually applied; nil when mapped without decisions
-    * `deferred` - hints that apply by default but whose transform
-      Target.Ash does not apply yet (e.g. `add_indexes` before cut 2),
-      shaped like `applied`; each has an `:ash_decision_deferred` warning
+    * `deferred` - what applies by default but Target.Ash does not
+      create, shaped like `applied` plus `indexes`: an `add_indexes`
+      decision's indexes (positions in its proposal) that have no Ash
+      rendering (a geographic access, an index on a field no longer
+      stored), or nil for a hint whose whole transform is not applied yet.
+      Each deferred index has an `:ash_decision_deferred` warning. An
+      `add_indexes` decision whose other indexes were created is in
+      `applied` too
+    * `extensions` - the PostgreSQL extensions the indexes need (`"pg_trgm"`
+      for trigram indexes), sorted: the repo's `installed_extensions/0`
+      must list them
     * `decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision set the applied decisions come from, as passed to
       `BubbleEx.Target.Ash.map/3` (recorded, not verified: `map/3` trusts
@@ -93,7 +104,7 @@ defmodule BubbleEx.Target.Ash.Project do
   alias BubbleEx.{CanonicalJson, Diagnostic}
   alias BubbleEx.Target.Ash.{Bypass, CustomType, Resource, TypedStruct}
 
-  @schema_version 4
+  @schema_version 5
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -111,6 +122,7 @@ defmodule BubbleEx.Target.Ash.Project do
     applied: [],
     applied_sha256: nil,
     deferred: [],
+    extensions: [],
     decisions_sha256: nil,
     diagnostics: []
   ]
@@ -132,6 +144,7 @@ defmodule BubbleEx.Target.Ash.Project do
           applied: [map()],
           applied_sha256: String.t() | nil,
           deferred: [map()],
+          extensions: [String.t()],
           decisions_sha256: String.t() | nil,
           diagnostics: [Diagnostic.t()]
         }
@@ -168,10 +181,11 @@ defmodule BubbleEx.Target.Ash.Project do
   @doc """
   Aggregate counts, with string keys (for reports and count snapshots):
   resources, attributes by Ash type (`enum`, `typed_struct` and `json_value`
-  for generated modules), relationships by kind, database references by mode,
-  enums and their values, typed structs by source, derived calculations,
-  applied decisions by transform, privacy (see `privacy_summary/1`) and
-  diagnostics by code.
+  for generated modules), relationships by kind, database references (of
+  `belongs_to` relationships) by mode, enums and their values, typed
+  structs by source, derived calculations and aggregates, indexes by
+  method, extensions, applied and deferred decisions by transform, privacy
+  (see `privacy_summary/1`) and diagnostics by code.
   """
   @spec summary(t()) :: map()
   def summary(%__MODULE__{} = project) do
@@ -185,7 +199,10 @@ defmodule BubbleEx.Target.Ash.Project do
       "attributes" => length(attributes),
       "attributes_by_type" => frequencies(attributes, &type_key(&1.type, kinds)),
       "relationships" => frequencies(relationships, &Atom.to_string(&1.kind)),
-      "db_references" => frequencies(relationships, &Atom.to_string(&1.db_reference)),
+      "db_references" =>
+        relationships
+        |> Enum.filter(&(&1.kind == :belongs_to))
+        |> frequencies(&Atom.to_string(&1.db_reference)),
       "enums" => length(project.enums),
       "enum_values" => project.enums |> Enum.map(&length(&1.values)) |> Enum.sum(),
       "typed_structs" => frequencies(project.typed_structs, &source_key(&1.source)),
@@ -193,6 +210,10 @@ defmodule BubbleEx.Target.Ash.Project do
         project.resources
         |> Enum.flat_map(& &1.calculations)
         |> Enum.count(&(&1.kind == :derived)),
+      "derived_aggregates" => project.resources |> Enum.map(&length(&1.aggregates)) |> Enum.sum(),
+      "indexes" =>
+        frequencies(Enum.flat_map(project.resources, & &1.indexes), &Atom.to_string(&1.method)),
+      "extensions" => project.extensions,
       "applied" => frequencies(project.applied, &Atom.to_string(&1.transform)),
       "deferred" => frequencies(project.deferred, &Atom.to_string(&1.transform)),
       "privacy" => privacy_summary(project),
@@ -205,7 +226,8 @@ defmodule BubbleEx.Target.Ash.Project do
   (`rules`, `public_default`, `unavailable`), rules by outcome (`compiled`,
   `denied`: a condition that does not compile, so the rule grants nothing),
   policies, their checks by test, field policies, privacy calculations,
-  gated relationships (each with a private twin),
+  gated relationships, private `*_for_privacy` twins (of the gated
+  relationships and of those a derived field reads through),
   auto-binding actions, actor loads and authorization bypasses.
   """
   @spec privacy_summary(t()) :: map()
@@ -230,6 +252,8 @@ defmodule BubbleEx.Target.Ash.Project do
         |> Enum.flat_map(& &1.calculations)
         |> Enum.count(&(&1.kind == :privacy)),
       "gated_relationships" =>
+        project.resources |> Enum.flat_map(& &1.relationships) |> Enum.count(&(&1.gate != nil)),
+      "private_twins" =>
         project.resources |> Enum.map(&length(&1.privacy_relationships)) |> Enum.sum(),
       "auto_bind_actions" =>
         Enum.count(project.resources, fn r ->
@@ -285,6 +309,10 @@ defmodule BubbleEx.Target.Ash.Resource do
       by an owner decision (public, in attribute order), then the private
       boolean calculations the policies test (one per privacy rule, one
       per "everyone else" grant)
+    * `aggregates` - `BubbleEx.Target.Ash.Aggregate`s: counts derived by an
+      owner decision (`derive_count` over a `has_many`), in attribute order
+    * `indexes` - `BubbleEx.Target.Ash.Index`es (`postgres do
+      custom_indexes`), from `add_indexes` decisions
     * `policies` - `BubbleEx.Target.Ash.Policy`s (`policies do`); with
       any policy the resource uses `Ash.Policy.Authorizer`
     * `field_policies` - `BubbleEx.Target.Ash.FieldPolicy`s
@@ -323,6 +351,8 @@ defmodule BubbleEx.Target.Ash.Resource do
     actions: [:read, :destroy, create: :*, update: :*],
     extra_actions: [],
     calculations: [],
+    aggregates: [],
+    indexes: [],
     policies: [],
     field_policies: [],
     privacy_relationships: [],
@@ -343,6 +373,8 @@ defmodule BubbleEx.Target.Ash.Resource do
           actions: keyword() | [atom() | {atom(), term()}],
           extra_actions: [Action.t()],
           calculations: [Calculation.t()],
+          aggregates: [BubbleEx.Target.Ash.Aggregate.t()],
+          indexes: [BubbleEx.Target.Ash.Index.t()],
           policies: [Policy.t()],
           field_policies: [FieldPolicy.t()],
           privacy_relationships: [Relationship.t()],
@@ -386,9 +418,9 @@ defmodule BubbleEx.Target.Ash.Calculation do
 
     * `name` - the calculation name
     * `kind` - `:privacy`: a private boolean calculation a policy or field
-      policy tests; `:derived`: a field an owner decision derives from a
-      related record (`derive_from_related`), public, named like the
-      attribute it replaces
+      policy tests; `:derived`: a field an owner decision derives
+      (`derive_from_related` from a related record, `derive_count` as the
+      length of a list), public, named like the attribute it replaces
     * `type`, `constraints` - its Ash type (`:boolean` for `:privacy`) and
       type constraints
     * `public?` - as in Ash
@@ -424,6 +456,75 @@ defmodule BubbleEx.Target.Ash.Calculation do
           expr: Expr.t(),
           source: map(),
           description: String.t() | nil
+        }
+end
+
+defmodule BubbleEx.Target.Ash.Aggregate do
+  @moduledoc """
+  An aggregate (`aggregates do count name, path ... end`): a count an owner
+  decision derives (`derive_count`) from a list that is itself derived as
+  a `has_many` (`derive_reverse_relationship`), named like the attribute it
+  replaces.
+
+    * `name` - the aggregate name
+    * `kind` - `:count`
+    * `path` - relationship names from this resource to the counted
+      records (with `privacy: :unverified`, through the ungated
+      `*_for_privacy` twins)
+    * `public?` - as in Ash
+    * `authorize?` - false: the count stands for a stored copy, which the
+      counted records' visibility never hid; its own field policy guards it
+    * `source` - `%{type: _, field: _}`: the field it replaces
+    * `description` - the aggregate's description
+  """
+
+  @enforce_keys [:name, :path, :source]
+  defstruct [:name, :path, :source, :description, kind: :count, public?: true, authorize?: false]
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          kind: :count,
+          path: [String.t()],
+          public?: boolean(),
+          authorize?: boolean(),
+          source: map(),
+          description: String.t() | nil
+        }
+end
+
+defmodule BubbleEx.Target.Ash.Index do
+  @moduledoc """
+  A PostgreSQL index (`postgres do custom_indexes do index ... end`) for
+  the access patterns of an `add_indexes` decision.
+
+    * `name` - the index name (at most 63 bytes)
+    * `method` - `:btree` (equality, range and sort columns, in order),
+      `:trigram` (substring search: GIN with `gin_trgm_ops`, needs the
+      `pg_trgm` extension), `:full_text` (keyword search: GIN over
+      `expression`) or `:gin` (membership in a list: GIN over the array)
+    * `columns` - the column names it covers, in order
+    * `fields` - what `index` is given: column names, or for `:trigram` and
+      `:full_text` one SQL expression
+    * `using` - the access method (`"gin"`), nil for btree
+    * `expression` - for `:full_text`, the indexed expression
+      (`to_tsvector('simple'::regconfig, coalesce("col", ''))`): a search
+      uses the index only through this exact expression
+    * `source` - `%{type: _, key: decision key, index: position in the
+      proposal}` (positions served by the same index are all listed:
+      `index: [..]`)
+  """
+
+  @enforce_keys [:name, :method, :columns, :fields, :source]
+  defstruct [:name, :method, :columns, :fields, :using, :expression, :source]
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          method: :btree | :trigram | :full_text | :gin,
+          columns: [String.t()],
+          fields: [String.t()],
+          using: String.t() | nil,
+          expression: String.t() | nil,
+          source: map()
         }
 end
 
@@ -522,6 +623,9 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     * `data_api` - the Data API: `%{exposed: boolean | nil, create: checks,
       modify: checks, delete: checks}`. No API action is generated (the
       Data API is out of scope, WTF-359 Q6); data only
+    * `relationship_checks` - `%{relationship name => checks}`: who may
+      view the list a derived `has_many` replaces (a relationship has no
+      field policy; its `gate` follows these checks)
   """
 
   @enforce_keys [:source]
@@ -531,7 +635,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     denied_rules: [],
     attachments: [],
     file_fields: [],
-    data_api: %{exposed: nil, create: [], modify: [], delete: []}
+    data_api: %{exposed: nil, create: [], modify: [], delete: []},
+    relationship_checks: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -540,7 +645,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
           denied_rules: [String.t()],
           attachments: [BubbleEx.Target.Ash.PolicyCheck.t()],
           file_fields: [String.t()],
-          data_api: map()
+          data_api: map(),
+          relationship_checks: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]}
         }
 end
 
@@ -618,17 +724,23 @@ end
 
 defmodule BubbleEx.Target.Ash.Relationship do
   @moduledoc """
-  A relationship of a resource. Only `:belongs_to` is produced today.
+  A relationship of a resource: `:belongs_to` (a reference, or a text field
+  of IDs made a reference by `text_to_reference`) or `:has_many` (a list
+  derived from the other side's reference by `derive_reverse_relationship`,
+  named like the list attribute it replaces).
 
     * `name` - the relationship name; `destination` - relative module name
-    * `source_attribute` / `destination_attribute` - attribute names
-    * `attribute_type` - the source attribute's type
+    * `source_attribute` / `destination_attribute` - attribute names (a
+      `has_many` goes from this resource's primary key to the destination's
+      reference attribute)
+    * `attribute_type` - the source attribute's type (`belongs_to` only)
     * `define_attribute?` - false: the source attribute is listed among the
-      resource's attributes with its own constraints
+      resource's attributes with its own constraints (`belongs_to` only)
     * `allow_nil?`, `public?` - as in Ash
     * `db_reference` - `:ignore` (no database foreign key: AshPostgres
-      `references … ignore?: true`) or `:foreign_key`
-    * `source` - `%{type: _, field: _}` Bubble IDs
+      `references … ignore?: true`) or `:foreign_key` (`belongs_to` only)
+    * `source` - `%{type: _, field: _}` Bubble IDs (for a `has_many`, the
+      list field it replaces)
     * `sortable?` - false when privacy policies are generated (WTF-356):
       Ash applies field policies to a resource's own fields in `sort_input`
       but not to fields reached through a relationship, so sorting by
@@ -659,7 +771,7 @@ defmodule BubbleEx.Target.Ash.Relationship do
   ]
 
   @type t :: %__MODULE__{
-          kind: :belongs_to,
+          kind: :belongs_to | :has_many,
           name: String.t(),
           destination: String.t(),
           source_attribute: String.t(),
