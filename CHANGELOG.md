@@ -8,29 +8,38 @@ All notable changes to this project are documented here.
 
 - **Plugin inventory and replacement findings** (WTF-376, T10 of WTF-359).
   The index has a `:plugin` symbol (`plugin:<marketplace id>`, `installed`,
-  `version`) for every plugin installed in `settings.client_safe.plugins`
-  or named by an element, action or event type, and `:uses_plugin` edges
-  (`role`, `code`) from those elements, actions and workflows (index
-  `schema_version` 3; Bubble's own plugins such as `apiconnector2` are
-  not plugins). `BubbleEx.Plugins.Inventory.build(index)` lists each
-  plugin's members used (with counts), uses, element state reads,
-  surfaces and workflows. A new decision finding kind `:plugin` (one per
-  plugin, subject `%{plugin: id}`) proposes `replace_plugin` with
-  `options` among `drop`, `replace_native` (an equivalent from
-  `BubbleEx.Plugins.Catalog`, public marketplace plugins only) and
-  `rebuild`, and the suggested `option`; its basis is the plugin's
-  installed version, its proposal hash covers its uses. `Decision.Params`
-  whitelists `option` (one of the finding's `options`) for
-  `replace_plugin`; plugin findings cannot be rejected. `BubbleEx.Plan`
-  (`schema_version` 3) gates each plugin task on its decision: undecided
-  plugins get an owner `decision:plugin/<id>` task the plugin task depends
-  on; `drop` closes the plugin task and removes its elements (no residue),
-  actions and event workflows; the plugin decision is in the
-  `decisions_sha256` of every task covering a use. `coverage.units.plugins`
-  is now `%{tasks, undecided, dropped}`. `Target.Ash.map/3` skips plugin
-  decisions. Finding IDs and hashes of the other kinds are unchanged
-  (mm-137: 147). mm-137: 31 installed plugins, 2 more used but not
-  installed; 33 findings (15 `replace_native`, 15 `rebuild`, 3 `drop`).
+  `version`; `_current` / `_test` keys are the same plugin) for every
+  plugin installed in `settings.client_safe.plugins` or used, and
+  `:uses_plugin` edges (`role`, `code`) from its elements, actions, events
+  and from symbols naming one of its data types
+  (`api.<id>.plugin_api.<code>`); a new `:reads_step` edge records reads of
+  an earlier step's result (index `schema_version` 3; Bubble's own
+  plugins such as `apiconnector2` are not plugins).
+  `BubbleEx.Plugins.Inventory.build(index)` lists each plugin's members
+  and feature set, uses, state and step reads, surfaces and workflows. A
+  new decision finding kind `:plugin` (one per plugin, subject
+  `%{plugin: id}`) proposes `replace_plugin` with `options` among `drop`,
+  `replace_native` (only when `BubbleEx.Plugins.Catalog`, per feature and
+  for public marketplace plugins, has an equivalent for every feature
+  used; code-level equivalents are low confidence) and `rebuild`, and the
+  suggested `option`. Its proposal is the plugin and the set of features
+  used (uses are evidence facts, so a new use of a used feature does not
+  make a decision stale); its basis is the installed version.
+  `Decision.Params` whitelists `option` (one of the finding's `options`)
+  and, with `drop`, `delete_workflows` (among the finding's
+  `evidence.rewire`); plugin findings cannot be rejected or acknowledged.
+  `BubbleEx.Plan` (`schema_version` 3) gates each plugin task on its
+  decision (an owner `decision:plugin/<id>` task while undecided). `drop`
+  closes the plugin task (its subjects list what was removed), removes its
+  elements and actions and the workflows its events trigger that run
+  nothing else; workflows that run other actions keep them with
+  `:trigger_dropped` residue unless the decision deletes them, and every
+  read of a dropped element, action result or data type is
+  `:reads_dropped_plugin` residue. The plugin decision is in the
+  `decisions_sha256` of every task covering a use or read.
+  `coverage.units.plugins` is now `%{tasks, undecided, dropped}`.
+  `Target.Ash.map/3` skips plugin decisions. Finding IDs and hashes of the
+  other kinds are unchanged (mm-137: 147).
 
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
   verification proposal). `BubbleEx.Verify.Interpreter` evaluates

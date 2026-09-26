@@ -14,12 +14,14 @@ defmodule BubbleEx.Decision.Params do
   | `:normalize_list_to_join` | `keep_order` - boolean; `join_name` - snake_case name of the join |
   | `:text_to_reference` | `target_type` - the data type symbol (`"data_type:<key>"`) the IDs reference: one of the finding's `evidence.target_types`, only when the finding named none |
   | `:add_indexes` | `drop` - indexes (from 0) into `proposal.indexes` not to create |
-  | `:replace_plugin` | `option` - `:drop`, `:replace_native` or `:rebuild`: one of the finding's `proposal.options` |
+  | `:replace_plugin` | `option` - `:drop`, `:replace_native` or `:rebuild`: one of the finding's `proposal.options`; `delete_workflows` - with `drop` only: workflows the plugin's events trigger that run other actions too (`evidence.rewire`) to delete instead of re-triggering |
   | `:membership_policy`, `:derive_reverse_relationship` | none |
 
   A `:plugin` finding has no source-faithful mapping to fall back to (a
-  plugin's code is not part of the app), so it cannot be rejected: the
-  owner accepts the suggested option or picks another with `modify`.
+  plugin's code is not part of the app), so it cannot be rejected or
+  acknowledged: the owner accepts the suggested option or picks another
+  with `modify`, and a stale plugin decision is replaced by a new one (the
+  plan keeps the plugin blocked until then).
 
   `cast/3` checks shapes when a decision is decoded (it knows the finding's
   kind, not yet the finding); `check/2` checks them against the finding's
@@ -36,7 +38,7 @@ defmodule BubbleEx.Decision.Params do
     normalize_list_to_join: [:keep_order, :join_name],
     text_to_reference: [:target_type],
     add_indexes: [:drop],
-    replace_plugin: [:option],
+    replace_plugin: [:option, :delete_workflows],
     membership_policy: [],
     derive_reverse_relationship: []
   }
@@ -63,10 +65,10 @@ defmodule BubbleEx.Decision.Params do
   allowed by one of the kind's transforms and of the right shape.
   """
   @spec cast(atom(), atom(), map()) :: {:ok, t()} | {:error, Error.t()}
-  def cast(kind, :reject, _params) when kind in @no_reject,
+  def cast(kind, choice, _params) when kind in @no_reject and choice in [:reject, :acknowledge],
     do:
       error(
-        "#{kind} findings cannot be rejected: accept the suggested option or modify it",
+        "#{kind} findings cannot be #{past(choice)}: accept the suggested option or modify it",
         %{kind: kind}
       )
 
@@ -93,6 +95,9 @@ defmodule BubbleEx.Decision.Params do
   end
 
   def cast(_kind, _choice, params), do: error("params must be an object", %{params: params})
+
+  defp past(:reject), do: "rejected"
+  defp past(:acknowledge), do: "acknowledged"
 
   defp kind_params(kind) do
     {:ok, %{transforms: transforms}} = Kinds.fetch(kind)
@@ -135,6 +140,12 @@ defmodule BubbleEx.Decision.Params do
     end
   end
 
+  defp value(:delete_workflows, [_ | _] = list) do
+    if Enum.all?(list, &(is_binary(&1) and &1 =~ ~r/\Aworkflow:\S+\z/)),
+      do: {:ok, list |> Enum.uniq() |> Enum.sort()},
+      else: bad(:delete_workflows, list)
+  end
+
   defp value(:keep_order, bool) when is_boolean(bool), do: {:ok, bool}
 
   defp value(:join_name, name) when is_binary(name) do
@@ -160,7 +171,8 @@ defmodule BubbleEx.Decision.Params do
   `evidence`: every parameter is allowed by its transform and points into
   it (an existing alternative or index; a `target_type` only where the
   finding named none, and one of its `evidence.target_types`; an `option`
-  among the finding's `options`).
+  among the finding's `options`; `delete_workflows` among its
+  `evidence.rewire`, with `drop`).
   """
   @spec check(map(), t(), map()) :: :ok | {:error, Error.t()}
   def check(%{transform: transform} = proposal, params, evidence \\ %{}) when is_map(params) do
@@ -168,12 +180,22 @@ defmodule BubbleEx.Decision.Params do
 
     case Enum.reject(Map.keys(params), &(&1 in allowed)) do
       [] ->
-        Enum.find_value(params, :ok, &error_or_nil(fits(proposal, evidence, &1)))
+        with :ok <- combined(proposal, params),
+             do: Enum.find_value(params, :ok, &error_or_nil(fits(proposal, evidence, &1)))
 
       extra ->
         error("parameters not allowed for #{transform}", %{params: extra, allowed: allowed})
     end
   end
+
+  # Parameters that only make sense together.
+  defp combined(proposal, %{delete_workflows: _} = params) do
+    if Map.get(params, :option, proposal[:option]) == :drop,
+      do: :ok,
+      else: error("delete_workflows goes with option drop", %{})
+  end
+
+  defp combined(_proposal, _params), do: :ok
 
   defp error_or_nil(:ok), do: nil
   defp error_or_nil(error), do: error
@@ -214,6 +236,21 @@ defmodule BubbleEx.Decision.Params do
       do: :ok,
       else:
         error("the finding does not offer option #{option}", %{option: option, allowed: options})
+  end
+
+  defp fits(_proposal, evidence, {:delete_workflows, workflows}) do
+    case workflows -- Map.get(evidence, :rewire, []) do
+      [] ->
+        :ok
+
+      other ->
+        error(
+          "only workflows the plugin's events trigger that run other actions can be deleted",
+          %{
+            workflows: other
+          }
+        )
+    end
   end
 
   defp fits(_proposal, _evidence, _param), do: :ok

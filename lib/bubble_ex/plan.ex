@@ -51,20 +51,29 @@ defmodule BubbleEx.Plan do
   (`BubbleEx.Decision`, `replace_plugin` with the chosen `option`); nothing
   is guessed while it is undecided:
 
-    * undecided (no applicable decision: none recorded, or stale) - the
-      plugin task depends on a `decision:plugin/<id>` task for the owner,
-      so the plugin and every surface, fragment and workflow using it wait
-      for the decision
+    * undecided (no applicable decision: none recorded, or stale; plugin
+      findings cannot be rejected or acknowledged) - the plugin task
+      depends on a `decision:plugin/<id>` task for the owner, so the plugin
+      and every surface, fragment and workflow using it wait for the
+      decision
     * `replace_native` or `rebuild` - the plugin task is open (its
       criteria cite the decision) and its users wait for it
-    * `drop` - the plugin and its uses go: its elements are no residue
-      (they render nothing), its actions are dropped like `remove_calls`,
-      the workflows its events trigger are removed like `delete_workflows`,
-      and its styles are no residue. The plugin task is closed by the
-      decision (`closed_by`, actor `generator`) and nothing depends on it
+    * `drop` - the plugin goes, not the logic around it: its elements are
+      no residue (they render nothing) and its actions are dropped like
+      `remove_calls`. A workflow one of its events triggers is removed only
+      when the plugin's actions are all it runs, or when the decision lists
+      it in `delete_workflows`; otherwise it keeps its body with
+      `:trigger_dropped` residue (an agent gives it a new trigger). Every
+      symbol reading a dropped element's states, a dropped action's result
+      (`Result of step N`) or naming a dropped plugin data type gets
+      `:reads_dropped_plugin` residue, so its task stays open. The plugin
+      task is closed by the decision (`closed_by`, actor `generator`), its
+      subjects list everything the drop removed, and tasks that lost a use
+      or must rewrite one have a `:decision` edge to it; no `:plugin` edge
+      remains
 
   A plugin decision is part of the `decisions` and `decisions_sha256` of
-  every task covering the plugin or one of its uses, so deciding (or
+  every task covering the plugin, one of its uses or a read of one, so deciding (or
   changing the decision) changes those tasks' `source_sha256`.
 
   A workflow that calls itself stays in its owner's task. Workflows removed
@@ -84,7 +93,8 @@ defmodule BubbleEx.Plan do
       and `styles:residue`
     * `:secrets` - an API group with a private value on `setup:secrets`
     * `:decision` - a workflow on the decision node removing its actions;
-      a plugin task on its plugin's `decision:plugin/<id>` task
+      a plugin task on its plugin's `decision:plugin/<id>` task; a task that
+      lost a use to a plugin `drop` on the closed plugin task
     * `:reusable` - a host surface (or fragment) on the surface and
       acceptance of every reusable it instances
     * `:fragment` - a surface on its fragments

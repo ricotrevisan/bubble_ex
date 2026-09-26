@@ -97,7 +97,8 @@ defmodule BubbleEx.Index do
   | `:listens_to`     | workflow                      | element / page / reusable / data type (database trigger) | |
   | `:targets_element`| action                        | element / page / reusable  | |
   | `:instance_of`    | element                       | reusable element           | |
-  | `:uses_plugin`    | element / action / workflow of a plugin type | plugin      | `role`: `:element`, `:action`, `:event`; `code`: the plugin's member code |
+  | `:reads_step`     | any expression host           | action whose result it reads (`Result of step N`) | |
+  | `:uses_plugin`    | element / action / workflow of a plugin type; any symbol whose JSON names a plugin data type (`api.<plugin id>.plugin_api.<code>`) | plugin | `role`: `:element`, `:action`, `:event`, `:data_type`; `code`: the plugin's member code |
 
   Expression hosts are pages, reusables, elements, workflows (their event and
   conditions), actions and privacy rules (their conditions).
@@ -246,18 +247,27 @@ defmodule BubbleEx.Index do
       host_refs = Enum.flat_map(structure.hosts, &Reads.scan(&1.value, &1.path, &1.symbol, ctx))
       {wf_symbols, wf_refs, wf_diags} = BubbleEx.Index.Workflows.build(inventory, ctx)
       {rule_symbols, rule_refs} = PrivacyRules.build(model, ctx)
-      {plugin_symbols, plugin_refs} = Plugins.build(app, structure.symbols ++ wf_symbols)
+      symbols = model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols
+      {plugin_symbols, plugin_refs} = Plugins.build(app, symbols)
 
       index =
         assemble(
           inventory.source_sha256,
-          model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols ++ plugin_symbols,
-          model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs ++ plugin_refs,
+          symbols ++ plugin_symbols,
+          (model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs ++ plugin_refs)
+          |> known_steps(symbols),
           structure.diagnostics ++ wf_diags
         )
 
       {:ok, %{index | model: model}}
     end
+  end
+
+  # A step result read is recorded only when the step is indexed (an
+  # expression may name an action ID from another workflow or a deleted one).
+  defp known_steps(refs, symbols) do
+    actions = for %{kind: :action, id: id} <- symbols, into: MapSet.new(), do: id
+    Enum.filter(refs, &(&1.kind != :reads_step or MapSet.member?(actions, &1.to)))
   end
 
   # Fields of data types that are not deleted, excluding deleted fields.

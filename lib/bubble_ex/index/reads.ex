@@ -12,6 +12,7 @@ defmodule BubbleEx.Index.Reads do
   #   * option value / all options         -> :reads_option
   #   * `GetDataFromAPI` data source       -> :calls_api (via :data_source)
   #   * an element's value (`GetElement`)  -> :reads_element
+  #   * an earlier step's result            -> :reads_step
   #
   # Expressions kept verbatim by the parser (scope references, raw
   # operators and sources) are scanned again for nested expressions.
@@ -170,6 +171,10 @@ defmodule BubbleEx.Index.Reads do
     to = Map.get(Map.get(ctx, :bubble_ids, %{}), element, Symbol.id(:element, element))
     nested(ref, [{:reads_element, to, %{}} | acc], ctx)
   end
+
+  defp walk(%Ast.Scope{kind: :previous_step, ref: %{"action_id" => action} = ref}, acc, ctx)
+       when is_binary(action) and action != "",
+       do: nested(ref, [{:reads_step, Symbol.id(:action, action), %{}} | acc], ctx)
 
   defp walk(%Ast.Scope{ref: ref}, acc, ctx), do: nested(ref, acc, ctx)
 

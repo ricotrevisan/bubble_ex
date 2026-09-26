@@ -380,15 +380,58 @@ defmodule BubbleEx.PlanTest do
 
   describe "plugins" do
     # The plugin (not installed, no known equivalent) has an element on the
-    # home page and an action in wPlug; wPlugEvent (added here) runs on one
-    # of its events.
+    # home page and an action in wPlug. Added here: in wPlug a step reading
+    # the plugin action's result; a text reading the plugin element's
+    # state; wPlugEvent, run by one of its events, with another action; and
+    # wPlugOnly, run by another event, with only a plugin action.
     setup ctx do
+      page = ["pages", "pgHome"]
+
       app =
-        put_in(@app, ["pages", "pgHome", "workflows", "wfPlugEvent"], %{
+        @app
+        |> put_in(page ++ ["workflows", "wfPlugEvent"], %{
           "id" => "wPlugEvent",
           "type" => @plugin <> "-AAC",
           "properties" => %{"element_id" => "ePlug"},
           "actions" => %{"0" => %{"id" => "aAfterEvent", "type" => "RefreshPage"}}
+        })
+        |> put_in(page ++ ["workflows", "wfPlugOnly"], %{
+          "id" => "wPlugOnly",
+          "type" => @plugin <> "-AAD",
+          "properties" => %{"element_id" => "ePlug"},
+          "actions" => %{"0" => %{"id" => "aPlugOnly", "type" => @plugin <> "-AAB"}}
+        })
+        |> put_in(page ++ ["workflows", "wfPlug", "actions", "1"], %{
+          "id" => "aUseResult",
+          "type" => "ChangePage",
+          "properties" => %{
+            "parameters" => %{
+              "0" => %{
+                "key" => "q",
+                "value" => %{
+                  "type" => "PreviousStep",
+                  "properties" => %{"action_id" => "aPlug"},
+                  "next" => %{"type" => "Message", "name" => "result"}
+                }
+              }
+            }
+          }
+        })
+        |> put_in(page ++ ["elements", "reader"], %{
+          "id" => "eReader",
+          "type" => "Text",
+          "properties" => %{
+            "text" => %{
+              "type" => "TextExpression",
+              "entries" => %{
+                "0" => %{
+                  "type" => "GetElement",
+                  "properties" => %{"element_id" => "ePlug"},
+                  "next" => %{"type" => "Message", "name" => "value"}
+                }
+              }
+            }
+          }
         })
 
       {:ok, model} = Model.build(app)
@@ -461,25 +504,54 @@ defmodule BubbleEx.PlanTest do
       assert untouched.source_sha256 == task!(ctx.undecided, "workflow:wClick").source_sha256
     end
 
-    test "a decided drop removes the plugin, its uses and the dependency", ctx do
+    test "a decided drop removes the plugin's elements and actions, not other logic", ctx do
+      assert ctx.finding.evidence.rewire == ["workflow:wPlugEvent"]
+      assert ctx.finding.evidence.event_only == ["workflow:wPlugOnly"]
       {plan, key} = ctx.decide.(:modify, %{"option" => "drop"})
 
       assert %Task{kind: :plugin, status: :closed, actor: :generator, closed_by: ^key} =
                plugin = task!(plan, "plugin:" <> @plugin)
 
+      # The closed task lists everything the drop removed.
+      assert plugin.subjects ==
+               Enum.sort([
+                 "plugin:" <> @plugin,
+                 "element:ePlug",
+                 "action:aPlug",
+                 "action:aPlugOnly",
+                 "workflow:wPlugOnly"
+               ])
+
       assert [%{check: :decision_recorded, args: %{key: ^key}}] = plugin.criteria
       refute Plan.task(plan, "decision:plugin/" <> @plugin)
       refute Enum.any?(plan.tasks, fn t -> Enum.any?(t.depends_on, &(&1.kind == :plugin)) end)
+      refute Plan.task(plan, "delete_workflows:" <> ctx.finding.id)
 
-      # Its element renders nothing, its action is skipped and the workflow
-      # its event triggers never runs.
+      # Its element renders nothing; the text reading it must be rewritten.
       home = task!(plan, "surface:page/pHome")
       refute Enum.any?(home.residue, &(&1.subject == "element:ePlug"))
+
+      assert %{reason: :reads_dropped_plugin, detail: %{reads: "element:ePlug"}} =
+               Enum.find(home.residue, &(&1.subject == "element:eReader"))
+
       assert key in home.decisions
-      assert %Task{residue: [], status: :auto} = wplug = task!(plan, "workflow:wPlug")
-      assert Enum.find(wplug.criteria, &(&1.check == :step_order)).args.steps == []
-      refute Plan.task(plan, "workflow:wPlugEvent")
-      assert Plan.task(ctx.undecided, "workflow:wPlugEvent")
+      assert {"plugin:" <> @plugin, :decision} in deps(home)
+
+      # Its action is skipped; the step reading its result must be rewritten.
+      wplug = task!(plan, "workflow:wPlug")
+      assert %Task{status: :open} = wplug
+      assert Enum.find(wplug.criteria, &(&1.check == :step_order)).args.steps == ["ChangePage"]
+
+      assert [%{subject: "action:aUseResult", reason: :reads_dropped_plugin}] = wplug.residue
+
+      # A workflow its event triggered keeps its other actions and needs a
+      # new trigger; one that only ran the plugin goes.
+      assert %Task{status: :open, residue: [%{reason: :trigger_dropped}]} =
+               task!(plan, "workflow:wPlugEvent")
+
+      assert {"plugin:" <> @plugin, :decision} in deps(task!(plan, "workflow:wPlugEvent"))
+      refute Plan.task(plan, "workflow:wPlugOnly")
+      assert Plan.task(ctx.undecided, "workflow:wPlugOnly")
 
       assert plan.coverage["units"]["plugins"] == %{
                "tasks" => 0,
@@ -488,6 +560,15 @@ defmodule BubbleEx.PlanTest do
              }
 
       assert plan.coverage["units"]["workflows_removed"] == 1
+    end
+
+    test "a drop deletes a re-triggered workflow only when the decision says so", ctx do
+      {plan, _key} =
+        ctx.decide.(:modify, %{"option" => "drop", "delete_workflows" => ["workflow:wPlugEvent"]})
+
+      refute Plan.task(plan, "workflow:wPlugEvent")
+      assert "workflow:wPlugEvent" in task!(plan, "plugin:" <> @plugin).subjects
+      assert plan.coverage["units"]["workflows_removed"] == 2
     end
 
     test "a plugin decision cannot be a reject", ctx do

@@ -13,17 +13,23 @@ defmodule BubbleEx.Plugins.Inventory do
     * `installed`, `version` - from the app's plugin settings
     * `name` - the public marketplace name when `BubbleEx.Plugins.Catalog`
       lists the plugin, else nil (the app JSON does not name plugins)
-    * `members` - the plugin's element, action and event types the app
-      uses: `%{role, code, count}` (`role` is `:element`, `:action` or
-      `:event`), sorted by role and code
+    * `members` - the plugin's element, action and event types and data
+      types the app uses: `%{role, code, count}` (`role` is `:element`,
+      `:action`, `:event` or `:data_type`), sorted by role and code
+    * `features` - the set of features used, `%{role, code}`: the members'
+      plus `%{role: :state, code: element code}` for element types whose
+      value or states are read (no counts: what a decision is about)
     * `elements`, `actions`, `events` - symbol IDs of the plugin's elements,
-      actions and the workflows its events trigger
+      actions and the workflows its events trigger; `data_types` - symbols
+      whose JSON names one of the plugin's data types
+      (`api.<plugin id>.plugin_api.<code>`)
     * `state_reads` - `:reads_element` references reading a plugin
-      element's value or states
+      element's value or states; `step_reads` - `:reads_step` references
+      reading a plugin action's result
     * `surfaces` - pages and reusables holding a use (an element, a
       workflow or an expression reading a plugin element), `workflows` - the
       workflows holding one
-    * `references` - the `:uses_plugin` and state-read references
+    * `references` - the `:uses_plugin`, state-read and step-read references
     * `counts` - how many of each
 
   IDs only: no display names beyond the public catalog name.
@@ -33,7 +39,9 @@ defmodule BubbleEx.Plugins.Inventory do
   alias BubbleEx.Index.Reference
   alias BubbleEx.Plugins.Catalog
 
-  @type member :: %{role: :element | :action | :event, code: String.t(), count: pos_integer()}
+  @type role :: :element | :action | :event | :data_type
+  @type member :: %{role: role(), code: String.t(), count: pos_integer()}
+  @type feature :: %{role: role() | :state, code: String.t()}
 
   @type entry :: %{
           plugin: String.t(),
@@ -42,17 +50,20 @@ defmodule BubbleEx.Plugins.Inventory do
           version: String.t() | nil,
           name: String.t() | nil,
           members: [member()],
+          features: [feature()],
           elements: [String.t()],
           actions: [String.t()],
           events: [String.t()],
+          data_types: [String.t()],
           state_reads: [Reference.t()],
+          step_reads: [Reference.t()],
           surfaces: [String.t()],
           workflows: [String.t()],
           references: [Reference.t()],
           counts: %{atom() => non_neg_integer()}
         }
 
-  @role_order %{element: 0, action: 1, event: 2}
+  @role_order %{element: 0, action: 1, event: 2, state: 3, data_type: 4}
 
   @doc "The plugin inventory of `index`."
   @spec build(Index.t()) :: [entry()]
@@ -82,7 +93,15 @@ defmodule BubbleEx.Plugins.Inventory do
       |> Enum.uniq()
       |> Enum.sort_by(&Reference.sort_key/1)
 
-    users = Enum.map(uses, & &1.from) ++ Enum.map(state_reads, & &1.from)
+    actions = sorted(Map.get(by_role, :action, []))
+
+    step_reads =
+      actions
+      |> Enum.flat_map(&Index.references_to(index, &1, [:reads_step]))
+      |> Enum.uniq()
+      |> Enum.sort_by(&Reference.sort_key/1)
+
+    users = Enum.map(uses, & &1.from) ++ Enum.map(state_reads ++ step_reads, & &1.from)
 
     entry = %{
       plugin: symbol.id,
@@ -91,20 +110,25 @@ defmodule BubbleEx.Plugins.Inventory do
       version: symbol.attrs[:version],
       name: name(symbol.bubble_id),
       members: members(uses),
+      features: features(uses, state_reads),
       elements: elements,
-      actions: sorted(Map.get(by_role, :action, [])),
+      actions: actions,
       events: sorted(Map.get(by_role, :event, [])),
+      data_types: sorted(Map.get(by_role, :data_type, [])),
       state_reads: state_reads,
+      step_reads: step_reads,
       surfaces: users |> Enum.map(&surface(index, &1)) |> Enum.reject(&is_nil/1) |> sorted(),
       workflows: users |> Enum.map(&workflow(index, &1)) |> Enum.reject(&is_nil/1) |> sorted(),
-      references: Enum.sort_by(uses ++ state_reads, &Reference.sort_key/1)
+      references: Enum.sort_by(uses ++ state_reads ++ step_reads, &Reference.sort_key/1)
     }
 
     Map.put(entry, :counts, %{
       elements: length(entry.elements),
       actions: length(entry.actions),
       events: length(entry.events),
+      data_types: length(entry.data_types),
       state_reads: length(state_reads),
+      step_reads: length(step_reads),
       surfaces: length(entry.surfaces),
       workflows: length(entry.workflows)
     })
@@ -119,6 +143,19 @@ defmodule BubbleEx.Plugins.Inventory do
       {:ok, %{name: name}} -> name
       :error -> nil
     end
+  end
+
+  # The set of plugin features the app uses: `%{role, code}` of every
+  # member used, plus `%{role: :state, code: <element code>}` for element
+  # types whose value or states are read.
+  defp features(uses, state_reads) do
+    code_of = for %{attrs: %{role: :element, code: c}, from: e} <- uses, into: %{}, do: {e, c}
+
+    states = for r <- state_reads, c = code_of[r.to], uniq: true, do: %{role: :state, code: c}
+
+    (Enum.map(uses, &%{role: &1.attrs.role, code: &1.attrs.code}) ++ states)
+    |> Enum.uniq()
+    |> Enum.sort_by(&{@role_order[&1.role], &1.code})
   end
 
   defp members(uses) do

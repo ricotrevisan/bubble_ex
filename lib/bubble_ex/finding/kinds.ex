@@ -66,11 +66,14 @@ defmodule BubbleEx.Finding.Kinds do
     * `:add_indexes` - index the listed access patterns
     * `:refine_number_type` - store a number as an integer
     * `:replace_plugin` - carry out `proposal.option` for a plugin, one of
-      `proposal.options`: `:drop` (remove the plugin and every use of it:
-      its elements render nothing, its actions are skipped, workflows its
-      events trigger never run), `:replace_native` (its uses become
-      `proposal.equivalent`, see `BubbleEx.Plugins.Catalog`) or `:rebuild`
-      (an agent rebuilds what the app uses of it)
+      `proposal.options`: `:drop` (its elements render nothing and its
+      actions are skipped; workflows its events trigger go when they run
+      nothing else, otherwise they keep their body and need a new trigger
+      unless listed in `delete_workflows`; reads of its elements, results
+      and data types need rewriting), `:replace_native` (each feature in
+      `proposal.features` becomes its `equivalent`, see
+      `BubbleEx.Plugins.Catalog`) or `:rebuild` (an agent rebuilds what the
+      app uses of it)
   """
 
   @type category :: :decision | :hint

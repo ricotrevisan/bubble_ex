@@ -8,7 +8,8 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
   # with a committed snapshot, by default the mm-137 test version's: how
   # many plugins are installed and used, how uses spread over plugins, the
   # findings per suggested option and confidence, and the plan's plugin
-  # units with every plugin undecided and with every suggestion accepted.
+  # units with every plugin undecided, with every suggestion accepted and
+  # with every plugin dropped.
   # A changed count means updating the snapshot, with the reason in the PR:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
@@ -47,7 +48,8 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
       "findings" => finding_counts(plugins),
       "plan" => %{
         "undecided" => plan_units(ctx, []),
-        "suggestions_accepted" => plan_units(ctx, accept_all(ctx, plugins))
+        "suggestions_accepted" => plan_units(ctx, decide_all(ctx, plugins, :accept, %{})),
+        "all_dropped" => plan_units(ctx, decide_all(ctx, plugins, :modify, %{"option" => "drop"}))
       }
     }
 
@@ -91,8 +93,9 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
       "used_not_installed" => Enum.count(used, &(not &1.installed)),
       "in_catalog" => Enum.count(inventory, &(&1.name != nil)),
       "members_used" => inventory |> Enum.map(&length(&1.members)) |> Enum.sum(),
+      "features_used" => inventory |> Enum.map(&length(&1.features)) |> Enum.sum(),
       "uses" =>
-        Map.new(~w(elements actions events state_reads)a, fn k ->
+        Map.new(~w(elements actions events data_types state_reads step_reads)a, fn k ->
           {Atom.to_string(k), inventory |> Enum.map(& &1.counts[k]) |> Enum.sum()}
         end),
       # Uses per plugin, bucketed (no plugin is named).
@@ -114,14 +117,17 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
       "total" => length(plugins),
       "suggested" => Enum.frequencies_by(plugins, &Atom.to_string(&1.proposal.option)),
       "confidence" => Enum.frequencies_by(plugins, &Atom.to_string(&1.confidence)),
-      "offering_replace_native" => Enum.count(plugins, &(:replace_native in &1.proposal.options))
+      "offering_replace_native" => Enum.count(plugins, &(:replace_native in &1.proposal.options)),
+      "workflows_to_rewire_on_drop" =>
+        plugins |> Enum.map(&length(&1.evidence.rewire)) |> Enum.sum(),
+      "workflows_event_only" => plugins |> Enum.map(&length(&1.evidence.event_only)) |> Enum.sum()
     }
   end
 
-  defp accept_all(ctx, plugins) do
+  defp decide_all(ctx, plugins, choice, params) do
     records =
-      for f <- plugins do
-        {:ok, record} = Decision.for_finding(f, :accept)
+      for f <- plugins, choice == :accept or f.proposal.option != :drop do
+        {:ok, record} = Decision.for_finding(f, choice, params)
         record
       end
 
@@ -140,7 +146,12 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
       "top_level" => plan.coverage["top_level"],
       "decision_edges" =>
         Enum.count(for t <- plan.tasks, %{kind: :decision} <- t.depends_on, do: t),
-      "plugin_edges" => Enum.count(for t <- plan.tasks, %{kind: :plugin} <- t.depends_on, do: t)
+      "plugin_edges" => Enum.count(for t <- plan.tasks, %{kind: :plugin} <- t.depends_on, do: t),
+      "workflows_removed" => plan.coverage["units"]["workflows_removed"],
+      "actions_removed" => plan.coverage["units"]["actions"]["removed"],
+      "residue" =>
+        Map.take(plan.coverage["residue"], ~w(trigger_dropped reads_dropped_plugin plugin_element
+                                             plugin_action plugin_event))
     }
   end
 end
