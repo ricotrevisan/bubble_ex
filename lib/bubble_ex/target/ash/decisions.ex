@@ -826,9 +826,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
     entry = get_in(names, ["resources", t]) || %{}
 
     with {:ok, field} <- live(ctx.fields, {t, f}),
-         true <-
-           (Map.has_key?(ctx.derive, {t, f}) or Map.has_key?(ctx.count, {t, f})) ||
-             {:error, "a calculation rename needs a field derived by a decision in this set", %{}},
+         :ok <- derived_here(ctx, {t, f}),
          :ok <- snake_name(name, :attribute),
          :ok <- free_in_resource(entry, {"attributes", f}, name) do
       entry = put_member(entry, "attributes", f, name)
@@ -892,6 +890,12 @@ defmodule BubbleEx.Target.Ash.Decisions do
                "made one by a decision in this set)", %{}}
         end
     end
+  end
+
+  defp derived_here(ctx, key) do
+    if Map.has_key?(ctx.derive, key) or Map.has_key?(ctx.count, key),
+      do: :ok,
+      else: {:error, "a calculation rename needs a field derived by a decision in this set", %{}}
   end
 
   defp module_name(name) do
