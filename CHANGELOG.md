@@ -6,6 +6,39 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Data and file loader** (WTF-357). `BubbleEx.Load` loads a Bubble
+  export into a migrated target: `dry_run/4` reports per-type counts,
+  schema mismatches, dangling references per field, type mismatches and
+  drift of derived fields without writing anything; `run/4` copies files
+  and upserts rows in batches, idempotently (a rerun changes nothing; a
+  new export is a delta sync) and resumably (a ledger per export, plan and
+  target). Stack-neutral: the target adapter gives a `Load.Plan` (Bubble
+  IDs, tables, columns, encodings, derivations) through the
+  `Load.Target` behaviour; `BubbleEx.Target.Ash.Loader` is the
+  Ash/PostgreSQL adapter (schema check against `information_schema`, one
+  `jsonb_populate_recordset` upsert per batch through the app's
+  `Repo.query/2`). Semantics: the Bubble `_id` is the primary key (format
+  checked); lists load as arrays; references keep dangling IDs (WTF-338),
+  counted per field; `text_to_reference` values are trimmed and checked;
+  `derive_count` lists lose IDs of deleted records; derived fields
+  (`derive_*`, `has_many`) are not loaded and their drift is reported;
+  users load without password material, with their trimmed email
+  (duplicate emails block the run) and their email-confirmed status
+  reported, as the project has no column for it; file and image fields
+  get the target storage's references after a copy verified by SHA-256
+  (`Load.Storage`, `Storage.Local`), private (`/fileupload/`) files stay
+  private, failures keep the Bubble URL. Everything that does not fit is
+  a diagnostic of the new `:load` stage (counts and sample record IDs,
+  never stored values). `Load.DataApi` makes the export read-only from
+  the Data API (GET only; the admin token from an option or the
+  environment, sent only to the app's host and redacted; resumable
+  cursor paging; files fetched with checksums). Tested offline with
+  fixtures and a fake Data API; `scripts/ash_compile_check.sh` loads the
+  fixtures into PostgreSQL (dry run, interrupted and resumed run, rerun,
+  delta sync), reads them back through Ash, and checks the plan's column
+  types against every fixture database. `postgrex` is a test-only
+  dependency.
+
 - **Task CLI and verifier runner for the Phoenix target** (WTF-375, T9 of
   WTF-359). `mix wtf.task` works `.wtf/plan.json` in the owner's
   repository: `next` (ready top-level tasks in plan order, skipping claimed,
