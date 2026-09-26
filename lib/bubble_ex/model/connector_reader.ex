@@ -231,7 +231,5 @@ defmodule BubbleEx.Model.ConnectorReader do
     end
   end
 
-  defp first_text(_, _), do: nil
-
   defp pointer(path), do: Diagnostic.pointer(path)
 end

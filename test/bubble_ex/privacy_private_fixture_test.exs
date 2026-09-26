@@ -11,7 +11,7 @@ defmodule BubbleEx.PrivacyPrivateFixtureTest do
   use ExUnit.Case, async: true
 
   alias BubbleEx.{CanonicalJson, Expression, Privacy}
-  alias BubbleEx.Expression.{Ast, Schema}
+  alias BubbleEx.Expression.Ast
 
   @moduletag :private_fixture
   @moduletag timeout: :infinity

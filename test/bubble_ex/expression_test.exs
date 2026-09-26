@@ -2,7 +2,6 @@ defmodule BubbleEx.ExpressionTest do
   use ExUnit.Case, async: true
 
   alias BubbleEx.{CanonicalJson, Diagnostic, Error, Expression}
-  alias BubbleEx.Expression.Schema
 
   alias BubbleEx.Expression.Ast.{
     AllOptions,

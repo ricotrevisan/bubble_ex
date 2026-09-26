@@ -114,7 +114,6 @@ defmodule BubbleEx.Frontend.SafeUrl do
   def userinfo?(url) do
     case URI.parse(url) do
       %URI{userinfo: userinfo} -> not is_nil(userinfo)
-      _ -> false
     end
   rescue
     _ -> false

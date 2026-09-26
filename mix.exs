@@ -42,7 +42,7 @@ defmodule BubbleEx.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo",
-        "test"
+        "test --warnings-as-errors"
       ]
     ]
   end

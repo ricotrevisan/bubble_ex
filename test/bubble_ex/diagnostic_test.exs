@@ -59,7 +59,7 @@ defmodule BubbleEx.DiagnosticTest do
         assert entry.severity in [:error, :warning, :info]
         assert entry.outcome in [:preserved, :degraded, :unresolved]
         assert entry.stage in [:read, :parse, :model, :target]
-        assert is_binary(entry.doc) and entry.doc != ""
+        assert match?(<<_, _::binary>>, entry.doc)
       end
     end
 

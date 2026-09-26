@@ -22,8 +22,22 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
   defp check_golden(path, actual) do
     if System.get_env("BUBBLE_EX_UPDATE_GOLDEN"), do: File.write!(path, actual)
     assert File.exists?(path), "missing golden #{path}; set BUBBLE_EX_UPDATE_GOLDEN=1"
-    assert actual == File.read!(path)
+    expected = File.read!(path)
+    assert actual == expected or same_layout_modulo_formatter?(path, actual, expected)
   end
+
+  # Source.render/2 formats with the running Elixir's formatter, whose line
+  # breaking differs across versions (Elixir 1.20 wraps a 99-column
+  # `field_policy [...] do` line that 1.18 keeps). Goldens are written with
+  # the project's pinned Elixir (.tool-versions); on other versions a source
+  # golden matches when both sides format to the same text.
+  defp same_layout_modulo_formatter?(path, actual, expected) do
+    String.ends_with?(path, ".ex.txt") and
+      Version.compare(System.version(), "1.19.0") != :lt and
+      reformat(actual) == reformat(expected)
+  end
+
+  defp reformat(source), do: source |> Code.format_string!() |> IO.iodata_to_binary()
 
   defp golden_json(project),
     do: project |> Project.to_map() |> CanonicalJson.ordered() |> Jason.encode!(pretty: true)

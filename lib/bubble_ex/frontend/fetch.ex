@@ -166,8 +166,6 @@ defmodule BubbleEx.Frontend.Fetch do
     Enum.any?(page_refs(key, page), &(&1 in refs))
   end
 
-  defp selected_page?(_key, _page, _selected), do: false
-
   defp page_refs(key, page) do
     path = Payload.page_path(page)
     normalized_name = Payload.name(page)

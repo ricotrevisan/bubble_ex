@@ -52,7 +52,9 @@ defmodule BubbleEx.FindingTest do
         finding(:number_type, %{type: "task", page: "p1"})
       end
 
-      assert_raise ArgumentError, ~r/needs a subject/, fn -> finding(:number_type, %{}) end
+      assert_raise ArgumentError, ~r/needs a subject/, fn ->
+        finding(:number_type, Map.new([]))
+      end
 
       assert_raise ArgumentError, ~r/invalid confidence/, fn ->
         finding(:number_type, %{type: "task"}, confidence: :certain)
