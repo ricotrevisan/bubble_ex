@@ -64,6 +64,7 @@ defmodule BubbleEx.DecisionTest do
             choice: :accept,
             params: %{
               scope: "scenario:create_project",
+              checks: ["api_workflow"],
               bubble_behavior: "keeps a trailing space",
               chosen_behavior: "trims the title"
             }
@@ -279,9 +280,41 @@ defmodule BubbleEx.DecisionTest do
                  kind: :parity_exception,
                  subject: %{type: "project"},
                  choice: :accept,
-                 params: %{scope: "s"}
+                 params: %{scope: "s", checks: ["dom_text"]}
                )
              ) =~ "bubble_behavior"
+
+      for checks <- [nil, [], ["vibes"], ["dom_text", "dom_text"], "dom_text"] do
+        assert invalid(
+                 Decision.new(
+                   kind: :parity_exception,
+                   subject: %{type: "project"},
+                   choice: :accept,
+                   params: %{
+                     scope: "s",
+                     checks: checks,
+                     bubble_behavior: "a",
+                     chosen_behavior: "b"
+                   }
+                 )
+               ) =~ "checks"
+      end
+
+      {:ok, d} =
+        Decision.new(
+          kind: :parity_exception,
+          subject: %{type: "project"},
+          choice: :accept,
+          params: %{
+            scope: "s",
+            checks: ["journey", "dom_text"],
+            bubble_behavior: "a",
+            chosen_behavior: "b"
+          }
+        )
+
+      assert d.params.checks == ["dom_text", "journey"]
+      assert {:ok, ^d} = d |> Decision.to_json() |> Decision.from_json()
     end
   end
 

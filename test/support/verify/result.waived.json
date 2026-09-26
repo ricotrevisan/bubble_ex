@@ -1,0 +1,60 @@
+{
+  "actor": "ci",
+  "app": "acme-replay-demo",
+  "basis": {
+    "decisions_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+    "source_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "check": "privacy_read",
+  "class": "privacy",
+  "decision": {
+    "key": "parity_exception:0123456789abcdef",
+    "proposal_sha256": null
+  },
+  "diff": [
+    {
+      "actual": true,
+      "expected": false,
+      "field": "notes_text",
+      "op": "field_visible",
+      "record": "task_w1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "recording",
+      "ref": ".wtf/verification/recordings/privacy_read.custom.task.w2_member.json",
+      "sha256": "f01098a5118900edeaa5c81fa85a5e7f139d46c1b9323a991f391ade4195a18a"
+    }
+  ],
+  "format": "bubble_ex.verify.result",
+  "id": "privacy_read.custom.task.w2_member",
+  "level": "L2",
+  "oracle": {
+    "branch": "wtfreplay",
+    "kind": "bubble",
+    "sha256": "f01098a5118900edeaa5c81fa85a5e7f139d46c1b9323a991f391ade4195a18a"
+  },
+  "ran_at": "2026-10-02T09:15:00Z",
+  "reason": null,
+  "scenario": {
+    "id": "privacy_read.custom.task.w2_member",
+    "seed_sha256": "eb77f55e705fd65ea0b648ff426b57d4ed503350c4b613450983256a9f4ae510",
+    "sha256": "eb51de63bf03982d03608fdea107a6b0f5ca88de12f73c7293510de49327a084",
+    "source_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "schema_version": 1,
+  "stale_reasons": [],
+  "status": "waived",
+  "subject_build": {
+    "generated_manifest_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+    "git_sha": "f01b3a0"
+  },
+  "subjects": {
+    "type": "custom.task"
+  },
+  "tasks": [
+    "generate:policies"
+  ],
+  "waiver": null
+}

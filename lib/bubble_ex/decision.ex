@@ -28,7 +28,10 @@ defmodule BubbleEx.Decision do
     * `params` - `%{}` for accept, reject and acknowledge; for `modify`, only what
       `BubbleEx.Decision.Params` allows for the finding's transform. A
       rename's are `%{slot, name}`, a parity exception's
-      `%{scope, bubble_behavior, chosen_behavior}`
+      `%{scope, checks, bubble_behavior, chosen_behavior}`: `scope` is the
+      scenario ID it excuses (or, for a check with no scenario, the check
+      name), `checks` the non-empty list of `BubbleEx.Verify.Check` names it
+      excuses (sorted, unique; a result of another check is not excused)
     * `basis` - what the decision was made against: `finding_id`,
       `proposal_sha256` and `basis_sha256` (required for findings, see
       `BubbleEx.Finding`), and optionally `source_sha256`,
@@ -586,12 +589,36 @@ defmodule BubbleEx.Decision do
     with :ok <- choice_of(d),
          :ok <- absent(d.target, "target", :parity_exception),
          {:ok, params} <- params_object(params),
-         :ok <- only(params, Enum.map(@parity_params, &Atom.to_string/1), "parity params"),
+         :ok <-
+           only(params, ["checks" | Enum.map(@parity_params, &Atom.to_string/1)], "parity params"),
+         {:ok, checks} <- parity_checks(params["checks"]),
          {:ok, params} <-
            Enum.reduce_while(@parity_params, {:ok, %{}}, &parity_param(params, &1, &2)) do
-      {:ok, %{d | params: params}}
+      {:ok, %{d | params: Map.put(params, :checks, checks)}}
     end
   end
+
+  # The checks a parity exception excuses: registered check names.
+  defp parity_checks([_ | _] = checks) do
+    known = BubbleEx.Verify.Check.names()
+
+    cond do
+      not Enum.all?(checks, &(&1 in known)) ->
+        error("parity exception checks must be registered check names", %{
+          checks: Enum.reject(checks, &(&1 in known)),
+          known: known
+        })
+
+      Enum.uniq(checks) != checks ->
+        error("parity exception checks must be unique", %{checks: checks})
+
+      true ->
+        {:ok, Enum.sort(checks)}
+    end
+  end
+
+  defp parity_checks(checks),
+    do: error("parity exception checks must be a non-empty list of check names", %{value: checks})
 
   defp parity_param(params, name, {:ok, acc}) do
     case params[Atom.to_string(name)] do
