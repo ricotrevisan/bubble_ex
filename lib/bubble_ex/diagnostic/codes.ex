@@ -97,6 +97,10 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a backend workflow set to ignore privacy rules: lowered with authorization bypassed (`authorize?: false`)"},
     {:workflow_action_privacy_option, :info, :preserved, :model,
      "a scheduling action's ignore-privacy option; not a bypass (the scheduled workflow's own setting decides)"},
+    {:workflow_endpoint_not_served, :warning, :degraded, :target,
+     "a workflow Bubble exposes as an API endpoint; not served by the Phoenix target while the project has no authorization (`privacy: :omit`) until the owner sets `serve_workflow_api: true`"},
+    {:workflow_endpoint_duplicate, :warning, :degraded, :target,
+     "two exposed workflows share an endpoint name; the one with the lower Bubble ID serves it"},
 
     # --- :model — BubbleEx.Index ---------------------------------------------
     {:index_unresolved_reference, :warning, :unresolved, :model,

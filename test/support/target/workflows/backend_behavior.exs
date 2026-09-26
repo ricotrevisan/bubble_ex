@@ -10,10 +10,25 @@ defmodule PhxCheck.WorkflowsBehaviorTest do
   alias PhxCheck.Workflows.{Registry, Runtime, Scheduler}
 
   setup do
+    config = Application.get_env(:phx_check, PhxCheck.Workflows, [])
+    configure(:serve_workflow_api, true)
+    on_exit(fn -> Application.put_env(:phx_check, PhxCheck.Workflows, config) end)
+
     {:ok, project} =
       Ash.create(PhxCheck.Project, %{id: Runtime.new_id(), name: "P"}, authorize?: false)
 
     %{project: project}
+  end
+
+  defp configure(key, value) do
+    config = Application.get_env(:phx_check, PhxCheck.Workflows, [])
+    Application.put_env(:phx_check, PhxCheck.Workflows, Keyword.put(config, key, value))
+  end
+
+  defp task_titled(title) do
+    PhxCheck.Task
+    |> Ash.read!(authorize?: false)
+    |> Enum.filter(&(&1.title == title))
   end
 
   defp create_task(conn, project) do
@@ -30,6 +45,67 @@ defmodule PhxCheck.WorkflowsBehaviorTest do
     assert %DateTime{} = task.created_date
     assert task.done == false
     assert task.watchers in [nil, []]
+  end
+
+  test "the workflow API is off unless the owner serves it", %{conn: conn} do
+    configure(:serve_workflow_api, false)
+    conn = post(conn, "/api/1.1/wf/create%20task", %{"title" => "Nope"})
+    assert %{"status" => "NOT_SERVED"} = json_response(conn, 503)
+    assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+    assert task_titled("Nope") == []
+  end
+
+  test "a body parameter called name is the workflow's, not the route's", %{conn: conn} do
+    conn = post(conn, "/api/1.1/wf/create%20task", %{"title" => "T", "name" => "Zed"})
+    assert %{"response" => %{"name" => "Zed"}} = json_response(conn, 200)
+  end
+
+  test "each workflow answers its HTTP method only", %{conn: conn} do
+    assert %{"response" => %{"reply" => "pong"}} =
+             conn |> get("/api/1.1/wf/ping") |> json_response(200)
+
+    assert build_conn() |> post("/api/1.1/wf/ping") |> json_response(405)
+    # No setting means POST.
+    assert build_conn()
+           |> get("/api/1.1/wf/create%20task", %{"title" => "G"})
+           |> json_response(405)
+
+    assert task_titled("G") == []
+  end
+
+  test "a workflow that reaches residue fails before its first step" do
+    assert {:error, _} = Runtime.run("wBlocked", %{})
+    assert task_titled("must not exist") == []
+    assert all_enqueued(worker: Scheduler) == []
+  end
+
+  test "scheduling on a list spaces the jobs and splits the budget", %{
+    conn: conn,
+    project: project
+  } do
+    ids = for _ <- 1..3, do: create_task(conn, project).id
+    Enum.each(all_enqueued(worker: Scheduler), &PhxCheck.Repo.delete!/1)
+
+    assert {:ok, %{status: :done}} = Runtime.run("wFanOut", %{"tasks" => ids})
+    jobs = all_enqueued(worker: Scheduler, args: %{"workflow" => "wNote"})
+    assert length(jobs) == 3
+    [a, b, c] = jobs |> Enum.map(& &1.scheduled_at) |> Enum.sort(DateTime)
+    assert DateTime.diff(b, a) == 60 and DateTime.diff(c, b) == 60
+    assert Enum.all?(jobs, &(&1.args["budget"] < 10_000))
+  end
+
+  test "the job budget bounds fan-out", %{conn: conn, project: project} do
+    ids = for _ <- 1..3, do: create_task(conn, project).id
+    Enum.each(all_enqueued(worker: Scheduler), &PhxCheck.Repo.delete!/1)
+
+    assert {:error, _} = Runtime.run("wFanOut", %{"tasks" => ids}, budget: 2)
+    assert all_enqueued(worker: Scheduler) == []
+  end
+
+  test "the call budget bounds synchronous calls", %{conn: conn, project: project} do
+    task = create_task(conn, project)
+    configure(:max_calls, 0)
+    assert {:error, _} = Runtime.run("wClose", %{"task" => task.id})
   end
 
   test "a required parameter is required", %{conn: conn} do

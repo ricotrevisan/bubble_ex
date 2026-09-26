@@ -82,7 +82,7 @@ defmodule BubbleEx.Target.Ash do
   | `view_attachments` | not enforceable in Ash (file fields hold URLs; the file store must enforce it): the grant is kept as data (`privacy.attachments`), diagnosed when a type with file fields does not grant it to everyone |
   | Data API (`exposed_api`, `create_api` / `modify_api` / `delete_api`) | out of scope unless requested (WTF-359 Q6): no API actions; the grants are kept as data (`privacy.data_api`), and an exposed type is diagnosed |
   | a backend workflow set to ignore privacy rules | not a policy: `authorization_bypasses` (with an index, see `map/3`) records that its lowered reads need `authorize?: false` |
-  | writes by workflows | not governed by privacy rules; no policy authorizes `create`, `update` or `destroy`, so they are forbidden unless the caller bypasses authorization (fail-safe, for workflow lowering to decide) |
+  | writes by workflows | not governed by privacy rules; no policy authorizes `create`, `update` or `destroy`, so they are forbidden unless the caller bypasses authorization (fail-safe). Lowered backend workflows (`BubbleEx.Target.Ash.Workflows`, WTF-373) bypass only when they ignore privacy rules in Bubble, so every other generated write is forbidden under these policies: how workflow writes are authorized is an open owner decision |
 
   **Union.** A user holds a permission when any rule whose condition they
   match grants it (checks are `authorize_if`, in rule order). The

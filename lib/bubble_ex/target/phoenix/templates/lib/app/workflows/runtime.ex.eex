@@ -7,7 +7,16 @@ defmodule <%= @module %>.Workflows.Runtime do
   Every data access passes the workflow's actor and its `authorize?`:
   `false` only for a workflow that ignores privacy rules in Bubble (see
   `<%= @module %>.Workflows.Registry.privacy_bypasses/0`), the caller's for a
-  custom event, `true` otherwise.
+  custom event, `true` otherwise. **Both only matter once the resources
+  have policies**: as generated (bubble_ex `privacy: :omit`) no resource
+  has an authorizer, so any workflow can read and write any record. That
+  is why the workflow API is off until you turn it on (`:serve_workflow_api`
+  below): exposed as is, any caller could run a workflow on other users'
+  records by passing their IDs.
+
+  A workflow whose body (or a workflow it calls or schedules) has a step
+  bubble_ex could not lower fails before its first step, with
+  `{:not_lowered, subjects}`: it never runs half its steps.
 
   A step answers `{:cont, ctx}` (the next step runs) or `{:halt, result}`
   (the workflow ends with `result`: `{:ok, %{status: ...}}` or
@@ -17,9 +26,18 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   Configuration (`config :<%= @app %>, <%= @module %>.Workflows`):
 
-    * `:max_chain` - how many times a chain of scheduled workflows may
-      schedule the next one (default 10000); a scheduling step beyond it
-      fails. Bubble itself has no such limit
+    * `:serve_workflow_api` - serve the exposed workflows at
+      `/api/1.1/wf/<name>` (default `false`: every request answers 503).
+      Turn it on only after adding policies that protect the data
+    * `:max_jobs` - how many scheduled and trigger jobs one root run (an
+      API call, a user's write, a job scheduled from outside a workflow)
+      may cause in total, over every generation (default 10000). Each
+      job carries its share of the budget; a scheduling step or a write
+      whose triggers exceed it fails. Bubble has no such limit
+    * `:max_calls` - how many custom events one run may trigger
+      synchronously in total (default 1000)
+    * `:max_chain` - how many times a chain of scheduled workflows in a
+      call cycle may schedule the next one (default 10000)
     * `:max_depth` - how deep custom events may call each other (default
       100)
     * `:app_version` - what `AppVersion` reads (default `"live"`)
@@ -31,7 +49,9 @@ defmodule <%= @module %>.Workflows.Runtime do
   deleting an empty thing is an error that ends the workflow; "Return data
   from API" ends the workflow; adding an item a list already holds keeps
   the list as it is; a database trigger fires on creation, change and
-  deletion; the workflow API's error bodies.
+  deletion; whether a trigger's own writes fire it again (here they do,
+  within the job budget); the workflow API's error bodies; that a
+  workflow without a GET/POST setting answers POST only.
   """
 
   require Logger
@@ -47,7 +67,9 @@ defmodule <%= @module %>.Workflows.Runtime do
     params: %{},
     steps: %{},
     chain: 0,
-    depth: 0
+    depth: 0,
+    budget: 0,
+    calls: 0
   ]
 
   @type t :: %__MODULE__{}
@@ -61,7 +83,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   records or Bubble IDs.
 
   Options: `:actor`, `:authorize?` (used by custom events, which inherit
-  it), `:chain`, `:depth` and `:trigger`.
+  it), `:chain`, `:depth`, `:budget` (jobs), `:calls` and `:trigger`.
   """
   @spec run(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(id, params, opts \\ []) do
@@ -74,6 +96,8 @@ defmodule <%= @module %>.Workflows.Runtime do
           authorize?: Keyword.get(opts, :authorize?),
           chain: Keyword.get(opts, :chain, 0),
           depth: Keyword.get(opts, :depth, 0),
+          budget: Keyword.get(opts, :budget),
+          calls: Keyword.get(opts, :calls),
           trigger: Keyword.get(opts, :trigger)
         }
 
@@ -112,7 +136,9 @@ defmodule <%= @module %>.Workflows.Runtime do
       authorize?: authorize?(authorize, bubble[:authorize?]),
       params: Map.new(w.params, &{&1.id, Map.get(input.arguments, &1.argument)}),
       chain: bubble[:chain] || 0,
-      depth: bubble[:depth] || 0
+      depth: bubble[:depth] || 0,
+      budget: bubble[:budget] || config(:max_jobs, 10_000),
+      calls: bubble[:calls] || config(:max_calls, 1_000)
     }
   end
 
@@ -123,10 +149,23 @@ defmodule <%= @module %>.Workflows.Runtime do
   @doc """
   Runs the steps when `condition` (nil, or a function of the context)
   holds. The result is `{:ok, %{status: :done | :not_run | :terminated |
-  :returned, data: ..., text: ...}}` or `{:error, reason}`.
+  :returned, data: ..., text: ...}}` or `{:error, reason}`. With
+  `not_lowered` subjects (residue in this workflow or a workflow it calls
+  or schedules) nothing runs: it fails before the first step.
   """
-  @spec steps(t(), (t() -> boolean()) | nil, [(t() -> step())]) :: {:ok, map()} | {:error, term()}
-  def steps(ctx, condition, steps) do
+  @spec steps(t(), (t() -> boolean()) | nil, [(t() -> step())], [String.t()]) ::
+          {:ok, map()} | {:error, term()}
+  def steps(ctx, condition, steps, not_lowered \\ [])
+
+  def steps(ctx, _condition, _steps, [_ | _] = not_lowered) do
+    Logger.error(
+      "bubble workflow #{inspect(ctx.workflow)} is not lowered (#{inspect(not_lowered)}); no step ran"
+    )
+
+    {:error, {:not_lowered, not_lowered}}
+  end
+
+  def steps(ctx, condition, steps, []) do
     if condition == nil or condition.(ctx) == true do
       case Enum.reduce_while(steps, ctx, fn step, ctx -> step.(ctx) end) do
         %__MODULE__{} -> {:ok, %{status: :done, data: nil}}
@@ -210,6 +249,14 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   # --- values ---------------------------------------------------------------------------
 
+  @doc "A value as response text: nil is empty; never raises."
+  def text(nil), do: ""
+  def text(x) when is_binary(x), do: x
+
+  def text(x) do
+    if String.Chars.impl_for(x) != nil and not is_map(x), do: to_string(x), else: inspect(x)
+  end
+
   @doc "A thing's Bubble ID (a thing written to a reference field)."
   def id(nil), do: nil
   def id(%{id: id}), do: id
@@ -232,8 +279,12 @@ defmodule <%= @module %>.Workflows.Runtime do
   def dump(%DateTime{} = d), do: DateTime.to_iso8601(d)
   def dump(%Date{} = d), do: Date.to_iso8601(d)
   def dump(%Decimal{} = d), do: Decimal.to_float(d)
+  def dump(%Time{} = t), do: Time.to_iso8601(t)
+  def dump(%NaiveDateTime{} = d), do: NaiveDateTime.to_iso8601(d)
   def dump(%{__struct__: _, id: id}), do: id
-  def dump(%{__struct__: _} = other), do: other
+
+  def dump(%{__struct__: _} = other),
+    do: other |> Map.from_struct() |> Map.drop([:__meta__, :__metadata__]) |> dump()
   def dump(list) when is_list(list), do: Enum.map(list, &dump/1)
   def dump(map) when is_map(map), do: Map.new(map, fn {k, v} -> {to_string(k), dump(v)} end)
   def dump(value), do: value
@@ -250,53 +301,63 @@ defmodule <%= @module %>.Workflows.Runtime do
       |> stamp(resource, :modified, ctx.now)
       |> stamp(resource, :creator, id(ctx.actor))
 
-    resource
-    |> Ash.create(attrs, opts(ctx))
-    |> continue(ctx, step)
+    with {:ok, write, ctx} <- write_opts(ctx, resource) do
+      resource |> Ash.create(attrs, write) |> continue(ctx, step)
+    else
+      error -> continue(error, ctx, step)
+    end
   end
 
   @doc "Make changes to a thing (an empty thing is an error)."
   def update(ctx, step, _resource, nil, _changes), do: fail(ctx, step, :empty_thing)
 
   def update(ctx, step, resource, record, changes) do
-    record
-    |> Ash.update(update_attrs(ctx, resource, record, changes), opts(ctx))
-    |> continue(ctx, step)
+    with {:ok, write, ctx} <- write_opts(ctx, resource) do
+      record |> Ash.update(update_attrs(ctx, resource, record, changes), write) |> continue(ctx, step)
+    else
+      error -> continue(error, ctx, step)
+    end
   end
 
   @doc "Make changes to a list of things."
   def update_list(ctx, step, resource, records, changes) do
     records
     |> List.wrap()
-    |> Enum.reduce_while({:ok, []}, fn record, {:ok, acc} ->
-      case Ash.update(record, update_attrs(ctx, resource, record, changes), opts(ctx)) do
-        {:ok, updated} -> {:cont, {:ok, [updated | acc]}}
-        error -> {:halt, error}
+    |> Enum.reduce_while({:ok, [], ctx}, fn record, {:ok, acc, ctx} ->
+      with {:ok, write, ctx} <- write_opts(ctx, resource),
+           {:ok, updated} <- Ash.update(record, update_attrs(ctx, resource, record, changes), write) do
+        {:cont, {:ok, [updated | acc], ctx}}
+      else
+        error -> {:halt, {error, ctx}}
       end
     end)
     |> case do
-      {:ok, updated} -> continue({:ok, Enum.reverse(updated)}, ctx, step)
-      error -> continue(error, ctx, step)
+      {:ok, updated, ctx} -> continue({:ok, Enum.reverse(updated)}, ctx, step)
+      {error, ctx} -> continue(error, ctx, step)
     end
   end
 
   @doc "Delete a thing (an empty thing is an error)."
   def delete(ctx, step, nil), do: fail(ctx, step, :empty_thing)
 
-  def delete(ctx, step, record) do
-    case Ash.destroy(record, opts(ctx)) do
-      :ok -> {:cont, put_step(ctx, step, nil)}
+  def delete(ctx, step, %resource{} = record) do
+    with {:ok, write, ctx} <- write_opts(ctx, resource),
+         :ok <- Ash.destroy(record, write) do
+      {:cont, put_step(ctx, step, nil)}
+    else
       error -> continue(error, ctx, step)
     end
   end
+
+  def delete(ctx, step, _other), do: fail(ctx, step, :not_a_thing)
 
   @doc "Delete a list of things."
   def delete_list(ctx, step, records) do
     records
     |> List.wrap()
-    |> Enum.reduce_while({:cont, ctx}, fn record, acc ->
+    |> Enum.reduce_while({:cont, ctx}, fn record, {:cont, ctx} ->
       case delete(ctx, step, record) do
-        {:cont, _} -> {:cont, acc}
+        {:cont, ctx} -> {:cont, {:cont, ctx}}
         halt -> {:halt, halt}
       end
     end)
@@ -342,19 +403,47 @@ defmodule <%= @module %>.Workflows.Runtime do
     end
   end
 
-  defp opts(ctx),
+  # A write's options. When the resource has database triggers, the write
+  # reserves their jobs from this run's budget and hands each its share.
+  defp write_opts(ctx, resource) do
+    case length(Registry.triggers(resource)) do
+      0 ->
+        {:ok, options(ctx, nil), ctx}
+
+      n ->
+        with {:ok, share, ctx} <- reserve(ctx, n), do: {:ok, options(ctx, share), ctx}
+    end
+  end
+
+  defp options(ctx, budget),
     do: [
       actor: ctx.actor,
       authorize?: ctx.authorize?,
-      context: %{bubble: %{chain: ctx.chain, workflow: ctx.workflow}}
+      context: %{bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget}}
     ]
+
+  # Takes `n` jobs from the run's budget; each gets a share of what is
+  # left, and the run keeps the rest, so one root run causes at most
+  # `:max_jobs` jobs over all its generations.
+  defp reserve(ctx, 0), do: {:ok, 0, ctx}
+
+  defp reserve(ctx, n) when ctx.budget >= n do
+    share = div(ctx.budget - n, 2 * n)
+    {:ok, share, %{ctx | budget: ctx.budget - n - n * share}}
+  end
+
+  defp reserve(ctx, n) do
+    Logger.error("bubble workflow #{inspect(ctx.workflow)}: job budget exhausted (#{n} needed)")
+    {:error, {:job_budget_exhausted, n}}
+  end
 
   # --- scheduling and calls ----------------------------------------------------------------
 
   @doc "Schedule API workflow `callee` at `at` (nil or past: now)."
   def schedule(ctx, step, callee, at, params) do
     with :ok <- chain_guard(ctx, callee),
-         {:ok, job} <- insert(ctx, callee, at, params) do
+         {:ok, share, ctx} <- reserve(ctx, 1),
+         {:ok, job} <- insert(ctx, callee, at, params, share) do
       {:cont, put_step(ctx, step, job.id)}
     else
       error -> continue(error, ctx, step)
@@ -367,11 +456,14 @@ defmodule <%= @module %>.Workflows.Runtime do
     spacing = if is_number(interval) and interval > 0, do: interval, else: 0
     start = if match?(%DateTime{}, at), do: at, else: ctx.now
 
-    with :ok <- chain_guard(ctx, callee) do
+    with :ok <- chain_guard(ctx, callee),
+         {:ok, share, ctx} <- reserve(ctx, length(items)) do
       items
       |> Enum.with_index()
       |> Enum.reduce_while({:ok, []}, fn {_item, i}, {:ok, ids} ->
-        case insert(ctx, callee, DateTime.add(start, round(i * spacing * 1000), :millisecond), params) do
+        at = DateTime.add(start, round(i * spacing * 1000), :millisecond)
+
+        case insert(ctx, callee, at, params, share) do
           {:ok, job} -> {:cont, {:ok, [job.id | ids]}}
           error -> {:halt, error}
         end
@@ -385,12 +477,13 @@ defmodule <%= @module %>.Workflows.Runtime do
     end
   end
 
-  defp insert(ctx, callee, at, params) do
+  defp insert(ctx, callee, at, params, budget) do
     args = %{
       "workflow" => callee,
       "params" => dump(params),
       "actor" => id(ctx.actor),
-      "chain" => ctx.chain + 1
+      "chain" => ctx.chain + 1,
+      "budget" => budget
     }
 
     opts = if match?(%DateTime{}, at), do: [scheduled_at: at], else: []
@@ -408,22 +501,37 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   @doc "Trigger custom event `callee` now, in this workflow's context."
   def call(ctx, step, callee, params) do
-    if ctx.depth >= config(:max_depth, 100) do
-      fail(ctx, step, {:depth_limit, callee})
-    else
-      callee
-      |> run(params,
-        actor: ctx.actor,
-        authorize?: ctx.authorize?,
-        chain: ctx.chain,
-        depth: ctx.depth + 1,
-        trigger: ctx.trigger
-      )
-      |> case do
-        {:ok, %{data: data}} -> {:cont, put_step(ctx, step, data)}
-        {:ok, _} -> {:cont, put_step(ctx, step, nil)}
-        error -> continue(error, ctx, step)
-      end
+    cond do
+      ctx.depth >= config(:max_depth, 100) ->
+        fail(ctx, step, {:depth_limit, callee})
+
+      ctx.calls < 1 ->
+        fail(ctx, step, {:call_budget_exhausted, callee})
+
+      true ->
+        # The callee gets half of what is left; the rest stays here.
+        calls = div(ctx.calls - 1, 2)
+        jobs = div(ctx.budget, 2)
+        ctx = %{ctx | calls: ctx.calls - 1 - calls, budget: ctx.budget - jobs}
+        call_run(ctx, step, callee, params, calls, jobs)
+    end
+  end
+
+  defp call_run(ctx, step, callee, params, calls, jobs) do
+    callee
+    |> run(params,
+      actor: ctx.actor,
+      authorize?: ctx.authorize?,
+      chain: ctx.chain,
+      depth: ctx.depth + 1,
+      budget: jobs,
+      calls: calls,
+      trigger: ctx.trigger
+    )
+    |> case do
+      {:ok, %{data: data}} -> {:cont, put_step(ctx, step, data)}
+      {:ok, _} -> {:cont, put_step(ctx, step, nil)}
+      error -> continue(error, ctx, step)
     end
   end
 
@@ -474,6 +582,7 @@ defmodule <%= @module %>.Workflows.Runtime do
           |> run(Map.get(args, "params") || %{},
             actor: actor,
             chain: Map.get(args, "chain", 0),
+            budget: args |> Map.get("budget") |> job_budget(),
             trigger: trigger
           )
           |> case do
@@ -483,6 +592,9 @@ defmodule <%= @module %>.Workflows.Runtime do
         end
     end
   end
+
+  defp job_budget(n) when is_integer(n) and n >= 0, do: n
+  defp job_budget(_), do: config(:max_jobs, 10_000)
 
   # The actor who scheduled the job, read as the system: loading the
   # actor is not an access on the actor's behalf.
@@ -497,11 +609,14 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   defp job_trigger(nil, _actor), do: {:ok, nil}
 
-  defp job_trigger(%{"type" => type, "record" => id, "before" => before}, actor) do
+  # The record as the write left it ("Thing now") and as it was before
+  # ("Thing before change"), both read at write time.
+  defp job_trigger(%{"type" => type, "now" => now, "before" => before}, _actor) do
     resource = Registry.trigger_resource(type)
-    ctx = %__MODULE__{actor: actor, authorize?: true}
-    {:ok, %{now: get(resource, id, ctx), before: restore(resource, before)}}
+    {:ok, %{now: restore(resource, now), before: restore(resource, before)}}
   end
+
+  defp job_trigger(_trigger, _actor), do: {:ok, nil}
 
   @doc """
   Enqueues the database-trigger workflows of a written record, in the
@@ -511,11 +626,18 @@ defmodule <%= @module %>.Workflows.Runtime do
     resource = changeset.resource
     bubble = Map.get(changeset.context, :bubble) || %{}
     chain = bubble[:chain] || 0
+    workflows = Registry.triggers(resource)
+
+    # A write by a workflow reserved each job's share (Runtime.write_opts);
+    # any other write is a root and splits the whole budget.
+    budget = bubble[:budget] || div(config(:max_jobs, 10_000), max(length(workflows), 1))
 
     before =
       if changeset.action_type == :create, do: nil, else: snapshot(resource, changeset.data)
 
-    Registry.triggers(resource)
+    now = if changeset.action_type == :destroy, do: nil, else: snapshot(resource, record)
+
+    workflows
     |> Enum.reduce_while(:ok, fn workflow, :ok ->
       if chain >= config(:max_chain, 10_000) do
         Logger.error("bubble workflow #{inspect(workflow)}: trigger chain limit reached")
@@ -526,9 +648,11 @@ defmodule <%= @module %>.Workflows.Runtime do
           "params" => %{},
           "actor" => id(Map.get(context, :actor)),
           "chain" => chain + 1,
+          "budget" => budget,
           "trigger" => %{
             "type" => Registry.trigger_type(resource),
             "record" => record.id,
+            "now" => now,
             "before" => before
           }
         }
@@ -579,11 +703,15 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   @doc """
   Runs an exposed workflow for the workflow API: `name` is its endpoint,
-  `params` the request's, `actor` the bearer token's user and
-  `authorization` the `Authorization` header (the admin token).
+  `method` the request's (`"GET"`, `"POST"`…), `params` the request's
+  parameters, `actor` the bearer token's user and `authorization` the
+  `Authorization` header (the admin token). Nothing runs unless
+  `:serve_workflow_api` is on (`{:error, :not_served}`).
   """
-  def call_endpoint(name, params, actor, authorization) do
-    with {:ok, endpoint} <- endpoint(name),
+  def call_endpoint(name, method, params, actor, authorization) do
+    with :ok <- served(),
+         {:ok, endpoint} <- endpoint(name),
+         :ok <- method(endpoint, method),
          {:ok, actor} <- authenticate(endpoint, actor, authorization),
          {:ok, args} <- endpoint_params(endpoint, params) do
       case run(endpoint.workflow, args, actor: actor) do
@@ -593,6 +721,21 @@ defmodule <%= @module %>.Workflows.Runtime do
         {:error, reason} -> {:error, {:failed, reason}}
       end
     end
+  end
+
+  @doc "Whether the workflow API is served (`:serve_workflow_api`)."
+  def served?, do: config(:serve_workflow_api, false) == true
+
+  defp served, do: if(served?(), do: :ok, else: {:error, :not_served})
+
+  # A workflow set to GET or POST answers that method only; one with no
+  # setting answers POST (unverified against Bubble).
+  defp method(endpoint, method) do
+    allowed = endpoint.method || :post
+
+    if method == allowed |> Atom.to_string() |> String.upcase(),
+      do: :ok,
+      else: {:error, {:method_not_allowed, allowed}}
   end
 
   defp endpoint(name) do

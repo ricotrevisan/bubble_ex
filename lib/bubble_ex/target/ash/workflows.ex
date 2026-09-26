@@ -30,13 +30,28 @@ defmodule BubbleEx.Target.Ash.Workflows do
   ## Privacy
 
   Every data access in a generated body passes the workflow's actor and
-  `authorize?`. `authorize?` is `false` **only** for a workflow whose own
-  "ignore privacy rules" setting is on (`privacy_bypasses`, each with a
+  `authorize?`: `false` **only** for a workflow whose own "ignore privacy
+  rules" setting is on (`privacy_bypasses`, each with a
   `:workflow_privacy_bypass` warning); a custom event uses its caller's
   (`:inherit`, `true` when run on its own); everything else is `true`.
-  Bubble's privacy rules do not govern writes, but the generated writes
-  are authorized too: with generated policies (WTF-356) a write the
-  policies do not allow fails rather than bypassing them.
+
+  **What that is worth depends on the project's privacy mode.**
+
+    * `privacy: :omit` - the only mode `BubbleEx.Target.Phoenix` renders:
+      no resource has an authorizer, so `authorize?` changes nothing and
+      the actor restricts nothing. Any caller of a workflow can read and
+      write any record, including records of other users whose IDs it
+      passes. So the workflow API (`/api/1.1/wf/<name>`) is **not served**
+      until the owner opts in (`serve_workflow_api: true`, see the
+      generated `Workflows.Runtime`), and every exposed workflow gets a
+      `:workflow_endpoint_not_served` warning. Scheduled jobs and database
+      triggers are internal and run.
+    * `privacy: :unverified` - the generated policies (WTF-356) authorize
+      reads only: no policy authorizes `create`, `update` or `destroy`
+      (see `BubbleEx.Target.Ash`, "writes by workflows"), so every
+      generated write with `authorize?: true` is forbidden. Bubble's
+      privacy rules do not govern writes; how workflow writes should be
+      authorized is an open question for the owner, not decided here.
 
   ## Coverage
 
@@ -101,7 +116,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
       {modules, names} = folder_names(backend.workflows, locked)
       {actions, names} = action_names(backend.workflows, modules, locked, names)
 
-      bound = Enum.map(backend.workflows, &action(&1, modules, actions, ctx))
+      bound = backend.workflows |> Enum.map(&action(&1, modules, actions, ctx)) |> block()
 
       resources =
         bound
@@ -116,7 +131,9 @@ defmodule BubbleEx.Target.Ash.Workflows do
         |> Enum.sort_by(& &1.module)
 
       diagnostics =
-        (backend.diagnostics ++ Enum.flat_map(bound, & &1.diagnostics))
+        (backend.diagnostics ++
+           Enum.flat_map(bound, & &1.diagnostics) ++
+           endpoint_diagnostics(bound, project))
         |> Diagnostic.normalize()
 
       {:ok,
@@ -152,6 +169,92 @@ defmodule BubbleEx.Target.Ash.Workflows do
 
   @doc "Generated-code coverage. See `Spec.coverage/1`."
   defdelegate coverage(spec), to: Spec
+
+  # --- blocking --------------------------------------------------------------------
+
+  # A workflow whose body has residue, or that calls or schedules one that
+  # does (transitively, cycles included), must not run any step: its
+  # generated body fails before step 1. `blocked_by` lists why: its own
+  # residue subjects and the blocked (or unknown) workflows it reaches
+  # directly, sorted.
+  defp block(actions) do
+    by_id = Map.new(actions, &{&1.workflow, &1})
+    own = for a <- actions, own_residue(a) != [], into: MapSet.new(), do: a.workflow
+    blocked = fixpoint(own, actions, by_id)
+
+    Enum.map(actions, fn a ->
+      callees =
+        for id <- callees(a),
+            not Map.has_key?(by_id, id) or MapSet.member?(blocked, id),
+            do: "workflow:" <> to_string(id)
+
+      subjects = own_residue(a) |> Enum.map(& &1.subject)
+      Map.put(a, :blocked_by, Enum.sort(Enum.uniq(subjects ++ callees)))
+    end)
+  end
+
+  defp fixpoint(blocked, actions, by_id) do
+    next =
+      for a <- actions,
+          MapSet.member?(blocked, a.workflow) or
+            Enum.any?(callees(a), &(not Map.has_key?(by_id, &1) or MapSet.member?(blocked, &1))),
+          into: MapSet.new(),
+          do: a.workflow
+
+    if next == blocked, do: blocked, else: fixpoint(next, actions, by_id)
+  end
+
+  defp own_residue(a), do: a.residue ++ Enum.flat_map(a.steps, & &1.residue)
+
+  defp callees(a) do
+    for %{op: op, args: %{workflow: id}} <- a.steps,
+        op in [:call, :schedule, :schedule_list],
+        uniq: true,
+        do: id
+  end
+
+  # Exposed workflows: with `privacy: :omit` (no authorization at all) the
+  # workflow API is not served until the owner turns it on; an endpoint
+  # name used twice serves the workflow with the lower Bubble ID.
+  defp endpoint_diagnostics(actions, project) do
+    exposed = actions |> Enum.filter(& &1.exposed) |> Enum.sort_by(& &1.workflow)
+
+    disabled =
+      for a <- exposed, project.privacy == :omit do
+        Diagnostic.new(
+          :workflow_endpoint_not_served,
+          "",
+          "exposed as /api/1.1/wf/#{a.exposed.endpoint} in Bubble, but not served: with " <>
+            "privacy: :omit no resource has authorization, so any caller could read and " <>
+            "write any record through it. Add policies, then set serve_workflow_api: true",
+          target: :ash,
+          subject: %{workflow: a.workflow},
+          details: %{auth: Atom.to_string(a.exposed.auth), bypass: a.authorize == false}
+        )
+      end
+
+    duplicates =
+      exposed
+      |> Enum.group_by(& &1.exposed.endpoint)
+      |> Enum.flat_map(fn
+        {_name, [_]} ->
+          []
+
+        {name, [kept | dropped]} ->
+          for a <- dropped do
+            Diagnostic.new(
+              :workflow_endpoint_duplicate,
+              "",
+              "the endpoint name #{inspect(name)} is also used by #{kept.workflow}, which serves it",
+              target: :ash,
+              subject: %{workflow: a.workflow},
+              details: %{served_by: kept.workflow}
+            )
+          end
+      end)
+
+    disabled ++ duplicates
+  end
 
   # --- names ---------------------------------------------------------------------------
 

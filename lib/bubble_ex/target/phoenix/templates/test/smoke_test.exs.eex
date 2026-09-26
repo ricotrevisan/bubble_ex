@@ -16,7 +16,12 @@ defmodule <%= @web %>.SmokeTest do
 
   test "an unknown workflow is not found", %{conn: conn} do
     conn = post(conn, "/api/1.1/wf/no_such_workflow", %{})
+<%= if @workflows? do %>
+    # The workflow API is off until the owner turns it on.
+    assert %{"status" => "NOT_SERVED"} = json_response(conn, 503)
+<% else %>
     assert json_response(conn, 404) == %{"status" => "NOT_FOUND", "message" => "Workflow not found"}
+<% end %>
   end
 
   describe "magic-link sign-in" do

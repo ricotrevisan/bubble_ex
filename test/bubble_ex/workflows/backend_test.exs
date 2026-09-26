@@ -34,10 +34,10 @@ defmodule BubbleEx.Workflows.BackendTest do
     backend = build(app())
 
     assert Enum.map(backend.workflows, & &1.bubble_id) ==
-             ~w(wClose wCreate wExternal wNotify wOnDone wTick)
+             ~w(wBlocked wClose wCreate wExternal wFanOut wNote wNotify wOnDone wPing wTick)
 
     assert Enum.map(backend.workflows, & &1.kind) ==
-             [:api, :api, :api, :custom_event, :database_trigger, :api]
+             [:api, :api, :api, :api, :api, :api, :custom_event, :database_trigger, :api, :api]
   end
 
   test "the entry point: exposure, authentication, parameters, returns" do
@@ -49,8 +49,14 @@ defmodule BubbleEx.Workflows.BackendTest do
     assert create.folder == "fTasks"
     assert create.exposed? and create.auth == :none
 
-    assert [%{id: "title", key: "title", type: "text"}, %{id: "project", optional?: true}] =
-             create.parameters
+    assert [
+             %{id: "title", key: "title", type: "text"},
+             %{id: "project", optional?: true},
+             %{id: "name", optional?: true}
+           ] = create.parameters
+
+    assert workflow(backend, "wPing").method == :get
+    assert workflow(backend, "wCreate").method == nil
 
     notify = workflow(backend, "wNotify")
     assert [%{id: "pTask", key: "task", type: "custom.task"}] = notify.parameters
@@ -72,7 +78,7 @@ defmodule BubbleEx.Workflows.BackendTest do
   test "steps lower to operations with IR values" do
     backend = build(app())
 
-    [%Step{op: :create, args: create}, %Step{op: :return, args: %{values: [returned]}}] =
+    [%Step{op: :create, args: create}, %Step{op: :return, args: %{values: [returned, _name]}}] =
       workflow(backend, "wCreate").steps
 
     assert create.data_type == "task"
@@ -142,10 +148,10 @@ defmodule BubbleEx.Workflows.BackendTest do
   test "coverage counts native workflows and steps" do
     coverage = Backend.coverage(build(app()))
 
-    assert coverage["workflows"] == %{"total" => 6, "native" => 5, "residue" => 1}
-    assert coverage["steps"] == %{"total" => 10, "native" => 8, "residue" => 2}
+    assert coverage["workflows"] == %{"total" => 10, "native" => 9, "residue" => 1}
+    assert coverage["steps"] == %{"total" => 15, "native" => 13, "residue" => 2}
     assert coverage["privacy_bypasses"] == 1
-    assert coverage["exposed"] == 1
+    assert coverage["exposed"] == 2
     assert coverage["cycles"] == 1
   end
 

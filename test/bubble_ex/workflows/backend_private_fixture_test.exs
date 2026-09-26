@@ -18,7 +18,7 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
   # scripts/phoenix_compile_check.sh with the same BUBBLE_EX_PRIVATE_EXPORT.
   use ExUnit.Case, async: true
 
-  alias BubbleEx.{CanonicalJson, Index, Model}
+  alias BubbleEx.{CanonicalJson, Index, Model, Plan}
   alias BubbleEx.Target.{Ash, Phoenix}
   alias BubbleEx.Target.Ash.Workflows
   alias BubbleEx.Target.Ash.Workflows.Spec
@@ -92,8 +92,8 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
     end
   end
 
-  test "sample requests of detect-data workflows never reach the output",
-       %{app: app, project: project, spec: spec} do
+  test "sample requests of detect-data workflows never reach any output",
+       %{app: app, model: model, index: index, backend: backend, project: project, spec: spec} do
     samples =
       for {_, w} <- app["api"] || %{},
           is_map(w),
@@ -101,11 +101,54 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
           is_binary(sample) and byte_size(sample) > 8,
           do: sample
 
-    {:ok, files} = Phoenix.render(project, name: "Acme", module: "Acme", workflows: spec)
-    output = files |> Map.values() |> Enum.join("\n")
+    # The credential-like values inside them (authorization headers,
+    # tokens, keys, signatures), as well as each whole sample.
+    secrets =
+      samples
+      |> Enum.flat_map(fn sample ->
+        case Jason.decode(sample) do
+          {:ok, decoded} -> [sample | credentials(decoded)]
+          _ -> [sample]
+        end
+      end)
+      |> Enum.uniq()
 
-    for sample <- samples, do: refute(String.contains?(output, sample))
+    {:ok, files} = Phoenix.render(project, name: "Acme", module: "Acme", workflows: spec)
+    {:ok, plan} = Plan.build(model, index, nil, [], residue: Backend.residue(backend))
+
+    outputs = [
+      files |> Map.values() |> Enum.join("\n"),
+      inspect(spec, limit: :infinity, printable_limit: :infinity),
+      inspect(backend, limit: :infinity, printable_limit: :infinity),
+      inspect(spec.diagnostics ++ backend.diagnostics,
+        limit: :infinity,
+        printable_limit: :infinity
+      ),
+      Plan.to_json(plan)
+    ]
+
+    for secret <- secrets, output <- outputs do
+      refute String.contains?(output, secret), "a sample request's credential reached the output"
+    end
   end
+
+  @credential ~r/auth|token|secret|key|signature|password|cookie/i
+
+  defp credentials(map) when is_map(map) do
+    Enum.flat_map(map, fn
+      {k, v} when is_binary(v) and byte_size(v) >= 8 ->
+        if Regex.match?(@credential, k), do: [v | bearer(v)], else: []
+
+      {_k, v} ->
+        credentials(v)
+    end)
+  end
+
+  defp credentials(list) when is_list(list), do: Enum.flat_map(list, &credentials/1)
+  defp credentials(_), do: []
+
+  defp bearer("Bearer " <> token) when byte_size(token) >= 8, do: [token]
+  defp bearer(_), do: []
 
   test "deterministic", %{backend: backend, project: project, spec: spec} do
     assert Workflows.map(backend, project, namespace: "Acme") == {:ok, spec}

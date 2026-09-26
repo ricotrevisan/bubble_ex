@@ -26,15 +26,19 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
     * `lib/<app>/workflows/<folder>/bodies.ex` - one function per
       workflow, `# bubble:workflow <id>` then one `# bubble:step N <type>`
       per action (the `step_order` check); a step without a lowering is a
-      `TODO(bubble:<action>)` that fails loudly at run time
+      `TODO(bubble:<action>)`, and a workflow that reaches one (in its
+      body or through a callee) fails before its first step
     * `lib/<app>/bubble/runtime.ex` - the `BubbleEx.Target.Elixir.Runtime`
       contract the compiled values call
     * `test/<app>/bubble_workflows_test.exs` and, with exposed workflows,
-      `test/<app>_web/bubble_workflow_api_test.exs`: tests tagged `bubble:
-      "workflow:<id>"` for each workflow whose body is generated whole
-      (`unit_test`): it runs with empty parameters without raising; a
-      scheduled one also runs as a job, a trigger is enqueued by a write of
-      its data type, an exposed one answers at its endpoint
+      `test/<app>_web/bubble_workflow_api_test.exs`: smoke tests for each
+      native workflow (its body and every callee generated whole): it runs
+      with empty parameters without raising; a scheduled one also runs as
+      a job, a trigger is enqueued by a write of its data type, an exposed
+      one answers 503 until the API is served, then its method only. They
+      cannot fail on behavior, so they are tagged `bubble_smoke:` and do
+      not satisfy the task CLI's `unit_test` check, which needs a
+      behavioral test tagged `bubble: "workflow:<id>"`
 
   Every text from the app (Bubble IDs, names, keys) is printed through
   `inspect/1` or as a sanitized comment; identifiers are the spec's
@@ -278,18 +282,15 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
     fun = a.name
     event_todo = event_todo(a)
 
-    steps =
-      Enum.map_join(a.steps, ", ", fn s -> "&#{fun}__step(#{s.index}, &1)" end)
+    steps = Enum.map_join(a.steps, ", ", fn s -> "&#{fun}__step(#{s.index}, &1)" end)
+    blocked = Map.get(a, :blocked_by, [])
 
-    steps =
-      if event_todo == "",
-        do: steps,
+    blocked_todo =
+      if blocked == [],
+        do: "",
         else:
-          Enum.join(
-            ["&Runtime.not_lowered(&1, #{inspect(a.workflow)}, #{inspect("event")})" | [steps]]
-            |> Enum.reject(&(&1 == "")),
-            ", "
-          )
+          "  # TODO(bubble:#{comment(a.symbol)}) not lowered (here or in a workflow it calls " <>
+            "or schedules): it fails before step 1 until every subject is lowered\n"
 
     condition =
       if a.condition, do: "&#{fun}__condition/1", else: "nil"
@@ -299,7 +300,7 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
     @doc #{inspect(action_doc(a))}
     def #{fun}(input, context) do
       ctx = Runtime.start(input, context, #{inspect(a.workflow)}, #{inspect(a.authorize)})
-    #{event_todo}  Runtime.steps(ctx, #{condition}, [#{steps}])
+    #{event_todo}#{blocked_todo}  Runtime.steps(ctx, #{condition}, [#{steps}], #{inspect(blocked, limit: :infinity)})
     end
     #{condition_fun(a)}#{Enum.map_join(a.steps, "\n", &step(&1, fun, ns))}
     """
@@ -497,10 +498,12 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
     data =
       """
       defmodule #{ctx.module}.BubbleWorkflowsTest do
-        # Scaffolded by bubble_ex (WTF-373): one test per backend workflow
-        # whose body was generated whole, tagged with its Bubble ID (the
-        # task CLI's unit_test check). A workflow with residue has none:
-        # write its test with its body.
+        # Scaffolded by bubble_ex (WTF-373): smoke tests for each backend
+        # workflow whose body (and every workflow it calls or schedules) was
+        # generated whole: it runs with empty parameters without raising.
+        # They cannot fail on behavior, so they are tagged bubble_smoke and
+        # do not satisfy the task CLI's unit_test check: that needs a test
+        # asserting the workflow's behavior, tagged bubble: "workflow:<id>".
         use #{ctx.module}.DataCase, async: false
         use Oban.Testing, repo: #{ctx.module}.Repo
 
@@ -522,8 +525,18 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
             format("""
             defmodule #{ctx.web}.BubbleWorkflowApiTest do
               # Scaffolded by bubble_ex (WTF-373): each exposed workflow whose
-              # body was generated whole answers at /api/1.1/wf/<name>.
+              # body was generated whole answers at /api/1.1/wf/<name>, once
+              # the workflow API is served, and only to its HTTP method.
+              # Smoke tests: tagged bubble_smoke, they do not satisfy the task
+              # CLI's unit_test check, which needs a behavioral test tagged
+              # bubble: "workflow:<id>".
               use #{ctx.web}.ConnCase, async: false
+
+              defp serve_api do
+                config = Application.get_env(:#{ctx.app}, #{ctx.module}.Workflows, [])
+                Application.put_env(:#{ctx.app}, #{ctx.module}.Workflows, Keyword.put(config, :serve_workflow_api, true))
+                on_exit(fn -> Application.put_env(:#{ctx.app}, #{ctx.module}.Workflows, config) end)
+              end
 
             #{Enum.map_join(exposed, "\n", &api_test/1)}
             end
@@ -539,7 +552,7 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
 
     run = """
 
-    @tag bubble: #{tag}
+    @tag bubble_smoke: #{tag}
     test #{inspect("workflow #{a.workflow} runs with empty parameters")} do
       assert ran?(Runtime.run(#{inspect(a.workflow)}, %{}))
     end
@@ -549,7 +562,7 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
       if a.scheduled? do
         """
 
-        @tag bubble: #{tag}
+        @tag bubble_smoke: #{tag}
         test #{inspect("workflow #{a.workflow} runs as a scheduled job")} do
           result = perform_job(Scheduler, %{"workflow" => #{inspect(a.workflow)}, "params" => %{}})
           assert result == :ok or match?({:error, _}, result)
@@ -564,7 +577,7 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
         %{resource: resource} ->
           """
 
-          @tag bubble: #{tag}
+          @tag bubble_smoke: #{tag}
           test #{inspect("workflow #{a.workflow} is enqueued by a write of its data type")} do
             {:ok, _} = Ash.create(#{ctx.module}.#{resource}, %{id: Runtime.new_id()}, authorize?: false)
             assert_enqueued(worker: Scheduler, args: %{"workflow" => #{inspect(a.workflow)}})
@@ -579,12 +592,17 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
   end
 
   defp api_test(a) do
+    {method, other} = if a.exposed.method == :get, do: {"get", "post"}, else: {"post", "get"}
+
     """
-    @tag bubble: #{inspect(a.symbol)}
-    test #{inspect("workflow #{a.workflow} answers at its endpoint")}, %{conn: conn} do
+    @tag bubble_smoke: #{inspect(a.symbol)}
+    test #{inspect("workflow #{a.workflow} answers at its endpoint only when served")}, %{conn: conn} do
       path = "/api/1.1/wf/" <> URI.encode(#{inspect(a.exposed.endpoint)}, &URI.char_unreserved?/1)
-      conn = post(conn, path, %{})
-      assert conn.status in [200, 400, 401]
+      assert #{method}(conn, path, %{}).status == 503
+
+      serve_api()
+      assert #{method}(build_conn(), path, %{}).status in [200, 400, 401]
+      assert #{other}(build_conn(), path, %{}).status == 405
     end
     """
   end

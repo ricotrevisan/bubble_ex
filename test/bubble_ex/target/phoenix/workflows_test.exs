@@ -83,6 +83,22 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
     assert files["lib/acme/workflows/registry.ex"] =~ ~s|@privacy_bypasses ["wClose"]|
   end
 
+  test "a workflow that reaches residue fails before its first step", %{files: files} do
+    bodies = files["lib/acme/workflows/folder_f_loop/bodies.ex"]
+
+    assert bodies =~ ~s|"action:aCall",\n      "action:aMail"\n    ])|
+
+    assert bodies =~ ~s|["workflow:wExternal"])|
+    assert bodies =~ ~s|Runtime.steps(ctx, nil, [&tick__step(1, &1), &tick__step(2, &1)], [])|
+  end
+
+  test "the workflow API is off by default, loudly", %{files: files, spec: spec} do
+    assert files["lib/acme/workflows/runtime.ex"] =~ "config(:serve_workflow_api, false)"
+    assert files["test/acme_web/smoke_test.exs"] =~ "NOT_SERVED"
+
+    assert [_, _] = Enum.filter(spec.diagnostics, &(&1.code == :workflow_endpoint_not_served))
+  end
+
   test "residue steps fail loudly and are marked", %{files: files} do
     bodies = files["lib/acme/workflows/folder_f_loop/bodies.ex"]
     assert bodies =~ "# TODO(bubble:action:aCall) not lowered: api_connector_action"
@@ -108,12 +124,17 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
       assert markers[id] == Enum.with_index(steps, 1) |> Enum.map(fn {t, n} -> {n, t} end), id
     end
 
-    tags = files["test/acme/bubble_workflows_test.exs"] |> tags()
+    # Smoke tests are tagged bubble_smoke: they do not satisfy unit_test.
+    assert files["test/acme/bubble_workflows_test.exs"] |> tags(:bubble) == []
+    smoke = files["test/acme/bubble_workflows_test.exs"] |> tags(:bubble_smoke)
 
     native = for a <- Workflows.actions(spec), Workflows.native?(a), do: a.symbol
-    assert Enum.sort(Enum.uniq(tags)) == Enum.sort(native)
-    refute "workflow:wExternal" in tags
-    assert files["test/acme_web/bubble_workflow_api_test.exs"] |> tags() == ["workflow:wCreate"]
+    assert Enum.sort(Enum.uniq(smoke)) == Enum.sort(native)
+    refute "workflow:wExternal" in smoke
+    refute "workflow:wBlocked" in smoke
+
+    assert files["test/acme_web/bubble_workflow_api_test.exs"] |> tags(:bubble_smoke) ==
+             ["workflow:wCreate", "workflow:wPing"]
   end
 
   test "deterministic", %{files: files} = built do
@@ -210,12 +231,12 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
     |> Map.new()
   end
 
-  defp tags(source) do
+  defp tags(source, key) do
     {:ok, ast} = Code.string_to_quoted(source)
 
     {_, tags} =
       Macro.prewalk(ast, [], fn
-        {:@, _, [{:tag, _, [[bubble: tag]]}]} = node, acc -> {node, [tag | acc]}
+        {:@, _, [{:tag, _, [[{^key, tag}]]}]} = node, acc -> {node, [tag | acc]}
         node, acc -> {node, acc}
       end)
 

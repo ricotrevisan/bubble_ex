@@ -1,6 +1,47 @@
 {
  "_id": "wfapp",
  "api": {
+  "wBlocked": {
+   "actions": {
+    "0": {
+     "id": "aWould",
+     "properties": {
+      "initial_values": {
+       "0": {
+        "key": "title_text",
+        "value": {
+         "entries": {
+          "0": "must not exist"
+         },
+         "type": "TextExpression"
+        }
+       }
+      },
+      "thing_type": "custom.task"
+     },
+     "type": "NewThing"
+    },
+    "1": {
+     "id": "aSync",
+     "properties": {
+      "api_event": "wExternal",
+      "date": {
+       "properties": {
+        "name": "Current Date/Time"
+       },
+       "type": "PageData"
+      }
+     },
+     "type": "ScheduleAPIEvent"
+    }
+   },
+   "id": "wBlocked",
+   "properties": {
+    "wf_folder": "fLoop",
+    "wf_name": "blocked"
+   },
+   "type": "APIEvent"
+  },
   "wClose": {
    "actions": {
     "0": {
@@ -140,6 +181,17 @@
         },
         "key": "task",
         "value": "custom.task"
+       },
+       "1": {
+        "content": {
+         "properties": {
+          "btype_id": "text",
+          "param_id": "name"
+         },
+         "type": "APIEventParameter"
+        },
+        "key": "name",
+        "value": "text"
        }
       }
      },
@@ -159,6 +211,11 @@
       "key": "project",
       "optional": true,
       "value": "custom.project"
+     },
+     "2": {
+      "key": "name",
+      "optional": true,
+      "value": "text"
      }
     },
     "wf_folder": "fTasks",
@@ -190,6 +247,73 @@
    "properties": {
     "wf_folder": "fLoop",
     "wf_name": "sync"
+   },
+   "type": "APIEvent"
+  },
+  "wFanOut": {
+   "actions": {
+    "0": {
+     "id": "aFan",
+     "properties": {
+      "api_event": "wNote",
+      "data_source": {
+       "properties": {
+        "btype_id": "list.custom.task",
+        "param_id": "tasks"
+       },
+       "type": "APIEventParameter"
+      },
+      "date": {
+       "properties": {
+        "name": "Current Date/Time"
+       },
+       "type": "PageData"
+      },
+      "interval": 60,
+      "type_of_list": "custom.task"
+     },
+     "type": "ScheduleAPIEventOnList"
+    }
+   },
+   "id": "wFanOut",
+   "properties": {
+    "parameters": {
+     "0": {
+      "is_list": true,
+      "key": "tasks",
+      "value": "custom.task"
+     }
+    },
+    "wf_folder": "fLoop",
+    "wf_name": "fan out"
+   },
+   "type": "APIEvent"
+  },
+  "wNote": {
+   "actions": {
+    "0": {
+     "id": "aNote",
+     "properties": {
+      "initial_values": {
+       "0": {
+        "key": "title_text",
+        "value": {
+         "entries": {
+          "0": "note"
+         },
+         "type": "TextExpression"
+        }
+       }
+      },
+      "thing_type": "custom.task"
+     },
+     "type": "NewThing"
+    }
+   },
+   "id": "wNote",
+   "properties": {
+    "wf_folder": "fLoop",
+    "wf_name": "note"
    },
    "type": "APIEvent"
   },
@@ -279,6 +403,37 @@
     "event_name": "task done"
    },
    "type": "DatabaseTriggerEvent"
+  },
+  "wPing": {
+   "actions": {
+    "0": {
+     "id": "aPong",
+     "properties": {
+      "parameters_actions": {
+       "0": {
+        "content": {
+         "entries": {
+          "0": "pong"
+         },
+         "type": "TextExpression"
+        },
+        "key": "reply",
+        "value": "text"
+       }
+      }
+     },
+     "type": "APIReturnData"
+    }
+   },
+   "id": "wPing",
+   "properties": {
+    "auth_unecessary": true,
+    "expose": true,
+    "trigger_option": "get",
+    "wf_folder": "fLoop",
+    "wf_name": "ping"
+   },
+   "type": "APIEvent"
   },
   "wTick": {
    "actions": {

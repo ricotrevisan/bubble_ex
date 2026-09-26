@@ -26,7 +26,7 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
     spec = spec(app())
 
     assert Enum.map(spec.resources, &{&1.module, Enum.map(&1.actions, fn a -> a.name end)}) == [
-             {"Workflows.FolderFLoop", ["sync", "tick"]},
+             {"Workflows.FolderFLoop", ["blocked", "fan_out", "note", "ping", "sync", "tick"]},
              {"Workflows.FolderFTasks", ["close_task", "create_task", "notify"]},
              {"Workflows.Unfiled", ["task_done"]}
            ]
@@ -36,11 +36,15 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
     spec = spec(app())
 
     assert Map.new(Spec.actions(spec), &{&1.workflow, &1.authorize}) == %{
+             "wBlocked" => true,
              "wClose" => false,
              "wCreate" => true,
              "wExternal" => true,
+             "wFanOut" => true,
+             "wNote" => true,
              "wNotify" => :inherit,
              "wOnDone" => true,
+             "wPing" => true,
              "wTick" => true
            }
 
@@ -59,7 +63,8 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
                type: :string,
                resource: "Project",
                optional?: true
-             }
+             },
+             %{name: "name", param: "name", kind: :value}
            ] = create.arguments
 
     assert %{endpoint: "create task", auth: :none} = create.exposed
@@ -108,9 +113,11 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
 
   test "coverage counts generated code" do
     coverage = Spec.coverage(spec(app()))
-    assert coverage["entry_points"] == 6
-    assert coverage["workflows"] == %{"total" => 6, "native" => 5, "residue" => 1}
-    assert coverage["steps"]["native"] == 8
+    assert coverage["entry_points"] == 10
+    # wBlocked's own body lowers, but it schedules wExternal, which does not.
+    assert coverage["workflows"] == %{"total" => 10, "native" => 8, "residue" => 2}
+    assert coverage["native_own_body"] == 9
+    assert coverage["steps"]["native"] == 13
 
     assert coverage["residue_reasons"] == %{
              "api_connector_action" => 1,

@@ -2,15 +2,15 @@
   "generated": {
     "by_kind": {
       "api": {
-        "native": 83,
+        "native": 66,
         "total": 462
       },
       "custom_event": {
-        "native": 26,
+        "native": 24,
         "total": 110
       },
       "database_trigger": {
-        "native": 23,
+        "native": 11,
         "total": 63
       }
     },
@@ -22,7 +22,7 @@
       "authenticated": 17,
       "none": 1
     },
-    "native_with_callees": 101,
+    "native_own_body": 132,
     "privacy_bypasses": 147,
     "residue_reasons": {
       "api_connector_action": 132,
@@ -53,8 +53,8 @@
     },
     "triggers": 15,
     "workflows": {
-      "native": 132,
-      "residue": 503,
+      "native": 101,
+      "residue": 534,
       "total": 635
     }
   },

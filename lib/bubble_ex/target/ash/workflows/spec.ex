@@ -55,38 +55,14 @@ defmodule BubbleEx.Target.Ash.Workflows.Spec do
       |> Enum.flat_map(&action_residue/1)
       |> Enum.sort_by(&{&1.subject, &1.reason, inspect(&1.detail)})
 
-  # Every workflow reachable through call and schedule steps is native.
-  defp callees_native?(action, actions) do
-    by_id = Map.new(actions, &{&1.workflow, &1})
-    reach(action, by_id, MapSet.new([action.workflow]))
-  end
-
-  defp reach(action, by_id, seen) do
-    Enum.all?(callees(action), fn id ->
-      cond do
-        MapSet.member?(seen, id) ->
-          true
-
-        match?(%{}, by_id[id]) and native?(by_id[id]) ->
-          reach(by_id[id], by_id, MapSet.put(seen, id))
-
-        true ->
-          false
-      end
-    end)
-  end
-
-  defp callees(action),
-    do:
-      for(
-        %{op: op, args: %{workflow: id}} <- action.steps,
-        op in [:call, :schedule, :schedule_list],
-        do: id
-      )
-
-  @doc "Whether an action has no residue: its whole body is generated."
+  @doc """
+  Whether an action is native: its whole body is generated with no
+  residue, and so is every workflow it calls or schedules, transitively
+  (`blocked_by` is empty). A workflow that is not native fails before its
+  first step.
+  """
   @spec native?(map()) :: boolean()
-  def native?(action), do: action_residue(action) == []
+  def native?(action), do: action_residue(action) == [] and Map.get(action, :blocked_by, []) == []
 
   defp action_residue(action), do: action.residue ++ Enum.flat_map(action.steps, & &1.residue)
 
@@ -97,7 +73,8 @@ defmodule BubbleEx.Target.Ash.Workflows.Spec do
       entry point (its Ash action, registry entry and, when exposed, its
       endpoint)
     * `"workflows"` - `"native"`: workflows whose **whole body** is
-      generated with no residue (neither the lowering's, see
+      generated, and whose every callee (called or scheduled,
+      transitively) is too, with no residue (neither the lowering's, see
       `BubbleEx.Workflows.Backend.coverage/1`, nor the Ash binding's: an
       IR that does not compile to Elixir, a context input a backend
       workflow lacks); `"residue"`: the rest, which need agent work
@@ -106,9 +83,9 @@ defmodule BubbleEx.Target.Ash.Workflows.Spec do
     * `"by_kind"` - `{total, native}` workflows per kind; `"step_ops"` -
       native steps per operation; `"residue_reasons"` - residue entries
       per reason (a subject may have several)
-    * `"native_with_callees"` - native workflows whose every called or
-      scheduled workflow is native too, transitively (a native body can
-      still call a workflow with residue, which fails when it runs)
+    * `"native_own_body"` - workflows whose own body has no residue but
+      that may call or schedule one that has (those are blocked: they
+      fail before their first step, so they are not `native`)
     * `"exposed_privacy_bypasses"` - exposed workflows that run with
       `authorize?: false`, by the authentication their endpoint requires
       (`none` means anyone on the internet can run it)
@@ -148,7 +125,7 @@ defmodule BubbleEx.Target.Ash.Workflows.Spec do
         actions
         |> Enum.flat_map(&action_residue/1)
         |> Enum.frequencies_by(&Atom.to_string(&1.reason)),
-      "native_with_callees" => native |> Enum.filter(&callees_native?(&1, actions)) |> length(),
+      "native_own_body" => Enum.count(actions, &(action_residue(&1) == [])),
       "privacy_bypasses" => length(spec.privacy_bypasses),
       "exposed_privacy_bypasses" =>
         actions
