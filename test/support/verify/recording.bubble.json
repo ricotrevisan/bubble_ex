@@ -1,0 +1,65 @@
+{
+  "complete": true,
+  "format": "bubble_ex.verify.recording",
+  "masks": [
+    {
+      "kind": "values",
+      "op": "o2",
+      "pointer": "/slug",
+      "reason": "differential",
+      "record": null,
+      "tolerance_ms": null
+    }
+  ],
+  "observations": [
+    {
+      "kind": "record_set",
+      "op": "o1",
+      "record": null,
+      "value": {
+        "ordered": false,
+        "records": [
+          "task_w2"
+        ]
+      }
+    },
+    {
+      "kind": "visible",
+      "op": "o2",
+      "record": "task_w1",
+      "value": false
+    },
+    {
+      "kind": "visible_fields",
+      "op": "o2",
+      "record": "task_w1",
+      "value": []
+    },
+    {
+      "kind": "values",
+      "op": "o2",
+      "record": "task_w1",
+      "value": {}
+    }
+  ],
+  "oracle": "bubble",
+  "recorded_at": "2026-10-02T09:12:00Z",
+  "runs": 2,
+  "scenario": {
+    "id": "privacy_read.custom.task.w2_member",
+    "sha256": "66912ad57afa03b58031449262701f0f598b4cd16bb1cc3403ea17153b5c1636",
+    "source_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "schema_version": 1,
+  "seed_sha256": "eb77f55e705fd65ea0b648ff426b57d4ed503350c4b613450983256a9f4ae510",
+  "source": {
+    "app": "acme-replay-demo",
+    "app_version": "1759396000000",
+    "branch": "wtfreplay"
+  },
+  "stats": {
+    "calls": 2,
+    "workload_units": 0.5
+  },
+  "t0": 1790932320000
+}

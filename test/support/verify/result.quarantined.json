@@ -1,0 +1,57 @@
+{
+  "actor": "agent:fixer",
+  "basis": {
+    "decisions_sha256": null,
+    "source_sha256": null
+  },
+  "check": "api_workflow",
+  "class": "behavior",
+  "decision": null,
+  "diff": [
+    {
+      "actual": [
+        2,
+        1
+      ],
+      "expected": [
+        1,
+        2
+      ],
+      "op": "step_order",
+      "workflow": "bTHcK"
+    }
+  ],
+  "evidence": [],
+  "format": "bubble_ex.verify.result",
+  "id": "api_workflow.complete_task.w1_member",
+  "level": "L2",
+  "oracle": {
+    "branch": null,
+    "kind": "model",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "ran_at": "2026-10-02T09:15:00Z",
+  "reason": null,
+  "scenario": {
+    "id": "api_workflow.complete_task.w1_member",
+    "seed_sha256": "eb77f55e705fd65ea0b648ff426b57d4ed503350c4b613450983256a9f4ae510",
+    "sha256": "0cc42487f5f1d5adb3ebb78ef5e76f5465bdb320525e73acda7db4471852386a",
+    "source_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "schema_version": 1,
+  "stale_reasons": [],
+  "status": "quarantined",
+  "subject_build": null,
+  "subjects": {
+    "workflow": "bTHcK"
+  },
+  "tasks": [],
+  "waiver": {
+    "actor": {
+      "id": "agent:fixer",
+      "kind": "agent"
+    },
+    "expires_at": "2026-10-08T09:15:00Z",
+    "reason": "Bubble runs step 2 first on retries; investigating."
+  }
+}

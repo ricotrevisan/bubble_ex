@@ -6,6 +6,22 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`BubbleEx.Verify` formats** (WTF-381, V1 of the WTF-358 verification
+  proposal). Stack-neutral, versioned (`schema_version` 1), strict JSON
+  codecs with canonical encoding and content hashes for seeds
+  (`Verify.Seed`), scenarios (`Verify.Scenario`), recordings
+  (`Verify.Recording`) and check results (`Verify.Result`), plus canonical
+  Bubble values (`Verify.Value`, WTF-338), observations, masks, the check
+  registry (`Verify.Check`) and staleness (`Verify.Staleness`). Result
+  status rules are enforced on decode: privacy, data and auth differences
+  are accepted only through an owner `parity_exception` decision, agents
+  may only quarantine behaviour checks (at most 7 days), structural and
+  gate checks accept nothing; `decision` references are the decision `key`
+  plus `proposal_sha256` and `Result.link_decision/2` checks them against
+  `Decision.resolve/3`. Bubble recordings refuse `live`/`test` branches;
+  L2/L3 results on the `model` oracle never count as Bubble-verified. Golden
+  examples in `test/support/verify/`.
+
 - **`Target.Ash.map/3` applies owner decisions, cut 1** (WTF-401, D-2 of
   WTF-352). `decisions` is the output of `Decision.applicable/2` (a list of
   `Decision.Applied`); raw decision records, stale entries (recorded basis

@@ -1,0 +1,141 @@
+{
+  "format": "bubble_ex.verify.seed",
+  "id": "privacy_matrix",
+  "personas": {
+    "anonymous": {
+      "user": null
+    },
+    "w1_member": {
+      "user": "user_w1"
+    },
+    "w2_member": {
+      "user": "user_w2"
+    }
+  },
+  "records": [
+    {
+      "fields": {
+        "Created By": {
+          "ref": "user_w1"
+        },
+        "archived_date": null,
+        "attachment_file": {
+          "file": "https://files.example/replay/a.pdf"
+        },
+        "done_boolean": {
+          "boolean": false
+        },
+        "due_date": {
+          "date": 1759363200000
+        },
+        "notes_text": {
+          "text": ""
+        },
+        "payload_api_apiconnector2_bTGbC_bTGbD": {
+          "json": {
+            "a": null,
+            "b": [
+              1,
+              2
+            ]
+          }
+        },
+        "place_geographic_address": {
+          "geographic_address": {
+            "formatted_address": "1 Example Way",
+            "lat": 1.5,
+            "lng": -2.25
+          }
+        },
+        "points_number": {
+          "number": 3.0
+        },
+        "status_option_task_status": {
+          "option": "open"
+        },
+        "tags_list_text": {
+          "list": [
+            {
+              "text": "b"
+            },
+            {
+              "text": "a"
+            }
+          ]
+        },
+        "title_text": {
+          "text": "Plan"
+        },
+        "window_date_range": {
+          "date_range": {
+            "end": null,
+            "start": 1759363200000
+          }
+        }
+      },
+      "key": "task_w1",
+      "type": "custom.task"
+    },
+    {
+      "fields": {
+        "Created By": {
+          "ref": "user_w2"
+        },
+        "title_text": {
+          "text": "Ship"
+        }
+      },
+      "key": "task_w2",
+      "type": "custom.task"
+    },
+    {
+      "fields": {
+        "admin_boolean": {
+          "boolean": false
+        },
+        "email": {
+          "text": "w1@replay.wtf.invalid"
+        },
+        "workspace_custom_workspace": {
+          "ref": "workspace_1"
+        }
+      },
+      "key": "user_w1",
+      "type": "user"
+    },
+    {
+      "fields": {
+        "admin_boolean": {
+          "boolean": false
+        },
+        "email": {
+          "text": "w2@replay.wtf.invalid"
+        },
+        "workspace_custom_workspace": {
+          "ref": "workspace_2"
+        }
+      },
+      "key": "user_w2",
+      "type": "user"
+    },
+    {
+      "fields": {
+        "name_text": {
+          "text": "W1"
+        }
+      },
+      "key": "workspace_1",
+      "type": "custom.workspace"
+    },
+    {
+      "fields": {
+        "name_text": {
+          "text": "W2"
+        }
+      },
+      "key": "workspace_2",
+      "type": "custom.workspace"
+    }
+  ],
+  "schema_version": 1
+}
