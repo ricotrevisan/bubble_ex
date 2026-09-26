@@ -22,10 +22,13 @@ defmodule BubbleEx.ServerTest do
     end
   end
 
+  # start_supervised! stops the server synchronously (and unregisters it)
+  # before the next test. A linked start_link plus an on_exit stop raced the
+  # link-driven shutdown: the server could die between Process.alive?/1 and
+  # GenServer.stop/1, failing the test with :noproc (WTF-395).
   setup do
-    {:ok, pid} = Server.start_link(name: :test_server, adapter: StubScanner)
-    on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
-    %{server: :test_server}
+    pid = start_supervised!({Server, name: nil, adapter: StubScanner})
+    %{server: pid}
   end
 
   describe "start_scan/2" do

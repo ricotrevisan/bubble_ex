@@ -199,11 +199,20 @@ defmodule BubbleEx.Secrets.Trufflehog do
     case Port.info(port, :os_pid) do
       {:os_pid, pid} ->
         System.cmd(kill, ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
-        if Port.info(port), do: Port.close(port)
+        close_port(port)
 
       nil ->
         :ok
     end
+  end
+
+  # The killed scanner may exit, closing its port, at any moment after the
+  # kill, so an open-check before Port.close/1 is a race (WTF-395): the badarg
+  # was rescued by run_port/5 and turned a timeout into :cli_failed.
+  defp close_port(port) do
+    Port.close(port)
+  rescue
+    ArgumentError -> :ok
   end
 
   defp enhance_result(%{"InvalidResult" => true}, _file, _deadline), do: nil

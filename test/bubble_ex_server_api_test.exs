@@ -6,9 +6,8 @@ defmodule BubbleExServerApiTest do
 
   setup do
     # Start the server for testing with default name
-    {:ok, pid} = BubbleEx.Server.start_link()
-    on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
-    %{server_pid: pid}
+    # start_supervised! stops it synchronously before the next test (WTF-395).
+    %{server_pid: start_supervised!(BubbleEx.Server)}
   end
 
   describe "BubbleEx.start_scan_for_secrets/1" do
