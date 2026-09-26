@@ -16,7 +16,10 @@ defmodule BubbleEx.Db.Zod do
   skipped, as are deleted columns.
 
   Field keys are the Reader's names (unique per table), quoted when they are
-  not identifiers. Schema consts and types are PascalCased, and unique after
+  not identifiers as single-quoted string literals with quotes, backslashes,
+  line breaks and other control characters escaped; the table-name comment
+  above each schema has its line breaks escaped
+  (`BubbleEx.Db.Encoder.Literal`). Schema consts and types are PascalCased, and unique after
   conversion (`names/2`, `BubbleEx.Db.Encoder.Names`): a table repeating an
   earlier table's (`Foo Bar` and `Foo-Bar`) or an API Connector type's const
   takes the next free `2`, `3`, ... (`FooBar2Schema`).
@@ -24,7 +27,7 @@ defmodule BubbleEx.Db.Zod do
 
   @behaviour BubbleEx.Db.Encoder
 
-  alias BubbleEx.Db.Encoder.Names
+  alias BubbleEx.Db.Encoder.{Literal, Names}
   alias BubbleEx.Db.Naming
 
   @type opts :: [naming: :proper | :id | nil, external_types: :preserve | :opaque | :legacy]
@@ -99,7 +102,7 @@ defmodule BubbleEx.Db.Zod do
 
     field_lines = Enum.map_join(columns, "\n", fn column -> encode_field(column, opts) end)
 
-    "// #{table.name}\n" <>
+    "// #{Literal.line_comment(table.name)}\n" <>
       "export const #{schema} = z.object({\n" <>
       field_lines <>
       "\n" <>
@@ -152,19 +155,19 @@ defmodule BubbleEx.Db.Zod do
   # Trailing comment naming a reference/enum target or a structured custom type.
 
   defp field_comment(%{type: :reference, custom_type: target}),
-    do: " // reference -> #{target}"
+    do: " // reference -> #{Literal.line_comment(target)}"
 
   defp field_comment(%{type: :enum, custom_type: target}),
-    do: " // enum -> #{target} option set (values not rendered)"
+    do: " // enum -> #{Literal.line_comment(target)} option set (values not rendered)"
 
   defp field_comment(%{type: :api, custom_type: target}),
-    do: " // api -> #{target}"
+    do: " // api -> #{Literal.line_comment(target)}"
 
   defp field_comment(%{type: :custom, custom_type: "bubble_image"}), do: ""
   defp field_comment(%{type: :custom, custom_type: "bubble_file"}), do: ""
 
   defp field_comment(%{type: :custom, custom_type: target}),
-    do: " // #{target} (structured Bubble type)"
+    do: " // #{Literal.line_comment(target)} (structured Bubble type)"
 
   defp field_comment(_type), do: ""
 
@@ -212,22 +215,13 @@ defmodule BubbleEx.Db.Zod do
   defp capitalize_word(""), do: ""
 
   # An object key is emitted bare when it is a valid JS identifier, otherwise it
-  # is quoted (single quotes, with embedded single quotes / backslashes escaped).
+  # is a single-quoted string literal (Literal.js_single_quoted/1: quotes,
+  # backslashes, line breaks and other control characters escaped).
   defp field_key(name) do
-    if valid_identifier?(name) do
-      name
-    else
-      "'" <> escape_single_quoted(name) <> "'"
-    end
+    if valid_identifier?(name), do: name, else: Literal.js_single_quoted(name)
   end
 
   defp valid_identifier?(name), do: String.match?(name, ~r/^[A-Za-z_$][A-Za-z0-9_$]*$/)
-
-  defp escape_single_quoted(name) do
-    name
-    |> String.replace("\\", "\\\\")
-    |> String.replace("'", "\\'")
-  end
 
   defp encode_external_types(_parsed_map, opts) do
     if Keyword.get(opts, :external_types, :legacy) == :preserve do

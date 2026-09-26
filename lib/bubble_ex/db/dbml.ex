@@ -2,9 +2,15 @@ defmodule BubbleEx.Db.Dbml do
   @moduledoc """
   Encodes a parsed Bubble database map (see `BubbleEx.Db.Reader`) into DBML
   (Database Markup Language) text.
+
+  Names are DBML quoted identifiers with `"`, backslashes, line breaks and
+  other control characters escaped (`BubbleEx.Db.Encoder.Literal.dbml_quoted/1`),
+  so any Bubble name parses back unchanged.
   """
 
   @behaviour BubbleEx.Db.Encoder
+
+  alias BubbleEx.Db.Encoder.Literal
 
   @type opts :: [
           project_note: String.t() | nil,
@@ -29,7 +35,7 @@ defmodule BubbleEx.Db.Dbml do
 
     project_specs =
       """
-      Project "#{parsed_map.bubble_id}" {
+      Project #{Literal.dbml_quoted(to_string(parsed_map.bubble_id))} {
         database_type: "Bubble.io"
         Note: '''
           bubble-to-dbml generator by rico.wtf#{if project_note, do: "\n#{project_note}"}
@@ -56,7 +62,7 @@ defmodule BubbleEx.Db.Dbml do
 
     table_name =
       case naming do
-        :proper -> ~s("#{table.name}")
+        :proper -> Literal.dbml_quoted(table.name)
         :id -> quote_identifier(table.id)
       end
 
@@ -73,7 +79,7 @@ defmodule BubbleEx.Db.Dbml do
 
     column_name =
       case naming do
-        :proper -> ~s("#{column.name}")
+        :proper -> Literal.dbml_quoted(column.name)
         :id -> quote_identifier(column.id)
       end
 
@@ -92,7 +98,7 @@ defmodule BubbleEx.Db.Dbml do
   defp legacy_external_type(%{target: target, cardinality: cardinality}) when is_binary(target) do
     custom_type = String.replace_prefix(target, "api.", "")
     suffix = if cardinality == :many, do: "[]", else: ""
-    "api." <> ~s("#{custom_type}") <> suffix
+    "api." <> Literal.dbml_quoted(custom_type) <> suffix
   end
 
   defp legacy_external_type(_), do: "unsupported"
@@ -142,10 +148,10 @@ defmodule BubbleEx.Db.Dbml do
       case naming do
         :proper ->
           {
-            ~s("#{from.table_name}"),
-            ~s("#{from.name}"),
-            ~s("#{to.table_name}"),
-            ~s("#{to.name}")
+            Literal.dbml_quoted(from.table_name),
+            Literal.dbml_quoted(from.name),
+            Literal.dbml_quoted(to.table_name),
+            Literal.dbml_quoted(to.name)
           }
 
         :id ->
@@ -168,7 +174,7 @@ defmodule BubbleEx.Db.Dbml do
     do: which_type(Map.delete(type, :is_array)) <> "[]"
 
   defp which_type(%{type: :enum} = type), do: type.custom_type <> ".id"
-  defp which_type(%{type: :api} = type), do: "api." <> ~s("#{type.custom_type}")
+  defp which_type(%{type: :api} = type), do: "api." <> Literal.dbml_quoted(type.custom_type)
   defp which_type(%{type: :reference} = type), do: type.custom_type <> ".id"
   defp which_type(%{type: :custom, custom_type: custom_type}), do: custom_type
   defp which_type(%{type: :utc_datetime_usec}), do: "datetime"
@@ -184,13 +190,14 @@ defmodule BubbleEx.Db.Dbml do
 
   @doc """
   Quotes a DBML identifier if it contains characters that are not safe to use
-  unquoted (anything outside `[a-zA-Z0-9_]`). Returns the identifier unchanged
-  when it is already safe.
+  unquoted (anything outside `[a-zA-Z0-9_]`), escaping it as
+  `BubbleEx.Db.Encoder.Literal.dbml_quoted/1` does. Returns the identifier
+  unchanged when it is already safe.
   """
   @spec quote_identifier(String.t()) :: String.t()
   def quote_identifier(str) do
     if String.match?(str, ~r/[^a-zA-Z0-9_]/) do
-      ~s("#{str}")
+      Literal.dbml_quoted(str)
     else
       str
     end

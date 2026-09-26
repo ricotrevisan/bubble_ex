@@ -496,12 +496,15 @@ defmodule BubbleEx.Db.Ecto do
   end
 
   # Renders a string as an Elixir double-quoted literal. Plain quotes are used
-  # (never the ~s sigil) so that any parentheses in the value compile cleanly.
+  # (never the ~s sigil) so that any parentheses in the value compile cleanly;
+  # `#{` is escaped so a value never interpolates (WTF-408: the values are
+  # converted names today, which cannot hold one).
   defp quoted(value) do
     escaped =
       value
       |> String.replace("\\", "\\\\")
       |> String.replace("\"", "\\\"")
+      |> String.replace("\#{", "\\\#{")
 
     "\"" <> escaped <> "\""
   end
