@@ -338,6 +338,7 @@
     }
   ],
   "enums": [],
+  "extensions": [],
   "names": {
     "enums": {},
     "external_types": {
@@ -435,6 +436,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -765,6 +767,7 @@
         }
       ],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Shipment",
       "policies": [
@@ -831,6 +834,7 @@
         },
         "denied_rules": [],
         "file_fields": [],
+        "relationship_checks": {},
         "source": "public_default"
       },
       "privacy_relationships": [],
@@ -872,6 +876,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1056,6 +1061,7 @@
         }
       ],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "User",
       "policies": [
@@ -1116,6 +1122,7 @@
         },
         "denied_rules": [],
         "file_fields": [],
+        "relationship_checks": {},
         "source": "unavailable"
       },
       "privacy_relationships": [
@@ -1165,7 +1172,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "typed_structs": [
     {
       "bubble_name": "Address",

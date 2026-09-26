@@ -1,5 +1,5 @@
 {
-  "applied_sha256": "cc0819949b38a138f7d24a1f30ceefa3b9b6843b75f8fdee74033fe4aa10bd40",
+  "applied_sha256": "1d26380843ce6b9149d475135de8a3cfe9bccdd835c30b3477ffa6e88a2a8db1",
   "counts": {
     "applied": {
       "derive_from_related": 1
@@ -21,6 +21,7 @@
       "ignore": 386
     },
     "deferred": {},
+    "derived_aggregates": 0,
     "derived_calculations": 1,
     "diagnostics": {
       "ash_decision_applied": 1,
@@ -44,6 +45,8 @@
     },
     "enum_values": 678,
     "enums": 141,
+    "extensions": [],
+    "indexes": {},
     "privacy": {
       "actor_loads": 2,
       "authorization_bypasses": 207,
@@ -58,6 +61,7 @@
       "field_policies": 100,
       "gated_relationships": 220,
       "policies": 507,
+      "private_twins": 220,
       "resources": {
         "public_default": 46,
         "rules": 47
@@ -77,6 +81,6 @@
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "5e2f3db2ab722fe0f3c4de9f46581dde8c62bcea10486590e79b7b48241735c1",
-  "schema_version": 4
+  "project_sha256": "f1b0d5631cd61b9ec46e2f78ef32a4704f9b40cf40f9a3a02b41df361283d908",
+  "schema_version": 5
 }

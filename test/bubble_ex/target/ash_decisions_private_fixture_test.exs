@@ -10,7 +10,11 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   # The decision file is a JSON array of `BubbleEx.Decision.to_map/1`
   # records made against that export (for mm-137: accept the
   # denormalized-field finding "40. Sort: Thing Title" on "00. Thing - Join",
-  # and reject the search-index hints, which Target.Ash applies from cut 2).
+  # and reject the search-index hints, which apply by default from cut 2).
+  # A cut-2 run (WTF-405) also accepts every finding whose transform is a
+  # cut-2 one (derive_count, text_to_reference with a target type,
+  # derive_reverse_relationship) and leaves the hints to apply by default;
+  # it prints its counts and commits nothing.
   # It names private Bubble IDs, so it is never committed. The committed
   # snapshot holds only the Project's hash, the decision set's hash and
   # aggregate counts, never names or IDs. A changed hash or count means
@@ -85,14 +89,15 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     refute Enum.any?(applied, & &1.automatic)
   end
 
-  test "with the hints left undecided they are deferred, not applied",
-       %{model: model, index: index, findings: findings, records: records, project: project} do
+  test "with the hints left undecided they apply by default",
+       %{model: model, index: index, findings: findings, records: records} do
     hint_ids = for f <- findings, f.category == :hint, into: MapSet.new(), do: f.id
     decided = Enum.reject(records, &MapSet.member?(hint_ids, &1.basis.finding_id))
     {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
     applied = Decision.applicable(resolved, findings)
     automatic = Enum.filter(applied, & &1.automatic)
     assert automatic != [] and Enum.all?(automatic, &(&1.transform == :add_indexes))
+    assert length(automatic) == MapSet.size(hint_ids)
 
     {:ok, auto} =
       Ash.map(model, applied,
@@ -101,12 +106,60 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
         decisions_sha256: Decision.decisions_sha256(decided)
       )
 
-    assert length(auto.deferred) == length(automatic)
-    assert length(auto.deferred) == MapSet.size(hint_ids)
-    assert auto.applied == project.applied
-    assert auto.applied_sha256 == project.applied_sha256
-    assert Enum.count(auto.diagnostics, &(&1.code == :ash_decision_deferred)) == length(automatic)
-    IO.puts("\ntarget ash (decided, hints undecided): #{length(auto.deferred)} deferred")
+    report("hints undecided", auto, automatic)
+  end
+
+  test "every cut-2 finding accepted, with the hints applied by default, maps and renders",
+       %{model: model, index: index, findings: findings, records: records} do
+    {decided, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut2(findings, records, index)
+    {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
+    assert Resolved.blocking(resolved) == []
+    automatic = Enum.filter(applied, & &1.automatic)
+
+    untyped =
+      Enum.count(findings, &(&1.kind == :id_in_text and &1.proposal.target_type == nil))
+
+    for privacy <- [:omit, :unverified] do
+      {:ok, project} =
+        Ash.map(model, applied, index: index, privacy: privacy, decisions_sha256: sha)
+
+      # every owner decision applies
+      keys = MapSet.new(project.applied, & &1.key)
+      assert Enum.all?(applied, &(&1.automatic or MapSet.member?(keys, &1.key)))
+      {:ok, _source} = Source.render(project)
+
+      report(
+        "cut 2, #{privacy}; #{length(decided)} decision records, " <>
+          "#{untyped} text_to_reference without a target type left undecided",
+        project,
+        automatic
+      )
+    end
+  end
+
+  defp report(what, project, automatic) do
+    applied_keys = MapSet.new(project.applied, & &1.key)
+    hints_applied = Enum.count(automatic, &MapSet.member?(applied_keys, &1.key))
+
+    # every hint applies (at least one index), or is deferred as a whole
+    deferred_keys = MapSet.new(project.deferred, & &1.key)
+
+    assert Enum.all?(
+             automatic,
+             &(MapSet.member?(applied_keys, &1.key) or MapSet.member?(deferred_keys, &1.key))
+           )
+
+    summary = Project.summary(project)
+    deferred_indexes = project.deferred |> Enum.map(&length(&1.indexes || [])) |> Enum.sum()
+
+    IO.puts(
+      "\ntarget ash (#{what}): applied #{inspect(summary["applied"])}; " <>
+        "#{hints_applied} of #{length(automatic)} hints applied; deferred " <>
+        "#{length(project.deferred)} decisions (#{deferred_indexes} indexes); indexes " <>
+        "#{inspect(summary["indexes"])}; extensions #{inspect(project.extensions)}; derived " <>
+        "calculations #{summary["derived_calculations"]}, aggregates " <>
+        "#{summary["derived_aggregates"]}; relationships #{inspect(summary["relationships"])}"
+    )
   end
 
   test "a derived field is a calculation with its locked name, not a column",

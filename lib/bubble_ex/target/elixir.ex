@@ -136,7 +136,8 @@ defmodule BubbleEx.Target.Elixir do
   defp lookup(project) do
     types =
       Map.new(project.resources, fn resource ->
-        rels = Map.new(resource.relationships, &{&1.source.field, &1.name})
+        belongs_to = Enum.filter(resource.relationships, &(&1.kind == :belongs_to))
+        rels = Map.new(belongs_to, &{&1.source.field, &1.name})
         pk = Enum.find(resource.attributes, & &1.primary_key?)
 
         fields =

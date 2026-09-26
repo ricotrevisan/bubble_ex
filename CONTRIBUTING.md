@@ -54,7 +54,11 @@ the policy fixture against its hand-authored persona table
 (`test/support/target/ash/expectations/policies.json`), and checks the owner
 decision fixtures (`BubbleEx.Test.DecidedFixture`): derived fields have no
 column and read back through their relationship, refined numbers are
-bigint / numeric columns. It also compares the privacy interpreter's
+bigint / numeric columns, derived counts (list lengths and aggregates over
+a derived `has_many`) load, filter and sort to the right values, derived
+`has_many` relationships load, a `text_to_reference` `belongs_to` loads its
+record and nil for a dangling ID, and every index exists with its method
+(the `pg_trgm` extension installed for trigram indexes). It also compares the privacy interpreter's
 verdicts (`BubbleEx.Verify.Interpreter`) on both expectation tables with what
 PostgreSQL selects through the compiled conditions and generated policies.
 Finally it runs the generated privacy-matrix tests
@@ -66,7 +70,8 @@ environment (the same build; databases `ash_matrix_<fixture>`, Ecto sandbox),
 scores their observations as `Verify.Result`s
 (`scripts/ash_compile_check/matrix_results.exs`) and fails on any mismatch.
 With `BUBBLE_EX_PRIVATE_EXPORT`
-set it also checks a private app export. CI runs it as the `ash-compile-check`
+set it also checks a private app export, mapped as is and with every cut-2
+finding accepted and the index hints applied (`private_cut2`). CI runs it as the `ash-compile-check`
 job.
 
 When changing `BubbleEx.Target.Phoenix` (or its templates under

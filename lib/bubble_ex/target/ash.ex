@@ -158,7 +158,7 @@ defmodule BubbleEx.Target.Ash do
   Bubble does not rename generated code. See
   `BubbleEx.Target.Ash.Project` for the map's shape.
 
-  ## Decisions (WTF-352, cut 1)
+  ## Decisions (WTF-352, cuts 1 and 2)
 
   `decisions` are the owner's decisions that apply to this snapshot,
   exactly as `BubbleEx.Decision.applicable/2` returns them:
@@ -187,18 +187,23 @@ defmodule BubbleEx.Target.Ash do
       `basis_sha256`, or whose recorded `basis` differs from them (a stale
       decision: `applicable/2` never lists one)
     * an owner's decision on a transform Target.Ash does not apply yet
-      (`derive_count`, `text_to_reference`, `derive_reverse_relationship`,
-      `add_indexes`, `normalize_list_to_join`, `membership_policy`). A hint
-      nobody decided (`automatic`) with such a transform is not an error:
-      it is deferred, listed in `project.deferred` with an
-      `:ash_decision_deferred` warning
+      (`normalize_list_to_join`, `membership_policy`: cut 3). A hint
+      nobody decided (`automatic`) with such a transform would not be an
+      error but deferred; every hint's transform (`add_indexes`) is
+      applied since cut 2
     * an `automatic` entry that is not an undecided hint
     * a subject missing from the Model or deleted, or a proposal that no
       longer fits it (not a number field, a derivation that is not a path
-      of references to the source's type, a source of another type): the
-      Model is not the snapshot the findings came from
-    * two transforms of one field, or a derived field whose source is
-      derived too
+      of references to the source's type, a source of another type, a
+      count of a field that is not a list, a text field no longer text, a
+      reverse list whose reference no longer points back, an index over a
+      field that is gone or of another type): the Model is not the
+      snapshot the findings came from
+    * `text_to_reference` without a target type (the finding saw none or
+      several: the owner picks one with `modify target_type`)
+    * two transforms of one field (e.g. `derive_count` and
+      `refine_number_type` of the same count), or a derived field whose
+      source is derived too (a copy of a count, a copy of a copy)
     * with decisions, a missing or malformed `decisions_sha256:` option
 
   **Transforms.**
@@ -208,6 +213,38 @@ defmodule BubbleEx.Target.Ash do
   | `refine_number_type` | the attribute is `:integer` (bigint) or `:decimal` (numeric), per `proposal.to` (a `modify` sets it); an integral default becomes an integer, a non-integral one with `:integer` is an error |
   | `derive_from_related` | the attribute is dropped (no column) and becomes a public calculation of the same name, `calculate <name>, <source type>, expr(<relationship path>.<source attribute>)`: owned code that reads it still compiles; only writes to it break, and the decision removes those |
   | `rename` | overrides one name of the name map (below) |
+  | `derive_count` | the attribute is dropped (no column) and becomes, with the same name, the length of the stored list, `calculate <name>, :integer, expr(length(<path>.<list> \|\| []))` (0 for an empty or nil list, as Bubble counts), or, when the list is itself derived as a `has_many` by this set, `aggregates do count <name>, [<path>, <has_many>]` (`authorize? false`). Both are public, filterable and sortable |
+  | `text_to_reference` | the text attribute keeps its name, column and type (`:string` IDs) and gains `references`; one ID gets a `belongs_to` (named after the attribute without `_id`, in the name map's `relationships`) with no database foreign key (WTF-338): a dangling ID loads nil. A list of texts stays an `{:array, :string}` of IDs, like a list of things |
+  | `derive_reverse_relationship` | B's list of A is dropped (no column) and becomes `has_many <list name>, A` from B's primary key to A's reference attribute. The finding's `rewrite_reads` (the reads of the list: expressions, workflows, privacy rules) are recorded in `project.applied` for the lowering (Plan, T6/T7). A privacy rule testing the list (`contains`, `is empty`) compiles to `exists(<has_many>, ...)` |
+  | `add_indexes` (hint) | `postgres do custom_indexes` per access pattern, below. Applied by default (WTF-352 D4), or as the owner decided (`modify drop`) |
+
+  **Indexes.** Each index of an `add_indexes` proposal is one of:
+
+  | Access | Index |
+  |--------|-------|
+  | `equality`, `range`, `sort` (one or more columns, in order) | btree over the columns |
+  | `substring` (text contains string) | GIN trigram, `"<col>" gin_trgm_ops`: needs the `pg_trgm` extension, listed in `project.extensions` (the repo's `installed_extensions/0` must include it) |
+  | `full_text` (text contains, Bubble's keyword search) | GIN over `to_tsvector('simple'::regconfig, coalesce("<col>", ''))` (`Index.expression`: a search uses it only through that exact expression) |
+  | `membership` (a list contains) | GIN over the array column |
+  | `geo` | none: geographic addresses are JSON and the project has no PostGIS; deferred |
+
+  An index over a field this decision set derives (no column), or that
+  does not fit its access (a substring search on a non-text field), is
+  not created either. Deferred indexes are listed in `project.deferred`
+  (the decision's record with `indexes`: their positions) with one
+  `:ash_decision_deferred` warning per decision; a decision with at least
+  one created index is in `project.applied` too. Index names are
+  `<table>_<columns>_<kind>` within 63 bytes (cut and hashed when longer,
+  and hashed when two tables would share one).
+
+  **Loading data (WTF-357).** A derived field (calculation, aggregate,
+  has_many) has no column: the loader skips it and may report drift
+  between the stored copy and the derived value. A `text_to_reference`
+  attribute keeps its column, but the loader must convert its values:
+  trim them, load an empty text as nil, keep only values shaped like a
+  Bubble unique ID (`<digits>x<digits>`), reporting the others, and report
+  IDs whose record does not exist (no foreign key rejects them; they load
+  nil through the relationship). For a list of texts, the same per item.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
@@ -242,15 +279,22 @@ defmodule BubbleEx.Target.Ash do
   **Record.** `project.applied` lists every applied decision (key, kind,
   transform, subject, finding ID, parameters and the finding's hashes; no
   record IDs, which are audit data) and `project.applied_sha256` hashes
-  it; `project.deferred` lists the deferred hints;
+  it (each record's `rewrite_reads` lists the reads a lowering must
+  rewrite); `project.deferred` lists what is deferred (above);
   `project.decisions_sha256` records the decision set; each
   applied finding adds an `:ash_decision_applied` diagnostic and each
   rename an `:ash_name_overridden` one. Both privacy modes apply the same
-  decisions: with `privacy: :unverified` a derived field stands for the
-  stored copy it replaces. It is covered by the field policies its field
-  had, reads through the ungated `*_for_privacy` twin of a gated
-  relationship (the related record's visibility never hid the copy), is
-  readable by privacy-rule conditions, and is not auto-bindable.
+  decisions: with `privacy: :unverified` a derived field (calculation or
+  count aggregate) stands for the stored copy it replaces. It is covered
+  by the field policies its field had, reads through `*_for_privacy`
+  twins (the ungated twin of a gated relationship: the related record's
+  visibility never hid the copy; and a private twin of an ungated one,
+  since public relationships are unsortable and a derived field must
+  sort), is readable by privacy-rule conditions, and is not
+  auto-bindable. A derived `has_many` has no field policy: it is gated
+  like the list it replaces (`filter`, with a private twin), its checks
+  kept in `privacy.relationship_checks`. A `text_to_reference`
+  `belongs_to` is gated like any reference.
 
   ## Diagnostics
 
@@ -431,7 +475,8 @@ defmodule BubbleEx.Target.Ash do
       types: Map.new(types, &{&1.id, &1}),
       sets: Map.new(sets, &{&1.id, &1}),
       externals: Map.new(model.external_types, &{&1.id, &1}),
-      names: names
+      names: names,
+      text_ref: plan.text_ref
     }
 
     ctx = assign_modules(ctx, types, sets)
@@ -458,6 +503,7 @@ defmodule BubbleEx.Target.Ash do
       applied: plan.applied,
       applied_sha256: applied_sha256(plan.applied, decisions_sha256),
       deferred: plan.deferred,
+      extensions: extensions(resources),
       decisions_sha256: decisions_sha256
     }
 
@@ -474,6 +520,13 @@ defmodule BubbleEx.Target.Ash do
               resource_diags ++ external_diags ++ privacy_diags ++ plan.diagnostics
           )
     }
+  end
+
+  # Trigram indexes need pg_trgm.
+  defp extensions(resources) do
+    if Enum.any?(resources, fn r -> Enum.any?(r.indexes, &(&1.method == :trigram)) end),
+      do: ["pg_trgm"],
+      else: []
   end
 
   defp privacy(:unverified, project, model, _types, index) do
@@ -863,8 +916,48 @@ defmodule BubbleEx.Target.Ash do
       column: column(entry, field.id, name)
     }
 
-    {[{:attribute, attribute}], {Enum.reverse(type_diags ++ default_diags) ++ diags, used, entry}}
+    {items, used, entry} =
+      text_reference(Map.get(ctx.text_ref, {type.id, field.id}), attribute, ctx, used, entry)
+
+    {items, {Enum.reverse(type_diags ++ default_diags) ++ diags, used, entry}}
   end
+
+  # A text field of IDs made a reference by an owner decision
+  # (`text_to_reference`): its attribute (name and column unchanged) holds
+  # the IDs, with a `belongs_to` (no foreign key) for one ID.
+  defp text_reference(nil, attribute, _ctx, used, entry),
+    do: {[{:attribute, attribute}], used, entry}
+
+  defp text_reference(%{target: target, cardinality: :many}, attribute, _ctx, used, entry),
+    do:
+      {[{:attribute, %{attribute | references: %{target: target, cardinality: :many}}}], used,
+       entry}
+
+  defp text_reference(%{target: target, cardinality: :one}, attribute, ctx, used, entry) do
+    field = attribute.source.field
+
+    base =
+      attribute.name |> String.replace(~r/_id(_\d+)?\z/, "") |> reference_base(attribute.name)
+
+    {rel, used, entry} = name_for(entry, "relationships", field, base, used, :attribute)
+
+    relationship = %Relationship{
+      kind: :belongs_to,
+      name: rel,
+      destination: module_of(ctx, "resources", target),
+      source_attribute: attribute.name,
+      destination_attribute: Map.fetch!(ctx.pks, target),
+      source: attribute.source
+    }
+
+    attribute = %{attribute | references: %{target: target, cardinality: :one}}
+    {[{:attribute, attribute}, {:relationship, relationship}], used, entry}
+  end
+
+  # `owner_id` (or `owner_id_2`) -> `owner`; a name without the suffix gets
+  # `_record`.
+  defp reference_base(name, name), do: name <> "_record"
+  defp reference_base(base, _name), do: base
 
   # The column of a renamed attribute (the name map's `columns`), when it
   # differs from the attribute's name.

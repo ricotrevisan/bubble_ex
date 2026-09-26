@@ -9,6 +9,7 @@
       "kind": "finding",
       "params": {},
       "proposal_sha256": "4d3b4923cedc54bf9498257053e968c082eab85f2b29f457b752f4ce3f05eae3",
+      "rewrite_reads": [],
       "subject": {
         "field": "workspace_created_date",
         "type": "project"
@@ -24,6 +25,7 @@
       "kind": "finding",
       "params": {},
       "proposal_sha256": "a1c0612cd90e0809a0c4a81c926905bb6ba5760f219e00787549c16835c79f15",
+      "rewrite_reads": [],
       "subject": {
         "field": "sort_workspace_name_text",
         "type": "project"
@@ -41,6 +43,7 @@
         "to": "decimal"
       },
       "proposal_sha256": "eceb1833a5e052dd9c2407be8ad375357f7a94ae07b39fa232aabf14323c0827",
+      "rewrite_reads": [],
       "subject": {
         "field": "points_number",
         "type": "task"
@@ -56,6 +59,7 @@
       "kind": "finding",
       "params": {},
       "proposal_sha256": "1153376239bf57f7c1d877da01cea9d149d6b346a24a8d091e399d1ff9004052",
+      "rewrite_reads": [],
       "subject": {
         "field": "task_count_number",
         "type": "project"
@@ -74,6 +78,7 @@
         "slot": "calculation"
       },
       "proposal_sha256": null,
+      "rewrite_reads": [],
       "subject": {
         "field": "sort_workspace_name_text",
         "type": "project"
@@ -92,6 +97,7 @@
         "slot": "relationship"
       },
       "proposal_sha256": null,
+      "rewrite_reads": [],
       "subject": {
         "field": "workspace_custom_workspace",
         "type": "project"
@@ -110,6 +116,7 @@
         "slot": "table"
       },
       "proposal_sha256": null,
+      "rewrite_reads": [],
       "subject": {
         "type": "task"
       },
@@ -127,6 +134,7 @@
         "slot": "attribute"
       },
       "proposal_sha256": null,
+      "rewrite_reads": [],
       "subject": {
         "field": "title_text",
         "type": "project"
@@ -145,6 +153,7 @@
         "slot": "module"
       },
       "proposal_sha256": null,
+      "rewrite_reads": [],
       "subject": {
         "type": "project"
       },
@@ -152,7 +161,7 @@
       "transform": "rename"
     }
   ],
-  "applied_sha256": "5b0f55c0c9d14fba9cd2a91575f943745b258391477cb49dbf7d03b619eb4387",
+  "applied_sha256": "69065d7cf6424fe8862d763e09eb853e4e9e0a35759d948e6f90daff5155e588",
   "authorization_bypasses": [],
   "bubble_id": "synthfindings",
   "decisions_sha256": "8ca3bcf1dd1b516b963dea9848dbb289191d3585bd385a1f41074b7006e0e441",
@@ -349,6 +358,7 @@
     }
   ],
   "enums": [],
+  "extensions": [],
   "names": {
     "enums": {},
     "external_types": {},
@@ -463,6 +473,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1056,6 +1067,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Initiative",
       "policies": [],
@@ -1118,6 +1130,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1385,6 +1398,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Task",
       "policies": [],
@@ -1465,6 +1479,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1788,6 +1803,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "User",
       "policies": [],
@@ -1832,6 +1848,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -2055,6 +2072,7 @@
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "Workspace",
       "policies": [],
@@ -2087,7 +2105,7 @@
       "table": "workspace"
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "typed_structs": [
     {
       "bubble_name": null,

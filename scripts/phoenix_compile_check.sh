@@ -13,6 +13,8 @@
 #     the scaffolded smoke test, which migrates a fresh database, boots the
 #     endpoint, renders the home and sign-in pages, calls the workflow API
 #     and signs a stored user in with a magic link (Oban job, Swoosh email)
+#   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
+#     complete/audit end to end on one generated project (WTF-375)
 #
 # Every fixture renders with the same module and app name, so the
 # dependencies compile once. The scratch project lives in
@@ -61,6 +63,10 @@ for fixture in $fixtures; do
     mix test
   fi
 done
+
+# The task CLI (mix wtf.task) end to end on one generated project.
+cd "$root"
+scripts/phoenix_compile_check/task_cli.sh "$scratch"
 
 if [[ -z "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
   echo "smoke tests skipped: set PHOENIX_COMPILE_CHECK_DB to a PostgreSQL URL"

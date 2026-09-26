@@ -18,6 +18,7 @@
       "ignore": 386
     },
     "deferred": {},
+    "derived_aggregates": 0,
     "derived_calculations": 0,
     "diagnostics": {
       "ash_deleted_omitted": 24,
@@ -40,6 +41,8 @@
     },
     "enum_values": 678,
     "enums": 141,
+    "extensions": [],
+    "indexes": {},
     "privacy": {
       "actor_loads": 2,
       "authorization_bypasses": 207,
@@ -54,6 +57,7 @@
       "field_policies": 100,
       "gated_relationships": 220,
       "policies": 507,
+      "private_twins": 220,
       "resources": {
         "public_default": 46,
         "rules": 47
@@ -72,5 +76,5 @@
       "structured": 3
     }
   },
-  "schema_version": 4
+  "schema_version": 5
 }

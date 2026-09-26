@@ -37,6 +37,7 @@ defmodule BubbleEx.Target.Ash.Policies do
     Policy,
     PolicyCheck,
     Project,
+    Relationship,
     Resource,
     ResourcePrivacy
   }
@@ -114,11 +115,17 @@ defmodule BubbleEx.Target.Ash.Policies do
   # through (they must see the real reference, or they would depend on
   # themselves). Every relationship path in the calculations and actor
   # loads is rewritten to the twins.
+  #
+  # A field derived by an owner decision reads through twins as well, of
+  # gated and ungated relationships alike: public relationships are
+  # unsortable, and a derived field must sort.
   defp gate(resources, names) do
+    needed = derived_paths(resources)
+
     {resources, {names, twins}} =
       Enum.map_reduce(resources, {names, %{}}, fn resource, {names, twins} ->
         entry = get_in(names, ["resources", resource.source.type])
-        {resource, entry, twins} = gate_resource(resource, entry, twins)
+        {resource, entry, twins} = gate_resource(resource, entry, twins, needed)
         {resource, {put_in(names, ["resources", resource.source.type], entry), twins}}
       end)
 
@@ -134,13 +141,52 @@ defmodule BubbleEx.Target.Ash.Policies do
             %{calc | expr: rewrite_expr(calc.expr, modules, twins)}
           end)
 
-        %{resource | calculations: calculations}
+        # A derived count reads through the twins too.
+        aggregates =
+          Enum.map(resource.aggregates, fn agg ->
+            %{agg | path: rewrite_path(agg.path, resource.module, modules, twins)}
+          end)
+
+        %{resource | calculations: calculations, aggregates: aggregates}
       end)
 
     {resources, names}
   end
 
-  defp gate_resource(%Resource{} = resource, entry, twins) do
+  # `{module, relationship}` pairs the derived calculations and aggregates
+  # read through.
+  defp derived_paths(resources) do
+    modules = Map.new(resources, &{&1.module, &1})
+
+    for resource <- resources,
+        path <-
+          Enum.flat_map(
+            for(%Calculation{kind: :derived} = c <- resource.calculations, do: c.expr.expr),
+            &expr_paths/1
+          ) ++ Enum.map(resource.aggregates, & &1.path),
+        pair <- walk_path(path, resource.module, modules),
+        into: MapSet.new(),
+        do: pair
+  end
+
+  # Relationship paths (lists of names) an expression reads through.
+  defp expr_paths({:ref, rels, _attribute}), do: [rels]
+  defp expr_paths({:call, _name, args}), do: Enum.flat_map(args, &expr_paths/1)
+  defp expr_paths({:op, _op, l, r}), do: expr_paths(l) ++ expr_paths(r)
+  defp expr_paths({bool, nodes}) when bool in [:and, :or], do: Enum.flat_map(nodes, &expr_paths/1)
+  defp expr_paths({:not, node}), do: expr_paths(node)
+  defp expr_paths(_node), do: []
+
+  defp walk_path([], _module, _modules), do: []
+
+  defp walk_path([name | rest], module, modules) do
+    case modules[module] && Enum.find(modules[module].relationships, &(&1.name == name)) do
+      nil -> []
+      rel -> [{module, name} | walk_path(rest, rel.destination, modules)]
+    end
+  end
+
+  defp gate_resource(%Resource{} = resource, entry, twins, needed) do
     checks = for fp <- resource.field_policies, f <- fp.fields, into: %{}, do: {f, fp.checks}
 
     used =
@@ -148,14 +194,16 @@ defmodule BubbleEx.Target.Ash.Policies do
         Enum.map(resource.attributes, & &1.name) ++
           Enum.map(resource.relationships, & &1.name) ++
           Enum.map(resource.calculations, & &1.name) ++
+          Enum.map(resource.aggregates, & &1.name) ++
           Map.values(Map.get(entry, "privacy_relationships", %{}))
       )
 
     {relationships, {privacy, entry, _used, twins}} =
       Enum.map_reduce(resource.relationships, {[], entry, used, twins}, fn rel, acc ->
-        case gate_of(Map.get(checks, rel.source_attribute, [])) do
-          nil -> {rel, acc}
-          gate -> twin(rel, gate, resource, acc)
+        case {gate_of(relationship_checks(rel, checks, resource)),
+              MapSet.member?(needed, {resource.module, rel.name})} do
+          {nil, false} -> {rel, acc}
+          {gate, _} -> twin(rel, gate, resource, acc)
         end
       end)
 
@@ -199,6 +247,13 @@ defmodule BubbleEx.Target.Ash.Policies do
     twins = Map.put(twins, {resource.module, rel.name}, name)
     {%{rel | gate: gate}, {[twin | privacy], entry, used, twins}}
   end
+
+  # A belongs_to follows its ID attribute's checks; a derived has_many
+  # follows those of the list it replaces.
+  defp relationship_checks(%Relationship{kind: :has_many} = rel, _checks, resource),
+    do: Map.get(resource.privacy.relationship_checks, rel.name, [])
+
+  defp relationship_checks(rel, checks, _resource), do: Map.get(checks, rel.source_attribute, [])
 
   # Who may follow a relationship: those its ID attribute's checks
   # authorize. nil: everyone.
@@ -285,8 +340,9 @@ defmodule BubbleEx.Target.Ash.Policies do
   end
 
   # Non-key attributes by Bubble field ID, in attribute order, then the
-  # fields derived by an owner decision (calculations): a derived field is
-  # guarded like the field it replaces.
+  # fields derived by an owner decision (calculations, aggregates and
+  # has_many relationships): a derived field is guarded like the field it
+  # replaces (a has_many, which has no field policy, through its gate).
   defp fields(resource) do
     attributes =
       for a <- resource.attributes, not a.primary_key?, a.source[:field], do: {a.source.field, a}
@@ -294,7 +350,21 @@ defmodule BubbleEx.Target.Ash.Policies do
     derived =
       for %Calculation{kind: :derived} = c <- resource.calculations, do: {c.source.field, c}
 
-    attributes ++ derived
+    aggregates = for g <- resource.aggregates, do: {g.source.field, g}
+
+    has_many =
+      for %Relationship{kind: :has_many} = r <- resource.relationships, do: {r.source.field, r}
+
+    attributes ++ derived ++ aggregates ++ has_many
+  end
+
+  # Field policies for the fields, and the checks of the derived has_many
+  # relationships (`privacy.relationship_checks`).
+  defp split_checks(field_checks) do
+    {rels, fields} = Enum.split_with(field_checks, &match?({%Relationship{}, _}, &1))
+
+    {field_policies(Enum.map(fields, fn {f, checks} -> {f.name, checks} end)),
+     Map.new(rels, fn {r, checks} -> {r.name, checks} end)}
   end
 
   # What auto-binding may write: stored attributes only.
@@ -318,11 +388,15 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     checks = [%PolicyCheck{kind: kind, test: :always, source: check_source}]
 
+    {field_policies, relationship_checks} =
+      split_checks(Enum.map(fields, fn {_id, a} -> {a, checks} end))
+
     privacy = %ResourcePrivacy{
       source: source,
       attachments: checks,
       file_fields: file_fields(type, fields),
-      data_api: %{exposed: type.exposed_api, create: [], modify: [], delete: []}
+      data_api: %{exposed: type.exposed_api, create: [], modify: [], delete: []},
+      relationship_checks: relationship_checks
     }
 
     resource = %{
@@ -330,7 +404,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       | actions: @write_defaults,
         extra_actions: [read_action(), search_action()],
         policies: [keyed_policy(), read_policy(checks), search_policy(checks)],
-        field_policies: field_policies(Enum.map(fields, fn {_id, a} -> {a.name, checks} end)),
+        field_policies: field_policies,
         privacy: privacy
     }
 
@@ -388,8 +462,10 @@ defmodule BubbleEx.Target.Ash.Policies do
         {checks, ctx} =
           checks(ctx, {:view_field, id}, &(&1.view_all == true or id in visible_fields(&1, ctx)))
 
-        {{a.name, checks}, ctx}
+        {{a, checks}, ctx}
       end)
+
+    {field_policies, relationship_checks} = split_checks(field_checks)
 
     {auto_bind, ctx} = auto_binding(ctx, stored_fields(fields))
     {attachments, ctx} = checks(ctx, :view_attachments, &(&1.view_attachments == true))
@@ -412,7 +488,8 @@ defmodule BubbleEx.Target.Ash.Policies do
       denied_rules: denied,
       attachments: attachments,
       file_fields: file_fields(type, fields),
-      data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api)
+      data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api),
+      relationship_checks: relationship_checks
     }
 
     resource = %{
@@ -424,7 +501,7 @@ defmodule BubbleEx.Target.Ash.Policies do
             (ctx.order |> Enum.reverse() |> Enum.map(&Map.fetch!(ctx.calculations, &1))),
         policies:
           [keyed_policy(), read_policy(read), search_policy(search)] ++ auto_bind.policies,
-        field_policies: field_policies(field_checks),
+        field_policies: field_policies,
         privacy: privacy
     }
 
@@ -446,6 +523,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       Enum.map(resource.attributes, & &1.name) ++
         Enum.map(resource.relationships, & &1.name) ++
         Enum.map(resource.calculations, & &1.name) ++
+        Enum.map(resource.aggregates, & &1.name) ++
         Map.values(Map.get(entry, "privacy_rules", %{})) ++
         Map.values(Map.get(entry, "columns", %{}))
     )

@@ -28,7 +28,7 @@ defmodule BubbleEx.Target.Ash.Expr do
   | `{:actor, ["current_role", "workspace_id"]}` | `^actor([:current_role, :workspace_id])` (`^actor(:id)` for one) |
   | `{:arg, "name"}` | `^arg(:name)` |
   | `{:value, term}` | the literal |
-  | `{:op, "==", left, right}` | `left == right` (also `!=`, `>`, `<`, `>=`, `<=`, `in`, `+`, `-`, `*`, `/`) |
+  | `{:op, "==", left, right}` | `left == right` (also `!=`, `>`, `<`, `>=`, `<=`, `in`, `+`, `-`, `*`, `/`, and `\|\|`: the left value, or the right one when it is nil) |
   | `{:and, [a, b]}` / `{:or, [a, b]}` | `a and b` / `a or b` |
   | `{:not, x}` | `not x` |
   | `{:call, "is_nil", [x]}` | `is_nil(x)` (also `is_not_distinct_from`, `is_distinct_from`, `contains`, `string_downcase`, `length`, …) |

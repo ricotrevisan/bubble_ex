@@ -126,6 +126,7 @@
       ]
     }
   ],
+  "extensions": [],
   "names": {
     "enums": {
       "tier": {
@@ -232,6 +233,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -391,6 +393,7 @@
         }
       ],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "DomainResource",
       "policies": [
@@ -457,6 +460,7 @@
         },
         "denied_rules": [],
         "file_fields": [],
+        "relationship_checks": {},
         "source": "public_default"
       },
       "privacy_relationships": [],
@@ -498,6 +502,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -996,6 +1001,7 @@
         }
       ],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "N3dGadget",
       "policies": [
@@ -1062,6 +1068,7 @@
         },
         "denied_rules": [],
         "file_fields": [],
+        "relationship_checks": {},
         "source": "public_default"
       },
       "privacy_relationships": [],
@@ -1139,6 +1146,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1298,6 +1306,7 @@
         }
       ],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "RepoResource",
       "policies": [
@@ -1364,6 +1373,7 @@
         },
         "denied_rules": [],
         "file_fields": [],
+        "relationship_checks": {},
         "source": "public_default"
       },
       "privacy_relationships": [],
@@ -1405,6 +1415,7 @@
           "*"
         ]
       ],
+      "aggregates": [],
       "attributes": [
         {
           "allow_nil?": false,
@@ -1589,6 +1600,7 @@
         }
       ],
       "identities": [],
+      "indexes": [],
       "migration_types": [],
       "module": "User",
       "policies": [
@@ -1649,6 +1661,7 @@
         },
         "denied_rules": [],
         "file_fields": [],
+        "relationship_checks": {},
         "source": "unavailable"
       },
       "privacy_relationships": [
@@ -1698,7 +1711,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "typed_structs": [],
   "types": []
 }
