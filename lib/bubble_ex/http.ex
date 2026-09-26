@@ -67,7 +67,8 @@ defmodule BubbleEx.HTTP do
 
   @spec request(atom(), String.t(), iodata() | nil, headers(), options()) ::
           {:ok, Response.t()} | {:error, Error.t()}
-  def request(method, url, body, headers \\ [], options \\ []) when method in [:get, :post] do
+  def request(method, url, body, headers \\ [], options \\ [])
+      when method in [:get, :post, :patch, :delete] do
     Telemetry.span(
       [:http, :request],
       %{method: method, url: safe_request_url(url, options)},
