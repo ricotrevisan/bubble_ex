@@ -160,14 +160,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   def routes_module(ctx, routes) do
     pages =
       Enum.map_join(routes, ",\n", fn r ->
-        "    {#{literal(r.id)}, #{inspect(r.path)}, #{r.module}}"
+        "    {#{literal(r.id)}, #{source(r.path)}, #{r.module}}"
       end)
 
     body =
       if routes == [] do
         "  defmacro bubble_routes, do: nil\n"
       else
-        lives = Enum.map_join(routes, "\n", &"          live #{inspect(&1.path)}, #{&1.module}")
+        lives = Enum.map_join(routes, "\n", &"          live #{source(&1.path)}, #{&1.module}")
 
         """
           defmacro bubble_routes do
@@ -271,9 +271,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # made; otherwise (none, or hand-edited) it gets a new one.
   defp locked_page(page, id, %{"module" => module, "path" => path}, modules, paths)
        when is_binary(module) and is_binary(path) do
-    if locked_module?(module) and locked_path?(path),
-      do: {page_entry(page, id, module, path), {modules, paths}},
-      else: new_page(page, id, modules, paths)
+    cond do
+      locked_module?(module) and String.ends_with?(module, "Live") and locked_path?(path) ->
+        {page_entry(page, id, module, path), {modules, paths}}
+
+      # A rejected module name: the page keeps its (valid) path, so its URL
+      # does not move.
+      locked_path?(path) ->
+        {%{module: module}, {modules, _}} = new_page(page, id, modules, paths)
+        {page_entry(page, id, module, path), {modules, paths}}
+
+      true ->
+        new_page(page, id, modules, MapSet.delete(paths, path))
+    end
   end
 
   defp locked_page(page, id, _locked, modules, paths), do: new_page(page, id, modules, paths)
@@ -307,7 +317,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # A locked name is kept only if it is one this emitter could have made:
   # the file is the owner's, so a hand-edited one must not reach the
-  # generated source (a module alias segment, a path of slug segments).
+  # generated source (a module alias segment, a path of slug segments; a
+  # page module ends in `Live`, so it cannot be `Router`, `Endpoint`,
+  # `BubbleRoutes`… of the web namespace; reusables live under
+  # `<Web>.Reusables`).
   defp locked_module?(module), do: Regex.match?(~r/\A[A-Z][A-Za-z0-9]*\z/, module)
   defp locked_path?(path), do: Regex.match?(~r{\A/([a-z0-9_-]+(/[a-z0-9_-]+)*)?\z}, path)
 
@@ -985,13 +998,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp override_expr(:href, value, ctx) do
     case href(value, ctx) do
       nil -> nil
-      {:page, path} -> "~p" <> inspect(path)
+      {:page, path} -> "~p" <> source(path)
       {:url, url} -> literal(url)
     end
   end
 
   defp override_expr(:attr, value, _ctx) when is_binary(value), do: literal(value)
-  defp override_expr(:attr, value, _ctx), do: inspect(value)
+  defp override_expr(:attr, value, _ctx), do: source(value)
 
   # For every reusable: the {element path, slot} its instances resolve to a
   # different value than the definition does, with the attribute name.
@@ -1703,7 +1716,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp static_href(dest, ctx) do
     case href(dest, ctx) do
-      {:page, path} -> {:expr, "~p" <> inspect(path)}
+      {:page, path} -> {:expr, "~p" <> source(path)}
       {:url, url} -> url
       nil -> nil
     end
@@ -1909,8 +1922,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # escapes (quotes, backslashes, `\#{`, control characters) without its
   # quotes.
   defp doc_text(text) do
-    text |> to_string() |> comment_line() |> inspect() |> String.slice(1..-2//1)
+    text |> to_string() |> comment_line() |> source() |> String.slice(1..-2//1)
   end
+
+  # Elixir source of a term, never truncated (`inspect/1` cuts strings at
+  # 4096 characters and collections at 50 items, which would not compile).
+  defp source(value), do: inspect(value, limit: :infinity, printable_limit: :infinity)
 
   # An Elixir string literal of `value` for generated source: `inspect/1`
   # escapes quotes, backslashes, `\#{` and control characters (or prints a
@@ -1920,7 +1937,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp literal(value) do
     value
     |> to_string()
-    |> inspect()
+    |> source()
     |> String.replace("{", "\\x7B")
     |> String.replace("}", "\\x7D")
     |> String.replace("<", "\\x3C")
@@ -2052,7 +2069,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     title = entry.node.attributes["title"] || entry.node.name || entry.label
 
     pipeline =
-      ["socket", "|> assign(:page_title, #{inspect(title)})"] ++
+      ["socket", "|> assign(:page_title, #{source(title)})"] ++
         Enum.map(Enum.sort(acc.assigns), fn {name, default} ->
           "|> assign(:#{name}, #{default})"
         end)
@@ -2062,7 +2079,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     [
       "defmodule #{module} do\n",
       "  @moduledoc \"\"\"\n",
-      "  The Bubble page #{inspect(entry.label)} (bubble:#{doc_text(entry.id)}), at #{entry.path}.\n\n",
+      "  The Bubble page #{source(entry.label)} (bubble:#{doc_text(entry.id)}), at #{entry.path}.\n\n",
       "  Scaffolded by bubble_ex (WTF-370); this module and its template\n",
       "  (#{entry.file}.html.heex) are yours: later generations never overwrite\n",
       "  them. Elements keep their `data-bubble-id`; `TODO(bubble:<id>)`\n",
@@ -2144,7 +2161,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     """
     defmodule #{module} do
       @moduledoc \"\"\"
-      The Bubble reusable element #{inspect(entry.node.name || entry.id)} (bubble:#{doc_text(entry.id)}).
+      The Bubble reusable element #{source(entry.node.name || entry.id)} (bubble:#{doc_text(entry.id)}).
 
       Scaffolded by bubble_ex (WTF-370); this module and its template
       (#{entry.file}.html.heex) are yours: later generations never overwrite
@@ -2348,20 +2365,39 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp overlay_nodes(%Node{children: children}), do: Enum.flat_map(children, &overlay_nodes/1)
 
+  # One literal test per surface, tagged `bubble: "page:<id>"` or
+  # `"reusable:<id>"`: the task CLI (BubbleEx.Target.Phoenix.Checks) reads
+  # the tags from the parsed code, so they are written out, not computed.
   defp traceability_test(ctx, pages, reusables, base) do
-    cases =
-      Enum.map_join(pages, ",\n", fn page ->
-        "    {#{literal(page.entry.id)}, #{inspect(page.entry.path)}, #{literal(page.entry.label)},\n" <>
-          "     #{ctx.web}.#{page.entry.module}, #{ids_literal(page.acc.ids)}}"
+    page_tests =
+      Enum.map(pages, fn page ->
+        entry = page.entry
+        name = "the Bubble page #{entry.label} (#{entry.path}) renders every element"
+
+        """
+          @tag bubble: #{literal("page:" <> entry.id)}
+          test #{literal(name)}, %{conn: conn} do
+            assert_routed(#{source(entry.path)}, #{ctx.web}.#{entry.module})
+            {:ok, view, _html} = live(conn, #{source(entry.path)})
+            assert missing(render(view), #{ids_literal(page.acc.ids)}) == []
+          end
+        """
       end)
 
-    components =
-      Enum.map_join(reusables, ",\n", fn reusable ->
+    reusable_tests =
+      Enum.map(reusables, fn reusable ->
         entry = reusable.entry
         label = entry.node.name || entry.id
+        name = "the Bubble reusable element #{label} (bubble:#{entry.id}) renders every element"
+        component = "&#{base.web}.Reusables.#{entry.module}.#{entry.function}/1"
 
-        "    {#{literal(entry.id)}, #{literal(label)},\n" <>
-          "     &#{base.web}.Reusables.#{entry.module}.#{entry.function}/1, #{ids_literal(reusable.acc.ids)}}"
+        """
+          @tag bubble: #{literal("reusable:" <> entry.id)}
+          test #{literal(name)} do
+            html = render_component(#{component}, %{})
+            assert missing(html, #{ids_literal(reusable.acc.ids)}) == []
+          end
+        """
       end)
 
     """
@@ -2369,41 +2405,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       # Every page scaffolded from Bubble is routed, mounts and renders each
       # of its elements (data-bubble-id), and every reusable element renders
       # its elements with its defaults, unless a decision removed them
-      # (WTF-370). Each test is tagged `bubble: <the surface's Bubble ID>`.
+      # (WTF-370). Each test is tagged `bubble: "page:<Bubble ID>"` or
+      # `"reusable:<Bubble ID>"`, the subjects of the task CLI's
+      # traceability and render_smoke checks (`mix wtf.task`).
       use #{ctx.web}.ConnCase, async: true
 
-      import Phoenix.LiveViewTest
-
-      @pages [
-    #{cases}
-      ]
-
-      @reusables [
-    #{components}
-      ]
-
-      for {id, path, label, module, ids} <- @pages do
-        @path path
-        @module module
-        @ids ids
-        # The task CLI binds a surface's render check by its Bubble ID.
-        @tag bubble: id
-        test "the Bubble page \#{label} (\#{path}) renders every element", %{conn: conn} do
-          assert_routed(@path, @module)
-          {:ok, view, _html} = live(conn, @path)
-          assert missing(render(view), @ids) == []
-        end
-      end
-
-      for {id, label, component, ids} <- @reusables do
-        @component component
-        @ids ids
-        @tag bubble: id
-        test "the Bubble reusable element \#{label} renders every element" do
-          assert missing(render_component(@component, %{}), @ids) == []
-        end
-      end
-
+    #{if pages ++ reusables == [], do: "", else: "  import Phoenix.LiveViewTest\n"}
+    #{Enum.join(page_tests ++ reusable_tests, "\n")}
       # The generated #{ctx.web}.BubbleRoutes routes every page; a router
       # scaffolded before WTF-370 does not call it.
       def assert_routed(path, module) do
@@ -2443,8 +2451,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       end
     end
     """
-    |> String.replace("@pages [\n\n  ]", "@pages []")
-    |> String.replace("@reusables [\n\n  ]", "@reusables []")
   end
 
   # The Bubble IDs a surface renders, as a list of string literals.

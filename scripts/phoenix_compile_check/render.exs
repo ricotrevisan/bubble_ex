@@ -152,8 +152,8 @@ case System.argv() do
     {:ok, plan} = BubbleEx.Plan.build(model, index)
     :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
 
-    {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
+    opts = [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 

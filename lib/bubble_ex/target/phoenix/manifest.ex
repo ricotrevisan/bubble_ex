@@ -183,7 +183,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
        when is_binary(router) and is_binary(call) and is_list(pages) do
     case relative?(router) && read.(router) do
       content when is_binary(content) ->
-        if String.contains?(content, call), do: [], else: pages
+        if String.contains?(uncommented(content), call), do: [], else: pages
 
       _ ->
         []
@@ -191,6 +191,10 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   end
 
   defp unrouted(_manifest, _read), do: []
+
+  # Elixir source without its `#` comments (a commented-out call is no
+  # call). Approximate: a `#` inside a string also starts one here.
+  defp uncommented(content), do: Regex.replace(~r/#.*$/m, content, "")
 
   defp previous(nil), do: {:ok, %{}}
 

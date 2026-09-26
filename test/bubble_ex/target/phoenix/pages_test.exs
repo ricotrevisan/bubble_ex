@@ -64,17 +64,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       template = files["lib/shop_web/live/bubbleex_complex_demo_live.html.heex"]
       test = files["test/shop_web/bubble_surfaces_test.exs"]
 
-      {:ok, quoted} = Code.string_to_quoted(test)
-
-      {_, [ids]} =
-        Macro.prewalk(quoted, [], fn
-          {:{}, _, ["bpgwgmpz", "/bubbleex-complex-demo", _label, _module, ids]} = node, acc ->
-            {node, [ids | acc]}
-
-          node, acc ->
-            {node, acc}
-        end)
-
+      ids = tested_ids(test, "page:bpgwgmpz")
       assert "bpgwgmpz" in ids and length(ids) > 20
 
       components =
@@ -193,6 +183,8 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert helpers =~ ~s(phx-hook=".OverlayKeys")
       assert helpers =~ ~s|window.addEventListener("bubble:overlay-opened", this.opened)|
       assert helpers =~ "this.stack = this.stack.filter(isOpen)"
+      # An overlay inside a hidden or invisible ancestor is not open.
+      assert helpers =~ "el.getClientRects().length > 0"
       assert helpers =~ ~s|top.getAttribute("data-bubble-escape")|
     end
 
@@ -270,9 +262,20 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert {:ok, %{clean?: true, unrouted: ["bptvorpv"]}} =
                Phoenix.check_manifest(manifest, Map.put(files, router, old))
 
+      # A commented-out call is no call.
+      commented =
+        String.replace(
+          files[router],
+          "  ShopWeb.BubbleRoutes.bubble_routes()",
+          "  # ShopWeb.BubbleRoutes.bubble_routes()"
+        )
+
+      assert {:ok, %{unrouted: ["bptvorpv"]}} =
+               Phoenix.check_manifest(manifest, Map.put(files, router, commented))
+
       # The generated test checks the route before mounting, with the fix.
       test = files["test/shop_web/bubble_surfaces_test.exs"]
-      assert test =~ "assert_routed(@path, @module)"
+      assert test =~ ~s|assert_routed("/bubbleex-overlay-boundaries", ShopWeb.|
       assert test =~ "Phoenix.Router.route_info(ShopWeb.Router"
       assert test =~ "ShopWeb.BubbleRoutes.bubble_routes()"
     end
@@ -290,18 +293,78 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
 
       {:ok, relocked} = Phoenix.render(project, Keyword.put(opts, :surface_names, names))
       assert relocked == files
+
+      # A core module name is rejected, but the page keeps its locked path.
+      names =
+        put_in(names, ["pages", "bptvorpv"], %{"module" => "Router", "path" => "/kept"})
+
+      {:ok, relocked} = Phoenix.render(project, Keyword.put(opts, :surface_names, names))
+      routes = relocked["lib/shop_web/bubble_routes.ex"]
+      assert routes =~ ~s(live "/kept", ShopWeb.BubbleexOverlayBoundariesLive)
+      refute routes =~ "ShopWeb.Router"
     end
   end
 
-  test "reusable elements have their own render check, tagged by Bubble ID" do
+  test "one literal test per surface, tagged as the task CLI reads it" do
     {files, _, _} = render(case_app("bpgwgmpz"))
     test = files["test/shop_web/bubble_surfaces_test.exs"]
 
     assert test =~
-             ~s|{"bpmvuzce", "bubbleex-complex-card",\n     &ShopWeb.Reusables.BubbleexComplexCard.bubbleex_complex_card/1,|
+             """
+               @tag bubble: "reusable:bpmvuzce"
+               test "the Bubble reusable element bubbleex-complex-card (bubble:bpmvuzce) renders every element" do
+                 html = render_component(&ShopWeb.Reusables.BubbleexComplexCard.bubbleex_complex_card/1, %{})
+             """
 
-    assert test =~ "render_component(@component, %{})"
-    assert test =~ ~s(test "the Bubble reusable element \#{label} renders every element")
+    assert test =~ ~s(  @tag bubble: "page:bpgwgmpz"\n  test "the Bubble page )
+    assert "bpcjyrzr" in tested_ids(test, "reusable:bpmvuzce")
+    # No computed tags: 55 pages and 2 reusables, one @tag each.
+    assert length(Regex.scan(~r/^  @tag bubble: "(page|reusable):/m, test)) == 57
+  end
+
+  test "the task CLI finds and runs the tests of a generated page and reusable" do
+    {files, _, _} = render(case_app("bpgwgmpz"))
+    root = Path.join(System.tmp_dir!(), "wtf370-checks-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    for {path, content} <- files do
+      File.mkdir_p!(Path.dirname(Path.join(root, path)))
+      File.write!(Path.join(root, path), content)
+    end
+
+    test = self()
+
+    ctx = %{
+      root: root,
+      task: %BubbleEx.Plan.Task{id: "surface:page/bpgwgmpz", kind: :surface, actor: :agent},
+      results: [],
+      app: "app1",
+      now: ~U[2026-09-26 12:00:00Z],
+      reviewers: [],
+      resolved: nil,
+      cmd: fn args, env ->
+        send(test, {:mix, args, env})
+        {"1 test, 0 failures", 0}
+      end
+    }
+
+    subjects = ~w(page:bpgwgmpz reusable:bpmvuzce element:bpcjyrzr)
+
+    run = fn check, args ->
+      {outcome, _} = BubbleEx.Target.Phoenix.Checks.run(%{check: check, args: args}, ctx, %{})
+      outcome
+    end
+
+    assert %{status: :pass, source_only: false} = run.(:traceability, %{"elements" => subjects})
+    assert_received {:mix, ["test", "--only", "bubble:page:bpgwgmpz"], _}
+    assert_received {:mix, ["test", "--only", "bubble:reusable:bpmvuzce"], _}
+
+    # render_smoke finds the reusable's tag; the page still has markers.
+    assert %{status: :pass} = run.(:render_smoke, %{"surfaces" => ["reusable:bpmvuzce"]})
+    assert_received {:mix, ["test", "--only", "bubble:reusable:bpmvuzce"], _}
+
+    assert %{status: :fail, detail: "left in " <> _} =
+             run.(:render_smoke, %{"surfaces" => ["page:bpgwgmpz"]})
   end
 
   describe "reusable instance parameters" do
@@ -324,7 +387,9 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       instances = [
         {"one", "[b]One[/b] {@x}", "https://example.test/one?a=1&b={2}"},
         {"two", "Two\n<script>bad()</script>", "javascript:alert(1)"},
-        {"three", "Three", "other"}
+        {"three", "Three", "other"},
+        # Longer than inspect/1's default printable limit (4096).
+        {"four", "Four", "https://example.test/" <> String.duplicate("a", 5000)}
       ]
 
       element = fn {id, name, dest} ->
@@ -399,6 +464,11 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert page =~ ~S|destination_link={"https://example.test/one?a=1&b=\x7B2\x7D"}|
       assert page =~ ~s|destination_link={~p"/other"}|
       refute page =~ "javascript"
+
+      # Printed whole: a truncated literal ("…" <> ...) would not compile.
+      long = "https://example.test/" <> String.duplicate("a", 5000)
+      assert page =~ ~s(destination_link={"#{long}"})
+      refute page =~ "..."
       [two] = Regex.run(~r/<\.card data-bubble-id="two"[^>]*>/, page)
       refute two =~ "destination_link"
     end
@@ -460,7 +530,10 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
           node, acc -> {node, acc}
         end)
 
-      for id <- hostile, do: assert(id in strings, inspect(id))
+      # (an element ID in an expected list, a surface ID in its tag)
+      for id <- hostile,
+          do:
+            assert(id in strings or ("page:" <> id) in strings or ("reusable:" <> id) in strings)
 
       for {path, content} <- files, String.ends_with?(path, ".heex") do
         # HEEx: attribute values are escaped, expressions hold literals with
@@ -487,6 +560,24 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
 
     assert files["assets/css/bubble_residue.css"] =~
              ~S|[data-bubble-id="bptvorpw\"#{raise \"injected\"} a\a b*/--%><%= raise \"eex\" %>}{"]|
+  end
+
+  # The Bubble IDs the tagged test of `tag` expects.
+  defp tested_ids(test, tag) do
+    {:ok, {:defmodule, _, [_, [do: {:__block__, _, body}]]}} = Code.string_to_quoted(test)
+
+    [{:test, _, test_args} | _] =
+      body
+      |> Enum.drop_while(&(not match?({:@, _, [{:tag, _, [[bubble: ^tag]]}]}, &1)))
+      |> Enum.drop(1)
+
+    {_, ids} =
+      Macro.prewalk(test_args, nil, fn
+        {:missing, _, [_, ids]} = node, nil when is_list(ids) -> {node, ids}
+        node, acc -> {node, acc}
+      end)
+
+    ids
   end
 
   describe "Tailwind.utilities/2" do

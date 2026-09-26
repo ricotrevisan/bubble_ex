@@ -381,7 +381,7 @@ defmodule BubbleEx.Target.PhoenixTest do
       end
 
       assert files["lib/acme_system_halt_b_web/components/layouts/root.html.heex"] =~
-               ~S|default={"Acme \"\#{System.halt()}\" <b>"}|
+               ~S|default={"Acme \"\#\x7BSystem.halt()\x7D\" \x3Cb>"}|
     end
   end
 

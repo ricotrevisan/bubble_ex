@@ -628,11 +628,11 @@ defmodule BubbleEx.Target.Phoenix do
     deps()
     |> Enum.map_join(",\n", fn
       {app, requirement} ->
-        "      {#{inspect(app)}, #{inspect(requirement)}}"
+        "      {#{inspect(app)}, #{Templates.source(requirement)}}"
 
       {app, requirement, opts} ->
-        options = Enum.map_join(opts, ", ", fn {k, v} -> "#{k}: #{inspect(v)}" end)
-        "      {#{inspect(app)}, #{inspect(requirement)}, #{options}}"
+        options = Enum.map_join(opts, ", ", fn {k, v} -> "#{k}: #{Templates.source(v)}" end)
+        "      {#{inspect(app)}, #{Templates.source(requirement)}, #{options}}"
     end)
   end
 
@@ -664,7 +664,7 @@ defmodule BubbleEx.Target.Phoenix do
   defp html_attribute(text) do
     if String.match?(text, ~r/\A[^"'{}<>&\\#]*\z/),
       do: ~s("#{text}"),
-      else: "{" <> inspect(text) <> "}"
+      else: "{" <> Templates.heex_literal(text) <> "}"
   end
 
   # One `{module, code}` per top-level `defmodule` of the Source output (its

@@ -19,7 +19,11 @@ defmodule <%= @web %>.Bubble do
       that way (its `data-bubble-escape` command); closed overlays never
       react
 
-  Frontend workflows (Show / Hide / Toggle an element) call them.
+  Frontend workflows (Show / Hide / Toggle an element) call them (T6,
+  WTF-372). Until they do, two limits are latent: `show_overlay/2` on an
+  overlay that is already open remembers the focus again (the next close
+  returns it one step too early), and the selector is the Bubble ID, so it
+  targets every instance of a reusable element's overlay.
   """
 
   use Phoenix.Component
@@ -79,7 +83,13 @@ defmodule <%= @web %>.Bubble do
     <div id="bubble-overlay-keys" phx-hook=".OverlayKeys" hidden></div>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".OverlayKeys">
       const OVERLAYS = '[data-overlay="popup"], [data-overlay="group_focus"]'
-      const isOpen = (el) => el.isConnected && !el.hidden
+      // Open and shown: not hidden itself, not inside a hidden ancestor
+      // (no layout boxes), not invisible.
+      const isOpen = (el) =>
+        el.isConnected &&
+        !el.hidden &&
+        el.getClientRects().length > 0 &&
+        getComputedStyle(el).visibility !== "hidden"
 
       export default {
         mounted() {
