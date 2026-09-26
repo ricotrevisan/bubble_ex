@@ -17,8 +17,9 @@ defmodule BubbleEx.Verify.Replay do
       its URLs; a branch's name is not part of any URL). The operator reads
       it from the editor or the branch list and supplies it; the driver
       never derives it. Lowercase letters and digits, 4 to 12 characters,
-      at least one digit; `live`, `test` and every `version-…` form are
-      refused
+      at least one of each (Bubble's short IDs look like `4k2xq`); `live`,
+      `test` and every `version-…` form are refused. The kit's marker
+      workflow ties the ID to the branch (`BubbleEx.Verify.Replay.Kit`)
     * `host` - where the app is served: `<app>.bubbleapps.io` by default,
       or a custom domain the owner confirmed (a bare lowercase DNS name,
       no scheme, port, path or IP address; another app's `bubbleapps.io`
@@ -30,7 +31,7 @@ defmodule BubbleEx.Verify.Replay do
   @prefix "wtfreplay"
   @branch ~r/\Awtfreplay[a-z0-9_-]*\z/
   @app ~r/\A[a-z0-9][a-z0-9-]*\z/
-  @branch_id ~r/\A(?=[a-z0-9]*[0-9])[a-z0-9]{4,12}\z/
+  @branch_id ~r/\A(?=[a-z0-9]*[0-9])(?=[a-z0-9]*[a-z])[a-z0-9]{4,12}\z/
   @reserved_ids ~w(live test)
   @host_label ~r/\A[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\z/
 

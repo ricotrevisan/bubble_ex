@@ -12,6 +12,12 @@ defmodule BubbleEx.Test.FakeBubble do
   #   * user: visible to itself
   #   * workspace: visible to everyone
   #
+  # The kit's marker workflow (`wtf_replay_marker`, no token needed) answers
+  # the branch name and nonce (`marker_branch:`, `marker_nonce:`); `/meta`
+  # answers without a token too, with `meta_types:` as its `types` schema.
+  # `impostor: true` answers every request 200 with an HTML page, like a
+  # host that is not Bubble.
+  #
   # `host:` serves the app from a custom domain instead of
   # `acme.bubbleapps.io` (which then answers 301 to it, as Bubble does).
   #
@@ -27,12 +33,14 @@ defmodule BubbleEx.Test.FakeBubble do
   # Bubble serves a child branch at /version-<its short ID>, not its name.
   @branch_id "4k2xq"
   @admin "admin-token-0123456789abcdef"
+  @nonce "marker-nonce-0123456789"
 
   def app, do: @app
   def branch, do: @branch
   def branch_id, do: @branch_id
   def host, do: "#{@app}.bubbleapps.io"
   def admin_token, do: @admin
+  def marker_nonce, do: @nonce
 
   def start(opts \\ []) do
     state = %{
@@ -45,11 +53,24 @@ defmodule BubbleEx.Test.FakeBubble do
       script: Keyword.get(opts, :script, []),
       exposed: Keyword.get(opts, :exposed, ~w(task user workspace)),
       workflows:
-        Keyword.get(opts, :workflows, ~w(wtf_replay_signup wtf_replay_login echo_now leaky)),
+        Keyword.get(
+          opts,
+          :workflows,
+          ~w(wtf_replay_marker wtf_replay_signup wtf_replay_login echo_now leaky)
+        ),
       meta: Keyword.get(opts, :meta, true),
+      meta_types: Keyword.get(opts, :meta_types),
+      marker: %{
+        "branch" => Keyword.get(opts, :marker_branch, @branch),
+        "nonce" => Keyword.get(opts, :marker_nonce, @nonce)
+      },
+      impostor: Keyword.get(opts, :impostor, false),
+      # Field defaults Bubble stores on creation (`%{type => %{field => value}}`).
+      defaults: Keyword.get(opts, :defaults, %{}),
       host: Keyword.get(opts, :host, host()),
       # :lost_signup (create the user, answer 502), :odd_user_id,
-      # :ignore_constraints, :leak (task titles echo the caller's credentials)
+      # :ignore_constraints, :leak (task titles echo the caller's credentials),
+      # :refuse_clear (a PATCH setting a field to null answers 400)
       quirks: Keyword.get(opts, :quirks, [])
     }
 
@@ -86,6 +107,11 @@ defmodule BubbleEx.Test.FakeBubble do
     served = Agent.get(pid, & &1.host)
 
     cond do
+      Agent.get(pid, & &1.impostor) ->
+        conn
+        |> Conn.put_resp_content_type("text/html")
+        |> Conn.send_resp(200, "<html><body>Welcome</body></html>")
+
       conn.host == host() and served != host() ->
         conn
         |> Conn.put_resp_header("location", "https://#{served}#{conn.request_path}")
@@ -145,12 +171,19 @@ defmodule BubbleEx.Test.FakeBubble do
   defp route(_pid, conn, _method, _path, _body, :invalid),
     do: json(conn, 401, %{"body" => %{"status" => "UNAUTHORIZED"}})
 
-  defp route(pid, conn, "GET", ["meta"], _body, :admin) do
+  defp route(pid, conn, "GET", ["meta"], _body, viewer) when viewer in [:admin, :none] do
     s = Agent.get(pid, & &1)
+    body = %{"get" => s.exposed, "post" => s.workflows}
+    body = if s.meta_types, do: Map.put(body, "types", s.meta_types), else: body
 
     if s.meta,
-      do: json(conn, 200, %{"get" => s.exposed, "post" => s.workflows}),
+      do: json(conn, 200, body),
       else: json(conn, 200, %{})
+  end
+
+  defp route(pid, conn, "POST", ["wf", "wtf_replay_marker"], _body, _viewer) do
+    marker = Agent.get(pid, & &1.marker)
+    json(conn, 200, %{"status" => "success", "response" => marker})
   end
 
   defp route(pid, conn, "POST", ["wf", "wtf_replay_signup"], body, :admin) do
@@ -246,24 +279,19 @@ defmodule BubbleEx.Test.FakeBubble do
   defp route(pid, conn, "POST", ["obj", type], body, viewer) when viewer != :none do
     creator = with {:user, id} <- viewer, do: id
     creator = if creator == :admin, do: nil, else: creator
-    id = Agent.get_and_update(pid, &insert(&1, type, body, creator))
+
+    id =
+      Agent.get_and_update(pid, fn s ->
+        insert(s, type, Map.merge(Map.get(s.defaults, type, %{}), body), creator)
+      end)
+
     json(conn, 201, %{"status" => "success", "id" => id})
   end
 
   defp route(pid, conn, "PATCH", ["obj", type, id], body, :admin) do
-    found =
-      Agent.get_and_update(pid, fn s ->
-        case s.records[id] do
-          %{type: ^type} = r ->
-            r = %{r | fields: Map.merge(r.fields, body), modified: s.clock}
-            {true, %{s | records: Map.put(s.records, id, r), clock: s.clock + 1000}}
-
-          _ ->
-            {false, s}
-        end
-      end)
-
-    if found, do: Conn.send_resp(conn, 204, ""), else: json(conn, 404, %{})
+    if :refuse_clear in Agent.get(pid, & &1.quirks) and Enum.any?(body, &(elem(&1, 1) == nil)),
+      do: json(conn, 400, %{"body" => %{"status" => "INVALID_DATA"}}),
+      else: patch(pid, conn, type, id, body)
   end
 
   defp route(pid, conn, "DELETE", ["obj", type, id], _body, :admin) do
@@ -280,6 +308,22 @@ defmodule BubbleEx.Test.FakeBubble do
 
   defp route(_pid, conn, _method, _path, _body, _viewer),
     do: json(conn, 404, %{"body" => %{"status" => "NOT_FOUND"}})
+
+  defp patch(pid, conn, type, id, body) do
+    found =
+      Agent.get_and_update(pid, fn s ->
+        case s.records[id] do
+          %{type: ^type} = r ->
+            r = %{r | fields: Map.merge(r.fields, body), modified: s.clock}
+            {true, %{s | records: Map.put(s.records, id, r), clock: s.clock + 1000}}
+
+          _ ->
+            {false, s}
+        end
+      end)
+
+    if found, do: Conn.send_resp(conn, 204, ""), else: json(conn, 404, %{})
+  end
 
   defp exposed?(pid, type), do: type in Agent.get(pid, & &1.exposed)
 

@@ -34,6 +34,14 @@ defmodule BubbleEx.Verify.Replay.Target do
       to the branch's name (editor or branch list) and supplies both; the
       driver never looks it up, so it cannot be steered to another branch.
       `live` and `test` are refused
+    * `:marker_nonce` (required) - the operator-chosen value (16 to 128
+      letters, digits, `-`, `_`) the owner typed into the replay branch's
+      marker workflow (`BubbleEx.Verify.Replay.Kit`). Before any request
+      carries a token, the client checks, without a token, that the host
+      answers Bubble's `/meta` and that the marker at
+      `/version-<branch_id>/` returns exactly this branch name and nonce
+      (`BubbleEx.Verify.Replay.Client.verify/2`): a typo in the host or
+      the branch ID never receives the admin token. `Inspect` redacts it
     * `:host` - an owner-confirmed custom domain the app is served from
       (`BubbleEx.Verify.Replay.host/2`), for apps whose `bubbleapps.io`
       host redirects to their domain. Default `<app>.bubbleapps.io`. A
@@ -54,20 +62,22 @@ defmodule BubbleEx.Verify.Replay.Target do
   alias BubbleEx.Error
   alias BubbleEx.Verify.Replay
 
-  @enforce_keys [:app, :branch, :branch_id, :host, :admin_token]
-  defstruct [:app, :branch, :branch_id, :host, :admin_token]
+  @enforce_keys [:app, :branch, :branch_id, :host, :marker_nonce, :admin_token]
+  defstruct [:app, :branch, :branch_id, :host, :marker_nonce, :admin_token]
 
   @type t :: %__MODULE__{
           app: String.t(),
           branch: String.t(),
           branch_id: String.t(),
           host: String.t(),
+          marker_nonce: String.t(),
           admin_token: String.t()
         }
 
   @segment ~r/\A[a-z0-9][a-z0-9_-]{0,127}\z/
   @record_id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
   @token ~r/\A[\x21-\x7e]{8,512}\z/
+  @nonce ~r/\A[A-Za-z0-9_-]{16,128}\z/
 
   @doc "Validates and builds a target. See the moduledoc."
   @spec new(term(), term(), term(), keyword()) :: {:ok, t()} | {:error, Error.t()}
@@ -76,6 +86,7 @@ defmodule BubbleEx.Verify.Replay.Target do
          {:ok, branch} <- branch(branch),
          {:ok, branch_id} <- branch_id(opts),
          {:ok, host} <- host(app, opts),
+         {:ok, nonce} <- nonce(opts),
          {:ok, token} <- token(admin_token) do
       {:ok,
        %__MODULE__{
@@ -83,8 +94,28 @@ defmodule BubbleEx.Verify.Replay.Target do
          branch: branch,
          branch_id: branch_id,
          host: host,
+         marker_nonce: nonce,
          admin_token: token
        }}
+    end
+  end
+
+  defp nonce(opts) do
+    case Keyword.get(opts, :marker_nonce) do
+      nonce when is_binary(nonce) ->
+        if nonce =~ @nonce,
+          do: {:ok, nonce},
+          else:
+            invalid(
+              "the marker nonce must be 16 to 128 letters, digits, - or _",
+              :invalid_marker_nonce
+            )
+
+      _ ->
+        invalid(
+          "a replay target needs the nonce stored in the branch's marker workflow (:marker_nonce)",
+          :missing_marker_nonce
+        )
     end
   end
 
@@ -257,7 +288,7 @@ defimpl Inspect, for: BubbleEx.Verify.Replay.Target do
         },
         opts
       ),
-      ", admin_token: [REDACTED]>"
+      ", marker_nonce: [REDACTED], admin_token: [REDACTED]>"
     ])
   end
 end

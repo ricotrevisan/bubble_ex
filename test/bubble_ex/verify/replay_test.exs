@@ -23,6 +23,8 @@ defmodule BubbleEx.Verify.ReplayTest do
 
   @admin FakeBubble.admin_token()
   @branch_id FakeBubble.branch_id()
+  @nonce FakeBubble.marker_nonce()
+  @t [branch_id: FakeBubble.branch_id(), marker_nonce: FakeBubble.marker_nonce()]
   @prefix "/version-#{FakeBubble.branch_id()}/api/1.1/"
 
   # --- fixtures ------------------------------------------------------------------------
@@ -35,7 +37,14 @@ defmodule BubbleEx.Verify.ReplayTest do
   end
 
   defp target(opts \\ []) do
-    {:ok, t} = Target.new("acme", "wtfreplay", @admin, [branch_id: @branch_id] ++ opts)
+    {:ok, t} =
+      Target.new(
+        "acme",
+        "wtfreplay",
+        @admin,
+        [branch_id: @branch_id, marker_nonce: FakeBubble.marker_nonce()] ++ opts
+      )
+
     t
   end
 
@@ -70,13 +79,21 @@ defmodule BubbleEx.Verify.ReplayTest do
     names
   end
 
+  # Transport tests start from a client whose target is already verified
+  # (set directly, so no marker call pollutes their logs or budgets); the
+  # verification itself is tested with `verified: false` and through the
+  # recorder, whose preflight always verifies.
   defp client(opts \\ []) do
+    {verified, opts} = Keyword.pop(opts, :verified, true)
+    {target_opts, opts} = Keyword.pop(opts, :target, [])
+
     {:ok, c} =
       Client.new(
-        target(),
+        target(target_opts),
         [names: names(), sleep: fn ms -> send(self(), {:slept, ms}) end] ++ opts
       )
 
+    if verified, do: :atomics.put(c.verified, 1, 1)
     c
   end
 
@@ -181,13 +198,33 @@ defmodule BubbleEx.Verify.ReplayTest do
     ledger
   end
 
+  # The fake's privacy hides tasks and users from logged-out callers
+  # (proven), and shows workspaces to everyone: an empty fake has no owner
+  # workspace to show, so the tests accept that type unproven.
+  @anonymous [
+    anonymous_proof: %{"task" => :hidden, "user" => :hidden},
+    allow_unproven: ["custom.workspace"]
+  ]
+
   defp record(client, seed, scenarios, opts \\ []) do
-    opts = opts |> Keyword.put_new(:run_id, "t1") |> Keyword.put_new_lazy(:ledger_dir, &dir/0)
+    opts =
+      opts
+      |> Keyword.put_new(:run_id, "t1")
+      |> Keyword.put_new_lazy(:ledger_dir, &dir/0)
+      |> then(&Keyword.merge(@anonymous, &1))
+
     {:ok, plan} = Recorder.plan(client, seed, scenarios, opts)
     Recorder.record(client, seed, scenarios, [plan_sha256: plan.sha256] ++ opts)
   end
 
   defp requests(fake, method), do: Enum.filter(FakeBubble.log(fake), &(&1.method == method))
+
+  # Reads, and the tokenless marker check: nothing that could write.
+  defp read_only?(fake) do
+    Enum.all?(FakeBubble.log(fake), fn e ->
+      e.method == "GET" or (e.path == @prefix <> "wf/wtf_replay_marker" and e.auth == nil)
+    end)
+  end
 
   # --- the guard --------------------------------------------------------------------------
 
@@ -195,7 +232,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     test "accepts an app ID and a wtfreplay branch only" do
       for branch <- ~w(wtfreplay wtfreplay-2 wtfreplay_v5) do
         assert {:ok, %Target{branch: ^branch}} =
-                 Target.new("acme", branch, @admin, branch_id: @branch_id)
+                 Target.new("acme", branch, @admin, @t)
       end
 
       for branch <-
@@ -222,7 +259,7 @@ defmodule BubbleEx.Verify.ReplayTest do
               "wtfreplay" <> String.duplicate("x", 60)
             ] do
         assert {:error, %Error{kind: :invalid_input, context: %{reason: :not_a_replay_branch}}} =
-                 Target.new("acme", branch, @admin, branch_id: @branch_id),
+                 Target.new("acme", branch, @admin, @t),
                "accepted branch #{inspect(branch)}"
       end
 
@@ -239,13 +276,13 @@ defmodule BubbleEx.Verify.ReplayTest do
             String.duplicate("a", 64)
           ] do
         assert {:error, %Error{context: %{reason: :not_an_app_id}}} =
-                 Target.new(app, "wtfreplay", @admin, branch_id: @branch_id),
+                 Target.new(app, "wtfreplay", @admin, @t),
                "accepted app #{inspect(app)}"
       end
 
       for token <- [nil, "", "short", "has a space in it", "tab\there-012345"] do
         assert {:error, %Error{kind: :invalid_input}} =
-                 Target.new("acme", "wtfreplay", token, branch_id: @branch_id)
+                 Target.new("acme", "wtfreplay", token, @t)
       end
     end
 
@@ -253,9 +290,9 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:error, %Error{context: %{reason: :missing_branch_id}}} =
                Target.new("acme", "wtfreplay", @admin)
 
-      for id <- ~w(4k2xq 1a2b 7qz0p abcdef123456) do
+      for id <- ~w(4k2xq 1a2b 7qz0p abcdef123456 0000a) do
         assert {:ok, %Target{branch: "wtfreplay", branch_id: ^id}} =
-                 Target.new("acme", "wtfreplay", @admin, branch_id: id)
+                 Target.new("acme", "wtfreplay", @admin, branch_id: id, marker_nonce: @nonce)
       end
 
       for id <- [
@@ -266,6 +303,9 @@ defmodule BubbleEx.Verify.ReplayTest do
             "version-4k2xq",
             "wtfreplay",
             "abcd",
+            "12345",
+            "03124",
+            "abcdef",
             "4K2XQ",
             "4k2",
             "4k2xq/../live",
@@ -278,7 +318,7 @@ defmodule BubbleEx.Verify.ReplayTest do
             12_345
           ] do
         assert {:error, %Error{context: %{reason: :not_a_branch_id}}} =
-                 Target.new("acme", "wtfreplay", @admin, branch_id: id),
+                 Target.new("acme", "wtfreplay", @admin, branch_id: id, marker_nonce: @nonce),
                "accepted branch ID #{inspect(id)}"
       end
 
@@ -332,7 +372,7 @@ defmodule BubbleEx.Verify.ReplayTest do
             nil
           ] do
         assert {:error, %Error{context: %{reason: :not_a_replay_host}}} =
-                 Target.new("acme", "wtfreplay", @admin, branch_id: @branch_id, host: host),
+                 Target.new("acme", "wtfreplay", @admin, @t ++ [host: host]),
                "accepted host #{inspect(host)}"
       end
 
@@ -701,7 +741,7 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       # Only the kit's own workflows were called.
       workflows = for %{path: @prefix <> "wf/" <> name} <- log, uniq: true, do: name
-      assert Enum.sort(workflows) == ~w(wtf_replay_login wtf_replay_signup)
+      assert Enum.sort(workflows) == ~w(wtf_replay_login wtf_replay_marker wtf_replay_signup)
 
       # Each run's journal is on disk and ends fully deleted.
       for run <- result.report.runs do
@@ -745,19 +785,109 @@ defmodule BubbleEx.Verify.ReplayTest do
              ]
     end
 
+    test "explicit empties are cleared after creation, journaled, and a refused clear makes dependents incomplete" do
+      {:ok, seed} =
+        Seed.new(
+          id: "empties",
+          personas: %{"alice" => %{user: "user_a"}},
+          records: [
+            %{
+              key: "user_a",
+              type: "user",
+              fields: %{
+                "email" => {:text, "alice@replay.wtf.invalid"},
+                "workspace_custom_workspace" => {:ref, "ws_1"}
+              }
+            },
+            %{key: "ws_1", type: "custom.workspace", fields: %{"name_text" => {:text, "W1"}}},
+            %{
+              key: "task_a",
+              type: "custom.task",
+              fields: %{"Created By" => {:ref, "user_a"}, "title_text" => nil}
+            },
+            %{
+              key: "task_b",
+              type: "custom.task",
+              fields: %{"Created By" => {:ref, "user_a"}, "title_text" => {:text, "B"}}
+            }
+          ]
+        )
+
+      tasks = privacy_scenario(seed, "alice", [:visible, :visible_fields, :values])
+
+      {:ok, workspace} =
+        Scenario.new(
+          id: "privacy_read.custom.workspace.alice",
+          kind: :privacy_read,
+          check: "privacy_read",
+          seed: %{id: seed.id, sha256: Seed.sha256(seed)},
+          persona: "alice",
+          subjects: %{type: "custom.workspace"},
+          ops: [
+            %{
+              id: "get.ws_1",
+              op: :get,
+              type: "custom.workspace",
+              record: "ws_1",
+              observe: [:visible]
+            }
+          ],
+          source_sha256: String.duplicate("7", 64)
+        )
+
+      defaults = %{"task" => %{"Title" => "untitled"}}
+
+      # Bubble stores the default; the driver clears it, ledger-keyed.
+      fake = start_fake(defaults: defaults)
+      d = dir()
+      assert {:ok, result} = record(client(), seed, [tasks, workspace], ledger_dir: d)
+      assert result.report.incomplete == []
+
+      alice = Enum.find(result.recordings, &(&1.scenario.id == tasks.id))
+
+      fields =
+        Enum.find(alice.observations, &(&1.kind == :visible_fields and &1.record == "task_a"))
+
+      refute "title_text" in fields.value
+
+      clears = for %{method: "PATCH", body: %{"Title" => nil}} = e <- FakeBubble.log(fake), do: e
+      assert length(clears) == 2
+
+      events =
+        for run <- result.report.runs,
+            line <- run.journal |> File.read!() |> String.split("\n", trim: true),
+            event = Jason.decode!(line),
+            event["event"] == "cleared",
+            do: event
+
+      assert [%{"key" => "task_a", "fields" => ["title_text"], "ok" => true}, _] = events
+      assert FakeBubble.records(fake) == %{}
+
+      # A refused clear: the task scenario reads task_a, so it is incomplete;
+      # the workspace scenario does not depend on it and records.
+      fake = start_fake(defaults: defaults, quirks: [:refuse_clear])
+      assert {:ok, result} = record(client(), seed, [tasks, workspace])
+      assert [%{scenario: id, why: :clear_failed}] = result.report.incomplete
+      assert id == tasks.id
+      assert result.report.complete == [workspace.id]
+      assert Enum.all?(result.report.runs, &(&1.uncleared == %{"task_a" => ["title_text"]}))
+      assert result.report.leftovers == []
+      assert FakeBubble.records(fake) == %{}
+    end
+
     test "record_matrix passes the Matrix dependencies" do
       start_fake()
       seed = seed()
       scenario = privacy_scenario(seed, "bob")
       deps = %{{scenario.id, "search"} => [:everyone_exclusive]}
       matrix = %{seed: seed, scenarios: [scenario], dependencies: deps}
-      {:ok, plan} = Recorder.plan_matrix(client(), matrix, run_id: "m")
+      {:ok, plan} = Recorder.plan_matrix(client(), matrix, [run_id: "m"] ++ @anonymous)
 
       assert {:ok, result} =
-               Recorder.record_matrix(client(), matrix,
-                 run_id: "m",
-                 plan_sha256: plan.sha256,
-                 ledger_dir: dir()
+               Recorder.record_matrix(
+                 client(),
+                 matrix,
+                 [run_id: "m", plan_sha256: plan.sha256, ledger_dir: dir()] ++ @anonymous
                )
 
       assert [%{op: "search", flags: [:everyone_exclusive]}] = result.report.calibration
@@ -777,11 +907,12 @@ defmodule BubbleEx.Verify.ReplayTest do
     test "a budget that runs out mid-run gives incomplete recordings and still cleans up" do
       seed = seed()
       scenarios = [privacy_scenario(seed, "alice")]
-      {:ok, plan} = Recorder.plan(client(), seed, scenarios, run_id: "b")
+      opts = [run_id: "b", anonymous_cap: 100] ++ @anonymous
+      {:ok, plan} = Recorder.plan(client(), seed, scenarios, opts)
       fake = start_fake(script: List.duplicate({"GET", "/obj/task", 429, []}, 6))
       c = client(max_calls: plan.calls, retry_base_delay: 1, max_retries: 6)
 
-      assert {:ok, result} = record(c, seed, scenarios, run_id: "b")
+      assert {:ok, result} = record(c, seed, scenarios, opts)
       assert [%Recording{complete: false}] = result.recordings
       assert [%{why: why}] = result.report.incomplete
       assert why in [:budget_exhausted, :seeding_failed]
@@ -851,14 +982,15 @@ defmodule BubbleEx.Verify.ReplayTest do
       scenarios = [privacy_scenario(seed, "alice")]
 
       for opts <- [
-            [workflows: ~w(wtf_replay_signup)],
+            [workflows: ~w(wtf_replay_marker wtf_replay_signup)],
             [exposed: ~w(task user)],
+            [workflows: ~w(wtf_replay_signup wtf_replay_login)],
             [meta: false]
           ] do
         fake = start_fake(opts)
         assert {:error, %Error{message: message}} = record(client(), seed, scenarios)
-        assert message =~ "replay kit"
-        assert Enum.all?(FakeBubble.log(fake), &(&1.method == "GET"))
+        assert message =~ "replay kit" or message =~ "did not prove it is the replay branch"
+        assert read_only?(fake)
       end
     end
 
@@ -899,7 +1031,7 @@ defmodule BubbleEx.Verify.ReplayTest do
                  &(&1[:check] == :anonymous_exposure and &1.type == "custom.workspace")
                )
 
-      assert %{status: :ok, anonymous: :ids_only, records: 0} =
+      assert %{status: :ok, anonymous: :proven_hidden, records: 0} =
                Enum.find(
                  checks,
                  &(&1[:check] == :anonymous_exposure and &1.type == "custom.task")
@@ -908,23 +1040,142 @@ defmodule BubbleEx.Verify.ReplayTest do
       # Names and counts only: no value or ID reaches the report, and nothing was written.
       refute inspect(checks) =~ "owner-private-name"
       refute inspect(checks) =~ ~r/\d+x\d+/
-      assert Enum.all?(FakeBubble.log(fake), &(&1.method == "GET"))
+      assert read_only?(fake)
 
       anonymous =
-        for %{auth: nil, query: q} = e <- FakeBubble.log(fake), q["constraints"] == nil, do: e
+        for %{auth: nil, path: @prefix <> "obj/" <> _, query: q} = e <- FakeBubble.log(fake),
+            q["constraints"] == nil,
+            do: e
 
       assert anonymous != []
-      assert Enum.all?(anonymous, &(&1.query["limit"] == "25"))
+      assert Enum.all?(anonymous, &(&1.query["limit"] == "100"))
     end
 
-    test "a type that shows a logged-out visitor only IDs and dates passes" do
-      start_fake(owner_records: [%{type: "workspace", fields: %{}}])
+    test "IDs and dates alone pass only when the metadata lists no other field, or with a proof" do
+      only_ids = %{"workspace" => %{"fields" => ["_id", "Created Date", "Modified Date"]}}
+      with_name = %{"workspace" => %{"fields" => [%{"key" => "Name"}, %{"key" => "_id"}]}}
+      check = fn report -> Enum.find(report.checks, &(&1[:check] == :anonymous_exposure)) end
 
+      # An empty field is omitted by Bubble: a record with no value shows nothing.
+      start_fake(owner_records: [%{type: "workspace", fields: %{}}], meta_types: only_ids)
       assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.workspace))
       assert report.ok?
+      assert %{status: :ok, anonymous: :ids_only, records: 1, remaining: 0} = check.(report)
 
-      assert %{status: :ok, anonymous: :ids_only, records: 1, remaining: 0} =
+      for types <- [with_name, nil] do
+        start_fake(owner_records: [%{type: "workspace", fields: %{}}], meta_types: types)
+        assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.workspace))
+        refute report.ok?
+        assert %{status: :may_leak} = check.(report)
+
+        # allow_unproven does not cover a type a logged-out caller can see.
+        assert {:ok, report} =
+                 Kit.preflight(client(), %Kit{}, ~w(custom.workspace),
+                   allow_unproven: ["custom.workspace"]
+                 )
+
+        assert %{status: :may_leak} = check.(report)
+
+        assert {:ok, report} =
+                 Kit.preflight(client(), %Kit{}, ~w(custom.workspace),
+                   anonymous_proof: %{"workspace" => :hidden}
+                 )
+
+        assert %{status: :ok, anonymous: :proven_hidden} = check.(report)
+      end
+    end
+
+    test "no record for a logged-out caller is unproven unless proven or accepted, with a warning" do
+      start_fake()
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.workspace))
+      refute report.ok?
+
+      assert %{status: :unproven, anonymous: :no_records, records: 0} =
                Enum.find(report.checks, &(&1[:check] == :anonymous_exposure))
+
+      assert {:ok, report} =
+               Kit.preflight(client(), %Kit{}, ~w(custom.workspace),
+                 allow_unproven: ["custom.workspace"]
+               )
+
+      assert report.ok?
+      assert [%{type: "custom.workspace", warning: warning}] = report.warnings
+      assert warning =~ "unproven"
+    end
+
+    test "the anonymous probe pages up to its cap and reports it" do
+      owners = for _ <- 1..230, do: %{type: "workspace", fields: %{}}
+      fake = start_fake(owner_records: owners)
+
+      assert {:ok, %{status: :answered, records: 150, remaining: 80, capped: true}} =
+               Client.anonymous_probe(client(), "custom.workspace", 150)
+
+      assert {:ok, %{records: 230, remaining: 0, capped: false, extra_fields: []}} =
+               Client.anonymous_probe(client(), "custom.workspace", 1000)
+
+      pages = for %{auth: nil, query: q} <- FakeBubble.log(fake), do: {q["cursor"], q["limit"]}
+      assert pages == [{"0", "100"}, {"100", "50"}, {"0", "100"}, {"100", "100"}, {"200", "100"}]
+    end
+
+    test "anonymous_proof proves only types whose every rule grants nothing" do
+      rule = fn perms -> %{permissions: struct(BubbleEx.Privacy.Permissions, perms)} end
+      nothing = rule.(view_all: false, search_for: false, view_fields: [])
+
+      model = %{
+        data_types: [
+          %{id: "a", privacy: :present, rules: [nothing, nothing]},
+          %{id: "b", privacy: :present, rules: [nothing, rule.(view_fields: ["f"])]},
+          %{id: "c", privacy: :present, rules: [rule.(search_for: true)]},
+          %{id: "d", privacy: :none, rules: []},
+          %{id: "e", privacy: :present, rules: [%{permissions: nil}]},
+          %{id: "user", privacy: :present, rules: [nothing]}
+        ]
+      }
+
+      assert Kit.anonymous_proof(model) == %{"a" => :hidden, "user" => :hidden}
+    end
+
+    test "no token reaches a host that is not the replay branch" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+
+      for {fake_opts, step} <- [
+            {[impostor: true], :meta},
+            {[host: "acme.example.com", impostor: true], :meta},
+            {[marker_nonce: "another-nonce-0123456789"], :marker},
+            {[marker_branch: "wtfreplay-2"], :marker},
+            {[workflows: ~w(wtf_replay_signup wtf_replay_login)], :marker}
+          ] do
+        fake = start_fake(fake_opts)
+        target = Keyword.take(fake_opts, [:host])
+
+        assert {:error, %Error{context: %{reason: :unverified_target, step: ^step}}} =
+                 record(client(verified: false, target: target), seed, scenarios)
+
+        assert FakeBubble.log(fake) != []
+        assert Enum.all?(FakeBubble.log(fake), &(&1.auth == nil)), inspect(fake_opts)
+        refute Enum.any?(FakeBubble.log(fake), &(&1.path =~ "/obj/"))
+      end
+    end
+
+    test "an unverified client sends no token at all, before any wire attempt" do
+      fake = start_fake()
+      c = client(verified: false)
+
+      for call <- [
+            fn -> Client.meta(c) end,
+            fn -> Client.create(c, "custom.workspace", %{"Name" => "x"}, :admin) end,
+            fn -> Client.search(c, "custom.task", {:user, "tok-0123456789"}, ids: ["1x2"]) end,
+            fn -> Client.call_kit(c, %Kit{}, :signup, %{}) end
+          ] do
+        assert {:error, %Error{context: %{reason: :unverified_target}}} = call.()
+      end
+
+      assert FakeBubble.log(fake) == []
+      assert Client.calls(c) == 0
+      assert {:ok, %{"get" => _}} = Client.verify(c, %Kit{})
+      assert Client.verified?(c)
+      assert {:ok, %{status: 200}} = Client.meta(c)
     end
 
     test "persona seeding needs a safely exposed User Data API; logged-out only does not" do
@@ -939,10 +1190,10 @@ defmodule BubbleEx.Verify.ReplayTest do
                Enum.find(checks, &(&1[:check] == :persona_cleanup))
 
       assert detail =~ "logged-out"
-      assert Enum.all?(FakeBubble.log(fake), &(&1.method == "GET"))
+      assert read_only?(fake)
 
       assert {:ok, %{ok?: true, checks: checks}} =
-               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace))
+               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace), @anonymous)
 
       refute Enum.any?(checks, &(&1[:check] == :persona_cleanup))
 
@@ -966,7 +1217,11 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert result.report.leftovers == []
       assert [%Recording{complete: true}] = result.recordings
       assert FakeBubble.records(fake) == %{}
-      refute Enum.any?(FakeBubble.log(fake), &(&1.path =~ "/obj/user" or &1.path =~ "/wf/"))
+
+      refute Enum.any?(
+               FakeBubble.log(fake),
+               &(&1.path =~ "/obj/user" or &1.path =~ ~r"/wf/wtf_replay_(signup|login)")
+             )
     end
 
     test "a custom-domain app: bubbleapps.io redirects and is refused; the confirmed host records" do
@@ -1099,7 +1354,7 @@ defmodule BubbleEx.Verify.ReplayTest do
             {"wtfreplay", [branch_id: "9z9zz"]},
             {"wtfreplay", [branch_id: @branch_id, host: "beta.example.com"]}
           ] do
-        {:ok, other} = Target.new("acme", branch, @admin, opts)
+        {:ok, other} = Target.new("acme", branch, @admin, [marker_nonce: @nonce] ++ opts)
         {:ok, wrong} = Client.new(other, names: names())
 
         assert {:error, %Error{context: %{reason: :wrong_target}}} =

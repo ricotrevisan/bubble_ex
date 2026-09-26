@@ -9,6 +9,14 @@ defmodule BubbleEx.Verify.Replay.Client do
   can already read from an exposed type: it keeps only field names and a
   count, never a value or an ID.
 
+  **No token before verification.** A new client sends no request that
+  carries a token (the admin token or a persona's) until `verify/2` has
+  checked, without a token, that the host answers Bubble's API metadata
+  and that the replay kit's marker workflow on `/version-<branch_id>/`
+  returns exactly the target's branch name and marker nonce. Token-bearing
+  calls before that fail with `reason: :unverified_target`, before any
+  wire attempt. So a mistyped host or branch ID never receives a token.
+
   Every request goes through `BubbleEx.HTTP.request/5` (public-destination
   checks, bounded bodies, sanitized telemetry) after
   `Target.check_url/2`, never follows redirects, and carries the
@@ -42,11 +50,12 @@ defmodule BubbleEx.Verify.Replay.Client do
   alias BubbleEx.{Error, HTTP}
   alias BubbleEx.Verify.Replay.{Kit, Ledger, Names, Target}
 
-  @enforce_keys [:target, :names, :counter]
+  @enforce_keys [:target, :names, :counter, :verified]
   defstruct [
     :target,
     :names,
     :counter,
+    :verified,
     :deadline,
     max_calls: 2_000,
     cleanup_max_calls: 2_000,
@@ -82,6 +91,7 @@ defmodule BubbleEx.Verify.Replay.Client do
          target: target,
          names: names,
          counter: :counters.new(2, [:atomics]),
+         verified: :atomics.new(1, []),
          deadline: System.monotonic_time(:millisecond) + wall,
          max_calls: max_calls,
          cleanup_max_calls: cleanup,
@@ -160,54 +170,71 @@ defmodule BubbleEx.Verify.Replay.Client do
   @anonymous_fields ["_id", "Created Date", "Modified Date"]
 
   @doc """
-  What an anonymous caller (no token) gets from `type`'s Data API: one
-  unconstrained page of at most `limit` records (default 25). Enabling the
-  Data API on a branch exposes the development database, which the branch
-  shares with `test`, to anyone, as far as the privacy rules allow; this
-  measures that. Values and IDs are dropped as soon as the answer is
-  decoded: the result holds only the count of records answered, the
-  `remaining` count and the sorted names of the fields beyond `_id`,
-  `Created Date` and `Modified Date` (`extra_fields`, empty when only
-  those came back).
+  What an anonymous caller (no token) gets from `type`'s Data API:
+  unconstrained pages of at most 100 records, up to `cap` records (default
+  200). Enabling the Data API on a branch exposes the development
+  database, which the branch shares with `test`, to anyone, as far as the
+  privacy rules allow; this measures that. Values and IDs are dropped as
+  soon as each page is decoded: the result holds only the count of
+  records answered, the `remaining` count after the last page read,
+  whether the cap stopped the probe (`capped`) and the sorted names of the
+  fields beyond `_id`, `Created Date` and `Modified Date` (`extra_fields`,
+  empty when only those came back). A field Bubble leaves out because it
+  is empty is not seen: the preflight treats a clean answer as proof only
+  with more evidence (`BubbleEx.Verify.Replay.Kit`).
 
   `{:ok, %{status: :denied, http_status: s}}` when Bubble refused the
   anonymous search (401, 403, 404).
   """
   @spec anonymous_probe(t(), String.t(), pos_integer()) :: {:ok, map()} | {:error, Error.t()}
-  def anonymous_probe(%__MODULE__{} = c, type, limit \\ 25)
-      when is_integer(limit) and limit > 0 and limit <= 100 do
+  def anonymous_probe(%__MODULE__{} = c, type, cap \\ 200)
+      when is_integer(cap) and cap > 0 and cap <= 10_000 do
     with {:ok, path} <- Names.type_path(c.names, type),
          {:ok, url} <- Target.data_url(c.target, path) do
-      query = URI.encode_query([{"cursor", "0"}, {"limit", Integer.to_string(limit)}])
-
-      case request(c, :get, url <> "?" <> query, nil, :none, :read) do
-        {:ok, %{status: 200, body: %{"response" => %{"results" => results} = r}}}
-        when is_list(results) ->
-          {:ok, anonymous_answer(results, r["remaining"])}
-
-        {:ok, %{status: status}} when status in [401, 403, 404] ->
-          {:ok, %{status: :denied, http_status: status}}
-
-        other ->
-          unexpected(other, "anonymous Data API probe")
-      end
+      anonymous_pages(c, url, cap, %{records: 0, remaining: nil, fields: MapSet.new()})
     end
   end
 
-  # Only names and counts leave this function: values and IDs are dropped here.
-  defp anonymous_answer(results, remaining) do
-    fields =
-      results
-      |> Enum.flat_map(&record_keys/1)
-      |> Enum.uniq()
-      |> Enum.reject(&(&1 in @anonymous_fields))
-      |> Enum.sort()
+  defp anonymous_pages(c, url, cap, acc) do
+    limit = min(100, cap - acc.records)
+    query = URI.encode_query([{"cursor", "#{acc.records}"}, {"limit", "#{limit}"}])
+
+    case request(c, :get, url <> "?" <> query, nil, :none, :read) do
+      {:ok, %{status: 200, body: %{"response" => %{"results" => results} = r}}}
+      when is_list(results) ->
+        acc = anonymous_page(acc, results, r["remaining"])
+        more? = is_integer(acc.remaining) and acc.remaining > 0 and results != []
+
+        if more? and acc.records < cap,
+          do: anonymous_pages(c, url, cap, acc),
+          else: {:ok, anonymous_answer(acc, more?)}
+
+      {:ok, %{status: status}} when status in [401, 403, 404] and acc.records == 0 ->
+        {:ok, %{status: :denied, http_status: status}}
+
+      other ->
+        unexpected(other, "anonymous Data API probe")
+    end
+  end
+
+  # Only names and counts leave these functions: values and IDs are dropped here.
+  defp anonymous_page(acc, results, remaining) do
+    fields = results |> Enum.flat_map(&record_keys/1) |> MapSet.new()
 
     %{
-      status: :answered,
-      records: length(results),
+      records: acc.records + length(results),
       remaining: if(is_integer(remaining), do: remaining, else: nil),
-      extra_fields: fields
+      fields: MapSet.union(acc.fields, fields)
+    }
+  end
+
+  defp anonymous_answer(acc, capped?) do
+    %{
+      status: :answered,
+      records: acc.records,
+      remaining: acc.remaining,
+      capped: capped?,
+      extra_fields: acc.fields |> Enum.reject(&(&1 in @anonymous_fields)) |> Enum.sort()
     }
   end
 
@@ -380,9 +407,67 @@ defmodule BubbleEx.Verify.Replay.Client do
     end
   end
 
-  @doc "Reads the API metadata (`/meta`) as admin."
+  @doc "Reads the API metadata (`/meta`) as admin (only after `verify/2`)."
   @spec meta(t()) :: {:ok, response()} | {:error, Error.t()}
   def meta(%__MODULE__{} = c), do: request(c, :get, Target.meta_url(c.target), nil, :admin, :read)
+
+  @doc """
+  Verifies, **without any token**, that the target is the replay branch:
+
+    1. `GET /meta` answers 200 with Bubble's metadata shape (a JSON object
+       whose `get` is a list of type names and whose `post` is a list or
+       object of workflows)
+    2. `POST /wf/<kit.marker>` answers 200 with a `response` that is
+       exactly `%{"branch" => target.branch, "nonce" => target.marker_nonce}`
+
+  Only then may the client send token-bearing requests. Returns the
+  metadata body (the preflight reads its type schema), or
+  `:invalid_input` with `reason: :unverified_target` and a `step`
+  (`:meta` or `:marker`); nothing more is sent then.
+  """
+  @spec verify(t(), Kit.t()) :: {:ok, map()} | {:error, Error.t()}
+  def verify(%__MODULE__{} = c, %Kit{} = kit) do
+    with {:ok, meta} <- anonymous_meta(c),
+         :ok <- marker(c, kit) do
+      :atomics.put(c.verified, 1, 1)
+      {:ok, meta}
+    end
+  end
+
+  @doc "Whether `verify/2` succeeded for this client."
+  @spec verified?(t()) :: boolean()
+  def verified?(%__MODULE__{verified: v}), do: :atomics.get(v, 1) == 1
+
+  defp anonymous_meta(c) do
+    case request(c, :get, Target.meta_url(c.target), nil, :none, :read) do
+      {:ok, %{status: 200, body: %{"get" => get, "post" => post} = body}}
+      when is_list(get) and (is_list(post) or is_map(post)) ->
+        if Enum.all?(get, &is_binary/1), do: {:ok, body}, else: unverified(:meta)
+
+      _ ->
+        unverified(:meta)
+    end
+  end
+
+  defp marker(c, kit) do
+    expected = %{"branch" => c.target.branch, "nonce" => c.target.marker_nonce}
+
+    with {:ok, url} <- Target.workflow_url(c.target, kit.marker) do
+      case request(c, :post, url, %{}, :none, :read) do
+        {:ok, %{status: 200, body: %{"response" => ^expected}}} -> :ok
+        _ -> unverified(:marker)
+      end
+    end
+  end
+
+  defp unverified(step),
+    do:
+      {:error,
+       Error.new(
+         :invalid_input,
+         "the replay target did not prove it is the replay branch; no token was sent",
+         %{reason: :unverified_target, step: step}
+       )}
 
   @doc "Every secret the client holds (for the credential scan)."
   @spec secrets(t()) :: [String.t()]
@@ -394,6 +479,7 @@ defmodule BubbleEx.Verify.Replay.Client do
 
   defp attempt(c, method, url, body, auth, mode, n) do
     with :ok <- Target.check_url(c.target, url),
+         :ok <- may_send(c, auth),
          {:ok, encoded} <- encode(body),
          :ok <- budget(c, mode) do
       :counters.add(c.counter, slot(mode), 1)
@@ -408,6 +494,18 @@ defmodule BubbleEx.Verify.Replay.Client do
           attempt(c, method, url, body, auth, mode, n + 1)
       end
     end
+  end
+
+  defp may_send(_c, :none), do: :ok
+
+  defp may_send(c, _auth) do
+    if verified?(c),
+      do: :ok,
+      else:
+        {:error,
+         Error.new(:invalid_input, "no token is sent before the replay target is verified", %{
+           reason: :unverified_target
+         })}
   end
 
   defp encode(nil), do: {:ok, nil}

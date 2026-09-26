@@ -120,7 +120,23 @@ All notable changes to this project are documented here.
   `_id`, `Created Date` and `Modified Date`; a seed that signs users up
   also needs a safely exposed `User` Data API (persona cleanup), otherwise
   the run is refused and must be recorded logged-out only.
-  `docs/replay-kit.md` documents both.
+  No token before verification: a client sends no token-bearing request
+  until `Client.verify/2` has checked, without a token, Bubble's `/meta`
+  shape and the kit's tokenless marker workflow (`wtf_replay_marker`),
+  which must return exactly the branch name and the operator's
+  `marker_nonce:` (required by `Target.new/4`), so a mistyped host or
+  branch ID never receives the admin token. The exposure probe fails
+  closed: it pages up to `:anonymous_cap` (200) records, `:exposed` on any
+  extra field, `:may_leak` when records show only IDs and dates but `/meta`
+  lists other fields (Bubble omits empty ones) and no proof
+  (`anonymous_proof:`, `Kit.anonymous_proof/1` from the Model) is given,
+  `:unproven` when no record answers (unless proven or accepted with
+  `allow_unproven:`, as a warning). Branch IDs need a letter and a digit.
+  The seeder clears a seed's explicit empties (`nil` fields, which Bubble
+  would fill with defaults) after creation, journals each clear, and a
+  refused clear makes the scenarios depending on that record
+  (transitively, through references and personas) incomplete
+  (`:clear_failed`). `docs/replay-kit.md` documents all of it.
 
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits

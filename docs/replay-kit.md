@@ -21,9 +21,12 @@ you confirm them.
 - [ ] Note the branch's **ID**. Bubble serves a child branch at
       `/version-<branch ID>/` (a short ID such as `4k2xq`, shown next to
       the branch name in the branch list), not at its name. Give the
-      harness both: `Target.new(app, "wtfreplay", token, branch_id: "4k2xq")`.
+      harness both, with the marker nonce of step 3:
+      `Target.new(app, "wtfreplay", token, branch_id: "4k2xq", marker_nonce: nonce)`.
       The driver checks the name, builds every URL from the ID, and never
-      looks the ID up itself; `live` and `test` are refused.
+      looks the ID up itself; `live` and `test` are refused, and an ID
+      needs at least one letter and one digit. The marker workflow
+      (step 3) proves the ID is the replay branch's.
 - [ ] Check the host. By default the driver calls
       `https://<app>.bubbleapps.io/version-<branch ID>/`. If the app has a
       custom domain, `bubbleapps.io` redirects to it and the driver, which
@@ -56,11 +59,21 @@ included, to anonymous callers as soon as it was exposed on a branch. So:
       The preflight runs two checks on each type under test:
       - a search that matches no records (`_id in [0x0]`, as admin) needs
         HTTP 200 (the type is exposed);
-      - the **anonymous exposure probe**: one page (25 records) as a
-        logged-out caller, keeping only field names and counts. If any
-        field beyond `_id`, `Created Date` and `Modified Date` comes back,
-        the preflight fails with `anonymous_exposure: :exposed` and the
-        field names. Untick that type at once.
+      - the **anonymous exposure probe**: up to 200 records (pages of
+        100) as a logged-out caller, keeping only field names and counts.
+        It fails closed:
+        - any field beyond `_id`, `Created Date` and `Modified Date`:
+          `:exposed`, with the field names. Untick that type at once;
+        - records with only IDs and dates: Bubble leaves empty fields out,
+          so this passes only when `/meta` lists no other field for the
+          type, or the type is **proven hidden** (`anonymous_proof:`, e.g.
+          from `Kit.anonymous_proof/1` on the app's Model: every rule,
+          `everyone` included, grants no field and no search). Otherwise
+          `:may_leak`;
+        - no record at all: nothing shows the rules hide the fields (they
+          may open no record yet), so `:unproven`, unless the type is
+          proven hidden or you accept it with `allow_unproven:` (reported
+          as a warning).
 - [ ] **User.** The driver signs personas up and can delete them (and
       find a sign-up whose answer was lost) only through the `User` Data
       API. A seed with users therefore needs `User` exposed and passing
@@ -70,10 +83,22 @@ included, to anonymous callers as soon as it was exposed on a branch. So:
       only worth something if the branch's rules match the parent's. Don't
       tick "ignore privacy rules" anywhere.
 
-## 3. Add the sign-up and login API workflows *(preflight)*
+## 3. Add the marker, sign-up and login API workflows *(preflight)*
 
 Settings → API → enable **Workflow API**. Then, in Backend workflows:
 
+- [ ] `wtf_replay_marker`: exposed as a public API workflow, **with** "This
+      workflow can be run without authentication" checked. No parameters.
+      - Step 1: **Return data from API**: `branch` = the branch's name
+        typed as text (`wtfreplay`), `nonce` = a random value you choose
+        (16 to 128 letters, digits, `-`, `_`), typed as text. Give the
+        same value to the harness as `marker_nonce:`.
+      - It returns nothing else and exists only on the replay branch.
+        Before any request carries a token, the driver checks without a
+        token that the host answers Bubble's `/meta` and that this
+        workflow, at `/version-<branch ID>/`, returns exactly that branch
+        name and nonce. A mistyped host or branch ID fails there, and the
+        admin token is never sent to it.
 - [ ] `wtf_replay_signup`: exposed as a public API workflow. Leave "This
       workflow can be run without authentication" **unchecked**, so only
       the admin token can call it.
@@ -85,8 +110,9 @@ Settings → API → enable **Workflow API**. Then, in Backend workflows:
       - Step 1: **Log the user in** with `email` and `password`.
       - Step 2: **Return data from API**: `token`, `user_id` and `expires`
         from the login step.
-- [ ] The preflight reads `/version-<branch ID>/api/1.1/meta` and needs
-      both names among the exposed workflows.
+- [ ] The preflight reads `/version-<branch ID>/api/1.1/meta` (as admin,
+      after the marker check) and needs the sign-up and login names among
+      the exposed workflows.
 
 The driver signs personas up with emails like
 `alice+<run>@replay.wtf.invalid` and random passwords that are never stored.
@@ -115,7 +141,11 @@ No email reaches a real person.
    `:ledger_dir`. It runs the preflight (refusing the run if the kit is
    incomplete, a type is exposed to logged-out callers, or personas can't
    be cleaned up), then records every scenario twice from a fresh seed
-   each time. Before each create it writes an intent to
+   each time. A seed field that must be empty (`null`, e.g. a field with
+   a default that a scenario needs empty) is cleared after the record is
+   created, since Bubble stores the default on creation; the clear is
+   journaled, and a clear Bubble refuses makes the scenarios that depend
+   on that record incomplete. Before each create it writes an intent to
    the run's journal (`<ledger_dir>/<run id>.jsonl`, fsynced). It masks
    what differs between the two runs, deletes the records of each run
    (even after a crash) and writes recordings under

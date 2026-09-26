@@ -172,6 +172,16 @@ defmodule BubbleEx.Verify.Replay.Ledger do
     update(ledger, key, &%{&1 | state: :deleted})
   end
 
+  @doc """
+  Journals the clearing of explicitly empty fields of the created record
+  `key` (field names only), and whether Bubble accepted it. Cleanup
+  ignores these events; they say which records hold the seed's empties.
+  """
+  @spec note_cleared(t(), String.t(), [String.t()], boolean()) :: :ok | {:error, Error.t()}
+  def note_cleared(%__MODULE__{} = ledger, key, fields, ok?) when is_list(fields) do
+    append(ledger, %{"event" => "cleared", "key" => key, "fields" => fields, "ok" => ok?})
+  end
+
   defp update(ledger, key, fun) do
     %{
       ledger
