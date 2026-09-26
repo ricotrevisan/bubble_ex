@@ -942,9 +942,12 @@ defmodule BubbleEx.Plan.Builder do
         |> Enum.uniq()
         |> Enum.sort_by(&CanonicalJson.encode/1)
 
-      {s.id, CanonicalJson.sha256(%{own: own[s.id], references: refs})}
+      {s.id, short(CanonicalJson.sha256(%{own: own[s.id], references: refs}))}
     end)
   end
+
+  # 128 bits: enough to notice a change, and a fifth of the plan smaller.
+  defp short(sha256), do: binary_part(sha256, 0, 32)
 
   # `%{symbol ID => %{parent, sha256}}` of every symbol some task covers:
   # what `BubbleEx.Plan.diff/2` compares.
@@ -990,7 +993,8 @@ defmodule BubbleEx.Plan.Builder do
       symbols: Map.new(covered, &{&1, ctx.digests[&1]}),
       residue: t.residue,
       decisions_sha256: decisions_sha256,
-      styles: styles_input(ctx, t)
+      styles: styles_input(ctx, t),
+      content: ctx.content_id
     }
     |> CanonicalJson.sha256()
   end

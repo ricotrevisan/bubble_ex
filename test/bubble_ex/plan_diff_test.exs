@@ -7,13 +7,16 @@ defmodule BubbleEx.PlanDiffTest do
 
   # Before/after pairs of the invented plan app
   # (test/support/samples/synthetic_plan_export.json; see BubbleEx.PlanTest).
-  # The base gets a dynamic text on eT2 and a condition on wApiC's action so
-  # edits have raw expression text to change.
+  # The base gets a dynamic text and a named style on eT2, a condition on
+  # wApiC's action, a field default and an option set with an attribute, so
+  # edits have raw content to change.
   @app SampleHelper.load_json_sample("synthetic_plan_export")
   @now ~U[2026-09-26 00:00:00Z]
 
   @t2 ["pages", "pgHome", "elements", "grpBig", "elements", "t2"]
   @new_task ["api", "wfApiC", "actions", "0"]
+  @call ["settings", "client_safe", "apiconnector2", "grpMail", "calls", "callSend"]
+  @key String.duplicate("k", 32)
 
   defp text(words), do: %{"type" => "TextExpression", "entries" => %{"0" => words}}
 
@@ -37,12 +40,46 @@ defmodule BubbleEx.PlanDiffTest do
     @app
     |> put_in(@t2 ++ ["properties"], %{"text" => text("Hello"), "left" => 10, "top" => 20})
     |> put_in(@new_task ++ ["properties", "condition"], condition(true))
+    |> put_in(@t2 ++ ["style"], "Text_body_")
+    |> Map.put("styles", %{
+      "Text_body_" => %{
+        "id" => "Text_body_",
+        "type" => "Text",
+        "properties" => %{"font_size" => 14}
+      }
+    })
+    |> put_in(["user_types", "task", "fields", "title_text", "default_val"], "Untitled")
+    |> put_in(["user_types", "task", "fields", "state_os"], %{
+      "display" => "State",
+      "value" => "option.state"
+    })
+    |> Map.put("option_sets", %{
+      "state" => %{
+        "display" => "State",
+        "attributes" => %{"color_text" => %{"display" => "Color", "value" => "text"}},
+        "values" => %{
+          "v1" => %{
+            "display" => "Open",
+            "db_value" => "open",
+            "sort_factor" => 1,
+            "color_text" => "green"
+          },
+          "v2" => %{
+            "display" => "Done",
+            "db_value" => "done",
+            "sort_factor" => 2,
+            "color_text" => "grey"
+          }
+        }
+      }
+    })
   end
 
   defp plan(app, opts \\ []) do
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
-    {:ok, content} = Content.digests(app, model, index)
+    {key, opts} = Keyword.pop(opts, :key, @key)
+    {:ok, content} = Content.digests(app, model, index, key: key)
 
     {applied, opts} = Keyword.pop(opts, :applied, [])
     opts = Keyword.put_new(opts, :content, content)
@@ -130,7 +167,7 @@ defmodule BubbleEx.PlanDiffTest do
 
     test "without content digests only what the index records is compared", ctx do
       edited = put_in(base(), @t2 ++ ["properties", "text"], text("Goodbye"))
-      diff = diff!(plan(base(), content: %{}), plan(edited, content: %{}))
+      diff = diff!(plan(base(), content: nil), plan(edited, content: nil))
       assert diff.counts.changed == 0
       refute ctx.before.inputs.content_sha256 == nil
     end
@@ -150,6 +187,100 @@ defmodule BubbleEx.PlanDiffTest do
 
       # wApiD was the only public workflow.
       assert with_status(diff, :removed) == ~w(delivery:callers workflow:wApiD)
+    end
+  end
+
+  describe "data model and API content" do
+    test "a field default changes the schema and the tasks reading or writing it", ctx do
+      app = put_in(base(), ["user_types", "task", "fields", "title_text", "default_val"], "New")
+      diff = diff!(ctx.before, plan(app))
+
+      assert %{status: :changed, changes: %{changed: changed}} = entry!(diff, "generate:schema")
+      assert "field:task/title_text" in changed
+    end
+
+    test "an option value's display text or attribute value changes the option sets", ctx do
+      path = ["option_sets", "state", "values", "v1"]
+
+      for app <- [
+            put_in(base(), path ++ ["display"], "Opened"),
+            put_in(base(), path ++ ["color_text"], "blue")
+          ] do
+        diff = diff!(ctx.before, plan(app))
+
+        assert %{status: :changed, changes: %{changed: ["option_value:state/open"]}} =
+                 entry!(diff, "generate:option_sets")
+      end
+    end
+
+    test "an option set's or field's display name is a caption", ctx do
+      app =
+        base()
+        |> put_in(["option_sets", "state", "display"], "Status")
+        |> put_in(["user_types", "task", "fields", "title_text", "display"], "Name")
+
+      assert diff!(ctx.before, plan(app)).counts.changed == 0
+    end
+
+    test "an API call's path, body or header value changes its tasks", ctx do
+      group = ["settings", "client_safe", "apiconnector2", "grpMail"]
+
+      for app <- [
+            put_in(base(), @call ++ ["url"], "https://api.mail.test/v2/send"),
+            put_in(base(), @call ++ ["body"], ~s({"to": "<to>"})),
+            put_in(base(), group ++ ["shared_headers", "h1", "value"], "Bearer x")
+          ] do
+        diff = diff!(ctx.before, plan(app))
+        assert %{status: :changed} = entry!(diff, "api_group:grpMail")
+        assert %{needs_reverify: true} = entry!(diff, "workflow:wClick")
+      end
+
+      # The call's caption is not content.
+      assert diff!(ctx.before, plan(put_in(base(), @call ++ ["name"], "Mail it"))).counts.changed ==
+               0
+    end
+
+    test "editing a named style changes the elements using it", ctx do
+      app = put_in(base(), ["styles", "Text_body_", "properties", "font_size"], 16)
+      diff = diff!(ctx.before, plan(app))
+
+      assert %{status: :changed, changes: %{changed: ["element:eT2"]}} =
+               entry!(diff, "surface:page/pHome")
+    end
+  end
+
+  describe "content key" do
+    test "digests need a key of at least 32 bytes", ctx do
+      app = base()
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+
+      assert {:error, %Error{kind: :invalid_input}} = Content.digests(app, model, index)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Content.digests(app, model, index, key: "short")
+
+      {:ok, content} = Content.digests(app, model, index, key: @key)
+      assert content.algorithm == Content.algorithm()
+      assert content.key_id == Content.key_id(@key)
+
+      assert ctx.before.inputs.content == %{
+               algorithm: Content.algorithm(),
+               key_id: content.key_id
+             }
+
+      refute Plan.to_json(ctx.before) =~ @key
+    end
+
+    test "another key, or none, changes every task", ctx do
+      for other <- [plan(base(), key: String.duplicate("z", 32)), plan(base(), content: nil)] do
+        diff = diff!(ctx.before, other)
+        assert diff.content_changed
+        assert diff.counts.changed == length(ctx.before.tasks)
+        assert Enum.all?(diff.tasks, &(:content in &1.reasons))
+      end
+
+      refute diff!(ctx.before, plan(base())).content_changed
     end
   end
 
@@ -191,6 +322,17 @@ defmodule BubbleEx.PlanDiffTest do
 
       assert %{needs_reverify: true, via: [%{task: "workflow:wApiD", kind: :coordinate}]} =
                entry!(diff, "workflow:wApiB")
+    end
+
+    test "early edges only order work", ctx do
+      # aLogin is covered by `auth`, which surfaces and backend folders
+      # follow (`early`) without using it.
+      path = ["pages", "pgHome", "workflows", "wfLogin", "actions", "0", "properties"]
+      diff = diff!(ctx.before, plan(put_in(base(), path, %{"remember_email" => true})))
+
+      assert %{status: :changed} = entry!(diff, "auth")
+      refute "backend:fOne" in flagged(diff)
+      refute "surface:reusable/rCard" in flagged(diff)
     end
 
     test "generator groups do not flag every task", ctx do
@@ -282,9 +424,9 @@ defmodule BubbleEx.PlanDiffTest do
       assert {:error, %Error{kind: :invalid_input}} = Plan.diff(%{}, ctx.before)
     end
 
-    test "symbols hold IDs, parents and hashes only", ctx do
+    test "symbols hold IDs, parents and 128-bit hashes only", ctx do
       assert %{parent: "element:eBig", sha256: sha} = ctx.before.symbols["element:eT2"]
-      assert sha =~ ~r/\A[0-9a-f]{64}\z/
+      assert sha =~ ~r/\A[0-9a-f]{32}\z/
     end
   end
 
@@ -332,6 +474,11 @@ defmodule BubbleEx.PlanDiffTest do
 
       assert {:error, %Error{kind: :invalid_input}} =
                Plan.build(model, index, nil, [], content: %{"element:eT2" => "nope"})
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Plan.build(model, index, nil, [],
+                 content: %Content{algorithm: 1, key_id: nil, digests: %{}}
+               )
 
       assert {:error, %Error{kind: :invalid_input}} =
                Plan.build(model, index, nil, [], resolved: :nope)

@@ -93,28 +93,32 @@ defmodule BubbleEx.Plan do
   (its subjects and their descendants), its residue, its
   `decisions_sha256` and, for style tasks, the normalized named styles.
   Each covered symbol contributes its digest, which is in `symbols` as
-  `%{parent, sha256}`:
+  `%{parent, sha256}` (128 bits, hex):
 
     * its own content: `BubbleEx.Index.subject_sha256/2` (kind, Bubble ID,
       parent and attributes, without source path, display name or position
       among its siblings) and its `BubbleEx.Plan.Content` digest, passed as
-      `content:` (the raw text of its expressions, conditions and settings,
-      without captions, editor state and canvas positions)
+      `content:` (keyed digests of the raw text of its expressions,
+      conditions and settings, field defaults, option values and API call
+      definitions, without captions, editor state and canvas positions)
     * every reference it makes (kind, target, attributes) with the own
       content of the target, so a field whose type changes or a workflow
       whose parameters change changes the tasks that use them
 
   So renaming an element or moving it on the canvas changes nothing;
-  editing its dynamic text, a condition or an API call's response shape
-  changes every task covering it. Without `content:` only what the index
-  records is compared (raw expression text is not).
+  editing its dynamic text, a condition, its named style, a field default,
+  an option value or an API call changes every task covering it. Without
+  `content:` only what the index records is compared (raw expression text
+  is not). Every task also hashes how content was digested (algorithm and
+  key ID): a plan built with another key, or none, differs in every task.
 
   ## Re-verification
 
   `diff/2` compares two plans of the same app (`BubbleEx.Plan.Diff`): each
   task is `:unchanged`, `:changed` (its `source_sha256` differs), `:added`
   or `:removed`. A changed task needs re-verifying, and so does, along
-  `depends_on` edges of every kind but `:generate` (including non-blocking
+  `depends_on` edges of every kind but `:generate` and `:early` (both only
+  order work; including non-blocking
   `:coordinate` ones, whose `rerun_after` names the callee), every task
   depending on a changed, added or removed one, transitively, and the
   parent of a subtask that needs it. It only reports: owned code is never
@@ -134,7 +138,7 @@ defmodule BubbleEx.Plan do
   alias BubbleEx.{CanonicalJson, Error, Index, Model}
   alias BubbleEx.Decision.{Applied, Resolved}
   alias BubbleEx.Frontend.Normalized
-  alias BubbleEx.Plan.{Builder, Diff, Residue, Task}
+  alias BubbleEx.Plan.{Builder, Content, Diff, Residue, Task}
 
   @schema_version 2
   @fragment_threshold 150
@@ -181,9 +185,11 @@ defmodule BubbleEx.Plan do
       JSON) or from a target adapter
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records, recorded in `inputs`
-    * `:content` - `BubbleEx.Plan.Content.digests/3` of the same app: raw
-      expression text and settings the index does not record, part of each
-      symbol's digest
+    * `:content` - `BubbleEx.Plan.Content.digests/4` of the same app, keyed
+      with the project's key: raw expression text, settings, defaults and
+      option values the index does not record, part of each symbol's
+      digest. Its algorithm and key ID are recorded in `inputs.content` and
+      hashed into every task
     * `:resolved` - the `BubbleEx.Decision.Resolved` the `applied` entries
       come from: every current record naming a covered symbol (parity
       exceptions, rejections and acknowledgements included) and its state
@@ -202,7 +208,7 @@ defmodule BubbleEx.Plan do
 
     with :ok <- check_applied(applied),
          {:ok, extra} <- check_residue(Keyword.get(opts, :residue, [])),
-         {:ok, content} <- check_content(Keyword.get(opts, :content, %{})),
+         {:ok, content} <- check_content(Keyword.get(opts, :content)),
          {:ok, resolved} <- check_resolved(Keyword.get(opts, :resolved)),
          :ok <- check_threshold(threshold) do
       result =
@@ -213,7 +219,8 @@ defmodule BubbleEx.Plan do
           applied: Enum.sort_by(applied, & &1.key),
           extra: extra,
           threshold: threshold,
-          content: content,
+          content: (content && content.digests) || %{},
+          content_id: content_id(content),
           resolved: resolved
         })
 
@@ -289,13 +296,22 @@ defmodule BubbleEx.Plan do
 
   defp residue_entry?(_), do: false
 
-  defp check_content(content) when is_map(content) and not is_struct(content) do
-    if Enum.all?(content, fn {k, v} -> is_binary(k) and hash?(v) end),
+  defp check_content(nil), do: {:ok, nil}
+
+  defp check_content(%Content{algorithm: algorithm, key_id: key_id, digests: digests} = content)
+       when is_binary(algorithm) and is_binary(key_id) and is_map(digests) do
+    if Enum.all?(digests, fn {k, v} -> is_binary(k) and is_binary(v) end),
       do: {:ok, content},
-      else: error("content must map symbol IDs to SHA-256 digests (Plan.Content.digests/3)")
+      else: error("content digests must map symbol IDs to digests (Plan.Content.digests/4)")
   end
 
-  defp check_content(_), do: error("content must be a map (Plan.Content.digests/3)")
+  defp check_content(_),
+    do: error("content must be a BubbleEx.Plan.Content from Plan.Content.digests/4")
+
+  # How content was digested, part of every task's hash: another key or
+  # algorithm, or none, changes every task.
+  defp content_id(nil), do: nil
+  defp content_id(%Content{algorithm: a, key_id: k}), do: %{algorithm: a, key_id: k}
 
   defp check_resolved(nil), do: {:ok, []}
   defp check_resolved(%Resolved{entries: entries}), do: {:ok, entries}
@@ -318,7 +334,8 @@ defmodule BubbleEx.Plan do
         |> json()
         |> CanonicalJson.sha256(),
       residue_sha256: extra |> Residue.sort() |> json() |> CanonicalJson.sha256(),
-      content_sha256: if(content != %{}, do: CanonicalJson.sha256(content)),
+      content: content_id(content),
+      content_sha256: content && CanonicalJson.sha256(content.digests),
       fragment_threshold: threshold
     }
   end

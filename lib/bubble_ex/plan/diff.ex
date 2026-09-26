@@ -29,9 +29,11 @@ defmodule BubbleEx.Plan.Diff do
 
   A task in both plans `needs_reverify` when it changed, or when it depends
   on a task that changed, was added or was removed, along a `depends_on`
-  edge of any kind but `:generate` (a generator group is regenerated from
-  the Model; the tasks using a changed symbol changed themselves, since a
-  symbol's digest includes what its references point to). That includes
+  edge of any kind but `:generate` and `:early`. Those only order work: a
+  generator group is regenerated from the Model, and the tasks using a
+  changed symbol changed themselves, since a symbol's digest includes what
+  its references point to; `early` puts surfaces after auth and style
+  residue without using them. That includes
   non-blocking `:coordinate` edges (the callee is in the caller's
   `rerun_after`). It is transitive, and a subtask that needs re-verifying
   makes its parent need it too (a subtask is done with its parent). Edges
@@ -50,6 +52,13 @@ defmodule BubbleEx.Plan.Diff do
   else: no display names, expression text or values. For other tasks it is
   nil.
 
+  ## Content key
+
+  `content_changed` is true when the plans' content digests were made
+  differently (`inputs.content`: another algorithm or key, or one plan
+  without them). Every task then changes (reason `:content`): a lost or
+  rotated key re-verifies everything rather than nothing.
+
   `tasks` follow the new plan's order, then removed tasks in the old plan's
   order. `counts` has one count per status and `needs_reverify`.
   """
@@ -57,10 +66,11 @@ defmodule BubbleEx.Plan.Diff do
   alias BubbleEx.{CanonicalJson, Error, Plan}
 
   @enforce_keys [:from, :to, :tasks, :counts]
-  defstruct [:from, :to, tasks: [], counts: %{}]
+  defstruct [:from, :to, content_changed: false, tasks: [], counts: %{}]
 
   @type status :: :unchanged | :changed | :added | :removed
-  @type reason :: :symbols | :residue | :decisions | :subjects | :source | :dependency
+  @type reason ::
+          :symbols | :residue | :decisions | :subjects | :content | :source | :dependency
   @type entry :: %{
           task: String.t(),
           status: status(),
@@ -72,6 +82,7 @@ defmodule BubbleEx.Plan.Diff do
   @type t :: %__MODULE__{
           from: String.t() | nil,
           to: String.t() | nil,
+          content_changed: boolean(),
           tasks: [entry()],
           counts: %{atom() => non_neg_integer()}
         }
@@ -80,6 +91,9 @@ defmodule BubbleEx.Plan.Diff do
                  coordinate release)a
   @kind_atoms Map.new(@edge_kinds, &{Atom.to_string(&1), &1})
   @statuses [:unchanged, :changed, :added, :removed]
+
+  # Edges that only order work: no re-verification flows along them.
+  @ordering_only [:generate, :early]
 
   @doc "See the module documentation."
   @spec diff(Plan.t() | map(), Plan.t() | map()) :: {:ok, t()} | {:error, Error.t()}
@@ -114,6 +128,7 @@ defmodule BubbleEx.Plan.Diff do
         {:ok,
          %{
            sha256: map["plan_sha256"],
+           content: get_in(map, ["inputs", "content"]),
            tasks: tasks,
            by_id: Map.new(tasks, &{&1.id, &1}),
            symbols: map["symbols"],
@@ -165,7 +180,7 @@ defmodule BubbleEx.Plan.Diff do
       Enum.map(new.tasks, fn t ->
         case old.by_id[t.id] do
           nil -> {t.id, :added, [], nil}
-          o -> classify(o, t, old, new)
+          o -> classify(o, t, old, new, old.content != new.content)
         end
       end)
 
@@ -197,6 +212,7 @@ defmodule BubbleEx.Plan.Diff do
     %__MODULE__{
       from: old.sha256,
       to: new.sha256,
+      content_changed: old.content != new.content,
       tasks: entries,
       counts: counts(entries)
     }
@@ -226,7 +242,7 @@ defmodule BubbleEx.Plan.Diff do
     |> Enum.sort_by(&{&1.task, to_string(&1.kind)})
   end
 
-  defp classify(o, t, old, new) do
+  defp classify(o, t, old, new, content_changed) do
     if o.source_sha256 == t.source_sha256 do
       {t.id, :unchanged, [], nil}
     else
@@ -237,7 +253,8 @@ defmodule BubbleEx.Plan.Diff do
           {:symbols, changes != %{added: [], removed: [], changed: []}},
           {:residue, o.residue != t.residue},
           {:decisions, o.decisions_sha256 != t.decisions_sha256},
-          {:subjects, o.subjects != t.subjects}
+          {:subjects, o.subjects != t.subjects},
+          {:content, content_changed}
         ]
         |> Enum.filter(&elem(&1, 1))
         |> Enum.map(&elem(&1, 0))
@@ -277,7 +294,10 @@ defmodule BubbleEx.Plan.Diff do
   # plan's edges and subtasks, plus the old plan's edges to removed tasks.
   defp upstream(old, new, removed) do
     new_edges =
-      for t <- new.tasks, {to, kind} <- t.deps, kind != :generate, do: {t.id, {to, kind}}
+      for t <- new.tasks,
+          {to, kind} <- t.deps,
+          kind not in @ordering_only,
+          do: {t.id, {to, kind}}
 
     subtasks = for t <- new.tasks, t.parent != nil, do: {t.parent, {t.id, :subtask}}
 
@@ -285,7 +305,7 @@ defmodule BubbleEx.Plan.Diff do
       for t <- old.tasks,
           Map.has_key?(new.by_id, t.id),
           {to, kind} <- t.deps,
-          kind != :generate,
+          kind not in @ordering_only,
           MapSet.member?(removed, to),
           do: {t.id, {to, kind}}
 
@@ -331,6 +351,7 @@ defmodule BubbleEx.Plan.Diff do
     %{
       "from" => diff.from,
       "to" => diff.to,
+      "content_changed" => diff.content_changed,
       "tasks" => Enum.map(diff.tasks, &json/1),
       "counts" => json(diff.counts)
     }

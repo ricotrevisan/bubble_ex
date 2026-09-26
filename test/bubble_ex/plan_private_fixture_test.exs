@@ -35,6 +35,7 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
 
   @default_snapshot "test/support/plan/counts/mm-137.json"
   @now ~U[2026-09-26 00:00:00Z]
+  @key :crypto.hash(:sha256, "bubble_ex private fixture plan key")
 
   setup_all do
     path =
@@ -112,7 +113,7 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
   # WTF-367: per-task semantic hashes on the real app. Counts only.
   describe "re-verification" do
     setup ctx do
-      {:ok, content} = Content.digests(ctx.app, ctx.model, ctx.index)
+      {:ok, content} = Content.digests(ctx.app, ctx.model, ctx.index, key: @key)
       {:ok, plan} = build_with(ctx, ctx.app, content)
       %{content: content, plan: plan}
     end
@@ -125,7 +126,7 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
       renamed = rename_captions(ctx.app)
       {:ok, model} = Model.build(renamed)
       {:ok, index} = Index.build(renamed, model: model)
-      {:ok, content} = Content.digests(renamed, model, index)
+      {:ok, content} = Content.digests(renamed, model, index, key: @key)
       {:ok, plan} = build_with(%{ctx | model: model, index: index}, renamed, content)
       {:ok, diff} = Plan.diff(ctx.plan, plan)
 
@@ -152,7 +153,7 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
           Map.put(text, "entries", Map.put(entries, "#{map_size(entries)}", " (edited)"))
         end)
 
-      {:ok, content} = Content.digests(edited, ctx.model, ctx.index)
+      {:ok, content} = Content.digests(edited, ctx.model, ctx.index, key: @key)
       {:ok, plan} = build_with(ctx, edited, content)
       {:ok, diff} = Plan.diff(ctx.plan, plan)
 

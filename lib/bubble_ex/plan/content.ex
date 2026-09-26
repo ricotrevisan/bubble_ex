@@ -1,16 +1,32 @@
 defmodule BubbleEx.Plan.Content do
   @moduledoc """
-  Per-symbol digests of what the `BubbleEx.Index` does not record about a
-  symbol but its behaviour depends on, for `BubbleEx.Plan.build/5`
-  (`content:`). With them a task's `source_sha256` changes when the raw
-  text of an expression, a condition or a setting it covers changes, not
-  only when the reference graph does (WTF-367).
+  Keyed per-symbol digests of what the `BubbleEx.Index` does not record about
+  a symbol but generation or behaviour depends on, for
+  `BubbleEx.Plan.build/5` (`content:`). With them a task's `source_sha256`
+  changes when the raw text of an expression, a condition, a setting, a
+  field default or an option value it covers changes, not only when the
+  reference graph does (WTF-367).
 
-      {:ok, content} = BubbleEx.Plan.Content.digests(app, model, index)
+      key = File.read!(".wtf/plan.key") |> Base.decode64!()   # gitignored, or a CI secret
+      {:ok, content} = BubbleEx.Plan.Content.digests(app, model, index, key: key)
       {:ok, plan} = BubbleEx.Plan.build(model, index, frontend, applied, content: content)
 
-  A digest is the SHA-256 of the canonical JSON of one symbol's own
-  definition, normalized:
+  ## Keyed digests
+
+  Definitions hold literals (header values, passwords in API calls, default
+  values), and a plain hash of a short literal can be brute-forced. So every
+  digest is an HMAC-SHA256 (`algorithm/0`) under a per-project key of at
+  least 32 bytes (`generate_key/0`) that is never written to the plan: keep
+  it next to the owner's repository (`.wtf/plan.key`, gitignored) or as a CI
+  secret. The plan records the algorithm and a key ID (`key_id`, an HMAC of
+  a constant under the key, which reveals nothing about it), and every
+  task's `source_sha256` includes them: building with another key, another
+  algorithm or no key at all changes every task (`BubbleEx.Plan.Diff`
+  reports it as `content_changed`), so a lost or rotated key fails safe.
+
+  ## What is digested
+
+  The canonical JSON of one symbol's definition, normalized:
 
     * pages, reusables, elements, workflows and actions: the definition at
       the symbol's `path` without its children (elements, workflows and
@@ -24,24 +40,42 @@ defmodule BubbleEx.Plan.Content do
       ending in `_friendly`, expression editor metadata) and canvas
       positions (`left`, `top`). Everything else counts: every expression
       verbatim (dynamic text, conditions, constraints, parameters),
-      conditional states, custom states, named styles and settings
+      conditional states, custom states and settings. An element's named
+      style counts with the style's definition, so editing a style changes
+      the elements (and surfaces) using it
+    * data types, fields (built-in ones included), option sets, option set
+      attributes and option values, from the `BubbleEx.Model`: a field's
+      full type (list, reference, external type details) and default
+      value, an option value's display text, sort order and attribute
+      values, a data type's API exposure, and what each keeps unmodeled
+      (`extra`). Display names of types, fields and sets are captions
     * privacy rules: the canonical hash of the condition
       (`BubbleEx.Expression.sha256/1`) and the permissions, from the Model
-    * API Connector calls: the call's return type and response shape (the
-      Model's external types of the call, without captions). Parameter
-      values, URL paths and bodies are never read (the Model does not read
-      them); the index already records the method, host and parameter
-      names
-    * other symbols (data types, fields, option sets) have no digest: the
-      index records all of their content
+    * API Connector groups and calls: the whole definition (URL with path,
+      parameters and their values, body, headers) without the call's
+      caption, and the Model's response shape. The key keeps the values
+      out of reach
 
   Symbols with no definition at their path get none.
   """
 
   alias BubbleEx.{CanonicalJson, Error, Expression, Index, Model}
   alias BubbleEx.Expression.{Keys, Vocabulary}
+  alias BubbleEx.Frontend.Payload
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Workflows.ExplanationContext
+
+  @algorithm "hmac-sha256/1"
+  @min_key_bytes 32
+
+  @enforce_keys [:algorithm, :key_id, :digests]
+  defstruct [:algorithm, :key_id, digests: %{}]
+
+  @type t :: %__MODULE__{
+          algorithm: String.t(),
+          key_id: String.t(),
+          digests: %{String.t() => String.t()}
+        }
 
   @raw_kinds [:page, :reusable, :element, :workflow, :action]
 
@@ -53,32 +87,76 @@ defmodule BubbleEx.Plan.Content do
   @dropped ~w(id %id default_name %dn comment bp_layout children)
   @dropped_properties ~w(left top editor_preview_text lock_in_editor event_color breakpoint)
 
-  @doc """
-  Digests of every page, reusable, element, workflow, action, privacy rule
-  and API Connector call of `index`, keyed by symbol ID.
-  """
-  @spec digests(map(), Model.t(), Index.t()) ::
-          {:ok, %{String.t() => String.t()}} | {:error, Error.t()}
-  def digests(app, %Model{} = model, %Index{} = index) when is_map(app) and not is_struct(app) do
-    raw =
-      for %Symbol{kind: kind} = s <- index.symbols,
-          kind in @raw_kinds,
-          definition = ExplanationContext.at_pointer(app, s.path),
-          is_map(definition),
-          into: %{},
-          do: {s.id, definition |> normalize(kind) |> CanonicalJson.sha256()}
+  @doc "The digest algorithm and its version, as recorded in the plan."
+  @spec algorithm() :: String.t()
+  def algorithm, do: @algorithm
 
-    {:ok, raw |> Map.merge(rules(model)) |> Map.merge(calls(model, index))}
+  @doc "A new random key (32 bytes). Store it Base64-encoded, never in the plan."
+  @spec generate_key() :: binary()
+  def generate_key, do: :crypto.strong_rand_bytes(@min_key_bytes)
+
+  @doc """
+  Digests of every symbol of `index` that has content the index does not
+  record, keyed by symbol ID. `key:` (required) is the project's key, at
+  least #{@min_key_bytes} bytes.
+  """
+  @spec digests(map(), Model.t(), Index.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def digests(app, model, index, opts \\ [])
+
+  def digests(app, %Model{} = model, %Index{} = index, opts)
+      when is_map(app) and not is_struct(app) and is_list(opts) do
+    case Keyword.get(opts, :key) do
+      key when is_binary(key) and byte_size(key) >= @min_key_bytes ->
+        mac = &hmac(key, &1)
+        styles = Payload.styles(app)
+
+        raw =
+          for %Symbol{kind: kind} = s <- index.symbols,
+              kind in @raw_kinds,
+              definition = ExplanationContext.at_pointer(app, s.path),
+              is_map(definition),
+              into: %{},
+              do: {s.id, definition |> normalize(kind, styles) |> mac.()}
+
+        digests =
+          raw
+          |> Map.merge(data_model(model))
+          |> Map.merge(rules(model))
+          |> Map.merge(calls(app, model))
+          |> Map.filter(fn {id, _} -> Index.symbol(index, id) != nil end)
+          |> Map.new(fn {id, value} ->
+            {id, if(is_binary(value), do: value, else: mac.(value))}
+          end)
+
+        {:ok, %__MODULE__{algorithm: @algorithm, key_id: key_id(key), digests: digests}}
+
+      _ ->
+        {:error,
+         Error.new(
+           :invalid_input,
+           "content digests need the project's key: key: a binary of at least " <>
+             "#{@min_key_bytes} bytes (Plan.Content.generate_key/0), never stored in the plan"
+         )}
+    end
   end
 
-  def digests(_app, _model, _index),
-    do: {:error, Error.new(:invalid_input, "expected app JSON, its Model and its Index")}
+  def digests(_app, _model, _index, _opts),
+    do: {:error, Error.new(:invalid_input, "expected app JSON, its Model, its Index and options")}
+
+  @doc "The key's public ID: a truncated HMAC of a constant under it."
+  @spec key_id(binary()) :: String.t()
+  def key_id(key), do: :hmac |> :crypto.mac(:sha256, key, "bubble_ex plan key id") |> hex(16)
+
+  defp hmac(key, value),
+    do: :hmac |> :crypto.mac(:sha256, key, CanonicalJson.encode(value)) |> hex(32)
+
+  defp hex(bin, bytes), do: bin |> binary_part(0, bytes) |> Base.encode16(case: :lower)
 
   # --- raw definitions ----------------------------------------------------------
 
   @doc false
-  @spec normalize(map(), Symbol.kind()) :: map()
-  def normalize(definition, kind) do
+  @spec normalize(map(), Symbol.kind(), map()) :: map()
+  def normalize(definition, kind, styles \\ %{}) do
     own = Map.drop(definition, @children ++ @dropped)
     own = if kind == :page, do: own, else: Map.drop(own, ["name", "%nm"])
 
@@ -89,7 +167,24 @@ defmodule BubbleEx.Plan.Content do
     |> strip()
     |> update_properties(kind)
     |> put_actions(definition, kind)
+    |> put_style(kind, styles)
   end
+
+  # A named style counts with its definition.
+  defp put_style(%{"style" => key} = own, :element, styles) when is_binary(key) do
+    case Map.get(styles, key) do
+      style when is_map(style) ->
+        Map.put(own, "style", %{
+          "key" => key,
+          "definition" => style |> Keys.normalize() |> strip()
+        })
+
+      _ ->
+        own
+    end
+  end
+
+  defp put_style(own, _kind, _styles), do: own
 
   defp update_properties(own, kind) do
     case Map.fetch(own, "properties") do
@@ -154,39 +249,117 @@ defmodule BubbleEx.Plan.Content do
         end
 
       {Symbol.id(:privacy_rule, [type.id, rule.id]),
-       CanonicalJson.sha256(%{condition: condition, permissions: plain(rule.permissions)})}
+       %{condition: condition, permissions: plain(rule.permissions)}}
     end
   end
 
-  defp calls(%Model{external_types: types, connectors: connectors}, index) do
+  # A data type's exposure, a field's type and default, an option value's
+  # display text, order and attribute values, and what each keeps
+  # unmodeled. Captions (display names, comments) are left out.
+  defp data_model(%Model{data_types: types, option_sets: sets}) do
+    type_entries =
+      for type <- types,
+          entry <- [
+            {Symbol.id(:data_type, type.id),
+             %{deleted: type.deleted, exposed_api: type.exposed_api, extra: plain(type.extra)}}
+            | Enum.map(type.fields ++ type.system_fields, &field(:field, type.id, &1))
+          ],
+          do: entry
+
+    set_entries =
+      for set <- sets,
+          entry <-
+            [{Symbol.id(:option_set, set.id), %{deleted: set.deleted, extra: plain(set.extra)}}] ++
+              Enum.map(set.attributes, &field(:option_attribute, set.id, &1)) ++
+              Enum.map(set.values, &option_value(set.id, &1)),
+          do: entry
+
+    Map.new(type_entries ++ set_entries)
+  end
+
+  defp field(kind, owner, field) do
+    {Symbol.id(kind, [owner, field.id]),
+     %{
+       type: plain(field.type),
+       default: plain(field.default),
+       system: field.system,
+       deleted: field.deleted,
+       extra: plain(field.extra),
+       raw: plain(field.raw)
+     }}
+  end
+
+  defp option_value(set_id, value) do
+    {Symbol.id(:option_value, [set_id, value.key]),
+     %{
+       id: value.id,
+       display: value.name,
+       order: value.sort_factor,
+       attributes: plain(value.attributes),
+       deleted: value.deleted,
+       extra: plain(value.extra),
+       raw: plain(value.raw)
+     }}
+  end
+
+  # API Connector groups and calls: their whole definitions (values
+  # included; the digest is keyed) and the Model's response shapes. A
+  # group's digest leaves out its calls, which are symbols of their own.
+  defp calls(app, %Model{external_types: types, connectors: connectors}) do
     shapes = Enum.group_by(types, &{&1.connector, &1.call})
 
     for connector <- connectors,
-        call <- connector.calls,
-        id = Symbol.id(:api_call, [connector.id, call.id]),
-        Index.symbol(index, id),
-        into: %{} do
-      shape =
-        shapes
-        |> Map.get({connector.id, call.id}, [])
-        |> Enum.sort_by(& &1.id)
-        |> Enum.map(fn t ->
-          %{
-            id: t.id,
-            resolution: t.resolution,
-            members:
-              Enum.map(
-                t.fields,
-                &%{id: &1.id, at: &1.response_path, type: plain(&1.type), cycle: &1.cycle}
-              )
-          }
-        end)
+        entry <- [
+          group(app, connector) | Enum.map(connector.calls, &call(app, connector, &1, shapes))
+        ],
+        into: %{},
+        do: entry
+  end
 
-      {id, CanonicalJson.sha256(%{returns: plain(call.returns), shape: shape})}
-    end
+  defp group(app, connector) do
+    call_ids = MapSet.new(connector.calls, & &1.id)
+
+    definition =
+      case ExplanationContext.at_pointer(app, connector.path) do
+        map when is_map(map) ->
+          map |> Map.drop(["calls", "name", "%nm"]) |> Map.reject(fn {k, _} -> k in call_ids end)
+
+        other ->
+          other
+      end
+
+    {Symbol.id(:api_group, connector.id), %{definition: definition, auth: plain(connector.auth)}}
+  end
+
+  defp call(app, connector, call, shapes) do
+    shape =
+      shapes
+      |> Map.get({connector.id, call.id}, [])
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map(fn t ->
+        %{
+          id: t.id,
+          resolution: t.resolution,
+          members:
+            Enum.map(
+              t.fields,
+              &%{id: &1.id, at: &1.response_path, type: plain(&1.type), cycle: &1.cycle}
+            )
+        }
+      end)
+
+    definition =
+      case ExplanationContext.at_pointer(app, call.path) do
+        map when is_map(map) -> Map.drop(map, ["name", "%nm"])
+        other -> other
+      end
+
+    {Symbol.id(:api_call, [connector.id, call.id]),
+     %{definition: definition, returns: plain(call.returns), shape: shape}}
   end
 
   # Structs as plain maps, for canonical JSON.
+  defp plain(%MapSet{} = set), do: set |> MapSet.to_list() |> Enum.sort() |> plain()
   defp plain(%_{} = struct), do: struct |> Map.from_struct() |> plain()
   defp plain(map) when is_map(map), do: Map.new(map, fn {k, v} -> {k, plain(v)} end)
   defp plain(list) when is_list(list), do: Enum.map(list, &plain/1)

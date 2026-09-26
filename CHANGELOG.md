@@ -7,25 +7,30 @@ All notable changes to this project are documented here.
 ### Added
 
 - **Per-task semantic hashes and `needs_reverify`** (WTF-367, T2 of
-  WTF-359). `Plan.Content.digests(app, model, index)` digests what the
-  index does not record: the raw definition of every page, reusable,
-  element, workflow (with its step order) and action, both key forms alike,
-  without captions, editor state and canvas positions; privacy rule
-  conditions and permissions; API call response shapes (never parameter
-  values, paths or bodies). Passed to `Plan.build/5` as `content:`, it
-  closes the raw-text gap: editing a dynamic text or condition changes the
-  covering tasks. Each covered symbol's digest (own content plus its
-  references with their targets' content) is in the new top-level
-  `symbols` table (`%{parent, sha256}`); a task's `source_sha256` hashes
-  those digests, its residue and its new `decisions_sha256` (effective
-  decisions plus, with `resolved:`, every current decision record naming a
-  covered symbol and its state, parity exceptions included).
+  WTF-359). `Plan.Content.digests(app, model, index, key: key)` makes keyed
+  digests (HMAC-SHA256 under a per-project key of at least 32 bytes, never
+  stored in the plan; `Plan.Content.generate_key/0`) of what the index does
+  not record: the raw definition of every page, reusable, element (with its
+  named style's definition), workflow (with its step order) and action,
+  both key forms alike, without captions, editor state and canvas
+  positions; field types and defaults, option value display text, order
+  and attribute values, data type exposure; privacy rule conditions and
+  permissions; whole API Connector groups and calls (URL path, parameters,
+  body, header values) and response shapes. Passed to `Plan.build/5` as
+  `content:`, it closes the raw-text gap. The algorithm and a key ID are
+  recorded in `inputs.content` and hashed into every task, so another key,
+  or none, changes every task (`Diff.content_changed`). Each covered
+  symbol's digest (own content plus its references with their targets'
+  content, 128 bits) is in the new top-level `symbols` table; a task's
+  `source_sha256` hashes those digests, its residue and its new
+  `decisions_sha256` (effective decisions plus, with `resolved:`, every
+  current decision record naming a covered symbol and its state).
   `Plan.diff(old, new)` (`Plan.Diff`, plans or decoded plan JSON)
   classifies tasks as unchanged / changed / added / removed, with reasons
   and a symbol-ID diff per changed task, and propagates `needs_reverify`
-  along every `depends_on` kind but `generate` (coordinate edges included)
-  and from subtasks to parents. Report only: owned code is never touched.
-  Plan `schema_version` is 2.
+  along every `depends_on` kind but the ordering-only `generate` and
+  `early` (coordinate edges included) and from subtasks to parents. Report
+  only: owned code is never touched. Plan `schema_version` is 2.
 
 - **`BubbleEx.Plan`: stack-neutral migration task graph** (WTF-366, T1 of
   WTF-359). `Plan.build(model, index, frontend, applied, opts)` derives
