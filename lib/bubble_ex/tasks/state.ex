@@ -20,7 +20,8 @@ defmodule BubbleEx.Tasks.State do
     ],
     "review": null,
     "notes": [],
-    "reverify": null
+    "reverify": null,
+    "mode": "advisory"
   }
   ```
 
@@ -36,8 +37,14 @@ defmodule BubbleEx.Tasks.State do
     * `evidence` - one entry per criterion from the last completion:
       its binding, outcome and the evidence files (`refs`: repository
       path and SHA-256; never file contents or command output)
-    * `review` - `{reviewer, at, summary}`: the independent acceptance
-      review
+    * `review` - `{reviewer, at, summary, basis}`: the independent
+      review; `basis` pins the task's `source_sha256` and the evidence
+      (`evidence_sha256/1`) of what it reviewed (`of`), so a review of
+      other code or evidence no longer counts. Sync and audit drop it when
+      they flip the task
+    * `mode` - `advisory` or `trusted`: how the last completion was
+      verified (`BubbleEx.Tasks`, "Trust"). Advisory evidence proves
+      nothing to anyone but the agent that wrote it
     * `notes` - `{n, kind, text, by, at, resolved_by, resolved_at}`; kind
       `needs_decision` blocks the task until resolved, `info` does not
     * `reverify` - why it needs re-verifying: `{source, at, plan_sha256,
@@ -55,7 +62,8 @@ defmodule BubbleEx.Tasks.State do
   @statuses ~w(open done needs_reverify removed)a
   @note_kinds ~w(needs_decision info)a
   @members ~w(format schema_version task status claim agents completed_by completed_at basis
-              evidence review notes reverify)
+              evidence review notes reverify mode)
+  @modes ~w(advisory trusted)a
 
   defstruct [
     :task,
@@ -65,6 +73,7 @@ defmodule BubbleEx.Tasks.State do
     :basis,
     :review,
     :reverify,
+    :mode,
     status: :open,
     agents: [],
     evidence: [],
@@ -90,7 +99,9 @@ defmodule BubbleEx.Tasks.State do
           completed_at: DateTime.t() | nil,
           basis: %{plan_sha256: String.t(), source_sha256: String.t() | nil} | nil,
           evidence: [map()],
-          review: %{reviewer: String.t(), at: DateTime.t(), summary: String.t()} | nil,
+          review:
+            %{reviewer: String.t(), at: DateTime.t(), summary: String.t(), basis: map()} | nil,
+          mode: :advisory | :trusted | nil,
           notes: [note()],
           reverify: map() | nil
         }
@@ -123,6 +134,11 @@ defmodule BubbleEx.Tasks.State do
   def open_decisions(%__MODULE__{notes: notes}),
     do: Enum.filter(notes, &(&1.kind == :needs_decision and is_nil(&1.resolved_at)))
 
+  @doc "SHA-256 of a state's evidence (what a review of it pins)."
+  @spec evidence_sha256(t()) :: String.t()
+  def evidence_sha256(%__MODULE__{evidence: evidence}),
+    do: evidence |> json() |> CanonicalJson.sha256()
+
   @doc "Whether an unresolved `needs_decision` note blocks the task."
   @spec blocked?(t()) :: boolean()
   def blocked?(state), do: open_decisions(state) != []
@@ -145,7 +161,8 @@ defmodule BubbleEx.Tasks.State do
       "evidence" => s.evidence,
       "review" => s.review,
       "notes" => s.notes,
-      "reverify" => s.reverify
+      "reverify" => s.reverify,
+      "mode" => s.mode
     }
     |> json()
   end
@@ -176,7 +193,8 @@ defmodule BubbleEx.Tasks.State do
          {:ok, evidence} <- list(m["evidence"], "evidence", &object(&1, "evidence")),
          {:ok, review} <- optional(m["review"], &review/1),
          {:ok, notes} <- list(m["notes"], "notes", &note/1),
-         {:ok, reverify} <- optional(m["reverify"], &object(&1, "reverify")) do
+         {:ok, reverify} <- optional(m["reverify"], &object(&1, "reverify")),
+         {:ok, mode} <- optional(m["mode"], &enum(&1, @modes, "mode")) do
       {:ok,
        %__MODULE__{
          task: task,
@@ -189,7 +207,8 @@ defmodule BubbleEx.Tasks.State do
          evidence: evidence,
          review: review,
          notes: notes,
-         reverify: reverify
+         reverify: reverify,
+         mode: mode
        }}
     end
   end
@@ -223,14 +242,15 @@ defmodule BubbleEx.Tasks.State do
 
   defp basis(_), do: error("basis must be {plan_sha256, source_sha256}")
 
-  defp review(%{"reviewer" => r, "at" => at, "summary" => summary}) do
+  defp review(%{"reviewer" => r, "at" => at, "summary" => summary, "basis" => basis})
+       when is_map(basis) do
     with {:ok, r} <- string(r, "review.reviewer"),
          {:ok, at} <- time(at, "review.at"),
          {:ok, summary} <- string(summary, "review.summary"),
-         do: {:ok, %{reviewer: r, at: at, summary: summary}}
+         do: {:ok, %{reviewer: r, at: at, summary: summary, basis: basis}}
   end
 
-  defp review(_), do: error("a review must be {reviewer, at, summary}")
+  defp review(_), do: error("a review must be {reviewer, at, summary, basis}")
 
   defp note(%{"n" => n, "kind" => kind, "text" => text, "by" => by, "at" => at} = m)
        when is_integer(n) and n > 0 do

@@ -22,7 +22,10 @@ All notable changes to this project are documented here.
   `# bubble:step` comments, tests tagged `bubble: "<subject>"`, and
   `Verify.Result` evidence through `Result.evaluate/3`. `Plan.decode/1`
   reads a plan back with schema and `plan_sha256` checks. CI runs
-  complete/audit end to end on a generated project.
+  complete/audit end to end on a generated project. Runs are **advisory**
+  unless `--trusted`: the plan and manifest must then match `.wtf/plan.sig`
+  (`BubbleEx.Plan.sign/2`, HMAC-SHA256 with `WTF_PLAN_SIGNING_KEY`), only
+  signed results count, and reviewer independence comes from git authors.
 - **Generated Ash policy-matrix tests** (WTF-383, V3 of the WTF-358
   verification proposal; closes WTF-356's matrix criterion against the
   interpreter). `BubbleEx.Target.Ash.MatrixTests.render/3` prints, for a

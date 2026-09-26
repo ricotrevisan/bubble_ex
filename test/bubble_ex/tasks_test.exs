@@ -2,7 +2,8 @@ defmodule BubbleEx.TasksTest do
   use ExUnit.Case, async: true
 
   alias BubbleEx.{Error, Index, Model, Plan, SampleHelper, Tasks}
-  alias BubbleEx.Plan.Content
+  alias BubbleEx.Plan.{Content, Signature}
+  alias BubbleEx.Target.Phoenix.Manifest
   alias BubbleEx.Tasks.{State, Store}
   alias BubbleEx.Verify.Result
 
@@ -21,6 +22,29 @@ defmodule BubbleEx.TasksTest do
     @moduledoc false
     def run(_criterion, _ctx, cache),
       do: {%{status: :pass, binding: "fake", detail: nil, refs: [], output: nil}, cache}
+  end
+
+  defmodule FailA do
+    @moduledoc false
+    def run(_c, %{task: %{id: "workflow:wApiA"}}, cache),
+      do: {%{status: :fail, binding: "fake", detail: "a", refs: [], output: nil}, cache}
+
+    def run(c, ctx, cache), do: Pass.run(c, ctx, cache)
+  end
+
+  defmodule Other do
+    @moduledoc false
+    def run(_c, _ctx, cache),
+      do: {%{status: :pass, binding: "fake", detail: "other run", refs: [], output: nil}, cache}
+  end
+
+  # The real result bindings, everything else passing.
+  defmodule Results do
+    @moduledoc false
+    def run(%{check: :deterministic} = c, ctx, cache),
+      do: BubbleEx.Target.Phoenix.Checks.run(c, ctx, cache)
+
+    def run(c, ctx, cache), do: Pass.run(c, ctx, cache)
   end
 
   defmodule Fail do
@@ -329,7 +353,7 @@ defmodule BubbleEx.TasksTest do
       assert {:ok, %{outcomes: outcomes}} =
                complete(root, "acceptance:reusable/rCard", agent: "rev")
 
-      assert %{status: :pass, detail: "reviewed by rev"} =
+      assert %{status: :pass, detail: "reviewed by rev (advisory label)"} =
                Enum.find(outcomes, &(&1.check == :independent_review))
 
       assert %{status: :pass, detail: @summary} = Enum.find(outcomes, &(&1.check == :attested))
@@ -368,7 +392,7 @@ defmodule BubbleEx.TasksTest do
       {:ok, _} =
         complete(root, "setup:secrets",
           agent: "owner",
-          attest: %{all: "Secrets are set in the staging vault."}
+          attest: %{1 => "Secrets are set in the staging vault."}
         )
 
       assert {:ok, %{flipped: []}} =
@@ -426,6 +450,326 @@ defmodule BubbleEx.TasksTest do
 
       assert {:ok, %{reopened: ["workflow:wApiE"]}} =
                Tasks.sync(board(root), smaller, plan, now: @now)
+    end
+  end
+
+  describe "audit and review lifecycle" do
+    test "a failing subtask takes its parent with it", %{root: root} do
+      done!(root, @generators ++ ["auth"])
+      {:ok, _} = complete(root, "backend:fOne", agent: "a1")
+
+      assert {:ok, %{flipped: flipped}} =
+               Tasks.audit(board(root), now: @now, checks: FailA, tasks: ["workflow:wApiA"])
+
+      assert Enum.sort(flipped) == ~w(backend:fOne workflow:wApiA)
+      assert %{"reasons" => ["subtask_failed"]} = board(root).states["backend:fOne"].reverify
+    end
+
+    test "a review pins the evidence it reviewed", %{root: root} do
+      done!(root, @generators ++ ["auth"])
+      {:ok, _} = complete(root, "surface:reusable/rCard", agent: "impl")
+      summary = "Compared the card at 320 and 1280 px against Bubble."
+      {:ok, _} = Tasks.review(board(root), "acceptance:reusable/rCard", "rev", summary, now: @now)
+
+      {:ok, _} =
+        Tasks.audit(board(root), now: @now, checks: Fail, tasks: ["surface:reusable/rCard"])
+
+      {:ok, _} =
+        Tasks.complete(board(root), "surface:reusable/rCard",
+          now: @now,
+          agent: "impl",
+          checks: Other
+        )
+
+      assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
+               complete(root, "acceptance:reusable/rCard", agent: "rev")
+
+      assert %{status: :fail, detail: "the review is of other code or evidence" <> _} =
+               Enum.find(outcomes, &(&1.check == :independent_review))
+    end
+
+    test "sync and audit drop the review of what they flip", %{root: root, plan: plan} do
+      done!(root, ["api_group:grpMail"])
+
+      {:ok, _} =
+        Tasks.review(board(root), "api_group:grpMail", "rev", "Checked every call shape.",
+          now: @now
+        )
+
+      drop = &(&1.task == "setup:secrets")
+
+      smaller = %{
+        plan
+        | tasks:
+            for(
+              t <- plan.tasks,
+              t.id != "setup:secrets",
+              do: %{t | depends_on: Enum.reject(t.depends_on, drop)}
+            )
+      }
+
+      {:ok, %{reverify: reverify}} = Tasks.sync(board(root), plan, smaller, now: @now)
+      assert "api_group:grpMail" in reverify
+      assert board(root).states["api_group:grpMail"].review == nil
+    end
+  end
+
+  describe "trusted runs" do
+    @signing_key :crypto.strong_rand_bytes(32)
+
+    defp git!(root, args, email \\ "impl@example.com") do
+      {out, 0} =
+        System.cmd(
+          "git",
+          ["-c", "user.email=#{email}", "-c", "user.name=T", "-c", "commit.gpgsign=false" | args],
+          cd: root,
+          stderr_to_stdout: true
+        )
+
+      out
+    end
+
+    defp commit!(root, email) do
+      git!(root, ["add", "-A"])
+      git!(root, ["commit", "-q", "--allow-empty", "-m", "c"], email)
+    end
+
+    defp sign!(root) do
+      plan = File.read!(Path.join(root, ".wtf/plan.json"))
+      generated = File.read!(Path.join(root, Manifest.path()))
+      sig = Plan.sign(%{plan: plan, generated: generated}, @signing_key)
+      File.write!(Path.join(root, Signature.path()), Signature.encode(sig))
+    end
+
+    defp trusted(root, id, opts),
+      do:
+        Tasks.complete(
+          board(root),
+          id,
+          Keyword.merge([now: @now, checks: Pass, key: @signing_key], opts)
+        )
+
+    setup %{root: root} do
+      File.mkdir_p!(Path.join(root, "lib"))
+      File.write!(Path.join(root, "lib/gen.ex"), "generated")
+
+      File.write!(
+        Path.join(root, Manifest.path()),
+        Manifest.encode(%{
+          "version" => 1,
+          "generated" => %{"lib/gen.ex" => Manifest.sha256("generated")}
+        })
+      )
+
+      sign!(root)
+      git!(root, ["init", "-q"])
+      commit!(root, "owner@example.com")
+      :ok
+    end
+
+    test "exploit: an edited plan with a recomputed plan_sha256 is refused", %{root: root} do
+      tampered =
+        root
+        |> Path.join(".wtf/plan.json")
+        |> File.read!()
+        |> Jason.decode!()
+        |> Map.update!("tasks", fn tasks ->
+          Enum.map(tasks, fn
+            %{"id" => "generate:option_sets"} = t -> %{t | "status" => "closed"}
+            t -> t
+          end)
+        end)
+
+      tampered =
+        Map.put(
+          tampered,
+          "plan_sha256",
+          tampered |> Map.delete("plan_sha256") |> BubbleEx.CanonicalJson.sha256()
+        )
+
+      File.write!(Path.join(root, ".wtf/plan.json"), BubbleEx.CanonicalJson.encode(tampered))
+
+      # Advisory runs believe it: the closed task counts as done...
+      assert Tasks.done?(board(root), "generate:option_sets")
+      # ...a trusted run does not start.
+      assert {:error, %Error{message: ".wtf/plan.json is not the signed plan"}} =
+               trusted(root, "generate:schema", agent: "a1")
+
+      assert {:error, %Error{message: ".wtf/plan.json is not the signed plan"}} =
+               Tasks.audit(board(root), now: @now, key: @signing_key)
+    end
+
+    test "exploit: deleting a manifest entry is refused", %{root: root} do
+      File.write!(
+        Path.join(root, Manifest.path()),
+        Manifest.encode(%{"version" => 1, "generated" => %{}})
+      )
+
+      File.write!(Path.join(root, "lib/gen.ex"), "hand edited")
+
+      # The advisory binding checks the manifest it is given, and passes.
+      assert {:ok, %{mode: :advisory}} =
+               Tasks.complete(board(root), "generate:option_sets",
+                 now: @now,
+                 agent: "a1",
+                 checks: BubbleEx.Target.Phoenix.Checks,
+                 cmd: fn _, _ -> {"", 0} end,
+                 attest: %{}
+               )
+               |> then(fn
+                 {:error, %Error{context: %{report: r}}} ->
+                   assert Enum.find(r.outcomes, &(&1.check == :generated_unchanged)).status ==
+                            :pass
+
+                   {:ok, %{mode: :advisory}}
+
+                 other ->
+                   other
+               end)
+
+      assert {:error, %Error{message: ".wtf/generated.json is not the signed manifest"}} =
+               trusted(root, "generate:option_sets", agent: "a1")
+
+      assert {:error, %Error{message: "a trusted run needs .wtf/plan.sig"}} =
+               (
+                 File.rm!(Path.join(root, Signature.path()))
+                 trusted(root, "generate:option_sets", agent: "a1")
+               )
+    end
+
+    test "a wrong key is refused", %{root: root} do
+      assert {:error, %Error{message: "the plan was signed with another key"}} =
+               Tasks.audit(board(root), now: @now, key: :crypto.strong_rand_bytes(32))
+    end
+
+    test "only signed results count, and all of them", %{root: root} do
+      dir = Path.join(root, ".wtf/verification/results")
+      File.mkdir_p!(dir)
+
+      write = fn name, status, at, sign? ->
+        {:ok, r} =
+          Result.new(%{
+            id: "det",
+            app: "app1",
+            check: "deterministic",
+            status: status,
+            actor: "ci",
+            ran_at: at,
+            tasks: ["generate:option_sets"]
+          })
+
+        path = Path.join(dir, name <> ".json")
+        File.write!(path, Result.to_json(r))
+
+        if sign?,
+          do:
+            File.write!(
+              path <> ".sig",
+              Signature.sign_file(Result.to_json(r), "result", @signing_key)
+            )
+      end
+
+      write.("forged", :pass, ~U[2026-09-26 11:00:00Z], false)
+      opts = [agent: "a1", app: "app1", checks: Results]
+
+      assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
+               trusted(root, "generate:option_sets", opts)
+
+      assert %{status: :fail, detail: "no result names" <> _} =
+               Enum.find(outcomes, &(&1.check == :deterministic))
+
+      assert {:ok, %{unsigned: [".wtf/verification/results/forged.json"]}} =
+               Tasks.evidence(root, [], @signing_key)
+
+      write.("old", :fail, ~U[2026-09-26 09:00:00Z], true)
+      write.("new", :pass, ~U[2026-09-26 10:00:00Z], true)
+      # Advisory: the newest wins. Trusted: a signed failure is not overridden.
+      assert {:ok, _} =
+               Tasks.complete(board(root), "generate:option_sets",
+                 now: @now,
+                 agent: "a1",
+                 app: "app1",
+                 checks: Results
+               )
+
+      File.rm_rf!(Path.join(root, ".wtf/tasks"))
+
+      assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
+               trusted(root, "generate:option_sets", opts)
+
+      assert %{status: :fail, detail: ".wtf/verification/results/old.json: status fail" <> _} =
+               Enum.find(outcomes, &(&1.check == :deterministic))
+    end
+
+    test "attestations count only on an independent, committed review", %{root: root} do
+      done!(root, ["generate:api_clients", "generate:option_sets", "generate:schema"])
+      commit!(root, "owner@example.com")
+      attest = [agent: "owner", attest: %{1 => "Every private value is set in the vault."}]
+
+      assert {:error, %Error{context: %{report: %{outcomes: [o]}}}} =
+               trusted(root, "setup:secrets", attest)
+
+      assert o.detail =~ "needs an independent review (no review recorded"
+
+      {:ok, _} =
+        Tasks.review(board(root), "setup:secrets", "rev", "Checked each secret in the vault.",
+          now: @now
+        )
+
+      assert {:error, _} = trusted(root, "setup:secrets", attest)
+      commit!(root, "rev@example.com")
+      assert {:ok, %{mode: :trusted}} = trusted(root, "setup:secrets", attest)
+      assert board(root).states["setup:secrets"].mode == :trusted
+    end
+
+    test "exploit: a reviewer label is not an identity; git authors are", %{root: root} do
+      done!(root, @generators ++ ["auth"])
+      commit!(root, "owner@example.com")
+      {:ok, _} = complete(root, "surface:reusable/rCard", agent: "impl")
+      commit!(root, "impl@example.com")
+
+      summary = "Compared the card at 320 and 1280 px against Bubble."
+
+      {:ok, _} =
+        Tasks.review(board(root), "acceptance:reusable/rCard", "someone-else", summary, now: @now)
+
+      commit!(root, "impl@example.com")
+
+      # Advisory: the label differs, so it passes.
+      assert {:ok, %{mode: :advisory}} =
+               complete(root, "acceptance:reusable/rCard", agent: "someone-else")
+
+      File.rm!(Path.join(root, State.path("acceptance:reusable/rCard")))
+
+      {:ok, _} =
+        Tasks.review(board(root), "acceptance:reusable/rCard", "someone-else", summary,
+          now: DateTime.add(@now, 1)
+        )
+
+      commit!(root, "impl@example.com")
+
+      assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
+               trusted(root, "acceptance:reusable/rCard", agent: "someone-else")
+
+      assert %{status: :fail, detail: "impl@example.com committed the implementation too"} =
+               Enum.find(outcomes, &(&1.check == :independent_review))
+
+      {:ok, _} =
+        Tasks.review(board(root), "acceptance:reusable/rCard", "rev", summary,
+          now: DateTime.add(@now, 2)
+        )
+
+      commit!(root, "rev@example.com")
+      assert {:ok, %{mode: :trusted}} = trusted(root, "acceptance:reusable/rCard", agent: "rev")
+      commit!(root, "rev@example.com")
+
+      assert {:ok, %{flipped: []}} =
+               Tasks.audit(board(root),
+                 now: @now,
+                 checks: Pass,
+                 key: @signing_key,
+                 tasks: ["acceptance:reusable/rCard"]
+               )
     end
   end
 
@@ -490,7 +834,13 @@ defmodule BubbleEx.TasksTest do
               resolved_at: nil
             }
           ],
-          review: %{reviewer: "r", at: @now, summary: "s"}
+          review: %{
+            reviewer: "r",
+            at: @now,
+            summary: "s",
+            basis: %{source_sha256: "x", evidence: %{}}
+          },
+          mode: :advisory
       }
 
       assert State.filename("surface:page/pHome") == "surface%3Apage%2FpHome.json"

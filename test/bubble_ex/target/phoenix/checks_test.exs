@@ -23,7 +23,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
         resolved: nil,
         cmd: fn args, env ->
           send(test, {:mix, args, env})
-          Process.get(:mix_result, {"ok", 0})
+          Process.get(:mix_result, {"1 test, 0 failures", 0})
         end
       },
       Map.new(opts)
@@ -97,27 +97,57 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
   describe "traceability and markers" do
     setup %{tmp_dir: root} do
       write(root, "lib/app_web/live/home_live.html.heex", """
-      <%!-- bubble:page pHome --%>
-      <div data-bubble-id="eA"><p data-bubble-id='eB'>Hi</p></div>
+      <div data-bubble-id="pHome"><div data-bubble-id="eA"><p data-bubble-id='eB'>Hi</p></div></div>
+      <%!-- <span data-bubble-id="eC"></span> --%>
+      """)
+
+      write(root, "lib/app_web/live/card.ex", """
+      defmodule Card do
+        # data-bubble-id="eD"
+        def render(assigns), do: ~H(<b data-bubble-id="eE"></b>)
+      end
       """)
 
       :ok
     end
 
-    test "every Bubble ID is traced in lib/", %{tmp_dir: root} do
-      assert %{status: :pass} =
+    test "elements are data-bubble-id attributes outside comments", %{tmp_dir: root} do
+      assert %{status: :pass, advisory: true} =
                run(
                  :traceability,
-                 %{"elements" => ~w(page:pHome element:eA element:eB)},
+                 %{"elements" => ~w(element:eA element:eB element:eE)},
                  ctx(root)
                )
 
-      assert %{status: :fail, detail: "not traced: element:eC, reusable:pHome"} =
+      assert %{status: :fail, detail: "not traced: element:eC, element:eD"} =
                run(
                  :traceability,
-                 %{"elements" => ~w(element:eA element:eC reusable:pHome)},
+                 %{"elements" => ~w(element:eA element:eC element:eD)},
                  ctx(root)
                )
+    end
+
+    test "surfaces are rendered by their tagged tests", %{tmp_dir: root} do
+      args = %{"elements" => ~w(page:pHome element:eA)}
+
+      assert %{status: :fail, detail: "no test tagged bubble: page:pHome"} =
+               run(:traceability, args, ctx(root))
+
+      # A tag in a comment is no tag.
+      write(root, "test/home_test.exs", ~s(# @moduletag bubble: "page:pHome"\n))
+      assert %{status: :fail} = run(:traceability, args, ctx(root))
+
+      write(
+        root,
+        "test/home_test.exs",
+        ~s(defmodule T do\n  @moduletag bubble: "page:pHome"\nend\n)
+      )
+
+      assert %{status: :pass, advisory: false, detail: detail} =
+               run(:traceability, args, ctx(root))
+
+      assert detail =~ "rendered by the tests of page:pHome"
+      assert_received {:mix, ["test", "--only", "bubble:page:pHome"], [{"MIX_ENV", "test"}]}
     end
 
     test "render_smoke refuses placeholders, then runs the tagged tests", %{tmp_dir: root} do
@@ -126,7 +156,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
       write(
         root,
         "lib/app_web/live/home_live.html.heex",
-        "<%!-- bubble:page pHome --%>\n<%!-- TODO(bubble:eA) --%>\n"
+        ~s{<div data-bubble-id="pHome"></div>\n<%!-- TODO(bubble:eA) --%>\n}
       )
 
       assert %{status: :fail, detail: "left in lib/app_web/live/home_live.html.heex"} =
@@ -143,16 +173,34 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
 
       write(root, "test/home_test.exs", ~s(@moduletag bubble: "page:pHome"\n))
       assert %{status: :pass} = run(:render_smoke, %{"surfaces" => ["page:pHome"]}, ctx(root))
-      assert_received {:mix, ["test", "--only", "bubble:page:pHome"], [{"MIX_ENV", "test"}]}
 
       assert %{status: :fail} = run(:render_smoke, %{"elements" => ["element:eX"]}, ctx(root))
     end
 
-    test "tests without subjects are tagged with the task", %{tmp_dir: root} do
+    test "every subject needs its own passing tests", %{tmp_dir: root} do
       write(root, "test/auth_test.exs", ~s(@tag bubble: "surface:page/pHome"\n))
       assert %{status: :pass} = run(:unit_test, %{"workflows" => []}, ctx(root))
       assert_received {:mix, ["test", "--only", "bubble:surface:page/pHome"], _}
       assert %{status: :fail} = run(:request_shape, %{"calls" => ["api_call:g/c"]}, ctx(root))
+
+      write(
+        root,
+        "test/wf_test.exs",
+        ~s(@tag bubble: "workflow:wA"\n@tag bubble: "workflow:wB"\n)
+      )
+
+      Process.put(:mix_result, {"2 tests, 0 failures, 2 excluded", 0})
+
+      assert %{status: :fail, detail: "workflow:wA: no test ran"} =
+               run(:unit_test, %{"workflows" => ~w(workflow:wA workflow:wB)}, ctx(root))
+
+      Process.put(:mix_result, {"3 tests, 0 failures, 2 excluded", 0})
+
+      assert %{status: :pass} =
+               run(:unit_test, %{"workflows" => ~w(workflow:wA workflow:wB)}, ctx(root))
+
+      assert_received {:mix, ["test", "--only", "bubble:workflow:wA"], _}
+      assert_received {:mix, ["test", "--only", "bubble:workflow:wB"], _}
     end
 
     test "step_order reads the workflow's step markers in order", %{tmp_dir: root} do
@@ -175,7 +223,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
 
       args = &%{"workflow" => &1, "steps" => &2}
 
-      assert %{status: :pass} =
+      assert %{status: :pass, advisory: true} =
                run(:step_order, args.("workflow:wA", ~w(ChangeThing SendEmail)), ctx(root))
 
       assert %{

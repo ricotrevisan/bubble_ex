@@ -6,7 +6,7 @@
 #
 #     MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs list
 #     MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs <dir> <fixture>
-#     MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs plan <dir> <fixture> <app id>
+#     WTF_PLAN_SIGNING_KEY=… MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs plan <dir> <fixture> <app id>
 #
 # `list` prints the fixture names: every BubbleEx.Model fixture
 # (test/support/model/*.json), every target fixture
@@ -96,6 +96,23 @@ case System.argv() do
     path = Path.join(dir, ".wtf/verification/results/deterministic.json")
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, BubbleEx.Verify.Result.to_json(result))
+
+    # What WTF does when it publishes: sign the plan and the manifest, and
+    # the generator's result, with the key the owner's CI holds.
+    {:ok, key} = BubbleEx.Plan.Signature.decode_key(System.get_env("WTF_PLAN_SIGNING_KEY"))
+    alias BubbleEx.Plan.Signature
+
+    signature =
+      BubbleEx.Plan.sign(
+        %{
+          plan: File.read!(Path.join(dir, ".wtf/plan.json")),
+          generated: File.read!(Path.join(dir, ".wtf/generated.json"))
+        },
+        key
+      )
+
+    File.write!(Path.join(dir, Signature.path()), Signature.encode(signature))
+    File.write!(path <> ".sig", Signature.sign_file(File.read!(path), "result", key))
     IO.puts("planned #{name}: #{length(plan.tasks)} tasks")
 
   ["list"] ->

@@ -104,7 +104,9 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     memo(cache, :generated_unchanged, fn ->
       binding = "check_manifest(.wtf/generated.json)"
 
-      with {:ok, json} <- File.read(Path.join(ctx.root, Manifest.path())),
+      # A trusted run passes the manifest bytes it verified against the
+      # plan signature: the manifest on disk is the agent's to edit.
+      with {:ok, json} <- manifest(ctx),
            {:ok, report} <- Manifest.check(json, ctx.root) do
         manifest_outcome(binding, report)
       else
@@ -136,27 +138,41 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   defp check(:traceability, args, ctx, cache) do
     {sources, cache} = sources(ctx, cache)
     ids = list(args, "elements")
-    binding = "data-bubble-id / bubble: markers in lib/"
-    missing = Enum.reject(ids, &traced?(sources, &1))
+    {surfaces, elements} = Enum.split_with(ids, &surface?/1)
+    binding = "data-bubble-id attributes in lib/ (comments ignored)"
+    missing = Enum.reject(elements, &traced?(sources, &1))
 
-    outcome =
-      cond do
-        ids == [] -> pass(binding, "nothing to trace")
-        missing == [] -> pass(binding, "#{length(ids)} Bubble IDs traced")
-        true -> fail(binding, "not traced: " <> summary(missing))
-      end
+    cond do
+      missing != [] ->
+        {fail(binding, "not traced: " <> summary(missing)), cache}
 
-    {outcome, cache}
+      surfaces == [] ->
+        # Nothing renders the elements here: the source is all there is.
+        {%{pass(binding, "#{length(elements)} Bubble IDs in the source") | advisory: true}, cache}
+
+      true ->
+        # The surfaces' render tests (the generated LiveView tests assert
+        # every data-bubble-id with has_element?) are what render them.
+        {outcome, cache} = tagged(surfaces, ctx, cache)
+
+        detail =
+          "#{length(elements)} Bubble IDs in the source, rendered by the tests of " <>
+            summary(surfaces)
+
+        {if(outcome.status == :pass, do: %{outcome | detail: detail}, else: outcome), cache}
+    end
   end
 
   defp check(:render_smoke, args, ctx, cache) do
     {sources, cache} = sources(ctx, cache)
+    {raw, cache} = raw_sources(ctx, cache)
+    uncommented = Map.new(sources)
     subjects = list(args, "surfaces") ++ list(args, "elements")
 
     placeholders =
-      for {path, text} <- sources,
+      for {path, text} <- raw,
           String.contains?(text, "TODO(bubble:"),
-          Enum.any?(subjects, &placeholder_in?(text, &1)),
+          Enum.any?(subjects, &placeholder_in?({text, uncommented[path]}, &1)),
           uniq: true,
           do: path
 
@@ -171,7 +187,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     {markers, cache} = markers(ctx, cache)
     workflow = args["workflow"]
     steps = list(args, "steps")
-    binding = "# bubble:workflow / # bubble:step markers in lib/"
+    binding = "# bubble:workflow / # bubble:step comments in lib/ (advisory: comments, not code)"
 
     outcome =
       case Map.get(markers, bubble_id(workflow), []) do
@@ -182,7 +198,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
           expected = steps |> Enum.with_index(1) |> Enum.map(fn {type, n} -> {n, type} end)
 
           if found == expected,
-            do: pass(binding, "#{length(steps)} steps in order"),
+            do: %{pass(binding, "#{length(steps)} steps in order") | advisory: true},
             else:
               fail(
                 binding,
@@ -272,57 +288,137 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   defp tagged([], ctx, cache), do: tagged([ctx.task.id], ctx, cache)
 
+  # Every subject needs its own passing tests (one run per subject: AND,
+  # not the OR of several --only filters).
   defp tagged(subjects, ctx, cache) do
     {tags, cache} = test_tags(ctx, cache)
-    binding = "mix test --only bubble:<subject>"
+    binding = "mix test --only bubble:<subject>, per subject"
 
     case Enum.reject(subjects, &MapSet.member?(tags, &1)) do
       [] ->
-        args = ["test" | Enum.flat_map(subjects, &["--only", "bubble:" <> &1])]
-        {%{mix(ctx, args, [{"MIX_ENV", "test"}]) | binding: binding}, cache}
+        {outcomes, cache} = Enum.map_reduce(subjects, cache, &subject_tests(&1, ctx, &2))
+
+        case Enum.find(outcomes, &(&1.status == :fail)) do
+          nil -> {pass(binding, "tests pass for " <> summary(subjects)), cache}
+          failed -> {%{failed | binding: binding}, cache}
+        end
 
       untagged ->
         {fail(binding, "no test tagged bubble: " <> summary(untagged)), cache}
     end
   end
 
+  defp subject_tests(subject, ctx, cache) do
+    memo(cache, {:tests, subject}, fn ->
+      outcome = mix(ctx, ["test", "--only", "bubble:" <> subject], [{"MIX_ENV", "test"}])
+
+      cond do
+        outcome.status == :fail -> %{outcome | detail: "#{subject}: #{outcome.detail}"}
+        ran(outcome.raw) < 1 -> fail(outcome.binding, "#{subject}: no test ran")
+        true -> outcome
+      end
+    end)
+  end
+
+  # Tests run: "N tests, M failures[, K excluded]" minus the excluded.
+  defp ran(output) do
+    total = count(~r/(\d+) tests?,/, output)
+    total - count(~r/(\d+) excluded/, output) - count(~r/(\d+) skipped/, output)
+  end
+
+  defp count(regex, output) do
+    case Regex.run(regex, output || "") do
+      [_, n] -> String.to_integer(n)
+      nil -> 0
+    end
+  end
+
+  # The `bubble:` tags of test/, read from the parsed code: @tag,
+  # @moduletag and @describetag with a `bubble: "<subject>"` entry.
   defp test_tags(ctx, cache) do
     memo(cache, :test_tags, fn ->
       for path <- files(ctx.root, "test/**/*.{exs,ex}"),
-          [_, subject] <- Regex.scan(~r/\bbubble:\s*"([^"]+)"/, File.read!(path)),
+          {:ok, ast} <- [Code.string_to_quoted(File.read!(path))],
+          subject <- tags(ast),
           into: MapSet.new(),
           do: subject
     end)
   end
 
+  defp tags(ast) do
+    ast
+    |> Macro.prewalk([], fn
+      {:@, _, [{attr, _, [value]}]} = node, acc when attr in [:tag, :moduletag, :describetag] ->
+        {node, bubble_tags(value) ++ acc}
+
+      node, acc ->
+        {node, acc}
+    end)
+    |> elem(1)
+  end
+
+  defp bubble_tags(value) when is_list(value) do
+    for {:bubble, subject} <- value, is_binary(subject), do: subject
+  end
+
+  defp bubble_tags(_), do: []
+
   # --- source scans ------------------------------------------------------------------
 
-  # [{relative path, text}] of lib/.
+  # [{relative path, text}] of lib/, comments removed (HEEx, HTML and
+  # Elixir): a marker in a comment traces nothing.
   defp sources(ctx, cache) do
     memo(cache, :sources, fn ->
+      for path <- files(ctx.root, "lib/**/*.{ex,exs,heex,eex}"),
+          do: {Path.relative_to(path, ctx.root), path |> File.read!() |> uncommented(path)}
+    end)
+  end
+
+  # The raw text of lib/ (placeholders live in comments).
+  defp raw_sources(ctx, cache) do
+    memo(cache, :raw_sources, fn ->
       for path <- files(ctx.root, "lib/**/*.{ex,exs,heex,eex}"),
           do: {Path.relative_to(path, ctx.root), File.read!(path)}
     end)
   end
 
+  defp uncommented(text, path) do
+    text = if Path.extname(path) in [".ex", ".exs"], do: without_elixir_comments(text), else: text
+    Regex.replace(~r/<%!--.*?--%>|<!--.*?-->/s, text, "")
+  end
+
+  defp without_elixir_comments(text) do
+    case Code.string_to_quoted_with_comments(text) do
+      {:ok, _ast, comments} ->
+        by_line = Enum.group_by(comments, & &1.line, & &1.text)
+
+        text
+        |> String.split("\n")
+        |> Enum.with_index(1)
+        |> Enum.map_join("\n", fn {line, n} ->
+          Enum.reduce(Map.get(by_line, n, []), line, &String.replace(&2, &1, "", global: false))
+        end)
+
+      _ ->
+        text
+    end
+  end
+
   defp traced?(sources, id) do
     bubble = Regex.escape(bubble_id(id))
-    kind = id |> String.split(":", parts: 2) |> hd()
 
-    patterns =
-      [~r/data-bubble-id=["']#{bubble}["']/] ++
-        if(kind in ["page", "reusable"], do: [~r/bubble:#{kind}\s+#{bubble}(?![\w-])/], else: [])
-
-    Enum.any?(sources, fn {_, text} -> Enum.any?(patterns, &Regex.match?(&1, text)) end)
+    Enum.any?(sources, fn {_, text} ->
+      Regex.match?(~r/data-bubble-id=["']#{bubble}["']/, text)
+    end)
   end
+
+  defp surface?(id), do: String.starts_with?(id, ["page:", "reusable:"])
 
   # A placeholder for the element itself, or, for a page or reusable,
   # anywhere in a file tracing it.
-  defp placeholder_in?(text, id) do
-    surface? = String.starts_with?(id, ["page:", "reusable:"])
-
+  defp placeholder_in?({text, uncommented}, id) do
     String.contains?(text, "TODO(bubble:#{bubble_id(id)})") or
-      (surface? and traced?([{nil, text}], id))
+      (surface?(id) and traced?([{nil, uncommented}], id))
   end
 
   # workflow Bubble ID => [{path, [{n, type}]}], from the comments of lib/**/*.ex.
@@ -384,8 +480,8 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     {output, status} = ctx.cmd.(args, env)
 
     if status == 0,
-      do: pass(binding, nil),
-      else: %{fail(binding, "exit status #{status}") | output: tail(output)}
+      do: %{pass(binding, nil) | raw: output},
+      else: %{fail(binding, "exit status #{status}") | output: tail(output), raw: output}
   end
 
   defp tail(output),
@@ -427,8 +523,37 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   end
 
   defp pass(binding, detail),
-    do: %{status: :pass, binding: binding, detail: detail, refs: [], output: nil}
+    do: %{
+      status: :pass,
+      binding: binding,
+      detail: detail,
+      refs: [],
+      output: nil,
+      advisory: false,
+      raw: nil
+    }
 
   defp fail(binding, detail),
-    do: %{status: :fail, binding: binding, detail: detail, refs: [], output: nil}
+    do: %{
+      status: :fail,
+      binding: binding,
+      detail: detail,
+      refs: [],
+      output: nil,
+      advisory: false,
+      raw: nil
+    }
+
+  defp manifest(%{manifest: bytes}) when is_binary(bytes), do: {:ok, bytes}
+
+  defp manifest(%{trusted: true}),
+    do: {:error, %BubbleEx.Error{message: "the signed plan has no manifest"}}
+
+  defp manifest(ctx) do
+    case File.read(Path.join(ctx.root, Manifest.path())) do
+      {:ok, bytes} -> {:ok, bytes}
+      {:error, :enoent} -> {:error, %BubbleEx.Error{message: "no #{Manifest.path()}"}}
+      {:error, reason} -> {:error, %BubbleEx.Error{message: inspect(reason)}}
+    end
+  end
 end

@@ -29,53 +29,84 @@ defmodule BubbleEx.Tasks do
   waived, with a reason). Code checks are the target's
   (`BubbleEx.Target.Phoenix.Checks`); these are task state:
 
-    * `subtasks_done` - every subtask is done or closed; subtasks the plan
-      closes automatically (`status: :auto`) are verified with their
-      parent, and completed with it
-    * `independent_review` - a review is recorded (`review/4`) by a
-      reviewer who is not an implementer of `args.of` (an agent that
-      claimed or completed it or one of its subtasks), and the completing
-      agent is not one either
+    * `subtasks_done` - every subtask is closed by the plan or passes its
+      own criteria in the same run (automatic subtasks are completed with
+      their parent; a subtask's recorded state is never taken on trust)
+    * `independent_review` - a current review (its `basis` still matches
+      the task's source and the reviewed evidence) by someone who did not
+      implement `args.of`; the completing agent did not either
     * `decision_recorded` - the owner decision `args.key` is in effect in
       the plan (a task's `decisions` or `closed_by`); an undecided plugin
       stays open until a plan built with the decision is synced
-    * `attested` - an attestation (`attest:`), a waiver with a reason
-      (`waive:`, only where the criterion allows it) or, for a review
-      against Bubble, the recorded review's summary
+    * `attested` - an attestation (`attest:`, naming the criterion), a
+      waiver with a reason (`waive:`, only where the criterion allows it)
+      or, for a review against Bubble, the recorded review's summary
 
   The state records each criterion's binding, outcome and evidence files
-  (path and SHA-256), never command output.
+  (path and SHA-256), never command output, and the run's `mode`.
+
+  ## Trust
+
+  Everything in the owner's repository (`.wtf/plan.json`,
+  `.wtf/generated.json`, `.wtf/tasks/`, results) is writable by the agent
+  being verified, and `plan_sha256` is a hash anyone can recompute. So:
+
+    * **advisory** (no `:key`) - the default. Every check runs, but a
+      result is the agent's own claim: it is recorded as `mode:
+      advisory`, and nothing may be reported as verified from it.
+      Reviewer independence compares self-declared labels
+    * **trusted** (`key:` = the plan signing key, held by WTF and the
+      owner's CI as `WTF_PLAN_SIGNING_KEY`, never in the repository) -
+      the plan and the manifest are the bytes `.wtf/plan.sig` signs
+      (`BubbleEx.Plan.sign/2`), so an edited plan (a task marked closed, a
+      criterion made waivable) or manifest (an entry deleted) is refused
+      before anything runs, and closed tasks are closed only if the signed
+      plan says so; only results signed with the key count, all of them
+      (no newest-wins); implementers and reviewers are git authors of the
+      commits that changed the state files (`BubbleEx.Tasks.Git`), and a
+      review counts only when its author did not implement what it
+      reviews; attestations, waivers and advisory bindings
+      (`BubbleEx.Target.Phoenix.Checks`: source-only traceability,
+      step-order comments) count only on such a review; stored
+      attestations and subtask states are never reused
+
+  Git author emails are as trustworthy as the repository host makes them
+  (protected branches, verified commits). The verdict to rely on is
+  `audit --trusted` run by CI over committed history; `complete` in a
+  trusted run checks what exists before the completion is committed.
+  Claims coordinate agents within a clone and race across clones until
+  merged; completion never relies on them.
 
   ## Re-verifying
 
-  `audit/2` re-runs the checks of done tasks and turns those failing into
-  `needs_reverify`. `sync/3` compares a new plan with the current one
+  `audit/2` re-runs the checks of done tasks (subtasks first) and turns
+  those failing into `needs_reverify`, with their parents, dropping their
+  reviews. `sync/3` compares a new plan with the current one
   (`BubbleEx.Plan.diff/2`) and marks the done tasks that need re-verifying
-  (changed, or depending on a changed, added or removed task), and the
-  removed ones; it writes only `.wtf/plan.json` and `.wtf/tasks/`. Owned
+  (changed, or depending on a changed, added or removed task; their
+  reviews are dropped), and the removed ones. It writes the states first
+  and the plan last, each atomically, and only under `.wtf/`. Owned
   code is never touched (WTF-359 Q1).
   """
 
   alias BubbleEx.{Error, Plan}
   alias BubbleEx.Plan.Task
-  alias BubbleEx.Target.Phoenix.Checks
-  alias BubbleEx.Tasks.{State, Store}
-  alias BubbleEx.Verify.Result
+  alias BubbleEx.Tasks.{State, Store, Verifier}
 
   @enforce_keys [:root, :plan, :states]
-  defstruct [:root, :plan, :states, by_id: %{}, children: %{}]
+  defstruct [:root, :plan, :states, :trust, by_id: %{}, children: %{}]
 
   @type t :: %__MODULE__{
           root: Path.t(),
           plan: Plan.t(),
           states: %{String.t() => State.t()},
           by_id: %{String.t() => Task.t()},
-          children: %{String.t() => [Task.t()]}
+          children: %{String.t() => [Task.t()]},
+          trust: nil | %{key: binary(), manifest: binary() | nil}
         }
 
   @default_ttl 2 * 60 * 60
   @min_text 20
-  @results_dir ".wtf/verification/results"
 
   # --- loading ----------------------------------------------------------------------
 
@@ -88,13 +119,16 @@ defmodule BubbleEx.Tasks do
     end
   end
 
-  defp board(root, plan, states) do
-    %__MODULE__{
-      root: root,
-      plan: plan,
-      states: states,
-      by_id: Map.new(plan.tasks, &{&1.id, &1}),
-      children: Enum.group_by(Enum.filter(plan.tasks, & &1.parent), & &1.parent)
+  defp board(root, plan, states),
+    do: with_plan(%__MODULE__{root: root, plan: plan, states: states}, plan)
+
+  @doc false
+  def with_plan(board, plan) do
+    %{
+      board
+      | plan: plan,
+        by_id: Map.new(plan.tasks, &{&1.id, &1}),
+        children: Enum.group_by(Enum.filter(plan.tasks, & &1.parent), & &1.parent)
     }
   end
 
@@ -272,7 +306,8 @@ defmodule BubbleEx.Tasks do
     end
   end
 
-  defp workable(board, task, now, agent) do
+  @doc false
+  def workable(board, task, now, agent) do
     case status(board, task, now, agent) do
       s when s in [:ready, :needs_reverify] ->
         :ok
@@ -307,253 +342,44 @@ defmodule BubbleEx.Tasks do
     end
   end
 
-  # --- complete ---------------------------------------------------------------------
+  # --- complete and audit ---------------------------------------------------------
 
   @doc """
   Verifies every criterion of task `id` and, when all pass, records it as
-  done by `:agent` with its evidence. Options:
+  done by `:agent` with its evidence and the run's mode. Options:
 
     * `:agent` (required), `:now` (required)
+    * `:key` - the plan signing key: a trusted run (see "Trust"); without
+      it the run is advisory
     * `:evidence` - paths (files or directories) of `BubbleEx.Verify.Result`
       files and other artifacts; `.wtf/verification/results/` is always read
-    * `:attest` - `%{criterion id | :all => text}`
+    * `:attest` - `%{criterion id => text}`
     * `:waive` - `%{criterion id => reason}` (attested criteria only)
     * `:app` - the Bubble app ID results must be for; `:reviewers` - the
       reviewers whose waivers count; `:resolved` - the
       `BubbleEx.Decision.Resolved` a result's decision is checked against
-    * `:cmd` - `(args, env) -> {output, status}` running `mix` in the
-      repository (default `System.cmd/3`)
+    * `:cmd` - `(args, env) -> {output, status}` running `mix`, `:git` -
+      `(args) -> {output, status}` running `git`, in the repository
 
   Returns `{:ok, report}` when recorded, or `:invalid_input` with the
-  `report` (`%{task, outcomes, subtasks}`) in the context when a
+  `report` (`%{task, mode, outcomes, subtasks}`) in the context when a
   criterion fails. Nothing is written then.
   """
   @spec complete(t(), String.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
-  def complete(board, id, opts) do
-    now = Keyword.fetch!(opts, :now)
-    agent = opts[:agent]
+  defdelegate complete(board, id, opts), to: BubbleEx.Tasks.Verifier
 
-    with :ok <- label(agent, "agent"),
-         {:ok, task} <- fetch(board, id),
-         :ok <- workable(board, task, now, agent),
-         :ok <- not_implementer(board, task, agent),
-         :ok <- waivable(task, Keyword.get(opts, :waive, %{})),
-         {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, [])) do
-      ctx = context(board, opts, now, evidence)
+  @doc """
+  Re-runs the criteria of done tasks (all, or `:tasks`) and their done
+  subtasks (first), and marks those failing, whose `source_sha256`
+  changed, or whose subtask failed, `needs_reverify` (dropping their
+  review). Takes `complete/3`'s options. Returns `%{mode, checked,
+  flipped, reports}`.
+  """
+  @spec audit(t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
+  defdelegate audit(board, opts), to: BubbleEx.Tasks.Verifier
 
-      auto =
-        for sub <- Map.get(board.children, id, []),
-            sub.status == :auto,
-            not done?(board, sub.id),
-            do: sub
-
-      {sub_reports, cache} =
-        Enum.map_reduce(auto, %{}, fn sub, cache ->
-          {outcomes, cache} = verify(board, sub, Map.put(ctx, :agent, agent), cache)
-          {%{task: sub.id, outcomes: outcomes}, cache}
-        end)
-
-      verified = for r <- sub_reports, passed?(r.outcomes), into: MapSet.new(), do: r.task
-      ctx = ctx |> Map.put(:agent, agent) |> Map.put(:verified_subtasks, verified)
-      {outcomes, _cache} = verify(board, task, ctx, cache)
-
-      report = %{task: id, outcomes: outcomes, subtasks: sub_reports}
-
-      if passed?(outcomes) do
-        record(board, task, agent, now, report, evidence.artifacts)
-        {:ok, report}
-      else
-        error("#{id} is not complete: a criterion failed", %{report: report})
-      end
-    end
-  end
-
-  defp record(board, task, agent, now, report, artifacts) do
-    for r <- report.subtasks do
-      :ok = Store.put(board.root, done(board, board.by_id[r.task], agent, now, r.outcomes, []))
-    end
-
-    :ok = Store.put(board.root, done(board, task, agent, now, report.outcomes, artifacts))
-  end
-
-  defp context(board, opts, now, evidence) do
-    root = board.root
-
-    %{
-      board: board,
-      root: root,
-      now: now,
-      results: evidence.results,
-      app: opts[:app],
-      reviewers: Keyword.get(opts, :reviewers, []),
-      resolved: opts[:resolved],
-      attest: Keyword.get(opts, :attest, %{}),
-      waive: Keyword.get(opts, :waive, %{}),
-      checks: Keyword.get(opts, :checks, Checks),
-      cmd:
-        Keyword.get(opts, :cmd, fn args, env ->
-          System.cmd("mix", args, cd: root, stderr_to_stdout: true, env: env)
-        end),
-      verified_subtasks: MapSet.new(),
-      audit: false
-    }
-  end
-
-  defp passed?(outcomes), do: Enum.all?(outcomes, &(&1.status in [:pass, :waived]))
-
-  defp done(board, task, agent, now, outcomes, artifacts) do
-    state = state(board, task.id)
-
-    artifact_entry =
-      if artifacts == [],
-        do: [],
-        else: [
-          %{
-            criterion: nil,
-            check: :artifacts,
-            status: :pass,
-            binding: "--evidence",
-            detail: nil,
-            refs: artifacts
-          }
-        ]
-
-    %{
-      state
-      | status: :done,
-        claim: nil,
-        agents: Enum.sort(Enum.uniq([agent | state.agents])),
-        completed_by: agent,
-        completed_at: now,
-        basis: %{plan_sha256: board.plan.plan_sha256, source_sha256: task.source_sha256},
-        evidence: Enum.map(outcomes, &Map.delete(&1, :output)) ++ artifact_entry,
-        reverify: nil
-    }
-  end
-
-  # Runs every criterion of `task`: [%{criterion, check, status, binding, detail, refs, output}].
-  defp verify(board, task, ctx, cache) do
-    ctx = Map.put(ctx, :task, task)
-
-    Enum.map_reduce(task.criteria, cache, fn criterion, cache ->
-      {outcome, cache} = criterion(board, criterion, ctx, cache)
-      {Map.merge(%{criterion: criterion.id, check: criterion.check}, outcome), cache}
-    end)
-  end
-
-  defp criterion(board, %{check: :subtasks_done}, ctx, cache) do
-    pending =
-      for sub <- Map.get(board.children, ctx.task.id, []),
-          not done?(board, sub.id),
-          not MapSet.member?(ctx.verified_subtasks, sub.id),
-          do: sub.id
-
-    {if(pending == [],
-       do: ok("subtask states"),
-       else: failed("subtask states", "not done: " <> Enum.join(pending, ", "))
-     ), cache}
-  end
-
-  defp criterion(board, %{check: :independent_review, args: args}, ctx, cache) do
-    of = args["of"] || ctx.task.id
-    impl = implementers(board, of)
-    review = state(board, ctx.task.id).review
-
-    outcome =
-      cond do
-        review == nil ->
-          failed("review record", "no review recorded (mix wtf.task review)")
-
-        review.reviewer in impl ->
-          failed("review record", "#{review.reviewer} implemented #{of}")
-
-        not ctx.audit and ctx.agent in impl ->
-          failed("review record", "#{ctx.agent} implemented #{of}")
-
-        true ->
-          ok("review record", "reviewed by #{review.reviewer}")
-      end
-
-    {outcome, cache}
-  end
-
-  defp criterion(board, %{check: :decision_recorded, args: args}, _ctx, cache) do
-    key = args["key"]
-
-    effective =
-      is_binary(key) and
-        Enum.any?(board.plan.tasks, &(key in &1.decisions or &1.closed_by == key))
-
-    {if(effective,
-       do: ok("plan decisions", key),
-       else: failed("plan decisions", "#{key || "the decision"} is not in effect in the plan")
-     ), cache}
-  end
-
-  defp criterion(board, %{check: :attested} = c, ctx, cache) do
-    {attested(board, c, ctx), cache}
-  end
-
-  defp criterion(_board, criterion, ctx, cache), do: ctx.checks.run(criterion, ctx, cache)
-
-  defp attested(board, %{id: n} = criterion, ctx) do
-    case if(ctx.audit, do: recorded(board, ctx.task.id, n)) do
-      nil -> attestation(board, criterion, ctx, Map.get(ctx.waive, n))
-      recorded -> recorded
-    end
-  end
-
-  # Waivers were checked against the criteria (only waivable ones) up front.
-  defp attestation(_board, _criterion, _ctx, waive) when is_binary(waive) do
-    if text?(waive),
-      do: %{ok("waiver", waive) | status: :waived},
-      else: failed("waiver", "a waiver needs a reason of at least #{@min_text} characters")
-  end
-
-  defp attestation(board, %{id: n, args: args}, ctx, nil) do
-    attest = Map.get(ctx.attest, n) || Map.get(ctx.attest, :all)
-    review = state(board, ctx.task.id).review
-
-    cond do
-      text?(attest) ->
-        ok("attestation", attest)
-
-      args["about"] == "reviewed_against_bubble" and review != nil ->
-        ok("review record", review.summary)
-
-      true ->
-        failed(
-          "attestation",
-          "attest #{args["about"]} (--attest #{n}=...; at least #{@min_text} characters) " <>
-            "or waive it with a reason"
-        )
-    end
-  end
-
-  # An attestation from the last completion: an audit cannot re-attest.
-  defp recorded(board, id, n) do
-    Enum.find_value(state(board, id).evidence, fn
-      %{"criterion" => ^n, "status" => status} = e when status in ["pass", "waived"] ->
-        %{
-          status: String.to_existing_atom(status),
-          binding: e["binding"],
-          detail: e["detail"],
-          refs: [],
-          output: nil
-        }
-
-      _ ->
-        nil
-    end)
-  end
-
-  defp text?(text), do: is_binary(text) and String.length(String.trim(text)) >= @min_text
-
-  defp ok(binding, detail \\ nil),
-    do: %{status: :pass, binding: binding, detail: detail, refs: [], output: nil}
-
-  defp failed(binding, detail),
-    do: %{status: :fail, binding: binding, detail: detail, refs: [], output: nil}
+  @doc false
+  defdelegate evidence(root, paths, key \\ nil), to: BubbleEx.Tasks.Verifier
 
   @doc """
   The implementers of task `id`: every agent that claimed or completed it
@@ -565,110 +391,6 @@ defmodule BubbleEx.Tasks do
     |> Enum.flat_map(&state(board, &1).agents)
     |> Enum.uniq()
     |> Enum.sort()
-  end
-
-  # Only attested criteria that allow it may be waived.
-  defp waivable(task, waive) do
-    allowed = for c <- task.criteria, c.waiver == :allowed, do: c.id
-
-    case Map.keys(waive) -- allowed do
-      [] -> :ok
-      ns -> error("only attested criteria may be waived; #{task.id} cannot waive #{inspect(ns)}")
-    end
-  end
-
-  # An acceptance task (independent_review) is never completed by an implementer.
-  defp not_implementer(board, task, agent) do
-    impl =
-      for %{check: :independent_review, args: args} <- task.criteria,
-          who <- implementers(board, args["of"] || task.id),
-          do: who
-
-    if agent in impl,
-      do:
-        error(
-          "#{agent} implemented what #{task.id} reviews; an independent reviewer completes it",
-          %{
-            task: task.id
-          }
-        ),
-      else: :ok
-  end
-
-  # --- evidence ---------------------------------------------------------------------
-
-  @doc false
-  # %{results: [{ref, sha256, %Result{}}] (latest per result id), artifacts: [%{ref, sha256}]}
-  def evidence(root, paths) do
-    default = Path.join(root, @results_dir)
-
-    files =
-      (if(File.dir?(default), do: [default], else: []) ++ paths)
-      |> Enum.flat_map(&expand/1)
-      |> Enum.uniq()
-
-    Enum.reduce_while(files, {:ok, %{results: [], artifacts: []}}, fn path, {:ok, acc} ->
-      case read_evidence(root, path) do
-        {:ok, {:result, entry}} -> {:cont, {:ok, %{acc | results: [entry | acc.results]}}}
-        {:ok, {:artifact, ref}} -> {:cont, {:ok, %{acc | artifacts: [ref | acc.artifacts]}}}
-        {:error, _} = e -> {:halt, e}
-      end
-    end)
-    |> case do
-      {:ok, %{results: results, artifacts: artifacts}} ->
-        {:ok,
-         %{
-           results:
-             results
-             |> Enum.group_by(fn {_, _, r} -> r.id end)
-             |> Enum.map(fn {_, rs} ->
-               Enum.max_by(rs, fn {_, _, r} -> r.ran_at end, DateTime)
-             end)
-             |> Enum.sort_by(&elem(&1, 0)),
-           artifacts: artifacts |> Enum.uniq() |> Enum.sort_by(& &1.ref)
-         }}
-
-      error ->
-        error
-    end
-  end
-
-  defp expand(path) do
-    cond do
-      File.dir?(path) -> path |> Path.join("**/*.json") |> Path.wildcard() |> Enum.sort()
-      File.regular?(path) -> [path]
-      true -> [{:missing, path}]
-    end
-  end
-
-  defp read_evidence(_root, {:missing, path}), do: error("no evidence at #{path}", %{path: path})
-
-  defp read_evidence(root, path) do
-    bytes = File.read!(path)
-    sha = :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
-    ref = ref(root, path)
-
-    case Jason.decode(bytes) do
-      {:ok, %{"format" => format}} when format == "bubble_ex.verify.result" ->
-        case Result.from_json(bytes) do
-          {:ok, result} -> {:ok, {:result, {ref, sha, result}}}
-          {:error, e} -> {:error, %{e | message: "#{ref}: #{e.message}"}}
-        end
-
-      _ ->
-        {:ok, {:artifact, %{ref: ref, sha256: sha}}}
-    end
-  end
-
-  # Repository-relative; a file outside the repository is named by its basename only.
-  defp ref(root, path) do
-    root = Path.expand(root)
-    abs = Path.expand(path)
-
-    case Path.relative_to(abs, root) do
-      ^abs -> Path.basename(abs)
-      rel -> rel
-    end
   end
 
   # --- review and notes -------------------------------------------------------------
@@ -691,10 +413,8 @@ defmodule BubbleEx.Tasks do
              do: :ok,
              else: error("a review summary needs at least #{@min_text} characters")
            ) do
-      reviewed =
-        [id | for(%{check: :independent_review, args: a} <- task.criteria, a["of"], do: a["of"])]
-
-      impl = Enum.flat_map(reviewed, &implementers(board, &1))
+      reviewed = Verifier.reviewed(board, task)
+      impl = Enum.flat_map(reviewed, &state(board, &1).agents)
 
       if reviewer in impl do
         error(
@@ -706,7 +426,12 @@ defmodule BubbleEx.Tasks do
       else
         state = %{
           state(board, id)
-          | review: %{reviewer: reviewer, at: now, summary: summary}
+          | review: %{
+              reviewer: reviewer,
+              at: now,
+              summary: summary,
+              basis: Verifier.review_basis(board, task)
+            }
         }
 
         :ok = Store.put(board.root, state)
@@ -783,62 +508,6 @@ defmodule BubbleEx.Tasks do
   defp resolve(%{n: n} = note, n, by, now), do: %{note | resolved_by: by, resolved_at: now}
   defp resolve(note, _n, _by, _now), do: note
 
-  # --- audit ------------------------------------------------------------------------
-
-  @doc """
-  Re-runs the criteria of done tasks (all, or `:tasks`) and marks those
-  failing, or whose `source_sha256` changed, `needs_reverify` (reason
-  `audit`, with the failed criteria). Takes `complete/3`'s evidence and
-  check options; attestations are the recorded ones. Returns
-  `%{checked: [ids], flipped: [ids], reports: [%{task, outcomes}]}`.
-  """
-  @spec audit(t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
-  def audit(board, opts) do
-    now = Keyword.fetch!(opts, :now)
-
-    ids =
-      case opts[:tasks] do
-        nil -> for task <- board.plan.tasks, state(board, task.id).status == :done, do: task.id
-        ids -> ids
-      end
-
-    with {:ok, tasks} <- fetch_all(board, ids),
-         {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, [])) do
-      ctx = board |> context(opts, now, evidence) |> Map.merge(%{audit: true, agent: nil})
-
-      {reports, _cache} = Enum.map_reduce(tasks, %{}, &audit_task(board, &1, ctx, &2))
-
-      flipped =
-        for r <- reports, r.stale or not passed?(r.outcomes) do
-          :ok = Store.put(board.root, flip(state(board, r.task), r, board.plan, now))
-          r.task
-        end
-
-      {:ok, %{checked: Enum.map(reports, & &1.task), flipped: flipped, reports: reports}}
-    end
-  end
-
-  defp audit_task(board, task, ctx, cache) do
-    if stale?(state(board, task.id), task) do
-      {%{task: task.id, stale: true, outcomes: []}, cache}
-    else
-      {outcomes, cache} = verify(board, task, ctx, cache)
-      {%{task: task.id, stale: false, outcomes: outcomes}, cache}
-    end
-  end
-
-  defp flip(state, report, plan, now) do
-    reverify = %{
-      source: "audit",
-      at: now,
-      plan_sha256: plan.plan_sha256,
-      reasons: if(report.stale, do: ["source_changed"], else: ["criteria_failed"]),
-      failed: for(o <- report.outcomes, o.status == :fail, do: o.criterion)
-    }
-
-    %{state | status: :needs_reverify, reverify: reverify}
-  end
-
   # --- sync -------------------------------------------------------------------------
 
   @doc """
@@ -862,8 +531,10 @@ defmodule BubbleEx.Tasks do
             updated != state,
             do: updated
 
-      if opts[:write_plan], do: :ok = Store.write_plan(board.root, new)
+      # States first, then the plan: a crash in between leaves the old plan
+      # and flagged states, and running the same sync again is harmless.
       Enum.each(changes, &(:ok = Store.put(board.root, &1)))
+      if opts[:write_plan], do: :ok = Store.write_plan(board.root, new)
 
       {:ok,
        %{
@@ -880,6 +551,7 @@ defmodule BubbleEx.Tasks do
     %{
       state
       | status: :needs_reverify,
+        review: nil,
         reverify: %{
           source: "sync",
           at: now,
@@ -902,28 +574,19 @@ defmodule BubbleEx.Tasks do
 
   # --- helpers ----------------------------------------------------------------------
 
-  defp fetch(board, id) do
+  @doc false
+  def fetch(board, id) do
     case board.by_id[id] do
       nil -> error("no task #{inspect(id)} in the plan", %{task: id})
       task -> {:ok, task}
     end
   end
 
-  defp fetch_all(board, ids) do
-    Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
-      case fetch(board, id) do
-        {:ok, task} -> {:cont, {:ok, [task | acc]}}
-        e -> {:halt, e}
-      end
-    end)
-    |> case do
-      {:ok, tasks} -> {:ok, Enum.reverse(tasks)}
-      e -> e
-    end
-  end
+  defp text?(text), do: is_binary(text) and String.length(String.trim(text)) >= @min_text
 
   # Agent and reviewer labels: short, printable, no whitespace.
-  defp label(value, name) do
+  @doc false
+  def label(value, name) do
     if is_binary(value) and Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._@+:\/-]{0,99}\z/, value),
       do: :ok,
       else: error("#{name} must be a label (letters, digits and . _ @ + : / -)", %{value: value})

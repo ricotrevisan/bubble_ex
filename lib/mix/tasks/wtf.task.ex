@@ -12,16 +12,32 @@ defmodule Mix.Tasks.Wtf.Task do
       mix wtf.task show ID [--json]
       mix wtf.task claim ID --agent A [--ttl 2h]
       mix wtf.task release ID --agent A
-      mix wtf.task complete ID --agent A [--evidence PATH]… [--attest [N=]TEXT]…
+      mix wtf.task complete ID --agent A [--evidence PATH]… [--attest N=TEXT]…
                                           [--waive N=REASON]… [--app APP_ID]
-                                          [--trusted-reviewer R]…
+                                          [--trusted-reviewer R]… [--trusted]
       mix wtf.task review ID --reviewer R --summary TEXT
       mix wtf.task note ID --agent A (--needs-decision TEXT | --info TEXT | --resolve N)
-      mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--trusted-reviewer R]… [--json]
+      mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--trusted-reviewer R]…
+                           [--trusted] [--json]
+      mix wtf.task sign-result FILE…    # with WTF_PLAN_SIGNING_KEY: writes FILE.sig
       mix wtf.task sync NEW_PLAN.json      # diff against .wtf/plan.json, then replace it
       mix wtf.task sync --from OLD_PLAN.json   # .wtf/plan.json is already the new plan
 
   Every command takes `--root DIR` (default: the current directory).
+
+  ## Trust
+
+  Without `--trusted`, `complete` and `audit` are **advisory**: they run
+  every check, but the plan, the manifest, the task states and the
+  results are files the agent being verified can edit, so what they
+  record is that agent's claim, labelled `advisory`. `--trusted` needs the
+  plan signing key in `WTF_PLAN_SIGNING_KEY` (a CI secret; never in the
+  repository): the plan and `.wtf/generated.json` must match
+  `.wtf/plan.sig` (`BubbleEx.Plan.sign/2`), only results with a valid
+  `.sig` count, and reviews, attestations and waivers count only when git
+  shows an author other than the implementers recorded the review. Run
+  `audit --trusted` in CI over committed history for a verdict anyone
+  else can rely on (see `BubbleEx.Tasks`, "Trust").
 
     * `next` - ready top-level tasks in plan order: not done, claimed by
       someone else or blocked by a needs-decision note, with every blocking
@@ -49,7 +65,7 @@ defmodule Mix.Tasks.Wtf.Task do
   """
   use Mix.Task
 
-  alias BubbleEx.Plan.Task
+  alias BubbleEx.Plan.{Signature, Task}
   alias BubbleEx.Tasks
   alias BubbleEx.Tasks.{State, Store}
 
@@ -66,6 +82,7 @@ defmodule Mix.Tasks.Wtf.Task do
     app: :string,
     trusted_reviewer: :keep,
     reviewer: :string,
+    trusted: :boolean,
     summary: :string,
     needs_decision: :string,
     info: :string,
@@ -88,6 +105,7 @@ defmodule Mix.Tasks.Wtf.Task do
   end
 
   defp command(["sync" | rest], root, opts, now), do: sync(rest, root, opts, now)
+  defp command(["sign-result" | files], _root, _opts, _now), do: sign_results(files)
 
   defp command([cmd | rest], root, opts, now) do
     board = ok!(Tasks.load(root))
@@ -139,7 +157,7 @@ defmodule Mix.Tasks.Wtf.Task do
          ) do
       {:ok, report} ->
         print_report(report)
-        info("#{id} done")
+        info("#{id} done (#{mode(report.mode)})")
 
       {:error, %{context: %{report: report}} = e} ->
         print_report(report)
@@ -199,6 +217,7 @@ defmodule Mix.Tasks.Wtf.Task do
       })
     else
       print_audit(result)
+      info(mode(result.mode))
     end
 
     if result.flipped != [],
@@ -236,10 +255,38 @@ defmodule Mix.Tasks.Wtf.Task do
     if write?, do: info("wrote #{Store.plan_path()}")
   end
 
+  defp sign_results([]), do: usage()
+
+  defp sign_results(files) do
+    key = key!()
+
+    for file <- files do
+      bytes = File.read!(file)
+      ok!(BubbleEx.Verify.Result.from_json(bytes))
+      File.write!(file <> ".sig", Signature.sign_file(bytes, "result", key) <> "\n")
+      info("signed #{file}")
+    end
+  end
+
+  defp key! do
+    case Signature.decode_key(System.get_env("WTF_PLAN_SIGNING_KEY")) do
+      {:ok, key} -> key
+      {:error, e} -> Mix.raise("--trusted: " <> e.message)
+    end
+  end
+
+  defp mode(:trusted), do: "trusted: verified against the signed plan"
+
+  defp mode(_),
+    do:
+      "advisory: not verified (the agent can edit everything checked); " <>
+        "run audit --trusted with WTF_PLAN_SIGNING_KEY for a verdict"
+
   # --- options ----------------------------------------------------------------------
 
   defp check_opts(opts, now) do
     [
+      key: if(opts[:trusted], do: key!()),
       now: now,
       evidence: Keyword.get_values(opts, :evidence),
       app: opts[:app],
@@ -253,7 +300,7 @@ defmodule Mix.Tasks.Wtf.Task do
     |> Map.new(fn text ->
       case Regex.run(~r/\A(\d+)=(.*)\z/s, text) do
         [_, n, rest] -> {String.to_integer(n), rest}
-        nil -> {:all, text}
+        nil -> Mix.raise("--attest takes CRITERION=TEXT: name the criterion it attests")
       end
     end)
   end
@@ -298,6 +345,9 @@ defmodule Mix.Tasks.Wtf.Task do
 
   defp print_audit(result) do
     for r <- result.reports, r.stale or r.task in result.flipped, do: print_audited(r)
+
+    for id <- result.flipped -- Enum.map(result.reports, & &1.task),
+        do: info("#{id}: a subtask failed")
 
     info(
       "audited #{length(result.checked)} done tasks; #{length(result.flipped)} need re-verifying"

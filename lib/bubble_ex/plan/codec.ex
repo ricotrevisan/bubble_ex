@@ -7,7 +7,9 @@ defmodule BubbleEx.Plan.Codec do
     * `schema_version` must be `BubbleEx.Plan.schema_version/0` (an older
       plan is rebuilt, not migrated)
     * `plan_sha256` must be the SHA-256 of the rest of the plan: a
-      hand-edited or truncated plan is refused
+      truncated or carelessly edited plan is refused. This is not
+      authentication (anyone can recompute it); a trusted run verifies
+      the plan's signature (`BubbleEx.Plan.Signature`) instead
     * every task has a unique `id`, a known `kind`, `actor` and `status`,
       dependencies of a known kind on tasks of the plan, a `parent` in the
       plan, criteria with a known check (`BubbleEx.Plan.Criteria`) and
