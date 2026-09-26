@@ -3,7 +3,8 @@ defmodule BubbleEx.Db.Encoder.Literal do
   Quoting for names that encoders write into their target syntax (WTF-408).
   Bubble names are arbitrary text: quotes, backslashes, `--`, `*/` and line
   breaks (CR, LF, VT, FF, NEL, LS, PS) all occur, and none may end a literal
-  or comment early. Each function follows its format's grammar, and the
+  or comment early, nor start a line a batch tool reads as a command (T-SQL's
+  `GO`). Each function follows its format's grammar, and the
   generated-schema syntax check (`test/support/syntax_check`) parses the
   output of the `hostile_names` fixture with the real parsers.
   """
@@ -46,6 +47,31 @@ defmodule BubbleEx.Db.Encoder.Literal do
       |> escape_controls()
 
     "'" <> escaped <> "'"
+  end
+
+  @doc """
+  A T-SQL bracket-quoted identifier (`[...]`) that stays on one line, with
+  embedded `]` doubled. T-SQL allows raw line breaks inside brackets, but
+  sqlcmd and SSMS split batches on any line that is only `GO` (or `GO n`)
+  before the server parses anything, so a name holding such a line would cut
+  the script in two (WTF-409). A name with control characters or line
+  separators therefore has each of them replaced by a space and gets a
+  suffix of `_` and the first 8 hex digits of the SHA-256 of the original
+  name, so it stays deterministic and cannot collide with the name that
+  already had spaces. Every other name is kept verbatim.
+  """
+  @spec tsql_bracketed(String.t()) :: String.t()
+  def tsql_bracketed(name) do
+    "[" <> String.replace(single_line(name), "]", "]]") <> "]"
+  end
+
+  defp single_line(name) do
+    if name =~ @escaped do
+      suffix = :crypto.hash(:sha256, name) |> Base.encode16(case: :lower) |> binary_part(0, 8)
+      Regex.replace(@escaped, name, " ") <> "_" <> suffix
+    else
+      name
+    end
   end
 
   @doc """

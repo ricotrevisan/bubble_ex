@@ -1,0 +1,75 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Batch
+GO
+split" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "a
+GO
+b" text,
+  "c
+go
+d" text,
+  "e
+ GO 
+f" text,
+  "g
+GO 5
+h" text,
+  "i
+GO
+j" text,
+  "a GO b" text,
+  "k
+:r evil.sql
+!!del x]
+GO" text,
+  "owner
+GO
+" text,
+  "kind" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Kind
+GO" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Batch\nGO\nsplit"."Created By" -> "custom"."User"."_id"
+-- "custom"."Batch\nGO\nsplit"."owner\nGO\n" -> "custom"."User"."_id"
+-- "custom"."Batch\nGO\nsplit"."kind" -> "option"."Kind\nGO"."db_value"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."Batch
+GO
+split"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Batch
+GO
+split"."owner
+GO
+" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Batch
+GO
+split"."kind" IS E'References "option"."Kind\nGO"."db_value" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one

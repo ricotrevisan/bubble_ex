@@ -9,16 +9,14 @@ CREATE TABLE [custom].[Order's "list" */ -- x] (
   [Modified Date] DATETIME2,
   [Created By] NVARCHAR(450),
   [Slug] NVARCHAR(MAX),
-  [customer'); DROP TABLE x; --
-next LS PSNELVTFF \' */ /* "q"] NVARCHAR(450),
+  [customer'); DROP TABLE x; -- next  LS PS NEL VT FF \' */ /* "q"_ae00b47b] NVARCHAR(450),
   [status' || 'x] NVARCHAR(450),
   [note -- */] NVARCHAR(MAX),
   [target] NVARCHAR(450),
   CONSTRAINT [PK_order_s_list_x] PRIMARY KEY ([_id])
 );
 
-CREATE TABLE [custom].[Target
-line 'q' \   */ end] (
+CREATE TABLE [custom].[Target line 'q' \   */ end_112699a7] (
   [_id] NVARCHAR(450),
   [Created Date] DATETIME2,
   [Modified Date] DATETIME2,
@@ -46,10 +44,10 @@ CREATE TABLE [option].[Status 'quoted' \] (
 
 -- References without a foreign key (Bubble does not enforce referential integrity):
 -- [custom].[Order's "list" */ -- x].[Created By] -> [custom].[User].[_id]
--- [custom].[Order's "list" */ -- x].[customer'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\vVT\fFF \\' */ /* "q"] -> [custom].[User].[_id]
+-- [custom].[Order's "list" */ -- x].[customer'); DROP TABLE x; -- next  LS PS NEL VT FF \\' */ /* "q"_ae00b47b] -> [custom].[User].[_id]
 -- [custom].[Order's "list" */ -- x].[status' || 'x] -> [option].[Status 'quoted' \\].[db_value]
--- [custom].[Order's "list" */ -- x].[target] -> [custom].[Target\nline 'q' \\ \u2028 */ end].[_id]
--- [custom].[Target\nline 'q' \\ \u2028 */ end].[Created By] -> [custom].[User].[_id]
+-- [custom].[Order's "list" */ -- x].[target] -> [custom].[Target line 'q' \\   */ end_112699a7].[_id]
+-- [custom].[Target line 'q' \\   */ end_112699a7].[Created By] -> [custom].[User].[_id]
 -- [custom].[User].[Created By] -> [custom].[User].[_id]
 --- diagnostics ---
 model_option_key_missing /option_sets/status/values/open
