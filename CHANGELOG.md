@@ -6,6 +6,11 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Parity exceptions name the checks they excuse** (WTF-381). `BubbleEx.Decision`
+  parity exceptions take a required `params.checks`: a non-empty list of
+  registered `BubbleEx.Verify.Check` names (sorted, unique). Still
+  `schema_version` 1 (no parity exceptions had been stored); bubble_wtf
+  (WTF-402) must send it when it bumps its bubble_ex pin.
 - **`BubbleEx.Verify` formats** (WTF-381, V1 of the WTF-358 verification
   proposal). Stack-neutral, versioned (`schema_version` 1), strict JSON
   codecs with canonical encoding and content hashes for seeds

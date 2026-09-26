@@ -1,5 +1,6 @@
 {
   "actor": "agent:fixer",
+  "app": "acme-replay-demo",
   "basis": {
     "decisions_sha256": null,
     "source_sha256": null

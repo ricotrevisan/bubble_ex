@@ -9,6 +9,7 @@ defmodule BubbleEx.Verify.Result do
     "format": "bubble_ex.verify.result",
     "schema_version": 1,
     "id": "privacy_read.custom.task.w2_member",
+    "app": "acme-replay-demo",
     "check": "privacy_read",
     "level": "L2",
     "class": "privacy",
@@ -32,7 +33,8 @@ defmodule BubbleEx.Verify.Result do
   }
   ```
 
-  `level` and `class` come from the check (`BubbleEx.Verify.Check`); a
+  `app` is the Bubble app ID (`BubbleEx.Verify.Replay.app/1`) the result
+  verifies. `level` and `class` come from the check (`BubbleEx.Verify.Check`); a
   result that states others is `:invalid_input`.
 
   ## Statuses
@@ -49,18 +51,19 @@ defmodule BubbleEx.Verify.Result do
   | `quarantined` | no, blocks cutover | `behavior` checks only: a `waiver` with a reason, `since` (the first quarantine, not after `ran_at`) and `expires_at` after `ran_at` and at most 7 days after `since`; no decision |
   | `fail` | no | no decision or waiver |
   | `stale` | no | `stale_reasons` (`BubbleEx.Verify.Staleness`); the rest is kept as it was |
-  | `skipped` | no for privacy, data and auth; yes elsewhere | a `reason` |
+  | `skipped` | never (reported separately) | a `reason` |
   | `error` | no | a `reason` |
 
   So agents can never accept a privacy, data or auth difference: those
   classes have no waivers and no quarantine, and a finding decision or
-  parity exception must be the owner's (`link_decision/3` checks the
+  parity exception must be the owner's (`link_decision/2` checks the
   author recorded in the decision store). Structural and gate checks accept
   no difference at all.
 
   L2 and L3 results other than `stale`, `skipped` and `error` need a
   `scenario` and an `oracle`. A Bubble oracle names its replay branch
-  (`BubbleEx.Verify.Replay`). A result whose oracle is `model` (the
+  (`BubbleEx.Verify.Replay`); an `export` oracle is for L4 data and auth
+  checks only. A result whose oracle is `model` (the
   interpreter) never counts as Bubble-verified at any level (`evaluate/3`,
   decision D2 on WTF-358).
 
@@ -70,20 +73,23 @@ defmodule BubbleEx.Verify.Result do
   with the finding's `proposal_sha256`, or a `parity_exception:` key with
   `proposal_sha256` null (parity exceptions are the `BubbleEx.Decision`
   envelope of kind `:parity_exception`; they have no proposal).
-  `link_decision/3` checks the reference against `BubbleEx.Decision.resolve/3`
-  output (author, relevance, hashes) and turns the result `stale` when the
+  `link_decision/2` checks the reference against `BubbleEx.Decision.resolve/3`
+  output (author; for findings, a kind that explains the check and diff
+  ops (`BubbleEx.Verify.Check.explains?/3`) and a subject covering every
+  diff entry; for parity exceptions, the excused `checks`, scope and
+  subject; hashes) and turns the result `stale` when the
   decision no longer holds.
   """
 
-  alias BubbleEx.{CanonicalJson, Decision, Error, Finding}
+  alias BubbleEx.{CanonicalJson, Decision, Error}
   alias BubbleEx.Decision.Resolved
-  alias BubbleEx.Verify.{Check, Json, Recording, Replay, Scenario}
+  alias BubbleEx.Verify.{Check, Json, Recording, Replay}
 
   @format "bubble_ex.verify.result"
   @schema_version 1
-  @members ~w(format schema_version id check level class status subjects tasks scenario oracle
+  @members ~w(format schema_version id app check level class status subjects tasks scenario oracle
               basis subject_build diff evidence decision waiver reason stale_reasons actor ran_at)
-  @required ~w(format schema_version id check status actor ran_at)
+  @required ~w(format schema_version id app check status actor ran_at)
 
   @statuses [:pass, :decided_difference, :waived, :quarantined, :fail, :stale, :skipped, :error]
   @stale_reasons [
@@ -132,6 +138,7 @@ defmodule BubbleEx.Verify.Result do
         }
   @type t :: %__MODULE__{
           id: String.t(),
+          app: String.t(),
           check: String.t(),
           level: Check.level(),
           class: Check.class(),
@@ -155,6 +162,7 @@ defmodule BubbleEx.Verify.Result do
   @enforce_keys [:id, :check, :status, :actor, :ran_at]
   defstruct [
     :id,
+    :app,
     :check,
     :level,
     :class,
@@ -222,6 +230,7 @@ defmodule BubbleEx.Verify.Result do
 
   defp fields(map) do
     with {:ok, id} <- Json.symbol(map["id"], "result id"),
+         {:ok, app} <- Replay.app(map["app"]),
          {:ok, check} <- Json.string(map["check"], "result check"),
          {:ok, {level, class}} <- Check.fetch(check),
          :ok <- stated(map["level"], Check.level_json(level), "level"),
@@ -245,6 +254,7 @@ defmodule BubbleEx.Verify.Result do
       {:ok,
        %__MODULE__{
          id: id,
+         app: app,
          check: check,
          level: level,
          class: class,
@@ -583,8 +593,17 @@ defmodule BubbleEx.Verify.Result do
   # Behavioural results need what they were compared against, and a
   # reviewer's visual waiver needs the attestation.
   defp evidence_rule(r) do
-    with :ok <- compared_rule(r), do: attestation_rule(r)
+    with :ok <- compared_rule(r),
+         :ok <- export_rule(r),
+         do: attestation_rule(r)
   end
+
+  # An export (the WTF-357 backup) is the oracle of L4 data and auth checks
+  # only.
+  defp export_rule(%{oracle: %{kind: :export}, class: class}) when class not in [:data, :auth],
+    do: Json.error("an export oracle is for L4 data and auth checks only", %{class: class})
+
+  defp export_rule(_r), do: :ok
 
   defp compared_rule(%{level: level, status: status} = r)
        when level in [:l2, :l3] and status not in [:stale, :skipped, :error] do
@@ -615,6 +634,7 @@ defmodule BubbleEx.Verify.Result do
       "format" => @format,
       "schema_version" => @schema_version,
       "id" => r.id,
+      "app" => r.app,
       "check" => r.check,
       "level" => r.level && Check.level_json(r.level),
       "class" => Json.json(r.class),
@@ -654,47 +674,61 @@ defmodule BubbleEx.Verify.Result do
   @typedoc "What `evaluate/3` concludes about a result."
   @type verdict :: %{result: t(), passing: boolean(), bubble_verified: boolean()}
 
+  # Classes compared against an oracle; they need it, and the artifact
+  # behind it in `evidence`, to count.
+  @oracle_classes [:privacy, :data, :auth, :behavior, :visual]
+
   @doc """
   Evaluates a decoded result against the current decisions. This is the
   only way to learn whether a result counts: decoding checks a result's
-  shape and status rules, but a `waived` or `decided_difference` result
-  only counts once its decision is checked against the decision store, and
-  a reviewer's waiver only once the reviewer is known.
+  shape and status rules, but a result only counts once its decision is
+  checked against the decision store, its evidence is present and, for a
+  Bubble-verified verdict, its oracle artifact is supplied and matches.
 
-  `resolved` is `BubbleEx.Decision.resolve/3` output. Options:
+  `resolved` is `BubbleEx.Decision.resolve/3` output **for the result's
+  app** (decision records carry no app; resolving the right store is the
+  caller's job). Options:
 
     * `:now` (required) - a `ran_at` more than `:skew_seconds` (default
       300) after it is `:invalid_input`
+    * `:app` (required) - the Bubble app ID being verified; a result or a
+      recording for another app is `:invalid_input`
     * `:reviewers` - IDs of the acceptance reviewers the caller trusts
       (default `[]`). A reviewer's waiver whose actor ID is not listed does
       not count: waiver actors are self-declared
-    * `:findings`, `:scenario` - passed to `link_decision/3` (relevance)
-    * `:recording` - the recording the oracle cites (`check_recording/2`).
-      Without it a `bubble` oracle is not trusted, so the result is not
-      Bubble-verified
+    * `:recording` - the recording a `bubble` or `model` oracle cites
+      (`check_recording/2`)
+    * `:export_sha256` - the SHA-256 of the export an `export` oracle cites,
+      computed by the caller from the export it loaded
 
-  Returns the result after `link_decision/3` (possibly `stale`) and:
+  Returns the result after `link_decision/2` (possibly `stale`) and:
 
     * `passing` - `pass`, `decided_difference` or `waived` (a reviewer
-      waiver only from a trusted reviewer), and `skipped` outside the
-      privacy, data and auth classes
-    * `bubble_verified` - passing and, for privacy, data, auth, behaviour
-      and visual checks at any level, compared against a `bubble` oracle
-      whose recording was given and matches, or an `export` oracle (L4
-      data). A `model` oracle (the interpreter) never counts (decision D2)
+      waiver only from a trusted reviewer), **with evidence**: structural
+      checks need none; privacy, data, auth, behaviour and visual checks
+      need an oracle and an `evidence` entry whose `sha256` is the
+      oracle's; traceability, attested and gate checks need at least one
+      `evidence` entry. `skipped` never counts as passing (report it
+      separately); nor do `quarantined`, `fail`, `stale` and `error`
+    * `bubble_verified` - passing and, for the oracle classes, verified
+      against the supplied artifact: a `bubble` oracle with its matching
+      recording, or (L4 data and auth only) an `export` oracle whose
+      `:export_sha256` matches. A `model` oracle (the interpreter) never
+      counts (decision D2)
   """
   @spec evaluate(t(), Resolved.t(), keyword()) :: {:ok, verdict()} | {:error, Error.t()}
   def evaluate(%__MODULE__{} = r, %Resolved{} = resolved, opts) do
     with :ok <- not_future(r, opts),
-         {:ok, linked} <- link_decision(r, resolved, opts),
+         :ok <- same_app(r, opts[:app]),
+         {:ok, linked} <- link_decision(r, resolved),
          :ok <- maybe_recording(linked, opts[:recording]) do
-      passing = counts?(linked, Keyword.get(opts, :reviewers, []))
+      passing = counts?(linked, Keyword.get(opts, :reviewers, [])) and evidenced?(linked)
 
       {:ok,
        %{
          result: linked,
          passing: passing,
-         bubble_verified: passing and oracle_verified?(linked, opts[:recording])
+         bubble_verified: passing and oracle_verified?(linked, opts)
        }}
     end
   end
@@ -723,6 +757,12 @@ defmodule BubbleEx.Verify.Result do
     end
   end
 
+  defp same_app(%{app: app}, app) when is_binary(app), do: :ok
+  defp same_app(_r, nil), do: Json.error("evaluate needs app: the Bubble app ID")
+
+  defp same_app(r, app),
+    do: Json.error("the result is for another app", %{app: r.app, expected: app})
+
   defp maybe_recording(_r, nil), do: :ok
   defp maybe_recording(r, recording), do: check_recording(r, recording)
 
@@ -732,16 +772,21 @@ defmodule BubbleEx.Verify.Result do
     do: id in reviewers
 
   defp counts?(%{status: :waived}, _), do: true
-  defp counts?(%{status: :skipped, class: class}, _), do: class not in [:privacy, :data, :auth]
   defp counts?(_, _), do: false
 
-  @oracle_classes [:privacy, :data, :auth, :behavior, :visual]
+  defp evidenced?(%{class: :structural}), do: true
 
-  defp oracle_verified?(%{class: class, oracle: oracle}, recording)
-       when class in @oracle_classes do
+  defp evidenced?(%{class: class, oracle: %{sha256: sha}, evidence: evidence})
+       when class in @oracle_classes,
+       do: Enum.any?(evidence, &(&1.sha256 == sha))
+
+  defp evidenced?(%{class: class}) when class in @oracle_classes, do: false
+  defp evidenced?(%{evidence: evidence}), do: evidence != []
+
+  defp oracle_verified?(%{class: class, oracle: oracle}, opts) when class in @oracle_classes do
     case oracle do
-      %{kind: :bubble} -> recording != nil
-      %{kind: :export} -> class in [:data, :auth, :privacy]
+      %{kind: :bubble} -> opts[:recording] != nil
+      %{kind: :export, sha256: sha} -> class in [:data, :auth] and opts[:export_sha256] == sha
       _ -> false
     end
   end
@@ -750,36 +795,31 @@ defmodule BubbleEx.Verify.Result do
   defp oracle_verified?(_, _), do: true
 
   @doc """
-  Checks that the result's oracle is `recording`: same SHA-256, same kind
-  (`bubble` / `model`), same branch, and the same scenario.
+  Checks that the result's oracle is `recording`: a complete recording
+  with the same SHA-256, oracle kind and branch, for the same app and the
+  same scenario (ID and hash).
   """
   @spec check_recording(t(), Recording.t()) :: :ok | {:error, Error.t()}
+  def check_recording(%__MODULE__{oracle: nil}, %Recording{}),
+    do: Json.error("the result has no oracle to check")
+
   def check_recording(%__MODULE__{oracle: oracle} = r, %Recording{} = rec) do
     branch = if rec.oracle == :bubble, do: rec.source.branch
 
-    cond do
-      oracle == nil ->
-        Json.error("the result has no oracle to check")
-
-      oracle.sha256 != Recording.sha256(rec) ->
-        Json.error("the result's oracle is another recording", %{sha256: oracle.sha256})
-
-      oracle.kind != rec.oracle ->
-        Json.error("the result's oracle kind differs from its recording's", %{
-          kind: oracle.kind,
-          recording: rec.oracle
-        })
-
-      oracle.branch != branch ->
-        Json.error("the result's oracle branch differs from its recording's", %{
-          branch: oracle.branch
-        })
-
-      r.scenario == nil or r.scenario.id != rec.scenario.id ->
-        Json.error("the recording is for another scenario", %{scenario: rec.scenario.id})
-
-      true ->
-        :ok
+    [
+      {not rec.complete, "the recording is incomplete and never an oracle"},
+      {oracle.sha256 != Recording.sha256(rec), "the result's oracle is another recording"},
+      {oracle.kind != rec.oracle, "the result's oracle kind differs from its recording's"},
+      {oracle.branch != branch, "the result's oracle branch differs from its recording's"},
+      {rec.source.app != r.app, "the recording is for another app"},
+      {r.scenario == nil or r.scenario.id != rec.scenario.id or
+         r.scenario.sha256 != rec.scenario.sha256,
+       "the recording is for another scenario or scenario version"}
+    ]
+    |> Enum.find(&elem(&1, 0))
+    |> case do
+      nil -> :ok
+      {true, message} -> Json.error(message, %{oracle: oracle, recording: rec.scenario})
     end
   end
 
@@ -807,76 +847,122 @@ defmodule BubbleEx.Verify.Result do
   when the decision no longer holds:
 
     * finding decisions: the current record of the key must accept or
-      modify, and be **relevant**: its subject is contained in the result's
-      subjects, or `opts[:scenario]` is the result's scenario (same ID and
-      hash) and lists the finding in `covers.findings`. For privacy, data
-      and auth checks it must also be authored by the **owner**. A
-      different `proposal_sha256` is `:decision_changed`; a `:stale` or
-      `:orphaned` record is `:decision_stale` / `:decision_orphaned`
+      modify; its finding kind must explain the result's check and every
+      diff op (`BubbleEx.Verify.Check.explains?/3`); and every diff entry
+      must fall within the finding's subject (each subject key equals the
+      entry's own `type`/`field`/`rule`/`workflow`, or else the result's
+      subject of that key). For privacy, data and auth checks the
+      decision must be authored by the **owner**. A different
+      `proposal_sha256` is `:decision_changed`; a `:stale` or `:orphaned`
+      record is `:decision_stale` / `:decision_orphaned`
     * parity exceptions: the current record must accept, be authored by the
-      **owner** (an agent's parity exception excuses nothing), have a `scope`
-      equal to the result's scenario ID or result ID, a subject whose every
-      entry the result's subjects contain and, when the result has a
-      scenario, pin it: `basis.scenario_sha256` is required, and a
-      different hash is `:decision_changed`. An `:expired` or `:withdrawn`
-      one is `:decision_expired` / `:decision_withdrawn`
+      **owner** (an agent's parity exception excuses nothing), list the
+      result's check in `params.checks`, have a `scope` equal to the
+      result's scenario ID (or, for a result with no scenario, its check
+      name) and a subject within the result's subjects, and on a scenario
+      pin it: `basis.scenario_sha256` is required, and a different hash is
+      `:decision_changed`. An `:expired` or `:withdrawn` one is
+      `:decision_expired` / `:decision_withdrawn`
 
   A key with no record, or a record that breaks these rules, is
   `:invalid_input`. A result without a decision is returned unchanged.
-  Options: `:scenario` (a `BubbleEx.Verify.Scenario`), `:findings` (the
-  current `BubbleEx.Finding`s; a finding listed in the scenario's covers
-  must also be among them when given).
   """
-  @spec link_decision(t(), Resolved.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
-  def link_decision(result, resolved, opts \\ [])
-  def link_decision(%__MODULE__{decision: nil} = r, %Resolved{}, _opts), do: {:ok, r}
+  @spec link_decision(t(), Resolved.t()) :: {:ok, t()} | {:error, Error.t()}
+  def link_decision(%__MODULE__{decision: nil} = r, %Resolved{}), do: {:ok, r}
 
-  def link_decision(%__MODULE__{decision: ref} = r, %Resolved{entries: entries}, opts) do
+  def link_decision(%__MODULE__{decision: ref} = r, %Resolved{entries: entries}) do
     case Enum.find(entries, &(&1.decision.key == ref.key and &1.state != :superseded)) do
       nil -> Json.error("the result cites a decision that does not exist", %{key: ref.key})
-      entry -> linked(r, ref, entry, opts)
+      entry -> linked(r, ref, entry)
     end
   end
 
-  defp linked(r, %{kind: :finding} = ref, %{decision: %Decision{} = d, state: state}, opts) do
-    cond do
-      d.choice not in [:accept, :modify] ->
-        Json.error("only an accepted or modified finding explains a difference", %{
-          key: ref.key,
-          choice: d.choice
-        })
-
-      r.class in [:privacy, :data, :auth] and not owner?(d) ->
-        Json.error("#{r.class} differences are explained only by the owner's decisions", %{
-          key: ref.key,
-          author: d.author
-        })
-
-      not relevant?(r, d, opts) ->
-        Json.error("the finding decision is about another subject or scenario", %{
-          key: ref.key,
-          subject: d.subject
-        })
-
-      d.basis[:proposal_sha256] != ref.proposal_sha256 ->
-        {:ok, mark_stale(r, [:decision_changed])}
-
-      true ->
-        {:ok, mark_stale(r, state_reasons(state))}
+  defp linked(r, %{kind: :finding} = ref, %{decision: %Decision{} = d, state: state}) do
+    with :ok <- finding_choice(ref, d),
+         :ok <- finding_owner(r, ref, d),
+         :ok <- finding_explains(r, ref, d),
+         :ok <- finding_subject(r, ref, d) do
+      if d.basis[:proposal_sha256] != ref.proposal_sha256,
+        do: {:ok, mark_stale(r, [:decision_changed])},
+        else: {:ok, mark_stale(r, state_reasons(state))}
     end
   end
 
-  defp linked(r, %{kind: :parity_exception}, %{state: :withdrawn}, _),
+  defp linked(r, %{kind: :parity_exception}, %{state: :withdrawn}),
     do: {:ok, mark_stale(r, [:decision_withdrawn])}
 
-  defp linked(r, %{kind: :parity_exception} = ref, %{decision: %Decision{} = d, state: state}, _) do
+  defp linked(r, %{kind: :parity_exception} = ref, %{decision: %Decision{} = d, state: state}) do
     with :ok <- parity_owner(ref, d),
+         :ok <- parity_checks(r, ref, d),
          :ok <- parity_covers(r, d),
          :ok <- parity_pins(r, ref, d) do
       if r.scenario != nil and d.basis.scenario_sha256 != r.scenario.sha256,
         do: {:ok, mark_stale(r, [:decision_changed])},
         else: {:ok, mark_stale(r, state_reasons(state))}
     end
+  end
+
+  defp finding_choice(ref, d) do
+    if d.choice in [:accept, :modify],
+      do: :ok,
+      else:
+        Json.error("only an accepted or modified finding explains a difference", %{
+          key: ref.key,
+          choice: d.choice
+        })
+  end
+
+  defp finding_owner(%{class: class}, ref, d) when class in [:privacy, :data, :auth] do
+    if owner?(d),
+      do: :ok,
+      else:
+        Json.error("#{class} differences are explained only by the owner's decisions", %{
+          key: ref.key,
+          author: d.author
+        })
+  end
+
+  defp finding_owner(_r, _ref, _d), do: :ok
+
+  defp finding_explains(r, ref, d) do
+    kind = finding_kind(d.basis[:finding_id])
+
+    case Enum.reject(r.diff, &Check.explains?(kind, r.check, &1.op)) do
+      [] ->
+        :ok
+
+      unexplained ->
+        Json.error("the finding's kind does not explain this check's differences", %{
+          key: ref.key,
+          check: r.check,
+          ops: unexplained |> Enum.map(& &1.op) |> Enum.uniq()
+        })
+    end
+  end
+
+  defp finding_kind(id) when is_binary(id) do
+    [name | _] = String.split(id, ":", parts: 2)
+    Enum.find(BubbleEx.Finding.Kinds.all(), &(Atom.to_string(&1) == name))
+  end
+
+  defp finding_kind(_), do: nil
+
+  # Every diff entry is about the finding's subject: the entry's own Bubble
+  # IDs, else the result's subject, must equal each subject entry.
+  defp finding_subject(r, ref, d) do
+    outside =
+      Enum.reject(r.diff, fn entry ->
+        map_size(d.subject) > 0 and
+          Enum.all?(d.subject, fn {k, v} -> Map.get(entry, k, Map.get(r.subjects, k)) == v end)
+      end)
+
+    if outside == [],
+      do: :ok,
+      else:
+        Json.error("the finding decision is about another subject than the differences", %{
+          key: ref.key,
+          subject: d.subject
+        })
   end
 
   defp parity_owner(ref, d) do
@@ -889,12 +975,25 @@ defmodule BubbleEx.Verify.Result do
         })
   end
 
+  defp parity_checks(r, ref, d) do
+    if r.check in Map.get(d.params, :checks, []),
+      do: :ok,
+      else:
+        Json.error("the parity exception does not excuse this check", %{
+          key: ref.key,
+          check: r.check,
+          checks: Map.get(d.params, :checks)
+        })
+  end
+
   defp parity_covers(r, d) do
+    scope = if r.scenario, do: r.scenario.id, else: r.check
+
     cond do
-      d.params.scope not in [r.id, r.scenario && r.scenario.id] ->
+      d.params.scope != scope ->
         Json.error("the parity exception's scope is another scenario or check", %{
           scope: d.params.scope,
-          result: r.id
+          expected: scope
         })
 
       not within?(d.subject, r.subjects) ->
@@ -920,19 +1019,6 @@ defmodule BubbleEx.Verify.Result do
 
   defp within?(subject, subjects),
     do: map_size(subject) > 0 and Enum.all?(subject, fn {k, v} -> Map.get(subjects, k) == v end)
-
-  defp relevant?(r, d, opts) do
-    within?(d.subject, r.subjects) or covered?(r, d, opts[:scenario], opts[:findings])
-  end
-
-  defp covered?(%{scenario: %{id: id, sha256: sha}}, d, %Scenario{id: id} = s, findings) do
-    finding_id = d.basis[:finding_id]
-
-    Scenario.sha256(s) == sha and finding_id in s.covers.findings and
-      (findings == nil or Enum.any?(findings, &match?(%Finding{id: ^finding_id}, &1)))
-  end
-
-  defp covered?(_r, _d, _scenario, _findings), do: false
 
   defp state_reasons(:active), do: []
   defp state_reasons(:stale), do: [:decision_stale]

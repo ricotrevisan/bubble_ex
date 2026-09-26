@@ -28,8 +28,8 @@ defmodule BubbleEx.Verify.Recording do
   branch, both checked by `BubbleEx.Verify.Replay` (D1: replay runs on a
   `wtfreplay…` child branch, never live or test; the app is an app ID, never
   a custom domain); `app_version` is Bubble's version marker when known.
-  `model`: expectations from the model interpreter; `source` needs
-  `bubble_ex` (the interpreter's version) and may carry
+  `model`: expectations from the model interpreter; `source` needs the
+  Bubble app ID and `bubble_ex` (the interpreter's version) and may carry
   `index_semantic_sha256`. A `model` recording never counts as
   Bubble-verified (see `BubbleEx.Verify.Result.evaluate/3`).
 
@@ -182,11 +182,17 @@ defmodule BubbleEx.Verify.Recording do
 
   defp source(:model, map) do
     with :ok <-
-           Json.members(map, ~w(bubble_ex index_semantic_sha256), ~w(bubble_ex), "model source"),
+           Json.members(
+             map,
+             ~w(app bubble_ex index_semantic_sha256),
+             ~w(app bubble_ex),
+             "model source"
+           ),
+         {:ok, app} <- Replay.app(map["app"]),
          {:ok, version} <- Json.string(map["bubble_ex"], "source bubble_ex"),
          {:ok, sha} <-
            Json.optional_sha256(map["index_semantic_sha256"], "source index_semantic_sha256") do
-      {:ok, %{bubble_ex: version, index_semantic_sha256: sha}}
+      {:ok, %{app: app, bubble_ex: version, index_semantic_sha256: sha}}
     end
   end
 

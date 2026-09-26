@@ -15,7 +15,7 @@ defmodule BubbleEx.Verify.Staleness do
   generation inputs makes every result re-run), the scenario hashes and
   the oracle's `sha256` (the recording's `BubbleEx.Verify.Recording.sha256/1`).
   A pinned hash that is `nil` on either side is not compared. Decision
-  validity itself is `BubbleEx.Verify.Result.link_decision/3`.
+  validity itself is `BubbleEx.Verify.Result.link_decision/2`.
 
   Reasons are `BubbleEx.Verify.Result.stale_reasons/0`;
   `BubbleEx.Verify.Result.mark_stale/2` applies them.

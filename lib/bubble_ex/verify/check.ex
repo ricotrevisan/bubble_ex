@@ -69,6 +69,31 @@ defmodule BubbleEx.Verify.Check do
   # Classes a finding decision can explain (status `decided_difference`).
   @decided [:traceability, :attested, :privacy, :data, :auth, :behavior, :visual]
 
+  # Which finding kinds can explain which differences: the checks and the
+  # diff ops an accepted finding of that kind may account for. A finding
+  # outside this map (or a hint) explains nothing.
+  @writes ~w(field_changed record_updated)
+  @explains %{
+    privacy_access_list:
+      {~w(privacy_read privacy_spot_check), ~w(record_visible field_visible record_set)},
+    denormalized_field:
+      {~w(row_hashes workflow_side_effects api_workflow), ~w(row_hash field_value) ++ @writes},
+    redundant_reverse_list:
+      {~w(row_hashes workflow_side_effects api_workflow), ~w(row_hash field_value) ++ @writes},
+    list_relationship:
+      {~w(row_hashes dangling_refs workflow_side_effects api_workflow),
+       ~w(row_hash field_value dangling_refs record_created) ++ @writes},
+    id_in_text: {~w(row_hashes dangling_refs), ~w(row_hash field_value dangling_refs)},
+    number_type:
+      {~w(row_hashes workflow_side_effects api_workflow),
+       ~w(row_hash field_value response_field) ++ @writes},
+    search_index: {[], []}
+  }
+
+  for kind <- BubbleEx.Finding.Kinds.all(), not Map.has_key?(@explains, kind) do
+    raise "finding kind #{inspect(kind)} has no entry in BubbleEx.Verify.Check @explains"
+  end
+
   @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :page, :element]
 
   @type level :: :l0 | :l1 | :l2 | :l3 | :l4 | :l5
@@ -112,6 +137,30 @@ defmodule BubbleEx.Verify.Check do
   @doc "Whether a finding decision can explain a difference in `class`."
   @spec decidable?(class()) :: boolean()
   def decidable?(class), do: class in @decided
+
+  @doc """
+  Whether an accepted finding of `kind` can explain a difference of diff op
+  `op` in `check`. The map, by finding kind:
+
+  | finding kind | checks | diff ops |
+  |--------------|--------|----------|
+  | `privacy_access_list` | `privacy_read`, `privacy_spot_check` | `record_visible`, `field_visible`, `record_set` |
+  | `denormalized_field`, `redundant_reverse_list` | `row_hashes`, `workflow_side_effects`, `api_workflow` | `row_hash`, `field_value`, `field_changed`, `record_updated` |
+  | `list_relationship` | the same plus `dangling_refs` | the same plus `dangling_refs`, `record_created` |
+  | `id_in_text` | `row_hashes`, `dangling_refs` | `row_hash`, `field_value`, `dangling_refs` |
+  | `number_type` | `row_hashes`, `workflow_side_effects`, `api_workflow` | `row_hash`, `field_value`, `response_field`, `field_changed`, `record_updated` |
+  | `search_index` (a hint) | none | none |
+
+  Renames are not findings and explain nothing: a rename changes names,
+  not behaviour.
+  """
+  @spec explains?(atom(), String.t(), String.t()) :: boolean()
+  def explains?(kind, check, op) do
+    case Map.fetch(@explains, kind) do
+      {:ok, {checks, ops}} -> check in checks and op in ops
+      :error -> false
+    end
+  end
 
   @doc "The subject keys results and scenarios use (all Bubble IDs)."
   @spec subject_keys() :: [atom()]

@@ -217,6 +217,39 @@ defmodule BubbleEx.Verify.FormatsTest do
       )
     end
 
+    test "hashing is canonical for numbers and verbatim for text" do
+      api = raw("scenario.api_workflow.json")
+
+      hash = fn points, task_title ->
+        raw =
+          api
+          |> put_in(["ops", Access.at(0), "params", "points"], points)
+          |> put_in(["ops", Access.at(0), "params", "title"], task_title)
+
+        {:ok, sc} = Scenario.from_map(raw)
+        {Scenario.sha256(sc), Scenario.to_json(sc)}
+      end
+
+      nfc = %{"text" => "caf\u00e9"}
+      nfd = %{"text" => "cafe\u0301"}
+
+      {h1, j1} = hash.(%{"number" => 0}, nfc)
+      {h2, j2} = hash.(%{"number" => -0.0}, nfc)
+      {h3, _} = hash.(%{"number" => 0.0}, nfc)
+      assert h1 == h2 and h2 == h3
+      assert j1 == j2
+
+      {h5, _} = hash.(%{"number" => 5}, nfc)
+      {h6, _} = hash.(%{"number" => 5.0}, nfc)
+      assert h5 == h6
+
+      {h_nfd, j_nfd} = hash.(%{"number" => 0}, nfd)
+      refute h_nfd == h1
+      assert j_nfd =~ "cafe\u0301"
+      assert {:ok, sc} = Scenario.from_json(j_nfd)
+      assert Scenario.sha256(sc) == h_nfd
+    end
+
     test "sha256 covers every member, masks included" do
       s = scenario()
       base = Scenario.sha256(s)

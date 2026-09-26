@@ -12,6 +12,7 @@ defmodule BubbleEx.Verify.ResultTest do
   @diff [
     %{op: "field_visible", record: "task_w1", field: "notes_text", expected: false, actual: true}
   ]
+  @app "acme-replay-demo"
   @owner %{kind: :owner, id: "user:1", via: :form}
   @agent %{kind: :agent, id: "agent:1", via: :chat}
 
@@ -33,11 +34,12 @@ defmodule BubbleEx.Verify.ResultTest do
       if level in [:l2, :l3],
         do: %{
           scenario: scenario_ref(),
-          oracle: %{kind: :bubble, sha256: @sha, branch: "wtfreplay"}
+          oracle: %{kind: :bubble, sha256: @sha, branch: "wtfreplay"},
+          evidence: [%{kind: :recording, ref: "rec.json", sha256: @sha}]
         },
         else: %{}
 
-    %{id: "r1", check: check, status: :pass, actor: "ci", ran_at: @ran_at}
+    %{id: "r1", app: @app, check: check, status: :pass, actor: "ci", ran_at: @ran_at}
     |> Map.merge(behavioural)
     |> Map.merge(Map.new(attrs))
   end
@@ -78,7 +80,7 @@ defmodule BubbleEx.Verify.ResultTest do
   defp entry(d, state \\ :active), do: %{decision: d, state: state, reasons: []}
 
   defp evaluate(r, entries, opts \\ []),
-    do: Result.evaluate(r, resolved(entries), [now: @now] ++ opts)
+    do: Result.evaluate(r, resolved(entries), Keyword.merge([now: @now, app: @app], opts))
 
   defp parity(author, opts \\ []) do
     scenario_sha = golden("result.waived.json").scenario.sha256
@@ -90,6 +92,7 @@ defmodule BubbleEx.Verify.ResultTest do
         choice: Keyword.get(opts, :choice, :accept),
         params: %{
           scope: Keyword.get(opts, :scope, "privacy_read.custom.task.w2_member"),
+          checks: Keyword.get(opts, :checks, ["privacy_read"]),
           bubble_behavior: "Bubble shows the notes field to members of other workspaces.",
           chosen_behavior: "Notes stay private to the workspace."
         },
@@ -106,14 +109,14 @@ defmodule BubbleEx.Verify.ResultTest do
 
   defp finding_decision(opts \\ []) do
     %Decision{
-      key: finding_ref().key,
+      key: "finding:" <> Keyword.get(opts, :finding_id, "privacy_access_list:9f2c1b7d0e4a5c63"),
       kind: :finding,
       revision: 1,
       subject: Keyword.get(opts, :subject, %{type: "custom.task"}),
       choice: Keyword.get(opts, :choice, :accept),
       author: Keyword.get(opts, :author, @owner),
       basis: %{
-        finding_id: "privacy_access_list:9f2c1b7d0e4a5c63",
+        finding_id: Keyword.get(opts, :finding_id, "privacy_access_list:9f2c1b7d0e4a5c63"),
         proposal_sha256: Keyword.get(opts, :proposal_sha256, @sha),
         basis_sha256: @sha
       }
@@ -459,23 +462,29 @@ defmodule BubbleEx.Verify.ResultTest do
 
         assert {:error, %Error{message: m}} = evaluate(result, [])
         assert m =~ "does not exist"
-        refute Result.passing?(result, resolved([]), now: @now)
-        refute Result.bubble_verified?(result, resolved([]), now: @now)
+        refute Result.passing?(result, resolved([]), now: @now, app: @app)
+        refute Result.bubble_verified?(result, resolved([]), now: @now, app: @app)
       end
     end
 
     test "it needs now and refuses results from the future" do
       result = golden("result.pass.json")
-      assert {:error, %Error{message: m}} = Result.evaluate(result, resolved([]), [])
+      assert {:error, %Error{message: m}} = Result.evaluate(result, resolved([]), app: @app)
       assert m =~ "now"
 
       assert {:error, %Error{message: m}} =
-               Result.evaluate(result, resolved([]), now: DateTime.add(@ran_at, -301, :second))
+               Result.evaluate(result, resolved([]),
+                 now: DateTime.add(@ran_at, -301, :second),
+                 app: @app
+               )
 
       assert m =~ "future"
 
       assert {:ok, _} =
-               Result.evaluate(result, resolved([]), now: DateTime.add(@ran_at, -60, :second))
+               Result.evaluate(result, resolved([]),
+                 now: DateTime.add(@ran_at, -60, :second),
+                 app: @app
+               )
     end
 
     test "passing follows the status table" do
@@ -486,7 +495,9 @@ defmodule BubbleEx.Verify.ResultTest do
       assert {:ok, %{passing: false}} =
                evaluate(ok("privacy_read", status: :skipped, reason: "x"), [])
 
-      assert {:ok, %{passing: true}} = evaluate(ok("dom_text", status: :skipped, reason: "x"), [])
+      assert {:ok, %{passing: false}} =
+               evaluate(ok("dom_text", status: :skipped, reason: "x"), [])
+
       assert {:ok, %{passing: false}} = evaluate(ok("lint", status: :fail), [])
 
       d = parity(@owner)
@@ -508,16 +519,91 @@ defmodule BubbleEx.Verify.ResultTest do
       model = ok("privacy_read", oracle: %{kind: :model, sha256: @sha, branch: nil})
       assert {:ok, %{passing: true, bubble_verified: false}} = evaluate(model, [])
 
-      spot = ok("privacy_spot_check", oracle: %{kind: :model, sha256: @sha, branch: nil})
+      spot =
+        ok("privacy_spot_check",
+          oracle: %{kind: :model, sha256: @sha, branch: nil},
+          evidence: [%{kind: :artifact, ref: "artifact:spot", sha256: @sha}]
+        )
+
       assert {:ok, %{passing: true, bubble_verified: false}} = evaluate(spot, [])
-
-      spot = ok("privacy_spot_check", [])
-      assert {:ok, %{bubble_verified: false}} = evaluate(spot, [])
-
-      export = ok("row_hashes", oracle: %{kind: :export, sha256: @sha, branch: nil})
-      assert {:ok, %{bubble_verified: true}} = evaluate(export, [])
-
       assert {:ok, %{bubble_verified: true}} = evaluate(ok("lint", []), [])
+    end
+
+    test "probe 2: an export oracle is for L4 data checks, verified against the export" do
+      rejected("privacy_read", [oracle: %{kind: :export, sha256: @sha, branch: nil}], "export")
+
+      rejected(
+        "privacy_spot_check",
+        [oracle: %{kind: :export, sha256: @sha, branch: nil}],
+        "export"
+      )
+
+      export =
+        ok("row_hashes",
+          oracle: %{kind: :export, sha256: @sha, branch: nil},
+          evidence: [%{kind: :artifact, ref: "artifact:export", sha256: @sha}]
+        )
+
+      assert {:ok, %{passing: true, bubble_verified: false}} = evaluate(export, [])
+
+      assert {:ok, %{bubble_verified: false}} =
+               evaluate(export, [], export_sha256: String.duplicate("b", 64))
+
+      assert {:ok, %{bubble_verified: true}} = evaluate(export, [], export_sha256: @sha)
+    end
+
+    test "probe 1: skipped never counts as passing" do
+      for check <- [
+            "lint",
+            "secrets_absent",
+            "cutover_gate",
+            "privacy_read",
+            "dom_text",
+            "acceptance",
+            "row_counts"
+          ] do
+        skipped = ok(check, status: :skipped, reason: "not runnable")
+        assert {:ok, %{passing: false, bubble_verified: false}} = evaluate(skipped, [])
+      end
+    end
+
+    test "probe 8: non-structural checks need evidence to pass" do
+      spot = ok("privacy_spot_check", [])
+      assert {:ok, %{passing: false}} = evaluate(spot, [])
+
+      unbacked = ok("privacy_read", evidence: [%{kind: :log, ref: "log.txt", sha256: nil}])
+      assert {:ok, %{passing: false}} = evaluate(unbacked, [])
+
+      assert {:ok, %{passing: false}} = evaluate(ok("acceptance", []), [])
+      assert {:ok, %{passing: false}} = evaluate(ok("cutover_gate", []), [])
+
+      assert {:ok, %{passing: true}} =
+               evaluate(
+                 ok("acceptance", evidence: [%{kind: :attestation, ref: "a.json", sha256: nil}]),
+                 []
+               )
+
+      assert {:ok, %{passing: true}} = evaluate(ok("lint", []), [])
+    end
+
+    test "probe app: evaluate is for one app, and so are its recordings" do
+      {:ok, bubble} = raw("recording.bubble.json") |> Recording.from_map()
+      result = golden("result.pass.json")
+
+      assert {:error, %Error{message: m}} = evaluate(result, [], app: "other-app")
+      assert m =~ "another app"
+
+      assert {:error, %Error{message: m}} =
+               Result.evaluate(result, resolved([]), now: @now)
+
+      assert m =~ "app"
+
+      moved = %{bubble | source: %{bubble.source | app: "other-app"}}
+      relinked = %{result | oracle: %{result.oracle | sha256: Recording.sha256(moved)}}
+      assert {:error, %Error{message: m}} = Result.check_recording(relinked, moved)
+      assert m =~ "another app"
+
+      rejected("lint", [app: "https://acme.example"], "app")
     end
 
     test "probe M4: a Bubble oracle is trusted only with its matching recording" do
@@ -541,6 +627,27 @@ defmodule BubbleEx.Verify.ResultTest do
       lying = %{relabelled | oracle: %{relabelled.oracle | kind: :bubble, branch: "wtfreplay"}}
       assert {:error, %Error{message: m}} = Result.check_recording(lying, model)
       assert m =~ "kind"
+    end
+
+    test "probe 3: an incomplete recording is never an oracle" do
+      {:ok, bubble} = raw("recording.bubble.json") |> Recording.from_map()
+      incomplete = %{bubble | complete: false}
+      result = golden("result.pass.json")
+      result = %{result | oracle: %{result.oracle | sha256: Recording.sha256(incomplete)}}
+
+      assert {:error, %Error{message: m}} = Result.check_recording(result, incomplete)
+      assert m =~ "incomplete"
+      assert {:error, _} = evaluate(result, [], recording: incomplete)
+    end
+
+    test "probe 4: the recording must be of the result's scenario version" do
+      {:ok, bubble} = raw("recording.bubble.json") |> Recording.from_map()
+      old = %{bubble | scenario: %{bubble.scenario | sha256: String.duplicate("0", 64)}}
+      result = golden("result.pass.json")
+      result = %{result | oracle: %{result.oracle | sha256: Recording.sha256(old)}}
+
+      assert {:error, %Error{message: m}} = Result.check_recording(result, old)
+      assert m =~ "scenario version"
     end
   end
 
@@ -655,43 +762,101 @@ defmodule BubbleEx.Verify.ResultTest do
     end
 
     test "probe H2: behaviour checks accept an agent's finding decision only when relevant" do
+      diff = [
+        %{
+          op: "field_changed",
+          type: "custom.task",
+          field: "points_number",
+          expected: 1,
+          actual: 1.5
+        }
+      ]
+
       result =
-        ok("dom_text",
+        ok("api_workflow",
           status: :decided_difference,
-          diff: @diff,
-          decision: finding_ref(),
-          subjects: %{type: "custom.task"}
+          diff: diff,
+          decision: %{finding_ref() | key: "finding:number_type:1111222233334444"},
+          subjects: %{workflow: "bTHcK"}
+        )
+
+      number =
+        finding_decision(
+          author: @agent,
+          finding_id: "number_type:1111222233334444",
+          subject: %{type: "custom.task", field: "points_number"}
         )
 
       assert {:ok, %Result{status: :decided_difference}} =
-               Result.link_decision(result, resolved([entry(finding_decision(author: @agent))]))
+               Result.link_decision(result, resolved([entry(number)]))
 
-      unrelated = finding_decision(author: @agent, subject: %{type: "custom.invoice"})
-
-      assert {:error, %Error{}} = Result.link_decision(result, resolved([entry(unrelated)]))
+      other = %{number | subject: %{type: "custom.task", field: "hours_number"}}
+      assert {:error, %Error{}} = Result.link_decision(result, resolved([entry(other)]))
     end
 
-    test "a finding listed in the result's scenario covers is relevant" do
-      {:ok, scenario} = raw("scenario.privacy_read.json") |> Scenario.from_map()
-      finding_id = "privacy_access_list:9f2c1b7d0e4a5c63"
-      scenario = %{scenario | covers: %{scenario.covers | findings: [finding_id]}}
+    test "probe 5: an unrelated owner finding on the same type explains no privacy diff" do
+      result = golden("result.decided_difference.json")
+
+      for finding_id <- [
+            "number_type:1111222233334444",
+            "search_index:1111222233334444",
+            "id_in_text:1"
+          ] do
+        unrelated = finding_decision(finding_id: finding_id)
+        ref = %{result.decision | key: unrelated.key}
+
+        assert {:error, %Error{message: m}} =
+                 Result.link_decision(%{result | decision: ref}, resolved([entry(unrelated)]))
+
+        assert m =~ "does not explain"
+      end
+
+      narrower = finding_decision(subject: %{type: "custom.task", field: "title_text"})
+
+      assert {:error, %Error{message: m}} =
+               Result.link_decision(result, resolved([entry(narrower)]))
+
+      assert m =~ "another subject"
+
+      exact = finding_decision(subject: %{type: "custom.task", field: "notes_text"})
+      assert {:ok, ^result} = Result.link_decision(result, resolved([entry(exact)]))
+    end
+
+    test "probe 6/7: a parity exception excuses only the checks it names" do
+      d = parity(@owner, checks: ["dom_text"])
+
+      assert {:error, %Error{message: m}} =
+               Result.link_decision(waived_with(d), resolved([entry(d)]))
+
+      assert m =~ "does not excuse this check"
+
+      # Pinned to the same scenario, cited by another check's result.
+      d = parity(@owner)
+      other = %{waived_with(d) | check: "privacy_spot_check", level: :l4}
+      assert {:error, %Error{message: m}} = Result.link_decision(other, resolved([entry(d)]))
+      assert m =~ "does not excuse this check"
+    end
+
+    test "probe 6: without a scenario a parity exception matches by check and subject, not id" do
+      diff = [%{op: "row_hash", type: "custom.task", record: "t1"}]
 
       result =
-        golden("result.decided_difference.json")
-        |> Map.put(:scenario, %{
-          golden("result.decided_difference.json").scenario
-          | sha256: Scenario.sha256(scenario)
-        })
+        ok("row_hashes",
+          status: :waived,
+          diff: diff,
+          subjects: %{type: "custom.task"},
+          oracle: %{kind: :export, sha256: @sha, branch: nil},
+          decision: parity_ref()
+        )
 
-      other_subject = finding_decision(subject: %{type: "custom.workspace"})
-      entries = resolved([entry(other_subject)])
+      by_id = parity(@owner, scope: result.id, checks: ["row_hashes"], basis: %{})
+      result = %{result | decision: parity_ref(by_id.key)}
+      assert {:error, %Error{message: m}} = Result.link_decision(result, resolved([entry(by_id)]))
+      assert m =~ "scope"
 
-      assert {:error, _} = Result.link_decision(result, entries)
-      assert {:ok, ^result} = Result.link_decision(result, entries, scenario: scenario)
-
-      stale_scenario = %{scenario | persona: "w1_member"}
-      assert {:error, _} = Result.link_decision(result, entries, scenario: stale_scenario)
-      assert {:error, _} = Result.link_decision(result, entries, scenario: scenario, findings: [])
+      by_check = parity(@owner, scope: "row_hashes", checks: ["row_hashes"], basis: %{})
+      result = %{result | decision: parity_ref(by_check.key)}
+      assert {:ok, ^result} = Result.link_decision(result, resolved([entry(by_check)]))
     end
 
     test "a result without a decision is unchanged" do

@@ -10,7 +10,7 @@ defmodule BubbleEx.Verify.Value do
   | JSON | Elixir | Rule |
   |------|--------|------|
   | `null` | `nil` | empty; distinct from `{"text": ""}` |
-  | `{"text": "…"}` | `{:text, s}` | kept verbatim: no trimming, `""` is not empty |
+  | `{"text": "…"}` | `{:text, s}` | kept verbatim: no trimming, `""` is not empty, and no Unicode normalization (Bubble stores and compares text as given, so NFC `é` and NFD `e\u0301` are different values; a hash over them differs) |
   | `{"number": 3.0}` | `{:number, 3.0}` | always a float (`3` decodes to `3.0`; `-0.0` to `0.0`) |
   | `{"boolean": true}` | `{:boolean, b}` | |
   | `{"date": 1727222400000}` | `{:date, ms}` | integer milliseconds since the Unix epoch, UTC |
