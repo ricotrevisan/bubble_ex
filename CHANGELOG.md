@@ -87,9 +87,9 @@ All notable changes to this project are documented here.
   URL, basic. `scripts/phoenix_compile_check.sh` renders every fixture's
   clients (new fixture `phoenix_api_clients`) and runs their tests, each
   tagged `bubble: <call ID>` for the plan's `request_shape` check. On
-  mm-137, 199 of 203 calls are generated, 195 of them reading environment
-  variables (residue: 2 non-JSON bodies, 1 file parameter, 1 call without
-  a URL).
+  mm-137 (a 2026-09-26 fetch: 31 groups, 204 calls), 200 of 204 calls
+  are generated, 196 of them reading environment variables (residue: 2
+  non-JSON bodies, 1 file parameter, 1 call without a URL).
 - **Leak-safe API Connector request templates** (WTF-374). The Model
   (`schema_version` 4) reads each call's request as a
   `BubbleEx.Model.ConnectorRequest`: scheme, port, path segments,

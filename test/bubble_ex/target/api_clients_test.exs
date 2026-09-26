@@ -239,6 +239,43 @@ defmodule BubbleEx.Target.ApiClientsTest do
       assert decode =~ ~s{address: address_fields(ApiClients.at(value, ["address"]))}
     end
 
+    test "prints long lists and texts in full (inspect never truncates code)",
+         %{project: project} do
+      members = Enum.map_join(1..60, ", ", &~s("k#{&1}": "literal"))
+      text = String.duplicate("a", 5000)
+
+      app = %{
+        "settings" => %{
+          "client_safe" => %{
+            "apiconnector2" => %{
+              "g" => %{
+                "human" => String.duplicate("Group ", 900),
+                "calls" => %{
+                  "c" => %{
+                    "name" => "Many",
+                    "method" => "post",
+                    "url" => "https://api.example.com/users",
+                    "body" => "{#{members}, \"t\": \"#{text}\"}"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, model} = Model.build(app)
+      {:ok, spec} = ApiClients.map(model)
+      assert [%{calls: [%{env: env}]}] = spec.groups
+      assert length(env) == 61
+      {:ok, files} = Phoenix.render(project, name: "Acme", api_clients: spec)
+
+      for {path, source} <- files, String.contains?(path, "api_clients"), path =~ ~r/\.exs?$/ do
+        refute source =~ "...", path
+        assert {:ok, _} = Code.string_to_quoted(source), path
+      end
+    end
+
     test "lists the environment and the residue", %{files: files} do
       document = Jason.decode!(files[".wtf/api_clients.json"])
       assert length(document["env"]) == 20

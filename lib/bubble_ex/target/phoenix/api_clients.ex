@@ -83,6 +83,9 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     })
   end
 
+  # Terms as code: never truncated (inspect's default limits print `...`).
+  defp code(term), do: inspect(term, limit: :infinity, printable_limit: :infinity)
+
   defp format(source), do: IO.iodata_to_binary([Code.format_string!(source), "\n"])
 
   defp format_int(n),
@@ -160,7 +163,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
       ["{:ok, #{p}} <- ApiClients.params(params, [#{keys}])"] ++
         if call.env == [],
           do: [],
-          else: ["{:ok, env} <- ApiClients.env(opts, #{inspect(call.env)})"]
+          else: ["{:ok, env} <- ApiClients.env(opts, #{code(call.env)})"]
 
     """
     @doc #{heredoc(call_doc(call))}
@@ -168,7 +171,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     def #{call.function}(params \\\\ %{}, opts \\\\ []) do
       with #{Enum.join(steps, ",\n")} do
         ApiClients.request(__MODULE__, opts, %{
-          method: #{inspect(call.method)},
+          method: #{code(call.method)},
           base: #{base_expr(call)},
           path: #{path_expr(call)},
           query: #{entries_expr(call.query, :param)},
@@ -214,7 +217,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
   defp location(:param), do: "parameter"
 
   defp quote_name(nil), do: "(unnamed)"
-  defp quote_name(name), do: inspect(name)
+  defp quote_name(name), do: code(name)
 
   # The URL with placeholders: `{key}` for an argument, `{NAME}` for a
   # variable.
@@ -257,7 +260,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
   # Code for a value.
   defp expr({:literal, text}), do: inspect(text, printable_limit: :infinity)
   defp expr({:arg, key}), do: "p[:#{key}]"
-  defp expr({:env, name}), do: "env[#{inspect(name)}]"
+  defp expr({:env, name}), do: "env[#{code(name)}]"
 
   # Literal and code pieces joined with `<>`, adjacent literals merged.
   defp concat_expr(pieces) do
@@ -318,10 +321,10 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
       Enum.map(entries, fn
         %{name: nil, value: [{:env_line, name}]} ->
           line = if kind == :header, do: "header_line", else: "param_line"
-          "ApiClients.#{line}(env[#{inspect(name)}])"
+          "ApiClients.#{line}(env[#{code(name)}])"
 
         %{name: name, value: values} ->
-          "{#{inspect(name)}, #{value_expr(values)}}"
+          "{#{code(name)}, #{value_expr(values)}}"
       end)
 
     "[" <> Enum.join(items, ", ") <> "]"
@@ -359,14 +362,14 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
       else: "ApiClients.string([#{Enum.map_join(values, ", ", &expr/1)}])"
   end
 
-  defp template_expr({:json, value}), do: inspect(value)
+  defp template_expr({:json, value}), do: code(value)
   defp template_expr({:arg, key}), do: "p[:#{key}]"
-  defp template_expr({:env_json, name}), do: "ApiClients.json_value(env[#{inspect(name)}])"
+  defp template_expr({:env_json, name}), do: "ApiClients.json_value(env[#{code(name)}])"
 
   defp auth_expr(%Call{auth: nil}), do: "nil"
 
   defp auth_expr(%Call{auth: {:basic, user, password}}),
-    do: "{:basic, env[#{inspect(user)}], env[#{inspect(password)}]}"
+    do: "{:basic, env[#{code(user)}], env[#{code(password)}]}"
 
   defp response_expr(%Call{} = call, ctx) do
     case {call.response.kind, typed(call, ctx)} do
@@ -374,7 +377,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         "{:json, &#{ctx.root}.Decode.#{fun}/1, #{call.response.list}}"
 
       {kind, _} ->
-        inspect(kind)
+        code(kind)
     end
   end
 
@@ -450,7 +453,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     members =
       Enum.map_join(s.struct.fields, ",\n", fn attribute ->
         field = attribute.source[:field]
-        path = inspect(Map.get(paths, field, [field]))
+        path = code(Map.get(paths, field, [field]))
         at = "ApiClients.at(value, #{path})"
 
         value = field_expr(attribute.type, at, ctx)
@@ -514,15 +517,15 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
   defp call_test(%Call{} = call, group, ctx) do
     args =
-      "%{" <> Enum.map_join(call.args, ", ", &"#{&1.key}: #{inspect(arg_stub(&1.key))}") <> "}"
+      "%{" <> Enum.map_join(call.args, ", ", &"#{&1.key}: #{code(arg_stub(&1.key))}") <> "}"
 
     {respond, {expected, decoded_assert}} = response_test(call, ctx)
     port = call.base.port || if(call.base.scheme == "https", do: 443, else: 80)
     query = Enum.map(call.query, &eval_entry(&1, :param))
 
     """
-    @tag bubble: #{inspect(call.id)}
-    test #{inspect("#{call.function} (Bubble call #{call.id}) sends its request shape")} do
+    @tag bubble: #{code(call.id)}
+    test #{code("#{call.function} (Bubble call #{call.id}) sends its request shape")} do
       opts = capture(#{respond})
 
       assert #{expected} =
@@ -530,8 +533,8 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
       #{decoded_assert}
       assert_received {:request, conn, body}
-      assert conn.method == #{inspect(call.method |> Atom.to_string() |> String.upcase())}
-      assert conn.scheme == #{inspect(String.to_atom(call.base.scheme))}
+      assert conn.method == #{code(call.method |> Atom.to_string() |> String.upcase())}
+      assert conn.scheme == #{code(String.to_atom(call.base.scheme))}
       assert conn.host == #{inspect(eval_host(call), printable_limit: :infinity)}
       assert conn.port == #{port}
       assert conn.request_path == #{inspect(eval_path(call), printable_limit: :infinity)}
@@ -555,7 +558,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
     "%{" <>
       Enum.map_join(call.env, ", ", fn name ->
-        "#{inspect(name)} => #{inspect(Map.get_lazy(lines, name, fn -> env_stub(name) end))}"
+        "#{code(name)} => #{code(Map.get_lazy(lines, name, fn -> env_stub(name) end))}"
       end) <> "}"
   end
 
@@ -581,7 +584,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Enum.sort()
     |> Enum.map_join("\n", fn {name, values} ->
-      "assert Plug.Conn.get_req_header(conn, #{inspect(name)}) == #{literal(values)}"
+      "assert Plug.Conn.get_req_header(conn, #{code(name)}) == #{literal(values)}"
     end)
   end
 
