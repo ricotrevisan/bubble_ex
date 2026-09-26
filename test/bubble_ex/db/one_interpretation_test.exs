@@ -49,6 +49,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
     "lib/bubble_ex/verify/observation.ex" =>
       "the verification observation format's own members (`value`, `values`, `fields`, `deleted`); reads no app JSON",
+    "lib/bubble_ex/verify/replay/client.ex" =>
+      "the Bubble Data API search constraint's `value` member; reads no app JSON",
     "lib/bubble_ex/verify/recording.ex" =>
       "the recording format's observation members (`value`, `values`); reads no app JSON",
     "lib/bubble_ex/verify/scenario.ex" =>

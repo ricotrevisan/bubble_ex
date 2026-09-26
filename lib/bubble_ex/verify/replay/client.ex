@@ -1,0 +1,446 @@
+defmodule BubbleEx.Verify.Replay.Client do
+  @moduledoc """
+  Data API and Workflow API client of the replay driver, bound to one
+  `BubbleEx.Verify.Replay.Target` (a `wtfreplay…` branch).
+
+  Every request goes through `BubbleEx.HTTP.request/5` (public-destination
+  checks, bounded bodies, sanitized telemetry) after
+  `Target.check_url/2`, never follows redirects, and carries the
+  credentials of one `auth`:
+
+    * `:admin` - the target's admin token (seeding, cleanup, the kit)
+    * `{:user, token}` - a persona's user token (what the persona sees)
+    * `:none` - a logged-out visitor
+
+  **Budgets (WTF-358 §3.8, §6.5).** `:max_calls` (default 2,000) counts
+  every wire attempt, retries included; `:max_wall_ms` (default 15 min)
+  bounds the run. Past either, calls fail with `:request_failed`
+  (`reason: :budget_exhausted`) and the recorder marks what it was doing
+  incomplete. Cleanup (`delete_seeded/3`) has a separate allowance, so a
+  run that ran out of budget can still remove what it created.
+
+  **Backoff.** 429 and 5xx (and transport failures) are retried with
+  exponential backoff (or `Retry-After`), at most `:max_retries` times and
+  never past the wall budget. Writes that create something (`create/4`,
+  workflow calls) are retried only on 429: a 5xx or a lost response may
+  have created a record the ledger would not know about.
+
+  **Ledger-only writes.** Updates and deletes take a
+  `BubbleEx.Verify.Replay.Ledger` and a seed key, never a Bubble ID
+  (`update_seeded/4`, `delete_seeded/3`).
+
+  Errors carry the status and Bubble's short error code, never a response
+  body or a credential.
+  """
+
+  alias BubbleEx.{Error, HTTP}
+  alias BubbleEx.Verify.Replay.{Ledger, Names, Target}
+
+  @enforce_keys [:target, :names, :counter]
+  defstruct [
+    :target,
+    :names,
+    :counter,
+    :deadline,
+    max_calls: 2_000,
+    cleanup_max_calls: 2_000,
+    max_retries: 3,
+    retry_base_delay: 500,
+    max_retry_delay: 30_000,
+    sleep: &Process.sleep/1,
+    page_size: 100
+  ]
+
+  @type auth :: :admin | :none | {:user, String.t()}
+  @type t :: %__MODULE__{}
+  @type response :: %{status: pos_integer(), body: term()}
+
+  @transient [429, 500, 502, 503, 504]
+
+  @doc """
+  A client for `target`. Options: `:names` (required,
+  `BubbleEx.Verify.Replay.Names`), `:max_calls`, `:max_wall_ms`,
+  `:cleanup_max_calls`, `:max_retries`, `:retry_base_delay`,
+  `:max_retry_delay` (ms), `:page_size`, `:sleep` (a 1-arity function, for
+  tests).
+  """
+  @spec new(Target.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def new(%Target{} = target, opts) do
+    with {:ok, %Names{} = names} <- fetch_names(opts),
+         {:ok, max_calls} <- positive(opts, :max_calls, 2_000),
+         {:ok, wall} <- positive(opts, :max_wall_ms, 900_000),
+         {:ok, cleanup} <- positive(opts, :cleanup_max_calls, 2_000),
+         {:ok, page} <- positive(opts, :page_size, 100) do
+      {:ok,
+       %__MODULE__{
+         target: target,
+         names: names,
+         counter: :counters.new(2, [:atomics]),
+         deadline: System.monotonic_time(:millisecond) + wall,
+         max_calls: max_calls,
+         cleanup_max_calls: cleanup,
+         max_retries: Keyword.get(opts, :max_retries, 3),
+         retry_base_delay: Keyword.get(opts, :retry_base_delay, 500),
+         max_retry_delay: Keyword.get(opts, :max_retry_delay, 30_000),
+         sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
+         page_size: min(page, 100)
+       }}
+    end
+  end
+
+  def new(_target, _opts),
+    do: {:error, Error.new(:invalid_input, "a replay client needs a Replay.Target")}
+
+  defp fetch_names(opts) do
+    case Keyword.get(opts, :names) do
+      %Names{} = names -> {:ok, names}
+      _ -> {:error, Error.new(:invalid_input, "a replay client needs Replay.Names")}
+    end
+  end
+
+  defp positive(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      n when is_integer(n) and n > 0 -> {:ok, n}
+      n -> {:error, Error.new(:invalid_input, "#{key} must be a positive integer", %{value: n})}
+    end
+  end
+
+  @doc "Wire attempts made so far (retries included), cleanup excluded."
+  @spec calls(t()) :: non_neg_integer()
+  def calls(%__MODULE__{counter: c}), do: :counters.get(c, 1)
+
+  @doc "Wire attempts made by cleanup."
+  @spec cleanup_calls(t()) :: non_neg_integer()
+  def cleanup_calls(%__MODULE__{counter: c}), do: :counters.get(c, 2)
+
+  # --- Data API ----------------------------------------------------------------
+
+  @doc """
+  Searches `type` as `auth`, following the cursor to the end. `opts`:
+  `:ids` (constrain to these Bubble IDs: `_id in […]`, so the owner's own
+  development records are never read), `:sort` (`%{key: api_key,
+  descending: bool}`). Returns the result objects.
+  """
+  @spec search(t(), String.t(), auth(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
+  def search(%__MODULE__{} = c, type, auth, opts \\ []) do
+    with {:ok, path} <- Names.type_path(c.names, type),
+         {:ok, url} <- Target.data_url(c.target, path) do
+      query = search_query(opts)
+      page(c, url, query, auth, 0, [])
+    end
+  end
+
+  defp search_query(opts) do
+    constraints =
+      case Keyword.get(opts, :ids) do
+        nil -> []
+        ids -> [%{"key" => "_id", "constraint_type" => "in", "value" => ids}]
+      end
+
+    sort =
+      case Keyword.get(opts, :sort) do
+        nil -> []
+        %{key: key, descending: desc} -> [{"sort_field", key}, {"descending", to_string(desc)}]
+      end
+
+    [{"constraints", Jason.encode!(constraints)} | sort]
+  end
+
+  defp page(c, url, query, auth, cursor, acc) do
+    params = query ++ [{"cursor", Integer.to_string(cursor)}, {"limit", "#{c.page_size}"}]
+
+    case request(c, :get, url <> "?" <> URI.encode_query(params), nil, auth, :read) do
+      {:ok, %{status: 200, body: %{"response" => %{"results" => results} = r}}}
+      when is_list(results) ->
+        acc = acc ++ results
+        remaining = r["remaining"]
+
+        if is_integer(remaining) and remaining > 0 and results != [],
+          do: page(c, url, query, auth, cursor + length(results), acc),
+          else: {:ok, acc}
+
+      other ->
+        unexpected(other, "Data API search")
+    end
+  end
+
+  @doc """
+  Gets one record by Bubble ID as `auth`: `{:ok, {:found, fields}}` or
+  `{:ok, :not_found}` (404: missing, or hidden from `auth`).
+  """
+  @spec get(t(), String.t(), String.t(), auth()) ::
+          {:ok, {:found, map()} | :not_found} | {:error, Error.t()}
+  def get(%__MODULE__{} = c, type, id, auth) do
+    with {:ok, path} <- Names.type_path(c.names, type),
+         {:ok, url} <- Target.data_url(c.target, path, id) do
+      case request(c, :get, url, nil, auth, :read) do
+        {:ok, %{status: 200, body: %{"response" => fields}}} when is_map(fields) ->
+          {:ok, {:found, fields}}
+
+        {:ok, %{status: 404}} ->
+          {:ok, :not_found}
+
+        other ->
+          unexpected(other, "Data API get")
+      end
+    end
+  end
+
+  @doc "Creates a record of `type` with Data API `body` as `auth`; returns its Bubble ID."
+  @spec create(t(), String.t(), map(), auth()) :: {:ok, String.t()} | {:error, Error.t()}
+  def create(%__MODULE__{} = c, type, body, auth) when is_map(body) do
+    with {:ok, path} <- Names.type_path(c.names, type),
+         {:ok, url} <- Target.data_url(c.target, path) do
+      case request(c, :post, url, body, auth, :write) do
+        {:ok, %{status: s, body: %{"id" => id}}} when s in 200..201 and is_binary(id) ->
+          {:ok, id}
+
+        other ->
+          unexpected(other, "Data API create")
+      end
+    end
+  end
+
+  @doc "Updates the ledger record `key` (never another) with Data API `body`, as admin."
+  @spec update_seeded(t(), Ledger.t(), String.t(), map()) :: :ok | {:error, Error.t()}
+  def update_seeded(%__MODULE__{} = c, %Ledger{} = ledger, key, body) when is_map(body) do
+    with {:ok, entry} <- live_entry(ledger, key),
+         {:ok, url} <- entry_url(c, entry) do
+      case request(c, :patch, url, body, :admin, :write) do
+        {:ok, %{status: s}} when s in 200..204 -> :ok
+        other -> unexpected(other, "Data API update")
+      end
+    end
+  end
+
+  @doc """
+  Deletes the ledger record `key` (never another), as admin, from the
+  cleanup allowance; returns the ledger with it marked deleted. A 404
+  (already gone) counts as deleted.
+  """
+  @spec delete_seeded(t(), Ledger.t(), String.t()) :: {:ok, Ledger.t()} | {:error, Error.t()}
+  def delete_seeded(%__MODULE__{} = c, %Ledger{} = ledger, key) do
+    with {:ok, entry} <- live_entry(ledger, key),
+         {:ok, url} <- entry_url(c, entry) do
+      case request(c, :delete, url, nil, :admin, :cleanup) do
+        {:ok, %{status: s}} when s in 200..204 or s == 404 ->
+          {:ok, Ledger.mark_deleted(ledger, key)}
+
+        other ->
+          unexpected(other, "Data API delete")
+      end
+    end
+  end
+
+  defp live_entry(ledger, key) do
+    case Ledger.fetch(ledger, key) do
+      %{state: :created} = entry ->
+        {:ok, entry}
+
+      _ ->
+        {:error,
+         Error.new(
+           :invalid_input,
+           "only records this run created (and has not deleted) can change",
+           %{key: key}
+         )}
+    end
+  end
+
+  defp entry_url(c, entry) do
+    with {:ok, path} <- Names.type_path(c.names, entry.type),
+         do: Target.data_url(c.target, path, entry.id)
+  end
+
+  # --- Workflow API --------------------------------------------------------------
+
+  @doc """
+  Calls API workflow `name` with JSON `params` as `auth`. Returns the status
+  and decoded body of any HTTP answer (scenario ops observe error statuses
+  too); only transport failures and budgets are errors.
+  """
+  @spec call_workflow(t(), String.t(), map(), auth()) :: {:ok, response()} | {:error, Error.t()}
+  def call_workflow(%__MODULE__{} = c, name, params, auth) when is_map(params) do
+    with {:ok, url} <- Target.workflow_url(c.target, name) do
+      request(c, :post, url, params, auth, :write)
+    end
+  end
+
+  @doc "Reads the API metadata (`/meta`) as admin."
+  @spec meta(t()) :: {:ok, response()} | {:error, Error.t()}
+  def meta(%__MODULE__{} = c), do: request(c, :get, Target.meta_url(c.target), nil, :admin, :read)
+
+  @doc "Every secret the client holds (for the credential scan)."
+  @spec secrets(t()) :: [String.t()]
+  def secrets(%__MODULE__{target: t}), do: [t.admin_token]
+
+  # --- transport ----------------------------------------------------------------
+
+  defp request(c, method, url, body, auth, mode), do: attempt(c, method, url, body, auth, mode, 0)
+
+  defp attempt(c, method, url, body, auth, mode, n) do
+    with :ok <- Target.check_url(c.target, url),
+         :ok <- budget(c, mode) do
+      :counters.add(c.counter, slot(mode), 1)
+      result = send_once(c, method, url, body, auth, mode)
+
+      case retry_delay(c, result, mode, n) do
+        nil ->
+          finish(result)
+
+        delay ->
+          c.sleep.(delay)
+          attempt(c, method, url, body, auth, mode, n + 1)
+      end
+    end
+  end
+
+  defp slot(:cleanup), do: 2
+  defp slot(_), do: 1
+
+  defp budget(c, :cleanup) do
+    if cleanup_calls(c) < c.cleanup_max_calls, do: :ok, else: exhausted(:cleanup_calls)
+  end
+
+  defp budget(c, _mode) do
+    cond do
+      calls(c) >= c.max_calls -> exhausted(:calls)
+      System.monotonic_time(:millisecond) >= c.deadline -> exhausted(:wall_time)
+      true -> :ok
+    end
+  end
+
+  defp exhausted(what),
+    do:
+      {:error,
+       Error.new(:request_failed, "replay budget exhausted", %{
+         reason: :budget_exhausted,
+         budget: what
+       })}
+
+  defp send_once(c, method, url, body, auth, mode) do
+    token = token(c, auth)
+
+    headers =
+      [{"accept", "application/json"}] ++
+        if(token, do: [{"authorization", "Bearer " <> token}], else: []) ++
+        if(body, do: [{"content-type", "application/json"}], else: [])
+
+    now = System.monotonic_time(:millisecond)
+    deadline = if mode == :cleanup, do: now + 60_000, else: min(c.deadline, now + 60_000)
+
+    HTTP.request(method, url, body && Jason.encode!(body), headers,
+      follow_redirect: false,
+      redact_values: Enum.reject([c.target.admin_token, token], &is_nil/1),
+      timeout: 10_000,
+      recv_timeout: 30_000,
+      max_body_length: 20_000_000,
+      bounded_body: true,
+      deadline: deadline
+    )
+  end
+
+  defp token(c, :admin), do: c.target.admin_token
+  defp token(_c, {:user, token}) when is_binary(token), do: token
+  defp token(_c, :none), do: nil
+
+  defp retryable?({:ok, %HTTP.Response{status_code: 429}}, _mode), do: true
+
+  defp retryable?({:ok, %HTTP.Response{status_code: s}}, mode),
+    do: s in @transient and mode != :write
+
+  defp retryable?({:error, _}, mode), do: mode != :write
+
+  defp retry_delay(c, result, mode, n) do
+    delay = min(backoff(c, result, n), c.max_retry_delay)
+
+    cond do
+      not retryable?(result, mode) or n >= c.max_retries -> nil
+      mode != :cleanup and System.monotonic_time(:millisecond) + delay >= c.deadline -> nil
+      true -> delay
+    end
+  end
+
+  defp backoff(c, {:ok, %HTTP.Response{headers: headers}}, n) do
+    case retry_after(headers) do
+      nil -> exponential(c, n)
+      ms -> ms
+    end
+  end
+
+  defp backoff(c, _result, n), do: exponential(c, n)
+
+  defp exponential(c, n), do: c.retry_base_delay * Integer.pow(2, n)
+
+  defp retry_after(headers) do
+    Enum.find_value(headers, fn {k, v} ->
+      with "retry-after" <- String.downcase(k),
+           {seconds, ""} when seconds >= 0 and seconds < 3600 <- Integer.parse(to_string(v)) do
+        seconds * 1000
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  defp finish({:ok, %HTTP.Response{status_code: status}}) when status in 300..399,
+    do:
+      {:error,
+       Error.new(:request_failed, "the replay branch redirected; redirects are not followed", %{
+         status: status,
+         reason: :redirect_refused
+       })}
+
+  defp finish({:ok, %HTTP.Response{status_code: status, body: body}}) do
+    text = IO.iodata_to_binary(body)
+
+    decoded =
+      case text do
+        "" ->
+          nil
+
+        _ ->
+          case Jason.decode(text) do
+            {:ok, term} -> term
+            {:error, _} -> :invalid_json
+          end
+      end
+
+    {:ok, %{status: status, body: decoded}}
+  end
+
+  defp finish({:error, %HTTP.Error{reason: reason}}),
+    do:
+      {:error,
+       Error.new(:request_failed, "replay request failed", %{reason: safe_reason(reason)})}
+
+  defp safe_reason(reason) when is_atom(reason), do: reason
+  defp safe_reason(_), do: :transport_failure
+
+  defp unexpected({:error, %Error{}} = error, _what), do: error
+
+  defp unexpected({:ok, %{status: status, body: body}}, what) do
+    kind =
+      case status do
+        401 -> :unauthorized
+        403 -> :forbidden
+        404 -> :not_found
+        _ -> :http_error
+      end
+
+    {:error,
+     Error.new(kind, "#{what}: unexpected answer", %{status: status, bubble: bubble_code(body)})}
+  end
+
+  # Bubble error bodies carry a short code (`MISSING_DATA`, `NOT_FOUND`);
+  # keep only that, never a message or the body.
+  defp bubble_code(%{"body" => %{"status" => code}}), do: code(code)
+  defp bubble_code(%{"status" => code}), do: code(code)
+  defp bubble_code(_), do: nil
+
+  defp code(code) when is_binary(code) do
+    if code =~ ~r/\A[A-Z_]{1,40}\z/, do: code, else: nil
+  end
+
+  defp code(_), do: nil
+end

@@ -19,6 +19,38 @@ All notable changes to this project are documented here.
   has goldens for every format, and the PostgreSQL DDL job checks that its
   comments reach `pg_description` byte for byte in both
   `standard_conforming_strings` modes.
+
+- **Bubble replay driver with a branch-only guard** (WTF-384, V4 of
+  WTF-358). `BubbleEx.Verify.Replay.Target` takes a Bubble app ID and a
+  `wtfreplay…` branch (live, test, `version-…` forms, look-alikes, domains
+  and URLs are refused) plus the owner's replay admin token (redacted from
+  `Inspect`), and builds every URL under
+  `https://<app>.bubbleapps.io/version-<branch>/api/1.1/`;
+  `check_url/2` re-checks each one before it is sent.
+  `Replay.Client` is the Data API (search with `_id in` constraints and
+  cursor paging, get, create) and Workflow API client over
+  `BubbleEx.HTTP`: admin, persona-token or anonymous auth, a call budget
+  (every attempt counts) and a wall-time budget, exponential backoff and
+  `Retry-After` on 429/5xx (creates and workflow calls only on 429), no
+  redirects, errors without bodies or credentials. Updates and deletes take
+  a `Replay.Ledger` and a seed key, never a Bubble ID, so cleanup deletes
+  only what the run created. `Replay.Seeder` signs personas up and logs
+  them in through the replay kit (per-run sink-domain emails, random
+  passwords kept in a redacted `Replay.Session`), creates records as their
+  `Created By` user, defers forward references and supports
+  delete-after-seed (dangling references). `Replay.Recorder` requires the
+  dry run's `plan_sha256`, refuses plans over budget and ops it cannot
+  record yet (V7/V8), preflights the kit (`Replay.Kit`: `/meta`
+  workflows, Data API exposure per type, read-only), records every
+  scenario twice with `Replay.Differential` masks (a differing privacy
+  verdict is unstable and makes the recording incomplete), always cleans
+  up, reports calls, leftovers and the assumption flags each op can
+  calibrate, and drops any recording that `Replay.CredentialScan` (the
+  run's own secrets, bearer tokens, detector hits, credential-named
+  members) refuses. The owner checklist is `docs/replay-kit.md`.
+  `BubbleEx.HTTP.request/5` now also accepts `:patch` and `:delete`.
+  Tests run only against an in-memory fake Bubble.
+
 - **Plugin inventory and replacement findings** (WTF-376, T10 of WTF-359).
   The index has a `:plugin` symbol (`plugin:<marketplace id>`, `installed`,
   `version`; `_current` / `_test` keys are the same plugin) for every
