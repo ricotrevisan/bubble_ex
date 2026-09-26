@@ -87,7 +87,9 @@ module name, so the dependencies compile once), then per fixture runs
 `mix compile --warnings-as-errors`, `mix ash.codegen` and
 `mix ash.codegen --check`, and, with `PHOENIX_COMPILE_CHECK_DB` set, the
 scaffolded smoke test (`mix test`: migrations, endpoint boot, magic-link
-sign-in). The dependencies are locked by
+sign-in) and the generated API client tests (`Req.Test` request shapes,
+WTF-374; the `phoenix_api_clients` fixture covers every kind of call). The
+dependencies are locked by
 `scripts/phoenix_compile_check/mix.lock`; after changing the pins in
 `BubbleEx.Target.Phoenix.deps/1`, refresh it with
 `PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1`. `PHOENIX_COMPILE_CHECK_FIXTURES`

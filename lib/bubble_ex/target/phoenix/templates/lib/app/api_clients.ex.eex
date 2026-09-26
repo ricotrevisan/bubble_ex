@@ -1,0 +1,246 @@
+defmodule <%= @module %>.ApiClients do
+  @moduledoc """
+  The runtime of the generated API Connector clients
+  (`<%= @module %>.ApiClients.*`, one module per Bubble API Connector group,
+  one function per call).
+
+  Every client function takes `params`, a map or keyword list of the call's
+  non-private parameters (a missing one is not sent; in a JSON body it is
+  `""` inside a string and `null` as a value), and `opts`:
+
+    * `:env` - a map of environment variables that takes precedence over
+      the system environment (tests pass stubs here)
+    * `:base_url` - replaces the call's scheme, host and port
+    * any `Req` option (`:plug`, `:retry`, `:receive_timeout`, …)
+
+  Options also come from the application environment, per group module,
+  under the call's own options:
+
+      config :<%= @app %>, <%= @module %>.ApiClients.SomeGroup,
+        base_url: "https://sandbox.example.com",
+        receive_timeout: 10_000
+
+  The defaults are a <%= @receive_timeout %> ms receive timeout, a <%= @connect_timeout %> ms
+  connect timeout and up to <%= @max_retries %> retries of safe (GET/HEAD)
+  requests on transient errors.
+
+  A function returns `{:ok, body}` for a 2xx response (decoded JSON, a
+  typed struct when the call returns a known API Connector type, text, or
+  nil for an empty response), or `{:error, reason}`: `{:status, status,
+  body}`, `{:missing_env, names}`, `{:unknown_parameters, keys}`,
+  `:invalid_parameters` (params neither a map nor a keyword list),
+  `{:decode, reason}` or a transport exception.
+
+  ## Secrets
+
+  Bubble's private values, and literals of a request that could be
+  credentials, are never in the code: they are read from these environment
+  variables when a call is made (`.wtf/api_clients.json` lists them too).
+  A variable holding a header or parameter whose name Bubble does not send
+  holds `Name: value` (a header) or `name=value` (a parameter).
+
+<%= @env_doc %>
+  """
+
+  @app :<%= @app %>
+
+  @defaults [
+    receive_timeout: <%= @receive_timeout %>,
+    connect_options: [timeout: <%= @connect_timeout %>],
+    retry: :safe_transient,
+    max_retries: <%= @max_retries %>
+  ]
+
+  @doc false
+  @spec params(map() | keyword(), [atom()]) :: {:ok, map()} | {:error, term()}
+  def params(params, keys) when is_map(params) or is_list(params) do
+    params = Map.new(params)
+
+    case Map.keys(params) -- keys do
+      [] -> {:ok, params}
+      unknown -> {:error, {:unknown_parameters, Enum.sort(unknown)}}
+    end
+  end
+
+  def params(_params, _keys), do: {:error, :invalid_parameters}
+
+  @doc false
+  @spec env(keyword(), [String.t()]) :: {:ok, %{String.t() => String.t()}} | {:error, term()}
+  def env(opts, names) do
+    overrides = Keyword.get(opts, :env, %{})
+
+    values =
+      Map.new(names, fn name -> {name, Map.get(overrides, name) || System.get_env(name)} end)
+
+    case for({name, nil} <- values, do: name) do
+      [] -> {:ok, values}
+      missing -> {:error, {:missing_env, Enum.sort(missing)}}
+    end
+  end
+
+  @doc false
+  @spec request(module(), keyword(), map()) :: {:ok, term()} | {:error, term()}
+  def request(group, opts, request) do
+    {config_base, config} = Keyword.pop(Application.get_env(@app, group, []), :base_url)
+    {opts_base, opts} = opts |> Keyword.delete(:env) |> Keyword.pop(:base_url)
+    base = opts_base || config_base || request.base
+
+    options =
+      @defaults
+      |> Keyword.merge(config)
+      |> Keyword.merge(opts)
+      |> Keyword.merge(
+        method: request.method,
+        url: String.trim_trailing(base, "/") <> request.path,
+        params: entries(request.query),
+        headers: entries(request.headers),
+        decode_body: false
+      )
+      |> Keyword.merge(body(request.body))
+      |> Keyword.merge(auth(request.auth))
+
+    case Req.request(options) do
+      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
+        decode(body, request.response)
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:status, status, body}}
+
+      {:error, exception} ->
+        {:error, exception}
+    end
+  end
+
+  defp entries(entries), do: for({name, value} <- entries, value != nil, do: {name, value})
+
+  defp body(nil), do: []
+  defp body({:json, term}), do: [json: term]
+  defp body({:form, entries}), do: [form: entries(entries)]
+
+  defp auth(nil), do: []
+  defp auth({:basic, user, password}), do: [auth: {:basic, user <> ":" <> password}]
+
+  defp decode(_body, :empty), do: {:ok, nil}
+  defp decode(body, :text), do: {:ok, body}
+  defp decode(body, :json), do: json(body)
+
+  defp decode(body, {:json, decoder, list?}) do
+    with {:ok, term} <- json(body) do
+      cond do
+        is_nil(term) -> {:ok, nil}
+        list? and is_list(term) -> each(term, decoder)
+        true -> decoder.(term)
+      end
+    end
+  end
+
+  defp json(""), do: {:ok, nil}
+
+  defp json(body) do
+    case Jason.decode(body) do
+      {:ok, term} -> {:ok, term}
+      {:error, error} -> {:error, {:decode, error}}
+    end
+  end
+
+  defp each(items, decoder) do
+    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, acc} ->
+      case decoder.(item) do
+        {:ok, value} -> {:cont, {:ok, [value | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, values} -> {:ok, Enum.reverse(values)}
+      error -> error
+    end
+  end
+
+  @doc false
+  # A value as text for a URL, header or form: nil stays nil.
+  @spec text(term()) :: String.t() | nil
+  def text(nil), do: nil
+  def text(value) when is_binary(value), do: value
+  def text(value) when is_number(value) or is_atom(value), do: to_string(value)
+  def text(value), do: Jason.encode!(value)
+
+  @doc false
+  # Values concatenated as text, a missing one as "".
+  @spec string([term()]) :: String.t()
+  def string(values), do: Enum.map_join(values, &(text(&1) || ""))
+
+  @doc false
+  # Values concatenated as text; nil when the only value is missing.
+  @spec concat([term()]) :: String.t() | nil
+  def concat([value]), do: text(value)
+  def concat(values), do: string(values)
+
+  @doc false
+  # A value in a URL path segment, percent-encoded.
+  @spec segment(term()) :: String.t()
+  def segment(value), do: URI.encode(text(value) || "", &URI.char_unreserved?/1)
+
+  @doc false
+  # A value in a host name.
+  @spec host(term()) :: String.t()
+  def host(value), do: URI.encode(text(value) || "", &(URI.char_unreserved?(&1) and &1 != ?~))
+
+  @doc false
+  # A JSON value from an environment variable: its JSON, else its text.
+  @spec json_value(String.t()) :: term()
+  def json_value(text) do
+    case Jason.decode(text) do
+      {:ok, term} -> term
+      {:error, _} -> text
+    end
+  end
+
+  @doc false
+  # A `Name: value` header line from an environment variable.
+  @spec header_line(String.t()) :: {String.t(), String.t()}
+  def header_line(line) do
+    case String.split(line, ":", parts: 2) do
+      [name, value] -> {String.trim(name), String.trim(value)}
+      [value] -> {"authorization", String.trim(value)}
+    end
+  end
+
+  @doc false
+  # A `name=value` parameter from an environment variable.
+  @spec param_line(String.t()) :: {String.t(), String.t()}
+  def param_line(line) do
+    case String.split(line, "=", parts: 2) do
+      [name, value] -> {name, value}
+      [name] -> {name, ""}
+    end
+  end
+
+  @doc false
+  # The value at a response path (keys and list indices), or nil.
+  @spec at(term(), [String.t() | integer()]) :: term()
+  def at(value, []), do: value
+  def at(map, [key | rest]) when is_map(map) and is_binary(key), do: at(Map.get(map, key), rest)
+
+  def at(list, [index | rest]) when is_list(list) and is_integer(index),
+    do: at(Enum.at(list, index), rest)
+
+  def at(_value, _path), do: nil
+
+  @doc false
+  # `fun` over a list; anything else is kept as is.
+  @spec map_list(term(), (term() -> term())) :: term()
+  def map_list(list, fun) when is_list(list), do: Enum.map(list, fun)
+  def map_list(value, _fun), do: value
+
+  @doc false
+  # A typed struct from its fields.
+  @spec cast(module(), term()) :: {:ok, struct()} | {:error, term()}
+  def cast(module, fields) when is_map(fields) do
+    case module.new(fields) do
+      {:ok, value} -> {:ok, value}
+      {:error, error} -> {:error, {:decode, error}}
+    end
+  end
+
+  def cast(_module, _value), do: {:error, {:decode, :not_an_object}}
+end

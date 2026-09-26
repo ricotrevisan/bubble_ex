@@ -8,8 +8,15 @@ defmodule BubbleEx.Model.Connector do
     * `id` - the group's Bubble ID; identity
     * `name` - its display name (`human`, else `name`), verbatim
     * `auth` - its authentication kind as supplied, e.g. `"none"`
+    * `key_name` - the header or query parameter a `private_key_header` or
+      `private_key_url` authentication sends its key in
+      (`token_param_name`), when it is a plain name
     * `parameters` - `BubbleEx.Model.ConnectorParameter`s shared by its calls
       (`shared_headers`, `shared_params`)
+    * `shared_values` - the values of its non-private shared parameters,
+      which Bubble sends as supplied: `%{parameter, parts}` with `parts` a
+      safe literal or redacted (see `BubbleEx.Model.ConnectorRequest`),
+      in parameter order
     * `calls` - `BubbleEx.Model.ConnectorCall`s in Bubble ID order (then
       placement): every entry of the group's `calls` object, and every member
       of the group itself shaped like a call (an object with a `types`,
@@ -18,7 +25,8 @@ defmodule BubbleEx.Model.Connector do
     * `path` - JSON pointer to the group
 
   Groups that are not JSON objects are left out. No value that could hold a
-  credential is read (see `BubbleEx.Model.ConnectorParameter`). The API Connector types
+  credential is kept (see `BubbleEx.Model.ConnectorParameter` and
+  `BubbleEx.Model.ConnectorRequest`). The API Connector types
   (`BubbleEx.Model.ExternalType`) are resolved against these calls' `types`
   registries.
   """
@@ -26,7 +34,7 @@ defmodule BubbleEx.Model.Connector do
   alias BubbleEx.Model.ConnectorCall
 
   @enforce_keys [:id, :path]
-  defstruct [:id, :name, :auth, :path, parameters: [], calls: []]
+  defstruct [:id, :name, :auth, :key_name, :path, parameters: [], shared_values: [], calls: []]
 
   @doc """
   The call `id` of `connector`: one placed directly in the group first, then
@@ -42,7 +50,11 @@ defmodule BubbleEx.Model.Connector do
           id: String.t(),
           name: String.t() | nil,
           auth: String.t() | nil,
+          key_name: String.t() | nil,
           parameters: [BubbleEx.Model.ConnectorParameter.t()],
+          shared_values: [
+            %{parameter: String.t(), parts: [BubbleEx.Model.ConnectorRequest.part()]}
+          ],
           path: String.t(),
           calls: [ConnectorCall.t()]
         }
@@ -60,6 +72,10 @@ defmodule BubbleEx.Model.ConnectorCall do
       has no plain host (see `BubbleEx.Model.ConnectorReader.host/1`)
     * `parameters` - its `BubbleEx.Model.ConnectorParameter`s (headers, URL,
       body and query parameters), by location then Bubble ID
+    * `request` - the request it sends as a leak-safe template
+      (`BubbleEx.Model.ConnectorRequest`: URL path and query, body
+      structure, placeholders and safe literals only); nil when the call is
+      not an object
     * `publish_as` - how it is used as supplied (`"data"` or `"action"`)
     * `returns` - the type descriptor it returns (`ret_value`) when it is a
       string, verbatim
@@ -93,6 +109,7 @@ defmodule BubbleEx.Model.ConnectorCall do
     :placement,
     :path,
     :raw,
+    :request,
     parameters: []
   ]
 
@@ -103,6 +120,7 @@ defmodule BubbleEx.Model.ConnectorCall do
           publish_as: String.t() | nil,
           host: String.t() | nil,
           parameters: [BubbleEx.Model.ConnectorParameter.t()],
+          request: BubbleEx.Model.ConnectorRequest.t() | nil,
           returns: String.t() | nil,
           registry: map() | nil,
           types: :malformed | nil,

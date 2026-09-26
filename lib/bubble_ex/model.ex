@@ -40,9 +40,12 @@ defmodule BubbleEx.Model do
   projection of it.
 
   API Connector calls hold credentials. The Model reads only their URL's
-  host and their headers' and parameters' names and `private` flags (see
-  `BubbleEx.Model.ConnectorParameter`); never a header or parameter value,
-  body, query string, user info or URL path.
+  host, their headers' and parameters' names and `private` flags (see
+  `BubbleEx.Model.ConnectorParameter`) and a leak-safe request template
+  (`BubbleEx.Model.ConnectorRequest`, WTF-374: the URL path and query and
+  the body's structure, with placeholders naming parameters and only
+  literals that cannot hold a credential; every other literal is
+  redacted); never a header or parameter value or user info.
 
   `source_sha256` is the canonical-JSON hash of the app it was built from
   (`BubbleEx.CanonicalJson.sha256/1`); entry points that take a prebuilt
@@ -71,7 +74,7 @@ defmodule BubbleEx.Model do
   alias BubbleEx.Model.{Builder, Connector, DataType, ExternalType, Field, OptionSet, Type}
   alias BubbleEx.Privacy.Rule
 
-  @schema_version 3
+  @schema_version 4
 
   @enforce_keys [:schema_version]
   defstruct [

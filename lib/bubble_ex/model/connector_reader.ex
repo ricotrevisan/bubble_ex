@@ -8,12 +8,16 @@ defmodule BubbleEx.Model.ConnectorReader do
   # Leak safety: calls carry credentials (header and parameter values, URL
   # user info, query strings, tokens in paths, bodies). Only these are read:
   # the URL's host (`host/1`), parameter names (`key`/`%k`) and their
-  # `private` and `querystring` flags. Values (`value`/`%v`), bodies
-  # (`body`/`%b3`) and the rest of the URL are never read, so they cannot
-  # reach the Model or anything built from it.
+  # `private` and `querystring` flags, and the request template
+  # (`BubbleEx.Model.ConnectorRequest`, WTF-374), which keeps a URL's path
+  # and query and a body's structure with placeholders and only literals
+  # that cannot hold a credential. Parameter values (`value`/`%v`) are
+  # never read, except a group's non-private shared values, which go
+  # through the same literal check.
 
   alias BubbleEx.Diagnostic
   alias BubbleEx.Model.{Connector, ConnectorCall, ConnectorParameter}
+  alias BubbleEx.Model.ConnectorRequest.Reader, as: RequestReader
 
   @connectors ["settings", "client_safe", "apiconnector2"]
 
@@ -84,11 +88,15 @@ defmodule BubbleEx.Model.ConnectorReader do
           []
       end
 
+    parameters = parameters(group, @shared_parameters ++ [{"shared_params", :param}], path)
+
     %Connector{
       id: id,
       name: first_text(group, ~w(human name)),
       auth: first_text(group, ["auth"]),
-      parameters: parameters(group, @shared_parameters ++ [{"shared_params", :param}], path),
+      key_name: parameter_name(first_text(group, ["token_param_name"]), :query),
+      parameters: parameters,
+      shared_values: RequestReader.shared_values(group, parameters),
       path: pointer(path),
       calls: Enum.sort_by(direct ++ nested, &{&1.id, &1.placement})
     }
@@ -97,6 +105,7 @@ defmodule BubbleEx.Model.ConnectorReader do
   defp call(id, call, placement, path) when is_map(call) do
     types = Map.get(call, "types")
     registry = registry(types)
+    parameters = parameters(call, @call_parameters ++ [{"params", :param}], path)
 
     %ConnectorCall{
       id: id,
@@ -104,7 +113,8 @@ defmodule BubbleEx.Model.ConnectorReader do
       method: first_text(call, ["method"]),
       publish_as: first_text(call, ["publish_as"]),
       host: host(Map.get(call, "url")),
-      parameters: parameters(call, @call_parameters ++ [{"params", :param}], path),
+      parameters: parameters,
+      request: RequestReader.read(call, parameters),
       returns: first_text(call, ["ret_value"]),
       registry: registry,
       types: if(is_nil(registry) and types not in [nil, ""], do: :malformed),

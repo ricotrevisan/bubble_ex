@@ -29,14 +29,32 @@
               }
             }
           },
+          "request": {
+            "body": null,
+            "body_type": "none",
+            "host": null,
+            "list": false,
+            "parameters_in": "query",
+            "path": [],
+            "port": null,
+            "query": [],
+            "redacted": 0,
+            "response": "json",
+            "scheme": null,
+            "unsupported": [
+              "no_url"
+            ]
+          },
           "returns": "api.apiconnector2.bad.defs.T",
           "types": null
         }
       ],
       "id": "bad",
+      "key_name": null,
       "name": null,
       "parameters": [],
-      "path": "/settings/client_safe/apiconnector2/bad"
+      "path": "/settings/client_safe/apiconnector2/bad",
+      "shared_values": []
     }
   ],
   "data_types": [
@@ -1038,5 +1056,5 @@
       "values": []
     }
   ],
-  "schema_version": 3
+  "schema_version": 4
 }
