@@ -69,8 +69,21 @@ defmodule BubbleEx.Target.Phoenix do
   **Owned** files are everything else (mix.exs, config, router, layouts,
   controllers, the sender, tests…): scaffolded once, then the owner's; a
   packager writes them only when absent. `owned_paths/1` and the
-  manifest's `owned` list them. Later surfaces (LiveViews, per-surface
-  `Workflows` modules) will be owned too.
+  manifest's `owned` list them. Pages are owned too (below); per-surface
+  `Workflows` modules will be.
+
+  ## Pages (WTF-370)
+
+  With `frontend:` (a `BubbleEx.Frontend.Normalized`) the app gets its
+  Bubble pages, printed by `BubbleEx.Target.Phoenix.Pages`: one owned
+  LiveView per page (module + `.html.heex`, routed at the page's Bubble path
+  in an `ash_authentication_live_session`), one owned function component
+  per reusable element, `data-bubble-id` on every element, the owned
+  `<Module>.Bubble.Runtime` the compiled bindings call, and generated
+  `assets/css/bubble.css` (`@theme` tokens, named styles as component
+  classes), `assets/css/bubble_residue.css`, `<Web>.Bubble` (overlay JS
+  commands), `.wtf/surfaces.json` (locked page and component names) and a
+  traceability test mounting every page. `frontend_report/2` counts it.
 
   ## Options
 
@@ -79,11 +92,22 @@ defmodule BubbleEx.Target.Phoenix do
     * `:module` - the root module (one alias segment), default
       `module_name/1` of the name; the web module is `<module>Web`
     * `:app` - the OTP application, default the module underscored
+    * `:frontend` - the normalized frontend whose pages to render
+    * `:expressions` - its compiled bindings
+      (`BubbleEx.Target.Elixir.Frontend.compile/5`, with `runtime:
+      "<Module>.Bubble.Runtime"` and `namespace: "<Module>"`)
+    * `:surface_names` - the previous `.wtf/surfaces.json`, decoded: its
+      page modules and paths and component names are kept (WTF-352 D5)
+    * `:assets` - downloaded images and icons by exporter ID (as
+      `BubbleEx.Frontend` collects them), served from
+      `priv/static/images/bubble`; without it images keep their URLs
   """
 
   alias BubbleEx.{CanonicalJson, Error}
+  alias BubbleEx.Frontend.Json
+  alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
-  alias BubbleEx.Target.Phoenix.{Manifest, Templates}
+  alias BubbleEx.Target.Phoenix.{Manifest, Pages, Templates}
 
   @version Mix.Project.config()[:version]
 
@@ -229,10 +253,18 @@ defmodule BubbleEx.Target.Phoenix do
     with {:ok, ctx} <- context(project, opts),
          {:ok, user, email} <- user(project),
          :ok <- check_claims(project),
+         {:ok, frontend} <- frontend(opts),
          ctx = Map.merge(ctx, %{user: user.module, email: email}),
          {:ok, source} <- ash_source(project, user, ctx) do
-      generated = generated_files(project, source, ctx)
-      owned = owned_files(ctx)
+      pages = pages(frontend, ctx, opts)
+      ctx = Map.merge(ctx, %{routes: pages.routes, frontend: frontend_inputs(frontend)})
+
+      generated =
+        project
+        |> generated_files(source, ctx)
+        |> Map.merge(Map.new(pages.generated, fn {p, c} -> {p, mark_generated(p, c, false)} end))
+
+      owned = ctx |> owned_files() |> Map.merge(pages.owned)
 
       case Enum.filter(Map.keys(generated), &Map.has_key?(owned, &1)) do
         [] ->
@@ -258,6 +290,23 @@ defmodule BubbleEx.Target.Phoenix do
 
   def render(_project, _opts),
     do: invalid("expected a BubbleEx.Target.Ash.Project and a keyword list")
+
+  @doc """
+  What `render/2` made of the frontend (`frontend:`), as counts: pages and
+  reusable elements rendered, elements emitted natively, as placeholders
+  and inside runtime templates, markers, compiled and marked bindings, and
+  style declarations as utilities or residue. No names or IDs.
+  """
+  @spec frontend_report(Project.t(), [option()]) :: {:ok, map()} | {:error, Error.t()}
+  def frontend_report(%Project{} = project, opts) do
+    with {:ok, ctx} <- context(project, opts),
+         {:ok, %Normalized{} = frontend} <- frontend(opts) do
+      {:ok, pages(frontend, ctx, opts).report}
+    else
+      {:ok, nil} -> invalid("frontend_report/2 needs the frontend: option")
+      error -> error
+    end
+  end
 
   @doc """
   The owned (scaffold-once) paths of a rendered file map, per its manifest.
@@ -354,6 +403,48 @@ defmodule BubbleEx.Target.Phoenix do
         )
   end
 
+  # --- the frontend (WTF-370) -----------------------------------------------------
+
+  defp frontend(opts) do
+    case Keyword.get(opts, :frontend) do
+      nil -> {:ok, nil}
+      %Normalized{} = frontend -> {:ok, frontend}
+      _ -> invalid("frontend: must be a BubbleEx.Frontend.Normalized")
+    end
+  end
+
+  defp pages(nil, _ctx, _opts),
+    do: %{
+      routes: [],
+      owned: %{},
+      generated: %{
+        "assets/css/bubble.css" => Pages.empty_stylesheet(),
+        "assets/css/bubble_residue.css" => "/* No frontend was rendered. */\n"
+      },
+      report: %{}
+    }
+
+  defp pages(%Normalized{} = frontend, ctx, opts) do
+    Pages.render(frontend, ctx,
+      names: Keyword.get(opts, :surface_names),
+      expressions: Keyword.get(opts, :expressions, %{}),
+      assets: Keyword.get(opts, :assets, %{})
+    )
+  end
+
+  # The frontend's identity in the manifest inputs: the rendered pages are
+  # a function of it.
+  defp frontend_inputs(nil), do: nil
+
+  defp frontend_inputs(%Normalized{} = frontend) do
+    %{
+      "bubble_id" => frontend.identity.bubble_id,
+      "app_version" => frontend.identity.app_version,
+      "normalized_schema_version" => frontend.normalized_schema_version,
+      "source_sha256" => Json.sha256(frontend.source.payload || %{})
+    }
+  end
+
   # --- the Ash layer --------------------------------------------------------------
 
   defp ash_source(project, user, ctx) do
@@ -412,8 +503,7 @@ defmodule BubbleEx.Target.Phoenix do
       (lib <> "accounts/token.ex") => "lib/app/accounts/token.ex",
       (lib <> "accounts/resources.ex") => "lib/app/accounts/resources.ex",
       (web <> "controllers/workflow_api_controller.ex") =>
-        "lib/web/controllers/workflow_api_controller.ex",
-      "assets/css/bubble.css" => "assets/css/bubble.css"
+        "lib/web/controllers/workflow_api_controller.ex"
     }
 
     templated = Map.new(templates, fn {path, t} -> {path, Templates.render(t, assigns)} end)
@@ -474,6 +564,11 @@ defmodule BubbleEx.Target.Phoenix do
       "test/support/conn_case.ex" => "test/support/conn_case.ex",
       "test/#{ctx.app}_web/smoke_test.exs" => "test/smoke_test.exs"
     }
+
+    templates =
+      if ctx.routes == [],
+        do: templates,
+        else: Map.put(templates, "#{lib}/bubble/runtime.ex", "lib/app/bubble/runtime.ex")
 
     templates
     |> Map.new(fn {path, t} -> {path, Templates.render(t, assigns)} end)

@@ -9,9 +9,12 @@
 #
 # `list` prints the fixture names: every BubbleEx.Model fixture
 # (test/support/model/*.json), every target fixture
-# (test/support/target/ash/*.json), the expression fixture and the owner
+# (test/support/target/ash/*.json), the expression fixture, every frozen
+# fidelity case's payload (`fidelity_<case>`, with its pages) and the owner
 # decision fixtures (BubbleEx.Test.DecidedFixture), plus `private_app` when
-# BUBBLE_EX_PRIVATE_EXPORT is set (never committed).
+# BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An app with a frontend
+# renders its pages (WTF-370), with the bindings the expression compiler
+# lowers.
 #
 # The committed scripts/phoenix_compile_check/mix.lock replaces the stub
 # lock, and with PHOENIX_COMPILE_CHECK_DB (a PostgreSQL URL without a
@@ -21,23 +24,79 @@
 
 alias BubbleEx.Target.Phoenix
 
+# The app's frontend (pages, reusable elements, styles) and its compiled
+# bindings, when the app JSON has one (WTF-370).
+frontend = fn app, model, project ->
+  case BubbleEx.Frontend.normalize(app) do
+    {:ok, frontend} ->
+      {:ok, expressions} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "PhxCheck.Bubble.Runtime",
+          namespace: "PhxCheck"
+        )
+
+      [frontend: frontend, expressions: expressions]
+
+    {:error, _} ->
+      []
+  end
+end
+
+# A frozen fidelity case's images and icons, from its committed files (the
+# URL -> file map of its case.json; never downloaded): served by the app
+# from priv/static/images/bubble.
+with_case_assets = fn {:ok, project, opts}, case_dir ->
+  files =
+    for asset <- Jason.decode!(File.read!(Path.join(case_dir, "case.json")))["public_assets"] || [],
+        into: %{},
+        do: {asset["url"], Path.join(case_dir, asset["path"])}
+
+  nodes =
+    case opts[:frontend] do
+      nil -> []
+      frontend -> frontend.pages ++ frontend.reusables
+    end
+
+  {assets, _findings} = BubbleEx.Frontend.Export.Assets.collect(nodes, asset_files: files)
+  {:ok, project, Keyword.put(opts, :assets, assets)}
+end
+
+# {project, render options} of an app JSON.
+app_fixture = fn app ->
+  {:ok, model} = BubbleEx.Model.build(app)
+  {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+  {:ok, project, frontend.(app, model, project)}
+end
+
 fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
         {"test/support/target/ash/*.json", "target_"},
-        {"test/support/expression/*.json", "expr_"}
+        {"test/support/expression/*.json", "expr_"},
+        {"test/support/fidelity/cases/*/source/payload.json", "fidelity_"}
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort(),
       into: %{} do
-    {prefix <> Path.basename(path, ".json"),
-     fn ->
-       {:ok, model} = path |> File.read!() |> Jason.decode!() |> BubbleEx.Model.build()
-       BubbleEx.Target.Ash.map(model, [], privacy: :omit)
-     end}
+    name =
+      if prefix == "fidelity_",
+        do: prefix <> (path |> Path.dirname() |> Path.dirname() |> Path.basename()),
+        else: prefix <> Path.basename(path, ".json")
+
+    fixture = fn -> path |> File.read!() |> Jason.decode!() |> app_fixture.() end
+
+    if prefix == "fidelity_",
+      do: {name, fn -> with_case_assets.(fixture.(), Path.dirname(Path.dirname(path))) end},
+      else: {name, fixture}
   end
   |> Map.merge(%{
-    "decided_combined" => fn -> BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit) end,
-    "decided_locked" => fn -> BubbleEx.Test.DecidedFixture.locked_project(privacy: :omit) end
+    "decided_combined" => fn ->
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit)
+      {:ok, project, []}
+    end,
+    "decided_locked" => fn ->
+      {:ok, project} = BubbleEx.Test.DecidedFixture.locked_project(privacy: :omit)
+      {:ok, project, []}
+    end
   })
   |> Map.merge(
     case System.get_env("BUBBLE_EX_PRIVATE_EXPORT") do
@@ -46,10 +105,7 @@ fixtures =
 
       path ->
         %{
-          "private_app" => fn ->
-            {:ok, model} = path |> BubbleEx.Test.SplitExport.load() |> BubbleEx.Model.build()
-            BubbleEx.Target.Ash.map(model, [], privacy: :omit)
-          end
+          "private_app" => fn -> path |> BubbleEx.Test.SplitExport.load() |> app_fixture.() end
         }
     end
   )
@@ -59,8 +115,8 @@ case System.argv() do
     fixtures |> Map.keys() |> Enum.sort() |> Enum.each(&IO.puts/1)
 
   [dir, name] ->
-    {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
+    opts = [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 

@@ -30,8 +30,9 @@ defmodule <%= @web %>.Router do
 
   scope "/", <%= @web %> do
     pipe_through :browser
-
+<%= unless Enum.any?(@routes, &(&1.path == "/")) do %>
     get "/", PageController, :home
+<% end %>
 
     auth_routes AuthController, <%= @module %>.Accounts.Resources.user(), path: "/auth"
     sign_out_route AuthController
@@ -46,7 +47,17 @@ defmodule <%= @web %>.Router do
     )
   end
 
-  if Application.compile_env(:<%= @app %>, :dev_routes) do
+<%= if @routes != [] do %>  # The pages of the Bubble app (WTF-370), at their Bubble paths.
+  scope "/", <%= @web %> do
+    pipe_through :browser
+
+    ash_authentication_live_session :bubble_pages,
+      on_mount: {<%= @web %>.LiveUserAuth, :live_user_optional} do
+<%= for route <- @routes do %>      live <%= inspect(route.path) %>, <%= String.replace_prefix(route.module, @web <> ".", "") %>
+<% end %>    end
+  end
+
+<% end %>  if Application.compile_env(:<%= @app %>, :dev_routes) do
     scope "/dev" do
       pipe_through :browser
 

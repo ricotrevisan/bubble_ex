@@ -1,8 +1,16 @@
-/* Tailwind v4. The Bubble app's design tokens (@theme) are generated into
-   bubble.css; this file is yours. */
+/* Tailwind v4. The Bubble app's design tokens (@theme) and named styles
+   are generated into bubble.css, the styles utilities cannot carry into
+   bubble_residue.css; this file is yours.
 
-@import "tailwindcss" source(none);
+   Tailwind's Preflight reset is not imported: the pages scaffolded from
+   Bubble assume the browser's defaults, which bubble.css adjusts as Bubble
+   does. */
+
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./bubble.css";
+@import "./bubble_residue.css";
 @import "phoenix-colocated/<%= @app %>/colocated.css";
 @source "../css";
 @source "../js";
