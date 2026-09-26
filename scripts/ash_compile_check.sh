@@ -35,7 +35,14 @@
 #     fixtures (BubbleEx.Test.DecidedFixture, WTF-401): a derived field is
 #     a calculation with no column that PostgreSQL reads back through its
 #     relationship, refined numbers are bigint/numeric columns, and an
-#     attribute renamed after the name lock keeps its column; then
+#     attribute renamed after the name lock keeps its column; and
+#     scripts/ash_compile_check/load.exs (run from the bubble_ex root)
+#     loads the data loader's fixture exports (BubbleEx.Load, WTF-357)
+#     into the field_types, decided_cut2 and decided_combined databases:
+#     a dry run, a run interrupted mid-way and resumed from its ledger, a
+#     rerun that changes nothing and a delta sync, comparing the stored
+#     rows; scripts/ash_compile_check/loaded.exs reads them back through
+#     Ash (every value casts, derived fields compute); then
 #   * the generated privacy-matrix tests (BubbleEx.Target.Ash.MatrixTests,
 #     WTF-383; scripts/ash_compile_check/matrix_render.exs synthesizes
 #     BubbleEx.Verify.Matrix's seed, scenarios and model recordings for each
@@ -74,7 +81,8 @@ cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/r
   "$root/scripts/ash_compile_check/filters.exs" \
   "$root/scripts/ash_compile_check/policies.exs" \
   "$root/scripts/ash_compile_check/ecto_migrate.exs" \
-  "$root/scripts/ash_compile_check/decisions.exs" "$scratch/"
+  "$root/scripts/ash_compile_check/decisions.exs" \
+  "$root/scripts/ash_compile_check/loaded.exs" "$scratch/"
 cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectations.json"
 cp "$root/test/support/target/ash/expectations/policies.json" "$scratch/policy_expectations.json"
 
@@ -140,6 +148,13 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix run policies.exs
   mix run ecto_migrate.exs
   mix run decisions.exs
+
+  # The data loader (WTF-357), end to end: load.exs (from the bubble_ex
+  # root) loads fixture exports into three of these databases (dry run,
+  # interrupted and resumed run, rerun, delta sync), then loaded.exs reads
+  # them back through Ash.
+  (cd "$root" && MIX_ENV=test mix run scripts/ash_compile_check/load.exs "$scratch")
+  mix run loaded.exs
 
   # Generated privacy-matrix tests (WTF-383): scored even when some fail, so
   # the counts and diffs are printed; then any failure fails the check.

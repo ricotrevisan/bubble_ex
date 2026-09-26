@@ -58,7 +58,7 @@ defmodule BubbleEx.DiagnosticTest do
         assert {:ok, entry} = Codes.fetch(code), "unregistered diagnostic code #{inspect(code)}"
         assert entry.severity in [:error, :warning, :info]
         assert entry.outcome in [:preserved, :degraded, :unresolved]
-        assert entry.stage in [:read, :parse, :model, :target]
+        assert entry.stage in [:read, :parse, :model, :load, :target]
         assert match?(<<_, _::binary>>, entry.doc)
       end
     end
@@ -467,7 +467,7 @@ defmodule BubbleEx.DiagnosticTest do
 
   describe "stage text form" do
     test "round-trips every stage" do
-      for stage <- [:read, :parse, :model, {:target, :ash}, {:target, :postgres}] do
+      for stage <- [:read, :parse, :model, :load, {:target, :ash}, {:target, :postgres}] do
         assert {:ok, ^stage} = stage |> Diagnostic.stage_to_string() |> Diagnostic.parse_stage()
       end
 
@@ -475,7 +475,7 @@ defmodule BubbleEx.DiagnosticTest do
     end
 
     test "rejects unknown text without creating atoms" do
-      for text <- ["", "target:", "load", "Target:ash", "target:no_such_format_wtf360_xyz"] do
+      for text <- ["", "target:", "loading", "Target:ash", "target:no_such_format_wtf360_xyz"] do
         assert Diagnostic.parse_stage(text) == :error
       end
     end

@@ -1,7 +1,8 @@
 defmodule BubbleEx.Diagnostic do
   @moduledoc """
   The one diagnostic type: BubbleEx reporting that it could not read, parse,
-  model or render part of a Bubble app faithfully. The Model (and its API
+  model or render part of a Bubble app faithfully, or load its data
+  (`BubbleEx.Load`) into a target as Bubble stored it. The Model (and its API
   Connector resolution), the expression and privacy parsers, the workflow
   inventory and the schema encoders all emit it.
 
@@ -12,7 +13,8 @@ defmodule BubbleEx.Diagnostic do
       `:preserved` (kept verbatim and round-trips, but not modeled),
       `:degraded` (mapped with some loss of meaning) or `:unresolved`
       (could not be mapped, e.g. a missing target).
-    * `stage` - `:read | :parse | :model | {:target, format}`
+    * `stage` - `:read | :parse | :model | :load | {:target, format}`
+      (`:load`: the data loader, `BubbleEx.Load`, about data rows)
     * `subject` - the Bubble IDs involved, keyed by `:type` (data type),
       `:option_set`, `:external_type` (API Connector type, e.g.
       `"api.apiconnector2.bTa.bTb.obj"`), `:field`, `:rule`, `:workflow` and
@@ -33,7 +35,7 @@ defmodule BubbleEx.Diagnostic do
 
   @type severity :: :error | :warning | :info
   @type outcome :: :preserved | :degraded | :unresolved
-  @type stage :: :read | :parse | :model | {:target, atom()}
+  @type stage :: :read | :parse | :model | :load | {:target, atom()}
   @type subject_key ::
           :type | :option_set | :external_type | :field | :rule | :workflow | :plugin
   @type subject :: %{optional(subject_key()) => String.t()}
@@ -190,14 +192,16 @@ defmodule BubbleEx.Diagnostic do
   @doc """
   Encodes a stage as text. The grammar is
 
-      stage  = "read" / "parse" / "model" / "target:" format
+      stage  = "read" / "parse" / "model" / "load" / "target:" format
       format = the target's format atom, e.g. "ash", "postgres"
 
   `parse_stage/1` is the inverse.
   """
   @spec stage_to_string(stage()) :: String.t()
   def stage_to_string({:target, target}) when is_atom(target), do: "target:#{target}"
-  def stage_to_string(stage) when stage in [:read, :parse, :model], do: Atom.to_string(stage)
+
+  def stage_to_string(stage) when stage in [:read, :parse, :model, :load],
+    do: Atom.to_string(stage)
 
   @doc """
   Parses the text form of a stage (see `stage_to_string/1`). Target formats
@@ -207,6 +211,7 @@ defmodule BubbleEx.Diagnostic do
   def parse_stage("read"), do: {:ok, :read}
   def parse_stage("parse"), do: {:ok, :parse}
   def parse_stage("model"), do: {:ok, :model}
+  def parse_stage("load"), do: {:ok, :load}
 
   def parse_stage("target:" <> format) when byte_size(format) > 0 do
     {:ok, {:target, String.to_existing_atom(format)}}
