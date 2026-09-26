@@ -100,7 +100,12 @@ defmodule BubbleEx.Tasks do
 
   @doc "The state of task `id` (a fresh open one when it has none)."
   @spec state(t(), String.t()) :: State.t()
-  def state(%__MODULE__{states: states}, id), do: Map.get(states, id) || State.new(id)
+  def state(%__MODULE__{states: states}, id) do
+    case Map.fetch(states, id) do
+      {:ok, %State{} = state} -> state
+      _ -> State.new(id)
+    end
+  end
 
   # --- status -----------------------------------------------------------------------
 
@@ -240,7 +245,7 @@ defmodule BubbleEx.Tasks do
          :ok <- workable(board, task, now, agent) do
       state = state(board, id)
 
-      state = %State{
+      state = %{
         state
         | claim: %{agent: agent, claimed_at: now, expires_at: DateTime.add(now, ttl, :second)},
           agents: Enum.sort(Enum.uniq([agent | state.agents]))
@@ -257,7 +262,7 @@ defmodule BubbleEx.Tasks do
     with {:ok, _task} <- fetch(board, id) do
       case state(board, id) do
         %State{claim: %{agent: ^agent}} = state ->
-          state = %State{state | claim: nil}
+          state = %{state | claim: nil}
           :ok = Store.put(board.root, state)
           {:ok, state}
 
@@ -413,7 +418,7 @@ defmodule BubbleEx.Tasks do
           }
         ]
 
-    %State{
+    %{
       state
       | status: :done,
         claim: nil,
@@ -699,7 +704,7 @@ defmodule BubbleEx.Tasks do
           }
         )
       else
-        state = %State{
+        state = %{
           state(board, id)
           | review: %{reviewer: reviewer, at: now, summary: summary}
         }
@@ -742,7 +747,7 @@ defmodule BubbleEx.Tasks do
         resolved_at: nil
       }
 
-      state = %State{state | notes: state.notes ++ [note]}
+      state = %{state | notes: state.notes ++ [note]}
       :ok = Store.put(board.root, state)
       {:ok, state}
     end
@@ -762,7 +767,7 @@ defmodule BubbleEx.Tasks do
       case Enum.find(state.notes, &(&1.n == n)) do
         %{resolved_at: nil} ->
           notes = Enum.map(state.notes, &resolve(&1, n, by, now))
-          state = %State{state | notes: notes}
+          state = %{state | notes: notes}
           :ok = Store.put(board.root, state)
           {:ok, state}
 
@@ -831,7 +836,7 @@ defmodule BubbleEx.Tasks do
       failed: for(o <- report.outcomes, o.status == :fail, do: o.criterion)
     }
 
-    %State{state | status: :needs_reverify, reverify: reverify}
+    %{state | status: :needs_reverify, reverify: reverify}
   end
 
   # --- sync -------------------------------------------------------------------------
@@ -872,7 +877,7 @@ defmodule BubbleEx.Tasks do
 
   defp apply_entry(%State{status: status} = state, %{needs_reverify: true} = entry, new, now)
        when status in [:done, :needs_reverify] do
-    %State{
+    %{
       state
       | status: :needs_reverify,
         reverify: %{
@@ -888,10 +893,10 @@ defmodule BubbleEx.Tasks do
 
   defp apply_entry(%State{status: status} = state, %{status: :removed}, _new, _now)
        when status != :removed,
-       do: %State{state | status: :removed, claim: nil}
+       do: %{state | status: :removed, claim: nil}
 
   defp apply_entry(%State{status: :removed} = state, %{status: s}, _new, _now) when s != :removed,
-    do: %State{state | status: :open, basis: nil, reverify: nil}
+    do: %{state | status: :open, basis: nil, reverify: nil}
 
   defp apply_entry(state, _entry, _new, _now), do: state
 
