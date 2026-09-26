@@ -19,6 +19,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     "lib/acme_import/tag.ex",
     "lib/acme_import/types/json_value.ex",
     "lib/acme_import/user.ex",
+    "lib/acme_import_web/bubble_routes.ex",
     "lib/acme_import_web/controllers/workflow_api_controller.ex"
   ]
 

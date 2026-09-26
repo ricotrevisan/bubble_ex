@@ -76,14 +76,21 @@ defmodule BubbleEx.Target.Phoenix do
 
   With `frontend:` (a `BubbleEx.Frontend.Normalized`) the app gets its
   Bubble pages, printed by `BubbleEx.Target.Phoenix.Pages`: one owned
-  LiveView per page (module + `.html.heex`, routed at the page's Bubble path
-  in an `ash_authentication_live_session`), one owned function component
+  LiveView per page (module + `.html.heex`), one owned function component
   per reusable element, `data-bubble-id` on every element, the owned
   `<Module>.Bubble.Runtime` the compiled bindings call, and generated
-  `assets/css/bubble.css` (`@theme` tokens, named styles as component
-  classes), `assets/css/bubble_residue.css`, `<Web>.Bubble` (overlay JS
-  commands), `.wtf/surfaces.json` (locked page and component names) and a
-  traceability test mounting every page. `frontend_report/2` counts it.
+  `<Web>.BubbleRoutes` (the page routes at their Bubble paths, in an
+  `ash_authentication_live_session`; the owned router calls its
+  `bubble_routes/0` once, with or without a frontend, so pages added later
+  are routed on regeneration), `assets/css/bubble.css` (`@theme` tokens,
+  named styles as component classes), `assets/css/bubble_residue.css`,
+  `<Web>.Bubble` (overlay JS commands and the Escape hook),
+  `.wtf/surfaces.json` (locked page and component names) and a
+  traceability test that checks every page's route, mounts it and renders
+  every reusable element. A router scaffolded before WTF-370 lacks the
+  call: `check_manifest/3` lists the pages as `unrouted` and the
+  traceability test fails for them with the fix. `frontend_report/2`
+  counts it.
 
   ## Options
 
@@ -296,6 +303,30 @@ defmodule BubbleEx.Target.Phoenix do
   reusable elements rendered, elements emitted natively, as placeholders
   and inside runtime templates, markers, compiled and marked bindings, and
   style declarations as utilities or residue. No names or IDs.
+
+  `"elements"` = `"native"` + `"placeholder"` + `"in_runtime_template"`,
+  counted per rendered surface (an element of a reusable counts once, in
+  its component, not per instance; the pages themselves are not counted):
+
+    * `"native"` - printed as an HTML element of its own kind (a Text as
+      `<p>`, a Button as `<button>`, a reusable instance as its component
+      call…) outside any runtime template. It is **not** a measure of
+      finished work: it includes elements that carry
+      `TODO(bubble:<id>)` markers (an uncompiled binding, a dropped HTML
+      ID) and elements with rules in the residue stylesheet. The Plan's
+      coverage (`BubbleEx.Plan`) counts residue-free elements, so it is
+      lower
+    * `"placeholder"` - a sized stand-in with a marker: plugin and
+      unsupported elements, missing or recursive reusables, HTML styles
+      sized from other elements, runtime containers (dynamic Repeating
+      Groups, Tables)
+    * `"in_runtime_template"` - inside a runtime container's per-item
+      template, whatever its kind
+
+  `"markers"` counts `TODO(bubble:<id>)` notes (an element can carry
+  several); `"bindings_compiled"` / `"bindings_marked"` value bindings;
+  `"utilities"` / `"residue_declarations"` style declarations, and
+  `"elements_with_residue"` the elements with a residue rule.
   """
   @spec frontend_report(Project.t(), [option()]) :: {:ok, map()} | {:error, Error.t()}
   def frontend_report(%Project{} = project, opts) do
@@ -413,11 +444,12 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
-  defp pages(nil, _ctx, _opts),
+  defp pages(nil, ctx, _opts),
     do: %{
       routes: [],
       owned: %{},
       generated: %{
+        Pages.routes_path(ctx) => Pages.routes_module(ctx, []),
         "assets/css/bubble.css" => Pages.empty_stylesheet(),
         "assets/css/bubble_residue.css" => "/* No frontend was rendered. */\n"
       },

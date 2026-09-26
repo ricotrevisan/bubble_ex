@@ -47,17 +47,13 @@ defmodule <%= @web %>.Router do
     )
   end
 
-<%= if @routes != [] do %>  # The pages of the Bubble app (WTF-370), at their Bubble paths.
-  scope "/", <%= @web %> do
-    pipe_through :browser
+  # The pages of the Bubble app (WTF-370), at their Bubble paths. The
+  # generated <%= @web %>.BubbleRoutes defines them, so pages added in Bubble
+  # later are routed on regeneration without editing this file.
+  require <%= @web %>.BubbleRoutes
+  <%= @web %>.BubbleRoutes.bubble_routes()
 
-    ash_authentication_live_session :bubble_pages,
-      on_mount: {<%= @web %>.LiveUserAuth, :live_user_optional} do
-<%= for route <- @routes do %>      live <%= inspect(route.path) %>, <%= String.replace_prefix(route.module, @web <> ".", "") %>
-<% end %>    end
-  end
-
-<% end %>  if Application.compile_env(:<%= @app %>, :dev_routes) do
+  if Application.compile_env(:<%= @app %>, :dev_routes) do
     scope "/dev" do
       pipe_through :browser
 

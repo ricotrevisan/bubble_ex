@@ -8,9 +8,13 @@ All notable changes to this project are documented here.
 
 - **HEEx emitter over the normalized frontend** (WTF-370, T5 of WTF-359).
   `BubbleEx.Target.Phoenix.render/2` with `frontend:` renders each Bubble
-  page as an owned LiveView (module + template, routed at its Bubble path)
-  and each reusable element as an owned function component, with
-  `data-bubble-id` on every element. Styles are Tailwind v4
+  page as an owned LiveView (module + template) and each reusable element
+  as an owned function component, with `data-bubble-id` on every element.
+  Page routes live in the generated `<Web>.BubbleRoutes` (locked paths),
+  which the owned router calls once whether or not the first scaffold had
+  a frontend, so pages added in Bubble later are routed on regeneration; a
+  router scaffolded before this lacks the call, and
+  `check_manifest/3` (`unrouted`) and the generated surfaces test say so. Styles are Tailwind v4
   (`BubbleEx.Target.Phoenix.Tailwind`): tokens in `@theme`, named styles as
   component classes, each element's declarations as utilities, the rest in
   a generated `bubble_residue.css`; Preflight is not imported. Value
@@ -18,9 +22,15 @@ All notable changes to this project are documented here.
   over assigns (component attributes in reusables); the rest are
   `TODO(bubble:<id>)` markers. Popups, Group Focuses and Floating Groups
   follow the runtime model (`hidden`, `<Web>.Bubble.show_overlay/2`,
-  Escape/outside-click dismissal, focus trap for modal Popups, one open
-  Group Focus); dynamic Repeating Groups render their template per item of
-  an assign. Surface names are locked in `.wtf/surfaces.json`.
+  outside-click dismissal, Escape closing only the topmost open overlay
+  through one colocated hook per page, modal Popups as named dialogs in a
+  focus trap that return the focus on close, one open Group Focus); dynamic
+  Repeating Groups render their template per item of an assign. A reusable
+  instance's link destination (allowlisted) and Text content (the static
+  BBCode path, as a slot) reach its component. Bubble IDs in generated
+  code are string literals, never spliced in. Surface names are locked in
+  `.wtf/surfaces.json` (hand-edited names that are not valid are
+  ignored).
   `scripts/heex_fidelity.sh` runs the frozen fidelity cases against the
   served LiveViews; the Phoenix compile check now also renders every
   frozen case's pages and mounts them.

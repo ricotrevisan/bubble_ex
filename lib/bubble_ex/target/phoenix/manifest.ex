@@ -19,7 +19,9 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
                        "normalized_schema_version": 3, "source_sha256": "…"}
         },
         "generated": {"lib/acme_import/invoice.ex": "<sha256>", …},
-        "owned": {"mix.exs": "<sha256 as scaffolded>", …}
+        "owned": {"mix.exs": "<sha256 as scaffolded>", …},
+        "routes": {"router": "lib/acme_import_web/router.ex",
+                   "call": "bubble_routes", "pages": ["bTGYf", …]}
       }
 
     * `inputs` - what the generated files are a function of:
@@ -35,6 +37,10 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
     * `owned` - every owned file (path → SHA-256 as scaffolded): written
       once, then the owner's; never overwritten, so their hashes are
       informational (did the owner change the scaffold?)
+    * `routes` - with Bubble pages (WTF-370): the owned router, the call to
+      the generated routes it must make, and the pages (Bubble IDs) that
+      call routes. `check/3` lists the pages as `unrouted` when the router
+      lacks the call (scaffolded before WTF-370, or edited away)
 
   The JSON is canonical (sorted keys) and pretty-printed, so the same
   project gives the same bytes. It holds no secret: the plan content key
@@ -54,7 +60,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           modified: [String.t()],
           missing: [String.t()],
           unchanged: [String.t()],
-          stale: [String.t()]
+          stale: [String.t()],
+          unrouted: [String.t()]
         }
 
   @doc "The manifest's path in the project."
@@ -85,7 +92,18 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       "generated" => hashes(generated),
       "owned" => hashes(owned)
     }
+    |> put_routes(ctx)
   end
+
+  defp put_routes(manifest, %{routes: [_ | _] = routes} = ctx) do
+    Map.put(manifest, "routes", %{
+      "router" => "lib/#{ctx.app}_web/router.ex",
+      "call" => "bubble_routes",
+      "pages" => routes |> Enum.map(& &1.id) |> Enum.sort()
+    })
+  end
+
+  defp put_routes(manifest, _ctx), do: manifest
 
   @doc "Canonical, pretty-printed JSON text of a manifest."
   @spec encode(t()) :: String.t()
@@ -125,6 +143,11 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   generation made that the new one no longer does and that are still
   present: a packager removes them (after checking them against the
   previous manifest). Otherwise `stale` is `[]`.
+
+  `unrouted` lists the Bubble pages (by Bubble ID) that have no route:
+  the owned router exists but never calls the generated routes (see
+  `routes` above). Such pages need their route before they are verified
+  again (`<Web>.BubbleSurfacesTest` fails for them too).
   """
   @spec check(String.t() | map(), %{String.t() => binary()} | Path.t(), keyword()) ::
           {:ok, report()} | {:error, Error.t()}
@@ -150,10 +173,24 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
          modified: Map.get(by, :modified, []),
          missing: Map.get(by, :missing, []),
          unchanged: Map.get(by, :unchanged, []),
-         stale: stale
+         stale: stale,
+         unrouted: unrouted(manifest, read)
        }}
     end
   end
+
+  defp unrouted(%{"routes" => %{"router" => router, "call" => call, "pages" => pages}}, read)
+       when is_binary(router) and is_binary(call) and is_list(pages) do
+    case relative?(router) && read.(router) do
+      content when is_binary(content) ->
+        if String.contains?(content, call), do: [], else: pages
+
+      _ ->
+        []
+    end
+  end
+
+  defp unrouted(_manifest, _read), do: []
 
   defp previous(nil), do: {:ok, %{}}
 

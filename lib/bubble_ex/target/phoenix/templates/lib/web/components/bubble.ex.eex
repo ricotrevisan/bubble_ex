@@ -1,0 +1,125 @@
+defmodule <%= @web %>.Bubble do
+  @moduledoc """
+  Runtime helpers for the pages scaffolded from Bubble (WTF-370): the
+  Popup, Group Focus and Floating Group model of the normalized frontend
+  (WTF-407) as `Phoenix.LiveView.JS` commands. An overlay is closed while
+  it has the `hidden` attribute.
+
+    * `show_overlay/2` opens one (by Bubble ID) and dispatches
+      `bubble:overlay-opened` on it; opening a Group Focus closes the
+      other Group Focuses, opening a Popup closes every Group Focus, and a
+      modal Popup takes the focus, remembering the element the command ran
+      on (run it from the opener, e.g. `phx-click`)
+    * `hide_overlay/2` closes one and dispatches `bubble:overlay-closed`;
+      a modal Popup gives the focus back to its opener
+    * `dismiss_overlay/1` and `dismiss_modal/1` close the overlay they run
+      on (an outside click, Escape)
+    * `overlay_keys/1`, rendered once by a page with overlays, closes the
+      topmost open Popup or Group Focus on Escape, if it can be dismissed
+      that way (its `data-bubble-escape` command); closed overlays never
+      react
+
+  Frontend workflows (Show / Hide / Toggle an element) call them.
+  """
+
+  use Phoenix.Component
+
+  alias Phoenix.LiveView.JS
+
+  # The modal Popups (Bubble IDs): they take the focus and give it back.
+  @modals MapSet.new([<%= Enum.join(@modals, ", ") %>])
+
+  @doc "The selector of the element with Bubble ID `id`."
+  def selector(id), do: ~s([data-bubble-id="#{css_string(id)}"])
+
+  @doc "Opens the overlay with Bubble ID `id`."
+  def show_overlay(js \\ %JS{}, id) do
+    target = selector(id)
+
+    js
+    |> JS.set_attribute({"hidden", ""}, to: ~s|[data-overlay="group_focus"]:not(#{target})|)
+    |> push_focus(id)
+    |> JS.remove_attribute("hidden", to: target)
+    |> JS.focus_first(to: ~s(#{target}[aria-modal="true"]))
+    |> JS.dispatch("bubble:overlay-opened", to: target)
+  end
+
+  @doc "Closes the overlay with Bubble ID `id`."
+  def hide_overlay(js \\ %JS{}, id) do
+    target = selector(id)
+
+    js
+    |> JS.set_attribute({"hidden", ""}, to: target)
+    |> pop_focus(id)
+    |> JS.dispatch("bubble:overlay-closed", to: target)
+  end
+
+  @doc "Closes the overlay the event happened on (an outside click, Escape)."
+  def dismiss_overlay(js \\ %JS{}) do
+    js
+    |> JS.set_attribute({"hidden", ""})
+    |> JS.dispatch("bubble:overlay-closed")
+  end
+
+  @doc "Closes the modal Popup the event happened on and gives the focus back."
+  def dismiss_modal(js \\ %JS{}) do
+    js
+    |> JS.set_attribute({"hidden", ""})
+    |> JS.pop_focus()
+    |> JS.dispatch("bubble:overlay-closed")
+  end
+
+  @doc """
+  Escape closes the topmost open Popup or Group Focus (the one opened
+  last, else the last open one in the page) by running its
+  `data-bubble-escape` command; an overlay without one stops Escape.
+  """
+  def overlay_keys(assigns) do
+    ~H"""
+    <div id="bubble-overlay-keys" phx-hook=".OverlayKeys" hidden></div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".OverlayKeys">
+      const OVERLAYS = '[data-overlay="popup"], [data-overlay="group_focus"]'
+      const isOpen = (el) => el.isConnected && !el.hidden
+
+      export default {
+        mounted() {
+          this.stack = []
+          this.opened = (e) => {
+            const el = e.target
+            if (!(el instanceof Element) || !el.matches(OVERLAYS)) return
+            this.stack = this.stack.filter((open) => open !== el)
+            this.stack.push(el)
+          }
+          this.keydown = (e) => {
+            if (e.key !== "Escape" || e.defaultPrevented) return
+            this.stack = this.stack.filter(isOpen)
+            const top =
+              this.stack[this.stack.length - 1] ||
+              [...document.querySelectorAll(OVERLAYS)].filter(isOpen).pop()
+            const dismiss = top && top.getAttribute("data-bubble-escape")
+            if (dismiss) this.liveSocket.js().exec(top, dismiss)
+          }
+          window.addEventListener("bubble:overlay-opened", this.opened)
+          window.addEventListener("keydown", this.keydown)
+        },
+        destroyed() {
+          window.removeEventListener("bubble:overlay-opened", this.opened)
+          window.removeEventListener("keydown", this.keydown)
+        }
+      }
+    </script>
+    """
+  end
+
+  defp push_focus(js, id), do: if(MapSet.member?(@modals, id), do: JS.push_focus(js), else: js)
+  defp pop_focus(js, id), do: if(MapSet.member?(@modals, id), do: JS.pop_focus(js), else: js)
+
+  # A CSS string's content: quotes and backslashes escaped, line breaks as
+  # code points.
+  defp css_string(id) do
+    id
+    |> to_string()
+    |> String.replace(~r/["\\]/, "\\\\\\0")
+    |> String.replace(~r/\r\n?|\n|\f/, "\\a ")
+  end
+end

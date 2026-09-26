@@ -25,17 +25,29 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     * Popups, Group Focuses and Floating Groups follow the normalized
       `runtime` model: closed with `hidden`, opened and closed by
       `<Web>.Bubble.show_overlay/2` and `hide_overlay/2` (JS commands),
-      dismissed by Escape or an outside click, modal Popups in a focus
-      trap. Runtime containers (dynamic Repeating Groups) render their
-      template once per item of an assign that starts empty
+      dismissed by an outside click or Escape (one hook per page closes
+      the topmost open overlay only), modal Popups named dialogs in a
+      focus trap that give the focus back when they close. Runtime
+      containers (dynamic Repeating Groups) render their template once per
+      item of an assign that starts empty
+    * a reusable instance's parameters reach its component: a link
+      destination through the page map and URL allowlist, a Text's
+      content as a slot rendered by the static text path, other values as
+      attributes
+    * Bubble IDs in generated Elixir and HEEx expressions are string
+      literals (braces, `<` and `\#{` escaped), in comments sanitized
 
   Only prints: it reads the normalized frontend and the compiled bindings,
   never the Model (see the boundary test).
 
   LiveView modules, templates and reusable components are **owned**
-  (scaffold once, WTF-359 Q1); the stylesheets, the `<Web>.Bubble` helpers,
-  the surface name map (`.wtf/surfaces.json`) and the traceability test are
-  **generated**.
+  (scaffold once, WTF-359 Q1); the routes (`<Web>.BubbleRoutes`), the
+  stylesheets, the `<Web>.Bubble` helpers, the surface name map
+  (`.wtf/surfaces.json`) and the traceability test are **generated**.
+
+  The `report` of `render/3` (see `BubbleEx.Target.Phoenix.frontend_report/2`):
+  `native` elements are the ones printed as their own kind outside runtime
+  templates, markers and residue rules included.
   """
 
   alias BubbleEx.Frontend.Export.{Bbcode, Css, Safety}
@@ -43,7 +55,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Target.Ash.Naming
-  alias BubbleEx.Target.Phoenix.Tailwind
+  alias BubbleEx.Target.Phoenix.{Tailwind, Templates}
 
   @names_version 1
 
@@ -101,11 +113,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     owned = surfaces |> Enum.flat_map(& &1.files) |> Map.new()
 
+    routes =
+      Enum.map(names.pages, fn p ->
+        %{path: p.path, module: "#{ctx.web}.#{p.module}", page: p.label, id: p.id}
+      end)
+
     generated = %{
+      routes_path(ctx) => routes_module(ctx, routes),
       "assets/css/bubble.css" => stylesheet(frontend),
       "assets/css/bubble_residue.css" => residue(surfaces),
-      "lib/#{ctx.app}_web/components/bubble.ex" => format(helpers(ctx)),
-      "test/#{ctx.app}_web/bubble_surfaces_test.exs" => format(traceability_test(ctx, pages)),
+      "lib/#{ctx.app}_web/components/bubble.ex" => format(helpers(ctx, frontend)),
+      "test/#{ctx.app}_web/bubble_surfaces_test.exs" =>
+        format(traceability_test(ctx, pages, reusables, base)),
       ".wtf/surfaces.json" => encode_names(names)
     }
 
@@ -119,12 +138,81 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     %{
       owned: owned,
       generated: generated,
-      routes:
-        Enum.map(names.pages, fn p ->
-          %{path: p.path, module: "#{ctx.web}.#{p.module}", page: p.label}
-        end),
+      routes: routes,
       report: report(frontend, surfaces)
     }
+  end
+
+  @doc """
+  The path of the generated routes module (`<Web>.BubbleRoutes`).
+  """
+  @spec routes_path(map()) :: String.t()
+  def routes_path(ctx), do: "lib/#{ctx.app}_web/bubble_routes.ex"
+
+  @doc """
+  The generated `<Web>.BubbleRoutes`: the page routes, at their locked
+  paths, in a macro the owned router calls once (`bubble_routes/0`).
+  Regenerated with the pages, so a page added in Bubble later is routed
+  without touching the router; without pages the macro defines nothing.
+  `routes` are `render/3`'s.
+  """
+  @spec routes_module(map(), [map()]) :: String.t()
+  def routes_module(ctx, routes) do
+    pages =
+      Enum.map_join(routes, ",\n", fn r ->
+        "    {#{literal(r.id)}, #{inspect(r.path)}, #{r.module}}"
+      end)
+
+    body =
+      if routes == [] do
+        "  defmacro bubble_routes, do: nil\n"
+      else
+        lives = Enum.map_join(routes, "\n", &"          live #{inspect(&1.path)}, #{&1.module}")
+
+        """
+          defmacro bubble_routes do
+            quote do
+              scope "/" do
+                pipe_through :browser
+
+                ash_authentication_live_session :bubble_pages,
+                  on_mount: {#{ctx.web}.LiveUserAuth, :live_user_optional} do
+        #{lives}
+                end
+              end
+            end
+          end
+        """
+      end
+
+    """
+    defmodule #{ctx.web}.BubbleRoutes do
+      @moduledoc \"\"\"
+      The routes of the pages scaffolded from Bubble (WTF-370), at their
+      Bubble paths (locked in `.wtf/surfaces.json`). Generated: a page added
+      in Bubble is routed on the next generation, without touching the
+      router, which calls `bubble_routes/0` once:
+
+          require #{ctx.web}.BubbleRoutes
+          #{ctx.web}.BubbleRoutes.bubble_routes()
+
+      A router scaffolded before WTF-370 lacks that call: add it after the
+      browser scope. `#{ctx.web}.BubbleSurfacesTest` fails for every page
+      without its route and says so.
+      \"\"\"
+
+      @pages [
+    #{pages}
+      ]
+
+      @doc "The pages: `{Bubble ID, path, LiveView}`."
+      def pages, do: @pages
+
+      @doc "The page routes (browser pipeline, optional sign-in)."
+    #{body}end
+    """
+    |> String.replace("@pages [\n\n  ]", "@pages []")
+    |> format()
   end
 
   @doc "The stylesheet for projects without a frontend: an empty theme."
@@ -162,37 +250,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       Enum.map_reduce(pages, {taken_modules, MapSet.new(taken_paths)}, fn page,
                                                                           {modules, paths} ->
         id = surface_id(page)
-
-        case locked_pages[id] do
-          %{"module" => module, "path" => path} when is_binary(module) and is_binary(path) ->
-            {page_entry(page, id, module, path), {modules, paths}}
-
-          _ ->
-            {module, modules} =
-              Naming.base(:pascal, page.name, id, "Page")
-              |> Kernel.<>("Live")
-              |> Naming.claim(modules, :pascal, :none)
-
-            {path, paths} = claim_path(page_path(page), paths)
-            {page_entry(page, id, module, path), {modules, paths}}
-        end
+        locked_page(page, id, locked_pages[id], modules, paths)
       end)
 
     {reusables, _modules} =
       Enum.map_reduce(reusables, modules, fn definition, modules ->
         id = surface_id(definition)
-
-        case locked_reusables[id] do
-          %{"module" => module} when is_binary(module) ->
-            {reusable_entry(definition, id, module), modules}
-
-          _ ->
-            {module, modules} =
-              Naming.base(:pascal, definition.name, id, "Reusable")
-              |> Naming.claim(modules, :pascal, :none)
-
-            {reusable_entry(definition, id, module), modules}
-        end
+        locked_reusable(definition, id, locked_reusables[id], modules)
       end)
 
     %{
@@ -202,6 +266,50 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       reusable_by_ref: reusable_refs(reusables)
     }
   end
+
+  # A surface keeps its locked name if it is one this emitter could have
+  # made; otherwise (none, or hand-edited) it gets a new one.
+  defp locked_page(page, id, %{"module" => module, "path" => path}, modules, paths)
+       when is_binary(module) and is_binary(path) do
+    if locked_module?(module) and locked_path?(path),
+      do: {page_entry(page, id, module, path), {modules, paths}},
+      else: new_page(page, id, modules, paths)
+  end
+
+  defp locked_page(page, id, _locked, modules, paths), do: new_page(page, id, modules, paths)
+
+  defp locked_reusable(definition, id, %{"module" => module}, modules) when is_binary(module) do
+    if locked_module?(module),
+      do: {reusable_entry(definition, id, module), modules},
+      else: new_reusable(definition, id, modules)
+  end
+
+  defp locked_reusable(definition, id, _locked, modules),
+    do: new_reusable(definition, id, modules)
+
+  defp new_page(page, id, modules, paths) do
+    {module, modules} =
+      Naming.base(:pascal, page.name, id, "Page")
+      |> Kernel.<>("Live")
+      |> Naming.claim(modules, :pascal, :none)
+
+    {path, paths} = claim_path(page_path(page), paths)
+    {page_entry(page, id, module, path), {modules, paths}}
+  end
+
+  defp new_reusable(definition, id, modules) do
+    {module, modules} =
+      Naming.base(:pascal, definition.name, id, "Reusable")
+      |> Naming.claim(modules, :pascal, :none)
+
+    {reusable_entry(definition, id, module), modules}
+  end
+
+  # A locked name is kept only if it is one this emitter could have made:
+  # the file is the owner's, so a hand-edited one must not reach the
+  # generated source (a module alias segment, a path of slug segments).
+  defp locked_module?(module), do: Regex.match?(~r/\A[A-Z][A-Za-z0-9]*\z/, module)
+  defp locked_path?(path), do: Regex.match?(~r{\A/([a-z0-9_-]+(/[a-z0-9_-]+)*)?\z}, path)
 
   defp locked_section(locked, key) do
     case locked[key] do
@@ -320,7 +428,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       acc: acc,
       files: [
         {dir <> entry.file <> ".ex", format(live_view_module(module, entry, acc, base))},
-        {dir <> entry.file <> ".html.heex", IO.iodata_to_binary(markup) |> finish()}
+        {dir <> entry.file <> ".html.heex",
+         [markup, overlay_keys(page, base)] |> IO.iodata_to_binary() |> finish()}
       ]
     }
   end
@@ -362,6 +471,40 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       ]
     }
   end
+
+  # A page whose overlays (its own or its reusables') close on Escape
+  # renders the Escape hook once.
+  defp overlay_keys(page, base) do
+    by_ref =
+      Enum.reduce(base.frontend.reusables, %{}, fn d, acc ->
+        acc |> Map.put(d.map_key, d) |> Map.put(surface_id(d), d)
+      end)
+
+    if escapable?(page, by_ref, MapSet.new()), do: "\n<Bubble.overlay_keys />", else: ""
+  end
+
+  defp escapable?(
+         %Node{runtime: %{"boundary" => "overlay", "dismiss" => dismiss}} = node,
+         by_ref,
+         seen
+       )
+       when is_list(dismiss) do
+    "escape" in dismiss or Enum.any?(node.children, &escapable?(&1, by_ref, seen))
+  end
+
+  defp escapable?(%Node{kind: :reusable_instance, definition_ref: ref}, by_ref, seen) do
+    case by_ref[ref] do
+      %Node{} = d ->
+        not MapSet.member?(seen, d.map_key) and
+          escapable?(d, by_ref, MapSet.put(seen, d.map_key))
+
+      _ ->
+        false
+    end
+  end
+
+  defp escapable?(%Node{children: children}, by_ref, seen),
+    do: Enum.any?(children, &escapable?(&1, by_ref, seen))
 
   defp index_lowered(entries), do: Map.new(entries, &{&1.node.exporter_id, &1})
 
@@ -477,13 +620,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       {:expr, expr} ->
         element(text_tag(node.variant), node, [], ["{", expr, "}"], ctx, acc)
+
+      # An instance's own content (a reusable parameter): the caller
+      # renders it through text_html/1 into this slot.
+      {:slot, name, block} ->
+        tag = if block, do: "div", else: text_tag(node.variant)
+        element(tag, node, [], ["{render_slot(@", name, ")}"], ctx, acc)
     end
   end
 
   defp emit(%Node{kind: :button} = node, ctx, acc) do
     {label, acc} = slot(node, "label", ctx, acc)
     {label, acc} = if label == {:static, ""}, do: slot(node, "text", ctx, acc), else: {label, acc}
-    navigation? = navigation_button?(node)
+    navigation? = navigation_button?(node, ctx)
     tag = if navigation?, do: "a", else: "button"
     inner = button_inner(node, label, ctx)
 
@@ -713,7 +862,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {classes, acc} = classes(node, styled, ctx, acc)
     acc = track(acc, node, false)
 
-    {params, acc} = parameter_attrs(node, definition, ctx, acc)
+    {params, slots} = parameter_attrs(node, definition, ctx)
 
     {own, acc} =
       node.attributes
@@ -732,14 +881,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     acc = %{acc | imports: MapSet.put(acc.imports, entry.module)}
     acc = add_expected(acc, definition, ctx)
 
-    {[marker_html(acc, node), "<.", entry.function, attrs_html(attrs), " />"], acc}
+    call =
+      if slots == [],
+        do: ["<.", entry.function, component_attrs_html(attrs), " />"],
+        else: [
+          ["<.", entry.function, component_attrs_html(attrs), ">\n"],
+          indent(Enum.intersperse(slots, "\n"), 1),
+          ["</.", entry.function, ">"]
+        ]
+
+    {[marker_html(acc, node), call], acc}
   end
 
   defp scope_attr(node, definition, ctx) do
     cond do
       not MapSet.member?(ctx.scoped, definition.map_key) -> []
       ctx.surface == :page -> [{"scope", bid(node)}]
-      true -> [{"scope", {:expr, ~s|"\#{@scope}-#{bid(node)}"|}}]
+      true -> [{"scope", {:expr, ~s|"\#{@scope}-" <> | <> literal(bid(node))}}]
     end
   end
 
@@ -791,25 +949,49 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # Reusable parameters an instance resolves differently from the
-  # definition: component attributes (see overrides/1).
-  defp parameter_attrs(node, definition, ctx, acc) do
+  # definition (see overrides/1): component attributes, a link destination
+  # through the same page map and URL allowlist as a static one, and a
+  # Text's content as a slot, rendered through the static text path
+  # (BBCode, line breaks, escaping).
+  defp parameter_attrs(node, definition, ctx) do
     case ctx.overrides[definition.map_key] do
       nil ->
-        {[], acc}
+        {[], []}
 
-      slots ->
+      overrides ->
         expanded = ReusableParameters.expand(definition, node)
         values = slot_values(definition, expanded)
 
-        attrs =
-          for {{path, slot}, attr} <- Enum.sort_by(slots, &elem(&1, 1)),
-              value = values[{path, slot}],
+        passed =
+          for {key, override} <- Enum.sort_by(overrides, &elem(&1, 1).name),
+              value = values[key],
               value != nil,
-              do: {attr, {:expr, inspect(value)}}
+              do: {override, value}
 
-        {attrs, acc}
+        attrs =
+          for {%{as: as, name: name}, value} <- passed,
+              as != :slot,
+              expr = override_expr(as, value, ctx),
+              do: {name, {:expr, expr}}
+
+        slots =
+          for {%{as: :slot, name: name}, value} <- passed,
+              do: ["<:", name, ">", text_html(to_string(value)), "</:", name, ">"]
+
+        {attrs, slots}
     end
   end
+
+  defp override_expr(:href, value, ctx) do
+    case href(value, ctx) do
+      nil -> nil
+      {:page, path} -> "~p" <> inspect(path)
+      {:url, url} -> literal(url)
+    end
+  end
+
+  defp override_expr(:attr, value, _ctx) when is_binary(value), do: literal(value)
+  defp override_expr(:attr, value, _ctx), do: inspect(value)
 
   # For every reusable: the {element path, slot} its instances resolve to a
   # different value than the definition does, with the attribute name.
@@ -828,19 +1010,39 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> Map.new(fn {key, slots} ->
       definition = by_key[key]
       nodes = definition |> path_nodes([]) |> Map.new()
+      own = slot_values(definition, definition)
 
       {key,
-       Map.new(slots, fn {{path, slot}, true} ->
-         {{path, slot}, attr_name(nodes[path], slot)}
+       Map.new(slots, fn {{path, slot}, values} ->
+         node = nodes[path]
+
+         {{path, slot},
+          %{
+            name: attr_name(node, slot),
+            as: override_kind(node, slot),
+            # A Text whose content is a block (BBCode lists, alignment…)
+            # for any instance is a div, as the exporter makes it.
+            block: Enum.any?([own[{path, slot}] | values], &Bbcode.block?/1)
+          }}
        end)}
     end)
   end
 
+  defp override_kind(_node, "destination"), do: :href
+  defp override_kind(%Node{kind: :text}, "text"), do: :slot
+  defp override_kind(_node, _slot), do: :attr
+
   defp differing_slots(instance, %Node{} = definition, acc) do
     own = slot_values(definition, definition)
     expanded = slot_values(definition, ReusableParameters.expand(definition, instance))
-    differing = for {key, value} <- expanded, value != own[key], into: %{}, do: {key, true}
-    Map.update(acc, definition.map_key, differing, &Map.merge(&1, differing))
+    differing = for {key, value} <- expanded, value != own[key], into: %{}, do: {key, [value]}
+
+    Map.update(
+      acc,
+      definition.map_key,
+      differing,
+      &Map.merge(&1, differing, fn _, a, b -> a ++ b end)
+    )
   end
 
   defp differing_slots(_instance, _definition, acc), do: acc
@@ -981,7 +1183,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     case node.runtime do
       %{"overlay" => "popup", "modal" => true} ->
-        {["<.focus_wrap", attrs_html([{"id", overlay_dom_id(node, ctx)} | all]), ">"], acc}
+        {["<.focus_wrap", component_attrs_html([{"id", overlay_dom_id(node, ctx)} | all]), ">"],
+         acc}
 
       _ ->
         {["<", tag, attrs_html(all), ">"], acc}
@@ -1012,6 +1215,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
      %{acc | residue: if(css == "", do: acc.residue, else: [css | acc.residue]), counts: counts}}
   end
 
+  # The report's element counts: `native` is any element printed as its
+  # own kind outside a runtime template, whatever markers or residue it
+  # carries (see Phoenix.frontend_report/2).
   defp track(acc, %Node{kind: kind} = node, placeholder?) when kind not in [:page] do
     counts =
       acc.counts
@@ -1055,40 +1261,81 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp bid(%Node{exporter_id: id}),
     do: "x" <> binary_part(Base.encode16(:crypto.hash(:sha256, id), case: :lower), 0, 12)
 
-  defp css_escape(value), do: value |> to_string() |> String.replace(~r/["\\]/, "\\\\\\0")
+  # A CSS string's content: quotes and backslashes escaped, line breaks as
+  # code points (a raw one would end the string).
+  defp css_escape(value) do
+    value
+    |> to_string()
+    |> String.replace(~r/["\\]/, "\\\\\\0")
+    |> String.replace(~r/\r\n?|\n|\f/, "\\a ")
+  end
 
   # --- overlays (the normalized runtime model, WTF-407) -----------------------------
 
-  defp overlay_attrs(%Node{runtime: %{"boundary" => "overlay", "overlay" => overlay} = runtime}) do
+  defp overlay_attrs(
+         %Node{runtime: %{"boundary" => "overlay", "overlay" => overlay} = runtime} = node
+       ) do
     [{"data-overlay", overlay}] ++
       if(runtime["initial"] == "hidden", do: [{"hidden", true}], else: []) ++
       if(runtime["modal"] == true,
-        do: [{"role", "dialog"}, {"aria-modal", "true"}],
+        do: [{"role", "dialog"}, {"aria-modal", "true"}, {"aria-label", dialog_label(node)}],
         else: []
       )
   end
 
   defp overlay_attrs(_node), do: []
 
+  # Escape is `<Web>.Bubble.overlay_keys/1`'s (the topmost open overlay
+  # only): the overlay carries the command it runs. An outside click is
+  # LiveView's `phx-click-away`, which skips hidden (closed) overlays.
   defp overlay_dismissal(%Node{runtime: %{"boundary" => "overlay"} = runtime}, _ctx) do
     dismiss = List.wrap(runtime["dismiss"])
-    hide = "{Bubble.dismiss_overlay()}"
 
-    if("escape" in dismiss,
-      do: [{"phx-window-keydown", {:raw, hide}}, {"phx-key", "Escape"}],
-      else: []
-    ) ++
+    hide =
+      if runtime["modal"] == true,
+        do: "{Bubble.dismiss_modal()}",
+        else: "{Bubble.dismiss_overlay()}"
+
+    if("escape" in dismiss, do: [{"data-bubble-escape", {:raw, hide}}], else: []) ++
       if "outside_click" in dismiss, do: [{"phx-click-away", {:raw, hide}}], else: []
   end
 
   defp overlay_dismissal(_node, _ctx), do: []
+
+  # A dialog's accessible name: its first heading, else the Popup's Bubble
+  # name, else its first text (plain, BBCode tags dropped, one line, at
+  # most 120 characters; attrs_html/1 escapes it).
+  defp dialog_label(node) do
+    texts = node |> texts() |> Enum.map(&plain_text/1) |> Enum.reject(&(&1 == ""))
+
+    heading =
+      node
+      |> texts(&(&1.variant in [:h1, :h2, :h3, :h4]))
+      |> Enum.map(&plain_text/1)
+      |> Enum.find(&(&1 != ""))
+
+    (heading || nonblank(node.name && plain_text(node.name)) || List.first(texts) || "Dialog")
+    |> String.slice(0, 120)
+  end
+
+  defp texts(%Node{} = node, keep? \\ fn _ -> true end) do
+    own = if node.kind == :text and keep?.(node), do: [resolved(node, "text")], else: []
+    Enum.filter(own, &is_binary/1) ++ Enum.flat_map(node.children, &texts(&1, keep?))
+  end
+
+  defp plain_text(text) do
+    text
+    |> String.replace(~r/\[\/?[a-z_0-9]+(=[^\]]*)?\]/i, "")
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+  end
 
   # A modal Popup's DOM ID (its focus trap needs one): unique per instance
   # inside a component, through the `scope` its callers pass down.
   defp overlay_dom_id(node, %{surface: :page}), do: "bubble-overlay-" <> bid(node)
 
   defp overlay_dom_id(node, _ctx),
-    do: {:expr, ~s|"bubble-overlay-\#{@scope}-#{bid(node)}"|}
+    do: {:expr, ~s|"bubble-overlay-\#{@scope}-" <> | <> literal(bid(node))}
 
   # Reusables that render a modal Popup or an icon (themselves or nested):
   # elements with DOM IDs, so their components take a `scope`.
@@ -1130,8 +1377,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # reusable-parameter attribute, a compiled binding, or empty with a marker.
   defp slot(node, name, ctx, acc) do
     cond do
-      attr = override(node, name, ctx) ->
-        {{:expr, "@" <> attr}, acc}
+      override = override(node, name, ctx) ->
+        {override_slot(override), acc}
 
       (value = resolved(node, name)) != nil and (is_binary(value) or is_number(value)) ->
         {{:static, to_string(value)}, acc}
@@ -1154,6 +1401,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp override(_node, _slot, _ctx), do: nil
+
+  defp override_slot(%{as: :slot, name: name, block: block}), do: {:slot, name, block}
+  defp override_slot(%{name: name}), do: {:expr, "@" <> name}
 
   defp node_path(%Node{} = root, %Node{exporter_id: id}) do
     root
@@ -1262,14 +1512,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     with %{bytes: bytes} <- ctx.assets[node.exporter_id],
          [attrs, inner] <- inline_icon(bytes, fragment) do
-      icon_set = escape(node.attributes["icon_set"] || "fa")
+      icon_set = escape_attr(node.attributes["icon_set"] || "fa")
 
       {id, href} =
         if ctx.surface == :page,
-          do: {~s("bubble-icon-#{bid(node)}"), ~s("#bubble-icon-#{bid(node)}")},
+          do:
+            {~s("bubble-icon-#{escape_attr(bid(node))}"),
+             ~s("#bubble-icon-#{escape_attr(bid(node))}")},
           else:
-            {~s({"bubble-icon-\#{@scope}-#{bid(node)}"}),
-             ~s({"#bubble-icon-\#{@scope}-#{bid(node)}"})}
+            {~s({"bubble-icon-\#{@scope}-" <> #{literal(bid(node))}}),
+             ~s({"#bubble-icon-\#{@scope}-" <> #{literal(bid(node))}})}
 
       [
         ~s(<svg viewBox="0 0 32 32" data-icon-set="#{icon_set}" aria-hidden="true"><defs>),
@@ -1306,7 +1558,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Enum.reverse()
       |> Enum.map(fn variant ->
         src = asset_url(ctx.assets[variant.id]) || "data:,"
-        ["<source media=\"", escape(variant.media), "\" srcset=\"", escape(src), "\">\n"]
+
+        [
+          "<source media=\"",
+          escape_attr(variant.media),
+          "\" srcset=\"",
+          escape_attr(src),
+          "\">\n"
+        ]
       end)
 
     {img, acc} = void("img", node, attrs, ctx, acc)
@@ -1350,12 +1609,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         Enum.map(choices, fn choice ->
           [
             "<option value=\"",
-            escape(to_string(choice["value"] || choice["label"] || "")),
+            escape_attr(to_string(choice["value"] || choice["label"] || "")),
             "\"></option>"
           ]
         end)
 
-      {[input, "<datalist id=\"", escape(list_id), "\">", options, "</datalist>"], acc}
+      {[input, "<datalist id=\"", escape_attr(list_id), "\">", options, "</datalist>"], acc}
     end
   end
 
@@ -1432,24 +1691,48 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp link_href(%Node{attributes: %{"disabled" => true}}, _ctx), do: nil
-  defp link_href(%Node{content: %{"destination" => %{binding_id: _}}}, _ctx), do: nil
 
   defp link_href(node, ctx) do
-    dest = resolved(node, "destination")
+    case {override(node, "destination", ctx), node.content} do
+      # The instance's destination, checked by the caller (override_expr/3).
+      {%{name: name}, _} -> {:expr, "@" <> name}
+      {nil, %{"destination" => %{binding_id: _}}} -> nil
+      {nil, _} -> static_href(resolved(node, "destination"), ctx)
+    end
+  end
 
+  defp static_href(dest, ctx) do
+    case href(dest, ctx) do
+      {:page, path} -> {:expr, "~p" <> inspect(path)}
+      {:url, url} -> url
+      nil -> nil
+    end
+  end
+
+  # A destination: a page of the app (its locked path) or an allowlisted
+  # URL (`Safety.safe_href?/1`); anything else is dropped.
+  defp href(dest, ctx) when is_binary(dest) do
     cond do
-      not is_binary(dest) -> nil
-      page = ctx.names.page_by_ref[dest] -> {:raw, "{~p\"#{page.path}\"}"}
-      Safety.safe_href?(dest) -> dest
+      page = ctx.names.page_by_ref[dest] -> {:page, page.path}
+      Safety.safe_href?(dest) -> {:url, dest}
       true -> nil
     end
   end
 
-  defp navigation_button?(%Node{kind: :button, content: %{"destination" => %{resolved: dest}}})
+  defp href(_dest, _ctx), do: nil
+
+  defp navigation_button?(
+         %Node{kind: :button, content: %{"destination" => %{resolved: dest}}},
+         _ctx
+       )
        when is_binary(dest) and dest != "",
        do: true
 
-  defp navigation_button?(_), do: false
+  # In a reusable, an instance may give the button its destination.
+  defp navigation_button?(%Node{kind: :button} = node, ctx),
+    do: override(node, "destination", ctx) != nil
+
+  defp navigation_button?(_node, _ctx), do: false
 
   defp choices(node) do
     case resolved(node, "choices") do
@@ -1497,7 +1780,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       attrs_html(attrs),
       ">",
       "<label for=\"",
-      escape(option_id),
+      escape_attr(option_id),
       "\">",
       escape(label),
       "</label>"
@@ -1609,12 +1892,39 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       notes ->
         Enum.map(notes, fn note ->
-          ["<%!-- TODO(bubble:", bid(node), ") ", comment_safe(note), " --%>"]
+          ["<%!-- TODO(bubble:", comment_safe(bid(node)), ") ", comment_safe(note), " --%>"]
         end)
     end
   end
 
-  defp comment_safe(text), do: text |> to_string() |> String.replace("--%>", "-- %>")
+  # Text inside a HEEx comment: it cannot end it or open an EEx tag.
+  defp comment_safe(text),
+    do: text |> to_string() |> String.replace("--%>", "-- %>") |> String.replace("<%", "< %")
+
+  # Text for a `#` comment of generated Elixir: one line.
+  defp comment_line(text),
+    do: text |> to_string() |> String.replace(~r/[\x00-\x1f\x7f\x{2028}\x{2029}]/u, " ")
+
+  # Text inside a generated heredoc (`@moduledoc """`): what `inspect/1`
+  # escapes (quotes, backslashes, `\#{`, control characters) without its
+  # quotes.
+  defp doc_text(text) do
+    text |> to_string() |> comment_line() |> inspect() |> String.slice(1..-2//1)
+  end
+
+  # An Elixir string literal of `value` for generated source: `inspect/1`
+  # escapes quotes, backslashes, `\#{` and control characters (or prints a
+  # binary). Braces and `<` become hex escapes too: HEEx finds the end of a
+  # `{…}` expression by counting braces, strings included, and EEx reads
+  # `<%` anywhere in a template.
+  defp literal(value) do
+    value
+    |> to_string()
+    |> inspect()
+    |> String.replace("{", "\\x7B")
+    |> String.replace("}", "\\x7D")
+    |> String.replace("<", "\\x3C")
+  end
 
   defp runtime_note(runtime) do
     type = runtime["type"] || "container"
@@ -1646,6 +1956,22 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> Enum.sort_by(&elem(&1, 0))
   end
 
+  # A component call's attributes: a component receives a quoted value as
+  # is (HEEx decodes no character reference there) and escapes it when it
+  # renders it, so a value that would need escaping is an Elixir literal.
+  defp component_attrs_html(attrs) do
+    Enum.map(attrs, fn
+      {key, value} when is_binary(value) ->
+        if Regex.match?(~r/[&<>"'{}\r\n]/, value),
+          do: {key, {:expr, literal(value)}},
+          else: {key, value}
+
+      other ->
+        other
+    end)
+    |> attrs_html()
+  end
+
   defp attrs_html(attrs) do
     attrs
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == false or v == "" end)
@@ -1653,7 +1979,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {key, true} -> [" ", key]
       {key, {:raw, code}} -> [" ", key, "=", code]
       {key, {:expr, code}} -> [" ", key, "={", code, "}"]
-      {key, value} -> [" ", key, "=\"", escape(to_string(value)), "\""]
+      {key, value} -> [" ", key, "=\"", escape_attr(to_string(value)), "\""]
     end)
   end
 
@@ -1688,6 +2014,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> String.replace(">", "&gt;")
     |> String.replace("\"", "&quot;")
     |> escape_braces()
+  end
+
+  # An attribute value: escaped, with line breaks as character references
+  # (the template's indentation would otherwise change a multi-line value).
+  defp escape_attr(value) do
+    value
+    |> escape()
+    |> String.replace("\r", "&#13;")
+    |> String.replace("\n", "&#10;")
   end
 
   defp escape_braces(iodata) do
@@ -1727,7 +2062,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     [
       "defmodule #{module} do\n",
       "  @moduledoc \"\"\"\n",
-      "  The Bubble page #{inspect(entry.label)} (bubble:#{entry.id}), at #{entry.path}.\n\n",
+      "  The Bubble page #{inspect(entry.label)} (bubble:#{doc_text(entry.id)}), at #{entry.path}.\n\n",
       "  Scaffolded by bubble_ex (WTF-370); this module and its template\n",
       "  (#{entry.file}.html.heex) are yours: later generations never overwrite\n",
       "  them. Elements keep their `data-bubble-id`; `TODO(bubble:<id>)`\n",
@@ -1755,7 +2090,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     """
 
-      # bubble:#{bid(node)} #{slot}
+      # bubble:#{comment_line(bid(node))} #{slot}
       defp #{name}(#{params}) do
         #{String.replace(body, "\n", "\n    ")}
       end
@@ -1780,8 +2115,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     # Parameter values and binding variables default to nil, runtime
     # containers' items to [].
+    overrides = Map.values(base.overrides[entry.node.map_key] || %{})
+
+    slots =
+      overrides
+      |> Enum.filter(&(&1.as == :slot))
+      |> Enum.map(& &1.name)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map_join("", &"  slot :#{&1}\n")
+
     params =
-      (Map.values(base.overrides[entry.node.map_key] || %{}) ++
+      (Enum.map(Enum.reject(overrides, &(&1.as == :slot)), & &1.name) ++
          Map.get(base.required, entry.node.map_key, []))
       |> Enum.map(&{&1, "nil"})
       |> Kernel.++(Enum.to_list(acc.assigns))
@@ -1799,7 +2144,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     """
     defmodule #{module} do
       @moduledoc \"\"\"
-      The Bubble reusable element #{inspect(entry.node.name || entry.id)} (bubble:#{entry.id}).
+      The Bubble reusable element #{inspect(entry.node.name || entry.id)} (bubble:#{doc_text(entry.id)}).
 
       Scaffolded by bubble_ex (WTF-370); this module and its template
       (#{entry.file}.html.heex) are yours: later generations never overwrite
@@ -1815,6 +2160,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       attr :class, :any, default: nil
     #{params}  attr :rest, :global
+    #{slots}
       def #{entry.function}(assigns)
     #{helpers}end
     """
@@ -1826,7 +2172,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp format(source) do
     IO.iodata_to_binary([
       Code.format_string!(source,
-        locals_without_parens: [attr: 2, attr: 3, embed_templates: 1, embed_templates: 2]
+        locals_without_parens: [
+          attr: 2,
+          attr: 3,
+          slot: 1,
+          slot: 2,
+          embed_templates: 1,
+          embed_templates: 2,
+          pipe_through: 1,
+          live: 2,
+          live: 3,
+          ash_authentication_live_session: 1,
+          ash_authentication_live_session: 2
+        ]
       ),
       "\n"
     ])
@@ -1972,79 +2330,46 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     "/* #{String.replace(label, "*/", "* /")} */\n" <> Enum.join(Enum.reverse(rules), "\n")
   end
 
-  defp helpers(ctx) do
-    """
-    defmodule #{ctx.web}.Bubble do
-      @moduledoc \"\"\"
-      Runtime helpers for the pages scaffolded from Bubble (WTF-370): the
-      Popup, Group Focus and Floating Group model of the normalized frontend
-      (WTF-407) as `Phoenix.LiveView.JS` commands. An overlay is closed while
-      it has the `hidden` attribute.
+  # <Web>.Bubble: the overlay JS commands and the Escape hook.
+  defp helpers(ctx, frontend) do
+    modals =
+      (frontend.pages ++ frontend.reusables)
+      |> Enum.flat_map(&overlay_nodes/1)
+      |> Enum.filter(&match?(%Node{runtime: %{"overlay" => "popup", "modal" => true}}, &1))
+      |> Enum.map(&literal(bid(&1)))
+      |> Enum.uniq()
+      |> Enum.sort()
 
-        * `show_overlay/2` opens one (by Bubble ID) and dispatches
-          `bubble:overlay-opened` on it; opening a Group Focus closes the
-          other Group Focuses, opening a Popup closes every Group Focus, and a
-          modal Popup takes the focus
-        * `hide_overlay/2` closes one and dispatches `bubble:overlay-closed`;
-          `dismiss_overlay/1` closes the overlay itself (Escape, outside click)
-
-      Frontend workflows (Show / Hide / Toggle an element) call them.
-      \"\"\"
-
-      alias Phoenix.LiveView.JS
-
-      @doc "The selector of the element with Bubble ID `id`."
-      def selector(id), do: ~s([data-bubble-id="\#{id}"])
-
-      @doc "Opens the overlay with Bubble ID `id`."
-      def show_overlay(js \\\\ %JS{}, id) do
-        target = selector(id)
-
-        js
-        |> JS.set_attribute({"hidden", ""},
-          to: ~s|[data-overlay="group_focus"]:not(\#{target})|
-        )
-        |> JS.remove_attribute("hidden", to: target)
-        |> JS.focus_first(to: ~s(\#{target}[aria-modal="true"]))
-        |> JS.dispatch("bubble:overlay-opened", to: target)
-      end
-
-      @doc "Closes the overlay the event happened on (Escape, an outside click)."
-      def dismiss_overlay(js \\\\ %JS{}) do
-        js
-        |> JS.set_attribute({"hidden", ""})
-        |> JS.dispatch("bubble:overlay-closed")
-      end
-
-      @doc "Closes the overlay with Bubble ID `id`."
-      def hide_overlay(js \\\\ %JS{}, id) do
-        target = selector(id)
-
-        js
-        |> JS.set_attribute({"hidden", ""}, to: target)
-        |> JS.dispatch("bubble:overlay-closed", to: target)
-      end
-    end
-    """
+    Templates.render("lib/web/components/bubble.ex", %{web: ctx.web, modals: modals})
   end
 
-  defp traceability_test(ctx, pages) do
+  defp overlay_nodes(%Node{runtime: %{"boundary" => "overlay"}} = node),
+    do: [node | Enum.flat_map(node.children, &overlay_nodes/1)]
+
+  defp overlay_nodes(%Node{children: children}), do: Enum.flat_map(children, &overlay_nodes/1)
+
+  defp traceability_test(ctx, pages, reusables, base) do
     cases =
       Enum.map_join(pages, ",\n", fn page ->
-        ids =
-          page.acc.ids
-          |> Enum.reverse()
-          |> Enum.reject(&is_nil/1)
-          |> Enum.uniq()
+        "    {#{literal(page.entry.id)}, #{inspect(page.entry.path)}, #{literal(page.entry.label)},\n" <>
+          "     #{ctx.web}.#{page.entry.module}, #{ids_literal(page.acc.ids)}}"
+      end)
 
-        "    {#{inspect(page.entry.id)}, #{inspect(page.entry.path)}, #{inspect(page.entry.label)},\n     ~w(#{Enum.join(ids, " ")})}"
+    components =
+      Enum.map_join(reusables, ",\n", fn reusable ->
+        entry = reusable.entry
+        label = entry.node.name || entry.id
+
+        "    {#{literal(entry.id)}, #{literal(label)},\n" <>
+          "     &#{base.web}.Reusables.#{entry.module}.#{entry.function}/1, #{ids_literal(reusable.acc.ids)}}"
       end)
 
     """
     defmodule #{ctx.web}.BubbleSurfacesTest do
-      # Every page scaffolded from Bubble mounts and renders each of its
-      # elements (data-bubble-id), unless a decision removed it (WTF-370).
-      # Each test is tagged `bubble: <the page's Bubble ID>`.
+      # Every page scaffolded from Bubble is routed, mounts and renders each
+      # of its elements (data-bubble-id), and every reusable element renders
+      # its elements with its defaults, unless a decision removed them
+      # (WTF-370). Each test is tagged `bubble: <the surface's Bubble ID>`.
       use #{ctx.web}.ConnCase, async: true
 
       import Phoenix.LiveViewTest
@@ -2053,21 +2378,83 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     #{cases}
       ]
 
-      for {id, path, label, ids} <- @pages do
+      @reusables [
+    #{components}
+      ]
+
+      for {id, path, label, module, ids} <- @pages do
         @path path
+        @module module
         @ids ids
         # The task CLI binds a surface's render check by its Bubble ID.
         @tag bubble: id
         test "the Bubble page \#{label} (\#{path}) renders every element", %{conn: conn} do
+          assert_routed(@path, @module)
           {:ok, view, _html} = live(conn, @path)
-
-          missing = Enum.reject(@ids, &has_element?(view, ~s([data-bubble-id="\#{&1}"])))
-          assert missing == []
+          assert missing(render(view), @ids) == []
         end
+      end
+
+      for {id, label, component, ids} <- @reusables do
+        @component component
+        @ids ids
+        @tag bubble: id
+        test "the Bubble reusable element \#{label} renders every element" do
+          assert missing(render_component(@component, %{}), @ids) == []
+        end
+      end
+
+      # The generated #{ctx.web}.BubbleRoutes routes every page; a router
+      # scaffolded before WTF-370 does not call it.
+      def assert_routed(path, module) do
+        case Phoenix.Router.route_info(#{ctx.web}.Router, "GET", path, "www.example.com") do
+          %{phoenix_live_view: live} when elem(live, 0) == module ->
+            :ok
+
+          %{plug: plug} ->
+            flunk(\"\"\"
+            \#{inspect(module)} is not routed at \#{path}: \#{inspect(plug)} takes
+            the path in #{ctx.web}.Router (defined before the Bubble routes).
+            Remove that route to serve the Bubble page there.
+            \"\"\")
+
+          _ ->
+            flunk(\"\"\"
+            \#{inspect(module)} is not routed at \#{path}. Call the generated
+            routes once in #{ctx.web}.Router (after the browser scope):
+
+                require #{ctx.web}.BubbleRoutes
+                #{ctx.web}.BubbleRoutes.bubble_routes()
+            \"\"\")
+        end
+      end
+
+      # The expected Bubble IDs no element of `html` carries. (Public: a
+      # frontend without pages or reusables leaves one of them unused.)
+      def missing(html, ids) do
+        found =
+          html
+          |> LazyHTML.from_fragment()
+          |> LazyHTML.query("[data-bubble-id]")
+          |> LazyHTML.attribute("data-bubble-id")
+          |> MapSet.new()
+
+        Enum.reject(ids, &MapSet.member?(found, &1))
       end
     end
     """
     |> String.replace("@pages [\n\n  ]", "@pages []")
+    |> String.replace("@reusables [\n\n  ]", "@reusables []")
+  end
+
+  # The Bubble IDs a surface renders, as a list of string literals.
+  defp ids_literal(ids) do
+    ids
+    |> Enum.reverse()
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.map_join(", ", &literal/1)
+    |> then(&("[" <> &1 <> "]"))
   end
 
   # --- report ---------------------------------------------------------------------

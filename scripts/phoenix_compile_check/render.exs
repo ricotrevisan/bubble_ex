@@ -11,7 +11,8 @@
 # (test/support/model/*.json), every target fixture
 # (test/support/target/ash/*.json), the expression fixture, every frozen
 # fidelity case's payload (`fidelity_<case>`, with its pages) and the owner
-# decision fixtures (BubbleEx.Test.DecidedFixture), plus `private_app` when
+# decision fixtures (BubbleEx.Test.DecidedFixture), two frontends with
+# hostile Bubble IDs (`hostile_ids`, `hostile_overlays`), plus `private_app` when
 # BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An app with a frontend
 # renders its pages (WTF-370), with the bindings the expression compiler
 # lowers.
@@ -89,6 +90,24 @@ fixtures =
       else: {name, fixture}
   end
   |> Map.merge(%{
+    # Hostile Bubble IDs (quotes, `#{`, a newline, `*/`, `--%>`, an EEx tag,
+    # braces) on a page, a reusable, an instance inside a reusable, a Text,
+    # a modal Popup and a Group Focus: the generated code must compile and
+    # its test find them (WTF-370).
+    "hostile_ids" => fn ->
+      "test/support/fidelity/cases/bpgwgmpz/source/payload.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> BubbleEx.Test.HostileIds.rename(~w(bpgwgmpz bpmvuzce bpcjyrzt bpcjyrzr))
+      |> app_fixture.()
+    end,
+    "hostile_overlays" => fn ->
+      "test/support/fidelity/cases/bptvorpv/source/payload.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> BubbleEx.Test.HostileIds.rename(~w(bptvorpv bptvorpw bptvorqc))
+      |> app_fixture.()
+    end,
     "decided_combined" => fn ->
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit)
       {:ok, project, []}
