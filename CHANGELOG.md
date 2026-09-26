@@ -62,6 +62,51 @@ All notable changes to this project are documented here.
   `report.defaults` counts them. On mm-137: 185 defaulted fields,
   166 records, 1,554 checks; rules solved and observable unchanged
   (120 / 77).
+- **API Connector → Req clients** (WTF-374, T8 of WTF-359).
+  `BubbleEx.Target.ApiClients.map(model)` maps every API Connector group
+  to a client module and every call to a function
+  (`%BubbleEx.Target.ApiClients.Spec{}`: method, URL template, query,
+  headers, JSON or form body template, authentication, arguments,
+  environment variables, response decoding, residue with reasons), and
+  `BubbleEx.Target.Phoenix.render(project, api_clients: spec)` prints them
+  as generated, hash-guarded files: the `<App>.ApiClients` runtime (Req
+  with timeouts and retries of safe requests; options from the call, the
+  application environment per group and `:base_url`), one
+  `<App>.ApiClients.<Group>` module per group, `<App>.ApiClients.Decode`
+  (responses into the Project's external typed structs along Bubble's
+  response paths, else maps), a `Req.Test` request-shape test per call
+  (method, scheme, host, port, path, query, headers, body and decoding,
+  with stubbed arguments and environment, no network) and
+  `.wtf/api_clients.json` (environment variables, residue, names); the
+  manifest records the Spec's hash. Private values, and every literal of a
+  request that is not structure, are never in the code: they are
+  read from deterministic, documented environment variables at call time
+  (`<GROUP>_API_KEY`, `<GROUP>_<CALL>_<PARAM>`, `<GROUP>_<CALL>_LITERAL_<N>`,
+  …; a header or parameter whose name Bubble strips holds `Name: value` /
+  `name=value`). Supported authentication: none, private key in header or
+  URL, basic. `scripts/phoenix_compile_check.sh` renders every fixture's
+  clients (new fixture `phoenix_api_clients`) and runs their tests, each
+  tagged `bubble: <call ID>` for the plan's `request_shape` check. On
+  mm-137 (a 2026-09-26 fetch: 31 groups, 204 calls), 200 of 204 calls
+  are generated, 196 of them reading environment variables (residue: 2
+  non-JSON bodies, 1 file parameter, 1 call without a URL).
+- **Leak-safe API Connector request templates** (WTF-374). The Model
+  (`schema_version` 4) reads each call's request as a
+  `BubbleEx.Model.ConnectorRequest`: scheme, port, path segments,
+  query-string names, body JSON structure and type, response type, with
+  `[param]`/`<param>` placeholders as references to the call's parameters
+  by Bubble ID. Literals are **default-deny**: only API versions and
+  dictionary path words (up to a segment named like a credential), a
+  shared `Content-Type`/`Accept` media type, JSON booleans/null and empty
+  text are kept; every other literal (query values, body strings and
+  numbers, header values, other path segments) is `redacted` and read
+  from an environment variable by the generated client. Query names and
+  body keys must be plain names (no detector match, nothing
+  random-looking) or the call is unsupported. Parameter values are
+  never read, except a group's non-private shared values, which pass the
+  same policy (`Connector.shared_values`); groups gain `key_name`
+  (`token_param_name`). The leak test and the security-review probes
+  cover the Model JSON and hash, the Spec and the generated clients.
 - **Phoenix target adapter** (WTF-369, T4 of WTF-359).
   `BubbleEx.Target.Phoenix.render(project, name:, module:, app:)` renders a
   `privacy: :omit` `BubbleEx.Target.Ash.Project` as the file map of a

@@ -1,0 +1,266 @@
+{
+  "_id": "apiclients",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    },
+    "account": {
+      "display": "Account",
+      "fields": {
+        "customer_api": {
+          "display": "Customer",
+          "value": "api.apiconnector2.gPay.cCustomer.Customer"
+        },
+        "refunds_api": {
+          "display": "Refunds",
+          "value": "list.api.apiconnector2.gPay.cRefunds.Refund"
+        }
+      }
+    }
+  },
+  "option_sets": {},
+  "settings": {
+    "client_safe": {
+      "apiconnector2": {
+        "gPay": {
+          "human": "Payments",
+          "auth": "private_key_header",
+          "token_param_name": "X-Api-Key",
+          "shared_headers": {
+            "sh1": {
+              "key": "X-Tenant",
+              "value": "acme",
+              "private": false
+            }
+          },
+          "calls": {
+            "cCharge": {
+              "name": "Create charge",
+              "method": "post",
+              "publish_as": "action",
+              "url": "https://api.payments.example:8443/v1/charges?source=bubble",
+              "headers": {
+                "h1": {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "private": false
+                },
+                "h2": {
+                  "key": "Idempotency-Key",
+                  "value": "idem",
+                  "private": true
+                }
+              },
+              "body": "{\"amount\": <amount>, \"currency\": \"<currency>\", \"description\": \"Order <order> for <customer>\", \"metadata\": {\"channel\": \"web\", \"tags\": [\"checkout\", <tag>]}, \"capture\": true, \"retries\": 3, \"signature\": \"<signing>\"}",
+              "body_params": {
+                "b1": {
+                  "key": "amount",
+                  "value": "100",
+                  "private": false
+                },
+                "b2": {
+                  "key": "currency",
+                  "value": "eur",
+                  "private": false
+                },
+                "b3": {
+                  "key": "order",
+                  "value": "1",
+                  "private": false
+                },
+                "b4": {
+                  "key": "customer",
+                  "value": "c",
+                  "private": false
+                },
+                "b5": {
+                  "key": "tag",
+                  "value": "\"x\"",
+                  "private": false
+                },
+                "b6": {
+                  "key": "signing",
+                  "value": "s",
+                  "private": true
+                }
+              }
+            },
+            "cCustomer": {
+              "name": "Get customer",
+              "method": "get",
+              "publish_as": "data",
+              "url": "https://api.payments.example/v1/customers/[customer_id]",
+              "url_params": {
+                "u1": {
+                  "key": "customer_id",
+                  "value": "cus_1",
+                  "private": false
+                }
+              },
+              "params": {
+                "p1": {
+                  "key": "expand",
+                  "value": "plan",
+                  "private": false,
+                  "querystring": true
+                }
+              },
+              "ret_value": "api.apiconnector2.gPay.cCustomer.Customer",
+              "types": "{\"api.apiconnector2.gPay.cCustomer.Customer\": {\"caption\": \"Customer\", \"fields\": {\"id\": {\"caption\": \"ID\", \"path\": [\"id\"], \"ret_btype\": \"text\"}, \"email\": {\"caption\": \"Email\", \"path\": [\"email\"], \"ret_btype\": \"text\"}, \"balance\": {\"caption\": \"Balance\", \"path\": [\"balance\"], \"ret_btype\": \"number\"}, \"delinquent\": {\"caption\": \"Delinquent\", \"path\": [\"delinquent\"], \"ret_btype\": \"boolean\"}, \"created\": {\"caption\": \"Created\", \"path\": [\"created\"], \"ret_btype\": \"date\"}, \"tags\": {\"caption\": \"Tags\", \"path\": [\"tags\"], \"ret_btype\": \"list.text\"}, \"address\": {\"caption\": \"Address\", \"path\": [\"address\"], \"ret_btype\": \"api.apiconnector2.gPay.cCustomer.Address\"}, \"plan_name\": {\"caption\": \"Plan name\", \"path\": [\"plan\", \"name\"], \"ret_btype\": \"text\"}}}, \"api.apiconnector2.gPay.cCustomer.Address\": {\"caption\": \"Address\", \"fields\": {\"line1\": {\"caption\": \"Line 1\", \"path\": [\"line1\"], \"ret_btype\": \"text\"}, \"city\": {\"caption\": \"City\", \"path\": [\"city\"], \"ret_btype\": \"text\"}}}}"
+            },
+            "cRefunds": {
+              "name": "List refunds",
+              "method": "get",
+              "publish_as": "data",
+              "is_list": true,
+              "url": "https://api.payments.example/v1/refunds",
+              "ret_value": "api.apiconnector2.gPay.cRefunds.Refund",
+              "types": "{\"api.apiconnector2.gPay.cRefunds.Refund\": {\"caption\": \"Refund\", \"fields\": {\"id\": {\"caption\": \"ID\", \"path\": [\"id\"], \"ret_btype\": \"text\"}, \"amount\": {\"caption\": \"Amount\", \"path\": [\"amount\"], \"ret_btype\": \"number\"}}}}"
+            }
+          }
+        },
+        "gMail": {
+          "human": "Mail",
+          "auth": "basic_auth",
+          "calls": {
+            "cSend": {
+              "%nm": "Send email",
+              "method": "post",
+              "publish_as": "action",
+              "url": "https://api.mail.example/v3/send",
+              "%b3": "{\"to\": \"<to>\", \"token\": \"<api_token>\", \"key\": \"k9Qz7XwL2vB8nR4tY6uP3mJd\", \"html\": \"<b>Hello</b>\"}",
+              "headers": {
+                "lh1": {
+                  "private": true
+                }
+              },
+              "body_params": {
+                "lb1": {
+                  "%k": "to",
+                  "%v": "a@example.com",
+                  "private": false
+                },
+                "lb2": {
+                  "private": true
+                }
+              }
+            }
+          }
+        },
+        "gForms": {
+          "human": "Forms",
+          "auth": "private_key_url",
+          "token_param_name": "key",
+          "calls": {
+            "cSubscribe": {
+              "name": "Subscribe",
+              "method": "post",
+              "publish_as": "action",
+              "body_type": "form_data",
+              "data_type": "text",
+              "url": "https://forms.example/api/subscribe",
+              "params": {
+                "f1": {
+                  "key": "email",
+                  "value": "a@example.com",
+                  "private": false
+                },
+                "f2": {
+                  "key": "list_id",
+                  "value": "l1",
+                  "private": true
+                },
+                "f3": {
+                  "private": true
+                }
+              }
+            }
+          }
+        },
+        "gTenants": {
+          "human": "Tenants",
+          "auth": "none",
+          "calls": {
+            "cPing": {
+              "name": "Tenant ping",
+              "method": "get",
+              "data_type": "empty",
+              "url": "https://[tenant].crm.example/api/ping",
+              "url_params": {
+                "t1": {
+                  "key": "tenant",
+                  "value": "acme",
+                  "private": false
+                }
+              }
+            },
+            "cRemove": {
+              "name": "Remove item",
+              "method": "delete_method",
+              "url": "http://api.crm.example/items/[id]/",
+              "url_params": {
+                "i1": {
+                  "key": "id",
+                  "value": "1",
+                  "private": false
+                }
+              }
+            },
+            "cSend": {
+              "name": "send",
+              "method": "get",
+              "url": "https://api.crm.example/send"
+            }
+          }
+        },
+        "gLegacy": {
+          "human": "Legacy",
+          "auth": "oauth2_password",
+          "calls": {
+            "cOauth": {
+              "name": "Me",
+              "method": "get",
+              "url": "https://legacy.example/me"
+            }
+          }
+        },
+        "gResidue": {
+          "human": "Residue",
+          "calls": {
+            "cRaw": {
+              "name": "Raw body",
+              "method": "post",
+              "url": "https://raw.example/x",
+              "body": "a=<b>&c=d",
+              "body_params": {
+                "rb": {
+                  "key": "b",
+                  "value": "1",
+                  "private": false
+                }
+              }
+            },
+            "cDynamic": {
+              "name": "Whole URL",
+              "method": "get",
+              "url": "[endpoint]",
+              "url_params": {
+                "e": {
+                  "key": "endpoint",
+                  "value": "https://x.example",
+                  "private": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

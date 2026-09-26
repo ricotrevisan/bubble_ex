@@ -63,14 +63,32 @@
               }
             }
           },
+          "request": {
+            "body": null,
+            "body_type": "none",
+            "host": null,
+            "list": false,
+            "parameters_in": "query",
+            "path": [],
+            "port": null,
+            "query": [],
+            "redacted": 0,
+            "response": "json",
+            "scheme": null,
+            "unsupported": [
+              "no_url"
+            ]
+          },
           "returns": "api.apiconnector2.geo.lookup.Address",
           "types": null
         }
       ],
       "id": "geo",
+      "key_name": null,
       "name": null,
       "parameters": [],
-      "path": "/settings/client_safe/apiconnector2/geo"
+      "path": "/settings/client_safe/apiconnector2/geo",
+      "shared_values": []
     },
     {
       "auth": null,
@@ -106,6 +124,22 @@
               }
             }
           },
+          "request": {
+            "body": null,
+            "body_type": "none",
+            "host": null,
+            "list": false,
+            "parameters_in": "query",
+            "path": [],
+            "port": null,
+            "query": [],
+            "redacted": 0,
+            "response": "json",
+            "scheme": null,
+            "unsupported": [
+              "no_url"
+            ]
+          },
           "returns": "api.apiconnector2.graph.ping.A",
           "types": null
         },
@@ -139,14 +173,32 @@
               }
             }
           },
+          "request": {
+            "body": null,
+            "body_type": "none",
+            "host": null,
+            "list": false,
+            "parameters_in": "query",
+            "path": [],
+            "port": null,
+            "query": [],
+            "redacted": 0,
+            "response": "json",
+            "scheme": null,
+            "unsupported": [
+              "no_url"
+            ]
+          },
           "returns": "api.apiconnector2.graph.pong.B",
           "types": null
         }
       ],
       "id": "graph",
+      "key_name": null,
       "name": null,
       "parameters": [],
-      "path": "/settings/client_safe/apiconnector2/graph"
+      "path": "/settings/client_safe/apiconnector2/graph",
+      "shared_values": []
     },
     {
       "auth": null,
@@ -167,14 +219,32 @@
               "fields": {}
             }
           },
+          "request": {
+            "body": null,
+            "body_type": "none",
+            "host": null,
+            "list": false,
+            "parameters_in": "query",
+            "path": [],
+            "port": null,
+            "query": [],
+            "redacted": 0,
+            "response": "json",
+            "scheme": null,
+            "unsupported": [
+              "no_url"
+            ]
+          },
           "returns": "api.apiconnector2.misc.blank.Empty",
           "types": null
         }
       ],
       "id": "misc",
+      "key_name": null,
       "name": null,
       "parameters": [],
-      "path": "/settings/client_safe/apiconnector2/misc"
+      "path": "/settings/client_safe/apiconnector2/misc",
+      "shared_values": []
     },
     {
       "auth": null,
@@ -210,14 +280,32 @@
               }
             }
           },
+          "request": {
+            "body": null,
+            "body_type": "none",
+            "host": null,
+            "list": false,
+            "parameters_in": "query",
+            "path": [],
+            "port": null,
+            "query": [],
+            "redacted": 0,
+            "response": "json",
+            "scheme": null,
+            "unsupported": [
+              "no_url"
+            ]
+          },
           "returns": "api.apiconnector2.tree.walk.Node",
           "types": null
         }
       ],
       "id": "tree",
+      "key_name": null,
       "name": null,
       "parameters": [],
-      "path": "/settings/client_safe/apiconnector2/tree"
+      "path": "/settings/client_safe/apiconnector2/tree",
+      "shared_values": []
     }
   ],
   "data_types": [
@@ -1051,5 +1139,5 @@
   ],
   "extra": {},
   "option_sets": [],
-  "schema_version": 3
+  "schema_version": 4
 }

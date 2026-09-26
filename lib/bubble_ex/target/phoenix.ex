@@ -66,6 +66,16 @@ defmodule BubbleEx.Target.Phoenix do
   (`BubbleEx.Target.Phoenix.Manifest`) records their SHA-256 and the input
   hashes, and `check_manifest/2` finds hand edits.
 
+  With `api_clients:` (a `BubbleEx.Target.ApiClients.Spec`, WTF-374) the
+  API Connector clients are generated too: the `<Module>.ApiClients`
+  runtime (Req; secrets from environment variables at call time), one
+  `<Module>.ApiClients.<Group>` module per group with one function per
+  call, `<Module>.ApiClients.Decode` (responses into the external typed
+  structs), a `Req.Test` request-shape test per call under
+  `test/<app>/api_clients/`, and `.wtf/api_clients.json` (environment
+  variables, residue, names); the manifest's inputs record the Spec's
+  hash (see `BubbleEx.Target.Phoenix.ApiClients`).
+
   **Owned** files are everything else (mix.exs, config, router, layouts,
   controllers, the sender, tests…): scaffolded once, then the owner's; a
   packager writes them only when absent. `owned_paths/1` and the
@@ -79,11 +89,14 @@ defmodule BubbleEx.Target.Phoenix do
     * `:module` - the root module (one alias segment), default
       `module_name/1` of the name; the web module is `<module>Web`
     * `:app` - the OTP application, default the module underscored
+    * `:api_clients` - a `BubbleEx.Target.ApiClients.Spec` to render the
+      API Connector clients of (see above); none by default
   """
 
   alias BubbleEx.{CanonicalJson, Error}
+  alias BubbleEx.Target.ApiClients.Spec
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
-  alias BubbleEx.Target.Phoenix.{Manifest, Templates}
+  alias BubbleEx.Target.Phoenix.{ApiClients, Manifest, Templates}
 
   @version Mix.Project.config()[:version]
 
@@ -168,7 +181,11 @@ defmodule BubbleEx.Target.Phoenix do
                       "Add Ash policies before exposing this data through any API,\n" <>
                       "LiveView or controller."
 
-  @type option :: {:name, String.t() | nil} | {:module, String.t()} | {:app, String.t()}
+  @type option ::
+          {:name, String.t() | nil}
+          | {:module, String.t()}
+          | {:app, String.t()}
+          | {:api_clients, Spec.t() | nil}
   @type files :: %{String.t() => binary()}
 
   @doc """
@@ -227,11 +244,20 @@ defmodule BubbleEx.Target.Phoenix do
 
   def render(%Project{privacy: :omit} = project, opts) when is_list(opts) do
     with {:ok, ctx} <- context(project, opts),
+         {:ok, clients} <- api_clients(opts),
          {:ok, user, email} <- user(project),
-         :ok <- check_claims(project),
-         ctx = Map.merge(ctx, %{user: user.module, email: email}),
+         :ok <- check_claims(project, clients),
+         ctx = Map.merge(ctx, %{user: user.module, email: email, api_clients: clients}),
          {:ok, source} <- ash_source(project, user, ctx) do
-      generated = generated_files(project, source, ctx)
+      generated =
+        project
+        |> generated_files(source, ctx)
+        |> Map.merge(
+          clients
+          |> ApiClients.files(project, ctx)
+          |> Map.new(fn {path, content} -> {path, mark_generated(path, content, false)} end)
+        )
+
       owned = owned_files(ctx)
 
       case Enum.filter(Map.keys(generated), &Map.has_key?(owned, &1)) do
@@ -308,6 +334,21 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
+  defp api_clients(opts) do
+    case Keyword.get(opts, :api_clients) do
+      nil ->
+        {:ok, nil}
+
+      %Spec{} = spec ->
+        {:ok, spec}
+
+      other ->
+        invalid(
+          "invalid api_clients #{inspect(other)}: expected a BubbleEx.Target.ApiClients.Spec"
+        )
+    end
+  end
+
   defp check(option, value, pattern) do
     if is_binary(value) and Regex.match?(pattern, value),
       do: :ok,
@@ -339,10 +380,13 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
-  defp check_claims(%Project{resources: resources}) do
+  defp check_claims(%Project{resources: resources}, clients) do
+    # The API clients' root module (WTF-374), when they are rendered.
+    claimed = if clients, do: ["ApiClients" | @claimed_modules], else: @claimed_modules
+
     clashes =
       for %Resource{} = r <- resources,
-          r.module in @claimed_modules or r.table in @claimed_tables,
+          r.module in claimed or r.table in @claimed_tables,
           do: "#{r.module} (table #{r.table})"
 
     if clashes == [],

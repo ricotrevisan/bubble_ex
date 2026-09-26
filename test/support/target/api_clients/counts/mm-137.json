@@ -1,0 +1,21 @@
+{
+  "counts": {
+    "calls": 204,
+    "env": {
+      "auth": 18,
+      "literal": 1090,
+      "private": 21,
+      "private_line": 49
+    },
+    "generated": 200,
+    "generated_env_configured": 196,
+    "groups": 31,
+    "residue": 4,
+    "residue_reasons": {
+      "file_parameter": 1,
+      "no_url": 1,
+      "raw_body": 2
+    },
+    "typed_responses": 0
+  }
+}

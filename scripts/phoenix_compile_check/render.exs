@@ -1,5 +1,6 @@
 # Renders one fixture through BubbleEx.Target.Phoenix (privacy: :omit, what
-# an owner downloads) into a scratch Phoenix project directory, replacing
+# an owner downloads; with the API clients of BubbleEx.Target.ApiClients
+# when the fixture has a Model) into a scratch Phoenix project directory, replacing
 # the previous fixture's files. Every fixture renders with the same name
 # (module PhxCheck, app :phx_check), so the dependencies, configured the
 # same way, compile once for all of them (scripts/phoenix_compile_check.sh).
@@ -9,7 +10,9 @@
 #
 # `list` prints the fixture names: every BubbleEx.Model fixture
 # (test/support/model/*.json), every target fixture
-# (test/support/target/ash/*.json), the expression fixture and the owner
+# (test/support/target/ash/*.json), the Phoenix fixtures
+# (test/support/target/phoenix/*.json, e.g. API clients), the expression
+# fixture and the owner
 # decision fixtures (BubbleEx.Test.DecidedFixture), plus `private_app` when
 # BUBBLE_EX_PRIVATE_EXPORT is set (never committed).
 #
@@ -21,10 +24,19 @@
 
 alias BubbleEx.Target.Phoenix
 
+# Each fixture gives its Project and, when it has a Model, the API client
+# Spec of its API Connector calls (WTF-374).
+with_clients = fn model, result ->
+  with {:ok, project} <- result,
+       {:ok, clients} <- BubbleEx.Target.ApiClients.map(model),
+       do: {:ok, project, clients}
+end
+
 fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
         {"test/support/target/ash/*.json", "target_"},
+        {"test/support/target/phoenix/*.json", "phoenix_"},
         {"test/support/expression/*.json", "expr_"}
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort(),
@@ -32,7 +44,7 @@ fixtures =
     {prefix <> Path.basename(path, ".json"),
      fn ->
        {:ok, model} = path |> File.read!() |> Jason.decode!() |> BubbleEx.Model.build()
-       BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+       with_clients.(model, BubbleEx.Target.Ash.map(model, [], privacy: :omit))
      end}
   end
   |> Map.merge(%{
@@ -48,7 +60,7 @@ fixtures =
         %{
           "private_app" => fn ->
             {:ok, model} = path |> BubbleEx.Test.SplitExport.load() |> BubbleEx.Model.build()
-            BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+            with_clients.(model, BubbleEx.Target.Ash.map(model, [], privacy: :omit))
           end
         }
     end
@@ -59,8 +71,13 @@ case System.argv() do
     fixtures |> Map.keys() |> Enum.sort() |> Enum.each(&IO.puts/1)
 
   [dir, name] ->
-    {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    {project, clients} =
+      case Map.fetch!(fixtures, name).() do
+        {:ok, project, clients} -> {project, clients}
+        {:ok, project} -> {project, nil}
+      end
+
+    opts = [name: "Phx Check #{name}", module: "PhxCheck", api_clients: clients]
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 
