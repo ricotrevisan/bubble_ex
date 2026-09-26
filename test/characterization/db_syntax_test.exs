@@ -15,7 +15,8 @@ defmodule BubbleEx.Characterization.DbSyntaxTest do
   #
   # The untagged tests are a structural check that always runs: over the
   # hostile_names fixture, no line terminator but LF appears and no line ends
-  # inside a string literal (a small tokenizer, not a parser).
+  # inside a string literal (a small tokenizer, not a parser); for T-SQL, no
+  # line but the encoder's own `GO` is one sqlcmd would act on (WTF-409).
   use ExUnit.Case, async: true
 
   alias BubbleEx.Db.{Encoder, Reader}
@@ -57,6 +58,70 @@ defmodule BubbleEx.Characterization.DbSyntaxTest do
       refute closed?(~S|Table custom."a"b" {|)
       assert closed?(~S|  'a\\': z.string(), // it's "fine"|)
     end
+  end
+
+  describe "T-SQL batch separators" do
+    # sqlcmd and SSMS split a script into batches on any line that is only
+    # `GO` or `GO n` (case-insensitive, surrounding blanks allowed) and run
+    # `:command` and `!!` lines themselves, before T-SQL parses a thing
+    # (WTF-409). Brackets allow raw line breaks, so a name holding "\nGO\n"
+    # once cut the script in two. No T-SQL parser is cheap in CI (sqlcmd
+    # needs a server), so this is a structural check over every fixture: the
+    # only batch-tool lines are the encoder's own `GO` after `CREATE SCHEMA`.
+    @tsql_fixtures Enum.sort(
+                     Path.wildcard("test/support/model/*.json") ++
+                       Path.wildcard("test/support/db/fixtures/*.json") ++
+                       ~w(test/support/samples/synthetic_app.json test/support/samples/synthetic_export.json)
+                   )
+
+    test "every GO line is the encoder's own separator after CREATE SCHEMA" do
+      for fixture <- @tsql_fixtures,
+          naming <- [:proper, :id],
+          foreign_keys <- [:none, :enforced] do
+        {:ok, result} =
+          Encoder.render(:tsql, db(fixture), naming: naming, foreign_keys: foreign_keys)
+
+        assert batch_tool_violations(result.content) == [],
+               "#{Path.basename(fixture)} (#{naming}, #{foreign_keys})"
+      end
+    end
+
+    test "the hostile GO names are in the fixture and stay on their line" do
+      db = db("test/support/db/fixtures/hostile_go_separators.json")
+      names = Enum.flat_map(db.tables, &[&1.name | Enum.map(&1.columns, fn c -> c.name end)])
+
+      for pattern <- [~r/\nGO\n/, ~r/\ngo\n/, ~r/\n GO \n/, ~r/\nGO 5\n/, ~r/\r\nGO\r\n/] do
+        assert Enum.any?(names, &(&1 =~ pattern)), inspect(pattern)
+      end
+
+      content = render(db, :tsql)
+      refute content =~ ~r/[\x{00}-\x{09}\x{0B}-\x{1F}\x{7F}\x{85}\x{2028}\x{2029}]/u
+      assert content =~ "[a GO b_cbdcf979] NVARCHAR(MAX)"
+      assert content =~ "[a GO b] NVARCHAR(MAX)"
+    end
+
+    test "the batch check rejects a name that splits the batch" do
+      assert batch_tool_violations("CREATE SCHEMA [custom];\nGO\n") == []
+
+      for line <- ["GO", "go", "  GO  ", "GO 5", "Go;", ":r evil.sql", "!!del x"] do
+        assert batch_tool_violations("CREATE TABLE [custom].[a\n#{line}\nb] (\n);") == [line]
+      end
+    end
+  end
+
+  # Lines sqlcmd would act on, except `GO` right after a `CREATE SCHEMA`.
+  defp batch_tool_violations(content) do
+    lines = String.split(content, ~r/\r\n|\r|\n/)
+
+    lines
+    |> Enum.zip(["" | lines])
+    |> Enum.flat_map(fn {line, previous} ->
+      cond do
+        line == "GO" and previous =~ ~r/^CREATE SCHEMA \[[^\]]+\];$/ -> []
+        line =~ ~r/^\s*(GO\b|:|!!)/i -> [line]
+        true -> []
+      end
+    end)
   end
 
   # The Project block's note is a DBML ''' multi-line string, fixed text.

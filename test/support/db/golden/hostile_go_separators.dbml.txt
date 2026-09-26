@@ -1,0 +1,44 @@
+Project "synthetic-hostile-go-separators" {
+  database_type: "Bubble.io"
+  Note: '''
+    bubble-to-dbml generator by rico.wtf
+  '''
+}
+
+Table custom."Batch\nGO\nsplit" {
+	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"a\nGO\nb" varchar
+	"c\ngo\nd" varchar
+	"e\n GO \nf" varchar
+	"g\nGO 5\nh" varchar
+	"i\r\nGO\r\nj" varchar
+	"a GO b" varchar
+	"k\n:r evil.sql\n!!del x]\nGO" varchar
+	"owner\nGO\n" user.id
+	"kind" kind.id
+
+}
+Table custom."User" {
+	"_id" varchar [pk]
+	"Created Date" datetime
+	"Modified Date" datetime
+	"Created By" user.id
+	"Slug" varchar
+	"email" varchar
+
+}
+Table option."Kind\nGO" {
+	"db_value" varchar [pk]
+	"Display" varchar
+
+}
+
+Ref: custom."Batch\nGO\nsplit"."Created By" > custom."User"."_id"
+Ref: custom."Batch\nGO\nsplit"."owner\nGO\n" > custom."User"."_id"
+Ref: custom."Batch\nGO\nsplit"."kind" > option."Kind\nGO"."db_value"
+Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one

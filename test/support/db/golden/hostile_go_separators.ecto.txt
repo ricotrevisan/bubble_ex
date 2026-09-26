@@ -1,0 +1,125 @@
+# schema module
+defmodule MyApp.BatchGoSplit do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "batch_go_split" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :a_go_b, :string
+    field :c_go_d, :string
+    field :e_go_f, :string
+    field :g_go_5_h, :string
+    field :i_go_j, :string
+    field :a_go_b_2, :string
+    field :k_r_evil_sql_del_x_go, :string
+    belongs_to :owner_go, MyApp.User, foreign_key: :owner_go_id, references: :_id, type: :string
+    belongs_to :kind, MyApp.KindGo, foreign_key: :kind_id, references: :db_value, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :a_go_b, :c_go_d, :e_go_f, :g_go_5_h, :i_go_j, :a_go_b_2, :k_r_evil_sql_del_x_go, :owner_go_id, :kind_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateBatchGoSplit do
+  use Ecto.Migration
+
+  def change do
+    create table("batch_go_split", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :a_go_b, :string
+      add :c_go_d, :string
+      add :e_go_f, :string
+      add :g_go_5_h, :string
+      add :i_go_j, :string
+      add :a_go_b_2, :string
+      add :k_r_evil_sql_del_x_go, :string
+      add :owner_go_id, :string
+      add :kind_id, :string
+    end
+    create index("batch_go_split", [:created_by_id], name: "batch_go_split_created_by_id_index")
+    create index("batch_go_split", [:owner_go_id], name: "batch_go_split_owner_go_id_index")
+    create index("batch_go_split", [:kind_id], name: "batch_go_split_kind_id_index")
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
+    end
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
+  end
+end
+
+# schema module
+defmodule MyApp.KindGo do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "kind_go" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateKindGo do
+  use Ecto.Migration
+
+  def change do
+    create table("kind_go", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one
+db_converted_name_suffixed /user_types/batch/fields/f_spaced_text/value

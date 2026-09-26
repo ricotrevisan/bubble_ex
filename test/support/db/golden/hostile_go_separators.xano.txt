@@ -1,0 +1,141 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "batch_go_split",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "a_go_b",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "c_go_d",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "e_go_f",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "g_go_5_h",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "i_go_j",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "a_go_b_2",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "k_r_evil_sql_del_x_go",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "owner_go",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "kind",
+        "type": "enum",
+        "values": [],
+        "description": "enum:kind_go (option values not rendered)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "kind_go",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one
+db_converted_name_suffixed /user_types/batch/fields/f_spaced_text/value

@@ -671,6 +671,18 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **T-SQL names cannot split the sqlcmd batch** (WTF-409). T-SQL allows raw
+  line breaks inside `[...]`, so a Bubble name holding a line that is only
+  `GO` (or `GO 5`, `go`, a `:r` or `!!` sqlcmd command) cut the generated
+  script into batches under sqlcmd/SSMS. Identifiers now go through
+  `Db.Encoder.Literal.tsql_bracketed/1`: `]` is doubled, and a name with
+  line breaks or other control characters has each replaced by a space and
+  gets a `_` + 8-hex SHA-256 suffix (deterministic, distinct from the
+  spaced name). A new `hostile_go_separators` fixture has goldens for every
+  format, and `DbSyntaxTest` checks every fixture's T-SQL: the only
+  batch-tool lines are the encoder's own `GO` after `CREATE SCHEMA`.
+  `hostile_names.tsql` golden changed accordingly.
+
 - **DBML and Zod escape hostile names** (WTF-408). The `hostile_names`
   fixture showed DBML writing `"` unescaped inside quoted identifiers and
   Zod writing a raw line break inside a quoted object key (a TypeScript
