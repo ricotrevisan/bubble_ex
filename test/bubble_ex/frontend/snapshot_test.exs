@@ -89,5 +89,9 @@ defmodule BubbleEx.Frontend.SnapshotTest do
   end
 
   defp temp_path,
-    do: Path.join(System.tmp_dir!(), "snapshot-#{System.unique_integer([:positive])}")
+    do:
+      Path.join(
+        System.tmp_dir!(),
+        "snapshot-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
 end

@@ -7,9 +7,8 @@ defmodule BubbleEx.IntegrationTest do
   @moduletag :integration
 
   setup do
-    {:ok, pid} = Server.start_link(name: :integration_test_server)
-    on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
-    %{server_pid: pid}
+    # start_supervised! stops it synchronously before the next test (WTF-395).
+    %{server_pid: start_supervised!({Server, name: :integration_test_server})}
   end
 
   test "scans a fetched app payload and streams output" do

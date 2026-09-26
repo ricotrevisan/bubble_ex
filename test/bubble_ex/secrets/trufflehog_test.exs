@@ -7,11 +7,12 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
 
   describe "scan/2 temporary-file safety (offline)" do
     test "attacker-controlled IDs cannot choose or escape the temporary path" do
-      unique = System.unique_integer([:positive])
+      unique = "#{System.pid()}_#{System.unique_integer([:positive])}"
       test_root = Path.join(System.tmp_dir!(), "bubble_ex_trufflehog_test_#{unique}")
       bin_dir = Path.join(test_root, "bin")
       fake_cli = Path.join(bin_dir, "trufflehog")
       original_path = System.get_env("PATH")
+      original_tmpdir = System.get_env("TMPDIR")
       sentinel = Path.join(File.cwd!(), ".trufflehog_path_sentinel_#{unique}.json")
 
       File.mkdir_p!(bin_dir)
@@ -19,9 +20,19 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
       File.chmod!(fake_cli, 0o700)
       File.write!(sentinel, "must not be overwritten")
       System.put_env("PATH", bin_dir <> ":" <> original_path)
+      # A private TMPDIR: the leftover-directory check below globs the temp
+      # dir, and a concurrent test run on this host (another worktree) creates
+      # scan directories in the shared /tmp (WTF-395).
+      File.mkdir_p!(Path.join(test_root, "tmp"))
+      System.put_env("TMPDIR", Path.join(test_root, "tmp"))
 
       on_exit(fn ->
         System.put_env("PATH", original_path)
+
+        if original_tmpdir,
+          do: System.put_env("TMPDIR", original_tmpdir),
+          else: System.delete_env("TMPDIR")
+
         File.rm_rf!(test_root)
         File.rm(sentinel)
       end)
