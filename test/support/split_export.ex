@@ -15,10 +15,14 @@ defmodule BubbleEx.Test.SplitExport do
   #     api/<key>/workflow.json                   -> api
   #     settings/client-safe.json                 -> settings.client_safe
   #     settings/api-connector/<g>/plugin.json    -> settings.client_safe.apiconnector2
+  #     styles/<element type>/<key>.json          -> styles (keyed by the style's `id`)
   #
   # Workflow folders (`<folder>/config.json` plus workflow subdirectories) are
-  # flattened. Layout helper members (`children`, `bp_layout`, `__bp_*` files)
-  # are dropped. A path that is a file is decoded as a `.bubble` JSON export.
+  # flattened; each workflow in one gets the folder's directory name (its
+  # Bubble folder ID) back as `properties.wf_folder`, where the `.bubble`
+  # export keeps it. Layout helper members (`children`, `bp_layout`, `__bp_*`
+  # files) are dropped. A path that is a file is decoded as a `.bubble` JSON
+  # export.
 
   @spec load(String.t()) :: map()
   def load(path) do
@@ -36,6 +40,15 @@ defmodule BubbleEx.Test.SplitExport do
     |> Map.put("mobile_views", owners(root, "mobile-views", "mobile-view.json"))
     |> Map.put("api", workflows(Path.join(root, "api")))
     |> Map.put("settings", settings(root))
+    |> put_nonempty("styles", styles(Path.join(root, "styles")))
+  end
+
+  defp styles(dir) do
+    for sub <- subdirs(dir),
+        file <- dir |> Path.join(sub) |> Path.join("*.json") |> Path.wildcard() |> Enum.sort(),
+        doc = decode(file),
+        into: %{},
+        do: {doc["id"] || Path.basename(file, ".json"), doc}
   end
 
   defp singles(root, dir, file) do
@@ -67,16 +80,28 @@ defmodule BubbleEx.Test.SplitExport do
     end
   end
 
-  defp workflows(dir) do
+  defp workflows(dir, folder \\ nil) do
     Enum.reduce(subdirs(dir), %{}, fn sub, acc ->
       wf_dir = Path.join(dir, sub)
 
       case optional(Path.join(wf_dir, "workflow.json")) do
-        nil -> Map.merge(acc, workflows(wf_dir))
-        doc -> Map.put(acc, sub, Map.put(clean(doc), "actions", actions(wf_dir)))
+        nil -> Map.merge(acc, workflows(wf_dir, folder_of(wf_dir, sub, folder)))
+        doc -> Map.put(acc, sub, workflow(doc, wf_dir, folder))
       end
     end)
   end
+
+  # A directory with a `config.json` is a folder; its name is the folder ID.
+  defp folder_of(dir, sub, folder),
+    do: if(File.regular?(Path.join(dir, "config.json")), do: sub, else: folder)
+
+  defp workflow(doc, dir, folder),
+    do: doc |> clean() |> Map.put("actions", actions(dir)) |> in_folder(folder)
+
+  defp in_folder(doc, nil), do: doc
+
+  defp in_folder(doc, folder),
+    do: Map.update(doc, "properties", %{"wf_folder" => folder}, &Map.put(&1, "wf_folder", folder))
 
   defp actions(wf_dir) do
     wf_dir

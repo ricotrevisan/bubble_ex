@@ -140,6 +140,14 @@ _Avoid_: Diagnostic, secret finding, recommendation
 An owner's recorded choice about a generated project (`BubbleEx.Decision`): accept, reject or modify a model finding, rename a target name, or accept a behavioural difference (parity exception). Records are append-only revisions of a key; each records the hashes it was made against (`proposal_sha256`, `basis_sha256`), and its state (active, stale, orphaned, superseded, expired) is computed against every new snapshot, never stored. Only the choice and its parameters are generation inputs.
 _Avoid_: Deviation, override, approval
 
+**Migration plan**:
+The stack-neutral task graph of moving an app to another stack (`BubbleEx.Plan`), committed as `.wtf/plan.json`: generator nodes, one task per surface (page or reusable) and per backend folder with workflows as subtasks, cycles as one task, acceptance, data, replay, delivery and cutover tasks, with typed dependencies, abstract criteria and a per-task source hash. A task whose subjects have no *residue* closes automatically once generated.
+_Avoid_: Backlog, ticket list
+
+**Residue**:
+What a generator cannot lower mechanically (`BubbleEx.Plan.Residue`): an expression that does not compile, a plugin element or action, a runtime container, an unsupported action or event type. It is what turns a task into agent work.
+_Avoid_: Diagnostic, TODO
+
 **Execution class**:
 Where a workflow's actions run: client only, server backed, or mixed.
 _Avoid_: Workflow type, backend/frontend

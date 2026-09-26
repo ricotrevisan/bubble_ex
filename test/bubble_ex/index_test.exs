@@ -653,7 +653,7 @@ defmodule BubbleEx.IndexTest do
       assert map.content_sha256 == index.content_sha256
       assert map.semantic_sha256 == index.semantic_sha256
       refute Map.has_key?(map, :lookup)
-      assert Jason.decode!(Index.to_json(index))["schema_version"] == 1
+      assert Jason.decode!(Index.to_json(index))["schema_version"] == 2
     end
   end
 

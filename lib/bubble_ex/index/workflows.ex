@@ -65,6 +65,7 @@ defmodule BubbleEx.Index.Workflows do
       attrs:
         compact(%{
           event_type: event.type,
+          folder: text(props["wf_folder"]),
           backend: backend?,
           public: if(backend?, do: props["expose"] == true),
           ignore_privacy_rules: if(backend?, do: boolean(props["ignore_privacy_rules"]))

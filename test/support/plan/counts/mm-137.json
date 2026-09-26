@@ -1,0 +1,540 @@
+{
+  "decided": {
+    "neutral": {
+      "excluded": {
+        "mobile_view_workflows": 0,
+        "mobile_views": 1
+      },
+      "residue": {
+        "auth_action": 21,
+        "no_native_lowering": 475,
+        "plugin_action": 620,
+        "plugin_element": 717,
+        "plugin_event": 258,
+        "plugin_style": 8,
+        "runtime_container": 175,
+        "style_condition": 14,
+        "trigger_not_normalized": 832,
+        "uncompiled_expression": 2420,
+        "unresolved_reference": 90,
+        "unsupported_action": 5,
+        "unsupported_event": 2
+      },
+      "tasks": {
+        "acceptance": {
+          "auto": 0,
+          "closed": 0,
+          "open": 157,
+          "total": 157
+        },
+        "api_call": {
+          "auto": 97,
+          "closed": 0,
+          "open": 0,
+          "total": 97
+        },
+        "api_group": {
+          "auto": 21,
+          "closed": 0,
+          "open": 0,
+          "total": 21
+        },
+        "auth": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "backend": {
+          "auto": 8,
+          "closed": 0,
+          "open": 47,
+          "total": 55
+        },
+        "cutover": {
+          "auto": 0,
+          "closed": 0,
+          "open": 8,
+          "total": 8
+        },
+        "cycle": {
+          "auto": 2,
+          "closed": 0,
+          "open": 0,
+          "total": 2
+        },
+        "data": {
+          "auto": 0,
+          "closed": 0,
+          "open": 2,
+          "total": 2
+        },
+        "delivery": {
+          "auto": 0,
+          "closed": 0,
+          "open": 3,
+          "total": 3
+        },
+        "fragment": {
+          "auto": 0,
+          "closed": 0,
+          "open": 4,
+          "total": 4
+        },
+        "generate": {
+          "auto": 8,
+          "closed": 0,
+          "open": 0,
+          "total": 8
+        },
+        "plugin": {
+          "auto": 0,
+          "closed": 0,
+          "open": 30,
+          "total": 30
+        },
+        "remove_writes": {
+          "auto": 0,
+          "closed": 1,
+          "open": 0,
+          "total": 1
+        },
+        "replay": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "setup_secrets": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "styles_residue": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "surface": {
+          "auto": 8,
+          "closed": 0,
+          "open": 149,
+          "total": 157
+        },
+        "workflow": {
+          "auto": 1067,
+          "closed": 0,
+          "open": 1843,
+          "total": 2910
+        }
+      },
+      "top_level": {
+        "auto": 47,
+        "closed": 1,
+        "open": 404,
+        "total": 452
+      },
+      "units": {
+        "actions": {
+          "generated": 3925,
+          "removed": 0,
+          "residue": 1921,
+          "total": 5846
+        },
+        "api_calls": {
+          "generated": 97,
+          "referenced": 97,
+          "residue": 0,
+          "total": 203
+        },
+        "cycles": {
+          "reusable": 0,
+          "self_recursive": 31,
+          "workflow": 2
+        },
+        "elements": {
+          "generated": 3359,
+          "not_normalized": 3620,
+          "not_normalized_with_residue": 607,
+          "residue": 1476,
+          "total": 8455
+        },
+        "plugins": 30,
+        "styles": {
+          "residue": 22,
+          "total": 146
+        },
+        "workflows_backend": {
+          "auto": 243,
+          "closed": 0,
+          "open": 392,
+          "total": 635
+        },
+        "workflows_frontend": {
+          "auto": 824,
+          "closed": 0,
+          "open": 1451,
+          "total": 2275
+        },
+        "workflows_removed": 0,
+        "workflows_trigger_not_normalized": 832
+      }
+    }
+  },
+  "faithful": {
+    "elixir": {
+      "excluded": {
+        "mobile_view_workflows": 0,
+        "mobile_views": 1
+      },
+      "residue": {
+        "auth_action": 21,
+        "no_native_lowering": 475,
+        "plugin_action": 620,
+        "plugin_element": 717,
+        "plugin_event": 258,
+        "plugin_style": 8,
+        "runtime_container": 175,
+        "style_condition": 14,
+        "trigger_not_normalized": 832,
+        "uncompiled_expression": 2934,
+        "unresolved_reference": 90,
+        "unsupported_action": 5,
+        "unsupported_event": 2
+      },
+      "tasks": {
+        "acceptance": {
+          "auto": 0,
+          "closed": 0,
+          "open": 157,
+          "total": 157
+        },
+        "api_call": {
+          "auto": 97,
+          "closed": 0,
+          "open": 0,
+          "total": 97
+        },
+        "api_group": {
+          "auto": 21,
+          "closed": 0,
+          "open": 0,
+          "total": 21
+        },
+        "auth": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "backend": {
+          "auto": 4,
+          "closed": 0,
+          "open": 51,
+          "total": 55
+        },
+        "cutover": {
+          "auto": 0,
+          "closed": 0,
+          "open": 8,
+          "total": 8
+        },
+        "cycle": {
+          "auto": 0,
+          "closed": 0,
+          "open": 2,
+          "total": 2
+        },
+        "data": {
+          "auto": 0,
+          "closed": 0,
+          "open": 2,
+          "total": 2
+        },
+        "delivery": {
+          "auto": 0,
+          "closed": 0,
+          "open": 3,
+          "total": 3
+        },
+        "fragment": {
+          "auto": 0,
+          "closed": 0,
+          "open": 4,
+          "total": 4
+        },
+        "generate": {
+          "auto": 8,
+          "closed": 0,
+          "open": 0,
+          "total": 8
+        },
+        "plugin": {
+          "auto": 0,
+          "closed": 0,
+          "open": 30,
+          "total": 30
+        },
+        "replay": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "setup_secrets": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "styles_residue": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "surface": {
+          "auto": 8,
+          "closed": 0,
+          "open": 149,
+          "total": 157
+        },
+        "workflow": {
+          "auto": 974,
+          "closed": 0,
+          "open": 1936,
+          "total": 2910
+        }
+      },
+      "top_level": {
+        "auto": 41,
+        "closed": 0,
+        "open": 410,
+        "total": 451
+      },
+      "units": {
+        "actions": {
+          "generated": 3694,
+          "removed": 0,
+          "residue": 2152,
+          "total": 5846
+        },
+        "api_calls": {
+          "generated": 97,
+          "referenced": 97,
+          "residue": 0,
+          "total": 203
+        },
+        "cycles": {
+          "reusable": 0,
+          "self_recursive": 31,
+          "workflow": 2
+        },
+        "elements": {
+          "generated": 3303,
+          "not_normalized": 3620,
+          "not_normalized_with_residue": 699,
+          "residue": 1532,
+          "total": 8455
+        },
+        "plugins": 30,
+        "styles": {
+          "residue": 22,
+          "total": 146
+        },
+        "workflows_backend": {
+          "auto": 193,
+          "closed": 0,
+          "open": 442,
+          "total": 635
+        },
+        "workflows_frontend": {
+          "auto": 781,
+          "closed": 0,
+          "open": 1494,
+          "total": 2275
+        },
+        "workflows_removed": 0,
+        "workflows_trigger_not_normalized": 832
+      }
+    },
+    "neutral": {
+      "excluded": {
+        "mobile_view_workflows": 0,
+        "mobile_views": 1
+      },
+      "residue": {
+        "auth_action": 21,
+        "no_native_lowering": 475,
+        "plugin_action": 620,
+        "plugin_element": 717,
+        "plugin_event": 258,
+        "plugin_style": 8,
+        "runtime_container": 175,
+        "style_condition": 14,
+        "trigger_not_normalized": 832,
+        "uncompiled_expression": 2420,
+        "unresolved_reference": 90,
+        "unsupported_action": 5,
+        "unsupported_event": 2
+      },
+      "tasks": {
+        "acceptance": {
+          "auto": 0,
+          "closed": 0,
+          "open": 157,
+          "total": 157
+        },
+        "api_call": {
+          "auto": 97,
+          "closed": 0,
+          "open": 0,
+          "total": 97
+        },
+        "api_group": {
+          "auto": 21,
+          "closed": 0,
+          "open": 0,
+          "total": 21
+        },
+        "auth": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "backend": {
+          "auto": 8,
+          "closed": 0,
+          "open": 47,
+          "total": 55
+        },
+        "cutover": {
+          "auto": 0,
+          "closed": 0,
+          "open": 8,
+          "total": 8
+        },
+        "cycle": {
+          "auto": 2,
+          "closed": 0,
+          "open": 0,
+          "total": 2
+        },
+        "data": {
+          "auto": 0,
+          "closed": 0,
+          "open": 2,
+          "total": 2
+        },
+        "delivery": {
+          "auto": 0,
+          "closed": 0,
+          "open": 3,
+          "total": 3
+        },
+        "fragment": {
+          "auto": 0,
+          "closed": 0,
+          "open": 4,
+          "total": 4
+        },
+        "generate": {
+          "auto": 8,
+          "closed": 0,
+          "open": 0,
+          "total": 8
+        },
+        "plugin": {
+          "auto": 0,
+          "closed": 0,
+          "open": 30,
+          "total": 30
+        },
+        "replay": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "setup_secrets": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "styles_residue": {
+          "auto": 0,
+          "closed": 0,
+          "open": 1,
+          "total": 1
+        },
+        "surface": {
+          "auto": 8,
+          "closed": 0,
+          "open": 149,
+          "total": 157
+        },
+        "workflow": {
+          "auto": 1067,
+          "closed": 0,
+          "open": 1843,
+          "total": 2910
+        }
+      },
+      "top_level": {
+        "auto": 47,
+        "closed": 0,
+        "open": 404,
+        "total": 451
+      },
+      "units": {
+        "actions": {
+          "generated": 3925,
+          "removed": 0,
+          "residue": 1921,
+          "total": 5846
+        },
+        "api_calls": {
+          "generated": 97,
+          "referenced": 97,
+          "residue": 0,
+          "total": 203
+        },
+        "cycles": {
+          "reusable": 0,
+          "self_recursive": 31,
+          "workflow": 2
+        },
+        "elements": {
+          "generated": 3359,
+          "not_normalized": 3620,
+          "not_normalized_with_residue": 607,
+          "residue": 1476,
+          "total": 8455
+        },
+        "plugins": 30,
+        "styles": {
+          "residue": 22,
+          "total": 146
+        },
+        "workflows_backend": {
+          "auto": 243,
+          "closed": 0,
+          "open": 392,
+          "total": 635
+        },
+        "workflows_frontend": {
+          "auto": 824,
+          "closed": 0,
+          "open": 1451,
+          "total": 2275
+        },
+        "workflows_removed": 0,
+        "workflows_trigger_not_normalized": 832
+      }
+    }
+  }
+}
