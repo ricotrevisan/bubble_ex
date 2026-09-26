@@ -25,6 +25,7 @@ defmodule BubbleEx.Index.Subject do
   defp subject("option_attribute", [set, attr], _), do: %{option_set: set, field: attr}
   defp subject("privacy_rule", [type, rule], _), do: %{type: type, rule: rule}
   defp subject("workflow", [workflow], _), do: %{workflow: workflow}
+  defp subject("plugin", [plugin], _), do: %{plugin: plugin}
 
   defp subject("api_call", [group, call], _),
     do: %{external_type: "api.apiconnector2.#{group}.#{call}"}
@@ -41,12 +42,17 @@ defmodule BubbleEx.Index.Subject do
   @doc """
   The symbol IDs a subject names: the most specific symbol for its type,
   option set or API Connector keys (a field, privacy rule or option set
-  attribute over its parent), plus its workflow. The inverse of `of/2` for
+  attribute over its parent), plus its workflow and its plugin. The inverse of `of/2` for
   data-model subjects.
   """
   @spec symbol_ids(Diagnostic.subject()) :: [String.t()]
   def symbol_ids(subject) when is_map(subject) do
-    [owner_symbol(subject), workflow_symbol(subject), external_symbol(subject)]
+    [
+      owner_symbol(subject),
+      workflow_symbol(subject),
+      external_symbol(subject),
+      plugin_symbol(subject)
+    ]
     |> Enum.reject(&is_nil/1)
     |> Enum.sort()
   end
@@ -63,6 +69,9 @@ defmodule BubbleEx.Index.Subject do
 
   defp workflow_symbol(%{workflow: workflow}), do: Symbol.id(:workflow, workflow)
   defp workflow_symbol(_), do: nil
+
+  defp plugin_symbol(%{plugin: plugin}), do: Symbol.id(:plugin, plugin)
+  defp plugin_symbol(_), do: nil
 
   defp external_symbol(%{external_type: descriptor}) do
     case Types.target(descriptor) do

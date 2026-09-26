@@ -101,7 +101,7 @@ defmodule BubbleEx.Decision do
   @author_kinds [:owner, :agent, :wtf_staff]
   @vias [:chat, :form, :cli]
   @targets ["ash"]
-  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow]
+  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin]
   @basis_keys [
     :finding_id,
     :proposal_sha256,

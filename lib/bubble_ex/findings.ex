@@ -21,6 +21,13 @@ defmodule BubbleEx.Findings do
   | `:id_in_text` | decision | a reference for a text field holding unique IDs of an app data type |
   | `:search_index` | hint | per data type, the indexes (access patterns) its searches need |
   | `:number_type` | decision | an integer for a number field whose every write is integral |
+  | `:plugin` | decision | per marketplace plugin: drop it, replace it with a known native equivalent, or rebuild it |
+
+  A `:plugin` finding covers one plugin (installed or used) as a whole: its
+  evidence lists the members used (element, action and event types, with
+  counts) and every use (`BubbleEx.Plugins.Inventory`); `proposal.options`
+  are the choices open to the owner and `proposal.option` the suggested one
+  (a `modify` picks another, `BubbleEx.Decision.Params`).
 
   A `list of things` field gets at most one of `:redundant_reverse_list`,
   `:privacy_access_list` and `:list_relationship`, in that order of
@@ -59,6 +66,7 @@ defmodule BubbleEx.Findings do
     Joins,
     ListRelationship,
     NumberType,
+    Plugin,
     PrivacyAccess,
     ReverseList,
     SearchIndex
@@ -112,7 +120,7 @@ defmodule BubbleEx.Findings do
 
     link_joins(reverse ++ privacy ++ lists) ++
       Denormalized.run(ctx) ++
-      IdInText.run(ctx) ++ SearchIndex.run(ctx) ++ NumberType.run(ctx)
+      IdInText.run(ctx) ++ SearchIndex.run(ctx) ++ NumberType.run(ctx) ++ Plugin.run(ctx)
   end
 
   # Findings whose proposals share a join are related to each other.

@@ -69,6 +69,12 @@
           "open": 2,
           "total": 2
         },
+        "decision": {
+          "auto": 0,
+          "closed": 0,
+          "open": 30,
+          "total": 30
+        },
         "delivery": {
           "auto": 0,
           "closed": 0,
@@ -133,8 +139,8 @@
       "top_level": {
         "auto": 47,
         "closed": 1,
-        "open": 404,
-        "total": 452
+        "open": 434,
+        "total": 482
       },
       "units": {
         "actions": {
@@ -161,7 +167,11 @@
           "residue": 1476,
           "total": 8455
         },
-        "plugins": 30,
+        "plugins": {
+          "dropped": 0,
+          "tasks": 30,
+          "undecided": 30
+        },
         "styles": {
           "residue": 22,
           "total": 146
@@ -253,6 +263,12 @@
           "open": 2,
           "total": 2
         },
+        "decision": {
+          "auto": 0,
+          "closed": 0,
+          "open": 30,
+          "total": 30
+        },
         "delivery": {
           "auto": 0,
           "closed": 0,
@@ -311,8 +327,8 @@
       "top_level": {
         "auto": 41,
         "closed": 0,
-        "open": 410,
-        "total": 451
+        "open": 440,
+        "total": 481
       },
       "units": {
         "actions": {
@@ -339,7 +355,11 @@
           "residue": 1532,
           "total": 8455
         },
-        "plugins": 30,
+        "plugins": {
+          "dropped": 0,
+          "tasks": 30,
+          "undecided": 30
+        },
         "styles": {
           "residue": 22,
           "total": 146
@@ -429,6 +449,12 @@
           "open": 2,
           "total": 2
         },
+        "decision": {
+          "auto": 0,
+          "closed": 0,
+          "open": 30,
+          "total": 30
+        },
         "delivery": {
           "auto": 0,
           "closed": 0,
@@ -487,8 +513,8 @@
       "top_level": {
         "auto": 47,
         "closed": 0,
-        "open": 404,
-        "total": 451
+        "open": 434,
+        "total": 481
       },
       "units": {
         "actions": {
@@ -515,7 +541,11 @@
           "residue": 1476,
           "total": 8455
         },
-        "plugins": 30,
+        "plugins": {
+          "dropped": 0,
+          "tasks": 30,
+          "undecided": 30
+        },
         "styles": {
           "residue": 22,
           "total": 146

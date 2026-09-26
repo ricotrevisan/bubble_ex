@@ -21,6 +21,8 @@ defmodule BubbleEx.Plan.Residue do
   | `:malformed_call` | API call | `index/2`: the call or its types registry is not an object |
   | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`) |
   | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain (inside a runtime container), so its event wiring cannot be generated yet (`detail.element`) |
+  | `:trigger_dropped` | workflow | `BubbleEx.Plan.build/5`: a dropped plugin's event triggered it and it runs other actions, so it needs a new trigger (`detail.plugin`) |
+  | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
 
   `index/2` and `frontend/2` are computed by `BubbleEx.Plan.build/5` itself;
@@ -41,7 +43,7 @@ defmodule BubbleEx.Plan.Residue do
   @reasons ~w(uncompiled_expression plugin_element plugin_action plugin_event unsupported_action
               unsupported_event auth_action unresolved_reference dynamic_url oauth malformed_call
               runtime_container no_native_lowering trigger_not_normalized style_condition
-              plugin_style)a
+              plugin_style trigger_dropped reads_dropped_plugin)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded
@@ -66,14 +68,7 @@ defmodule BubbleEx.Plan.Residue do
   with `_current`/`_test` version suffixes ignored), or nil.
   """
   @spec plugin(term()) :: String.t() | nil
-  def plugin(type) when is_binary(type) do
-    case Regex.run(~r/^(\d+x\d+)(?:_[a-z]+)?-/, type) do
-      [_, id] -> id
-      _ -> nil
-    end
-  end
-
-  def plugin(_), do: nil
+  defdelegate plugin(type), to: BubbleEx.Index.Plugins
 
   # --- expressions ------------------------------------------------------------
 

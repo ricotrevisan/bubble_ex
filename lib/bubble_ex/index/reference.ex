@@ -27,6 +27,8 @@ defmodule BubbleEx.Index.Reference do
           | :listens_to
           | :targets_element
           | :instance_of
+          | :uses_plugin
+          | :reads_step
 
   @type t :: %__MODULE__{
           from: Symbol.id(),
@@ -40,7 +42,7 @@ defmodule BubbleEx.Index.Reference do
   defstruct [:from, :to, :kind, :path, attrs: %{}]
 
   @kinds ~w(field_type reads_field reads_type reads_option reads_element writes_type writes_field grants_view
-            grants_binding calls_workflow calls_api listens_to targets_element instance_of)a
+            grants_binding calls_workflow calls_api listens_to targets_element instance_of uses_plugin reads_step)a
 
   @doc "All reference kinds."
   @spec kinds() :: [kind()]
