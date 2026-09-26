@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Task CLI and verifier runner for the Phoenix target** (WTF-375, T9 of
+  WTF-359). `mix wtf.task` works `.wtf/plan.json` in the owner's
+  repository: `next` (ready top-level tasks in plan order, skipping claimed,
+  blocked and waiting ones; `coordinate` edges shown), `show`, `claim` /
+  `release` (time-limited), `complete` (binds every abstract criterion to a
+  check and refuses unless all pass; records evidence), `review`
+  (reviewer label is not an implementer label; spoofable, see WTF-411), `note` (`--needs-decision`
+  blocks the task until resolved), `audit` (re-runs done tasks' checks,
+  failures become `needs_reverify`) and `sync` (applies `Plan.diff/2` to
+  the task states; writes only `.wtf/`). State is one canonical JSON file
+  per task under `.wtf/tasks/` (`BubbleEx.Tasks.State`). Criteria bind to
+  `BubbleEx.Target.Phoenix.Checks`: `check_manifest`, `mix compile
+  --warnings-as-errors`, `mix format`/credo, `data-bubble-id` markers,
+  `# bubble:step` comments, tests tagged `bubble: "<subject>"`, and
+  `Verify.Result` evidence through `Result.evaluate/3`. `Plan.decode/1`
+  reads a plan back with schema and `plan_sha256` checks. CI runs
+  complete/audit end to end on a generated project. Every verdict is
+  **advisory** (the agent being verified can edit everything checked);
+  trusted verification anchored outside the repository is WTF-411.
 - **`Target.Ash` applies owner decisions, cut 2** (WTF-405, WTF-352 §4.2).
   `derive_count` drops a stored count for a public calculation of the same
   name, the length of the stored list (`length(path.list || [])`), or a
