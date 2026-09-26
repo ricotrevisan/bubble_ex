@@ -1,0 +1,39 @@
+{
+  "assumptions": {
+    "changed": [],
+    "dependent_checks": {
+      "actor_empty_denies": 105,
+      "builtin_fields_hidden_unless_listed": 49,
+      "everyone_exclusive": 37,
+      "everyone_guards_record_values": 15,
+      "no_visible_field_unreadable": 576
+    }
+  },
+  "checks": 1482,
+  "observations": 2406,
+  "personas": 6,
+  "records": 154,
+  "rules": {
+    "conditional": 77,
+    "everyone": 48,
+    "solved": 123,
+    "solved_percent": 98.4,
+    "total": 125,
+    "unsolved": 2
+  },
+  "scenarios": 558,
+  "skipped": {
+    "gets": 0,
+    "searches": 0
+  },
+  "types": {
+    "deleted": 4,
+    "public": 46,
+    "total": 97,
+    "unavailable": 0,
+    "with_rules": 47
+  },
+  "unsolved_by_reason": {
+    "deleted_type": 2
+  }
+}

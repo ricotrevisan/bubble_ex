@@ -25,6 +25,11 @@
 # calculations with no column, refined numbers are bigint/numeric columns,
 # kept columns exist) are written to decisions.json for decisions.exs.
 #
+# With `unverified`, the privacy interpreter's verdicts on the expression
+# and policy expectation tables are written to interpreter_conditions.json
+# and interpreter_policies.json (BubbleEx.Test.PrivacyCrossCheck), for
+# runtime.exs and policies.exs to compare with PostgreSQL.
+#
 # The privacy mode (default `unverified`) is passed to
 # BubbleEx.Target.Ash.map/3 and versions/1. With `omit` (a separate scratch
 # project) only the Ash source is rendered, with no PrivacyFilters and no
@@ -270,6 +275,17 @@ if privacy == :unverified do
   """)
 
   IO.puts("rendered #{2 * length(ecto_fixtures ++ ecto_private)} Db.Ecto schemas")
+
+  # The privacy interpreter's verdicts (BubbleEx.Verify.Interpreter,
+  # WTF-382) on the two expectation tables: runtime.exs and policies.exs
+  # compare them with what PostgreSQL selects through the compiled
+  # conditions and the generated policies.
+  verdicts = BubbleEx.Test.PrivacyCrossCheck.harness_verdicts()
+
+  for {file, key} <- [{"interpreter_conditions.json", :conditions}, {"interpreter_policies.json", :policies}],
+      do: File.write!(Path.join(dir, file), Jason.encode!(Map.fetch!(verdicts, key), pretty: true))
+
+  IO.puts("wrote the privacy interpreter's verdicts on both expectation tables")
 end
 
 deps = Enum.map_join(BubbleEx.Target.Ash.versions(privacy: privacy), ", ", &inspect/1)

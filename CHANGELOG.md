@@ -6,6 +6,26 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
+  verification proposal). `BubbleEx.Verify.Interpreter` evaluates
+  `BubbleEx.Privacy` rules (compiled to the expression IR) over seed data
+  for a persona: visible by ID, visible field IDs, searchable. It
+  implements the semantics the compiled Ash policies do (fail-safe actor
+  guards, negation pushed to atoms, the `everyone` rule for users no other
+  rule matches), and puts every unverified Bubble semantic behind a named
+  flag of `Interpreter.Assumptions` (defaults: the compiler's reading), so
+  V5 calibration can flip them; each verdict lists the flags it depends on.
+  Unsupported rules make the verdicts they could decide `:unknown`.
+  `BubbleEx.Verify.Matrix.synthesize/2` builds six personas (anonymous, an
+  empty user, two world-1 members, a world-2 member, an admin), seeds that
+  make every supported rule both hold and fail (a lazy, bounded solver
+  builds chained records), one `privacy_read` scenario per (type, persona)
+  and its `model`-oracle recording, a coverage report and owner-repo files;
+  `Matrix.result/4` turns a subject's observations into a `Verify.Result`.
+  On the fixtures the interpreter agrees with the compiled conditions and
+  generated policies in PostgreSQL (`scripts/ash_compile_check.sh` compares
+  them); on mm-137 it solves 123 of 125 rules (the other two belong to a
+  deleted type). Counts snapshot in `test/support/verify/counts/`.
 - **Per-task semantic hashes and `needs_reverify`** (WTF-367, T2 of
   WTF-359). `Plan.Content.digests(app, model, index, key: key)` makes keyed
   digests (HMAC-SHA256 under a per-project key of at least 32 bytes, never

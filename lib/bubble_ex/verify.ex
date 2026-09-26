@@ -2,8 +2,8 @@ defmodule BubbleEx.Verify do
   @moduledoc """
   Stack-neutral verification formats (WTF-381, V1 of the WTF-358
   verification proposal): what a migration is checked against and how the
-  outcome is recorded. Formats and validation only; the replay driver, the
-  model interpreter and the target-side runners build on them.
+  outcome is recorded. The replay driver and the target-side runners build on
+  these formats.
 
   | Format (`format` member) | Module | Stored |
   |--------------------------|--------|--------|
@@ -16,6 +16,10 @@ defmodule BubbleEx.Verify do
   `BubbleEx.Verify.Observation`, `BubbleEx.Verify.Mask`,
   `BubbleEx.Verify.Check` (the check registry and who may accept a
   difference) and `BubbleEx.Verify.Staleness`.
+
+  The model interpreter (`BubbleEx.Verify.Interpreter`, WTF-382) evaluates
+  privacy rules over a seed, and `BubbleEx.Verify.Matrix` synthesizes the
+  privacy matrix's seed, scenarios and `model`-oracle recordings from them.
 
   Every format is versioned (`schema_version` 1), decodes strictly
   (unknown members and values are `:invalid_input`) and encodes
