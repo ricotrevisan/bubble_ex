@@ -756,11 +756,13 @@ defmodule BubbleEx.Verify.Matrix do
 
   @doc """
   A `privacy_read` `BubbleEx.Verify.Result` comparing a subject's
-  `observations` of `scenario` (e.g. a target app's replay, V3) with the
-  expected `model` recording: `pass` when every expected observation is
-  matched, else `fail` with a diff (`record_visible`, `field_visible` per
-  field, `record_set`). The oracle and evidence cite the recording, so
-  `Result.evaluate/3` can count it as passing, never as Bubble-verified.
+  `observations` of `scenario` (e.g. the generated Ash tests,
+  `BubbleEx.Target.Ash.MatrixTests`, V3) with the expected recording: `pass`
+  when every expected observation is matched, else `fail` with a diff
+  (`record_visible`, `field_visible` per field, `record_set`). The oracle
+  and evidence cite the recording, so `Result.evaluate/3` can count it as
+  passing; as Bubble-verified only with a `bubble` recording (its replay
+  branch is the oracle's), never with the `model` one.
 
   ## Options
 
@@ -771,7 +773,7 @@ defmodule BubbleEx.Verify.Matrix do
   """
   @spec result(Scenario.t(), Recording.t(), [Observation.t()], keyword()) ::
           {:ok, BubbleEx.Verify.Result.t()} | {:error, Error.t()}
-  def result(%Scenario{} = scenario, %Recording{oracle: :model} = recording, observations, opts) do
+  def result(%Scenario{} = scenario, %Recording{} = recording, observations, opts) do
     actual = Map.new(observations, &{Observation.key(&1), &1.value})
     sha = Recording.sha256(recording)
 
@@ -793,7 +795,11 @@ defmodule BubbleEx.Verify.Matrix do
         source_sha256: scenario.source_sha256,
         seed_sha256: recording.seed_sha256
       },
-      oracle: %{kind: :model, sha256: sha, branch: nil},
+      oracle: %{
+        kind: recording.oracle,
+        sha256: sha,
+        branch: if(recording.oracle == :bubble, do: recording.source.branch)
+      },
       evidence: [
         %{
           kind: :recording,
@@ -808,7 +814,7 @@ defmodule BubbleEx.Verify.Matrix do
   end
 
   def result(_scenario, _recording, _observations, _opts),
-    do: {:error, Error.new(:invalid_input, "expected a scenario and its model recording")}
+    do: {:error, Error.new(:invalid_input, "expected a scenario and its recording")}
 
   defp diff(%Observation{value: v}, v), do: []
 

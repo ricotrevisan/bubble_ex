@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Generated Ash policy-matrix tests** (WTF-383, V3 of the WTF-358
+  verification proposal; closes WTF-356's matrix criterion against the
+  interpreter). `BubbleEx.Target.Ash.MatrixTests.render/3` prints, for a
+  Project mapped with `privacy: :unverified` and a privacy matrix
+  (`Verify.Matrix`, or the decoded `.wtf/verification` files via
+  `MatrixTests.plan/1`), one ExUnit module for the generated project: it
+  seeds the Ecto sandbox once (`Ash.Seed`, primary keys = Bubble IDs from a
+  ledger, else deterministic Bubble-shaped synthetic IDs), loads each
+  persona with the generated `load_actor/1` and, per scenario, compares
+  keyed `:read` visibility, `:search` record sets and visible fields
+  (`Ash.ForbiddenField`) with the expected recording: a Bubble recording
+  when given (complete, not stale), else the `model` one. With
+  `WTF_VERIFY_OBSERVATIONS` set the tests write their observations;
+  `MatrixTests.results/3` turns them into `Verify.Result`s
+  (`Matrix.result/4`, which now also accepts Bubble recordings) for
+  `Result.evaluate/3`: passing, never Bubble-verified with the model
+  oracle. `scripts/ash_compile_check.sh` runs them for every fixture with
+  privacy rules (and a private export) against PostgreSQL and reports the
+  counts.
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
   verification proposal). `BubbleEx.Verify.Interpreter` evaluates
   `BubbleEx.Privacy` rules (compiled to the expression IR) over seed data

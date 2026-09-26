@@ -35,7 +35,15 @@
 #     fixtures (BubbleEx.Test.DecidedFixture, WTF-401): a derived field is
 #     a calculation with no column that PostgreSQL reads back through its
 #     relationship, refined numbers are bigint/numeric columns, and an
-#     attribute renamed after the name lock keeps its column
+#     attribute renamed after the name lock keeps its column; then
+#   * the generated privacy-matrix tests (BubbleEx.Target.Ash.MatrixTests,
+#     WTF-383; rendered by render.exs from each fixture with privacy rules,
+#     and the private export, with BubbleEx.Verify.Matrix's seed, scenarios
+#     and model recordings) run with `mix test` in the scratch project's
+#     test environment, on databases of their own in the Ecto sandbox,
+#     writing their observations; scripts/ash_compile_check/
+#     matrix_results.exs turns them into BubbleEx.Verify.Results, scores
+#     them with Result.evaluate/3 and prints the counts; any mismatch fails
 #
 # All of the above maps with privacy: :unverified (the policies). Then the
 # same fixtures are rendered with privacy: :omit (Target.Ash's default, what
@@ -120,6 +128,22 @@ if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
   mix run policies.exs
   mix run ecto_migrate.exs
   mix run decisions.exs
+
+  # Generated privacy-matrix tests (WTF-383): scored even when some fail, so
+  # the counts and diffs are printed; then any failure fails the check.
+  MIX_ENV=test mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
+  MIX_ENV=test mix ecto.create --quiet
+  MIX_ENV=test mix ecto.migrate --quiet
+  rm -rf observations
+  matrix_status=0
+  WTF_VERIFY_OBSERVATIONS="$scratch/observations" MIX_ENV=test mix test --warnings-as-errors ||
+    matrix_status=$?
+  (cd "$root" && MIX_ENV=test mix run scripts/ash_compile_check/matrix_results.exs "$scratch")
+
+  if [[ "$matrix_status" != 0 ]]; then
+    echo "the generated privacy-matrix tests failed" >&2
+    exit 1
+  fi
 else
   echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
 fi

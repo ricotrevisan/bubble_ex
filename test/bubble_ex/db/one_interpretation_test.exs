@@ -45,6 +45,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "workflow action parameters' own `key`/`value` members, not fields",
     "lib/bubble_ex/apps/parser.ex" =>
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
+    "lib/bubble_ex/target/ash/matrix_tests.ex" =>
+      "the observation format's own `value` member, written by the emitted tests; reads no app JSON",
     "lib/bubble_ex/verify/observation.ex" =>
       "the verification observation format's own members (`value`, `values`, `fields`, `deleted`); reads no app JSON",
     "lib/bubble_ex/verify/recording.ex" =>

@@ -57,6 +57,12 @@ column and read back through their relationship, refined numbers are
 bigint / numeric columns. It also compares the privacy interpreter's
 verdicts (`BubbleEx.Verify.Interpreter`) on both expectation tables with what
 PostgreSQL selects through the compiled conditions and generated policies.
+Finally it runs the generated privacy-matrix tests
+(`BubbleEx.Target.Ash.MatrixTests`, one ExUnit module per fixture with
+privacy rules, from `BubbleEx.Verify.Matrix`) with `mix test` in the scratch
+project's test environment (databases `ash_matrix_<fixture>`, Ecto sandbox),
+scores their observations as `Verify.Result`s
+(`scripts/ash_compile_check/matrix_results.exs`) and fails on any mismatch.
 With `BUBBLE_EX_PRIVATE_EXPORT`
 set it also checks a private app export. CI runs it as the `ash-compile-check`
 job.
