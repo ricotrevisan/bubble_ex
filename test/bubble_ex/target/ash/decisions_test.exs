@@ -1,6 +1,7 @@
 defmodule BubbleEx.Target.Ash.DecisionsTest do
-  # BubbleEx.Target.Ash applying owner decisions (WTF-401, WTF-352 cut 1):
-  # goldens per transform and combined, over the synthetic findings export
+  # BubbleEx.Target.Ash applying owner decisions (WTF-401, WTF-352 cut 1;
+  # cut 2 is BubbleEx.Target.Ash.DecisionsCut2Test): goldens per transform
+  # (both cuts) and combined, over the synthetic findings export
   # taken through Findings -> Decision -> resolve -> applicable
   # (BubbleEx.Test.DecidedFixture), the input contract, rename validation,
   # the applied record and both privacy modes. All data is invented.
@@ -153,7 +154,8 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
     test "every golden is checked" do
       expected =
         Enum.map(DecidedFixture.sets(), &"#{&1}.ex.txt") ++
-          ~w(combined.project.json combined.unverified.ex.txt)
+          ~w(combined.project.json combined.unverified.ex.txt) ++
+          ~w(cut2.project.json cut2.unverified.ex.txt)
 
       assert @golden |> File.ls!() |> Enum.sort() == Enum.sort(expected)
     end
@@ -505,7 +507,7 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       assert Ash.map(model, applied, decisions_sha256: sha) |> message() =~ "not in the Model"
     end
 
-    test "unsupported hints applied by default are deferred; decided ones are errors" do
+    test "hints apply by default; an index with no Ash rendering is deferred" do
       %{model: model, index: index, findings: findings} = DecidedFixture.build(:refine)
       now = ~U[2026-09-26 00:00:00Z]
       {:ok, resolved} = Decision.resolve([], findings, index: index, now: now)
@@ -514,20 +516,24 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       assert Enum.all?(automatic, &(&1.automatic and &1.transform == :add_indexes))
 
       {:ok, project} = map(model, automatic)
-      assert project.applied == []
-      assert Enum.map(project.deferred, & &1.key) == Enum.map(automatic, & &1.key)
-      assert Project.summary(project)["deferred"] == %{"add_indexes" => 2}
+      assert Enum.map(project.applied, & &1.key) == Enum.map(automatic, & &1.key)
+
+      # the project's geographic search has no index (no PostGIS)
+      assert [%{indexes: [0], automatic: true}] = project.deferred
+      assert Project.summary(project)["deferred"] == %{"add_indexes" => 1}
+      assert project.extensions == ["pg_trgm"]
 
       deferred = for d <- project.diagnostics, d.code == :ash_decision_deferred, do: d
-      assert length(deferred) == 2
-      assert Enum.all?(deferred, &(&1.severity == :warning))
 
-      # an owner's accept of the same hint is an error
+      assert [%{severity: :warning, details: %{indexes: [%{index: 0, access: [:geo]}]}}] =
+               deferred
+
+      # an owner's accept of the same hint applies it the same way
       hint = Enum.find(findings, &(&1.kind == :search_index))
       {:ok, accept} = Decision.for_finding(hint, :accept)
       {:ok, resolved} = Decision.resolve([accept], findings, index: index, now: now)
       decided = resolved |> Decision.applicable(findings) |> Enum.reject(& &1.automatic)
-      assert map(model, decided) |> message() =~ "does not apply add_indexes yet"
+      assert {:ok, %{applied: [%{automatic: false}]}} = map(model, decided)
 
       list = Enum.find(findings, &(&1.kind == :list_relationship))
       {:ok, accept} = Decision.for_finding(list, :accept)

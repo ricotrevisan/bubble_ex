@@ -34,11 +34,13 @@ defmodule BubbleEx.Target.Ash.Source do
 
   alias BubbleEx.Target.Ash.{
     Action,
+    Aggregate,
     Attribute,
     Calculation,
     CustomType,
     Expr,
     FieldPolicy,
+    Index,
     Policy,
     PolicyCheck,
     Project,
@@ -58,6 +60,12 @@ defmodule BubbleEx.Target.Ash.Source do
     attribute: 3,
     belongs_to: 2,
     belongs_to: 3,
+    has_many: 2,
+    has_many: 3,
+    count: 2,
+    count: 3,
+    index: 1,
+    index: 2,
     source_attribute: 1,
     destination_attribute: 1,
     attribute_type: 1,
@@ -155,7 +163,7 @@ defmodule BubbleEx.Target.Ash.Source do
           Enum.map(project.resources, &resource(&1, ctx)) ++
           [domain_module(project, ctx)] ++ privacy_module(project, ctx)
 
-      source = @header <> "\n" <> Enum.join(modules, "\n\n")
+      source = @header <> extensions_note(project) <> "\n" <> Enum.join(modules, "\n\n")
 
       formatted =
         source
@@ -215,6 +223,16 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp check_aliases(option, values),
     do: {:error, Error.new(:invalid_input, "#{option} must be a list, got #{inspect(values)}")}
+
+  defp extensions_note(%Project{extensions: []}), do: ""
+
+  defp extensions_note(%Project{extensions: extensions}) do
+    """
+    #
+    # The indexes need PostgreSQL extensions: list them in the repo's
+    #   def installed_extensions, do: [#{Enum.map_join(extensions, ", ", &literal/1)}]
+    """
+  end
 
   defp check_alias(option, value) do
     if is_binary(value) and Regex.match?(@alias, value),
@@ -335,13 +353,13 @@ defmodule BubbleEx.Target.Ash.Source do
       postgres do
         table #{literal(resource.table)}
         repo #{ctx.repo}
-    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships ++ resource.privacy_relationships)}
+    #{migration_types(resource.migration_types, ctx)}#{references(resource.relationships ++ resource.privacy_relationships)}#{custom_indexes(resource.indexes)}
       end
 
       attributes do
     #{Enum.map_join(resource.attributes, "\n", &attribute(&1, ctx))}
       end
-    #{relationships(resource.relationships ++ resource.privacy_relationships, ctx)}#{calculations(resource.calculations, ctx)}#{identities(resource.identities)}
+    #{relationships(resource.relationships ++ resource.privacy_relationships, ctx)}#{calculations(resource.calculations, ctx)}#{aggregates(resource.aggregates)}#{identities(resource.identities)}
       actions do
         defaults #{literal(resource.actions)}
     #{Enum.map_join(resource.extra_actions, "\n", &action(&1, ctx))}
@@ -404,6 +422,41 @@ defmodule BubbleEx.Target.Ash.Source do
       end)
 
     "\ncalculations do\n#{lines}\nend\n"
+  end
+
+  defp aggregates([]), do: ""
+
+  defp aggregates(aggregates) do
+    lines =
+      Enum.map_join(aggregates, "\n", fn %Aggregate{kind: :count} = g ->
+        options =
+          [{"public?", literal(g.public?)}, {"authorize?", literal(g.authorize?)}] ++
+            if(g.description, do: [{"description", literal(g.description)}], else: [])
+
+        "count #{atom(g.name)}, [#{Enum.map_join(g.path, ", ", &atom/1)}], #{options(options)}"
+      end)
+
+    "\naggregates do\n#{lines}\nend\n"
+  end
+
+  defp custom_indexes([]), do: ""
+
+  defp custom_indexes(indexes) do
+    lines =
+      Enum.map_join(indexes, "\n", fn %Index{} = index ->
+        fields =
+          if index.method in [:btree, :gin],
+            do: Enum.map_join(index.fields, ", ", &atom/1),
+            else: Enum.map_join(index.fields, ", ", &literal/1)
+
+        options =
+          [{"name", literal(index.name)}] ++
+            if(index.using, do: [{"using", literal(index.using)}], else: [])
+
+        "index [#{fields}], #{options(options)}"
+      end)
+
+    "\ncustom_indexes do\n#{lines}\nend"
   end
 
   @policies_header """
@@ -506,7 +559,7 @@ defmodule BubbleEx.Target.Ash.Source do
   end
 
   defp references(relationships) do
-    case Enum.filter(relationships, &(&1.db_reference == :ignore)) do
+    case Enum.filter(relationships, &(&1.kind == :belongs_to and &1.db_reference == :ignore)) do
       [] ->
         ""
 
@@ -523,7 +576,17 @@ defmodule BubbleEx.Target.Ash.Source do
       Enum.map_join(relationships, "\n\n", &relationship(&1, ctx)) <> "\nend\n"
   end
 
-  defp relationship(%Relationship{} = r, ctx) do
+  defp relationship(%Relationship{kind: :has_many} = r, ctx) do
+    """
+    has_many #{atom(r.name)}, #{module(r.destination, ctx)} do
+      source_attribute #{atom(r.source_attribute)}
+      destination_attribute #{atom(r.destination_attribute)}
+      public? #{literal(r.public?)}#{sortable(r.sortable?)}#{gate(r.gate)}
+    end
+    """
+  end
+
+  defp relationship(%Relationship{kind: :belongs_to} = r, ctx) do
     """
     #{r.kind} #{atom(r.name)}, #{module(r.destination, ctx)} do
       source_attribute #{atom(r.source_attribute)}
@@ -730,12 +793,13 @@ defmodule BubbleEx.Target.Ash.Source do
   @spec expr(Expr.t()) :: String.t()
   def expr(%Expr{expr: node}), do: "expr(" <> print(node, 0) <> ")"
 
-  # Elixir operator precedence, loosest first: `or`, `and`, `==`/`!=`,
-  # ordering, `in`, `+`/`-`, `*`/`/`. A child binding looser than its
+  # Elixir operator precedence, loosest first: `or`/`||`, `and`,
+  # `==`/`!=`, ordering, `in`, `+`/`-`, `*`/`/`. A child binding looser than its
   # parent is parenthesized; `not` takes a parenthesized operand unless it
   # is a call or a reference.
   @precedence %{
     or: 1,
+    ||: 1,
     and: 2,
     ==: 3,
     !=: 3,
