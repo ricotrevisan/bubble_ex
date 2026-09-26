@@ -6,6 +6,7 @@
 #
 #     MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs list
 #     MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs <dir> <fixture>
+#     MIX_ENV=test mix run scripts/phoenix_compile_check/render.exs plan <dir> <fixture> <app id>
 #
 # `list` prints the fixture names: every BubbleEx.Model fixture
 # (test/support/model/*.json), every target fixture
@@ -54,7 +55,50 @@ fixtures =
     end
   )
 
+# The app JSON of a fixture rendered from one (not the decision fixtures).
+app_json = fn name ->
+  [{"test/support/model/", ""}, {"test/support/target/ash/", "target_"}, {"test/support/expression/", "expr_"}]
+  |> Enum.find_value(fn {dir, prefix} ->
+    path = dir <> String.replace_prefix(name, prefix, "") <> ".json"
+    if String.starts_with?(name, prefix) and File.exists?(path), do: path
+  end)
+  |> File.read!()
+  |> Jason.decode!()
+end
+
 case System.argv() do
+  # The migration plan of a rendered fixture, as .wtf/plan.json, and the
+  # generator's determinism result (the fixture renders twice, byte for
+  # byte), for the task CLI check (scripts/phoenix_compile_check/task_cli.sh).
+  ["plan", dir, name, bubble_app] ->
+    app = app_json.(name)
+    {:ok, model} = BubbleEx.Model.build(app)
+    {:ok, index} = BubbleEx.Index.build(app, model: model)
+    {:ok, plan} = BubbleEx.Plan.build(model, index)
+    :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
+
+    {:ok, project} = Map.fetch!(fixtures, name).()
+    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    {:ok, files} = Phoenix.render(project, opts)
+    {:ok, ^files} = Phoenix.render(project, opts)
+
+    {:ok, result} =
+      BubbleEx.Verify.Result.new(%{
+        id: "deterministic.generate",
+        app: bubble_app,
+        check: "deterministic",
+        status: :pass,
+        actor: "ci",
+        ran_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        tasks: for(t <- plan.tasks, t.kind == :generate, do: t.id)
+      })
+
+    path = Path.join(dir, ".wtf/verification/results/deterministic.json")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, BubbleEx.Verify.Result.to_json(result))
+
+    IO.puts("planned #{name}: #{length(plan.tasks)} tasks")
+
   ["list"] ->
     fixtures |> Map.keys() |> Enum.sort() |> Enum.each(&IO.puts/1)
 
