@@ -495,6 +495,20 @@ defmodule BubbleEx.LoadTest do
       assert state["files"] == %{}
     end
 
+    test "a changed export blob is refused even by a storage that verifies nothing",
+         %{tmp_dir: dir} do
+      f = setup_fixture(:field_types, dir)
+      entry = Enum.find(Export.files(f.export), &(&1["url"] == F.cdn_url()))
+      File.write!(Export.blob_path(f.export, entry["sha256"]), "tampered")
+      {Local, local} = storage(dir)
+      lax = %{verify: fn _ref, _meta -> :ok end}
+      storage = {BubbleEx.LoadTest.FlakyStorage, %{local: local, behaviour: lax}}
+
+      {:ok, report} = Load.run(f.export, f.model, f.target, [storage: storage] ++ @unmapped)
+      assert report.files.copied == 1
+      assert Memory.tables(f.target)["task"][F.task1()]["cover"] == F.cdn_url()
+    end
+
     test "each copied file is in the ledger as soon as it is copied", %{tmp_dir: dir} do
       f = setup_fixture(:field_types, dir)
       {Local, local} = storage(dir)
@@ -570,6 +584,42 @@ defmodule BubbleEx.LoadTest do
       Ledger.close(again)
     end
 
+    test "a torn first line hides nothing appended later", %{tmp_dir: dir} do
+      ids = %{export_sha256: "e", plan_sha256: "p", target: "t"}
+      {:ok, l} = Ledger.open(dir, ids)
+      Ledger.close(l)
+      [snapshot] = Path.wildcard(Path.join(dir, "*.json"))
+      File.write!(String.replace_suffix(snapshot, ".json", ".journal"), ~s({"file":"https://x/t))
+
+      {:ok, l} = Ledger.open(dir, ids)
+      l = Ledger.file_copied(l, "https://x/after", "ref")
+      Ledger.close(l)
+
+      {:ok, again} = Ledger.open(dir, ids)
+      assert Ledger.files(again) == %{"https://x/after" => "ref"}
+      Ledger.close(again)
+    end
+
+    test "events a snapshot covers are not counted twice", %{tmp_dir: dir} do
+      ids = %{export_sha256: "e", plan_sha256: "p", target: "t"}
+      {:ok, l} = Ledger.open(dir, ids)
+      l = Ledger.batch(l, "card", 5, %{inserted: 5, updated: 0, unchanged: 0})
+      Ledger.close(l)
+      [snapshot] = Path.wildcard(Path.join(dir, "*.json"))
+      journal = String.replace_suffix(snapshot, ".json", ".journal")
+      kept = File.read!(journal)
+
+      # Opening compacts the journal into the snapshot; a crash before
+      # the journal was removed would leave it behind.
+      {:ok, l} = Ledger.open(dir, ids)
+      Ledger.close(l)
+      File.write!(journal, kept)
+
+      {:ok, again} = Ledger.open(dir, ids)
+      assert Ledger.type_counts(again, "card")["inserted"] == 5
+      Ledger.close(again)
+    end
+
     test "leaves an existing directory's mode alone", %{tmp_dir: dir} do
       File.chmod!(dir, 0o755)
       {:ok, l} = Ledger.open(dir, %{export_sha256: "e", plan_sha256: "p", target: "t"})
@@ -613,20 +663,57 @@ defmodule BubbleEx.LoadExportDeleteTest do
 
   @moduletag :tmp_dir
 
-  test "deletes an export and nothing else", %{tmp_dir: dir} do
+  test "deletes an export", %{tmp_dir: dir} do
     {:ok, export} = F.export(:cut2, Path.join(dir, "e"))
-    assert {:ok, n} = Export.delete(export.dir)
-    assert n > 3
+    File.write!(Path.join([export.dir, "files", ".fetch-123"]), "partial")
+    assert {:ok, %{deleted: n, left: []}} = Export.delete(export.dir)
+    assert n > 4
     refute File.exists?(export.dir)
+  end
 
-    other = Path.join(dir, "notes")
-    File.mkdir_p!(other)
-    File.write!(Path.join(other, "keep.txt"), "x")
-    assert {:error, _} = Export.delete(other)
-    assert File.exists?(Path.join(other, "keep.txt"))
+  test "keeps and lists what is not the export's", %{tmp_dir: dir} do
+    {:ok, export} = F.export(:cut2, Path.join(dir, "e"))
+    File.write!(Path.join(export.dir, "notes.txt"), "keep")
+    File.mkdir_p!(Path.join(export.dir, "rows/sub"))
+    File.write!(Path.join(export.dir, "files/readme"), "keep")
 
-    File.write!(Path.join(other, "manifest.json"), ~s({"format":"other"}))
-    assert {:error, _} = Export.delete(other)
+    assert {:ok, %{left: left}} = Export.delete(export.dir)
+    assert left == ["files", "files/readme", "notes.txt", "rows", "rows/sub"]
+    assert File.read!(Path.join(export.dir, "notes.txt")) == "keep"
+    refute File.exists?(Path.join(export.dir, "manifest.json"))
+  end
+
+  test "an interrupted export's directory loses only the export's files", %{tmp_dir: dir} do
+    other = Path.join(dir, "work")
+    File.mkdir_p!(Path.join(other, "rows"))
+    File.write!(Path.join(other, "state.json"), "{}")
+    File.write!(Path.join(other, "rows/task.part"), "x")
+    File.write!(Path.join(other, "thesis.docx"), "precious")
+
+    assert {:ok, %{deleted: 2, left: ["thesis.docx"]}} = Export.delete(other)
+    assert File.read!(Path.join(other, "thesis.docx")) == "precious"
+  end
+
+  test "refuses a symbolic link and what is not an export", %{tmp_dir: dir} do
+    {:ok, export} = F.export(:cut2, Path.join(dir, "e"))
+    link = Path.join(dir, "link")
+    File.ln_s!(export.dir, link)
+    assert {:error, _} = Export.delete(link)
+    assert File.exists?(Path.join(export.dir, "manifest.json"))
+
+    # A link inside the export is not followed.
+    outside = Path.join(dir, "outside.txt")
+    File.write!(outside, "keep")
+    File.ln_s!(outside, Path.join([export.dir, "files", String.duplicate("a", 64)]))
+    assert {:ok, %{left: left}} = Export.delete(export.dir)
+    assert left == ["files", "files/" <> String.duplicate("a", 64)]
+    assert File.read!(outside) == "keep"
+
+    notes = Path.join(dir, "notes")
+    File.mkdir_p!(notes)
+    File.write!(Path.join(notes, "manifest.json"), ~s({"format":"other"}))
+    assert {:error, _} = Export.delete(notes)
+    assert File.exists?(Path.join(notes, "manifest.json"))
   end
 
   test "the mix task deletes an export", %{tmp_dir: dir} do

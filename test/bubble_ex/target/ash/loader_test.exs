@@ -118,7 +118,7 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
             not (t.type == "card" and c.column == "points") do
           udt = if t.type == "card" and c.column == "title", do: "int4", else: udt(c.encoding)
           nullable = if t.type == "card" and c.column == "status", do: "NO", else: "YES"
-          nullable = if c.column == t.key, do: "NO", else: nullable
+          nullable = if c.column in [t.key, "email"], do: "NO", else: nullable
           [t.table, c.column, udt, nullable]
         end
 
@@ -143,7 +143,10 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       assert {:load_schema_mismatch, %{type: "card", field: "title_text"}, "int4"} in found
       assert {:load_column_extra, %{type: "user"}, ["confirmed_at"]} in found
       assert {:load_schema_mismatch, %{type: "card", field: "status_text"}, :not_null} in found
-      assert length(found) == 5
+      assert {:load_schema_mismatch, %{type: "user", field: "email"}, :not_null} in found
+      email = Enum.find(diags, &(&1.subject == %{type: "user", field: "email"}))
+      assert email.message =~ "allow_nil? false"
+      assert length(found) == 6
     end
 
     defp udt(:text), do: "text"

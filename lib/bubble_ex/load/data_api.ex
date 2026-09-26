@@ -39,7 +39,9 @@ defmodule BubbleEx.Load.DataApi do
   (`BubbleEx.Load.Files.bubble?/2`: Bubble's storage hosts, and the app's
   own hosts for `/fileupload/`) is fetched once (`GET`, at most
   `:file_concurrency` at a time, default 8, each within `:file_timeout`,
-  default 10 minutes). A file is streamed to disk and hashed with SHA-256
+  default one hour; the task is given 30 s more, so a slow download ends
+  as a timeout error rather than a killed task). Partial downloads a
+  killed export left in `files/` are removed when the files phase starts. A file is streamed to disk and hashed with SHA-256
   as it arrives (never held in memory), checked against its
   `Content-Length` and at most `:max_file_bytes` (default 5 GB), then
   stored as a blob; each result is appended (and synced) to a journal as
@@ -131,7 +133,8 @@ defmodule BubbleEx.Load.DataApi do
          sleep: Keyword.get(opts, :sleep, &Process.sleep/1),
          http: Keyword.get(opts, :http, []),
          calls: :counters.new(1, [:atomics]),
-         max_calls: Keyword.get(opts, :max_calls, 100_000)
+         max_calls: Keyword.get(opts, :max_calls, 100_000),
+         file_timeout: Keyword.get(opts, :file_timeout, 3_600_000)
        }}
     end
   end
@@ -429,6 +432,10 @@ defmodule BubbleEx.Load.DataApi do
   end
 
   defp files(c, dir, model, state, opts) do
+    # Partial downloads a killed task left behind (private content too).
+    for tmp <- Path.wildcard(Path.join([dir, "files", ".fetch-*"]), match_dot: true),
+        do: File.rm(tmp)
+
     done = dir |> journal() |> MapSet.new(& &1["url"])
 
     urls =
@@ -444,7 +451,9 @@ defmodule BubbleEx.Load.DataApi do
     urls
     |> Task.async_stream(&fetch_file(c, dir, &1, max),
       max_concurrency: Keyword.get(opts, :file_concurrency, 8),
-      timeout: Keyword.get(opts, :file_timeout, 600_000),
+      # The request's own deadline is file_timeout; the task gets a margin
+      # beyond it, so a slow download ends as the HTTP error, not a kill.
+      timeout: c.file_timeout + 30_000,
       on_timeout: :kill_task,
       ordered: true
     )
@@ -670,8 +679,8 @@ defmodule BubbleEx.Load.DataApi do
         [{"accept", "application/json, */*"}] ++
           if(auth == :token, do: [{"authorization", "Bearer " <> token}], else: [])
 
-      # A file may take long; a Data API page may not.
-      wall = if extra == [], do: 300_000, else: 3_600_000
+      # A file may take long (file_timeout); a Data API page may not.
+      wall = if extra == [], do: 300_000, else: c.file_timeout
 
       options =
         [

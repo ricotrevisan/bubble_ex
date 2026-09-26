@@ -411,7 +411,7 @@ defmodule BubbleEx.Target.Ash.Loader do
         Diagnostic.new(
           :load_schema_mismatch,
           "",
-          "#{table.table}.#{col.column} is NOT NULL; Bubble values may be empty",
+          not_null_message(table, col),
           subject: %{type: table.type, field: col.field},
           details: %{table: table.table, column: col.column, actual: :not_null}
         )
@@ -420,6 +420,17 @@ defmodule BubbleEx.Target.Ash.Loader do
         nil
     end
   end
+
+  defp not_null_message(table, %Column{field: "email"} = col) do
+    "#{table.table}.#{col.column} is NOT NULL (the User's email with `allow_nil? false`): " <>
+      "Bubble users may have no email, and the loader clears changed emails before " <>
+      "writing them (swaps). Make the email attribute allow nil and migrate (magic-link " <>
+      "sign-in still needs an email), then load; users without one cannot sign in until " <>
+      "they get one"
+  end
+
+  defp not_null_message(table, col),
+    do: "#{table.table}.#{col.column} is NOT NULL; Bubble values may be empty"
 
   defp udts(:text), do: ["text", "citext", "varchar"]
   defp udts(:float), do: ["float8"]

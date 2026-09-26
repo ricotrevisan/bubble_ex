@@ -76,7 +76,12 @@ defmodule BubbleEx.Load do
       does not hold (e.g. a user deleted in Bubble whose email a new
       signup reused: `:load_email_conflict`, IDs only). Users whose email
       changes (swaps included) lose their old email first, in one
-      statement before any row is written, so no batch collides. Users
+      statement before any row is written, so no batch collides. That
+      statement and the batches are separate writes (the loader only has
+      a query function, not a transaction): until the run completes those
+      users have no email and cannot sign in. **Keep the app closed
+      during a load, and rerun until it completes before reopening it**
+      (a rerun restores every email). Users
       with other sign-in methods are reported. Known limitation: an email
       that changes only in case is not cleared first (a `citext` column
       treats it as unchanged).

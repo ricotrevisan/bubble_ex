@@ -5,17 +5,19 @@ defmodule BubbleEx.Load.Ledger do
 
   Two files per run in the ledger directory: a snapshot
   `<run key>.json` and an append-only journal `<run key>.journal`, one JSON
-  event per line, each appended and `fsync`ed as it happens (a copied
-  file, a written batch, a finished type). Opening a ledger reads the
-  snapshot and replays the journal (a torn last line, from a crash in the
-  middle of a write, is ignored). Every `:compact_every` events (default
+  event per line with a sequence number, each appended and `fsync`ed as
+  it happens (a copied file, a written batch, a finished type). Opening a ledger reads the
+  snapshot and replays the journal events its sequence number does not
+  cover (a torn last line, from a crash in the middle of a write, ends
+  the replay), then writes a new snapshot and empties the journal, so
+  nothing is ever appended after a torn line. Every `:compact_every` events (default
   1,000) the state is written to a new snapshot (a temporary file,
-  `fsync`, rename) and the journal is emptied, so writes stay linear in
+  `fsync`, rename, directory sync) and the journal is emptied, so writes stay linear in
   the number of events. Snapshot:
 
       {"format": "bubble_ex.load_ledger", "version": 2, "run": "<run key>",
        "export_sha256": "…", "plan_sha256": "…", "target": "<identity>",
-       "status": "running" | "complete",
+       "status": "running" | "complete", "seq": <the last event it covers>,
        "files": {"<url>": "<storage reference>"},
        "types": {"task": {"rows_done": 1500, "complete": false,
                           "inserted": 1400, "updated": 100, "unchanged": 0}}}
@@ -90,7 +92,13 @@ defmodule BubbleEx.Load.Ledger do
         compact_every: Keyword.get(opts, :compact_every, @compact_every)
       }
 
-      {:ok, ledger |> compact() |> open_journal()}
+      # Whatever the journal held (even only a torn line) goes into a new
+      # snapshot and the journal starts empty: nothing is ever appended
+      # after a torn line, where replay would not see it.
+      ledger =
+        if File.exists?(journal_path(path)), do: force_compact(ledger), else: compact(ledger)
+
+      {:ok, open_journal(ledger)}
     end
   end
 
@@ -119,7 +127,9 @@ defmodule BubbleEx.Load.Ledger do
   defp journal_path(path), do: String.replace_suffix(path, ".json", ".journal")
 
   # Applies the journal's events; a line that does not decode (a torn
-  # write) ends the replay.
+  # write) ends the replay. An event whose sequence number the snapshot
+  # already covers (a crash between writing a snapshot and emptying the
+  # journal) is skipped, so nothing counts twice.
   defp replay(journal, data) do
     case File.read(journal) do
       {:ok, text} ->
@@ -134,8 +144,13 @@ defmodule BubbleEx.Load.Ledger do
 
   defp replay_line(line, {data, n}) do
     case Jason.decode(line) do
-      {:ok, event} -> {:cont, {apply_event(data, event), n + 1}}
-      {:error, _} -> {:halt, {data, n}}
+      {:ok, %{"seq" => seq} = event} when is_integer(seq) ->
+        if seq <= Map.get(data, "seq", 0),
+          do: {:cont, {data, n}},
+          else: {:cont, {data |> apply_event(event) |> Map.put("seq", seq), n + 1}}
+
+      _ ->
+        {:halt, {data, n}}
     end
   end
 
@@ -268,9 +283,12 @@ defmodule BubbleEx.Load.Ledger do
   defp record(%__MODULE__{path: nil} = l, event), do: %{l | data: apply_event(l.data, event)}
 
   defp record(%__MODULE__{} = l, event) do
+    seq = Map.get(l.data, "seq", 0) + 1
+    event = Map.put(event, "seq", seq)
     :ok = :file.write(l.journal, [CanonicalJson.encode(event), "\n"])
     :ok = :file.datasync(l.journal)
-    l = %{l | data: apply_event(l.data, event), events: l.events + 1}
+    data = l.data |> apply_event(event) |> Map.put("seq", seq)
+    l = %{l | data: data, events: l.events + 1}
     if l.events >= l.compact_every, do: l |> close() |> compact() |> open_journal(), else: l
   end
 
@@ -283,9 +301,12 @@ defmodule BubbleEx.Load.Ledger do
     l
   end
 
-  defp compact(%__MODULE__{} = l) do
+  defp compact(%__MODULE__{} = l), do: force_compact(l)
+
+  defp force_compact(%__MODULE__{} = l) do
     write_snapshot(l)
     File.rm(journal_path(l.path))
+    sync_dir(Path.dirname(l.path))
     %{l | events: 0}
   end
 
@@ -297,6 +318,19 @@ defmodule BubbleEx.Load.Ledger do
     :ok = :file.close(io)
     File.chmod!(tmp, 0o600)
     File.rename!(tmp, path)
+    sync_dir(Path.dirname(path))
+  end
+
+  # Makes the rename (and the journal's removal) durable: Erlang cannot
+  # fsync a directory, so this asks `sync` to, best effort (GNU coreutils
+  # syncs the directory itself; elsewhere it syncs everything).
+  defp sync_dir(dir) do
+    case System.find_executable("sync") do
+      nil -> :ok
+      sync -> System.cmd(sync, [dir], stderr_to_stdout: true)
+    end
+
+    :ok
   end
 
   defp open_journal(%__MODULE__{path: nil} = l), do: l

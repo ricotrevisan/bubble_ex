@@ -3,7 +3,8 @@ defmodule Mix.Tasks.Bubble.Export.Delete do
   @moduledoc """
   Deletes a data export made by `BubbleEx.Load.DataApi` (it holds the
   app's data and users' emails) once the cutover is done. Refuses any
-  directory that is not a bubble_ex export. See `BubbleEx.Load.Export`.
+  directory that is not a bubble_ex export, and symbolic links; deletes
+  only the export's own files and lists anything else it leaves. See `BubbleEx.Load.Export`.
 
       mix bubble.export.delete exports/acme
   """
@@ -14,8 +15,17 @@ defmodule Mix.Tasks.Bubble.Export.Delete do
     case argv do
       [dir] ->
         case BubbleEx.Load.Export.delete(dir) do
-          {:ok, n} -> Mix.shell().info("Deleted the export in #{dir} (#{n} files)")
-          {:error, error} -> Mix.raise(Exception.message(error))
+          {:ok, %{deleted: n, left: []}} ->
+            Mix.shell().info("Deleted the export in #{dir} (#{n} files)")
+
+          {:ok, %{deleted: n, left: left}} ->
+            Mix.shell().info(
+              "Deleted #{n} export files from #{dir}; kept what is not the export's:\n  " <>
+                Enum.join(left, "\n  ")
+            )
+
+          {:error, error} ->
+            Mix.raise(Exception.message(error))
         end
 
       _ ->

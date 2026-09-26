@@ -52,7 +52,16 @@ All notable changes to this project are documented here.
   the schema check also flags NOT NULL columns; the token is a
   `Load.Secret` that never inspects to its value. `HTTP.request/5` takes a
   `sink:` for streamed bodies. Known limitation: an email changing only
-  in case is not cleared first.
+  in case is not cleared first. Second review: `Export.delete/1` refuses
+  symbolic links and deletes only the export's own regular files,
+  removing directories only when empty and listing what it leaves; the
+  ledger journal carries sequence numbers (a snapshot's events are never
+  replayed twice), is compacted on open (nothing is appended after a torn
+  line) and the directory is synced after a snapshot; the exporter sweeps
+  partial downloads and gives each file task a margin beyond its HTTP
+  deadline (`:file_timeout`, default one hour); a NOT NULL email explains
+  how to proceed, and the docs say to keep the app closed and rerun
+  until a load completes (email clearing is not transactional).
 
 - **HEEx emitter over the normalized frontend** (WTF-370, T5 of WTF-359).
   `BubbleEx.Target.Phoenix.render/2` with `frontend:` renders each Bubble

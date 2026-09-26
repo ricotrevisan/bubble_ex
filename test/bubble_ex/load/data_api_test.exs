@@ -158,7 +158,10 @@ defmodule BubbleEx.Load.DataApiTest do
     assert File.exists?(Path.join(interrupted, "state.json"))
     refute File.exists?(Path.join(interrupted, "manifest.json"))
 
+    # A partial download a killed export left behind is swept.
+    File.write!(Path.join([interrupted, "files", ".fetch-42"]), "partial private bytes")
     assert {:ok, resumed} = export(interrupted, http)
+    assert Path.wildcard(Path.join(interrupted, "files/.fetch-*"), match_dot: true) == []
     {_fake, http} = start()
     {:ok, straight} = export(Path.join(dir, "straight"), http)
 

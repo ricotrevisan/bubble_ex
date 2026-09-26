@@ -146,24 +146,79 @@ defmodule BubbleEx.Load.Export do
   defp safe_object(_),
     do: {:error, Error.new(:invalid_input, "an export object path is invalid")}
 
-  @doc """
-  Deletes the export in `dir` (after the cutover): the directory must hold
-  a bubble_ex export, finished (`manifest.json`) or interrupted
-  (`state.json`), and nothing else is removed. Returns the number of
-  files deleted. On an SSD or a copy-on-write file system deletion does
-  not guarantee the bytes are gone, which is why the export belongs on an
-  encrypted disk in the first place.
-  """
-  @spec delete(Path.t()) :: {:ok, non_neg_integer()} | {:error, Error.t()}
-  def delete(dir) do
-    if export_dir?(dir) do
-      files =
-        dir |> Path.join("**") |> Path.wildcard(match_dot: true) |> Enum.count(&File.regular?/1)
+  # The export's own entries, by subdirectory ("" is the export itself).
+  defp own_entries do
+    [
+      {"", ~r/\A(manifest\.json|state\.json|files\.jsonl|files\.part\.jsonl)(\.tmp-[0-9]+)?\z/},
+      {"rows", ~r/\A[a-z0-9_]{1,64}(\.[0-9a-f]{12})?\.(jsonl\.gz|part)(\.tmp-[0-9]+)?\z/},
+      {"files", ~r/\A([0-9a-f]{64}(\.tmp-[0-9]+)?|\.fetch-[0-9]+)\z/}
+    ]
+  end
 
-      File.rm_rf!(dir)
-      {:ok, files}
+  @doc """
+  Deletes the export in `dir` (after the cutover). `dir` must be a real
+  directory (not a symbolic link) holding a bubble_ex export, finished
+  (`manifest.json`) or interrupted (`state.json` and `rows/`). Only the
+  export's own entries are deleted, and only regular files (never through
+  a link): `manifest.json`, `state.json`, `files.jsonl`,
+  `files.part.jsonl`, the rows objects and part files under `rows/`, the
+  blobs and partial downloads (`.fetch-*`) under `files/`, and their
+  temporary files. `rows/`, `files/` and `dir` are removed only when that
+  leaves them empty; anything else is left in place and listed.
+
+  Returns `{:ok, %{deleted: count, left: [relative paths]}}`. On an SSD or
+  a copy-on-write file system deletion does not guarantee the bytes are
+  gone, which is why the export belongs on an encrypted disk in the first
+  place.
+  """
+  @spec delete(Path.t()) ::
+          {:ok, %{deleted: non_neg_integer(), left: [String.t()]}} | {:error, Error.t()}
+  def delete(dir) do
+    cond do
+      not match?({:ok, %File.Stat{type: :directory}}, File.lstat(dir)) ->
+        {:error,
+         Error.new(:invalid_input, "not a directory (or a symbolic link); nothing deleted")}
+
+      not export_dir?(dir) ->
+        {:error, Error.new(:invalid_input, "not a bubble_ex export directory; nothing deleted")}
+
+      true ->
+        deleted =
+          for {sub, pattern} <- own_entries(),
+              name <- list(Path.join(dir, sub)),
+              name =~ pattern,
+              path = Path.join([dir, sub, name]),
+              match?({:ok, %File.Stat{type: :regular}}, File.lstat(path)),
+              File.rm(path) == :ok,
+              do: path
+
+        for sub <- ["rows", "files", ""], do: rmdir_if_empty(Path.join(dir, sub))
+        {:ok, %{deleted: length(deleted), left: left(dir)}}
+    end
+  end
+
+  defp list(dir) do
+    case File.lstat(dir) do
+      {:ok, %File.Stat{type: :directory}} -> File.ls!(dir)
+      _ -> []
+    end
+  end
+
+  defp rmdir_if_empty(dir) do
+    if list(dir) == [] and match?({:ok, %File.Stat{type: :directory}}, File.lstat(dir)),
+      do: File.rmdir(dir)
+  end
+
+  # What is left, relative to `dir` (nothing when it is gone).
+  defp left(dir) do
+    if File.exists?(dir) do
+      dir
+      |> Path.join("**")
+      |> Path.wildcard(match_dot: true)
+      |> Enum.map(&Path.relative_to(&1, dir))
+      |> Enum.sort()
     else
-      {:error, Error.new(:invalid_input, "not a bubble_ex export directory; nothing deleted")}
+      []
     end
   end
 
