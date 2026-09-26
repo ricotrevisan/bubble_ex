@@ -3,11 +3,12 @@
     "calls": 203,
     "env": {
       "auth": 17,
-      "literal": 80,
+      "literal": 1088,
       "private": 21,
       "private_line": 49
     },
     "generated": 199,
+    "generated_env_configured": 195,
     "groups": 30,
     "residue": 4,
     "residue_reasons": {

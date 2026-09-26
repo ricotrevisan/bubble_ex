@@ -7,30 +7,31 @@ defmodule BubbleEx.Model.ConnectorRequest do
   API Connector calls hold credentials in their URLs, bodies and parameter
   values, private or not. The template keeps only:
 
-    * **structure**: the URL's scheme, port, path segments and query-string
-      names, the body's JSON structure (object keys, arrays), the body type
-      and the response type
+    * **structure**: the URL's scheme, port and path segments, the body's
+      JSON structure (object keys, arrays), the body type and the response
+      type. Query-string names and body keys are kept only when they are
+      plain names (`Reader.safe_name?/1`: words, known abbreviations, short
+      numbers; nothing random-looking or detector-matched); a query entry
+      or body key that is not is dropped and the call marked unsupported
     * **placeholders**: a `[name]` in the URL or `<name>` in the body that
       names one of the call's parameters becomes a reference to that
       parameter by Bubble ID (`%{kind: :parameter, id: id}`); the value is
-      never read. A placeholder naming no parameter while the call has
-      private parameters whose key the payload stripped becomes
-      `%{kind: :secret, name: name}` (a private value, read from the
-      environment by a target)
-    * **safe literals**: a literal (path segment, query value, body text or
-      number) is kept (`%{kind: :literal, text: text}`, or `%{kind: :json,
-      value: value}` for a number, boolean or null) only when it cannot hold a
-      credential: it is made of plain words (lower/Title/camel case words up
-      to 24 letters with vowels, short acronyms, numbers up to six digits,
-      `v1`-style versions, `4o`/`gpt4`-style tokens), matches no
-      `BubbleEx.Secrets.Native.Detectors` pattern and holds no `Bearer`
-      credential, and is not the value of a member or query parameter named
-      like a credential (`token`, `key`, `secret`, `password`, `auth`,
-      `signature`, …). Every other literal becomes `%{kind: :redacted,
-      index: i}` (the call's `i`th redacted literal, from 1, in template
-      order): a target reads it from the environment too. The check errs
-      towards redacting: a redacted literal costs an environment variable,
-      a kept credential a leak
+      never read. A placeholder with a plain name naming no parameter while
+      the call has private parameters whose key the payload stripped
+      becomes `%{kind: :secret, name: name}` (a private value, read from
+      the environment by a target)
+    * **default-deny literals**: the only literals kept
+      (`%{kind: :literal, text: text}`) are path segments that are API
+      versions (`v1`, `2023-01-01`) or words of a fixed dictionary of API
+      path words (`users`, `orders`, `messages`, `search`, …), up to the
+      first segment named like a credential (`token`, `key`, `auth`, …:
+      every literal segment after it is redacted), a shared `Content-Type`
+      or `Accept` header's media type, JSON booleans and null, and empty
+      text. **Every other literal** (query values, body strings and
+      numbers, header values, other path segments) becomes
+      `%{kind: :redacted, index: i}` (the call's `i`th redacted literal,
+      from 1, in template order), which a target reads from the
+      environment. This costs environment variables, never a leak
     * **defaults are not read**: a non-private parameter's value is only the
       value Bubble initialized the call with; every call site supplies its
       own
@@ -113,9 +114,10 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
   @moduledoc false
 
   # Reads a call's `BubbleEx.Model.ConnectorRequest` template. The only raw
-  # values it looks at are the URL, the body text and literal values it
-  # classifies (`safe_text?/1`); only safe literals are kept, every value a
-  # placeholder stands for is never read.
+  # values it looks at are the URL, the body text and a group's shared
+  # values; only structure (`structural?/1`, `safe_name?/1`) is kept, every
+  # other literal is redacted and every value a placeholder stands for is
+  # never read.
 
   alias BubbleEx.Model.{ConnectorParameter, ConnectorRequest}
   alias BubbleEx.Secrets.Native.Detectors
@@ -128,7 +130,8 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
   @secret_name ~r/\A(?!(?:a|b|i|p|s|u|br|hr|em|h[1-6]|li|ol|ul|tr|td|th|div|span|strong|small|code|pre|img|table|tbody|thead|html|head|body|style|script|sub|sup)\z)[A-Za-z_][A-Za-z0-9_\-.]{0,63}\z/i
   # Characters a URL path or query literal may hold verbatim.
   @url_safe ~r/\A[A-Za-z0-9\-._~%!$&'()*+,;=:@]*\z/
-  @credential ~r/(?:^|[^a-z])(?:token|secret|password|passwd|pwd|pass|auth|authorization|bearer|key|apikey|signature|sig|session|cookie|credential|credentials|otp|pin|salt|hmac|nonce)(?:$|[^a-z])/i
+  # Any name containing one of these (case-insensitive) names a credential.
+  @credential ~r/token|secret|key|pass|auth|pwd|pin|otp|signature|cred|session|cookie|bearer|salt|hmac|nonce/i
 
   # Private-use sentinels marking placeholders in the body before JSON
   # parsing: `@open n @close` inside a string, `"@raw n @close"` outside.
@@ -219,7 +222,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
             _ -> nil
           end
 
-        {parts, state} = literal(text || "", credential?(p.name), state)
+        {parts, state} = shared_literal(p, text || "", state)
         {%{parameter: p.id, parts: parts}, state}
       end)
 
@@ -251,20 +254,9 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
         scheme = String.downcase(scheme)
         state = if scheme in ["http", "https"], do: state, else: unsupported(state, :scheme)
 
-        {port, state} =
-          case Regex.run(~r/:([^:\]]*)\z/, host_port) do
-            [_, ""] -> {nil, state}
-            [_, digits] -> port(digits, state)
-            nil -> {nil, state}
-          end
-
+        {port, state} = port(host_port, state)
         {host_parts, state} = url_parts(host, named, state, :host)
-
-        {segments, state} =
-          path
-          |> String.split("/")
-          |> Enum.drop(1)
-          |> Enum.map_reduce(state, &url_parts(&1, named, &2, :path))
+        {segments, state} = path(path, named, state)
 
         {query, state} = query(List.first(rest) || "", named, state)
         state = check_secrets(state, named, :url)
@@ -284,11 +276,34 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
 
   defp url(_url, _named, state), do: {%{}, unsupported(state, :no_url)}
 
-  defp port(digits, state) do
+  defp port(host_port, state) do
+    case Regex.run(~r/:([^:\]]*)\z/, host_port) do
+      [_, digits] when digits != "" -> port_number(digits, state)
+      _ -> {nil, state}
+    end
+  end
+
+  defp port_number(digits, state) do
     case Integer.parse(digits) do
       {port, ""} when port in 0..65_535 -> {port, state}
       _ -> {nil, unsupported(state, :dynamic_port)}
     end
+  end
+
+  # Path segments; every literal segment after one named like a credential
+  # is redacted.
+  defp path(path, named, state) do
+    {segments, {state, _after_key?}} =
+      path
+      |> String.split("/")
+      |> Enum.drop(1)
+      |> Enum.map_reduce({state, false}, fn segment, {state, after_key?} ->
+        context = if after_key?, do: :after_key, else: :path
+        {parts, state} = url_parts(segment, named, state, context)
+        {parts, {state, after_key? or credential?(decode(segment) || segment)}}
+      end)
+
+    {segments, state}
   end
 
   # A URL text as parts: `[name]` placeholders and literal chunks. A host
@@ -312,7 +327,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
         {[%{kind: :literal, text: chunk}], state}
 
       {:text, chunk}, state ->
-        literal_url(chunk, false, state)
+        literal_url(chunk, context, state)
     end)
   end
 
@@ -324,13 +339,16 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
         %{kind: :parameter, id: id}
 
       :error ->
-        if named.unnamed_private > 0 and Regex.match?(@secret_name, name),
+        if named.unnamed_private > 0 and Regex.match?(@secret_name, name) and safe_name?(name),
           do: %{kind: :secret, name: name}
     end
   end
 
-  defp literal_url(chunk, credential?, state) do
-    if Regex.match?(@url_safe, chunk) and not credential? and safe_text?(decode(chunk)),
+  # A path literal is kept only when it is structure: an API version or
+  # words of the path dictionary, and no segment before it names a
+  # credential.
+  defp literal_url(chunk, context, state) do
+    if context == :path and Regex.match?(@url_safe, chunk) and path_word?(decode(chunk)),
       do: {[%{kind: :literal, text: chunk}], state},
       else: redact(state)
   end
@@ -344,7 +362,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
       [name | value] = String.split(entry, "=", parts: 2)
       decoded = decode(name)
 
-      if is_binary(decoded) and plain_name?(decoded) do
+      if is_binary(decoded) and plain_name?(decoded) and safe_name?(decoded) do
         {parts, state} = query_value(List.first(value) || "", decoded, named, state)
         {[%{name: decoded, value: parts}], state}
       else
@@ -354,25 +372,15 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
     |> then(fn {entries, state} -> {List.flatten(entries), state} end)
   end
 
-  defp query_value(text, name, named, state) do
-    credential? = credential?(name)
-
+  # A query value's literals are always redacted.
+  defp query_value(text, _name, named, state) do
     text
     |> split_captures(@url_placeholder)
     |> Enum.flat_map_reduce(state, fn
       {:capture, whole}, state -> url_parts(whole, named, state, :path)
       {:text, ""}, state -> {[], state}
-      {:text, chunk}, state -> query_literal(chunk, credential?, state)
+      {:text, _chunk}, state -> redact(state)
     end)
-  end
-
-  defp query_literal(chunk, credential?, state) do
-    decoded = decode(chunk)
-
-    if is_binary(decoded) and Regex.match?(@url_safe, chunk) and not credential? and
-         safe_text?(decoded),
-       do: {[%{kind: :literal, text: decoded}], state},
-       else: redact(state)
   end
 
   defp decode(text) do
@@ -394,7 +402,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
 
       case Jason.decode(marked, objects: :ordered_objects) do
         {:ok, term} ->
-          {node, state} = json_node(term, table, false, state)
+          {node, state} = json_node(term, table, state)
           {:json, node, check_secrets(state, named, :body)}
 
         {:error, _} ->
@@ -452,27 +460,31 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
 
   defp scan_chars(<<_, rest::binary>>, in_string, false), do: scan_chars(rest, in_string, false)
 
-  defp json_node(%Jason.OrderedObject{values: members}, table, _credential?, state) do
+  defp json_node(%Jason.OrderedObject{values: members}, table, state) do
     {members, state} =
-      Enum.map_reduce(members, state, fn {key, value}, state ->
+      Enum.flat_map_reduce(members, state, fn {key, value}, state ->
         state =
-          if String.contains?(key, [@open, @close, @raw]) or looks_like_credential?(key),
+          if String.contains?(key, [@open, @close, @raw]) or not safe_key?(key),
             do: unsupported(state, :body_key),
             else: state
 
-        {value, state} = json_node(value, table, credential?(key), state)
-        {%{key: key, value: value}, state}
+        if safe_key?(key) do
+          {value, state} = json_node(value, table, state)
+          {[%{key: key, value: value}], state}
+        else
+          {[], state}
+        end
       end)
 
     {%{kind: :object, members: members}, state}
   end
 
-  defp json_node(list, table, credential?, state) when is_list(list) do
-    {items, state} = Enum.map_reduce(list, state, &json_node(&1, table, credential?, &2))
+  defp json_node(list, table, state) when is_list(list) do
+    {items, state} = Enum.map_reduce(list, state, &json_node(&1, table, &2))
     {%{kind: :array, items: items}, state}
   end
 
-  defp json_node(text, table, credential?, state) when is_binary(text) do
+  defp json_node(text, table, state) when is_binary(text) do
     case Regex.run(~r/\A#{@raw}(\d+)#{@close}\z/u, text) do
       [_, n] ->
         {Map.fetch!(table, String.to_integer(n)), state}
@@ -489,59 +501,162 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
             {:text, ""}, state ->
               {[], state}
 
-            {:text, chunk}, state ->
-              literal(chunk, credential?, state)
+            {:text, _chunk}, state ->
+              redact(state)
           end)
 
         {%{kind: :text, parts: parts}, state}
     end
   end
 
-  defp json_node(number, _table, credential?, state) when is_number(number) do
-    if credential? or (is_integer(number) and abs(number) >= 10_000_000),
-      do: redact_value(state),
-      else: {%{kind: :json, value: number}, state}
-  end
+  # Numbers are values: redacted like text.
+  defp json_node(number, _table, state) when is_number(number),
+    do: redact_value(state)
 
-  defp json_node(value, _table, _credential?, state), do: {%{kind: :json, value: value}, state}
+  defp json_node(value, _table, state), do: {%{kind: :json, value: value}, state}
 
   defp redact_value(state) do
     state = %{state | redacted: state.redacted + 1}
     {%{kind: :redacted, index: state.redacted}, state}
   end
 
-  defp literal(text, credential?, state) do
-    if not credential? and safe_text?(text),
-      do: {if(text == "", do: [], else: [%{kind: :literal, text: text}]), state},
+  # A shared header's value is kept only when it is a media type of a
+  # `Content-Type` or `Accept` header; an empty value is empty.
+  defp shared_literal(_p, "", state), do: {[], state}
+
+  defp shared_literal(%ConnectorParameter{in: :header, name: name}, text, state)
+       when is_binary(name) do
+    if String.downcase(name) in ["content-type", "accept"] and media_type?(text),
+      do: {[%{kind: :literal, text: text}], state},
       else: redact(state)
   end
+
+  defp shared_literal(_p, _text, state), do: redact(state)
 
   defp redact(state) do
     state = %{state | redacted: state.redacted + 1}
     {[%{kind: :redacted, index: state.redacted}], state}
   end
 
-  # --- safe literals -----------------------------------------------------------------
+  # --- structure that is kept ---------------------------------------------------------
 
-  @word ~r/\A(?:\p{Ll}{1,24}|\p{Lu}\p{Ll}{1,23}|\p{Ll}{1,24}(?:\p{Lu}\p{Ll}{1,23}){1,4}|\p{Lu}{1,5}s?|v\d{1,3}|\d{1,6}|\d{1,4}\p{Ll}{1,3}|\p{Ll}{1,12}\d{1,3})\z/u
-  @separators ~r/[\s\-_.\/:,;!?()\[\]{}"'@#&=+*%<>|~`$^\\…–—«»“”‘’]+/u
+  # Words of API paths kept verbatim; any other path literal is redacted.
+  @path_words ~w(
+    api apis rest v public private internal admin
+    users user me people person profile profiles members member accounts account
+    teams team orgs org organizations organization workspaces workspace groups group
+    orders order items item products product prices price customers customer
+    charges charge payments payment invoices invoice refunds refund subscriptions subscription
+    plans plan checkout carts cart coupons coupon discounts balance transactions transaction
+    messages message chat chats conversations conversation threads thread replies reply
+    completions completion embeddings embedding models model images image audio speech
+    transcriptions transcription translations moderations assistants assistant runs run
+    steps step responses response files file uploads upload attachments attachment media
+    documents document folders folder records record objects object entries entry rows row
+    tables table sheets sheet values spreadsheets databases database collections collection
+    calendars calendar events event lists list contacts contact companies company deals deal
+    leads lead tickets ticket tasks task projects project issues issue comments comment notes note
+    labels label tags tag categories category channels channel posts post pages page blocks block
+    search query find lookup filter batch bulk sync export import
+    create update delete remove get set send add edit patch upsert start stop cancel close open
+    status health ping info version versions config settings meta metadata stats analytics
+    reports report logs log metrics usage limits
+    email emails mail mails sms notifications notification templates template
+    webhooks webhook hooks hook callbacks callback
+    json xml csv html pdf txt graphql rpc data
+    by id ids all new latest current next previous count
+  )
+
+  @media ~r{\A[a-z]+/[a-z0-9][a-z0-9.+\-]*(?:\s*;\s*charset=[a-z0-9\-]+)?\z}i
 
   @doc """
-  Whether a literal cannot hold a credential: it matches no secret detector
-  or `Bearer` credential and every word is a plain word (see the module
-  documentation of `BubbleEx.Model.ConnectorRequest`).
+  Whether a path literal is kept: an API version (`v1`, `v2.1`,
+  `2023-01-01`) or words of the path dictionary joined by `-`, `_` or
+  `.` (`users`, `sign-in`, `users.json`). Nothing else is.
   """
-  @spec safe_text?(String.t()) :: boolean()
-  def safe_text?(text) when is_binary(text) do
-    String.length(text) <= 10_000 and String.valid?(text) and
-      not looks_like_credential?(text) and
-      text |> String.split(@separators, trim: true) |> Enum.all?(&word?/1)
+  @spec path_word?(term()) :: boolean()
+  def path_word?(text) when is_binary(text) do
+    version?(text) or
+      (text != "" and
+         text
+         |> String.split(["-", "_", "."])
+         |> Enum.all?(&(String.downcase(&1) in @path_words or version?(&1))))
   end
 
-  def safe_text?(_), do: false
+  def path_word?(_), do: false
 
-  defp word?(token) do
-    Regex.match?(@word, token) and not gibberish?(token)
+  defp version?(text),
+    do:
+      Regex.match?(
+        ~r/\A(?:v\d{1,3}(?:\.\d{1,3}){0,2}(?:beta|alpha)?\d?|\d{4}-\d{2}(?:-\d{2})?)\z/i,
+        text
+      )
+
+  @doc "Whether a text is a media type (`application/json`)."
+  @spec media_type?(term()) :: boolean()
+  def media_type?(text) when is_binary(text), do: Regex.match?(@media, text)
+  def media_type?(_), do: false
+
+  @doc """
+  Whether a literal is kept anywhere in a template: an empty text, a path
+  word or version, or a media type. Everything else is redacted.
+  """
+  @spec structural?(term()) :: boolean()
+  def structural?(text), do: text == "" or path_word?(text) or media_type?(text)
+
+  # Letter runs that are names though they have no vowel.
+  @consonant_words ~w(id db url uri urls xml html http https sms mms pdf csv tsv cc bcc ts
+                      utc gmt tz cdn dns ssl tls jwt cb fn src dst dt qty pct px rgb lng
+                      cnt msg msgs ttl crm cms css js png jpg gif svg mp mb kb gb sdk nft
+                      pwd lst rx tx)
+
+  @doc """
+  Whether a name (a query-string name, a body key, a placeholder) is kept:
+  an identifier of plain words (runs of up to three letters, letter runs
+  with a vowel or a known abbreviation up to 20 letters and not
+  random-looking, numbers up to four digits, upper-case acronyms up to
+  five letters) that no secret detector matches. Credential-shaped names are refused.
+  """
+  @spec safe_name?(term()) :: boolean()
+  def safe_name?(name) when is_binary(name) do
+    String.length(name) in 1..64 and
+      Regex.match?(~r/\A[$@]?[A-Za-z_][A-Za-z0-9_.\-]*(?:\[\])?\z/, name) and
+      not looks_like_credential?(name) and
+      name
+      |> String.replace(~r/[$@\[\]]/, "")
+      |> String.replace(~r/([a-z])([A-Z])/, "\\1 \\2")
+      |> String.replace(~r/([A-Za-z])([0-9])/, "\\1 \\2")
+      |> String.replace(~r/([0-9])([A-Za-z])/, "\\1 \\2")
+      |> String.split(~r/[\s_.\-]+/, trim: true)
+      |> plain_words?()
+  end
+
+  def safe_name?(_), do: false
+
+  # A body key: a safe name, or plain words separated by spaces.
+  defp safe_key?(key),
+    do: key != "" and key |> String.split(" ", trim: true) |> Enum.all?(&safe_name?/1)
+
+  # Every token a word, and at most one short vowelless abbreviation that
+  # is not a known one (`Zx81kQpLm` is four).
+  defp plain_words?(tokens) do
+    Enum.all?(tokens, &name_word?/1) and
+      Enum.count(tokens, fn t ->
+        String.length(t) in 2..3 and Regex.match?(~r/\A[A-Za-z]+\z/, t) and
+          not Regex.match?(~r/[aeiouy]/i, t) and String.downcase(t) not in @consonant_words
+      end) <= 1
+  end
+
+  defp name_word?(token) do
+    cond do
+      Regex.match?(~r/\A\d{1,4}\z/, token) -> true
+      Regex.match?(~r/\A[A-Z]{2,5}\z/, token) -> true
+      not Regex.match?(~r/\A[A-Za-z]{1,20}\z/, token) -> false
+      String.length(token) <= 3 -> true
+      String.downcase(token) in @consonant_words -> true
+      not Regex.match?(~r/[aeiouy]/i, token) -> false
+      true -> not gibberish?(token)
+    end
   end
 
   # A long run of letters with few vowels or a long consonant run is more
@@ -550,9 +665,8 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
     letters = String.downcase(token)
     length = String.length(letters)
 
-    length >= 10 and
-      (count_vowels(letters) / length < 0.2 or
-         Regex.match?(~r/[bcdfghjklmnpqrstvwxz]{6,}/, letters))
+    Regex.match?(~r/[bcdfghjklmnpqrstvwxz]{5,}/, letters) or
+      (length >= 8 and count_vowels(letters) / length < 0.18)
   end
 
   defp count_vowels(text), do: text |> String.graphemes() |> Enum.count(&(&1 in ~w(a e i o u y)))
@@ -564,11 +678,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
 
   @doc "Whether a member or parameter name names a credential."
   @spec credential?(term()) :: boolean()
-  def credential?(name) when is_binary(name) do
-    name
-    |> String.replace(~r/([a-z])([A-Z])/, "\\1_\\2")
-    |> then(&Regex.match?(@credential, &1))
-  end
+  def credential?(name) when is_binary(name), do: Regex.match?(@credential, name)
 
   def credential?(_), do: false
 

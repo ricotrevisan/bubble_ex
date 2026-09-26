@@ -31,48 +31,54 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
   defp literal(text), do: %{kind: :literal, text: text}
   defp redacted(i), do: %{kind: :redacted, index: i}
 
-  describe "safe_text?/1" do
-    test "keeps plain words, prose, versions and short numbers" do
-      for text <- [
-            "",
-            "v1",
-            "charges",
-            "customerId",
-            "Hello, world!",
-            "Order 42 for Café Müller",
-            "gpt4 and 4o",
-            "API v2 (JSON)",
-            "application/json",
-            "You are a helpful assistant."
-          ] do
-        assert Reader.safe_text?(text), text
-      end
+  # Low-entropy secrets a word test would keep (security review of #135).
+  @low_entropy [
+    "hunter2",
+    "123456",
+    "deadbeefcafebabe",
+    "mysupersecretvalue",
+    "correct horse battery staple",
+    "abcdefghijklmnopqrstuvwx",
+    "ABCDE",
+    "wombatkey"
+  ]
+
+  describe "kept structure" do
+    test "path words and versions only" do
+      for text <- ~w(v1 v2.1 2023-01-01 users orders messages api search users.json search-users),
+          do: assert(Reader.path_word?(text), text)
+
+      for text <-
+            @low_entropy ++
+              [@stripe, @github, @aws, "T01234567", "SECRET-PATH-TOKEN", "getCalendar", "42", ""],
+          do: refute(Reader.path_word?(text), text)
     end
 
-    test "redacts anything that could be a credential" do
-      for text <- [
-            @stripe,
-            @github,
-            "Bearer abcdefghijklmnop",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjMifQ.abcdefghijkl",
-            "T01234567",
-            "SECRET-PATH-TOKEN",
-            "a1b2c3d4e5f6",
-            "123456789",
-            "xkcdpqrstlmnbv",
-            @aws,
-            "😀"
-          ] do
-        refute Reader.safe_text?(text), text
-      end
+    test "structural? keeps empty text, path words and media types only" do
+      for text <- ["", "v1", "application/json", "text/plain; charset=utf-8"],
+          do: assert(Reader.structural?(text), text)
+
+      for text <- @low_entropy ++ ["Hello, world!", "gpt4"],
+          do: refute(Reader.structural?(text), text)
     end
 
-    test "credential? names credentials, not words that contain them" do
-      for name <- ~w(token api_key apiKey X-Api-Key client_secret password Authorization sig),
+    test "safe_name? refuses credential-shaped and random names" do
+      for name <-
+            ~w(format api_key max_tokens user_id X-Tenant pageSize q fields[] $filter utm_source),
+          do: assert(Reader.safe_name?(name), name)
+
+      for name <- ["Zx81kQpLm20aRt", @stripe, @github, @aws, "a b", "", "x=y"],
+          do: refute(Reader.safe_name?(name), name)
+    end
+
+    test "credential? matches any name containing a credential word" do
+      for name <-
+            ~w(token api_key apiKey X-Api-Key client_secret password Authorization accesstoken
+               clientsecret passcode passphrase xapikey secretkey signature pin otp session cookie
+               bearer credentials pwd),
           do: assert(Reader.credential?(name), name)
 
-      for name <- ~w(keyword monkey author passenger description tokenizer),
-          do: refute(Reader.credential?(name), name)
+      for name <- ~w(format limit description user_id), do: refute(Reader.credential?(name), name)
     end
   end
 
@@ -91,7 +97,7 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
                host: [%{kind: :literal, text: "api.example.com"}],
                port: 8443,
                body_type: :none,
-               redacted: 2,
+               redacted: 3,
                unsupported: []
              } = request
 
@@ -103,9 +109,22 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
              ]
 
       assert request.query == [
-               %{name: "format", value: [literal("json")]},
-               %{name: "api_key", value: [redacted(2)]}
+               %{name: "format", value: [redacted(2)]},
+               %{name: "api_key", value: [redacted(3)]}
              ]
+    end
+
+    test "literal path segments after one named like a credential are redacted" do
+      {request, _} = request(%{"url" => "https://api.example.com/v1/token/users/search"})
+      assert request.path == [[literal("v1")], [redacted(1)], [redacted(2)], [redacted(3)]]
+    end
+
+    test "a query name that is not a plain name is dropped and unsupported" do
+      for name <- ["Zx81kQpLm20aRt", @stripe, @github, @aws] do
+        {request, _} = request(%{"url" => "https://api.example.com/users?#{name}=1&ok=2"})
+        assert request.query == [%{name: "ok", value: [redacted(1)]}]
+        assert request.unsupported == [:query]
+      end
     end
 
     test "a placeholder host is a parameter; user info or a whole-URL parameter is no host" do
@@ -143,12 +162,12 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
   end
 
   describe "the body" do
-    test "a JSON template with placeholders in and out of strings and safe literals" do
+    test "a JSON template: placeholders, keys, booleans and null; every other literal redacted" do
       {request, _} =
         request(%{
           "method" => "post",
           "body" =>
-            ~s({"amount": <amount>, "note": "Order <order>!", "model": "gpt4", "key": "#{@stripe}", "token": "plainword", "big": 12345678901, "n": 3, "ok": true, "html": "<b>x</b>"}),
+            ~s({"amount": <amount>, "note": "Order <order>!", "model": "gpt4", "key": "#{@stripe}", "n": 3, "ok": true, "none": null, "empty": "", "html": "<b>x</b>"}),
           "body_params" => %{
             "a" => %{"key" => "amount", "value" => "never-read"},
             "o" => %{"key" => "order"}
@@ -156,7 +175,7 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
         })
 
       assert request.body_type == :json
-      assert request.redacted == 3
+      assert request.redacted == 6
 
       assert request.body == %{
                kind: :object,
@@ -166,18 +185,29 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
                    key: "note",
                    value: %{
                      kind: :text,
-                     parts: [literal("Order "), %{kind: :parameter, id: "o"}, literal("!")]
+                     parts: [redacted(1), %{kind: :parameter, id: "o"}, redacted(2)]
                    }
                  },
-                 %{key: "model", value: %{kind: :text, parts: [literal("gpt4")]}},
-                 %{key: "key", value: %{kind: :text, parts: [redacted(1)]}},
-                 %{key: "token", value: %{kind: :text, parts: [redacted(2)]}},
-                 %{key: "big", value: redacted(3)},
-                 %{key: "n", value: %{kind: :json, value: 3}},
+                 %{key: "model", value: %{kind: :text, parts: [redacted(3)]}},
+                 %{key: "key", value: %{kind: :text, parts: [redacted(4)]}},
+                 %{key: "n", value: redacted(5)},
                  %{key: "ok", value: %{kind: :json, value: true}},
-                 %{key: "html", value: %{kind: :text, parts: [literal("<b>x</b>")]}}
+                 %{key: "none", value: %{kind: :json, value: nil}},
+                 %{key: "empty", value: %{kind: :text, parts: []}},
+                 %{key: "html", value: %{kind: :text, parts: [redacted(6)]}}
                ]
              }
+    end
+
+    test "a body key that is not a plain name is dropped and unsupported" do
+      {request, _} =
+        request(%{
+          "method" => "post",
+          "body" => ~s({"Zx81kQpLm20aRt": 1, "#{@github}": 2, "ok": 3})
+        })
+
+      assert %{members: [%{key: "ok"}]} = request.body
+      assert request.unsupported == [:body_key]
     end
 
     test "a stripped private key's placeholder is a secret; HTML tags are not" do
@@ -235,22 +265,26 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
     end
   end
 
-  test "a group's shared values are safe literals or redacted, never private" do
+  test "a group's shared values: media types of Content-Type/Accept only, never private" do
     {_request, connector} =
       request(%{"url" => "https://api.example.com"}, %{
         "token_param_name" => "api_key",
         "shared_headers" => %{
           "a" => %{"key" => "X-Tenant", "value" => "acme"},
           "b" => %{"key" => "X-Secret", "value" => "whatever", "private" => true},
-          "c" => %{"key" => "X-Token", "value" => "plain"}
+          "c" => %{"key" => "Content-Type", "value" => "application/json"},
+          "d" => %{"key" => "X-Key", "value" => "wombatkey"},
+          "e" => %{"key" => "Accept", "value" => "hunter2"}
         }
       })
 
     assert connector.key_name == "api_key"
 
     assert connector.shared_values == [
-             %{parameter: "a", parts: [literal("acme")]},
-             %{parameter: "c", parts: [redacted(1)]}
+             %{parameter: "a", parts: [redacted(1)]},
+             %{parameter: "c", parts: [literal("application/json")]},
+             %{parameter: "d", parts: [redacted(2)]},
+             %{parameter: "e", parts: [redacted(3)]}
            ]
   end
 end

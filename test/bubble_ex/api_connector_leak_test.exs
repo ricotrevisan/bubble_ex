@@ -5,7 +5,7 @@ defmodule BubbleEx.ApiConnectorLeakTest do
   # "initialize call"). The Model reads only hosts, names, `private` flags,
   # type shapes and (WTF-374) a leak-safe request template: URL paths and
   # query strings, body structure, placeholders and only literals that
-  # cannot hold a credential, every other literal redacted. So no value
+  # that are structure (default-deny), every other literal redacted. So no value
   # reaches the Model, its diagnostics, the Index, the Findings built on
   # them, or the API clients generated from it (BubbleEx.Target.ApiClients,
   # printed by BubbleEx.Target.Phoenix with their tests). The fixture (both
@@ -148,7 +148,9 @@ defmodule BubbleEx.ApiConnectorLeakTest do
     assert Model.Connector.call(gexport, "cStringCall").raw == :string
   end
 
-  test "the request template keeps structure, parameters and safe literals only", %{model: model} do
+  test "the request template keeps structure, parameters and structural literals only", %{
+    model: model
+  } do
     charge = model.connectors |> hd() |> Model.Connector.call("cCharge")
 
     assert %{

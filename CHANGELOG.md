@@ -78,28 +78,35 @@ All notable changes to this project are documented here.
   (method, scheme, host, port, path, query, headers, body and decoding,
   with stubbed arguments and environment, no network) and
   `.wtf/api_clients.json` (environment variables, residue, names); the
-  manifest records the Spec's hash. Private values, and literals of a
-  request that could be credentials, are never in the code: they are
+  manifest records the Spec's hash. Private values, and every literal of a
+  request that is not structure, are never in the code: they are
   read from deterministic, documented environment variables at call time
   (`<GROUP>_API_KEY`, `<GROUP>_<CALL>_<PARAM>`, `<GROUP>_<CALL>_LITERAL_<N>`,
   …; a header or parameter whose name Bubble strips holds `Name: value` /
   `name=value`). Supported authentication: none, private key in header or
   URL, basic. `scripts/phoenix_compile_check.sh` renders every fixture's
-  clients (new fixture `phoenix_api_clients`) and runs their tests. On
-  mm-137, 199 of 203 calls are generated (residue: 2 non-JSON bodies, 1
-  file parameter, 1 call without a URL).
+  clients (new fixture `phoenix_api_clients`) and runs their tests, each
+  tagged `bubble: <call ID>` for the plan's `request_shape` check. On
+  mm-137, 199 of 203 calls are generated, 195 of them reading environment
+  variables (residue: 2 non-JSON bodies, 1 file parameter, 1 call without
+  a URL).
 - **Leak-safe API Connector request templates** (WTF-374). The Model
   (`schema_version` 4) reads each call's request as a
   `BubbleEx.Model.ConnectorRequest`: scheme, port, path segments,
   query-string names, body JSON structure and type, response type, with
   `[param]`/`<param>` placeholders as references to the call's parameters
-  by Bubble ID and only literals that cannot hold a credential (plain
-  words, short numbers, no secret-detector match, not under a
-  credential-named key); every other literal is `redacted`. Parameter
-  values are still never read, except a group's non-private shared
-  values, which pass the same check (`Connector.shared_values`); groups
-  gain `key_name` (`token_param_name`). The leak test now covers the
-  templates and the generated clients.
+  by Bubble ID. Literals are **default-deny**: only API versions and
+  dictionary path words (up to a segment named like a credential), a
+  shared `Content-Type`/`Accept` media type, JSON booleans/null and empty
+  text are kept; every other literal (query values, body strings and
+  numbers, header values, other path segments) is `redacted` and read
+  from an environment variable by the generated client. Query names and
+  body keys must be plain names (no detector match, nothing
+  random-looking) or the call is unsupported. Parameter values are
+  never read, except a group's non-private shared values, which pass the
+  same policy (`Connector.shared_values`); groups gain `key_name`
+  (`token_param_name`). The leak test and the security-review probes
+  cover the Model JSON and hash, the Spec and the generated clients.
 - **Phoenix target adapter** (WTF-369, T4 of WTF-359).
   `BubbleEx.Target.Phoenix.render(project, name:, module:, app:)` renders a
   `privacy: :omit` `BubbleEx.Target.Ash.Project` as the file map of a

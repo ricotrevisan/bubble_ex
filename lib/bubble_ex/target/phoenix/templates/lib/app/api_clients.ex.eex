@@ -33,8 +33,8 @@ defmodule <%= @module %>.ApiClients do
 
   ## Secrets
 
-  Bubble's private values, and literals of a request that could be
-  credentials, are never in the code: they are read from these environment
+  Bubble's private values, and every literal of a request that is not
+  structure (path words, versions, media types), are never in the code: they are read from these environment
   variables when a call is made (`.wtf/api_clients.json` lists them too).
   A variable holding a header or parameter whose name Bubble does not send
   holds `Name: value` (a header) or `name=value` (a parameter).

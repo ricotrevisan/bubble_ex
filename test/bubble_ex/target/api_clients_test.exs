@@ -44,9 +44,10 @@ defmodule BubbleEx.Target.ApiClientsTest do
              "groups" => 4,
              "calls" => 11,
              "generated" => 8,
+             "generated_env_configured" => 5,
              "residue" => 3,
              "residue_reasons" => %{"no_host" => 1, "raw_body" => 1, "unsupported_auth" => 1},
-             "env" => %{"auth" => 4, "literal" => 1, "private" => 4, "private_line" => 2},
+             "env" => %{"auth" => 4, "literal" => 10, "private" => 4, "private_line" => 2},
              "typed_responses" => 2
            }
   end
@@ -56,10 +57,10 @@ defmodule BubbleEx.Target.ApiClientsTest do
              method: :post,
              base: %{scheme: "https", host: [literal: "api.payments.example"], port: 8443},
              path: [[literal: "v1"], [literal: "charges"]],
-             query: [%{name: "source", value: [literal: "bubble"]}],
+             query: [%{name: "source", value: [env: "PAYMENTS_CREATE_CHARGE_LITERAL_1"]}],
              headers: [
                %{name: "X-Api-Key", value: [env: "PAYMENTS_API_KEY"]},
-               %{name: "X-Tenant", value: [literal: "acme"]},
+               %{name: "X-Tenant", value: [env: "PAYMENTS_SHARED_1"]},
                %{name: "Content-Type", value: [arg: "content_type"]},
                %{name: "Idempotency-Key", value: [env: "PAYMENTS_CREATE_CHARGE_IDEMPOTENCY_KEY"]}
              ],
@@ -69,15 +70,23 @@ defmodule BubbleEx.Target.ApiClientsTest do
                   {"amount", {:arg, "amount"}},
                   {"currency", {:text, [arg: "currency"]}},
                   {"description",
-                   {:text, [literal: "Order ", arg: "order", literal: " for ", arg: "customer"]}},
+                   {:text,
+                    [
+                      env: "PAYMENTS_CREATE_CHARGE_LITERAL_2",
+                      arg: "order",
+                      env: "PAYMENTS_CREATE_CHARGE_LITERAL_3",
+                      arg: "customer"
+                    ]}},
                   {"metadata",
                    {:object,
                     [
-                      {"channel", {:text, [literal: "web"]}},
-                      {"tags", {:array, [{:text, [literal: "checkout"]}, {:arg, "tag"}]}}
+                      {"channel", {:text, [env: "PAYMENTS_CREATE_CHARGE_LITERAL_4"]}},
+                      {"tags",
+                       {:array,
+                        [{:text, [env: "PAYMENTS_CREATE_CHARGE_LITERAL_5"]}, {:arg, "tag"}]}}
                     ]}},
                   {"capture", {:json, true}},
-                  {"retries", {:json, 3}},
+                  {"retries", {:env_json, "PAYMENTS_CREATE_CHARGE_LITERAL_6"}},
                   {"signature", {:text, [env: "PAYMENTS_CREATE_CHARGE_SIGNING"]}}
                 ]},
              response: %{kind: :json, list: false, type: nil}
@@ -112,7 +121,7 @@ defmodule BubbleEx.Target.ApiClientsTest do
               {"to", {:text, [arg: "to"]}},
               {"token", {:text, [env: "MAIL_SEND_EMAIL_API_TOKEN"]}},
               {"key", {:text, [env: "MAIL_SEND_EMAIL_LITERAL_1"]}},
-              {"html", {:text, [literal: "<b>Hello</b>"]}}
+              {"html", {:text, [env: "MAIL_SEND_EMAIL_LITERAL_2"]}}
             ]} = send_email.json
 
     subscribe = call(spec, "gForms", "cSubscribe")
@@ -129,15 +138,24 @@ defmodule BubbleEx.Target.ApiClientsTest do
     assert Enum.map(spec.env, &{&1.name, &1.kind}) == [
              {"FORMS_API_KEY", :auth},
              {"FORMS_SUBSCRIBE_LIST_ID", :private},
+             {"FORMS_SUBSCRIBE_LITERAL_1", :literal},
              {"FORMS_SUBSCRIBE_PARAM_F3", :private_line},
              {"MAIL_PASSWORD", :auth},
              {"MAIL_SEND_EMAIL_API_TOKEN", :private},
              {"MAIL_SEND_EMAIL_HEADER_LH1", :private_line},
              {"MAIL_SEND_EMAIL_LITERAL_1", :literal},
+             {"MAIL_SEND_EMAIL_LITERAL_2", :literal},
              {"MAIL_USERNAME", :auth},
              {"PAYMENTS_API_KEY", :auth},
              {"PAYMENTS_CREATE_CHARGE_IDEMPOTENCY_KEY", :private},
-             {"PAYMENTS_CREATE_CHARGE_SIGNING", :private}
+             {"PAYMENTS_CREATE_CHARGE_LITERAL_1", :literal},
+             {"PAYMENTS_CREATE_CHARGE_LITERAL_2", :literal},
+             {"PAYMENTS_CREATE_CHARGE_LITERAL_3", :literal},
+             {"PAYMENTS_CREATE_CHARGE_LITERAL_4", :literal},
+             {"PAYMENTS_CREATE_CHARGE_LITERAL_5", :literal},
+             {"PAYMENTS_CREATE_CHARGE_LITERAL_6", :literal},
+             {"PAYMENTS_CREATE_CHARGE_SIGNING", :private},
+             {"PAYMENTS_SHARED_1", :literal}
            ]
   end
 
@@ -214,6 +232,7 @@ defmodule BubbleEx.Target.ApiClientsTest do
       assert length(Regex.scan(~r/sends its request shape/, test)) == 3
       assert test =~ ~s(assert conn.request_path == "/v1/customers/stub-customer-id")
       assert test =~ ~s(assert decoded.plan_name == "stub")
+      assert test =~ ~s(@tag bubble: "cCustomer")
 
       decode = files["lib/acme/api_clients/decode.ex"]
       assert decode =~ ~s{plan_name: ApiClients.at(value, ["plan", "name"])}
@@ -222,7 +241,7 @@ defmodule BubbleEx.Target.ApiClientsTest do
 
     test "lists the environment and the residue", %{files: files} do
       document = Jason.decode!(files[".wtf/api_clients.json"])
-      assert length(document["env"]) == 11
+      assert length(document["env"]) == 20
       assert %{"call" => "cRaw", "reasons" => ["raw_body"]} = List.last(document["residue"])
       assert document["names"]["gPay"]["functions"]["cCharge"] == "create_charge"
     end

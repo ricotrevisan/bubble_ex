@@ -37,7 +37,7 @@ defmodule BubbleEx.Target.ApiClientsPrivateFixtureTest do
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
     {:ok, files} = Phoenix.render(project, name: "Private", api_clients: spec)
     generated = Map.filter(files, fn {path, _} -> String.contains?(path, "api_clients") end)
-    %{app: app, spec: spec, generated: generated}
+    %{app: app, model: model, spec: spec, generated: generated}
   end
 
   test "matches the recorded count snapshot", %{spec: spec} do
@@ -61,8 +61,13 @@ defmodule BubbleEx.Target.ApiClientsPrivateFixtureTest do
     assert counts == recorded["counts"], "counts changed; update #{snapshot} with a reason"
   end
 
-  test "no parameter value reaches the generated files", %{app: app, generated: generated} do
-    values = parameter_values(app)
+  test "no parameter value reaches the generated files",
+       %{app: app, model: model, spec: spec, generated: generated} do
+    # A value that is also a name, host or caption the Model kept before
+    # request templates (WTF-396), or a stub the tests derive from names,
+    # matches by coincidence, not by leaking.
+    names = names_surface(model) <> stubs_surface(spec)
+    values = app |> parameter_values() |> Enum.reject(&String.contains?(names, &1))
     text = generated |> Map.values() |> Enum.join("\n")
 
     leaked = Enum.filter(values, &String.contains?(text, &1))
@@ -72,8 +77,29 @@ defmodule BubbleEx.Target.ApiClientsPrivateFixtureTest do
         do: assert(BubbleEx.Secrets.Native.Detectors.scan_value(source) == [], path)
   end
 
+  defp stubs_surface(spec) do
+    for group <- spec.groups, call <- group.calls, into: "" do
+      host = Enum.map_join(call.base.host, fn {_, text} -> text end)
+      args = Enum.map_join(call.args, "\n", &("stub-" <> String.replace(&1.key, "_", "-")))
+
+      env =
+        Enum.map_join(call.env, "\n", &("env-" <> String.downcase(String.replace(&1, "_", "-"))))
+
+      ~s("#{call.base.scheme}://#{host}"\n) <> args <> "\n" <> env <> "\n"
+    end
+  end
+
+  defp names_surface(model) do
+    connectors =
+      Enum.map(model.connectors, fn c ->
+        %{c | shared_values: [], calls: Enum.map(c.calls, &%{&1 | request: nil})}
+      end)
+
+    Model.to_json(%{model | connectors: connectors})
+  end
+
   # Every private header and parameter value, and every other one that
-  # could be a credential (that the request template would redact), long
+  # the request template redacts (anything but structure), long
   # enough to be distinctive. Never printed: the assertion reports a count.
   defp parameter_values(app) do
     groups = get_in(app, ["settings", "client_safe", "apiconnector2"]) || %{}
@@ -88,7 +114,7 @@ defmodule BubbleEx.Target.ApiClientsPrivateFixtureTest do
         is_map(param),
         value <- [param["value"], param["%v"]],
         is_binary(value) and String.length(value) >= 6,
-        param["private"] == true or not Reader.safe_text?(value),
+        param["private"] == true or not Reader.structural?(value),
         uniq: true,
         do: value
   end

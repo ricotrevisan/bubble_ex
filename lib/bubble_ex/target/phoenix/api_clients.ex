@@ -489,6 +489,8 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     defmodule #{ctx.root}Test.#{group.module} do
       # Request-shape tests (WTF-374): each call is made against a Req.Test
       # stub with stubbed arguments and environment, never the network.
+      # Each is tagged with its call's Bubble ID (`bubble:`), which the
+      # plan's request_shape check binds to.
       use ExUnit.Case, async: true
 
       alias #{ctx.root}.#{group.module}
@@ -519,6 +521,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     query = Enum.map(call.query, &eval_entry(&1, :param))
 
     """
+    @tag bubble: #{inspect(call.id)}
     test #{inspect("#{call.function} (Bubble call #{call.id}) sends its request shape")} do
       opts = capture(#{respond})
 

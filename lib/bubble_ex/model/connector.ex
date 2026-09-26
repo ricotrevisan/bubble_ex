@@ -15,7 +15,7 @@ defmodule BubbleEx.Model.Connector do
       (`shared_headers`, `shared_params`)
     * `shared_values` - the values of its non-private shared parameters,
       which Bubble sends as supplied: `%{parameter, parts}` with `parts` a
-      safe literal or redacted (see `BubbleEx.Model.ConnectorRequest`),
+      kept media type or redacted (see `BubbleEx.Model.ConnectorRequest`),
       in parameter order
     * `calls` - `BubbleEx.Model.ConnectorCall`s in Bubble ID order (then
       placement): every entry of the group's `calls` object, and every member
@@ -74,7 +74,7 @@ defmodule BubbleEx.Model.ConnectorCall do
       body and query parameters), by location then Bubble ID
     * `request` - the request it sends as a leak-safe template
       (`BubbleEx.Model.ConnectorRequest`: URL path and query, body
-      structure, placeholders and safe literals only); nil when the call is
+      structure, placeholders and structural literals only); nil when the call is
       not an object
     * `publish_as` - how it is used as supplied (`"data"` or `"action"`)
     * `returns` - the type descriptor it returns (`ret_value`) when it is a

@@ -11,7 +11,7 @@ defmodule BubbleEx.Model.ConnectorReader do
   # `private` and `querystring` flags, and the request template
   # (`BubbleEx.Model.ConnectorRequest`, WTF-374), which keeps a URL's path
   # and query and a body's structure with placeholders and only literals
-  # that cannot hold a credential. Parameter values (`value`/`%v`) are
+  # that are structure (default-deny). Parameter values (`value`/`%v`) are
   # never read, except a group's non-private shared values, which go
   # through the same literal check.
 

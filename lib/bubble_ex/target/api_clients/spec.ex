@@ -13,7 +13,7 @@ defmodule BubbleEx.Target.ApiClients.Spec do
       header or parameter whose name Bubble stripped: the variable holds
       `Name: value` for a header, `name=value` for a parameter), `:auth`
       (the group's key, user name or password) or `:literal` (a literal
-      that could be a credential, see `BubbleEx.Model.ConnectorRequest`)
+      that is not structure, see `BubbleEx.Model.ConnectorRequest`)
     * `types` - the response shapes of the external types calls decode
       into: external type ID => `%{field ID => response path}`
     * `residue` - calls not generated: `%{group, call, name, reasons}`
@@ -65,17 +65,20 @@ defmodule BubbleEx.Target.ApiClients.Spec do
   def sha256(%__MODULE__{} = spec), do: spec |> to_map() |> CanonicalJson.sha256()
 
   @doc """
-  Counts (string keys): groups, calls generated and in residue, residue
-  reasons, environment variables by kind.
+  Counts (string keys): groups, calls generated (and of those, how many
+  read environment variables) and in residue, residue reasons,
+  environment variables by kind, typed responses.
   """
   @spec summary(t()) :: map()
   def summary(%__MODULE__{} = spec) do
-    generated = spec.groups |> Enum.map(&length(&1.calls)) |> Enum.sum()
+    calls = Enum.flat_map(spec.groups, & &1.calls)
+    generated = length(calls)
 
     %{
       "groups" => length(spec.groups),
       "calls" => generated + length(spec.residue),
       "generated" => generated,
+      "generated_env_configured" => Enum.count(calls, &(&1.env != [])),
       "residue" => length(spec.residue),
       "residue_reasons" =>
         spec.residue
@@ -86,10 +89,7 @@ defmodule BubbleEx.Target.ApiClients.Spec do
         spec.env
         |> Enum.frequencies_by(& &1.kind)
         |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end),
-      "typed_responses" =>
-        spec.groups
-        |> Enum.flat_map(& &1.calls)
-        |> Enum.count(&(&1.response.type != nil))
+      "typed_responses" => Enum.count(calls, &(&1.response.type != nil))
     }
   end
 

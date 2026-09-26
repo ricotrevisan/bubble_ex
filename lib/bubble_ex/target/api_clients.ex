@@ -19,7 +19,7 @@ defmodule BubbleEx.Target.ApiClients do
   A call's non-private parameters are its function's arguments (`params`,
   keys from Bubble's keys in snake case): each Bubble call site supplies its
   own values. Bubble's private values are never read; they, and literals of
-  the request that could be credentials, are read from environment
+  the request that are not structure (see `BubbleEx.Model.ConnectorRequest`), are read from environment
   variables at call time. The names are deterministic, from the group's
   module (`PAYMENTS`) and the call's function (`CREATE_CHARGE`):
 
@@ -225,7 +225,7 @@ defmodule BubbleEx.Target.ApiClients do
   defp subject(%Connector{id: id}), do: %{group: id, call: nil}
 
   # A shared parameter as an entry: a private value from the environment,
-  # or the value Bubble sends (a safe literal, else from the environment).
+  # or the value Bubble sends (a kept media type, else from the environment).
   defp shared_entry(%ConnectorParameter{private: true} = p, _values, group, prefix, state) do
     {value, state} =
       private_env(p, prefix, %{group: group.id, call: nil}, "private shared", state)
