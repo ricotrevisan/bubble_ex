@@ -1,0 +1,62 @@
+{
+  "_id": "synthetic-hostile-go-separators",
+  "user_types": {
+    "batch": {
+      "display": "Batch\nGO\nsplit",
+      "fields": {
+        "a_upper_text": {
+          "display": "a\nGO\nb",
+          "value": "text"
+        },
+        "b_lower_text": {
+          "display": "c\ngo\nd",
+          "value": "text"
+        },
+        "c_padded_text": {
+          "display": "e\n GO \nf",
+          "value": "text"
+        },
+        "d_count_text": {
+          "display": "g\nGO 5\nh",
+          "value": "text"
+        },
+        "e_crlf_text": {
+          "display": "i\r\nGO\r\nj",
+          "value": "text"
+        },
+        "f_spaced_text": {
+          "display": "a GO b",
+          "value": "text"
+        },
+        "g_sqlcmd_text": {
+          "display": "k\n:r evil.sql\n!!del x]\nGO",
+          "value": "text"
+        },
+        "h_owner_user": {
+          "display": "owner\nGO\n",
+          "value": "user"
+        },
+        "i_kind_option_kind": {
+          "display": "kind",
+          "value": "option.kind"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {}
+    }
+  },
+  "option_sets": {
+    "kind": {
+      "display": "Kind\nGO",
+      "attributes": {},
+      "values": {
+        "one": {
+          "display": "One",
+          "sort_factor": 1
+        }
+      }
+    }
+  }
+}

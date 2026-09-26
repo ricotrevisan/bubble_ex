@@ -23,7 +23,8 @@ defmodule BubbleEx.MixProject do
           "CHANGELOG.md",
           "CONTRIBUTING.md",
           "SECURITY.md",
-          "docs/editor-cli.md"
+          "docs/editor-cli.md",
+          "docs/replay-kit.md"
         ]
       ]
     ]

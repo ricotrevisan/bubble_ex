@@ -1,0 +1,43 @@
+import { z } from 'zod';
+
+// Batch\nGO\nsplit
+export const BatchGOSplitSchema = z.object({
+  _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  'a\nGO\nb': z.string().nullish(),
+  'c\ngo\nd': z.string().nullish(),
+  'e\n GO \nf': z.string().nullish(),
+  'g\nGO 5\nh': z.string().nullish(),
+  'i\r\nGO\r\nj': z.string().nullish(),
+  'a GO b': z.string().nullish(),
+  'k\n:r evil.sql\n!!del x]\nGO': z.string().nullish(),
+  'owner\nGO\n': z.string().nullish(), // reference -> user
+  kind: z.string().nullish(), // enum -> kind option set (values not rendered)
+});
+
+export type BatchGOSplit = z.infer<typeof BatchGOSplitSchema>;
+
+// User
+export const UserSchema = z.object({
+  _id: z.string(),
+  'Created Date': z.string().datetime().nullish(),
+  'Modified Date': z.string().datetime().nullish(),
+  'Created By': z.string().nullish(), // reference -> user
+  Slug: z.string().nullish(),
+  email: z.string().nullish(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Kind\nGO
+export const KindGOSchema = z.object({
+  db_value: z.string(),
+  Display: z.string().nullish(),
+});
+
+export type KindGO = z.infer<typeof KindGOSchema>;
+--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one

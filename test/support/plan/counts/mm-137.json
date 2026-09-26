@@ -7,14 +7,14 @@
       },
       "residue": {
         "auth_action": 21,
-        "no_native_lowering": 475,
+        "no_native_lowering": 516,
         "plugin_action": 620,
         "plugin_element": 717,
         "plugin_event": 258,
         "plugin_style": 8,
-        "runtime_container": 175,
+        "runtime_container": 306,
         "style_condition": 14,
-        "trigger_not_normalized": 832,
+        "trigger_in_runtime_template": 203,
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
@@ -124,22 +124,22 @@
           "total": 1
         },
         "surface": {
-          "auto": 8,
+          "auto": 11,
           "closed": 0,
-          "open": 149,
+          "open": 146,
           "total": 157
         },
         "workflow": {
-          "auto": 1067,
+          "auto": 1422,
           "closed": 0,
-          "open": 1843,
+          "open": 1488,
           "total": 2910
         }
       },
       "top_level": {
-        "auto": 47,
+        "auto": 50,
         "closed": 1,
-        "open": 434,
+        "open": 431,
         "total": 482
       },
       "units": {
@@ -161,10 +161,12 @@
           "workflow": 2
         },
         "elements": {
-          "generated": 3359,
-          "not_normalized": 3620,
-          "not_normalized_with_residue": 607,
-          "residue": 1476,
+          "generated": 5360,
+          "generated_in_runtime_template": 914,
+          "in_runtime_template": 1288,
+          "not_normalized": 1,
+          "not_normalized_with_residue": 0,
+          "residue": 1806,
           "total": 8455
         },
         "plugins": {
@@ -183,13 +185,14 @@
           "total": 635
         },
         "workflows_frontend": {
-          "auto": 824,
+          "auto": 1179,
           "closed": 0,
-          "open": 1451,
+          "open": 1096,
           "total": 2275
         },
         "workflows_removed": 0,
-        "workflows_trigger_not_normalized": 832
+        "workflows_trigger_in_runtime_template": 203,
+        "workflows_trigger_not_normalized": 0
       }
     }
   },
@@ -201,14 +204,14 @@
       },
       "residue": {
         "auth_action": 21,
-        "no_native_lowering": 475,
+        "no_native_lowering": 516,
         "plugin_action": 620,
         "plugin_element": 717,
         "plugin_event": 258,
         "plugin_style": 8,
-        "runtime_container": 175,
+        "runtime_container": 306,
         "style_condition": 14,
-        "trigger_not_normalized": 832,
+        "trigger_in_runtime_template": 203,
         "uncompiled_expression": 2934,
         "unresolved_reference": 90,
         "unsupported_action": 5,
@@ -312,22 +315,22 @@
           "total": 1
         },
         "surface": {
-          "auto": 8,
+          "auto": 11,
           "closed": 0,
-          "open": 149,
+          "open": 146,
           "total": 157
         },
         "workflow": {
-          "auto": 974,
+          "auto": 1317,
           "closed": 0,
-          "open": 1936,
+          "open": 1593,
           "total": 2910
         }
       },
       "top_level": {
-        "auto": 41,
+        "auto": 44,
         "closed": 0,
-        "open": 440,
+        "open": 437,
         "total": 481
       },
       "units": {
@@ -349,10 +352,12 @@
           "workflow": 2
         },
         "elements": {
-          "generated": 3303,
-          "not_normalized": 3620,
-          "not_normalized_with_residue": 699,
-          "residue": 1532,
+          "generated": 5284,
+          "generated_in_runtime_template": 890,
+          "in_runtime_template": 1288,
+          "not_normalized": 1,
+          "not_normalized_with_residue": 0,
+          "residue": 1882,
           "total": 8455
         },
         "plugins": {
@@ -371,13 +376,14 @@
           "total": 635
         },
         "workflows_frontend": {
-          "auto": 781,
+          "auto": 1124,
           "closed": 0,
-          "open": 1494,
+          "open": 1151,
           "total": 2275
         },
         "workflows_removed": 0,
-        "workflows_trigger_not_normalized": 832
+        "workflows_trigger_in_runtime_template": 203,
+        "workflows_trigger_not_normalized": 0
       }
     },
     "neutral": {
@@ -387,14 +393,14 @@
       },
       "residue": {
         "auth_action": 21,
-        "no_native_lowering": 475,
+        "no_native_lowering": 516,
         "plugin_action": 620,
         "plugin_element": 717,
         "plugin_event": 258,
         "plugin_style": 8,
-        "runtime_container": 175,
+        "runtime_container": 306,
         "style_condition": 14,
-        "trigger_not_normalized": 832,
+        "trigger_in_runtime_template": 203,
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
@@ -498,22 +504,22 @@
           "total": 1
         },
         "surface": {
-          "auto": 8,
+          "auto": 11,
           "closed": 0,
-          "open": 149,
+          "open": 146,
           "total": 157
         },
         "workflow": {
-          "auto": 1067,
+          "auto": 1422,
           "closed": 0,
-          "open": 1843,
+          "open": 1488,
           "total": 2910
         }
       },
       "top_level": {
-        "auto": 47,
+        "auto": 50,
         "closed": 0,
-        "open": 434,
+        "open": 431,
         "total": 481
       },
       "units": {
@@ -535,10 +541,12 @@
           "workflow": 2
         },
         "elements": {
-          "generated": 3359,
-          "not_normalized": 3620,
-          "not_normalized_with_residue": 607,
-          "residue": 1476,
+          "generated": 5360,
+          "generated_in_runtime_template": 914,
+          "in_runtime_template": 1288,
+          "not_normalized": 1,
+          "not_normalized_with_residue": 0,
+          "residue": 1806,
           "total": 8455
         },
         "plugins": {
@@ -557,13 +565,14 @@
           "total": 635
         },
         "workflows_frontend": {
-          "auto": 824,
+          "auto": 1179,
           "closed": 0,
-          "open": 1451,
+          "open": 1096,
           "total": 2275
         },
         "workflows_removed": 0,
-        "workflows_trigger_not_normalized": 832
+        "workflows_trigger_in_runtime_template": 203,
+        "workflows_trigger_not_normalized": 0
       }
     }
   }

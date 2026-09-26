@@ -114,9 +114,11 @@ canonical SHA pins separately; this command does not modify payloads or pins.
 `bpndkqfs` now preserves the actual source `is_visible: true` Popup definition
 and checks that it stays closed; the previous payload had changed that flag.
 `bptvorpv` freezes the initial state of valid Popup and Group Focus controls.
-Both overlays lower to hidden runtime placeholders. Their source-only interaction
-captures do not establish interactive export support. See the
-[overlay audit](../../../docs/research/overlay-runtime-audit.md).
+Both overlays are emitted closed with the `hidden` attribute and their
+normalized content (WTF-407). `overlay-states.mjs` opens each exported overlay
+the way a runtime would (removing `hidden`) and compares its geometry with the
+committed source observation; the `bptvorpv` fidelity test runs it. Workflows are
+not executed. See the [overlay audit](../../../docs/research/overlay-runtime-audit.md).
 
 Source capture allows absent nodes only when explicitly listed in
 `source_hidden_node_ids`, which must be a subset of `node_ids`. A listed node

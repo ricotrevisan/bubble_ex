@@ -21,6 +21,18 @@ defmodule BubbleEx.Verify do
   privacy rules over a seed, and `BubbleEx.Verify.Matrix` synthesizes the
   privacy matrix's seed, scenarios and `model`-oracle recordings from them.
 
+  The Bubble replay driver (WTF-384, V4) makes the `bubble`-oracle
+  recordings: `BubbleEx.Verify.Replay.Target` (one `wtfreplay…` branch of
+  one app ID, never live or test, URLs built only here),
+  `Replay.Client` (Data API and Workflow API through `BubbleEx.HTTP`, with
+  persona tokens, call and wall-time budgets and backoff),
+  `Replay.Seeder` and `Replay.Ledger` (every created record in the ledger;
+  updates and deletes only through it; delete-after-seed for dangling
+  references), `Replay.Recorder` (dry-run hash, two runs,
+  `Replay.Differential` masks, calibration flags) and
+  `Replay.CredentialScan`. The owner's replay kit is `Replay.Kit`
+  (checklist: `docs/replay-kit.md`).
+
   Every format is versioned (`schema_version` 1), decodes strictly
   (unknown members and values are `:invalid_input`) and encodes
   canonically (sorted keys, `BubbleEx.CanonicalJson`; set-like lists

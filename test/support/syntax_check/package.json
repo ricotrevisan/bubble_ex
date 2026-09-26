@@ -1,0 +1,9 @@
+{
+  "name": "bubble-ex-syntax-check",
+  "private": true,
+  "description": "Pinned parsers for the generated-schema syntax check (WTF-408): @dbml/core for DBML, the TypeScript 5 compiler API for Zod and Convex.",
+  "dependencies": {
+    "@dbml/core": "10.2.0",
+    "typescript": "5.9.3"
+  }
+}

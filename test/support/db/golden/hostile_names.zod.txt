@@ -7,8 +7,7 @@ export const OrderSListXSchema = z.object({
   'Modified Date': z.string().datetime().nullish(),
   'Created By': z.string().nullish(), // reference -> user
   Slug: z.string().nullish(),
-  'customer\'); DROP TABLE x; --
-next LS PSNELVTFF \\\' */ /* "q"': z.string().nullish(), // reference -> user
+  'customer\'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\vVT\fFF \\\' */ /* "q"': z.string().nullish(), // reference -> user
   'status\' || \'x': z.string().nullish(), // enum -> status option set (values not rendered)
   'note -- */': z.string().nullish(),
   target: z.string().nullish(), // reference -> target
@@ -16,8 +15,7 @@ next LS PSNELVTFF \\\' */ /* "q"': z.string().nullish(), // reference -
 
 export type OrderSListX = z.infer<typeof OrderSListXSchema>;
 
-// Target
-line 'q' \   */ end
+// Target\nline 'q' \\ \u2028 */ end
 export const TargetLineQEndSchema = z.object({
   _id: z.string(),
   'Created Date': z.string().datetime().nullish(),
@@ -41,7 +39,7 @@ export const UserSchema = z.object({
 
 export type User = z.infer<typeof UserSchema>;
 
-// Status 'quoted' \
+// Status 'quoted' \\
 export const StatusQuotedSchema = z.object({
   db_value: z.string(),
   Display: z.string().nullish(),

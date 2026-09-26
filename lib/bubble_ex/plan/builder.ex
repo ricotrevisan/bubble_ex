@@ -1350,11 +1350,9 @@ defmodule BubbleEx.Plan.Builder do
         "workflows_backend" =>
           workflow_tasks |> Enum.filter(&backend?(ctx, &1)) |> statuses_count(),
         "workflows_removed" => MapSet.size(ctx.deleted_workflows),
-        "workflows_trigger_not_normalized" =>
-          residue
-          |> Enum.filter(&(&1.reason == :trigger_not_normalized))
-          |> Enum.uniq_by(& &1.subject)
-          |> length(),
+        "workflows_trigger_not_normalized" => workflows_with(residue, :trigger_not_normalized),
+        "workflows_trigger_in_runtime_template" =>
+          workflows_with(residue, :trigger_in_runtime_template),
         "api_calls" => api_units(ctx, tasks),
         "styles" => %{
           "total" => length(style_subjects(ctx)),
@@ -1390,16 +1388,34 @@ defmodule BubbleEx.Plan.Builder do
     %{"total" => length(ids), "generated" => length(ids) - residue, "residue" => residue}
   end
 
+  defp workflows_with(residue, reason) do
+    residue |> Enum.filter(&(&1.reason == reason)) |> Enum.uniq_by(& &1.subject) |> length()
+  end
+
   # With a frontend, an element counts as generated only when it was
-  # normalized and has no residue; one normalization never reached (inside
-  # a runtime container) is `not_normalized`, whatever its residue. Without
-  # one, `not_normalized` is nil and generated means no residue.
-  defp element_units(%{frontend: nil}, elements, with_residue),
-    do: elements |> unit(with_residue) |> Map.put("not_normalized", nil)
+  # normalized, has no residue and is not inside a runtime container's
+  # template. One the normalized frontend does not contain is
+  # `not_normalized`; one inside a template (a dynamic Repeating Group cell,
+  # a Table, a plugin container, which stays residue itself) is
+  # `in_runtime_template`, whatever its residue, with the residue-free ones
+  # also counted as `generated_in_runtime_template`. total = generated +
+  # residue + not_normalized + in_runtime_template. Without a frontend,
+  # those buckets are nil and generated means no residue.
+  defp element_units(%{frontend: nil}, elements, with_residue) do
+    elements
+    |> unit(with_residue)
+    |> Map.merge(%{
+      "not_normalized" => nil,
+      "in_runtime_template" => nil,
+      "generated_in_runtime_template" => nil
+    })
+  end
 
   defp element_units(%{frontend: frontend}, elements, with_residue) do
     present = Residue.normalized_ids(frontend)
+    templates = Residue.runtime_template_ids(frontend)
     {normalized, missing} = Enum.split_with(elements, &MapSet.member?(present, bubble_id(&1)))
+    {templated, normalized} = Enum.split_with(normalized, &Map.has_key?(templates, bubble_id(&1)))
     residue = Enum.count(normalized, &MapSet.member?(with_residue, &1))
 
     %{
@@ -1407,7 +1423,10 @@ defmodule BubbleEx.Plan.Builder do
       "generated" => length(normalized) - residue,
       "residue" => residue,
       "not_normalized" => length(missing),
-      "not_normalized_with_residue" => Enum.count(missing, &MapSet.member?(with_residue, &1))
+      "not_normalized_with_residue" => Enum.count(missing, &MapSet.member?(with_residue, &1)),
+      "in_runtime_template" => length(templated),
+      "generated_in_runtime_template" =>
+        Enum.count(templated, &(not MapSet.member?(with_residue, &1)))
     }
   end
 

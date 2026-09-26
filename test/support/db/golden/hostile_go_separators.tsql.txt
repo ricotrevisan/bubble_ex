@@ -1,0 +1,46 @@
+CREATE SCHEMA [custom];
+GO
+CREATE SCHEMA [option];
+GO
+
+CREATE TABLE [custom].[Batch GO split_cc92a992] (
+  [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [a GO b_cbdcf979] NVARCHAR(MAX),
+  [c go d_a96829ce] NVARCHAR(MAX),
+  [e  GO  f_c84c016b] NVARCHAR(MAX),
+  [g GO 5 h_5bc065d1] NVARCHAR(MAX),
+  [i  GO  j_d0e34a9f] NVARCHAR(MAX),
+  [a GO b] NVARCHAR(MAX),
+  [k :r evil.sql !!del x]] GO_9602b781] NVARCHAR(MAX),
+  [owner GO _aea1915a] NVARCHAR(450),
+  [kind] NVARCHAR(450),
+  CONSTRAINT [PK_batch_go_split] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [custom].[User] (
+  [_id] NVARCHAR(450),
+  [Created Date] DATETIME2,
+  [Modified Date] DATETIME2,
+  [Created By] NVARCHAR(450),
+  [Slug] NVARCHAR(MAX),
+  [email] NVARCHAR(MAX),
+  CONSTRAINT [PK_user] PRIMARY KEY ([_id])
+);
+
+CREATE TABLE [option].[Kind GO_aea6fb5f] (
+  [db_value] NVARCHAR(450),
+  [Display] NVARCHAR(MAX),
+  CONSTRAINT [PK_kind_go] PRIMARY KEY ([db_value])
+);
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- [custom].[Batch GO split_cc92a992].[Created By] -> [custom].[User].[_id]
+-- [custom].[Batch GO split_cc92a992].[owner GO _aea1915a] -> [custom].[User].[_id]
+-- [custom].[Batch GO split_cc92a992].[kind] -> [option].[Kind GO_aea6fb5f].[db_value]
+-- [custom].[User].[Created By] -> [custom].[User].[_id]
+--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one

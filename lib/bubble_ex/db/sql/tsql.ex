@@ -16,7 +16,11 @@ defmodule BubbleEx.Db.Sql.Tsql do
   `Created By` gets an `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` instead
   (see `BubbleEx.Db.Encoder.foreign_key?/2`).
 
-  Identifiers are bracket-quoted (`[name]`, with embedded `]` doubled). Key-bearing
+  Identifiers are bracket-quoted (`[name]`, with embedded `]` doubled) and kept
+  on one line: a name with line breaks or other control characters is
+  normalized with a hash suffix (`BubbleEx.Db.Encoder.Literal.tsql_bracketed/1`),
+  so no name can put a `GO` batch separator on a line of its own. Comments go
+  through `Literal.line_comment/1`. Key-bearing
   columns (the primary key and scalar reference/enum columns, which can back a
   foreign key or a join) use `NVARCHAR(450)` so they stay indexable; other text
   columns use `NVARCHAR(MAX)`.
@@ -191,7 +195,5 @@ defmodule BubbleEx.Db.Sql.Tsql do
   defp qualified_table(group, name),
     do: "#{quote_ident(to_string(group))}.#{quote_ident(name)}"
 
-  defp quote_ident(name) do
-    "[" <> String.replace(name, "]", "]]") <> "]"
-  end
+  defp quote_ident(name), do: BubbleEx.Db.Encoder.Literal.tsql_bracketed(name)
 end

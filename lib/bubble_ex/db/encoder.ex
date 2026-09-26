@@ -150,7 +150,7 @@ defmodule BubbleEx.Db.Encoder do
       references ->
         lines =
           Enum.map(references, fn {from, to, _dir} ->
-            "-- " <> comment_safe(describe.(from, to))
+            "-- " <> BubbleEx.Db.Encoder.Literal.line_comment(describe.(from, to))
           end)
 
         Enum.join(
@@ -159,26 +159,6 @@ defmodule BubbleEx.Db.Encoder do
           "\n"
         )
     end
-  end
-
-  # Backslash first, so the escapes below stay unambiguous. Besides CR/LF
-  # (which end a SQL line comment), the other line terminators some tools
-  # split on (VT, FF, NEL, LS, PS) are escaped too.
-  @comment_escapes [
-    {"\\", "\\\\"},
-    {"\r", "\\r"},
-    {"\n", "\\n"},
-    {"\v", "\\v"},
-    {"\f", "\\f"},
-    {"\u0085", "\\u0085"},
-    {"\u2028", "\\u2028"},
-    {"\u2029", "\\u2029"}
-  ]
-
-  defp comment_safe(text) do
-    Enum.reduce(@comment_escapes, text, fn {char, escape}, acc ->
-      String.replace(acc, char, escape)
-    end)
   end
 
   @doc """
