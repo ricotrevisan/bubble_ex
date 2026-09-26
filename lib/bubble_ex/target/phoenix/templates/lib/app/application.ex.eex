@@ -1,0 +1,31 @@
+defmodule <%= @module %>.Application do
+  @moduledoc false
+
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    children = [
+      <%= @web %>.Telemetry,
+      <%= @module %>.Repo,
+      {DNSCluster, query: Application.get_env(:<%= @app %>, :dns_cluster_query) || :ignore},
+      {Oban,
+       AshOban.config(
+         Application.fetch_env!(:<%= @app %>, :ash_domains),
+         Application.fetch_env!(:<%= @app %>, Oban)
+       )},
+      {Phoenix.PubSub, name: <%= @module %>.PubSub},
+      {AshAuthentication.Supervisor, otp_app: :<%= @app %>},
+      <%= @web %>.Endpoint
+    ]
+
+    opts = [strategy: :one_for_one, name: <%= @module %>.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  @impl true
+  def config_change(changed, _new, removed) do
+    <%= @web %>.Endpoint.config_change(changed, removed)
+    :ok
+  end
+end

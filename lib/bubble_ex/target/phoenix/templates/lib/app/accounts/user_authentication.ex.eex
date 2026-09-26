@@ -1,0 +1,38 @@
+defmodule <%= @module %>.Accounts.UserAuthentication do
+  @moduledoc """
+  The User's AshAuthentication configuration: a `Spark.Dsl.Fragment` the
+  generated User resource includes (`fragments: [...]`). This file is
+  yours: tune the tokens and strategies here (token lifetimes, a password
+  strategy, registration) without editing generated code.
+
+  Users sign in with a magic link (no password material is read from
+  Bubble). Registration is disabled: only stored users can sign in. The
+  email attribute is a case-insensitive, trimmed string with a unique
+  identity, both generated.
+  """
+
+  use Spark.Dsl.Fragment, of: Ash.Resource, extensions: [AshAuthentication]
+
+  alias <%= @module %>.Accounts.Resources
+
+  authentication do
+    subject_name :user
+
+    tokens do
+      enabled? true
+      token_resource <%= @module %>.Accounts.Token
+      signing_secret <%= @module %>.Accounts.Secrets
+      store_all_tokens? true
+      require_token_presence_for_authentication? true
+    end
+
+    strategies do
+      magic_link do
+        identity_field Resources.email_field()
+        registration_enabled? false
+        require_interaction? true
+        sender <%= @module %>.Accounts.MagicLinkSender
+      end
+    end
+  end
+end

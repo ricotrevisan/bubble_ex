@@ -450,6 +450,34 @@ them, **not yet verified against Bubble**: do not ship those to an app's
 users. `BubbleEx.Target.Ash.versions/1` takes the same option (PicoSAT is
 pinned only for the policies).
 
+### Phoenix application
+
+`BubbleEx.Target.Phoenix` renders the same Project as the file map of a
+complete Phoenix 1.8 + Ash 3 application: pinned `mix.exs`, config with
+production secrets from the environment, the repo, domain and resources one
+module per file, Oban/AshOban, AshAuthentication with magic-link sign-in,
+a router with `/api/1.1/wf/:name`, Tailwind v4 layouts (no daisyUI) and a
+smoke test:
+
+```elixir
+{:ok, files} = BubbleEx.Target.Phoenix.render(project, name: "Acme Import")
+files["mix.exs"]
+
+# Later, in the owner's repo: were generated files edited by hand?
+{:ok, %{clean?: clean?, modified: modified}} =
+  BubbleEx.Target.Phoenix.check_manifest(files[".wtf/generated.json"], "path/to/project")
+```
+
+Generated files (the Ash layer, the workflow API entry point, the theme
+tokens, `.wtf/names.json`) are listed with their SHA-256 and the input
+hashes in `.wtf/generated.json` and are regenerated; everything else is
+owned: scaffolded once, never overwritten (the authentication settings are
+an owned `Spark.Dsl.Fragment` the generated User includes). Pass
+`previous:` (the older manifest) to `check_manifest/3` to also list stale
+generated files to remove. The resources have **no authorization**
+(`privacy: :omit`): add Ash policies before exposing them. `scripts/phoenix_compile_check.sh`
+builds, migrates and tests the rendered application of every fixture.
+
 ### DBML / database diagram (legacy options)
 
 The original DBML path is unchanged and still available via its own options:

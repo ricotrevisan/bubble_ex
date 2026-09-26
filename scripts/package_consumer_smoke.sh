@@ -33,6 +33,16 @@ end
 EOF
 
 cat >"$consumer_dir/package_smoke.exs" <<'EOF'
+# The Phoenix target's EEx templates ship in the package.
+{:ok, model} = BubbleEx.Model.build(%{"_id" => "consumer-smoke"})
+{:ok, project} = BubbleEx.Target.Ash.map(model)
+{:ok, files} = BubbleEx.Target.Phoenix.render(project)
+
+unless files["mix.exs"] =~ "defmodule ConsumerSmoke.MixProject" and
+         Jason.decode!(files[".wtf/generated.json"])["inputs"]["bubble_ex_version"] ==
+           to_string(Application.spec(:bubble_ex, :vsn)),
+       do: raise("unexpected Phoenix target output")
+
 case BubbleEx.Secrets.scan(%{"_id" => "consumer-smoke", "value" => "safe"},
        adapter: BubbleEx.Secrets.Native
      ) do

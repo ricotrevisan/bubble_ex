@@ -1,0 +1,6 @@
+defmodule <%= @web %>.PageHTML do
+  @moduledoc "Pages rendered by <%= @web %>.PageController."
+  use <%= @web %>, :html
+
+  embed_templates "page_html/*"
+end

@@ -1,0 +1,12 @@
+defmodule <%= @module %>.Accounts.Resources do
+  @moduledoc """
+  Stable names for owned code: the User resource and its email attribute,
+  whatever the name map calls them.
+  """
+
+  @doc "The User resource (Bubble's built-in user type)."
+  def user, do: <%= @module %>.<%= @user %>
+
+  @doc "The User's email attribute."
+  def email_field, do: :<%= @email %>
+end

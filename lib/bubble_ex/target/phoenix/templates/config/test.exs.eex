@@ -1,0 +1,33 @@
+import Config
+
+config :<%= @app %>, <%= @module %>.Repo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "<%= @app %>_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: System.schedulers_online() * 2
+
+config :<%= @app %>, <%= @web %>.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: 4002],
+  secret_key_base: "<%= @test_secrets.secret_key_base %>",
+  server: false
+
+config :<%= @app %>, <%= @module %>.Accounts.Secrets,
+  token_signing_secret: "<%= @test_secrets.token_signing_secret %>"
+
+config :<%= @app %>, Oban, testing: :manual
+
+config :<%= @app %>, <%= @module %>.Mailer, adapter: Swoosh.Adapters.Test
+
+config :swoosh, :api_client, false
+
+config :ash, disable_async?: true, missed_notifications: :ignore
+
+config :logger, level: :warning
+
+config :phoenix, :plug_init_mode, :runtime
+
+config :phoenix_live_view, enable_expensive_runtime_checks: true
+
+config :phoenix, sort_verified_routes_query_params: true

@@ -6,7 +6,13 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
 
   import ExUnit.CaptureIO
 
-  @renderers ["lib/bubble_ex/target/ash/source.ex"]
+  @renderers [
+    "lib/bubble_ex/target/ash/source.ex",
+    # The Phoenix target (WTF-369) prints a Project too.
+    "lib/bubble_ex/target/phoenix.ex",
+    "lib/bubble_ex/target/phoenix/manifest.ex",
+    "lib/bubble_ex/target/phoenix/templates.ex"
+  ]
 
   defp forbidden do
     [
@@ -33,7 +39,9 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     @file_path file
     test "#{file} depends on neither the Model nor the Reader" do
       deps = dependencies(@file_path)
-      assert "lib/bubble_ex/target/ash/project.ex" in deps, inspect(deps)
+
+      if @file_path != "lib/bubble_ex/target/phoenix/templates.ex",
+        do: assert("lib/bubble_ex/target/ash/project.ex" in deps, inspect(deps))
 
       for dep <- deps, pattern <- forbidden() do
         refute Regex.match?(pattern, dep), "#{@file_path} depends on #{dep}"

@@ -19,6 +19,15 @@ defmodule BubbleEx.Target.Ash.Source do
     * `:domain` - the `Ash.Domain` module, default the namespace
     * `:repo` - the AshPostgres repo module, default `"<namespace>.Repo"`.
       It is referenced, not generated.
+    * `:extend` - extra DSL for some resources, for a target that wraps
+      the Ash layer in a framework (e.g. `BubbleEx.Target.Phoenix` adds
+      its AshAuthentication fragment to the User): a map from a resource's
+      relative module to `%{extensions: [module], fragments: [module], dsl:
+      source}` (each key optional). The extensions and `Spark.Dsl.Fragment`s
+      are added to its `use Ash.Resource` and the DSL source is printed at
+      the end of the resource, verbatim. Default `%{}`
+    * `:extra_resources` - fully qualified modules of resources defined
+      elsewhere that the domain lists after the Project's, default `[]`
   """
 
   alias BubbleEx.Error
@@ -78,7 +87,18 @@ defmodule BubbleEx.Target.Ash.Source do
     read: 1,
     read: 2,
     update: 1,
-    update: 2
+    update: 2,
+    # AshAuthentication, for BubbleEx.Target.Phoenix's `:extend`
+    subject_name: 1,
+    enabled?: 1,
+    token_resource: 1,
+    signing_secret: 1,
+    store_all_tokens?: 1,
+    require_token_presence_for_authentication?: 1,
+    identity_field: 1,
+    registration_enabled?: 1,
+    require_interaction?: 1,
+    sender: 1
   ]
 
   @header """
@@ -91,7 +111,17 @@ defmodule BubbleEx.Target.Ash.Source do
   # then add these modules and run `mix ash.codegen --dev` while iterating.
   """
 
-  @type option :: {:namespace, String.t()} | {:domain, String.t()} | {:repo, String.t()}
+  @type extension :: %{
+          optional(:extensions) => [String.t()],
+          optional(:fragments) => [String.t()],
+          optional(:dsl) => String.t()
+        }
+  @type option ::
+          {:namespace, String.t()}
+          | {:domain, String.t()}
+          | {:repo, String.t()}
+          | {:extend, %{String.t() => extension()}}
+          | {:extra_resources, [String.t()]}
 
   @doc "Renders `project` as formatted Elixir source."
   @spec render(Project.t(), [option()]) :: {:ok, String.t()} | {:error, Error.t()}
@@ -101,11 +131,21 @@ defmodule BubbleEx.Target.Ash.Source do
     namespace = Keyword.get(opts, :namespace, "MyApp")
     domain = Keyword.get(opts, :domain, namespace)
     repo = Keyword.get(opts, :repo, namespace <> ".Repo")
+    extend = Keyword.get(opts, :extend, %{})
+    extra_resources = Keyword.get(opts, :extra_resources, [])
 
     with :ok <- check_alias(:namespace, namespace),
          :ok <- check_alias(:domain, domain),
-         :ok <- check_alias(:repo, repo) do
-      ctx = %{namespace: namespace, domain: domain, repo: repo}
+         :ok <- check_alias(:repo, repo),
+         :ok <- check_extend(extend, project),
+         :ok <- check_aliases(:extra_resources, extra_resources) do
+      ctx = %{
+        namespace: namespace,
+        domain: domain,
+        repo: repo,
+        extend: extend,
+        extra_resources: extra_resources
+      }
 
       modules =
         Enum.map(project.types, &custom_type(&1, ctx)) ++
@@ -128,6 +168,53 @@ defmodule BubbleEx.Target.Ash.Source do
 
   def render(_project, _opts),
     do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Target.Ash.Project")}
+
+  defp check_extend(extend, %Project{} = project) when is_map(extend) do
+    modules = MapSet.new(project.resources, & &1.module)
+
+    Enum.reduce_while(extend, :ok, fn entry, :ok ->
+      case check_extension(entry, modules) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp check_extend(extend, _project),
+    do: {:error, Error.new(:invalid_input, "extend must be a map, got #{inspect(extend)}")}
+
+  defp check_extension({module, %{} = entry}, modules) when is_binary(module) do
+    extensions = Map.get(entry, :extensions, [])
+    fragments = Map.get(entry, :fragments, [])
+
+    cond do
+      Map.keys(entry) -- [:extensions, :fragments, :dsl] != [] or
+          not is_binary(Map.get(entry, :dsl, "")) ->
+        {:error, Error.new(:invalid_input, "invalid extend entry #{inspect({module, entry})}")}
+
+      module not in modules ->
+        {:error, Error.new(:invalid_input, "extend: no resource #{inspect(module)}")}
+
+      true ->
+        with :ok <- check_aliases(:extend, extensions),
+             do: check_aliases(:extend, fragments)
+    end
+  end
+
+  defp check_extension(entry, _modules),
+    do: {:error, Error.new(:invalid_input, "invalid extend entry #{inspect(entry)}")}
+
+  defp check_aliases(option, values) when is_list(values) do
+    Enum.find_value(values, :ok, fn value ->
+      case check_alias(option, value) do
+        :ok -> nil
+        error -> error
+      end
+    end)
+  end
+
+  defp check_aliases(option, values),
+    do: {:error, Error.new(:invalid_input, "#{option} must be a list, got #{inspect(values)}")}
 
   defp check_alias(option, value) do
     if is_binary(value) and Regex.match?(@alias, value),
@@ -243,7 +330,7 @@ defmodule BubbleEx.Target.Ash.Source do
   defp resource(%Resource{} = resource, ctx) do
     """
     defmodule #{module(resource.module, ctx)} do
-      #{moduledoc(resource.description)}use Ash.Resource, domain: #{ctx.domain}, data_layer: AshPostgres.DataLayer#{authorizers(resource)}
+      #{moduledoc(resource.description)}use Ash.Resource, domain: #{ctx.domain}, data_layer: AshPostgres.DataLayer#{authorizers(resource)}#{extensions(resource, ctx)}
 
       postgres do
         table #{literal(resource.table)}
@@ -259,8 +346,25 @@ defmodule BubbleEx.Target.Ash.Source do
         defaults #{literal(resource.actions)}
     #{Enum.map_join(resource.extra_actions, "\n", &action(&1, ctx))}
       end
-    #{policies(resource, ctx)}#{field_policies(resource.field_policies, ctx)}end
+    #{policies(resource, ctx)}#{field_policies(resource.field_policies, ctx)}#{extra_dsl(resource, ctx)}end
     """
+  end
+
+  defp extensions(%Resource{module: module}, ctx) do
+    entry = Map.get(ctx.extend, module, %{})
+
+    for key <- [:extensions, :fragments],
+        modules = Map.get(entry, key, []),
+        modules != [],
+        into: "",
+        do: ", #{key}: [" <> Enum.join(modules, ", ") <> "]"
+  end
+
+  defp extra_dsl(%Resource{module: module}, ctx) do
+    case ctx.extend do
+      %{^module => %{dsl: dsl}} when dsl != "" -> "\n" <> dsl <> "\n"
+      _ -> ""
+    end
   end
 
   defp authorizers(%Resource{policies: []}), do: ""
@@ -454,7 +558,12 @@ defmodule BubbleEx.Target.Ash.Source do
   end
 
   defp domain_module(project, ctx) do
-    resources = Enum.map_join(project.resources, "\n", &"resource #{module(&1.module, ctx)}")
+    resources =
+      Enum.map_join(
+        Enum.map(project.resources, &module(&1.module, ctx)) ++ ctx.extra_resources,
+        "\n",
+        &"resource #{&1}"
+      )
 
     """
     defmodule #{ctx.domain} do
