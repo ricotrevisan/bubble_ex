@@ -6,6 +6,27 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Per-task semantic hashes and `needs_reverify`** (WTF-367, T2 of
+  WTF-359). `Plan.Content.digests(app, model, index)` digests what the
+  index does not record: the raw definition of every page, reusable,
+  element, workflow (with its step order) and action, both key forms alike,
+  without captions, editor state and canvas positions; privacy rule
+  conditions and permissions; API call response shapes (never parameter
+  values, paths or bodies). Passed to `Plan.build/5` as `content:`, it
+  closes the raw-text gap: editing a dynamic text or condition changes the
+  covering tasks. Each covered symbol's digest (own content plus its
+  references with their targets' content) is in the new top-level
+  `symbols` table (`%{parent, sha256}`); a task's `source_sha256` hashes
+  those digests, its residue and its new `decisions_sha256` (effective
+  decisions plus, with `resolved:`, every current decision record naming a
+  covered symbol and its state, parity exceptions included).
+  `Plan.diff(old, new)` (`Plan.Diff`, plans or decoded plan JSON)
+  classifies tasks as unchanged / changed / added / removed, with reasons
+  and a symbol-ID diff per changed task, and propagates `needs_reverify`
+  along every `depends_on` kind but `generate` (coordinate edges included)
+  and from subtasks to parents. Report only: owned code is never touched.
+  Plan `schema_version` is 2.
+
 - **`BubbleEx.Plan`: stack-neutral migration task graph** (WTF-366, T1 of
   WTF-359). `Plan.build(model, index, frontend, applied, opts)` derives
   generator nodes (`generate:*`, auto), one task per page or reusable

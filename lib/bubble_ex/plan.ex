@@ -87,25 +87,68 @@ defmodule BubbleEx.Plan do
   are ordered topologically, preferring the batch just started, then by
   kind, then by ID; subtasks follow their parent.
 
+  ## Semantic hashes
+
+  A task's `source_sha256` hashes its subgraph: every symbol it covers
+  (its subjects and their descendants), its residue, its
+  `decisions_sha256` and, for style tasks, the normalized named styles.
+  Each covered symbol contributes its digest, which is in `symbols` as
+  `%{parent, sha256}`:
+
+    * its own content: `BubbleEx.Index.subject_sha256/2` (kind, Bubble ID,
+      parent and attributes, without source path, display name or position
+      among its siblings) and its `BubbleEx.Plan.Content` digest, passed as
+      `content:` (the raw text of its expressions, conditions and settings,
+      without captions, editor state and canvas positions)
+    * every reference it makes (kind, target, attributes) with the own
+      content of the target, so a field whose type changes or a workflow
+      whose parameters change changes the tasks that use them
+
+  So renaming an element or moving it on the canvas changes nothing;
+  editing its dynamic text, a condition or an API call's response shape
+  changes every task covering it. Without `content:` only what the index
+  records is compared (raw expression text is not).
+
+  ## Re-verification
+
+  `diff/2` compares two plans of the same app (`BubbleEx.Plan.Diff`): each
+  task is `:unchanged`, `:changed` (its `source_sha256` differs), `:added`
+  or `:removed`. A changed task needs re-verifying, and so does, along
+  `depends_on` edges of every kind but `:generate` (including non-blocking
+  `:coordinate` ones, whose `rerun_after` names the callee), every task
+  depending on a changed, added or removed one, transitively, and the
+  parent of a subtask that needs it. It only reports: owned code is never
+  touched (WTF-359 Q1). Each changed task carries a stack-neutral diff of
+  its covered symbols (added, removed, changed, by symbol ID).
+
   ## JSON
 
-  `to_json/1` is canonical JSON (`schema_version` 1), the `.wtf/plan.json`
-  of the owner's project: the same inputs give the same bytes. Task IDs
-  and `source_sha256` depend only on Bubble IDs and content, not on JSON
-  order, source paths or display names. `coverage` holds aggregate counts
-  (generated vs residue per unit and task kind); it names nothing.
+  `to_json/1` is canonical JSON (`schema_version` 2), the
+  `.wtf/plan.json` of the owner's project: the same inputs give the same
+  bytes. Task IDs and `source_sha256` depend only on Bubble IDs and content,
+  not on JSON order, source paths or display names. `coverage` holds
+  aggregate counts (generated vs residue per unit and task kind); it names
+  nothing. `symbols` holds symbol IDs and hashes only.
   """
 
   alias BubbleEx.{CanonicalJson, Error, Index, Model}
-  alias BubbleEx.Decision.Applied
+  alias BubbleEx.Decision.{Applied, Resolved}
   alias BubbleEx.Frontend.Normalized
-  alias BubbleEx.Plan.{Builder, Residue, Task}
+  alias BubbleEx.Plan.{Builder, Diff, Residue, Task}
 
-  @schema_version 1
+  @schema_version 2
   @fragment_threshold 150
 
   @enforce_keys [:schema_version, :inputs, :tasks]
-  defstruct [:schema_version, :inputs, :plan_sha256, tasks: [], skipped: [], coverage: %{}]
+  defstruct [
+    :schema_version,
+    :inputs,
+    :plan_sha256,
+    tasks: [],
+    skipped: [],
+    coverage: %{},
+    symbols: %{}
+  ]
 
   @type t :: %__MODULE__{
           schema_version: pos_integer(),
@@ -113,7 +156,8 @@ defmodule BubbleEx.Plan do
           plan_sha256: String.t() | nil,
           tasks: [Task.t()],
           skipped: [map()],
-          coverage: map()
+          coverage: map(),
+          symbols: %{String.t() => %{parent: String.t() | nil, sha256: String.t()}}
         }
 
   @doc "The plan JSON format version."
@@ -137,6 +181,13 @@ defmodule BubbleEx.Plan do
       JSON) or from a target adapter
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records, recorded in `inputs`
+    * `:content` - `BubbleEx.Plan.Content.digests/3` of the same app: raw
+      expression text and settings the index does not record, part of each
+      symbol's digest
+    * `:resolved` - the `BubbleEx.Decision.Resolved` the `applied` entries
+      come from: every current record naming a covered symbol (parity
+      exceptions, rejections and acknowledgements included) and its state
+      are part of the task's `decisions_sha256`
     * `:fragment_threshold` - elements under a top-level container above
       which it becomes a fragment task (default #{@fragment_threshold})
   """
@@ -151,6 +202,8 @@ defmodule BubbleEx.Plan do
 
     with :ok <- check_applied(applied),
          {:ok, extra} <- check_residue(Keyword.get(opts, :residue, [])),
+         {:ok, content} <- check_content(Keyword.get(opts, :content, %{})),
+         {:ok, resolved} <- check_resolved(Keyword.get(opts, :resolved)),
          :ok <- check_threshold(threshold) do
       result =
         Builder.run(%{
@@ -159,15 +212,18 @@ defmodule BubbleEx.Plan do
           frontend: frontend,
           applied: Enum.sort_by(applied, & &1.key),
           extra: extra,
-          threshold: threshold
+          threshold: threshold,
+          content: content,
+          resolved: resolved
         })
 
       plan = %__MODULE__{
         schema_version: @schema_version,
-        inputs: inputs(index, frontend, applied, extra, opts, threshold),
+        inputs: inputs(index, frontend, applied, extra, content, opts, threshold),
         tasks: result.tasks,
         skipped: result.skipped,
-        coverage: result.coverage
+        coverage: result.coverage,
+        symbols: result.symbols
       }
 
       {:ok,
@@ -233,10 +289,22 @@ defmodule BubbleEx.Plan do
 
   defp residue_entry?(_), do: false
 
+  defp check_content(content) when is_map(content) and not is_struct(content) do
+    if Enum.all?(content, fn {k, v} -> is_binary(k) and hash?(v) end),
+      do: {:ok, content},
+      else: error("content must map symbol IDs to SHA-256 digests (Plan.Content.digests/3)")
+  end
+
+  defp check_content(_), do: error("content must be a map (Plan.Content.digests/3)")
+
+  defp check_resolved(nil), do: {:ok, []}
+  defp check_resolved(%Resolved{entries: entries}), do: {:ok, entries}
+  defp check_resolved(_), do: error("resolved must be a BubbleEx.Decision.Resolved")
+
   defp check_threshold(n) when is_integer(n) and n > 0, do: :ok
   defp check_threshold(_), do: error("fragment_threshold must be a positive integer")
 
-  defp inputs(index, frontend, applied, extra, opts, threshold) do
+  defp inputs(index, frontend, applied, extra, content, opts, threshold) do
     %{
       index_schema_version: index.schema_version,
       index_semantic_sha256: index.semantic_sha256,
@@ -250,6 +318,7 @@ defmodule BubbleEx.Plan do
         |> json()
         |> CanonicalJson.sha256(),
       residue_sha256: extra |> Residue.sort() |> json() |> CanonicalJson.sha256(),
+      content_sha256: if(content != %{}, do: CanonicalJson.sha256(content)),
       fragment_threshold: threshold
     }
   end
@@ -268,6 +337,16 @@ defmodule BubbleEx.Plan do
   @spec top_level(t()) :: [Task.t()]
   def top_level(%__MODULE__{tasks: tasks}), do: Enum.filter(tasks, &is_nil(&1.parent))
 
+  # --- re-verification --------------------------------------------------------
+
+  @doc """
+  What changed between two plans of the same app, and which tasks need
+  re-verifying: see `BubbleEx.Plan.Diff`. Each plan is a `t()` or its
+  decoded JSON (`to_map/1`, or `.wtf/plan.json` decoded).
+  """
+  @spec diff(t() | map(), t() | map()) :: {:ok, Diff.t()} | {:error, Error.t()}
+  defdelegate diff(old, new), to: Diff
+
   # --- serialization ----------------------------------------------------------
 
   @doc "JSON form: string keys and JSON primitives."
@@ -279,7 +358,8 @@ defmodule BubbleEx.Plan do
       "inputs" => json(plan.inputs),
       "tasks" => Enum.map(plan.tasks, &task_map/1),
       "skipped" => json(plan.skipped),
-      "coverage" => json(plan.coverage)
+      "coverage" => json(plan.coverage),
+      "symbols" => json(plan.symbols)
     }
   end
 

@@ -4,7 +4,7 @@ defmodule BubbleEx.Plan.Builder do
   # Derives the task graph of BubbleEx.Plan. See that module for the task
   # kinds and dependency rules; this one only computes them.
 
-  alias BubbleEx.{CanonicalJson, Index}
+  alias BubbleEx.{CanonicalJson, Decision, Index}
   alias BubbleEx.Decision.Applied
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Index.{Graph, Subject, Symbol}
@@ -59,9 +59,15 @@ defmodule BubbleEx.Plan.Builder do
     {tasks, skipped} = Order.wire(tasks, edges(ctx, tasks))
 
     children = children(tasks)
+    ctx = Map.put(ctx, :digests, symbol_digests(ctx))
     ordered = tasks |> Order.sort() |> Enum.map(&finish(&1, ctx, children))
 
-    %{tasks: ordered, skipped: skipped, coverage: coverage(ctx, ordered)}
+    %{
+      tasks: ordered,
+      skipped: skipped,
+      coverage: coverage(ctx, ordered),
+      symbols: symbol_table(ctx, ordered)
+    }
   end
 
   # --- scope ------------------------------------------------------------------
@@ -882,14 +888,16 @@ defmodule BubbleEx.Plan.Builder do
   defp finish(%Task{} = t, ctx, children) do
     covered = covered(ctx, t)
     decisions = effective(ctx, covered)
+    decisions_sha256 = decisions_sha256(ctx, covered, decisions)
     coordinate = for %{kind: :coordinate, task: task} <- t.depends_on, do: task
     facts = ctx |> facts(t, children) |> Map.put(:coordinate, coordinate)
 
     %{
       t
       | decisions: Enum.map(decisions, & &1.key),
+        decisions_sha256: decisions_sha256,
         criteria: Criteria.for_task(t, facts),
-        source_sha256: source_sha256(ctx, t, covered, decisions)
+        source_sha256: source_sha256(ctx, t, covered, decisions_sha256)
     }
   end
 
@@ -910,23 +918,78 @@ defmodule BubbleEx.Plan.Builder do
         do: a
   end
 
-  defp source_sha256(ctx, t, covered, decisions) do
-    refs =
-      covered
-      |> Enum.flat_map(&Index.references_from(ctx.index, &1))
-      |> Enum.map(&{&1.from, &1.kind, &1.to, &1.attrs})
-      |> Enum.sort()
-      |> Enum.map(fn {from, kind, to, attrs} ->
-        %{from: from, kind: kind, to: to, attrs: attrs}
+  # Semantic digest of every index symbol: its own content (index attrs
+  # without positions, plus the `BubbleEx.Plan.Content` digest of what the
+  # index does not record) and the references it makes, each with the own
+  # content of its target. A task's covered symbols are its subgraph; the
+  # targets make a field's changed type or a callee's changed parameters
+  # change the tasks that use them.
+  defp symbol_digests(%{index: index, content: content}) do
+    own =
+      Map.new(index.symbols, fn s ->
+        {s.id,
+         CanonicalJson.sha256(%{
+           content: Index.subject_sha256(index, [s.id]),
+           raw: Map.get(content, s.id)
+         })}
       end)
 
+    Map.new(index.symbols, fn s ->
+      refs =
+        index
+        |> Index.references_from(s.id)
+        |> Enum.map(&%{kind: &1.kind, to: &1.to, attrs: &1.attrs, target: Map.get(own, &1.to)})
+        |> Enum.uniq()
+        |> Enum.sort_by(&CanonicalJson.encode/1)
+
+      {s.id, CanonicalJson.sha256(%{own: own[s.id], references: refs})}
+    end)
+  end
+
+  # `%{symbol ID => %{parent, sha256}}` of every symbol some task covers:
+  # what `BubbleEx.Plan.diff/2` compares.
+  defp symbol_table(ctx, tasks) do
+    for t <- tasks,
+        id <- covered(ctx, t),
+        into: %{},
+        do: {id, %{parent: Index.symbol(ctx.index, id).parent, sha256: ctx.digests[id]}}
+  end
+
+  # Effective decisions (generation inputs) and every current decision
+  # record whose subject or parameters name a covered symbol, with its
+  # resolved state: a decision that changes, expires, goes stale or is
+  # withdrawn changes it. nil when there are none.
+  defp decisions_sha256(ctx, covered, decisions) do
+    set = MapSet.new(covered)
+
+    records =
+      for %{decision: d, state: state} <- ctx.resolved,
+          state != :superseded,
+          not MapSet.disjoint?(
+            MapSet.new(Subject.symbol_ids(d.subject) ++ symbol_ids(d.params)),
+            set
+          ),
+          do: %{key: d.key, state: state, inputs_sha256: Decision.decisions_sha256([d])}
+
+    case {decisions, records} do
+      {[], []} ->
+        nil
+
+      _ ->
+        CanonicalJson.sha256(%{
+          applied: Enum.map(decisions, &generation_inputs/1),
+          records: Enum.sort_by(records, & &1.key)
+        })
+    end
+  end
+
+  defp source_sha256(ctx, t, covered, decisions_sha256) do
     %{
       kind: t.kind,
       subjects: t.subjects,
-      content_sha256: Index.subject_sha256(ctx.index, covered),
-      references: refs,
+      symbols: Map.new(covered, &{&1, ctx.digests[&1]}),
       residue: t.residue,
-      decisions: Enum.map(decisions, &generation_inputs/1),
+      decisions_sha256: decisions_sha256,
       styles: styles_input(ctx, t)
     }
     |> CanonicalJson.sha256()

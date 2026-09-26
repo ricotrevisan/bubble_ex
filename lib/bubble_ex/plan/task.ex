@@ -29,10 +29,15 @@ defmodule BubbleEx.Plan.Task do
     * `residue` - what the generator cannot lower (`BubbleEx.Plan.Residue`)
     * `criteria` - abstract checks, `%{id, check, args, waiver}`; a target
       adapter binds each `check` to a command (`BubbleEx.Plan.Criteria`)
-    * `source_sha256` - hash of what the task covers: the content of its
-      subjects and everything they contain (`BubbleEx.Index.subject_sha256/2`),
-      the references they make, its residue and the effective decisions on
-      them. A change means the task needs re-verifying
+    * `decisions_sha256` - hash of the effective decisions on its covered
+      symbols (their generation inputs) and of every current decision record
+      naming one, with its resolved state (`BubbleEx.Plan.build/5`
+      `resolved:`); nil when there are none
+    * `source_sha256` - hash of what the task covers (its subgraph): the
+      semantic digest of each covered symbol (its subjects and everything
+      they contain; see `BubbleEx.Plan` "Semantic hashes"), its residue,
+      `decisions_sha256` and, for style tasks, the normalized named styles.
+      A change means the task needs re-verifying (`BubbleEx.Plan.diff/2`)
   """
 
   @type actor :: :generator | :agent | :reviewer | :owner | :loader | :harness
@@ -60,6 +65,7 @@ defmodule BubbleEx.Plan.Task do
           closed_by: String.t() | nil,
           residue: [BubbleEx.Plan.Residue.t()],
           criteria: [criterion()],
+          decisions_sha256: String.t() | nil,
           source_sha256: String.t() | nil
         }
 
@@ -73,6 +79,7 @@ defmodule BubbleEx.Plan.Task do
     :batch,
     :order,
     :closed_by,
+    :decisions_sha256,
     :source_sha256,
     status: :open,
     subjects: [],
