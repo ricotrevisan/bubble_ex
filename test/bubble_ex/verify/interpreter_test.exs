@@ -133,9 +133,66 @@ defmodule BubbleEx.Verify.InterpreterTest do
     end
   end
 
+  describe "field defaults (defaults_applied_at_creation)" do
+    setup do
+      {:ok, model} =
+        "test/support/target/ash/policy_defaults.json"
+        |> File.read!()
+        |> Jason.decode!()
+        |> Model.build()
+
+      {:ok, ds} =
+        Dataset.new([
+          {"u", "user", %{}},
+          {"omitted", "memo", %{}},
+          {"cleared", "memo", %{"open_boolean" => nil}},
+          {"closed", "memo", %{"open_boolean" => {:boolean, false}}},
+          {"n_omitted", "note", %{}},
+          {"n_set", "note", %{"weird_text" => {:text, "x"}}}
+        ])
+
+      %{dmodel: model, dds: ds}
+    end
+
+    test "the Model's defaults, as canonical values; others unmodeled", %{dmodel: model} do
+      assert interpreter(model).defaults == %{
+               "memo" => %{"open_boolean" => {:ok, {:boolean, true}}},
+               "note" => %{"weird_text" => :unmodeled},
+               "user" => %{"active_boolean" => {:ok, {:boolean, true}}}
+             }
+    end
+
+    test "an omitted field reads as its default, an explicitly empty one as empty",
+         %{dmodel: model, dds: ds} do
+      assert {true, _} = holds(model, ds, nil, "memo", "open_", "omitted")
+      assert {false, _} = holds(model, ds, nil, "memo", "open_", "cleared")
+      assert {false, _} = holds(model, ds, nil, "memo", "open_", "closed")
+      # the persona's omitted yes/no field too
+      assert {true, _} = holds(model, ds, "u", "memo", "active_", "cleared")
+
+      flipped = [defaults_applied_at_creation: false]
+      assert {false, _} = holds(model, ds, nil, "memo", "open_", "omitted", flipped)
+      assert {false, _} = holds(model, ds, "u", "memo", "active_", "cleared", flipped)
+    end
+
+    test "verdicts resting on a default list the flag; an unmodeled default is unknown",
+         %{dmodel: model, dds: ds} do
+      {:ok, a} = Interpreter.access(interpreter(model), ds, nil, "omitted")
+      assert a.visible == true and :defaults_applied_at_creation in a.assumptions
+
+      {:ok, c} = Interpreter.access(interpreter(model), ds, nil, "closed")
+      refute :defaults_applied_at_creation in c.assumptions
+
+      assert {:unknown, "the default of note.weird_text"} =
+               holds(model, ds, nil, "note", "weird_", "n_omitted")
+
+      assert {true, _} = holds(model, ds, nil, "note", "weird_", "n_set")
+    end
+  end
+
   describe "assumption flags (defaults: the compiler's fail-safe reading)" do
     test "the registry" do
-      assert length(Assumptions.names()) == 15
+      assert length(Assumptions.names()) == 16
 
       assert Assumptions.wtf_384() == [
                :empty_equals_empty,

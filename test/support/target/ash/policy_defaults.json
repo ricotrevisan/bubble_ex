@@ -1,0 +1,72 @@
+{
+  "_id": "synthetic-policy-defaults",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "active_boolean": {"default_val": true, "display": "Active", "value": "boolean"},
+        "name_text": {"display": "Name", "value": "text"}
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {"auto_binding": false, "search_for": true, "view_all": true, "view_attachments": false}
+        }
+      }
+    },
+    "memo": {
+      "display": "Memo",
+      "fields": {
+        "open_boolean": {"default_val": true, "display": "Open", "value": "boolean"},
+        "title_text": {"display": "Title", "value": "text"},
+        "body_text": {"display": "Body", "value": "text"}
+      },
+      "privacy_role": {
+        "open_": {
+          "condition": {
+            "next": {"name": "open_boolean", "next": {"name": "is_true", "type": "Message"}, "type": "Message"},
+            "type": "InjectedValue"
+          },
+          "display": "Open",
+          "permissions": {"auto_binding": false, "search_for": true, "view_all": true, "view_attachments": false}
+        },
+        "active_": {
+          "condition": {"next": {"name": "active_boolean", "type": "Message"}, "type": "CurrentUser"},
+          "display": "Active users",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {"0": "title_text"}
+          }
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {"auto_binding": false, "search_for": false, "view_all": false, "view_attachments": false}
+        }
+      }
+    },
+    "note": {
+      "display": "Note",
+      "fields": {
+        "weird_text": {"default_val": 42, "display": "Weird", "value": "text"},
+        "text_text": {"display": "Text", "value": "text"}
+      },
+      "privacy_role": {
+        "weird_": {
+          "condition": {
+            "next": {"name": "weird_text", "next": {"name": "is_not_empty", "type": "Message"}, "type": "Message"},
+            "type": "InjectedValue"
+          },
+          "display": "Weird set",
+          "permissions": {"auto_binding": false, "search_for": true, "view_all": true, "view_attachments": false}
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {"auto_binding": false, "search_for": false, "view_all": false, "view_attachments": false}
+        }
+      }
+    }
+  }
+}

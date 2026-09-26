@@ -68,7 +68,7 @@ defmodule BubbleEx.Verify.Interpreter do
   alias BubbleEx.Expression.{Compiler, Env, IR, Schema}
   alias BubbleEx.Model.DataType
   alias BubbleEx.Privacy.Rule
-  alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset, Eval}
+  alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset, Defaults, Eval}
 
   defmodule Access do
     @moduledoc """
@@ -108,7 +108,7 @@ defmodule BubbleEx.Verify.Interpreter do
   end
 
   @enforce_keys [:model, :assumptions]
-  defstruct [:model, :assumptions, types: %{}]
+  defstruct [:model, :assumptions, types: %{}, defaults: %{}]
 
   @type rule_info :: %{
           rule: Rule.t(),
@@ -127,7 +127,8 @@ defmodule BubbleEx.Verify.Interpreter do
   @type t :: %__MODULE__{
           model: Model.t(),
           assumptions: Assumptions.t(),
-          types: %{String.t() => type_info()}
+          types: %{String.t() => type_info()},
+          defaults: Defaults.t()
         }
 
   @doc """
@@ -144,7 +145,14 @@ defmodule BubbleEx.Verify.Interpreter do
   def new(%Model{} = model, opts) do
     with {:ok, assumptions} <- Assumptions.new(Keyword.get(opts, :assumptions, [])) do
       types = Map.new(model.data_types, &{&1.id, type_info(&1, model)})
-      {:ok, %__MODULE__{model: model, assumptions: assumptions, types: types}}
+
+      {:ok,
+       %__MODULE__{
+         model: model,
+         assumptions: assumptions,
+         types: types,
+         defaults: Defaults.build(model)
+       }}
     end
   end
 
@@ -268,7 +276,14 @@ defmodule BubbleEx.Verify.Interpreter do
   end
 
   # The flags consulted whose flip changes the verdict.
+  # A record may omit a field with a default anywhere a condition reads:
+  # `defaults_applied_at_creation` is consulted whenever the app has one.
   defp depends_on(interpreter, ds, user, key, access, consulted) do
+    consulted =
+      if interpreter.defaults == %{},
+        do: consulted,
+        else: [:defaults_applied_at_creation | consulted]
+
     for flag <- Assumptions.names(),
         flag in consulted,
         flipped = Assumptions.flip(interpreter.assumptions, flag),
@@ -294,7 +309,8 @@ defmodule BubbleEx.Verify.Interpreter do
       logged_in: not is_nil(user),
       this: this,
       flags: flags,
-      model: interpreter.model
+      model: interpreter.model,
+      defaults: interpreter.defaults
     }
   end
 

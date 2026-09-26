@@ -28,6 +28,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   """
 
   alias BubbleEx.Expression.IR
+  alias BubbleEx.Model.Type
   alias BubbleEx.Verify.Interpreter
   alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset, Eval}
   alias BubbleEx.Verify.Matrix.Solver
@@ -188,7 +189,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
         not Map.has_key?(@unexercisable, flag),
         flipped = %{interpreter | assumptions: Assumptions.flip(interpreter.assumptions, flag)},
         {type_id, %{status: :rules} = info} <- Enum.sort(interpreter.types),
-        relevant?(flag, info),
+        relevant?(flag, info, interpreter),
         reduce: ds do
       ds ->
         cond do
@@ -257,10 +258,13 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   }
 
   # Whether a type's supported rules read the shape `flag` governs.
-  defp relevant?(flag, info) do
+  defp relevant?(flag, info, interpreter) do
     irs = for %{status: :ok, ir: ir} <- info.rules, do: ir
 
     case flag do
+      :defaults_applied_at_creation ->
+        Enum.any?(irs, &any_node?(&1, fn node -> defaulted_field?(node, interpreter) end))
+
       :empty_yes_no_is_no ->
         Enum.any?(irs, &yes_no_comparison?/1)
 
@@ -278,6 +282,15 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
         irs != [] or info.default != nil
     end
   end
+
+  # A field (of any record) that has a default.
+  defp defaulted_field?(%IR{op: :field, args: [_, type, field]}, interpreter)
+       when is_binary(type) and is_binary(field) do
+    item = Type.list_item(type) || type
+    Map.has_key?(Map.get(interpreter.defaults, Dataset.type_id(item), %{}), field)
+  end
+
+  defp defaulted_field?(_node, _interpreter), do: false
 
   # `x is y` / `is not` between two values read from records (not the
   # user, not a literal): where empty-is-empty decides.
@@ -363,7 +376,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
             {:not_exercised, reason}
 
           not Enum.any?(interpreter.types, fn {_, i} ->
-            i.status == :rules and relevant?(flag, i)
+            i.status == :rules and relevant?(flag, i, interpreter)
           end) ->
             {:not_exercised, "no supported rule reads what it governs"}
 

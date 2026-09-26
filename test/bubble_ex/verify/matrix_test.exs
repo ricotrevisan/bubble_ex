@@ -206,6 +206,46 @@ defmodule BubbleEx.Verify.MatrixTest do
     refute counts |> Jason.encode!() |> String.contains?("raw_")
   end
 
+  test "seeds are as Bubble stores records after creation: defaults written, explicit empties null" do
+    {:ok, model} =
+      "test/support/target/ash/policy_defaults.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> Model.build()
+
+    {:ok, matrix} = Matrix.synthesize(model, app: "fixture-app")
+    {:ok, interpreter} = Interpreter.new(model)
+    {:ok, ds} = Dataset.from_seed(matrix.seed)
+
+    # every modeled default is written out wherever a record omitted it
+    for r <- matrix.seed.records,
+        {field, {:ok, _}} <- Map.get(interpreter.defaults, Dataset.type_id(r.type), %{}),
+        do: assert(Map.has_key?(r.fields, field), "#{r.key}.#{field}")
+
+    assert Seed.record(matrix.seed, "e.memo").fields["open_boolean"] == {:boolean, true}
+    # an unmodeled default is never guessed
+    refute Map.has_key?(Seed.record(matrix.seed, "e.note").fields, "weird_text")
+
+    # an explicitly empty defaulted field stays null, and is reported
+    assert %{fields: 3, unmodeled: 1, explicit_empties: n} = matrix.report.defaults
+    assert n > 0 and length(matrix.report.explicit_empties) == n
+
+    for %{record: key, field: f} <- matrix.report.explicit_empties,
+        do: assert(Seed.record(matrix.seed, key).fields[f] == nil)
+
+    refute Map.has_key?(Matrix.counts(matrix.report), "explicit_empties")
+    assert matrix.flags[:defaults_applied_at_creation] == :exercised
+
+    # the recordings are what the interpreter reads from the seed file
+    for rec <- matrix.recordings,
+        %{kind: :visible, record: key, value: v} <- rec.observations do
+      persona = Enum.find(matrix.scenarios, &(&1.id == rec.scenario.id)).persona
+      user = matrix.seed.personas[persona].user
+      {:ok, access} = Interpreter.access(interpreter, ds, user, key)
+      assert access.visible == v
+    end
+  end
+
   test "result/4: a subject matching the model recording passes, never Bubble-verified",
        %{policies: matrix} do
     scenario = Enum.find(matrix.scenarios, &(&1.id == "privacy_read.custom.note.w1_member"))
@@ -295,7 +335,7 @@ defmodule BubbleEx.Verify.MatrixTest do
     end
 
     test "every flag reports whether a check depends on it", %{policies: matrix} do
-      assert map_size(matrix.flags) == 15
+      assert map_size(matrix.flags) == 16
       assert matrix.flags[:everyone_guards_record_values] == :exercised
       assert {:not_exercised, "seeds cannot hold" <> _} = matrix.flags[:dangling_ref_is_empty]
 

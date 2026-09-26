@@ -25,6 +25,19 @@ All notable changes to this project are documented here.
   oracle. `scripts/ash_compile_check.sh` runs them for every fixture with
   privacy rules (and a private export) against PostgreSQL and reports the
   counts.
+- **Field defaults in the privacy interpreter and matrix seeds** (WTF-383).
+  A field a record omits now reads as its Model default (WTF-338), behind
+  the new assumption `defaults_applied_at_creation` (default true; 16
+  flags), and verdicts resting on a default list it. Defaults the
+  interpreter cannot express (lists, references, mismatched values,
+  unknown option keys) make such reads unknown. `Interpreter.Dataset` keeps
+  `nil` as an explicitly empty field. Matrix seeds describe records as
+  Bubble stores them after creation: omitted defaulted fields are written
+  out, and a defaulted field a branch needs empty is `null` (listed in
+  `report.explicit_empties`: a loader must clear it after creation);
+  `report.defaults` counts them. On mm-137: 187 defaulted fields,
+  166 records, 1,554 checks; rules solved and observable unchanged
+  (120 / 77).
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
   verification proposal). `BubbleEx.Verify.Interpreter` evaluates
   `BubbleEx.Privacy` rules (compiled to the expression IR) over seed data

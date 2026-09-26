@@ -84,6 +84,25 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
              )
   end
 
+  test "defaults are seeded as the seed writes them; an explicit empty as nil" do
+    {:ok, model} =
+      "test/support/target/ash/policy_defaults.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> Model.build()
+
+    {:ok, matrix} = Matrix.synthesize(model, app: "fixture-app")
+    {:ok, project} = Ash.map(model, [], privacy: :unverified)
+    {:ok, out} = MatrixTests.render(project, matrix, namespace: "X")
+    [_, rows] = String.split(out.source, "defp seed_rows")
+
+    [%{record: key, field: "open_boolean"} | _] =
+      Enum.filter(matrix.report.explicit_empties, &(&1.field == "open_boolean"))
+
+    assert rows =~ ~r/id: "#{out.ids[key]}", open: nil/
+    assert rows =~ ~r/id: "#{out.ids["e.memo"]}", open: true/
+  end
+
   test "needs policies: privacy: :omit is refused", %{model: model, matrix: matrix} do
     {:ok, omitted} = Ash.map(model, [], privacy: :omit)
     assert {:error, %{kind: :invalid_input}} = MatrixTests.render(omitted, matrix, @opts)
