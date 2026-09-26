@@ -1,0 +1,154 @@
+# schema module
+defmodule MyApp.OrderSListX do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "order_s_list_x" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    belongs_to :customer_drop_table_x_next_ls_ps_nel_vt_ff_q, MyApp.User, foreign_key: :customer_drop_table_x_next_ls_ps_nel_vt_ff_q_id, references: :_id, type: :string
+    belongs_to :status_x, MyApp.StatusQuoted, foreign_key: :status_x_id, references: :db_value, type: :string
+    field :note, :string
+    belongs_to :target, MyApp.TargetLineQEnd, foreign_key: :target_id, references: :_id, type: :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :customer_drop_table_x_next_ls_ps_nel_vt_ff_q_id, :status_x_id, :note, :target_id]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateOrderSListX do
+  use Ecto.Migration
+
+  def change do
+    create table("order_s_list_x", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :customer_drop_table_x_next_ls_ps_nel_vt_ff_q_id, :string
+      add :status_x_id, :string
+      add :note, :string
+      add :target_id, :string
+    end
+    create index("order_s_list_x", [:created_by_id], name: "order_s_list_x_created_by_id_index")
+    create index("order_s_list_x", [:customer_drop_table_x_next_ls_ps_nel_vt_ff_q_id], name: "order_s_list_x_customer_drop_table_x_next_ls_ps_nel_vt_ff_q_id")
+    create index("order_s_list_x", [:status_x_id], name: "order_s_list_x_status_x_id_index")
+    create index("order_s_list_x", [:target_id], name: "order_s_list_x_target_id_index")
+  end
+end
+
+# schema module
+defmodule MyApp.TargetLineQEnd do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "target_line_q_end" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateTargetLineQEnd do
+  use Ecto.Migration
+
+  def change do
+    create table("target_line_q_end", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+    end
+    create index("target_line_q_end", [:created_by_id], name: "target_line_q_end_created_by_id_index")
+  end
+end
+
+# schema module
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:_id, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "user" do
+    field :created_date, :utc_datetime_usec
+    field :modified_date, :utc_datetime_usec
+    belongs_to :created_by, MyApp.User, foreign_key: :created_by_id, references: :_id, type: :string
+    field :slug, :string
+    field :email, :string
+    field :email_2, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:created_date, :modified_date, :created_by_id, :slug, :email, :email_2]) |> validate_required([:_id])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateUser do
+  use Ecto.Migration
+
+  def change do
+    create table("user", primary_key: false) do
+      add :_id, :string, primary_key: true
+      add :created_date, :utc_datetime_usec
+      add :modified_date, :utc_datetime_usec
+      add :created_by_id, :string
+      add :slug, :string
+      add :email, :string
+      add :email_2, :string
+    end
+    create index("user", [:created_by_id], name: "user_created_by_id_index")
+  end
+end
+
+# schema module
+defmodule MyApp.StatusQuoted do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:db_value, :string, autogenerate: false}
+  @foreign_key_type :string
+
+  schema "status_quoted" do
+    field :display, :string
+  end
+
+  def changeset(rec, attrs) do
+    rec |> cast(attrs, [:display]) |> validate_required([:db_value])
+  end
+end
+
+# migration
+defmodule MyApp.Repo.Migrations.CreateStatusQuoted do
+  use Ecto.Migration
+
+  def change do
+    create table("status_quoted", primary_key: false) do
+      add :db_value, :string, primary_key: true
+      add :display, :string
+    end
+  end
+end
+--- diagnostics ---
+model_option_key_missing /option_sets/status/values/open
+db_name_suffixed /user_types/user/fields/email_text

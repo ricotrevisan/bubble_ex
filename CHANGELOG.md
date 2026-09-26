@@ -6,6 +6,19 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
+  the trailing `--` comment block, `Db.Sql.Postgres` now emits
+  `COMMENT ON COLUMN "schema"."table"."column" IS E'References ... (no
+  foreign key: ...)';` for every scalar reference kept without a foreign
+  key, so database tools show it. The text is an escape string literal
+  (`Db.Sql.Postgres.string_literal/1`: quotes and backslashes doubled, line
+  breaks as backslash escapes), which reads the same whether
+  `standard_conforming_strings` is on or off. SQLite and T-SQL keep only the
+  `--` comments. Every PostgreSQL golden gains these statements; a new
+  `hostile_names` fixture (quotes, `--`, `*/`, line breaks, LS/PS in names)
+  has goldens for every format, and the PostgreSQL DDL job checks that its
+  comments reach `pg_description` byte for byte in both
+  `standard_conforming_strings` modes.
 - **Plugin inventory and replacement findings** (WTF-376, T10 of WTF-359).
   The index has a `:plugin` symbol (`plugin:<marketplace id>`, `installed`,
   `version`; `_current` / `_test` keys are the same plugin) for every

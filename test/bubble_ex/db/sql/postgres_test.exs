@@ -80,7 +80,8 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     assert sql =~
              ~S[-- "custom"."Thing"."own\nA\rB\vC\fD\u0085E\u2028F\u2029G\\H" -> "custom"."User"."_id"]
 
-    [_tables, comments] = String.split(sql, "-- References")
+    [_tables, rest] = String.split(sql, "-- References")
+    [comments, _column_comments] = String.split(rest, "\n\nCOMMENT ON COLUMN ")
     refute comments =~ ~r/[\x{0D}\x{0B}\x{0C}\x{0085}\x{2028}\x{2029}]/u
     assert comments |> String.split("\n", trim: true) |> length() == 2
   end
@@ -93,9 +94,41 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
              ~s[ALTER TABLE "custom"."Thing" ADD FOREIGN KEY ("owner") REFERENCES "custom"."User" ("_id");]
 
     refute sql =~ "-- References"
+    refute sql =~ "COMMENT ON"
   end
 
-  defp owner_db(name \\ "owner") do
+  test "stores a documented reference as a column comment in the catalog" do
+    {db, _from} = owner_db()
+    assert {:ok, sql} = Postgres.encode(db)
+
+    assert sql =~
+             ~s[COMMENT ON COLUMN "custom"."Thing"."owner" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';]
+  end
+
+  test "quotes hostile names in the column comment as one escape string literal" do
+    name = "o'wn\nA\rB\vC\fD\u0085E\u2028F\u2029G\\H'); DROP TABLE x; -- */"
+    {db, _from} = owner_db(name, "Us'er\\")
+    assert {:ok, sql} = Postgres.encode(db)
+
+    [_before, statement] = String.split(sql, "COMMENT ON COLUMN ")
+
+    assert statement ==
+             ~s["custom"."Thing"."#{name}" IS ] <>
+               ~S[E'References "custom"."Us''er\\"."_id" (no foreign key: Bubble does not enforce referential integrity)';] <>
+               "\n"
+  end
+
+  test "string_literal/1 doubles quotes and backslashes and escapes line breaks" do
+    assert Postgres.string_literal("plain") == "E'plain'"
+    assert Postgres.string_literal("it's") == "E'it''s'"
+    assert Postgres.string_literal(~S[a\'b]) == ~S[E'a\\''b']
+    assert Postgres.string_literal("');--*/") == "E''');--*/'"
+
+    assert Postgres.string_literal("a\nb\rc\vd\fe\u0085f\u2028g\u2029h") ==
+             ~S[E'a\nb\rc\u000Bd\fe\u0085f\u2028g\u2029h']
+  end
+
+  defp owner_db(name \\ "owner", target_table \\ "User") do
     from =
       col("ref", name, %{type: :reference, custom_type: "user"},
         table_id: "t1",
@@ -105,7 +138,7 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     to =
       col("_id", "_id", %{type: :string},
         table_id: "user",
-        table_name: "User",
+        table_name: target_table,
         primary_key: true
       )
 
@@ -126,6 +159,7 @@ defmodule BubbleEx.Db.Sql.PostgresTest do
     assert {:ok, sql} = Postgres.encode(db, foreign_keys: :enforced)
     refute sql =~ "ADD FOREIGN KEY"
     refute sql =~ "-- References"
+    refute sql =~ "COMMENT ON"
     assert sql =~ ~s("owners" text[])
   end
 

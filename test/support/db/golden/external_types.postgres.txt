@@ -50,6 +50,9 @@ CREATE TABLE "custom"."User" (
 -- References without a foreign key (Bubble does not enforce referential integrity):
 -- "custom"."Shipment"."Created By" -> "custom"."User"."_id"
 -- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."Shipment"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
 --- diagnostics ---
 field_type_unsupported /settings/client_safe/apiconnector2/graph/pong/types
 external_type_unresolved_root /user_types/shipment/fields/blank_api/value

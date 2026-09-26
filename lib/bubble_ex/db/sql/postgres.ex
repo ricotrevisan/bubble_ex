@@ -5,6 +5,13 @@ defmodule BubbleEx.Db.Sql.Postgres do
   per table, and a trailing `--` comment listing each scalar reference
   (`"custom"."Order"."customer" -> "custom"."User"."_id"`).
 
+  Each of those references is also stored in the database catalog with
+  `COMMENT ON COLUMN "custom"."Order"."customer" IS E'References ...';`, so
+  database tools show it (`\\d+`, `col_description/2`). The comment is an
+  escape string literal (`string_literal/1`): single quotes are doubled and
+  backslashes and line breaks are backslash escapes, so a name cannot end the
+  literal and it means the same whatever `standard_conforming_strings` is.
+
   By default (`foreign_keys: :none`) no foreign key is declared: Bubble has no
   referential integrity, so real data holds dangling references that a
   constraint would reject on load. A relaxed `NOT VALID` constraint would not
@@ -47,7 +54,8 @@ defmodule BubbleEx.Db.Sql.Postgres do
         encode_external_types(parsed_map, opts),
         Enum.map_join(tables, "\n\n", &encode_table(&1, opts)),
         encode_foreign_keys(parsed_map, opts),
-        encode_references(parsed_map, opts)
+        encode_references(parsed_map, opts),
+        encode_reference_column_comments(parsed_map, opts)
       ]
       |> Enum.reject(&(&1 == ""))
 
@@ -97,6 +105,56 @@ defmodule BubbleEx.Db.Sql.Postgres do
         " -> " <>
         qualified_column(to.table_group, ref_table_name(to, opts), column_name(to, opts))
     end)
+  end
+
+  # The same references, stored in the catalog as column comments.
+  defp encode_reference_column_comments(parsed_map, opts) do
+    parsed_map
+    |> Map.get(:relationships, [])
+    |> BubbleEx.Db.Encoder.unconstrained_references(opts)
+    |> Enum.map_join("\n", fn {from, to, _dir} ->
+      column =
+        qualified_column(from.table_group, ref_table_name(from, opts), column_name(from, opts))
+
+      target = qualified_column(to.table_group, ref_table_name(to, opts), column_name(to, opts))
+
+      "COMMENT ON COLUMN #{column} IS " <>
+        string_literal(
+          "References #{target} (no foreign key: Bubble does not enforce referential integrity)"
+        ) <> ";"
+    end)
+  end
+
+  # Backslash first, so the escapes below stay unambiguous. Line breaks
+  # (CR, LF, VT, FF, NEL, LS, PS) become escapes, so the statement stays on
+  # one line; the stored comment still holds the original characters.
+  @literal_escapes [
+    {"\\", "\\\\"},
+    {"'", "''"},
+    {"\r", "\\r"},
+    {"\n", "\\n"},
+    {"\v", "\\u000B"},
+    {"\f", "\\f"},
+    {"\u0085", "\\u0085"},
+    {"\u2028", "\\u2028"},
+    {"\u2029", "\\u2029"}
+  ]
+
+  @doc """
+  Quotes `text` as a PostgreSQL escape string literal (`E'...'`): single
+  quotes doubled, backslashes doubled, and line breaks (CR, LF, VT, FF, NEL,
+  LS, PS) written as backslash escapes. An `E` literal reads the same whether
+  `standard_conforming_strings` is on or off; a plain `'...'` literal would
+  treat a backslash as an escape when it is off, so `\\'` could end it.
+  """
+  @spec string_literal(String.t()) :: String.t()
+  def string_literal(text) do
+    escaped =
+      Enum.reduce(@literal_escapes, text, fn {char, escape}, acc ->
+        String.replace(acc, char, escape)
+      end)
+
+    "E'" <> escaped <> "'"
   end
 
   defp qualified_column(group, table, column),

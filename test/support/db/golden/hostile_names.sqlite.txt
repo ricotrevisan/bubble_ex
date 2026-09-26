@@ -1,0 +1,55 @@
+-- SQLite DDL for Bubble app
+-- NOTE: arrays stored as JSON text.
+-- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
+
+CREATE TABLE IF NOT EXISTS "custom__Order's ""list"" */ -- x" (
+  "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "customer'); DROP TABLE x; --
+next LS PSNELVTFF \' */ /* ""q""" TEXT,
+  "status' || 'x" TEXT,
+  "note -- */" TEXT,
+  "target" TEXT,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__Target
+line 'q' \   */ end" (
+  "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  "Email_2" TEXT,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Status 'quoted' \" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
+);
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom__Order's ""list"" */ -- x"."Created By" -> "custom__User"."_id"
+-- "custom__Order's ""list"" */ -- x"."customer'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\vVT\fFF \\' */ /* ""q""" -> "custom__User"."_id"
+-- "custom__Order's ""list"" */ -- x"."status' || 'x" -> "option__Status 'quoted' \\"."db_value"
+-- "custom__Order's ""list"" */ -- x"."target" -> "custom__Target\nline 'q' \\ \u2028 */ end"."_id"
+-- "custom__Target\nline 'q' \\ \u2028 */ end"."Created By" -> "custom__User"."_id"
+-- "custom__User"."Created By" -> "custom__User"."_id"
+--- diagnostics ---
+model_option_key_missing /option_sets/status/values/open
+db_name_suffixed /user_types/user/fields/email_text
