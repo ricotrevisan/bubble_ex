@@ -300,7 +300,6 @@ defmodule MyApp.User do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 

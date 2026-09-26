@@ -1,7 +1,11 @@
 {
   "actor_loads": [],
+  "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "synthetic-external-types",
+  "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "ash_policies_unverified",
@@ -435,6 +439,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -460,6 +465,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -476,6 +482,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -492,6 +499,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -520,6 +528,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -545,6 +554,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.geo.lookup.Address",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "address",
@@ -564,6 +574,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.misc.blank.Empty",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "blank",
@@ -583,6 +594,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.not_a_connector",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "invalid",
@@ -602,6 +614,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.api.not_a_connector",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "invalid_list",
@@ -621,6 +634,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.geo.lookup.Missing",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "missing",
@@ -640,6 +654,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.absent.call.Thing",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "nowhere",
@@ -659,6 +674,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.api.apiconnector2.graph.ping.A",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "pings",
@@ -681,6 +697,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.tree.walk.Node",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "tree",
@@ -859,6 +876,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -884,6 +902,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -900,6 +919,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -916,6 +936,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -944,6 +965,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -969,6 +991,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1107,7 +1130,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"
@@ -1142,7 +1165,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "typed_structs": [
     {
       "bubble_name": "Address",
@@ -1151,6 +1174,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "number",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "latitude",
@@ -1167,6 +1191,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.text",
+          "column": null,
           "constraints": [
             [
               "items",
@@ -1200,6 +1225,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date_unix",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "seen",
@@ -1216,6 +1242,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1241,6 +1268,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "boolean",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "verified",
@@ -1269,6 +1297,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.graph.ping.A",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "a",
@@ -1288,6 +1317,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "mystery",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "blob",
@@ -1319,6 +1349,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "at",
@@ -1335,6 +1366,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "api.apiconnector2.graph.pong.B",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "b",
@@ -1377,6 +1409,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "list.api.apiconnector2.tree.walk.Node",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "children",
@@ -1396,6 +1429,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",

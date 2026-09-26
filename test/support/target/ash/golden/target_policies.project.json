@@ -4,8 +4,12 @@
       "team_for_privacy"
     ]
   ],
+  "applied": [],
+  "applied_sha256": null,
   "authorization_bypasses": [],
   "bubble_id": "policies-fixture",
+  "decisions_sha256": null,
+  "deferred": [],
   "diagnostics": [
     {
       "code": "unknown_operator",
@@ -480,6 +484,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -505,6 +510,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -521,6 +527,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -537,6 +544,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -565,6 +573,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -590,6 +599,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -615,6 +625,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -644,6 +655,7 @@
       "bubble_name": "Board",
       "calculations": [
         {
+          "constraints": [],
           "description": "Bubble privacy rule \"Owned by my team's lead\" (lead_): its condition holds",
           "expr": {
             "actor_loads": [
@@ -675,11 +687,14 @@
               "type": "board"
             }
           },
+          "kind": "privacy",
           "name": "privacy_rule_owned_by_my_team_s_lead",
+          "public?": false,
           "source": {
             "rule": "lead_",
             "type": "board"
-          }
+          },
+          "type": "boolean"
         }
       ],
       "description": null,
@@ -844,7 +859,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "board"
@@ -862,7 +877,7 @@
           "kind": "belongs_to",
           "name": "owner_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "owner_user",
             "type": "board"
@@ -940,6 +955,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -965,6 +981,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -981,6 +998,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -997,6 +1015,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1025,6 +1044,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1050,6 +1070,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "file",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1075,6 +1096,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1100,6 +1122,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1128,6 +1151,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "boolean",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "public",
@@ -1144,6 +1168,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1169,6 +1194,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1195,6 +1221,7 @@
       "bubble_name": "Doc",
       "calculations": [
         {
+          "constraints": [],
           "description": "Bubble privacy rule \"Admin\" (admin_): its condition holds",
           "expr": {
             "actor_loads": [],
@@ -1220,13 +1247,17 @@
               "type": "doc"
             }
           },
+          "kind": "privacy",
           "name": "privacy_rule_admin",
+          "public?": false,
           "source": {
             "rule": "admin_",
             "type": "doc"
-          }
+          },
+          "type": "boolean"
         },
         {
+          "constraints": [],
           "description": "Bubble privacy rule \"Owner\" (owner_): its condition holds",
           "expr": {
             "actor_loads": [],
@@ -1253,13 +1284,17 @@
               "type": "doc"
             }
           },
+          "kind": "privacy",
           "name": "privacy_rule_owner",
+          "public?": false,
           "source": {
             "rule": "owner_",
             "type": "doc"
-          }
+          },
+          "type": "boolean"
         },
         {
+          "constraints": [],
           "description": "Bubble privacy rule \"Public\" (public_): its condition holds",
           "expr": {
             "actor_loads": [],
@@ -1284,11 +1319,14 @@
               "type": "doc"
             }
           },
+          "kind": "privacy",
           "name": "privacy_rule_public",
+          "public?": false,
           "source": {
             "rule": "public_",
             "type": "doc"
-          }
+          },
+          "type": "boolean"
         }
       ],
       "description": null,
@@ -1687,7 +1725,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "doc"
@@ -1705,7 +1743,7 @@
           "kind": "belongs_to",
           "name": "owner_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "owner_user",
             "type": "doc"
@@ -1785,6 +1823,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1810,6 +1849,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -1826,6 +1866,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -1842,6 +1883,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1870,6 +1912,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -1895,6 +1938,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2053,7 +2097,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "memo"
@@ -2103,6 +2147,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2128,6 +2173,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -2144,6 +2190,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -2160,6 +2207,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2188,6 +2236,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2213,6 +2262,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "boolean",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "hidden",
@@ -2229,6 +2279,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2255,6 +2306,7 @@
       "bubble_name": "Note",
       "calculations": [
         {
+          "constraints": [],
           "description": "The Bubble \"everyone else\" rule applies: none of the rules hidden_ holds",
           "expr": {
             "actor_loads": [],
@@ -2302,15 +2354,19 @@
               "type": "note"
             }
           },
+          "kind": "privacy",
           "name": "privacy_everyone_else",
+          "public?": false,
           "source": {
             "except_rules": [
               "hidden_"
             ],
             "type": "note"
-          }
+          },
+          "type": "boolean"
         },
         {
+          "constraints": [],
           "description": "Bubble privacy rule \"Mine\" (mine_): its condition holds",
           "expr": {
             "actor_loads": [],
@@ -2337,11 +2393,14 @@
               "type": "note"
             }
           },
+          "kind": "privacy",
           "name": "privacy_rule_mine",
+          "public?": false,
           "source": {
             "rule": "mine_",
             "type": "note"
-          }
+          },
+          "type": "boolean"
         }
       ],
       "description": null,
@@ -2559,7 +2618,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "note"
@@ -2615,6 +2674,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2640,6 +2700,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -2656,6 +2717,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -2672,6 +2734,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2700,6 +2763,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2725,6 +2789,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2753,6 +2818,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2949,6 +3015,7 @@
         {
           "allow_nil?": false,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -2974,6 +3041,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "created_date",
@@ -2990,6 +3058,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "date",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "modified_date",
@@ -3006,6 +3075,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "user",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -3034,6 +3104,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -3059,6 +3130,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -3084,6 +3156,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "boolean",
+          "column": null,
           "constraints": [],
           "default": null,
           "name": "admin",
@@ -3100,6 +3173,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "text",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -3125,6 +3199,7 @@
         {
           "allow_nil?": true,
           "bubble_type": "custom.team",
+          "column": null,
           "constraints": [
             [
               "trim?",
@@ -3154,6 +3229,7 @@
       "bubble_name": "User",
       "calculations": [
         {
+          "constraints": [],
           "description": "Bubble privacy rule \"Me\" (me_): its condition holds",
           "expr": {
             "actor_loads": [],
@@ -3180,11 +3256,14 @@
               "type": "user"
             }
           },
+          "kind": "privacy",
           "name": "privacy_rule_me",
+          "public?": false,
           "source": {
             "rule": "me_",
             "type": "user"
-          }
+          },
+          "type": "boolean"
         }
       ],
       "description": null,
@@ -3360,7 +3439,7 @@
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "Created By",
             "type": "user"
@@ -3378,7 +3457,7 @@
           "kind": "belongs_to",
           "name": "team_for_privacy",
           "public?": false,
-          "sortable?": false,
+          "sortable?": true,
           "source": {
             "field": "team_custom_team",
             "type": "user"
@@ -3441,7 +3520,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 3,
+  "schema_version": 4,
   "typed_structs": [],
   "types": []
 }

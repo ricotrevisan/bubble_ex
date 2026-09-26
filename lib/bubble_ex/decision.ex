@@ -667,7 +667,13 @@ defmodule BubbleEx.Decision do
 
   defp slot_name(slot, name), do: bad_name(slot, name)
 
-  defp reserved_module?(name),
+  @doc """
+  Whether a module name's first segment is one a rename may not take:
+  Elixir's own modules and the namespaces of the target's libraries
+  (`Elixir`, `Erlang`, `Ash`, `AshPostgres`, `Ecto`, `Phoenix`, `Spark`).
+  """
+  @spec reserved_module?(String.t()) :: boolean()
+  def reserved_module?(name) when is_binary(name),
     do: MapSet.member?(@reserved_modules, name |> String.split(".") |> hd())
 
   defp bad_name(slot, name), do: error("invalid #{slot} name", %{name: name})
@@ -897,7 +903,9 @@ defmodule BubbleEx.Decision do
             finding_id: f.id,
             transform: f.proposal.transform,
             subject: f.subject,
-            proposal: f.proposal
+            proposal: f.proposal,
+            proposal_sha256: f.proposal_sha256,
+            basis_sha256: f.basis_sha256
           }
 
     Enum.sort_by(decisions ++ automatic, & &1.key)
@@ -935,7 +943,10 @@ defmodule BubbleEx.Decision do
       transform: proposal.transform,
       subject: d.subject,
       proposal: proposal,
-      params: d.params
+      params: d.params,
+      proposal_sha256: finding.proposal_sha256,
+      basis_sha256: finding.basis_sha256,
+      basis: Map.take(d.basis, [:proposal_sha256, :basis_sha256])
     }
   end
 

@@ -18,6 +18,13 @@
 #
 #     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir> [unverified|omit]
 #
+# The owner decision sets of BubbleEx.Test.DecidedFixture (WTF-401) are
+# rendered too: `decided_combined` (every cut-1 transform, before the name
+# lock) and `decided_locked` (after it: renamed attributes keep their
+# columns through `source:`). Their expectations (derived fields are
+# calculations with no column, refined numbers are bigint/numeric columns,
+# kept columns exist) are written to decisions.json for decisions.exs.
+#
 # The privacy mode (default `unverified`) is passed to
 # BubbleEx.Target.Ash.map/3 and versions/1. With `omit` (a separate scratch
 # project) only the Ash source is rendered, with no PrivacyFilters and no
@@ -35,8 +42,10 @@ database_prefix = if privacy == :omit, do: "ash_omit_check_", else: "ash_check_"
 
 # What privacy: :omit must never render (see BubbleEx.Target.Ash, "Privacy
 # modes").
+# (Public calculations are fields derived by an owner decision; privacy
+# calculations are the private ones.)
 policy_source =
-  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr|calculations do|authorize_if|forbid_if|NOT VERIFIED/
+  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr|public\?: false|authorize_if|forbid_if|NOT VERIFIED/
 
 defmodule PrivacyFilters do
   # `<namespace>.PrivacyFilters.all/0`: one entry per compiled privacy-rule
@@ -84,6 +93,13 @@ defmodule PrivacyFilters do
   end
 end
 
+map_fixture = fn app ->
+  fn ->
+    {:ok, model} = BubbleEx.Model.build(app)
+    BubbleEx.Target.Ash.map(model, [], privacy: privacy)
+  end
+end
+
 fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
@@ -92,14 +108,22 @@ fixtures =
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort() do
     name = prefix <> Path.basename(path, ".json")
-    {"Fixtures." <> Macro.camelize(name), name, path |> File.read!() |> Jason.decode!()}
+    app = path |> File.read!() |> Jason.decode!()
+    {"Fixtures." <> Macro.camelize(name), name, map_fixture.(app)}
   end
+
+decided = [
+  {"Fixtures.DecidedCombined", "decided_combined",
+   fn -> BubbleEx.Test.DecidedFixture.project(:combined, privacy: privacy) end},
+  {"Fixtures.DecidedLocked", "decided_locked",
+   fn -> BubbleEx.Test.DecidedFixture.locked_project(privacy: privacy) end}
+]
 
 private =
   case System.get_env("BUBBLE_EX_PRIVATE_EXPORT") do
     nil -> []
     "" -> []
-    path -> [{"Private.App", "private_app", BubbleEx.Test.SplitExport.load(path)}]
+    path -> [{"Private.App", "private_app", map_fixture.(BubbleEx.Test.SplitExport.load(path))}]
   end
 
 lib = Path.join(dir, "lib/generated")
@@ -110,10 +134,9 @@ File.mkdir_p!(Path.join(dir, "config"))
 # A distinct last module segment per repo keeps AshPostgres' default
 # migration and snapshot paths (priv/<repo>) apart.
 rendered =
-  for {namespace, name, app} <- fixtures ++ private do
+  for {namespace, name, project} <- fixtures ++ decided ++ private do
     repo = namespace <> "Repo"
-    {:ok, model} = BubbleEx.Model.build(app)
-    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: privacy)
+    {:ok, project} = project.()
     {:ok, source} = BubbleEx.Target.Ash.Source.render(project, namespace: namespace, repo: repo)
 
     if privacy == :omit and source =~ policy_source do
@@ -151,8 +174,67 @@ rendered =
         "#{length(filters)} privacy filters)"
     )
 
-    {namespace, repo, name}
+    {namespace, repo, name, project}
   end
+
+# The PostgreSQL column types (information_schema udt_name) to check.
+udt = fn
+  :integer -> "int8"
+  :decimal -> "numeric"
+  :float -> "float8"
+  :string -> "text"
+  :boolean -> "bool"
+  _ -> nil
+end
+
+# What decisions.exs checks in the database of each decided fixture.
+decision_expectations =
+  for {namespace, repo, name, project} <- rendered,
+      String.starts_with?(name, "decided_") do
+    by_module = Map.new(project.resources, &{&1.module, &1})
+
+    resources =
+      for r <- project.resources do
+        %{
+          resource: namespace <> "." <> r.module,
+          table: r.table,
+          # every stored column, and the refined number columns' types
+          columns:
+            for(a <- r.attributes, into: %{}, do: {a.column || a.name, udt.(a.type)})
+            |> Map.reject(fn {_, t} -> t == nil end),
+          stored: Enum.map(r.attributes, &(&1.column || &1.name)),
+          derived:
+            for c <- r.calculations, c.kind == :derived do
+              {:ref, [rel], attribute} = c.expr.expr
+              # (privacy: :unverified reads a gated relationship's twin)
+              relationship =
+                Enum.find(r.relationships ++ r.privacy_relationships, &(&1.name == rel))
+
+              destination = Map.fetch!(by_module, relationship.destination)
+
+              %{
+                resource_module: namespace <> "." <> r.module,
+                calculation: c.name,
+                relationship: rel,
+                # the public relationship a private twin stands for
+                public_relationship:
+                  Enum.find_value(r.relationships, fn p ->
+                    if p.source == relationship.source, do: p.name
+                  end),
+                source_attribute: relationship.source_attribute,
+                destination: namespace <> "." <> destination.module,
+                attribute: attribute
+              }
+            end
+        }
+      end
+
+    %{namespace: namespace, repo: repo, name: name, resources: resources}
+  end
+
+File.write!(Path.join(dir, "decisions.json"), Jason.encode!(decision_expectations, pretty: true))
+
+rendered = Enum.map(rendered, fn {namespace, repo, name, _project} -> {namespace, repo, name} end)
 
 if privacy == :unverified do
   # The Db.Ecto output of every schema golden fixture (and the private export)

@@ -1,8 +1,8 @@
 # Runtime smoke check of BubbleEx.Target.Ash with privacy: :omit (run by
 # scripts/ash_compile_check.sh in the omit scratch project, after
 # runtime.exs has inserted its sample rows): every generated resource has
-# no authorizer, policies, field policies, calculations or private
-# relationships, only the default actions, and reads every row back with
+# no authorizer, policies, field policies, private calculations (a field
+# derived by an owner decision is a public one) or private relationships, only the default actions, and reads every row back with
 # authorization left on (Ash's default) and no actor. The project's
 # dependencies are BubbleEx.Target.Ash.versions(privacy: :omit): no SAT
 # solver.
@@ -26,7 +26,8 @@ failures =
 
     problems = [
       {Ash.Resource.Info.authorizers(resource) != [], "has authorizers"},
-      {Ash.Resource.Info.calculations(resource) != [], "has calculations"},
+      {Enum.any?(Ash.Resource.Info.calculations(resource), &(not &1.public?)),
+       "has private calculations"},
       {Enum.any?(
          Ash.Resource.Info.relationships(resource),
          &(not &1.public? or not &1.sortable? or &1.filter)

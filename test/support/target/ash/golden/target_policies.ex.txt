@@ -140,7 +140,6 @@ defmodule MyApp.Board do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
 
     belongs_to :owner_for_privacy, MyApp.User do
@@ -150,7 +149,6 @@ defmodule MyApp.Board do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 
@@ -318,7 +316,6 @@ defmodule MyApp.Doc do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
 
     belongs_to :owner_for_privacy, MyApp.User do
@@ -328,7 +325,6 @@ defmodule MyApp.Doc do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 
@@ -510,7 +506,6 @@ defmodule MyApp.Memo do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 
@@ -632,7 +627,6 @@ defmodule MyApp.Note do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 
@@ -920,7 +914,6 @@ defmodule MyApp.User do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
 
     belongs_to :team_for_privacy, MyApp.Team do
@@ -930,7 +923,6 @@ defmodule MyApp.User do
       define_attribute? false
       allow_nil? true
       public? false
-      sortable? false
     end
   end
 

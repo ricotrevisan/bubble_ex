@@ -5,7 +5,8 @@
 #
 #   * the Bubble ID primary key with surrounding whitespace, and ""
 #   * strings: "" kept distinct from nil, whitespace not trimmed
-#   * floats, booleans, microsecond dates and lists of them
+#   * floats, integers and decimals (numbers an owner decision refined),
+#     booleans, microsecond dates and lists of them
 #   * belongs_to source attributes holding IDs of records that do not exist
 #     (there is no foreign key)
 #   * lists of IDs in their order
@@ -82,7 +83,10 @@ defmodule RuntimeCheck do
 
   defp sample(Ash.Type.String, _c, i), do: Enum.at(["", nil, " keep  spaces ", "z"], i)
   defp sample(Ash.Type.Float, _c, i), do: Enum.at([1.5, 0.0, -2.25, 1.0e20], i)
-  defp sample(Ash.Type.Integer, _c, i), do: i
+  defp sample(Ash.Type.Integer, _c, i), do: Enum.at([0, 7, -3, 9_007_199_254_740_993], i)
+
+  defp sample(Ash.Type.Decimal, _c, i),
+    do: Enum.at(Enum.map(~w(1.25 0 -2.5 12345678901234567890.123), &Decimal.new/1), i)
   defp sample(Ash.Type.Boolean, _c, i), do: Enum.at([true, false, nil, true], i)
   defp sample(Ash.Type.UtcDatetimeUsec, _c, i), do: DateTime.add(@instant, i * 61, :second)
   defp sample(Ash.Type.Map, _c, i), do: %{"k" => i}

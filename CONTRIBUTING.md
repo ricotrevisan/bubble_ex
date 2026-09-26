@@ -51,7 +51,10 @@ round-trips sample rows through every resource and runs every privacy filter
 against them, requiring PostgreSQL and Ash's in-memory evaluation to agree,
 then reads every resource through its generated privacy policies and checks
 the policy fixture against its hand-authored persona table
-(`test/support/target/ash/expectations/policies.json`).
+(`test/support/target/ash/expectations/policies.json`), and checks the owner
+decision fixtures (`BubbleEx.Test.DecidedFixture`): derived fields have no
+column and read back through their relationship, refined numbers are
+bigint / numeric columns.
 With `BUBBLE_EX_PRIVATE_EXPORT`
 set it also checks a private app export. CI runs it as the `ash-compile-check`
 job.
@@ -76,6 +79,12 @@ captures:
 ```bash
 BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
 ```
+
+With `BUBBLE_EX_PRIVATE_DECISIONS` naming a JSON array of decision records
+made against that export (kept outside the repository: it names private
+Bubble IDs), the run also maps the export with those decisions and compares
+the Project's hash and counts with
+`test/support/target/ash/counts/mm-137.decided.json`.
 
 To run integration tests explicitly:
 

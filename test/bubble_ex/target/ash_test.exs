@@ -587,13 +587,15 @@ defmodule BubbleEx.Target.AshTest do
   end
 
   describe "interface" do
-    test "decisions are not interpreted yet: [] only" do
+    test "decisions are applied decisions only (see decisions_test.exs)" do
       {:ok, model} = Model.build(fixture("field_types"))
-      assert {:ok, %Project{}} = Ash.map(model)
+      assert {:ok, %Project{applied: [], decisions_sha256: nil}} = Ash.map(model)
       assert {:ok, %Project{}} = Ash.map(model, [])
 
       assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
-               Ash.map(model, [%{"kind" => "number_to_integer"}])
+               Ash.map(model, [%{"kind" => "number_to_integer"}],
+                 decisions_sha256: String.duplicate("a", 64)
+               )
 
       assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Ash.map(%{}, [])
     end

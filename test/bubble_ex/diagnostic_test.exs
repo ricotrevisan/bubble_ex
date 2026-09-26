@@ -138,7 +138,34 @@ defmodule BubbleEx.DiagnosticTest do
         Enum.flat_map(apps ++ model_apps, &ash_diagnostics/1) ++
         Enum.flat_map(workflow_docs ++ apps, &inventory_diagnostics/1) ++
         Enum.flat_map(expression_samples(), &expression_diagnostics/1) ++
-        Enum.flat_map(expression_apps(), &compile_diagnostics/1)
+        Enum.flat_map(expression_apps(), &compile_diagnostics/1) ++
+        decided_diagnostics() ++
+        deferred_diagnostics()
+    end
+
+    # Target.Ash applying owner decisions (WTF-401).
+    defp decided_diagnostics do
+      for set <- BubbleEx.Test.DecidedFixture.sets(),
+          privacy <- [:omit, :unverified],
+          {:ok, project} = BubbleEx.Test.DecidedFixture.project(set, privacy: privacy),
+          d <- project.diagnostics,
+          do: d
+    end
+
+    # Undecided hints Target.Ash does not apply yet are deferred.
+    defp deferred_diagnostics do
+      %{model: model, index: index, findings: findings} =
+        BubbleEx.Test.DecidedFixture.build(:refine)
+
+      {:ok, resolved} =
+        BubbleEx.Decision.resolve([], findings, index: index, now: ~U[2026-09-26 00:00:00Z])
+
+      {:ok, project} =
+        BubbleEx.Target.Ash.map(model, BubbleEx.Decision.applicable(resolved, findings),
+          decisions_sha256: String.duplicate("0", 64)
+        )
+
+      project.diagnostics
     end
 
     defp expression_apps do

@@ -32,6 +32,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
     "lib/bubble_ex/target/ash.ex" =>
       "the Ash name map's own JSON members (`attributes`, `fields`)",
     "lib/bubble_ex/target/ash/project.ex" => "the Ash name map's own JSON members",
+    "lib/bubble_ex/target/ash/decisions.ex" =>
+      "rename overrides of the Ash name map's own JSON members (`attributes`)",
     "lib/bubble_ex/app_tree/" =>
       "splits the payload into files by section and counts section entries; CSS `display`",
     "lib/bubble_ex/editor" =>

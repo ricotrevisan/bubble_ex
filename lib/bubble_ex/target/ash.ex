@@ -116,9 +116,11 @@ defmodule BubbleEx.Target.Ash do
   searches must reference only fields the searcher may view. Aggregates
   (count, min, max, sum, list, first, ...) over a field are not covered by
   field policies either (`:ash_policy_aggregates_unguarded`): generated
-  code must not aggregate a field the actor may not view. Relationships are
-  generated `sortable?: false`: Ash applies field policies to a resource's
-  own fields in `sort_input`, not to fields reached through a relationship.
+  code must not aggregate a field the actor may not view. Public
+  relationships are generated `sortable?: false`: Ash applies field
+  policies to a resource's own fields in `sort_input`, not to fields
+  reached through a relationship. The private twins stay sortable
+  (`sort_input` cannot name them), so a derived field sorts.
   The primary `:read`'s key requirement is a policy check
   (a policy, `authorize_if <namespace>.Privacy.KeyedRead`), so it holds for
   aggregate queries too.
@@ -156,14 +158,96 @@ defmodule BubbleEx.Target.Ash do
   Bubble does not rename generated code. See
   `BubbleEx.Target.Ash.Project` for the map's shape.
 
-  ## Decisions (WTF-352)
+  ## Decisions (WTF-352, cut 1)
 
-  `decisions` will be the owner's recorded decisions: a list of
-  stack-neutral maps referring to Model Bubble IDs (e.g. a number field
-  mapped to `:integer`, a list of references turned into a join resource, a
-  rename that updates the name map). None is interpreted yet: only `[]` is
-  accepted, and any other list is an `:invalid_input` error rather than
-  being silently ignored.
+  `decisions` are the owner's decisions that apply to this snapshot,
+  exactly as `BubbleEx.Decision.applicable/2` returns them:
+
+      {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
+      {:ok, resolved} = BubbleEx.Decision.resolve(records, findings, index: index, now: now)
+      applied = BubbleEx.Decision.applicable(resolved, findings)
+
+      {:ok, project} =
+        BubbleEx.Target.Ash.map(model, applied,
+          names: locked_names,
+          decisions_sha256: BubbleEx.Decision.decisions_sha256(records)
+        )
+
+  **Input contract.** A list of `BubbleEx.Decision.Applied` structs, each
+  with a unique key, from `resolve/3` and `applicable/2` over this
+  snapshot's findings. `map/3` trusts that: it checks each entry's
+  consistency against itself and the Model, but it cannot re-resolve the
+  set (it has no findings or records), and it records `decisions_sha256`
+  without verifying it. Anything else is `:invalid_input`, never ignored:
+
+    * a `BubbleEx.Decision` record (unresolved: it may be stale, orphaned
+      or superseded), or any other term
+    * an applied finding whose key, finding ID, kind, subject, transform
+      and proposal disagree, that lacks the finding's `proposal_sha256` and
+      `basis_sha256`, or whose recorded `basis` differs from them (a stale
+      decision: `applicable/2` never lists one)
+    * an owner's decision on a transform Target.Ash does not apply yet
+      (`derive_count`, `text_to_reference`, `derive_reverse_relationship`,
+      `add_indexes`, `normalize_list_to_join`, `membership_policy`). A hint
+      nobody decided (`automatic`) with such a transform is not an error:
+      it is deferred, listed in `project.deferred` with an
+      `:ash_decision_deferred` warning
+    * an `automatic` entry that is not an undecided hint
+    * a subject missing from the Model or deleted, or a proposal that no
+      longer fits it (not a number field, a derivation that is not a path
+      of references to the source's type, a source of another type): the
+      Model is not the snapshot the findings came from
+    * two transforms of one field, or a derived field whose source is
+      derived too
+    * with decisions, a missing or malformed `decisions_sha256:` option
+
+  **Transforms.**
+
+  | Transform | Ash |
+  |-----------|-----|
+  | `refine_number_type` | the attribute is `:integer` (bigint) or `:decimal` (numeric), per `proposal.to` (a `modify` sets it); an integral default becomes an integer, a non-integral one with `:integer` is an error |
+  | `derive_from_related` | the attribute is dropped (no column) and becomes a public calculation of the same name, `calculate <name>, <source type>, expr(<relationship path>.<source attribute>)`: owned code that reads it still compiles; only writes to it break, and the decision removes those |
+  | `rename` | overrides one name of the name map (below) |
+
+  **Renames.** `slot` names what is renamed; the name must be valid for it
+  and not reserved (`BubbleEx.Target.Ash.Naming.reserved/1`, Elixir and
+  library namespaces, the generated `Privacy` module), must not be taken in
+  its scope (another attribute, relationship, privacy calculation or
+  column of the resource; another module or table), and the slot must fit
+  the subject:
+
+  | Slot | Subject | Renames |
+  |------|---------|---------|
+  | `module` | a data type, or a known API Connector type | the resource or typed-struct module |
+  | `table` | a data type | the table, only before the name lock |
+  | `attribute` | a stored field (not the unique ID, not a derived field) or an option-set attribute | the attribute (the `<rel>_id` attribute of a reference) or the enum's lookup key |
+  | `relationship` | a reference to a mapped data type | the `belongs_to` |
+  | `calculation` | a field derived by a decision of the same set | the calculation |
+  | `enum_module` | an option set | the enum module |
+
+  `endpoint_path` renames are an error: Target.Ash maps no endpoints.
+  A name is **locked** when the `names:` map holds it (WTF-352 D5: the map
+  stored at first publish). After the lock a rename changes Elixir names
+  only: a renamed attribute keeps its column (the name map's `columns`,
+  rendered `source: :column`), and a table rename is an error. The
+  returned `project.names` holds the overrides, so it can be stored and
+  passed back. Before the lock a rename may not take the name another
+  definition is given (it would get a suffixed name, locked at first
+  publish): that is an error listing the displaced names; rename both in
+  one set to swap names.
+
+  **Record.** `project.applied` lists every applied decision (key, kind,
+  transform, subject, finding ID, parameters and the finding's hashes; no
+  record IDs, which are audit data) and `project.applied_sha256` hashes
+  it; `project.deferred` lists the deferred hints;
+  `project.decisions_sha256` records the decision set; each
+  applied finding adds an `:ash_decision_applied` diagnostic and each
+  rename an `:ash_name_overridden` one. Both privacy modes apply the same
+  decisions: with `privacy: :unverified` a derived field stands for the
+  stored copy it replaces. It is covered by the field policies its field
+  had, reads through the ungated `*_for_privacy` twin of a gated
+  relationship (the related record's visibility never hid the copy), is
+  readable by privacy-rule conditions, and is not auto-bindable.
 
   ## Diagnostics
 
@@ -172,12 +256,13 @@ defmodule BubbleEx.Target.Ash do
   `external_type_*` codes), normalized.
   """
 
-  alias BubbleEx.{Diagnostic, Error, Model}
+  alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
   alias BubbleEx.Model.{DataType, ExternalType, Field, OptionSet, OptionValue, Structured, Type}
 
   alias BubbleEx.Target.Ash.{
     Attribute,
     CustomType,
+    Decisions,
     EnumAttribute,
     EnumValue,
     Naming,
@@ -212,7 +297,11 @@ defmodule BubbleEx.Target.Ash do
   }
 
   @type privacy :: :omit | :unverified
-  @type option :: {:names, map()} | {:index, BubbleEx.Index.t()} | {:privacy, privacy()}
+  @type option ::
+          {:names, map()}
+          | {:index, BubbleEx.Index.t()}
+          | {:privacy, privacy()}
+          | {:decisions_sha256, String.t()}
 
   @doc """
   Dependency pins for a project that compiles the generated source, as Mix
@@ -243,9 +332,9 @@ defmodule BubbleEx.Target.Ash do
   end
 
   @doc """
-  Maps `model` to a `BubbleEx.Target.Ash.Project`.
-
-  `decisions` must be `[]` for now (see "Decisions" above).
+  Maps `model` to a `BubbleEx.Target.Ash.Project`, applying `decisions`
+  (`BubbleEx.Decision.Applied` structs from `BubbleEx.Decision.applicable/2`;
+  see "Decisions" above).
 
   ## Options
 
@@ -258,27 +347,29 @@ defmodule BubbleEx.Target.Ash do
       `privacy: :unverified`, its workflows that run ignoring privacy rules
       become `authorization_bypasses` (with `:omit` nothing is authorized,
       so there is nothing to bypass)
+    * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
+      decision records `decisions` were resolved from, recorded as
+      `project.decisions_sha256`. Required when `decisions` is not empty
   """
   @spec map(Model.t(), list(), [option()]) :: {:ok, Project.t()} | {:error, Error.t()}
   def map(model, decisions \\ [], opts \\ [])
 
-  def map(%Model{} = model, [], opts) when is_list(opts) do
+  def map(%Model{} = model, decisions, opts) when is_list(decisions) and is_list(opts) do
     with {:ok, privacy} <- validate_privacy(Keyword.get(opts, :privacy, :omit)),
          {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})),
-         {:ok, index} <- validate_index(Keyword.get(opts, :index)) do
-      {:ok, build(model, names, index, privacy)}
+         {:ok, index} <- validate_index(Keyword.get(opts, :index)),
+         {:ok, sha} <- validate_decisions_sha256(Keyword.get(opts, :decisions_sha256), decisions),
+         {:ok, plan} <- Decisions.plan(model, decisions, names) do
+      project = build(model, plan, index, privacy, sha)
+
+      undisplaced(
+        project,
+        fn -> build(model, %{plan | names: names}, index, privacy, sha) end,
+        plan
+      )
     end
   catch
     {:name_conflict, error} -> {:error, error}
-  end
-
-  def map(%Model{}, decisions, _opts) when is_list(decisions) do
-    {:error,
-     Error.new(
-       :invalid_input,
-       "decisions are not interpreted yet (WTF-352); pass []",
-       %{decisions: length(decisions)}
-     )}
   end
 
   def map(_model, _decisions, _opts),
@@ -303,7 +394,46 @@ defmodule BubbleEx.Target.Ash do
   defp validate_index(_),
     do: {:error, Error.new(:invalid_input, "the :index option must be a BubbleEx.Index")}
 
-  defp build(model, names, index, privacy) do
+  defp validate_decisions_sha256(nil, []), do: {:ok, nil}
+
+  defp validate_decisions_sha256(nil, _decisions) do
+    {:error,
+     Error.new(
+       :invalid_input,
+       "decisions need the :decisions_sha256 option (BubbleEx.Decision.decisions_sha256/1)"
+     )}
+  end
+
+  defp validate_decisions_sha256(sha, _decisions) do
+    if is_binary(sha) and sha =~ ~r/\A[0-9a-f]{64}\z/,
+      do: {:ok, sha},
+      else:
+        {:error,
+         Error.new(:invalid_input, "the :decisions_sha256 option must be a SHA-256 hex digest")}
+  end
+
+  # Renames before the lock must not move another definition's name:
+  # compare with the mapping without them.
+  defp undisplaced(project, _baseline, %{owners: []}), do: {:ok, project}
+
+  defp undisplaced(project, baseline, plan) do
+    with :ok <- Decisions.displaced(project.names, baseline.().names, plan.owners),
+         do: {:ok, project}
+  end
+
+  # What was applied, pinned (records hold no audit metadata).
+  defp applied_sha256(_applied, nil), do: nil
+
+  defp applied_sha256(applied, _decisions_sha256),
+    do:
+      %Project{schema_version: 0, applied: applied}
+      |> Project.to_map()
+      |> Map.fetch!("applied")
+      |> CanonicalJson.sha256()
+
+  defp build(model, plan, index, privacy, decisions_sha256) do
+    names = plan.names
+
     {types, type_diags} = live(model.data_types, &type_subject/1, "data_type")
     {sets, set_diags} = live(model.option_sets, &%{option_set: &1.id}, "option_set")
 
@@ -322,6 +452,7 @@ defmodule BubbleEx.Target.Ash do
     ctx = Map.put(ctx, :enum_values, Map.new(enums, &{&1.source.option_set, values(&1)}))
 
     {resources, resource_diags, ctx} = map_all(types, ctx, &resource/2)
+    resources = Decisions.apply(resources, plan)
     {externals, external_diags, ctx} = map_all(ctx.external_order, ctx, &external/2)
 
     typed_structs = structured(resources) ++ externals
@@ -334,7 +465,11 @@ defmodule BubbleEx.Target.Ash do
       types: custom_types(resources, typed_structs),
       typed_structs: typed_structs,
       names: ctx.names,
-      privacy: privacy
+      privacy: privacy,
+      applied: plan.applied,
+      applied_sha256: applied_sha256(plan.applied, decisions_sha256),
+      deferred: plan.deferred,
+      decisions_sha256: decisions_sha256
     }
 
     {project, privacy_diags} = privacy(privacy, project, model, types, index)
@@ -346,7 +481,8 @@ defmodule BubbleEx.Target.Ash do
             model.diagnostics ++
               type_diags ++
               set_diags ++
-              enum_diags ++ resource_diags ++ external_diags ++ privacy_diags
+              enum_diags ++
+              resource_diags ++ external_diags ++ privacy_diags ++ plan.diagnostics
           )
     }
   end
@@ -641,9 +777,12 @@ defmodule BubbleEx.Target.Ash do
     privacy = Map.values(Map.get(entry, "privacy_rules", %{}))
     privacy = privacy ++ Map.values(Map.get(entry, "privacy_relationships", %{}))
 
+    # A renamed attribute's column is never given to another attribute.
+    columns = Map.values(Map.get(entry, "columns", %{}))
+
     %{
       locked: Map.new(locked),
-      used: MapSet.new(Map.values(attributes) ++ Map.values(relationships) ++ privacy)
+      used: MapSet.new(Map.values(attributes) ++ Map.values(relationships) ++ privacy ++ columns)
     }
   end
 
@@ -698,7 +837,8 @@ defmodule BubbleEx.Target.Ash do
       constraints: @text,
       source: subject,
       bubble_type: t.source,
-      references: %{target: t.target, cardinality: :one}
+      references: %{target: t.target, cardinality: :one},
+      column: column(entry, field.id, attr)
     }
 
     relationship = %Relationship{
@@ -730,10 +870,20 @@ defmodule BubbleEx.Target.Ash do
       default: default,
       source: subject,
       bubble_type: field.type.source,
-      references: references(field.type)
+      references: references(field.type),
+      column: column(entry, field.id, name)
     }
 
     {[{:attribute, attribute}], {Enum.reverse(type_diags ++ default_diags) ++ diags, used, entry}}
+  end
+
+  # The column of a renamed attribute (the name map's `columns`), when it
+  # differs from the attribute's name.
+  defp column(entry, id, name) do
+    case get_in(entry, ["columns", id]) do
+      ^name -> nil
+      column -> column
+    end
   end
 
   defp field_base(%Field{system: nil} = field),
@@ -1155,7 +1305,8 @@ defmodule BubbleEx.Target.Ash do
       {"attributes", :names, :attribute},
       {"relationships", :names, :attribute},
       {"privacy_rules", :names, :attribute},
-      {"privacy_relationships", :names, :attribute}
+      {"privacy_relationships", :names, :attribute},
+      {"columns", :names, :attribute}
     ],
     "enums" => [{"module", :pascal, :none}, {"attributes", :names, :field}],
     "external_types" => [{"module", :pascal, :none}, {"fields", :names, :field}]

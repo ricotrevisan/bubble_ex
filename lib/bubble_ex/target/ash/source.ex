@@ -254,7 +254,7 @@ defmodule BubbleEx.Target.Ash.Source do
       attributes do
     #{Enum.map_join(resource.attributes, "\n", &attribute(&1, ctx))}
       end
-    #{relationships(resource.relationships ++ resource.privacy_relationships, ctx)}#{calculations(resource.calculations)}#{identities(resource.identities)}
+    #{relationships(resource.relationships ++ resource.privacy_relationships, ctx)}#{calculations(resource.calculations, ctx)}#{identities(resource.identities)}
       actions do
         defaults #{literal(resource.actions)}
     #{Enum.map_join(resource.extra_actions, "\n", &action(&1, ctx))}
@@ -286,16 +286,17 @@ defmodule BubbleEx.Target.Ash.Source do
   defp description(nil), do: ""
   defp description(text), do: "description #{literal(text)}"
 
-  defp calculations([]), do: ""
+  defp calculations([], _ctx), do: ""
 
-  defp calculations(calculations) do
+  defp calculations(calculations, ctx) do
     lines =
       Enum.map_join(calculations, "\n", fn %Calculation{} = c ->
         options =
-          [{"public?", "false"}] ++
-            if(c.description, do: [{"description", literal(c.description)}], else: [])
+          [{"public?", literal(c.public?)}] ++
+            if(c.description, do: [{"description", literal(c.description)}], else: []) ++
+            if(c.constraints == [], do: [], else: [{"constraints", literal(c.constraints)}])
 
-        "calculate #{atom(c.name)}, :boolean, #{expr(c.expr)}, #{options(options)}"
+        "calculate #{atom(c.name)}, #{type(c.type, ctx)}, #{expr(c.expr)}, #{options(options)}"
       end)
 
     "\ncalculations do\n#{lines}\nend\n"
@@ -374,10 +375,16 @@ defmodule BubbleEx.Target.Ash.Source do
           {"allow_nil?", literal(attribute.allow_nil?)},
           {"writable?", literal(attribute.writable?)},
           {"public?", literal(attribute.public?)}
-        ] ++ default(attribute) ++ constraints(attribute)
+        ] ++ column(attribute) ++ default(attribute) ++ constraints(attribute)
 
     "attribute #{atom(attribute.name)}, #{type(attribute.type, ctx)}, #{options(options)}"
   end
+
+  defp column(%Attribute{column: nil}), do: []
+  defp column(%Attribute{column: column}), do: [{"source", atom(column)}]
+
+  defp default(%Attribute{default: {:value, {:decimal, text}}}) when is_binary(text),
+    do: [{"default", "Decimal.new(#{literal(text)})"}]
 
   defp default(%Attribute{default: {:value, value}}), do: [{"default", literal(value)}]
   defp default(%Attribute{}), do: []

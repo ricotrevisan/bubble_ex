@@ -241,6 +241,12 @@ defmodule BubbleEx.Target.Ash.Expressions do
              }}
           end
 
+        # A field derived by an owner decision is read as its calculation.
+        fields =
+          for c <- resource.calculations, c.kind == :derived, into: fields do
+            {c.source.field, %{attribute: c.name, relationship: nil, references: nil}}
+          end
+
         {resource.source.type, %{module: resource.module, pk: pk && pk.name, fields: fields}}
       end)
 
