@@ -1,0 +1,63 @@
+-- SQLite DDL for Bubble app
+-- NOTE: arrays stored as JSON text.
+-- NOTE: Bubble groups (custom/option/api) have no SQLite schema equivalent; encoded as a table-name prefix.
+
+CREATE TABLE IF NOT EXISTS "custom__Batch
+GO
+split" (
+  "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "a
+GO
+b" TEXT,
+  "c
+go
+d" TEXT,
+  "e
+ GO 
+f" TEXT,
+  "g
+GO 5
+h" TEXT,
+  "i
+GO
+j" TEXT,
+  "a GO b" TEXT,
+  "k
+:r evil.sql
+!!del x]
+GO" TEXT,
+  "owner
+GO
+" TEXT,
+  "kind" TEXT,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "custom__User" (
+  "_id" TEXT NOT NULL,
+  "Created Date" TEXT,
+  "Modified Date" TEXT,
+  "Created By" TEXT,
+  "Slug" TEXT,
+  "email" TEXT,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE IF NOT EXISTS "option__Kind
+GO" (
+  "db_value" TEXT NOT NULL,
+  "Display" TEXT,
+  PRIMARY KEY ("db_value")
+);
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom__Batch\nGO\nsplit"."Created By" -> "custom__User"."_id"
+-- "custom__Batch\nGO\nsplit"."owner\nGO\n" -> "custom__User"."_id"
+-- "custom__Batch\nGO\nsplit"."kind" -> "option__Kind\nGO"."db_value"
+-- "custom__User"."Created By" -> "custom__User"."_id"
+--- diagnostics ---
+model_option_key_missing /option_sets/kind/values/one

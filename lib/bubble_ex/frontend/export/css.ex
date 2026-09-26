@@ -18,6 +18,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     button, input, textarea, select { font: inherit; }
     button { border: none; background: none; padding: 0; line-height: 1; }
     textarea { resize: none; }
+    [data-overlay][hidden] { display: none; }
     .bubbleex-text-default { font-family: var(--font_default); font-size: 14px; }
     .bubbleex-button-default { line-height: 1; }
     """
@@ -77,6 +78,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   @spec page(Node.t(), keyword()) :: String.t()
   def page(node, opts \\ []) do
     entries = collect(node, Keyword.get(opts, :parent_mode))
+    opts = Keyword.put_new_lazy(opts, :anchors, fn -> anchors(entries, opts) end)
 
     base =
       entries
@@ -121,6 +123,13 @@ defmodule BubbleEx.Frontend.Export.Css do
       id_prefix: instance_id,
       parent_mode: layout_value(definition.layout || %{}, :mode)
     ]
+
+    child_opts =
+      Keyword.put(
+        child_opts,
+        :anchors,
+        anchors(Enum.flat_map(definition.children, &collect(&1, nil)), child_opts)
+      )
 
     root_definition =
       definition
@@ -313,6 +322,9 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   # Parent layout affects how Bubble's fill sizing maps to CSS. Keep that
   # context in the traversal rather than duplicating it in the normalized model.
+  # A placeholder's children are runtime content that static HTML does not emit.
+  defp collect(%Node{kind: :placeholder} = node, parent_mode), do: [{node, parent_mode}]
+
   defp collect(%Node{} = node, parent_mode) do
     mode = layout_value(node.layout, :mode)
 
@@ -321,9 +333,77 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp rule({%Node{} = node, parent_mode}, opts) do
     id = prefixed_id(node, opts)
-    decls = declarations(node, parent_mode)
-    if decls == "", do: "", else: "[data-exporter-id=\"#{escape(id)}\"] {\n#{decls}}\n"
+
+    selector = "[data-exporter-id=\"#{escape(id)}\"]"
+    {anchored, anchor_name} = anchor_css(node, Keyword.get(opts, :anchors, %{}))
+
+    decls =
+      node
+      |> css_map(parent_mode)
+      |> Map.merge(anchor_name)
+      |> declarations_from_paint()
+
+    base = if decls == "", do: "", else: "#{selector} {\n#{decls}}\n"
+    base <> anchored_rule(selector, anchored)
   end
+
+  # Browsers without CSS anchor positioning keep the overlay at its static
+  # position instead of losing `top`/`left` to unresolvable `anchor()` values.
+  defp anchored_rule(_selector, anchored) when anchored == %{}, do: ""
+
+  defp anchored_rule(selector, anchored) do
+    decls = anchored |> declarations_from_paint() |> String.replace("\n  ", "\n    ")
+    "@supports (anchor-name: --x) {\n  #{selector} {\n  #{decls}  }\n}\n"
+  end
+
+  # A Group Focus is placed against its reference element with CSS anchor
+  # positioning (no script): the reference gets an `anchor-name`, the overlay
+  # uses it. Anchors resolve within one CSS scope (a page, or one expanded
+  # reusable instance); an out-of-scope reference leaves the overlay at its
+  # static position.
+  defp anchors(entries, opts) do
+    by_id = Map.new(entries, fn {node, _mode} -> {node.exporter_id, node} end)
+
+    for {%Node{runtime: runtime}, _mode} <- entries,
+        ref = get_in(runtime || %{}, ["placement", "reference", "exporter_id"]),
+        %Node{} = target <- [by_id[ref]],
+        into: %{},
+        do: {ref, "--bubbleex-anchor-" <> short_hash(prefixed_id(target, opts))}
+  end
+
+  defp short_hash(value),
+    do: :sha256 |> :crypto.hash(value) |> Base.encode16(case: :lower) |> binary_part(0, 16)
+
+  # `{anchored, anchor_name}`: the overlay's anchor-positioned declarations
+  # and the node's own `anchor-name` when an overlay references it.
+  defp anchor_css(%Node{exporter_id: id} = node, anchors) do
+    own =
+      case anchors[id] do
+        name when is_binary(name) -> %{"anchor-name" => name}
+        _ -> %{}
+      end
+
+    {anchored(node, anchors), own}
+  end
+
+  defp anchored(%Node{runtime: %{"overlay" => "group_focus"} = runtime}, anchors) do
+    placement = runtime["placement"] || %{}
+    ref = get_in(placement, ["reference", "exporter_id"])
+
+    case anchors[ref] do
+      name when is_binary(name) ->
+        %{
+          "position-anchor" => name,
+          "top" => "calc(anchor(bottom) + #{css_size(placement["offset_top"] || 0)})",
+          "left" => "calc(anchor(left) + #{css_size(placement["offset_left"] || 0)})"
+        }
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp anchored(_node, _anchors), do: %{}
 
   defp prefixed_id(node, opts) do
     case Keyword.get(opts, :exporter_id_override) do
@@ -338,12 +418,6 @@ defmodule BubbleEx.Frontend.Export.Css do
     end
   end
 
-  defp declarations(%Node{} = node, parent_mode) do
-    node
-    |> css_map(parent_mode)
-    |> declarations_from_paint()
-  end
-
   defp css_map(node, parent_mode) do
     %{}
     |> Map.merge(layout_css(node))
@@ -353,6 +427,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Map.merge(runtime_boundary_css(node))
     |> Map.merge(placement_css(node, parent_mode))
     |> Map.merge(floating_css(node))
+    |> Map.merge(overlay_css(node))
     |> base_margin_variables(node)
     |> put_fill_sizing(node, parent_mode)
     |> aspect_image_box(node)
@@ -388,17 +463,60 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp floating_css(_node), do: %{}
 
+  # A shown Popup is fixed to the viewport, horizontally centered, either
+  # vertically centered or at its runtime top offset. A Group Focus is out of
+  # flow; `anchor_css/2` places it. Both are hidden by the `hidden` attribute
+  # until a runtime shows them.
+  defp overlay_css(%Node{runtime: %{"overlay" => "popup", "placement" => placement}} = node) do
+    base = %{
+      "position" => "fixed",
+      "left" => "0",
+      "right" => "0",
+      "margin-left" => "auto",
+      "margin-right" => "auto"
+    }
+
+    case placement do
+      %{"vertical" => "center"} ->
+        base
+        |> Map.merge(%{
+          "top" => "0",
+          "bottom" => "0",
+          "margin-top" => "auto",
+          "margin-bottom" => "auto"
+        })
+        |> then(
+          &if box_get(node.box, :height), do: &1, else: Map.put(&1, "height", "fit-content")
+        )
+
+      _ ->
+        Map.put(base, "top", css_size(placement["top"] || 0))
+    end
+  end
+
+  defp overlay_css(%Node{runtime: %{"overlay" => "group_focus"}}),
+    do: %{"position" => "absolute"}
+
+  defp overlay_css(_node), do: %{}
+
   defp put_floating_axis(css, value, :vertical) when value in ["top", "bottom"],
     do: Map.put(css, value, "0")
 
+  # Pinned to both edges, the group spans the viewport height.
   defp put_floating_axis(css, "both", :vertical),
-    do: css |> Map.put("top", "0") |> Map.put("bottom", "0")
+    do: css |> Map.put("top", "0") |> Map.put("bottom", "0") |> Map.put("height", "auto")
 
   defp put_floating_axis(css, value, :horizontal) when value in ["left", "right"],
     do: Map.put(css, value, "0")
 
   defp put_floating_axis(css, "both", :horizontal),
     do: css |> Map.put("left", "0") |> Map.put("right", "0")
+
+  defp put_floating_axis(css, "center", :horizontal) do
+    css
+    |> Map.merge(%{"left" => "0", "right" => "0"})
+    |> Map.merge(%{"margin-left" => "auto", "margin-right" => "auto"})
+  end
 
   defp put_floating_axis(css, _value, _axis), do: css
 
@@ -415,7 +533,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp layout_css(%Node{kind: kind, layout: layout})
-       when kind in [:page, :group, :floating_group, :reusable_definition] do
+       when kind in [:page, :group, :floating_group, :popup, :group_focus, :reusable_definition] do
     case layout[:mode] || layout["mode"] do
       :row ->
         %{
@@ -755,7 +873,8 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp margin_sides(_value), do: []
 
   defp put_container_alignment(css, %Node{kind: kind, layout: layout})
-       when kind in [:page, :group, :floating_group, :reusable_definition] and is_map(layout) do
+       when kind in [:page, :group, :floating_group, :popup, :group_focus, :reusable_definition] and
+              is_map(layout) do
     case {layout_value(layout, :align), layout_value(layout, :mode)} do
       {align, _mode} when is_binary(align) ->
         Map.put(css, "align-items", flex_alignment(align))

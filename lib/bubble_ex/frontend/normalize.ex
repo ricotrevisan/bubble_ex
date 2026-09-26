@@ -176,15 +176,20 @@ defmodule BubbleEx.Frontend.Normalize do
     {pages, diagnostics} = normalize_pages(payload, identity)
     {reusables, reusable_diags} = normalize_reusables(payload, identity)
     breakpoints = BubbleEx.Frontend.Responsive.breakpoints(payload)
+    overlays = overlay_definitions(reusables)
 
     pages =
       pages
+      |> Enum.map(&mark_overlay_instances(&1, overlays))
+      |> Enum.map(&resolve_overlay_references/1)
       |> apply_breakpoints(Payload.pages(payload), breakpoints)
       |> BubbleEx.Frontend.StaticRepeating.expand()
       |> BubbleEx.Frontend.StaticGroupData.expand()
 
     reusables =
       reusables
+      |> Enum.map(&mark_overlay_instances(&1, overlays))
+      |> Enum.map(&resolve_overlay_references/1)
       |> apply_breakpoints(Payload.reusables(payload), breakpoints)
       |> BubbleEx.Frontend.StaticRepeating.expand()
       |> BubbleEx.Frontend.StaticGroupData.expand()
@@ -376,38 +381,22 @@ defmodule BubbleEx.Frontend.Normalize do
   defp normalize_container_boundary(%Node{kind: :reusable_definition} = node, raw, diags) do
     case Payload.prop(raw, "element_type") do
       type when type in ["Popup", "GroupFocus"] ->
-        binding = %{
-          id: node.exporter_id <> " :: plugin",
-          kind: :plugin,
-          slot: "plugin",
-          source: node.source,
-          payload: %{"type" => type, "reason" => "runtime_overlay", "element" => raw}
-        }
+        kind = overlay_kind(type)
 
-        node = %{
-          node
-          | variant: :runtime_overlay,
-            placeholder?: true,
-            children: [],
-            bindings: %{"plugin" => binding},
-            attributes: placeholder_attributes(type, :runtime_overlay)
-        }
-
-        diag = %Diagnostic{
-          code: :unsupported_element,
-          message: placeholder_message(:runtime_overlay),
-          refs: [node.exporter_id],
-          details: %{type: type, reason: :runtime_overlay}
-        }
-
-        {node, [diag]}
+        {%{node | variant: kind, box: overlay_box(node.box), runtime: overlay_runtime(kind, raw)},
+         diags}
 
       "FloatingGroup" ->
         attributes =
           %{"data-floating-vertical" => "top", "data-floating-horizontal" => "both"}
           |> Map.merge(element_attributes(raw, :floating_group, nil))
 
-        {%{node | variant: :floating_group, attributes: attributes}, diags}
+        {%{
+           node
+           | variant: :floating_group,
+             attributes: attributes,
+             runtime: overlay_runtime(:floating_group, raw, attributes)
+         }, diags}
 
       _ ->
         {node, diags}
@@ -432,6 +421,7 @@ defmodule BubbleEx.Frontend.Normalize do
           |> put_default_overlay_height(raw, parent_mode)
           |> put_child_alignment(raw, parent_mode)
           |> put_fixed_parent_offsets(raw, parent_mode)
+          |> drop_overlay_offsets()
 
         {[node | nodes], diags ++ node_diags}
       else
@@ -502,6 +492,13 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp put_fixed_parent_offsets(node, _raw, _parent_mode), do: node
 
+  # A Popup or Group Focus is placed by its runtime (viewport or reference
+  # element), never at its editor canvas offsets, whatever its parent layout.
+  defp drop_overlay_offsets(%Node{kind: kind} = node) when kind in [:popup, :group_focus],
+    do: %{node | box: overlay_box(node.box)}
+
+  defp drop_overlay_offsets(node), do: node
+
   # These are Bubble's runtime defaults for a Shape dropped into a Fixed
   # container. Explicit compact or canonical dimensions always win.
   defp placement_value(%Node{box: box}, key) when is_map(box) do
@@ -522,7 +519,7 @@ defmodule BubbleEx.Frontend.Normalize do
     case classify(type, raw) do
       {:native, kind, variant} ->
         {children, child_diags} =
-          if kind in [:group, :floating_group, :repeating_group] do
+          if kind in [:group, :floating_group, :repeating_group, :popup, :group_focus] do
             normalize_children(raw, identity, path, workflows)
           else
             {[], []}
@@ -551,6 +548,8 @@ defmodule BubbleEx.Frontend.Normalize do
           responsive: responsive_from(raw)
         }
 
+        node = put_runtime(node, raw)
+
         {node, child_diags ++ slot_diagnostics(node, kind, variant)}
 
       {:instance, definition_key} ->
@@ -578,6 +577,7 @@ defmodule BubbleEx.Frontend.Normalize do
 
       {:placeholder, reason} ->
         {slots, bindings} = extract_slots(raw, :placeholder, exporter_id)
+        {children, child_diags} = normalize_children(raw, identity, path, workflows)
 
         plugin_binding = %{
           id: exporter_id <> " :: plugin",
@@ -610,7 +610,9 @@ defmodule BubbleEx.Frontend.Normalize do
           unmapped: unmapped_keys(raw),
           placeholder?: true,
           attributes: placeholder_attributes(type, reason),
-          responsive: responsive_from(raw)
+          responsive: responsive_from(raw),
+          children: children,
+          runtime: container_runtime(type, children)
         }
 
         diag = %Diagnostic{
@@ -620,7 +622,7 @@ defmodule BubbleEx.Frontend.Normalize do
           details: %{type: type, reason: reason}
         }
 
-        {node, [diag]}
+        {node, [diag | child_diags]}
     end
   end
 
@@ -629,22 +631,209 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp element_layout(raw, _kind), do: layout_from(raw)
 
-  # Overlays start closed. Their show/hide actions, positioning, focus, and
-  # backdrop depend on Bubble's runtime. Preserve the entire container, including
-  # descendants, for consumers without pretending a static dialog is equivalent.
-  defp placeholder_source(raw, :runtime_overlay), do: %{"element" => raw}
   defp placeholder_source(_raw, _reason), do: %{}
-
-  defp placeholder_attributes(type, :runtime_overlay),
-    do: %{"data-placeholder-kind" => type, "hidden" => true}
 
   defp placeholder_attributes(type, _reason),
     do: %{"data-placeholder-kind" => type || "unknown"}
 
-  defp placeholder_message(:runtime_overlay),
-    do: "overlay retained as a hidden placeholder; opening and dismissal require Bubble workflows"
-
   defp placeholder_message(_reason), do: "element lowered as a dimension-preserving placeholder"
+
+  # --- runtime boundaries -------------------------------------------------------
+
+  # A placeholder container keeps its normalized content for runtime adapters;
+  # a static export renders only the dimension-preserving placeholder.
+  @repeating_containers ["RepeatingGroup", "Table"]
+
+  defp container_runtime(type, children) do
+    if type in @repeating_containers or children != [] do
+      %{"boundary" => "container", "type" => type, "repeats" => type in @repeating_containers}
+    end
+  end
+
+  defp overlay_kind("Popup"), do: :popup
+  defp overlay_kind("GroupFocus"), do: :group_focus
+
+  defp put_runtime(%Node{kind: kind} = node, raw) when kind in [:popup, :group_focus],
+    do: %{node | box: overlay_box(node.box), runtime: overlay_runtime(kind, raw)}
+
+  # Unset floating references default like a Floating Group reusable's root.
+  defp put_runtime(%Node{kind: :floating_group} = node, raw) do
+    attributes =
+      Map.merge(
+        %{"data-floating-vertical" => "top", "data-floating-horizontal" => "both"},
+        node.attributes
+      )
+
+    %{node | attributes: attributes, runtime: overlay_runtime(:floating_group, raw, attributes)}
+  end
+
+  defp put_runtime(node, _raw), do: node
+
+  # Popups and Group Focuses are absent until a workflow shows them, whatever
+  # their `is_visible` flag (docs/research/overlay-runtime-audit.md). Their
+  # editor canvas offsets never place them.
+  defp overlay_box(box), do: Map.drop(box, [:x, :y, :hidden?, :collapsed?])
+
+  # Bubble's runtime puts a Popup that is not vertically centered 100px below
+  # the viewport top, horizontally centered (`bptvorpv` source observation).
+  @popup_top 100
+
+  defp overlay_runtime(kind, raw, attributes \\ %{})
+
+  defp overlay_runtime(:popup, raw, _attributes) do
+    vertical = if Payload.prop(raw, "vertical_centering") == true, do: "center", else: "top"
+
+    placement =
+      %{"anchor" => "viewport", "horizontal" => "center", "vertical" => vertical}
+      |> then(&if vertical == "top", do: Map.put(&1, "top", @popup_top), else: &1)
+
+    %{
+      "boundary" => "overlay",
+      "overlay" => "popup",
+      "initial" => "hidden",
+      "toggle" => "workflow",
+      "modal" => true,
+      "placement" => placement,
+      "dismiss" =>
+        if(Payload.prop(raw, "prevent_user_from_closing_through_esc") == true,
+          do: [],
+          else: ["escape"]
+        )
+    }
+    |> put_present("backdrop", popup_backdrop(raw))
+    |> put_present("z_index", layer_index(raw))
+  end
+
+  # A Group Focus opens below its reference element, shifted by its offsets
+  # (`bptvorpv`: reference bottom + `offset_top`, reference left + `offset_left`),
+  # and closes on an outside click.
+  defp overlay_runtime(:group_focus, raw, _attributes) do
+    reference = Payload.prop(raw, "reference")
+
+    %{
+      "boundary" => "overlay",
+      "overlay" => "group_focus",
+      "initial" => "hidden",
+      "toggle" => "workflow",
+      "modal" => false,
+      "placement" => %{
+        "anchor" => "element",
+        "reference" => if(is_binary(reference), do: %{"bubble_id" => reference}),
+        "side" => "below",
+        "offset_top" => number_or_zero(Payload.prop(raw, "offset_top")),
+        "offset_left" => number_or_zero(Payload.prop(raw, "offset_left"))
+      },
+      "dismiss" => ["outside_click"]
+    }
+    |> put_present("z_index", layer_index(raw))
+  end
+
+  # A Floating Group is pinned to viewport edges and starts as authored
+  # (visible unless `is_visible` is false); workflows show and hide it.
+  defp overlay_runtime(:floating_group, raw, attributes) do
+    %{
+      "boundary" => "overlay",
+      "overlay" => "floating_group",
+      "initial" => if(hidden?(raw), do: "hidden", else: "visible"),
+      "toggle" => "workflow",
+      "modal" => false,
+      "placement" => %{
+        "anchor" => "viewport",
+        "vertical" => attributes["data-floating-vertical"],
+        "horizontal" => attributes["data-floating-horizontal"]
+      },
+      "dismiss" => []
+    }
+    |> put_present("z_index", layer_index(raw))
+    |> put_present("plane", plane(Payload.prop(raw, "float_zindex")))
+  end
+
+  # A Floating Group floats in front of or behind the page's other elements.
+  defp plane(value) when value in ["front", "back"], do: value
+  defp plane(_value), do: nil
+
+  defp popup_backdrop(raw) do
+    backdrop =
+      %{}
+      |> put_present("color", Payload.prop(raw, "greyout_color"))
+      |> put_present("blur", Payload.prop(raw, "greyout_blur"))
+
+    if backdrop == %{}, do: nil, else: backdrop
+  end
+
+  defp number_or_zero(value) when is_number(value), do: value
+  defp number_or_zero(_value), do: 0
+
+  defp put_present(map, _key, nil), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
+
+  # An instance of a Popup, Group Focus or Floating Group reusable is that
+  # overlay; a Floating Group instance's own floating references and
+  # visibility win over its definition's.
+  defp overlay_definitions(reusables) do
+    for %Node{runtime: %{"boundary" => "overlay"}} = definition <- reusables,
+        ref <- [definition.map_key, definition.source.bubble_id],
+        is_binary(ref),
+        into: %{},
+        do: {ref, definition}
+  end
+
+  defp mark_overlay_instances(%Node{} = node, overlays) when map_size(overlays) == 0, do: node
+
+  defp mark_overlay_instances(%Node{} = node, overlays) do
+    node =
+      case node do
+        %Node{kind: :reusable_instance, definition_ref: ref} when is_map_key(overlays, ref) ->
+          instance_overlay(node, Map.fetch!(overlays, ref))
+
+        _ ->
+          node
+      end
+
+    %{node | children: Enum.map(node.children, &mark_overlay_instances(&1, overlays))}
+  end
+
+  defp instance_overlay(
+         node,
+         %Node{runtime: %{"overlay" => "floating_group"} = runtime} = definition
+       ) do
+    attributes = Map.merge(definition.attributes, node.attributes)
+
+    placement = %{
+      runtime["placement"]
+      | "vertical" => attributes["data-floating-vertical"],
+        "horizontal" => attributes["data-floating-horizontal"]
+    }
+
+    initial = if node.box[:hidden?], do: "hidden", else: "visible"
+    %{node | runtime: %{runtime | "placement" => placement, "initial" => initial}}
+  end
+
+  defp instance_overlay(node, %Node{runtime: runtime}),
+    do: %{node | box: overlay_box(node.box), runtime: runtime}
+
+  # Group Focus references name a Bubble element; record its Exporter ID when
+  # the same page or reusable contains it.
+  defp resolve_overlay_references(%Node{} = root) do
+    ids = root |> tree_nodes() |> Map.new(&{&1.source.bubble_id, &1.exporter_id})
+    put_reference_ids(root, ids)
+  end
+
+  defp tree_nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &tree_nodes/1)]
+
+  defp put_reference_ids(%Node{} = node, ids) do
+    node =
+      case node.runtime do
+        %{"placement" => %{"reference" => %{"bubble_id" => id} = ref} = placement} = runtime ->
+          ref = put_present(ref, "exporter_id", Map.get(ids, id))
+          %{node | runtime: %{runtime | "placement" => %{placement | "reference" => ref}}}
+
+        _ ->
+          node
+      end
+
+    %{node | children: Enum.map(node.children, &put_reference_ids(&1, ids))}
+  end
 
   defp placeholder_box(raw) do
     box = box_from(raw)
@@ -683,7 +872,7 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
-  defp classify("FloatingGroup", raw), do: classify_floating_group(raw)
+  defp classify("FloatingGroup", raw), do: {:native, :floating_group, layout_mode(raw) || :column}
 
   defp classify("Shape", _raw), do: {:native, :shape, :decorative}
   defp classify("Button", raw), do: classify_button(raw)
@@ -695,8 +884,8 @@ defmodule BubbleEx.Frontend.Normalize do
   defp classify("SliderInput", raw), do: classify_slider(raw)
   defp classify("AutocompleteDropdown", raw), do: classify_search(raw)
 
-  defp classify(type, _raw) when type in ["Popup", "GroupFocus"],
-    do: {:placeholder, :runtime_overlay}
+  defp classify(type, raw) when type in ["Popup", "GroupFocus"],
+    do: {:native, overlay_kind(type), layout_mode(raw) || :column}
 
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
@@ -761,21 +950,6 @@ defmodule BubbleEx.Frontend.Normalize do
 
       _ ->
         {:placeholder, :unsupported_icon_variant}
-    end
-  end
-
-  defp classify_floating_group(raw) do
-    vertical = Payload.prop(raw, "floating_reference")
-
-    horizontal =
-      Payload.prop(raw, "floating_reference_horizontal_resp") ||
-        Payload.prop(raw, "floating_reference_horizontal")
-
-    if static_element?(raw) and layout_mode(raw) == :column and vertical == "top" and
-         horizontal == "right" do
-      {:native, :floating_group, :column}
-    else
-      {:placeholder, :unsupported_floating_group_variant}
     end
   end
 
@@ -2864,6 +3038,14 @@ defmodule BubbleEx.Frontend.Normalize do
           "floating_reference",
           "floating_reference_horizontal",
           "floating_reference_horizontal_resp",
+          "float_zindex",
+          "reference",
+          "offset_top",
+          "offset_left",
+          "vertical_centering",
+          "greyout_color",
+          "greyout_blur",
+          "prevent_user_from_closing_through_esc",
           "icon",
           "internal_page",
           "link_type",

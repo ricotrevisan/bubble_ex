@@ -121,6 +121,8 @@ defmodule BubbleEx.Frontend.Export.Html do
        when kind in [
               :group,
               :floating_group,
+              :popup,
+              :group_focus,
               :reusable_definition,
               :repeating_group,
               :shape,
@@ -163,7 +165,14 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp do_render(%Node{kind: :radio_buttons} = node, opts), do: render_radio_buttons(node, opts)
 
   defp children_html_or_empty(%Node{kind: kind} = node, opts)
-       when kind in [:group, :floating_group, :reusable_definition, :repeating_group],
+       when kind in [
+              :group,
+              :floating_group,
+              :popup,
+              :group_focus,
+              :reusable_definition,
+              :repeating_group
+            ],
        do: children_html(node, opts)
 
   defp children_html_or_empty(_node, _opts), do: ""
@@ -171,7 +180,6 @@ defmodule BubbleEx.Frontend.Export.Html do
   defp render_instance(node, opts) do
     stack = Keyword.get(opts, :expansion_stack, MapSet.new())
     definition = Keyword.get(opts, :expand).(node)
-    node = instance_boundary(node, definition)
 
     inner =
       case definition do
@@ -188,16 +196,6 @@ defmodule BubbleEx.Frontend.Export.Html do
 
     wrap("div", node, inner, opts)
   end
-
-  defp instance_boundary(node, %Node{variant: :runtime_overlay} = definition) do
-    %{
-      node
-      | variant: :runtime_overlay,
-        attributes: Map.merge(node.attributes || %{}, definition.attributes)
-    }
-  end
-
-  defp instance_boundary(node, _definition), do: node
 
   defp instance_opts(opts, instance, identity, stack) do
     opts
@@ -617,6 +615,7 @@ defmodule BubbleEx.Frontend.Export.Html do
 
     node
     |> node_attrs(tag, opts)
+    |> Map.merge(overlay_attrs(node))
     |> Map.put("data-exporter-id", id)
     |> put_authored_id(node)
     |> maybe_put_bubble_id(node)
@@ -626,6 +625,23 @@ defmodule BubbleEx.Frontend.Export.Html do
     |> Enum.map(&html_attr/1)
   end
 
+  # Overlays that start hidden (Popup, Group Focus) are emitted closed with
+  # the `hidden` attribute: no box and no layout contribution, as in Bubble's
+  # initial DOM, while their content stays in place for a runtime to reveal by
+  # removing the attribute. Shared CSS keeps `[data-overlay][hidden]` hidden
+  # over the node's own display rule.
+  defp overlay_attrs(%Node{runtime: %{"boundary" => "overlay", "overlay" => overlay} = runtime}) do
+    %{"data-overlay" => overlay}
+    |> Map.merge(if runtime["initial"] == "hidden", do: %{"hidden" => true}, else: %{})
+    |> Map.merge(
+      if runtime["modal"] == true,
+        do: %{"role" => "dialog", "aria-modal" => "true"},
+        else: %{}
+    )
+  end
+
+  defp overlay_attrs(_node), do: %{}
+
   defp put_authored_id(attrs, node) do
     case authored_id(node) do
       nil -> attrs
@@ -634,7 +650,6 @@ defmodule BubbleEx.Frontend.Export.Html do
   end
 
   defp authored_id(%Node{kind: :placeholder}), do: nil
-  defp authored_id(%Node{variant: :runtime_overlay}), do: nil
 
   defp authored_id(node) do
     case resolved(node, "html_id") do

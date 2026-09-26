@@ -43,6 +43,33 @@ All notable changes to this project are documented here.
   (CI job `phoenix-compile-check`: every fixture on Elixir 1.18, a subset
   on 1.20) renders the fixtures, compiles with `--warnings-as-errors`, generates and checks the
   migrations and runs the smoke test against PostgreSQL.
+- **Popups, Group Focuses and Floating Groups are normalized** (WTF-407).
+  Their content gets Exporter IDs, bindings and coverage like any container;
+  they are native `:popup` / `:group_focus` / `:floating_group` nodes (every
+  Floating Group anchor, not only always-visible top-right) and reusables
+  with those bases keep their children. A new stack-neutral `runtime` field
+  on `Normalized.Node` describes overlay behavior (initial state, workflow
+  toggling, modality, placement, dismissal, backdrop, numeric `z_index`, a
+  Floating Group's `plane` front/back) and marks the
+  content of placeholder containers (dynamic Repeating Groups, Tables,
+  plugin containers), now normalized as a runtime template the static
+  export does not render. The static exporter emits Popup and Group Focus
+  closed with `hidden` and `data-overlay` (shared CSS keeps them hidden),
+  places an opened Popup fixed and centered and a Group Focus with CSS anchor
+  positioning (behind `@supports (anchor-name: --x)`, static position
+  otherwise); a Floating Group pinned to both vertical edges spans the
+  viewport height. `test/support/fidelity/overlay-states.mjs` checks opened
+  geometry against `bptvorpv`'s committed source observation. Normalized
+  schema version 3. `Plan.Residue`: `:runtime_container` now means a
+  placeholder container with runtime content (`detail.variant`); a workflow
+  listening to an element of such a template is the new
+  `:trigger_in_runtime_template`; plan element coverage counts template
+  elements as `in_runtime_template` / `generated_in_runtime_template`, never
+  `generated`. mm-137 plan coverage: elements generated 3,359 → 5,360 of
+  8,455 (1,288 more in runtime templates), not normalized 3,620 → 1,
+  workflows blocked by `trigger_not_normalized` 832 → 0 (203 now
+  `trigger_in_runtime_template`), frontend workflows auto 824 → 1,179 of
+  2,275.
 
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits
@@ -57,6 +84,45 @@ All notable changes to this project are documented here.
   has goldens for every format, and the PostgreSQL DDL job checks that its
   comments reach `pg_description` byte for byte in both
   `standard_conforming_strings` modes.
+
+- **Bubble replay driver with a branch-only guard** (WTF-384, V4 of
+  WTF-358). `BubbleEx.Verify.Replay.Target` takes a Bubble app ID and a
+  `wtfreplay…` branch (live, test, `version-…` forms, look-alikes, domains
+  and URLs are refused) plus the owner's replay admin token (redacted from
+  `Inspect`), and builds every URL under
+  `https://<app>.bubbleapps.io/version-<branch>/api/1.1/`;
+  `check_url/2` re-checks each one before it is sent.
+  `Replay.Client` is a Data API client over `BubbleEx.HTTP`: every search
+  is constrained to the run's ledger IDs (an empty list makes no call; a
+  result outside the constraint stops it), the kit preflight probes with an
+  ID that cannot exist, and the only workflows it calls are the replay
+  kit's sign-up and login (`call_kit/4`): **no app workflow is called**
+  until V7 classifies them replay-safe. Admin, persona-token or anonymous
+  auth, a call and a wall-time budget, backoff and `Retry-After` on 429/5xx
+  (creates only on 429), no redirects, non-raising encoding, errors
+  without bodies or credentials. Updates and deletes take a
+  `Replay.Ledger` and a seed key, never a Bubble ID. The ledger is an
+  fsynced journal (`<ledger_dir>/<run id>.jsonl`): the intent (with a
+  sign-up's unique run email) is written before each create and the ID
+  after. `Replay.Cleanup` deletes confirmed entries, finds unconfirmed
+  sign-ups by their exact `+<run id>@` email, reports other unconfirmed
+  creates, and `resume/2` finishes a dead run's cleanup from its journal.
+  `Replay.Seeder` signs personas up and logs them in (per-run sink emails,
+  random passwords in a redacted `Replay.Session`), creates records as
+  their `Created By` user, defers forward references and supports
+  delete-after-seed (dangling references). `Replay.Recorder` requires the
+  dry run's `plan_sha256` and a `:ledger_dir`, refuses plans over budget
+  and ops it cannot record yet, preflights the kit (read-only), records
+  every scenario twice with `Replay.Differential` masks (in privacy, data
+  and auth scenarios only differing field values are masked: a differing
+  verdict, a field seen in one run only, or any other difference makes the
+  recording incomplete), runs seeding and observing under `try` so cleanup
+  always runs, reports calls, leftovers and the assumption flags each op
+  can calibrate, and drops any recording that `Replay.CredentialScan`
+  refuses. The owner checklist is `docs/replay-kit.md`.
+  `BubbleEx.HTTP.request/5` now also accepts `:patch` and `:delete`.
+  Tests run only against an in-memory fake Bubble.
+
 - **Plugin inventory and replacement findings** (WTF-376, T10 of WTF-359).
   The index has a `:plugin` symbol (`plugin:<marketplace id>`, `installed`,
   `version`; `_current` / `_test` keys are the same plugin) for every
@@ -641,6 +707,41 @@ All notable changes to this project are documented here.
   `mix bubble.export_frontend URL --mode snapshot -o DIR`.
 
 ### Fixed
+
+- **T-SQL names cannot split the sqlcmd batch** (WTF-409). T-SQL allows raw
+  line breaks inside `[...]`, so a Bubble name holding a line that is only
+  `GO` (or `GO 5`, `go`, a `:r` or `!!` sqlcmd command) cut the generated
+  script into batches under sqlcmd/SSMS. Identifiers now go through
+  `Db.Encoder.Literal.tsql_bracketed/1`: `]` is doubled, and a name with
+  line breaks or other control characters has each replaced by a space and
+  gets a `_` + 8-hex SHA-256 suffix (deterministic, distinct from the
+  spaced name). A new `hostile_go_separators` fixture has goldens for every
+  format, and `DbSyntaxTest` checks every fixture's T-SQL: the only
+  batch-tool lines are the encoder's own `GO` after `CREATE SCHEMA`.
+  `hostile_names.tsql` golden changed accordingly.
+
+- **DBML and Zod escape hostile names** (WTF-408). The `hostile_names`
+  fixture showed DBML writing `"` unescaped inside quoted identifiers and
+  Zod writing a raw line break inside a quoted object key (a TypeScript
+  syntax error); a line break or LS/PS in a table name also ended Zod's
+  `// <table>` comment and ran as code. The new
+  `Db.Encoder.Literal` quotes per format: DBML identifiers
+  (`dbml_quoted/1`: `\"`, `\\`, and `\n`, `\r`, `\t`, `\v`, `\f` or `\uXXXX`
+  for control characters, NEL, LS and PS), JavaScript single-quoted strings
+  (`js_single_quoted/1`, the same escapes plus `\'`) and line comments
+  (`line_comment/1`, formerly the SQL encoders' private reference-comment
+  escaping, now also used for Zod's comments). DBML's project name and API
+  type names use the same quoting. Ecto's string literals also escape `#{`.
+  Only the `hostile_names` DBML and Zod goldens change: each name now stays
+  on one line with its escapes. Convex, Xano, Ecto, SQLite, PostgreSQL and
+  T-SQL were already correct for this fixture (converted names, JSON
+  encoding or SQL quoting). A new syntax check
+  (`test/support/syntax_check`, pinned `@dbml/core` 10.2.0 and TypeScript
+  5.9.3) parses the DBML, Zod and Convex output of every schema fixture, both
+  namings and both external-type modes, and checks that hostile names parse
+  back unchanged; CI runs it with `mix test --only syntax_check` in the
+  fidelity job. Without Node, a structural check over `hostile_names` (no
+  literal or comment crosses a line) runs in the default suite.
 
 - **Ecto, Convex, Xano and Zod names are unique after case conversion**
   (WTF-391). The Reader's names are unique case-insensitively, but the

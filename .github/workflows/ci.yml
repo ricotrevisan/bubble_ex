@@ -167,3 +167,11 @@ jobs:
       - run: mix test --only fidelity
         env:
           MIX_ENV: test
+      # Parses the generated DBML, Zod and Convex schemas of every fixture
+      # with @dbml/core and the TypeScript parser (WTF-408, DbSyntaxTest).
+      - name: Parse the generated DBML, Zod and Convex schemas
+        run: |
+          npm ci --ignore-scripts --prefix test/support/syntax_check
+          mix test --only syntax_check
+        env:
+          MIX_ENV: test
