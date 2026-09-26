@@ -297,9 +297,29 @@ decision_expectations =
               ),
           # (privacy: :unverified loads a gated relationship's twin: the
           # public one is filtered by the actor's grants, and there is none)
+          # With policies, a decided fixture's has_many is also loaded
+          # through the public relationship with authorization on, as users
+          # who did and did not create its children: `creator` is the
+          # destination's Created By attribute, whose Creator rule is its
+          # only read grant (WTF-410; decisions.exs)
           has_many:
             for rel <- r.relationships, rel.kind == :has_many do
-              %{name: twin_of.(r, rel), destination: namespace <> "." <> rel.destination}
+              destination = Map.fetch!(by_module, rel.destination)
+
+              creator =
+                if privacy == :unverified and String.starts_with?(name, "decided_") do
+                  Enum.find_value(destination.attributes, fn a ->
+                    if a.source[:field] == "Created By", do: a.name
+                  end)
+                end
+
+              %{
+                name: twin_of.(r, rel),
+                public: rel.name,
+                destination: namespace <> "." <> rel.destination,
+                creator: creator,
+                actor: namespace <> ".Privacy"
+              }
             end,
           # belongs_to relationships a text_to_reference decision made
           text_references:
@@ -322,6 +342,7 @@ decision_expectations =
       namespace: namespace,
       repo: repo,
       name: name,
+      privacy: privacy,
       extensions: project.extensions,
       resources: resources
     }

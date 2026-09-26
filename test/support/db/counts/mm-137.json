@@ -64,8 +64,8 @@
       }
     },
     "postgres": {
-      "bytes": 113789,
-      "lines": 3755,
+      "bytes": 202977,
+      "lines": 4270,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
