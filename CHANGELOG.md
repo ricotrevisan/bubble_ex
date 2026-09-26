@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Task CLI and verifier runner for the Phoenix target** (WTF-375, T9 of
+  WTF-359). `mix wtf.task` works `.wtf/plan.json` in the owner's
+  repository: `next` (ready top-level tasks in plan order, skipping claimed,
+  blocked and waiting ones; `coordinate` edges shown), `show`, `claim` /
+  `release` (time-limited), `complete` (binds every abstract criterion to a
+  check and refuses unless all pass; records evidence), `review`
+  (reviewer label is not an implementer label; spoofable, see WTF-411), `note` (`--needs-decision`
+  blocks the task until resolved), `audit` (re-runs done tasks' checks,
+  failures become `needs_reverify`) and `sync` (applies `Plan.diff/2` to
+  the task states; writes only `.wtf/`). State is one canonical JSON file
+  per task under `.wtf/tasks/` (`BubbleEx.Tasks.State`). Criteria bind to
+  `BubbleEx.Target.Phoenix.Checks`: `check_manifest`, `mix compile
+  --warnings-as-errors`, `mix format`/credo, `data-bubble-id` markers,
+  `# bubble:step` comments, tests tagged `bubble: "<subject>"`, and
+  `Verify.Result` evidence through `Result.evaluate/3`. `Plan.decode/1`
+  reads a plan back with schema and `plan_sha256` checks. CI runs
+  complete/audit end to end on a generated project. Every verdict is
+  **advisory** (the agent being verified can edit everything checked);
+  trusted verification anchored outside the repository is WTF-411.
 - **`Target.Ash` applies owner decisions, cut 2** (WTF-405, WTF-352 §4.2).
   `derive_count` drops a stored count for a public calculation of the same
   name, the length of the stored list (`length(path.list || [])`), or a
@@ -854,6 +873,18 @@ All notable changes to this project are documented here.
   `mix bubble.export_frontend URL --mode snapshot -o DIR`.
 
 ### Fixed
+
+- **Cut-2 follow-ups** (WTF-410). A `derive_count` computed as a list
+  length now says in its `ash_decision_applied` diagnostic that the loader
+  must drop IDs of deleted records from the list, which Bubble's `:count`
+  hides (WTF-357); the behaviour is unchanged. The trigram index is
+  documented as serving `contains` against a value (LIKE/ILIKE), not
+  against another column (strpos). The cut-2 fixture's Card has a Creator
+  read rule, and `scripts/ash_compile_check.sh` loads the derived
+  `has_many` through its public relationship with authorization on (a
+  non-creator sees `[]`, the creator only their child). The mm-137 encoder
+  count snapshot records the Postgres DDL size after WTF-393's
+  `COMMENT ON COLUMN`.
 
 - **T-SQL names cannot split the sqlcmd batch** (WTF-409). T-SQL allows raw
   line breaks inside `[...]`, so a Bubble name holding a line that is only

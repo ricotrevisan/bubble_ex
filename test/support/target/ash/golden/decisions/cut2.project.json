@@ -212,13 +212,14 @@
     {
       "code": "ash_privacy_omitted",
       "details": {
-        "rules": 3,
+        "rules": 5,
         "types": [
-          "board"
+          "board",
+          "card"
         ],
         "unavailable": []
       },
-      "message": "privacy rules were not compiled (privacy: :omit): 3 rules on 1 data types; the generated resources have no authorization",
+      "message": "privacy rules were not compiled (privacy: :omit): 5 rules on 2 data types; the generated resources have no authorization",
       "outcome": "degraded",
       "path": "",
       "severity": "info",
@@ -277,7 +278,7 @@
         "transform": "derive_count",
         "via": []
       },
-      "message": "board.watcher_count_number counts board.watchers_list_user (owner decision finding:denormalized_field:d8c5d54da46b523e); it is not stored and cannot be written",
+      "message": "board.watcher_count_number counts board.watchers_list_user (owner decision finding:denormalized_field:d8c5d54da46b523e); it is not stored and cannot be written; the loader must drop IDs of deleted records from the list, which Bubble does not count",
       "outcome": "degraded",
       "path": "/user_types/board/fields/watcher_count_number",
       "severity": "info",
@@ -378,7 +379,7 @@
           "field:card/board_custom_board"
         ]
       },
-      "message": "card.board_watcher_count_number counts board.watchers_list_user (owner decision finding:denormalized_field:671c6b64fcee5682); it is not stored and cannot be written",
+      "message": "card.board_watcher_count_number counts board.watchers_list_user (owner decision finding:denormalized_field:671c6b64fcee5682); it is not stored and cannot be written; the loader must drop IDs of deleted records from the list, which Bubble does not count",
       "outcome": "degraded",
       "path": "/user_types/card/fields/board_watcher_count_number",
       "severity": "info",

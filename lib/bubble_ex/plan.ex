@@ -416,6 +416,14 @@ defmodule BubbleEx.Plan do
 
   defp task_map(%Task{} = t), do: t |> Map.from_struct() |> json()
 
+  @doc """
+  Reads a plan back from its JSON text (or the decoded map), checking its
+  schema and its `plan_sha256`: see `BubbleEx.Plan.Codec`. `to_json/1` of
+  the result gives back the same bytes.
+  """
+  @spec decode(String.t() | map()) :: {:ok, t()} | {:error, Error.t()}
+  defdelegate decode(json), to: BubbleEx.Plan.Codec
+
   @doc "Canonical JSON text of `to_map/1` (the `.wtf/plan.json` content)."
   @spec to_json(t()) :: String.t()
   def to_json(%__MODULE__{} = plan), do: plan |> to_map() |> CanonicalJson.encode()

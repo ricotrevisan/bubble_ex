@@ -1112,12 +1112,22 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   defp field_diag({:count, {t, f}, a, %{via: via, source: {st, sf}}}, ctx) do
+    aggregate = Map.has_key?(ctx.reverse, {st, sf})
+
+    # A length counts every stored ID; Bubble's :count hides deleted
+    # records. The loader must drop them (WTF-357).
+    loader =
+      if aggregate,
+        do: "",
+        else:
+          "; the loader must drop IDs of deleted records from the list, which Bubble does not count"
+
     [
       Diagnostic.new(
         :ash_decision_applied,
         ctx.fields[{t, f}].path,
         "#{t}.#{f} counts #{st}.#{sf} (owner decision #{a.key}); it is not stored and " <>
-          "cannot be written",
+          "cannot be written" <> loader,
         target: :ash,
         subject: %{type: t, field: f},
         details: %{
@@ -1125,7 +1135,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
           transform: a.transform,
           via: Enum.map(via, fn {vt, vf} -> Symbol.id(:field, [vt, vf]) end),
           source_field: Symbol.id(:field, [st, sf]),
-          aggregate: Map.has_key?(ctx.reverse, {st, sf})
+          aggregate: aggregate
         }
       )
     ]
@@ -1365,7 +1375,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   # A count of a list derived as a has_many is an aggregate over it;
   # otherwise the length of the stored list (0 when it is empty or nil,
-  # as Bubble counts).
+  # as Bubble counts). The length includes IDs of deleted records left in
+  # the stored list, which Bubble's :count hides: the loader has to drop
+  # them (WTF-357; the decision's diagnostic says so).
   defp count(resource, a, d, plan, by_type) do
     t = resource.source.type
     {path, owner} = relationship_path(d.via, by_type, t)
@@ -1452,6 +1464,10 @@ defmodule BubbleEx.Target.Ash.Decisions do
   defp physical(:gin, table, cols, index),
     do: index_struct(index, table, cols, :gin, cols, "gin", nil, "gin_index")
 
+  # A trigram index serves `contains(column, text)` only when the text is a
+  # value by query time (a literal, an input or `^actor(...)`): AshPostgres
+  # emits LIKE/ILIKE '%text%'. Against another column it emits
+  # strpos(a, b) > 0, which no index answers (a sequential scan).
   defp physical(:trigram, table, [col] = cols, index),
     do:
       index_struct(

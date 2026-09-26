@@ -24,7 +24,12 @@
 #     pointing elsewhere is not counted), loaded, as a filter and sorted
 #     (Ash.Query.sort and sort_input)
 #   * every derived has_many loads the records whose reference points
-#     here, and nothing for a record none points to
+#     here, and nothing for a record none points to; with policies
+#     (privacy: :unverified), a decided fixture's has_many whose
+#     destination is readable only by its creator (the cut-2 Card's
+#     Creator rule) is also loaded through the public relationship with
+#     authorization on: a user who created none of its children sees [],
+#     one who created one sees only that one (WTF-410)
 #   * a belongs_to a text_to_reference decision made loads the record its
 #     ID names, and nil for a dangling ID (there is no foreign key)
 #   * every index exists with its method (btree, GIN, GIN trigram
@@ -80,6 +85,10 @@ defmodule DecisionsCheck do
         ],
         Enum.flat_map(resources, & &1[key]) == [],
         do: raise("no #{what} to check")
+
+    if Enum.any?(fixtures, &(&1["privacy"] == "unverified")) and
+         not Enum.any?(Enum.flat_map(resources, & &1["has_many"]), & &1["creator"]),
+       do: raise("no has_many with a restrictive destination read policy to check")
 
     for kind <- ["length", "count"],
         not Enum.any?(Enum.flat_map(resources, & &1["counts"]), &(&1["kind"] == kind)),
@@ -391,7 +400,7 @@ defmodule DecisionsCheck do
     error -> ["#{inspect(resource)}.#{c["name"]}: #{Exception.message(error)}"]
   end
 
-  defp has_many(resource, %{"name" => name}) do
+  defp has_many(resource, %{"name" => name} = h) do
     many = rel(resource, name)
     [pk] = Ash.Resource.Info.primary_key(resource)
     [dest_pk] = Ash.Resource.Info.primary_key(many.destination)
@@ -417,10 +426,58 @@ defmodule DecisionsCheck do
       {got == Enum.sort(ids), "loads #{inspect(got)}, expected #{inspect(ids)}"},
       {Map.fetch!(lonely, many.name) == [], "loads #{inspect(Map.fetch!(lonely, many.name))} for a record none points to"}
     ]
+    |> Enum.concat(authorized_has_many(resource, h, owner, tag))
     |> Enum.reject(&elem(&1, 0))
     |> Enum.map(fn {_, what} -> "#{tag}: #{what}" end)
   rescue
     error -> ["#{inspect(resource)}.#{name}: #{Exception.message(error)}"]
+  end
+
+  # The public has_many with authorization on, when its destination is
+  # readable only by the user who created the record: an outsider sees
+  # none of the owner's children, a member only the child they created.
+  defp authorized_has_many(_resource, %{"creator" => nil}, _owner, _tag), do: []
+
+  defp authorized_has_many(resource, %{"public" => public, "creator" => creator} = h, owner, tag) do
+    many = rel(resource, public)
+    privacy = Module.concat([h["actor"]])
+    users = privacy.actor_resource()
+    [user_pk] = Ash.Resource.Info.primary_key(users)
+    [dest_pk] = Ash.Resource.Info.primary_key(many.destination)
+    [pk] = Ash.Resource.Info.primary_key(resource)
+
+    unless Ash.Policy.Authorizer in Ash.Resource.Info.authorizers(many.destination),
+      do: raise("#{inspect(many.destination)} has no policies")
+
+    member = create!(users, %{user_pk => "member-" <> tag})
+    outsider = create!(users, %{user_pk => "outsider-" <> tag})
+
+    mine =
+      create!(many.destination, %{
+        dest_pk => "member-child-" <> tag,
+        many.destination_attribute => Map.fetch!(owner, pk),
+        String.to_atom(creator) => Map.fetch!(member, user_pk)
+      })
+
+    seen = fn user ->
+      actor = privacy.load_actor(Map.fetch!(user, user_pk))
+
+      owner
+      |> Ash.load!([many.name], actor: actor, authorize?: true)
+      |> Map.fetch!(many.name)
+      |> Enum.map(&Map.fetch!(&1, dest_pk))
+      |> Enum.sort()
+    end
+
+    outsider_sees = seen.(outsider)
+    member_sees = seen.(member)
+
+    [
+      {outsider_sees == [],
+       "#{public} with authorization on shows #{inspect(outsider_sees)} to a user who created no child, expected []"},
+      {member_sees == [Map.fetch!(mine, dest_pk)],
+       "#{public} with authorization on shows #{inspect(member_sees)} to the creator of one child, expected only it"}
+    ]
   end
 
   defp text_reference(resource, %{"name" => name}) do
