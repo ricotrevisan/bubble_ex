@@ -13,12 +13,18 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   `record_matrix/3` does the same for a `BubbleEx.Verify.Matrix`.
 
   **One run** = preflight (first run only) → seed
-  (`BubbleEx.Verify.Replay.Seeder`, ledger) → every scenario's ops as their
-  personas → cleanup of the run's ledger, always, even after a failure.
+  (`BubbleEx.Verify.Replay.Seeder`) → every scenario's ops as their
+  personas → cleanup (`BubbleEx.Verify.Replay.Cleanup`), always: seeding
+  and observing run under `try`, so a raise, throw or exit still cleans up,
+  from the run's persisted ledger journal (`<ledger_dir>/<run id>.jsonl`,
+  intent fsynced before every create). If the VM dies, `Cleanup.resume/2`
+  on that journal finishes the job.
+
   Ops supported: `get` and `search` (Data API, the persona's token or
-  none) and `call_api_workflow` observing `status` and `response`. Other
-  ops and observations (`db_diff`, `step_trace`, pages) are V7/V8 and
-  refused up front.
+  none, searches constrained to the run's ledger IDs). **No app workflow
+  is ever called**: `call_api_workflow`, `trigger` and page ops are refused
+  up front until V7 classifies workflows as replay-safe (WTF-358 §6.4); the
+  only workflows the driver calls are the replay kit's sign-up and login.
 
   **Dry run first (§6.1 rule 3).** `plan/4` makes no call: it validates
   the scenarios against the seed and the target, estimates the calls and
@@ -46,6 +52,10 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   ## Options
 
     * `:plan_sha256` - required by `record/4` (from `plan/4`)
+    * `:ledger_dir` - required by `record/4`: where each run's ledger
+      journal is written
+    * `:progress` - a 1-arity function called with `{:seeded, run_id}` and
+      `{:observed, run_id}`
     * `:runs` - at least 2 (default 2)
     * `:kit` - `BubbleEx.Verify.Replay.Kit` (workflow names)
     * `:delete_after_seed` - seed keys to delete right after seeding
@@ -59,6 +69,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   alias BubbleEx.Verify.{Check, Observation, Recording, Scenario, Seed, Value}
 
   alias BubbleEx.Verify.Replay.{
+    Cleanup,
     Client,
     Codec,
     CredentialScan,
@@ -72,8 +83,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
 
   @supported %{
     get: [:visible, :visible_fields, :values],
-    search: [:record_set],
-    call_api_workflow: [:status, :response]
+    search: [:record_set]
   }
 
   @doc "The dry run: validation, the call estimate and the plan hash. No calls."
@@ -113,6 +123,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   def record(%Client{} = client, %Seed{} = seed, scenarios, opts \\ []) do
     with {:ok, plan} <- plan(client, seed, scenarios, opts),
          :ok <- confirmed(plan, opts),
+         :ok <- ledger_dir(opts),
          :ok <- affordable(client, plan),
          {:ok, run_id} <- run_id(opts),
          {:ok, preflight} <- Kit.preflight(client, kit(opts), types(seed, scenarios)) do
@@ -165,6 +176,19 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       do: {:ok, id},
       else:
         {:error, Error.new(:invalid_input, "run_id must be short lowercase letters and digits")}
+  end
+
+  defp ledger_dir(opts) do
+    case Keyword.get(opts, :ledger_dir) do
+      dir when is_binary(dir) and dir != "" ->
+        :ok
+
+      _ ->
+        {:error,
+         Error.new(:invalid_input, "a replay run needs :ledger_dir for its ledger journals", %{
+           reason: :no_ledger_dir
+         })}
+    end
   end
 
   defp confirmed(plan, opts) do
@@ -240,10 +264,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       do: :ok,
       else:
         {:error,
-         Error.new(:invalid_input, "the replay driver cannot record these ops yet", %{
-           scenario: s.id,
-           ops: bad
-         })}
+         Error.new(
+           :invalid_input,
+           "the replay driver cannot record these ops yet (only Data API get and search; " <>
+             "app workflows wait for V7's replay-safety classes)",
+           %{scenario: s.id, ops: bad}
+         )}
   end
 
   defp names_known(names, seed, scenarios) do
@@ -346,6 +372,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     %{
       run_id: r.run_id,
       seeded: length(r.ledger.entries),
+      journal: r.journal,
       error: r.error && error_summary(r.error),
       leftovers: r.leftovers
     }
@@ -357,56 +384,91 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   defp one_run(client, seed, scenarios, run_id, now, opts) do
     started = now.() |> DateTime.truncate(:second)
 
-    {seeded, state} =
-      case Seeder.seed(client, seed, run_id,
-             kit: kit(opts),
-             delete_after_seed: opts[:delete_after_seed] || []
-           ) do
-        {:ok, state} -> {:ok, state}
-        {:error, error, state} -> {{:error, error}, state}
-      end
+    case Ledger.new(client.target, run_id, dir: Keyword.fetch!(opts, :ledger_dir)) do
+      {:ok, ledger} ->
+        {seeded, state, observed} = guarded(client, seed, scenarios, ledger, opts)
+        {ledger, leftovers} = safe_cleanup(client, state.ledger)
 
-    observed =
-      case seeded do
-        :ok -> Map.new(scenarios, &{&1.id, observe(client, seed, &1, state)})
-        {:error, _} -> Map.new(scenarios, &{&1.id, {:error, :seeding_failed, 0}})
-      end
+        %{
+          run_id: run_id,
+          started: started,
+          observed: observed,
+          ledger: ledger,
+          journal: ledger.path,
+          session: state.session,
+          leftovers: leftovers,
+          error: run_error(seeded, observed)
+        }
 
-    {ledger, leftovers} = cleanup(client, state.ledger)
+      {:error, error} ->
+        {:ok, empty} = Ledger.new(client.target, run_id)
 
-    error =
-      case seeded do
-        {:error, error} ->
-          error
-
-        :ok ->
-          Enum.find_value(observed, fn
-            {_id, {:error, %Error{context: %{reason: :budget_exhausted}} = e, _}} -> e
-            _ -> nil
-          end)
-      end
-
-    %{
-      run_id: run_id,
-      started: started,
-      observed: observed,
-      ledger: ledger,
-      session: state.session,
-      leftovers: leftovers,
-      error: error
-    }
+        %{
+          run_id: run_id,
+          started: started,
+          observed: Map.new(scenarios, &{&1.id, {:error, :seeding_failed, 0}}),
+          ledger: empty,
+          journal: nil,
+          session: %Session{},
+          leftovers: [],
+          error: error
+        }
+    end
   end
 
-  # Deletes every live ledger entry, newest first; what fails is reported.
-  defp cleanup(client, ledger) do
-    Enum.reduce(Ledger.live(ledger), {ledger, []}, fn entry, {ledger, left} ->
-      case Client.delete_seeded(client, ledger, entry.key) do
-        {:ok, ledger} ->
-          {ledger, left}
+  # Seeding and observing; a raise, throw or exit is caught so cleanup
+  # always runs, from the journal (the in-memory state is lost then).
+  defp guarded(client, seed, scenarios, ledger, opts) do
+    progress = Keyword.get(opts, :progress, fn _ -> :ok end)
 
-        {:error, error} ->
-          {ledger, left ++ [%{key: entry.key, type: entry.type, id: entry.id, kind: error.kind}]}
-      end
+    try do
+      seed_and_observe(client, seed, scenarios, ledger, opts, progress)
+    catch
+      kind, _reason ->
+        error =
+          Error.new(:request_failed, "the replay run crashed", %{reason: :crashed, kind: kind})
+
+        ledger =
+          case Ledger.load(ledger.path) do
+            {:ok, loaded} -> loaded
+            {:error, _} -> ledger
+          end
+
+        {{:error, error}, %{ledger: ledger, session: %Session{}},
+         Map.new(scenarios, &{&1.id, {:error, error, 0}})}
+    end
+  end
+
+  defp seed_and_observe(client, seed, scenarios, ledger, opts, progress) do
+    case Seeder.seed(client, seed, ledger,
+           kit: kit(opts),
+           delete_after_seed: opts[:delete_after_seed] || []
+         ) do
+      {:ok, state} ->
+        progress.({:seeded, ledger.run_id})
+        observed = Map.new(scenarios, &{&1.id, observe(client, seed, &1, state)})
+        progress.({:observed, ledger.run_id})
+        {:ok, state, observed}
+
+      {:error, error, state} ->
+        {{:error, error}, state, Map.new(scenarios, &{&1.id, {:error, :seeding_failed, 0}})}
+    end
+  end
+
+  defp safe_cleanup(client, ledger) do
+    Cleanup.run(client, ledger)
+  catch
+    _kind, _reason ->
+      live = Ledger.live(ledger) ++ Ledger.unconfirmed(ledger)
+      {ledger, Enum.map(live, &%{key: &1.key, type: &1.type, id: &1.id, why: :cleanup_crashed})}
+  end
+
+  defp run_error({:error, error}, _observed), do: error
+
+  defp run_error(:ok, observed) do
+    Enum.find_value(observed, fn
+      {_id, {:error, %Error{context: %{reason: :budget_exhausted}} = e, _}} -> e
+      _ -> nil
     end)
   end
 
@@ -479,39 +541,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     end
   end
 
-  defp run_op(client, seed, scenario, %{op: :call_api_workflow} = op, state) do
-    with {:ok, auth} <- workflow_auth(seed, scenario, op, state),
-         {:ok, params} <- params(op.params, state.ledger),
-         {:ok, %{status: status, body: body}} <-
-           Client.call_workflow(client, op.workflow, params, auth) do
-      body = if body == :invalid_json, do: nil, else: body
-
-      {:ok,
-       Enum.flat_map(op.observe, fn
-         :status -> [%Observation{op: op.id, kind: :status, value: status}]
-         :response -> [%Observation{op: op.id, kind: :response, value: body}]
-       end)}
-    end
-  end
-
   defp missing(key),
     do: {:error, Error.new(:invalid_input, "the op's record was not seeded", %{record: key})}
-
-  defp workflow_auth(_seed, _scenario, %{auth: :none}, _state), do: {:ok, :none}
-  defp workflow_auth(_seed, _scenario, %{auth: :admin}, _state), do: {:ok, :admin}
-  defp workflow_auth(seed, scenario, op, state), do: auth(seed, scenario, op, state)
-
-  defp params(params, ledger) do
-    Enum.reduce_while(Enum.sort(params), {:ok, %{}}, fn {name, value}, {:ok, acc} ->
-      case encode_param(value, ledger) do
-        {:ok, json} -> {:cont, {:ok, Map.put(acc, name, json)}}
-        error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp encode_param(nil, _ledger), do: {:ok, nil}
-  defp encode_param(value, ledger), do: Codec.encode(value, ledger)
 
   defp sort(_names, %{sort: nil}), do: {:ok, nil}
 

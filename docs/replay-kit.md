@@ -73,11 +73,19 @@ No email reaches a real person.
 
 1. `Replay.Recorder.plan/4` validates the scenarios against the seed and
    the target and estimates the number of calls. It makes no requests.
-   Review the plan.
-2. `Replay.Recorder.record/4` needs the plan's `sha256`. It runs the
-   preflight, then records every scenario twice from a fresh seed each
-   time. It masks what differs between the two runs, deletes the records
-   of each run and writes recordings under
+   Review the plan. The driver calls no workflow of your app, only the
+   kit's two: scenarios that call app workflows are refused until they can
+   be classified as replay-safe (V7).
+2. `Replay.Recorder.record/4` needs the plan's `sha256` and a
+   `:ledger_dir`. It runs the preflight, then records every scenario twice
+   from a fresh seed each time. Before each create it writes an intent to
+   the run's journal (`<ledger_dir>/<run id>.jsonl`, fsynced). It masks
+   what differs between the two runs, deletes the records of each run
+   (even after a crash) and writes recordings under
    `.wtf/verification/recordings/`.
-3. Check `report.leftovers`. It lists the ledger records a cleanup
-   couldn't delete (type and Bubble ID), so you can delete them by hand.
+3. Check `report.leftovers`. It lists what cleanup couldn't delete (type
+   and, when known, Bubble ID), including creates whose answer was lost.
+   The driver never searches for those, so delete them by hand.
+4. If the process died mid-run, run `Replay.Cleanup.resume/2` on the run's
+   journal. It deletes only the IDs the journal confirms, and finds
+   unconfirmed sign-ups by their exact per-run email.

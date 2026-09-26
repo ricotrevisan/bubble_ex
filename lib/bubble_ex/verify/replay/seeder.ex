@@ -21,9 +21,12 @@ defmodule BubbleEx.Verify.Replay.Seeder do
        That is how a replay calibrates `dangling_ref_is_empty` (a V1 seed
        cannot hold a missing reference).
 
-  Every created record is in the ledger before the next call, and a
-  failure returns the ledger so far (`{:error, error, state}`): the
-  recorder cleans up whatever a partial seeding created.
+  Every create and sign-up is journaled as an intent (with the user's
+  unique run email) **before** it is sent and confirmed with its Bubble ID
+  after (`BubbleEx.Verify.Replay.Ledger`). A failure returns the ledger so
+  far (`{:error, error, state}`): cleanup deletes what was confirmed and
+  looks unconfirmed sign-ups up by their exact email
+  (`BubbleEx.Verify.Replay.Cleanup`).
   """
 
   alias BubbleEx.Error
@@ -34,12 +37,13 @@ defmodule BubbleEx.Verify.Replay.Seeder do
 
   @type state :: %{ledger: Ledger.t(), session: Session.t()}
 
-  @doc "Seeds `seed` for run `run_id`. See the moduledoc."
-  @spec seed(Client.t(), Seed.t(), String.t(), keyword()) ::
+  @doc "Seeds `seed` into `ledger`'s run. See the moduledoc."
+  @spec seed(Client.t(), Seed.t(), Ledger.t(), keyword()) ::
           {:ok, state()} | {:error, Error.t(), state()}
-  def seed(%Client{} = client, %Seed{} = seed, run_id, opts \\ []) do
+  def seed(%Client{} = client, %Seed{} = seed, %Ledger{} = ledger, opts \\ []) do
     kit = Keyword.get(opts, :kit, %Kit{})
-    state = %{ledger: Ledger.new(client.target, run_id), session: %Session{}, deferred: %{}}
+    run_id = ledger.run_id
+    state = %{ledger: ledger, session: %Session{}, deferred: %{}}
     {users, records} = Enum.split_with(seed.records, &(&1.type == "user"))
 
     steps = [
@@ -82,13 +86,24 @@ defmodule BubbleEx.Verify.Replay.Seeder do
       state = %{state | session: session}
       params = %{"email" => email, "password" => password}
 
-      with {:ok, id} <- signup(client, kit, params),
-           {:ok, ledger} <- put(state.ledger, user.key, "user", id),
+      # The intent (with the unique run email) is journaled before the
+      # sign-up, so a lost answer can still be cleaned up by that email.
+      with {:ok, ledger} <- Ledger.intend(state.ledger, user.key, "user", email),
+           state = %{state | ledger: ledger},
+           {:ok, id} <- signup(client, kit, params, state),
+           {:ok, ledger} <- confirm(state, user.key, id),
            state = %{state | ledger: ledger},
            {:ok, token} <- login(client, kit, params, state) do
         {:ok, %{state | session: Session.put_token(state.session, user.key, token)}}
       end
     end)
+  end
+
+  defp confirm(state, key, id) do
+    case Ledger.confirm(state.ledger, key, id) do
+      {:ok, ledger} -> {:ok, ledger}
+      {:error, error} -> {:error, error, state}
+    end
   end
 
   @doc false
@@ -107,9 +122,9 @@ defmodule BubbleEx.Verify.Replay.Seeder do
   defp pad([local, domain]), do: [local, domain]
   defp pad([local]), do: [local, "replay.wtf.invalid"]
 
-  defp signup(client, kit, params) do
-    case Client.call_workflow(client, kit.signup, params, :admin) do
-      {:ok, %{status: 200, body: %{"response" => %{"user_id" => id}}}} when is_binary(id) ->
+  defp signup(client, kit, params, state) do
+    case Client.call_kit(client, kit, :signup, params) do
+      {:ok, %{status: 200, body: %{"response" => %{"user_id" => id}}}} ->
         {:ok, id}
 
       {:ok, %{status: status}} ->
@@ -117,15 +132,15 @@ defmodule BubbleEx.Verify.Replay.Seeder do
          Error.new(:http_error, "the kit's sign-up workflow did not return a user_id", %{
            status: status,
            workflow: kit.signup
-         })}
+         }), state}
 
-      error ->
-        error
+      {:error, error} ->
+        {:error, error, state}
     end
   end
 
   defp login(client, kit, params, state) do
-    case Client.call_workflow(client, kit.login, params, :admin) do
+    case Client.call_kit(client, kit, :login, params) do
       {:ok, %{status: 200, body: %{"response" => %{"token" => token}}}}
       when is_binary(token) and token != "" ->
         {:ok, token}
@@ -151,8 +166,10 @@ defmodule BubbleEx.Verify.Replay.Seeder do
     with {:ok, auth} <- creator(record, state),
          {now, later} = split_refs(record, state.ledger),
          {:ok, body} <- body(client.names, record, now, state.ledger),
-         {:ok, id} <- Client.create(client, record.type, body, auth),
-         {:ok, ledger} <- put(state.ledger, record.key, record.type, id) do
+         {:ok, ledger} <- Ledger.intend(state.ledger, record.key, record.type),
+         state = %{state | ledger: ledger},
+         {:ok, id} <- create(client, record, body, auth, state),
+         {:ok, ledger} <- confirm(state, record.key, id) do
       deferred =
         if later == [], do: state.deferred, else: Map.put(state.deferred, record.key, later)
 
@@ -234,5 +251,10 @@ defmodule BubbleEx.Verify.Replay.Seeder do
     end)
   end
 
-  defp put(ledger, key, type, id), do: Ledger.put(ledger, key, type, id)
+  defp create(client, record, body, auth, state) do
+    case Client.create(client, record.type, body, auth) do
+      {:ok, id} -> {:ok, id}
+      {:error, error} -> {:error, error, state}
+    end
+  end
 end

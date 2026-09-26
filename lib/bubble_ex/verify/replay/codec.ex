@@ -42,8 +42,12 @@ defmodule BubbleEx.Verify.Replay.Codec do
     end
   end
 
-  def encode({:date, ms}, _ledger),
-    do: {:ok, ms |> DateTime.from_unix!(:millisecond) |> DateTime.to_iso8601()}
+  def encode({:date, ms}, _ledger) do
+    case DateTime.from_unix(ms, :millisecond) do
+      {:ok, dt} -> {:ok, DateTime.to_iso8601(dt)}
+      {:error, _} -> {:error, Error.new(:invalid_input, "date out of range", %{value: ms})}
+    end
+  end
 
   def encode({:geographic_address, %{formatted_address: address}}, _ledger)
       when is_binary(address),

@@ -39,7 +39,10 @@ defmodule BubbleEx.Test.FakeBubble do
       exposed: Keyword.get(opts, :exposed, ~w(task user workspace)),
       workflows:
         Keyword.get(opts, :workflows, ~w(wtf_replay_signup wtf_replay_login echo_now leaky)),
-      meta: Keyword.get(opts, :meta, true)
+      meta: Keyword.get(opts, :meta, true),
+      # :lost_signup (create the user, answer 502), :odd_user_id,
+      # :ignore_constraints, :leak (task titles echo the caller's credentials)
+      quirks: Keyword.get(opts, :quirks, [])
     }
 
     {:ok, pid} = Agent.start_link(fn -> state end)
@@ -143,7 +146,13 @@ defmodule BubbleEx.Test.FakeBubble do
         {id, %{s | users: Map.put(s.users, body["email"], {id, body["password"]})}}
       end)
 
-    json(conn, 200, %{"status" => "success", "response" => %{"user_id" => id}})
+    quirks = Agent.get(pid, & &1.quirks)
+
+    cond do
+      :lost_signup in quirks -> json(conn, 502, %{})
+      :odd_user_id in quirks -> json(conn, 200, %{"response" => %{"user_id" => "user/#{id}"}})
+      true -> json(conn, 200, %{"status" => "success", "response" => %{"user_id" => id}})
+    end
   end
 
   defp route(pid, conn, "POST", ["wf", "wtf_replay_login"], body, :admin) do
@@ -185,10 +194,11 @@ defmodule BubbleEx.Test.FakeBubble do
       all =
         s.records
         |> Enum.filter(fn {id, r} ->
-          r.type == type and matches?(id, constraints) and visible?(s, r, viewer)
+          r.type == type and (:ignore_constraints in s.quirks or matches?(id, r, constraints)) and
+            visible?(s, r, viewer)
         end)
         |> Enum.sort()
-        |> Enum.map(fn {id, r} -> view(s, id, r, viewer) end)
+        |> Enum.map(fn {id, r} -> view(s, id, r, viewer, conn) end)
 
       page = all |> Enum.drop(cursor) |> Enum.take(limit)
 
@@ -211,7 +221,7 @@ defmodule BubbleEx.Test.FakeBubble do
     case s.records[id] do
       %{type: ^type} = r ->
         if visible?(s, r, viewer),
-          do: json(conn, 200, %{"response" => view(s, id, r, viewer)}),
+          do: json(conn, 200, %{"response" => view(s, id, r, viewer, conn)}),
           else: json(conn, 404, %{"body" => %{"status" => "NOT_FOUND"}})
 
       _ ->
@@ -266,9 +276,10 @@ defmodule BubbleEx.Test.FakeBubble do
     {id, %{s | n: n, clock: s.clock + 1000, records: Map.put(s.records, id, r)}}
   end
 
-  defp matches?(id, constraints) do
+  defp matches?(id, r, constraints) do
     Enum.all?(constraints, fn
       %{"key" => "_id", "constraint_type" => "in", "value" => ids} -> id in ids
+      %{"key" => key, "constraint_type" => "equals", "value" => v} -> r.fields[key] == v
       _ -> true
     end)
   end
@@ -283,7 +294,7 @@ defmodule BubbleEx.Test.FakeBubble do
 
   defp visible?(_s, _r, _viewer), do: false
 
-  defp view(_s, id, r, viewer) do
+  defp view(s, id, r, viewer, conn) do
     hidden =
       case {r.type, viewer} do
         {"task", {:user, uid}} when uid != r.creator -> ["Secret"]
@@ -299,6 +310,11 @@ defmodule BubbleEx.Test.FakeBubble do
       "Modified Date" => iso(r.modified)
     })
     |> then(fn m -> if r.creator, do: Map.put(m, "Created By", r.creator), else: m end)
+    |> then(fn m ->
+      if :leak in s.quirks and r.type == "task",
+        do: Map.put(m, "Title", conn |> Conn.get_req_header("authorization") |> List.first()),
+        else: m
+    end)
   end
 
   defp iso(ms), do: ms |> DateTime.from_unix!(:millisecond) |> DateTime.to_iso8601()

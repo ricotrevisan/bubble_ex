@@ -8,6 +8,7 @@ defmodule BubbleEx.Verify.ReplayTest do
   alias BubbleEx.Verify.{Mask, Observation, Recording, Scenario, Seed}
 
   alias BubbleEx.Verify.Replay.{
+    Cleanup,
     Client,
     CredentialScan,
     Differential,
@@ -144,7 +145,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     s
   end
 
-  defp api_scenario(seed, workflow \\ "echo_now", auth \\ :admin) do
+  defp api_scenario(seed, workflow, auth) do
     {:ok, s} =
       Scenario.new(
         id: "api_workflow.#{workflow}.alice",
@@ -168,8 +169,19 @@ defmodule BubbleEx.Verify.ReplayTest do
     s
   end
 
+  defp dir do
+    dir = Path.join(System.tmp_dir!(), "replay-test-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf!(dir) end)
+    dir
+  end
+
+  defp ledger(run_id \\ "r1", opts \\ []) do
+    {:ok, ledger} = Ledger.new(target(), run_id, opts)
+    ledger
+  end
+
   defp record(client, seed, scenarios, opts \\ []) do
-    opts = Keyword.put_new(opts, :run_id, "t1")
+    opts = opts |> Keyword.put_new(:run_id, "t1") |> Keyword.put_new_lazy(:ledger_dir, &dir/0)
     {:ok, plan} = Recorder.plan(client, seed, scenarios, opts)
     Recorder.record(client, seed, scenarios, [plan_sha256: plan.sha256] ++ opts)
   end
@@ -290,11 +302,11 @@ defmodule BubbleEx.Verify.ReplayTest do
     test "stops at the call budget before sending" do
       fake = start_fake()
       c = client(max_calls: 2)
-      assert {:ok, _} = Client.search(c, "custom.task", :admin, ids: [])
-      assert {:ok, _} = Client.search(c, "custom.task", :admin, ids: [])
+      assert {:ok, _} = Client.search(c, "custom.task", :admin, ids: ["1x1"])
+      assert {:ok, _} = Client.search(c, "custom.task", :admin, ids: ["1x1"])
 
       assert {:error, %Error{kind: :request_failed, context: %{reason: :budget_exhausted}}} =
-               Client.search(c, "custom.task", :admin, ids: [])
+               Client.search(c, "custom.task", :admin, ids: ["1x1"])
 
       assert length(FakeBubble.log(fake)) == 2
       assert Client.calls(c) == 2
@@ -306,7 +318,7 @@ defmodule BubbleEx.Verify.ReplayTest do
       Process.sleep(5)
 
       assert {:error, %Error{context: %{reason: :budget_exhausted, budget: :wall_time}}} =
-               Client.search(c, "custom.task", :admin, ids: [])
+               Client.search(c, "custom.task", :admin, ids: ["1x1"])
     end
 
     test "backs off on 429 (Retry-After) and 5xx for reads" do
@@ -319,7 +331,7 @@ defmodule BubbleEx.Verify.ReplayTest do
         )
 
       c = client(retry_base_delay: 10)
-      assert {:ok, []} = Client.search(c, "custom.task", :admin, ids: [])
+      assert {:ok, []} = Client.search(c, "custom.task", :admin, ids: ["1x1"])
       assert_received {:slept, 2000}
       assert_received {:slept, 20}
       assert Client.calls(c) == 3
@@ -331,7 +343,7 @@ defmodule BubbleEx.Verify.ReplayTest do
       c = client(max_retries: 2, retry_base_delay: 50_000, max_retry_delay: 100)
 
       assert {:error, %Error{kind: :http_error, context: %{status: 503}}} =
-               Client.search(c, "custom.task", :admin, ids: [])
+               Client.search(c, "custom.task", :admin, ids: ["1x1"])
 
       assert Client.calls(c) == 3
       assert_received {:slept, 100}
@@ -356,7 +368,7 @@ defmodule BubbleEx.Verify.ReplayTest do
       start_fake(script: [{"GET", "/obj/task", 302, [{"location", "https://acme.com/"}]}])
 
       assert {:error, %Error{context: %{reason: :redirect_refused}}} =
-               Client.search(client(), "custom.task", :admin, ids: [])
+               Client.search(client(), "custom.task", :admin, ids: ["1x1"])
     end
 
     test "errors carry no body or credential" do
@@ -364,7 +376,9 @@ defmodule BubbleEx.Verify.ReplayTest do
       c = client()
 
       assert {:error, %Error{} = error} =
-               Client.search(c, "custom.task", {:user, "user-token-not-issued-0000"}, ids: [])
+               Client.search(c, "custom.task", {:user, "user-token-not-issued-0000"},
+                 ids: ["1x1"]
+               )
 
       assert error.kind == :unauthorized
       refute inspect(error) =~ "user-token-not-issued"
@@ -379,7 +393,7 @@ defmodule BubbleEx.Verify.ReplayTest do
       :telemetry.attach(id, [:bubble_ex, :http, :request, :stop], &__MODULE__.forward/4, parent)
 
       on_exit(fn -> :telemetry.detach(id) end)
-      assert {:ok, _} = Client.search(client(), "custom.task", :admin, ids: [])
+      assert {:ok, _} = Client.search(client(), "custom.task", :admin, ids: ["1x1"])
       assert_received {:telemetry, meta}
       refute inspect(meta) =~ @admin
     end
@@ -396,7 +410,7 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       c = client()
       [{owner_id, _}] = Map.to_list(FakeBubble.records(fake))
-      ledger = Ledger.new(target(), "r1")
+      ledger = ledger()
 
       assert {:error, %Error{kind: :invalid_input}} = Client.delete_seeded(c, ledger, "task_x")
       assert {:error, %Error{}} = Ledger.put(ledger, "k", "custom.task", "../#{owner_id}")
@@ -416,8 +430,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     end
 
     test "the ledger JSON is credential-scanned" do
-      ledger = Ledger.new(target(), "r1")
-      {:ok, ledger} = Ledger.put(ledger, "k", "custom.task", "1700x1")
+      {:ok, ledger} = Ledger.put(ledger(), "k", "custom.task", "1700x1")
       assert {:ok, json} = Ledger.to_json(ledger, [@admin])
       assert json =~ "1700x1"
 
@@ -460,7 +473,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     test "signs users up with run emails, creates records as their creators, defers references" do
       fake = start_fake()
       c = client()
-      assert {:ok, state} = Seeder.seed(c, seed(), "r1")
+      assert {:ok, state} = Seeder.seed(c, seed(), ledger())
 
       assert Enum.map(state.ledger.entries, & &1.key) == ~w(user_a user_b task_a task_b ws_1)
 
@@ -487,8 +500,8 @@ defmodule BubbleEx.Verify.ReplayTest do
 
     test "a failure returns the partial ledger" do
       start_fake(workflows: ~w(wtf_replay_signup))
-      assert {:error, %Error{}, state} = Seeder.seed(client(), seed(), "r1")
-      assert [%{key: "user_a"}] = state.ledger.entries
+      assert {:error, %Error{}, state} = Seeder.seed(client(), seed(), ledger())
+      assert [%{key: "user_a", state: :created}] = state.ledger.entries
     end
   end
 
@@ -503,8 +516,7 @@ defmodule BubbleEx.Verify.ReplayTest do
       scenarios = [
         privacy_scenario(seed, "alice", [:visible, :visible_fields, :values]),
         privacy_scenario(seed, "bob"),
-        privacy_scenario(seed, "anonymous"),
-        api_scenario(seed)
+        privacy_scenario(seed, "anonymous")
       ]
 
       c = client()
@@ -531,8 +543,8 @@ defmodule BubbleEx.Verify.ReplayTest do
         refute owner_id in ids
       end
 
-      assert length(result.recordings) == 4
-      assert result.report.complete |> length() == 4
+      assert length(result.recordings) == 3
+      assert result.report.complete |> length() == 3
       by_id = Map.new(result.recordings, &{&1.scenario.id, &1})
 
       for {path, json} <- result.files do
@@ -579,14 +591,15 @@ defmodule BubbleEx.Verify.ReplayTest do
       anon = by_id["privacy_read.custom.task.anonymous"]
       assert Enum.find(anon.observations, &(&1.kind == :record_set)).value.records == []
 
-      api = by_id["api_workflow.echo_now.alice"]
+      # Only the kit's own workflows were called.
+      workflows = for %{path: @prefix <> "wf/" <> name} <- log, uniq: true, do: name
+      assert Enum.sort(workflows) == ~w(wtf_replay_login wtf_replay_signup)
 
-      assert Enum.map(api.masks, &{&1.kind, &1.pointer}) == [
-               {:response, "/response/echo/task"},
-               {:response, "/response/now"}
-             ]
-
-      assert Enum.find(api.observations, &(&1.kind == :status)).value == 200
+      # Each run's journal is on disk and ends fully deleted.
+      for run <- result.report.runs do
+        assert {:ok, loaded} = Ledger.load(run.journal)
+        assert Ledger.live(loaded) == [] and Ledger.unconfirmed(loaded) == []
+      end
     end
 
     test "delete-after-seed leaves dangling references and reports what they calibrate" do
@@ -633,18 +646,23 @@ defmodule BubbleEx.Verify.ReplayTest do
       {:ok, plan} = Recorder.plan_matrix(client(), matrix, run_id: "m")
 
       assert {:ok, result} =
-               Recorder.record_matrix(client(), matrix, run_id: "m", plan_sha256: plan.sha256)
+               Recorder.record_matrix(client(), matrix,
+                 run_id: "m",
+                 plan_sha256: plan.sha256,
+                 ledger_dir: dir()
+               )
 
       assert [%{op: "search", flags: [:everyone_exclusive]}] = result.report.calibration
     end
 
     test "refuses a recording that would carry a credential" do
-      start_fake()
+      start_fake(quirks: [:leak])
       seed = seed()
-      assert {:ok, result} = record(client(), seed, [api_scenario(seed, "leaky", :persona)])
+      scenario = privacy_scenario(seed, "alice", [:visible, :values])
+      assert {:ok, result} = record(client(), seed, [scenario])
       assert result.recordings == [] and result.files == []
 
-      assert [%{scenario: "api_workflow.leaky.alice", error: %{kind: :export_blocked}}] =
+      assert [%{scenario: "privacy_read.custom.task.alice", error: %{kind: :export_blocked}}] =
                result.report.refused
     end
 
@@ -684,8 +702,13 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       assert {:error, %Error{context: %{reason: :over_budget}}} =
                Recorder.record(client(max_calls: 5), seed, scenarios,
-                 plan_sha256: elem(Recorder.plan(client(max_calls: 5), seed, scenarios), 1).sha256
+                 plan_sha256:
+                   elem(Recorder.plan(client(max_calls: 5), seed, scenarios), 1).sha256,
+                 ledger_dir: dir()
                )
+
+      assert {:error, %Error{context: %{reason: :no_ledger_dir}}} =
+               Recorder.record(c, seed, scenarios, plan_sha256: plan.sha256)
 
       assert {:error, _} = Recorder.plan(c, seed, scenarios, runs: 1)
 
@@ -702,6 +725,14 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       assert {:error, %Error{message: message}} = Recorder.plan(c, seed, [trigger])
       assert message =~ "cannot record"
+
+      # App API workflows are not replay-safe until V7: refused, whatever the auth.
+      for auth <- [:admin, :persona, :none] do
+        assert {:error, %Error{message: message}} =
+                 Recorder.plan(c, seed, [api_scenario(seed, "echo_now", auth)])
+
+        assert message =~ "V7"
+      end
 
       assert {:error, _} = Recorder.plan(c, seed, scenarios, delete_after_seed: ["nope"])
       assert FakeBubble.log(fake) == []
@@ -741,6 +772,145 @@ defmodule BubbleEx.Verify.ReplayTest do
 
   # --- differential masking --------------------------------------------------------------------
 
+  # --- journal, crash safety, resume, unconfirmed entries ------------------------------------
+
+  describe "journal and cleanup" do
+    test "an intent is journaled (fsynced) before the create, and load rebuilds the ledger" do
+      start_fake(script: [{"POST", "/obj/workspace", 502, []}])
+      d = dir()
+      ledger = ledger("j1", dir: d)
+      c = client()
+
+      assert {:ok, ledger} = Ledger.intend(ledger, "ws_1", "custom.workspace")
+      assert {:ok, loaded} = Ledger.load(ledger.path)
+      assert [%{key: "ws_1", state: :intended, id: nil}] = loaded.entries
+
+      assert {:error, _} = Client.create(c, "custom.workspace", %{"Name" => "x"}, :admin)
+      assert {:ok, id} = Client.create(c, "custom.workspace", %{"Name" => "x"}, :admin)
+      assert {:ok, ledger} = Ledger.confirm(ledger, "ws_1", id)
+
+      # A torn last line (a crash mid-write) is ignored.
+      File.write!(ledger.path, ~s({"event":"del), [:append])
+      assert {:ok, loaded} = Ledger.load(ledger.path)
+      assert [%{key: "ws_1", state: :created, id: ^id}] = loaded.entries
+
+      # Run IDs are never reused.
+      assert {:error, _} = Ledger.new(target(), "j1", dir: d)
+    end
+
+    test "a create whose answer is lost stays unconfirmed and is reported, never searched" do
+      fake = start_fake(script: [{"POST", "/obj/task", 502, []}])
+      d = dir()
+      seed = seed()
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], ledger_dir: d)
+
+      assert [%{key: "task_a", type: "custom.task", id: nil, why: :unconfirmed}] =
+               result.report.leftovers
+
+      assert [%{error: %{kind: :http_error}}] = result.report.runs
+      # Cleanup never searched tasks by anything but ledger IDs.
+      refute Enum.any?(
+               FakeBubble.log(fake),
+               &((&1.query["constraints"] || "") =~ "equals" and &1.path =~ "task")
+             )
+
+      assert FakeBubble.records(fake) == %{}
+    end
+
+    test "a sign-up with a lost answer or an odd user_id is found by its exact run email and deleted" do
+      for quirk <- [:lost_signup, :odd_user_id] do
+        fake = start_fake(quirks: [quirk])
+        seed = seed()
+        assert {:ok, result} = record(client(), seed, [privacy_scenario(seed, "alice")])
+
+        assert result.report.leftovers == []
+        assert FakeBubble.records(fake) == %{}
+
+        [lookup] =
+          for %{path: @prefix <> "obj/user", query: q} <- FakeBubble.log(fake),
+              q["constraints"] =~ "equals",
+              do: Jason.decode!(q["constraints"])
+
+        assert [%{"key" => "email", "constraint_type" => "equals", "value" => email}] = lookup
+        assert email == "alice+t1-1@replay.wtf.invalid"
+      end
+    end
+
+    test "a crash mid-run still cleans up, from the journal" do
+      fake = start_fake(owner_records: [%{type: "workspace", fields: %{"Name" => "owner"}}])
+      [owner_id] = Map.keys(FakeBubble.records(fake))
+      seed = seed()
+
+      progress = fn
+        {:seeded, _} -> raise "boom"
+        _ -> :ok
+      end
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], progress: progress)
+
+      assert [%{error: %{reason: :crashed}}] = result.report.runs
+      assert [%Recording{complete: false}] = result.recordings
+      assert Map.keys(FakeBubble.records(fake)) == [owner_id]
+      assert result.report.leftovers == []
+    end
+
+    test "resume deletes only what a dead run's journal lists" do
+      fake = start_fake(owner_records: [%{type: "task", fields: %{"Title" => "owner"}}])
+      [owner_id] = Map.keys(FakeBubble.records(fake))
+      d = dir()
+
+      # The run dies after seeding (no cleanup ran).
+      assert {:ok, state} = Seeder.seed(client(), seed(), ledger("dead", dir: d))
+      assert map_size(FakeBubble.records(fake)) == 6
+
+      {:ok, other} = Target.new("acme", "wtfreplay-2", @admin)
+      {:ok, wrong} = Client.new(other, names: names())
+
+      assert {:error, %Error{context: %{reason: :wrong_target}}} =
+               Cleanup.resume(wrong, state.ledger.path)
+
+      assert {:ok, %{leftovers: []}} = Cleanup.resume(client(), state.ledger.path)
+      assert Map.keys(FakeBubble.records(fake)) == [owner_id]
+      refute Enum.any?(requests(fake, "DELETE"), &(&1.path =~ owner_id))
+
+      # Resuming again is harmless: nothing is live any more.
+      assert {:ok, %{leftovers: []}} = Cleanup.resume(client(), state.ledger.path)
+    end
+  end
+
+  describe "constrained searches" do
+    test "an empty ID list makes no call; the preflight probes with an impossible ID" do
+      fake = start_fake()
+      assert {:ok, []} = Client.search(client(), "custom.task", :admin, ids: [])
+      assert FakeBubble.log(fake) == []
+
+      assert {:error, _} = Client.search(client(), "custom.task", :admin, [])
+
+      assert {:ok, :exposed} = Client.probe(client(), "custom.task")
+      [%{query: q}] = FakeBubble.log(fake)
+      assert [%{"value" => ["0x0"]}] = Jason.decode!(q["constraints"])
+    end
+
+    test "a search Bubble does not constrain stops at the first page" do
+      fake =
+        start_fake(
+          quirks: [:ignore_constraints],
+          owner_records: [%{type: "task", fields: %{"Title" => "owner"}}]
+        )
+
+      assert {:error, %Error{context: %{reason: :constraint_ignored}}} =
+               Client.probe(client(), "custom.task")
+
+      assert {:error, %Error{context: %{reason: :constraint_ignored}}} =
+               Client.search(client(page_size: 1), "custom.task", :admin, ids: ["1x1"])
+
+      assert length(FakeBubble.log(fake)) == 2
+    end
+  end
+
   defp obs(op, kind, record, value),
     do: %Observation{op: op, kind: kind, record: record, value: value}
 
@@ -771,6 +941,19 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       assert [%{why: :missing_in_a_run}] =
                Differential.merge([a, tl(a)], :behavior).unstable
+    end
+
+    test "in privacy scenarios a field seen in one run only, or any other kind, is unstable" do
+      a = [obs("g", :values, "r", %{"t" => {:text, "x"}, "s" => {:text, "secret"}})]
+      b = [obs("g", :values, "r", %{"t" => {:text, "x"}})]
+      merged = Differential.merge([a, b], :privacy)
+      assert merged.masks == []
+      assert [%{why: :field_visibility_differs}] = merged.unstable
+
+      a = [obs("c", :response, nil, %{"count" => 1})]
+      b = [obs("c", :response, nil, %{"count" => 2})]
+      assert [%{why: :not_maskable_in_class}] = Differential.merge([a, b], :privacy).unstable
+      assert [%Mask{pointer: "/count"}] = Differential.merge([a, b], :behavior).masks
     end
 
     test "pointers are escaped" do

@@ -16,8 +16,9 @@ defmodule BubbleEx.Verify.Replay.Kit do
     1. the API metadata of the branch (`/api/1.1/meta`): the branch and its
        API answer; the kit workflows are listed among the exposed
        workflows (`post`)
-    2. per type under test, a Data API search constrained to no IDs
-       (`_id in []`, so no record is read): the type is exposed
+    2. per type under test, a Data API search constrained to an ID that
+       cannot exist (`Client.probe/2`, so no record is read): the type is
+       exposed
 
   Owner-only items (privacy rules unchanged from the parent version, the
   replay token is a dedicated one, the kit workflows need the admin token)
@@ -95,7 +96,7 @@ defmodule BubbleEx.Verify.Replay.Kit do
     |> Enum.uniq()
     |> Enum.sort()
     |> Enum.reduce_while({:ok, []}, fn type, {:ok, acc} ->
-      case Client.search(client, type, :admin, ids: []) do
+      case Client.probe(client, type) do
         {:ok, _} ->
           {:cont, {:ok, [%{check: :data_api, type: type, status: :ok} | acc]}}
 

@@ -1,7 +1,10 @@
 defmodule BubbleEx.Verify.Replay.Client do
   @moduledoc """
-  Data API and Workflow API client of the replay driver, bound to one
-  `BubbleEx.Verify.Replay.Target` (a `wtfreplay…` branch).
+  Data API client of the replay driver, bound to one
+  `BubbleEx.Verify.Replay.Target` (a `wtfreplay…` branch). The only
+  workflows it calls are the replay kit's own sign-up and login
+  (`call_kit/4`); searches are always constrained to known IDs (or, for
+  cleanup, one exact per-run email).
 
   Every request goes through `BubbleEx.HTTP.request/5` (public-destination
   checks, bounded bodies, sanitized telemetry) after
@@ -34,7 +37,7 @@ defmodule BubbleEx.Verify.Replay.Client do
   """
 
   alias BubbleEx.{Error, HTTP}
-  alias BubbleEx.Verify.Replay.{Ledger, Names, Target}
+  alias BubbleEx.Verify.Replay.{Kit, Ledger, Names, Target}
 
   @enforce_keys [:target, :names, :counter]
   defstruct [
@@ -116,51 +119,95 @@ defmodule BubbleEx.Verify.Replay.Client do
   # --- Data API ----------------------------------------------------------------
 
   @doc """
-  Searches `type` as `auth`, following the cursor to the end. `opts`:
-  `:ids` (constrain to these Bubble IDs: `_id in […]`, so the owner's own
-  development records are never read), `:sort` (`%{key: api_key,
-  descending: bool}`). Returns the result objects.
+  Searches `type` as `auth` **among `ids` only** (`_id in […]`, required),
+  following the cursor. The owner's own development records are never
+  read: an empty `ids` makes no call, and a result outside `ids` (Bubble
+  ignored the constraint) stops the search with `:invalid_input`
+  (`reason: :constraint_ignored`). `:sort` is `%{key: api_key,
+  descending: bool}`. Returns the result objects.
   """
   @spec search(t(), String.t(), auth(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
-  def search(%__MODULE__{} = c, type, auth, opts \\ []) do
-    with {:ok, path} <- Names.type_path(c.names, type),
-         {:ok, url} <- Target.data_url(c.target, path) do
-      query = search_query(opts)
-      page(c, url, query, auth, 0, [])
+  def search(%__MODULE__{} = c, type, auth, opts) do
+    case Keyword.fetch(opts, :ids) do
+      {:ok, []} ->
+        {:ok, []}
+
+      {:ok, ids} when is_list(ids) ->
+        constraint = %{"key" => "_id", "constraint_type" => "in", "value" => ids}
+        allowed = MapSet.new(ids)
+        constrained(c, type, auth, constraint, &MapSet.member?(allowed, &1["_id"]), opts)
+
+      _ ->
+        {:error, Error.new(:invalid_input, "a replay search must be constrained to ledger IDs")}
     end
   end
 
-  defp search_query(opts) do
-    constraints =
-      case Keyword.get(opts, :ids) do
-        nil -> []
-        ids -> [%{"key" => "_id", "constraint_type" => "in", "value" => ids}]
-      end
+  @probe_id "0x0"
 
-    sort =
-      case Keyword.get(opts, :sort) do
-        nil -> []
-        %{key: key, descending: desc} -> [{"sort_field", key}, {"descending", to_string(desc)}]
-      end
-
-    [{"constraints", Jason.encode!(constraints)} | sort]
+  @doc """
+  Checks that `type` is exposed on the Data API without reading any record:
+  a search as admin constrained to an ID that cannot exist. `{:ok,
+  :exposed}`, or the error.
+  """
+  @spec probe(t(), String.t()) :: {:ok, :exposed} | {:error, Error.t()}
+  def probe(%__MODULE__{} = c, type) do
+    with {:ok, []} <- search(c, type, :admin, ids: [@probe_id]), do: {:ok, :exposed}
   end
 
-  defp page(c, url, query, auth, cursor, acc) do
+  @doc """
+  Finds users (as admin) whose `email` is exactly `email`: for cleanup of
+  an unconfirmed sign-up, whose per-run email is unique. A result with
+  another email stops the search (`:constraint_ignored`).
+  """
+  @spec find_user_by_email(t(), String.t()) :: {:ok, [map()]} | {:error, Error.t()}
+  def find_user_by_email(%__MODULE__{} = c, email) when is_binary(email) do
+    with {:ok, key} <- Names.field_key(c.names, "user", "email") do
+      constraint = %{"key" => key, "constraint_type" => "equals", "value" => email}
+      constrained(c, "user", :admin, constraint, &(&1[key] == email), mode: :cleanup)
+    end
+  end
+
+  defp constrained(c, type, auth, constraint, allowed?, opts) do
+    with {:ok, path} <- Names.type_path(c.names, type),
+         {:ok, url} <- Target.data_url(c.target, path),
+         {:ok, constraints} <- encode([constraint]) do
+      sort =
+        case Keyword.get(opts, :sort) do
+          nil -> []
+          %{key: key, descending: desc} -> [{"sort_field", key}, {"descending", to_string(desc)}]
+        end
+
+      query = [{"constraints", constraints} | sort]
+      page(c, url, {query, Keyword.get(opts, :mode, :read)}, auth, allowed?, 0, [])
+    end
+  end
+
+  defp page(c, url, {query, mode} = q, auth, allowed?, cursor, acc) do
     params = query ++ [{"cursor", Integer.to_string(cursor)}, {"limit", "#{c.page_size}"}]
 
-    case request(c, :get, url <> "?" <> URI.encode_query(params), nil, auth, :read) do
+    case request(c, :get, url <> "?" <> URI.encode_query(params), nil, auth, mode) do
       {:ok, %{status: 200, body: %{"response" => %{"results" => results} = r}}}
       when is_list(results) ->
-        acc = acc ++ results
-        remaining = r["remaining"]
-
-        if is_integer(remaining) and remaining > 0 and results != [],
-          do: page(c, url, query, auth, cursor + length(results), acc),
-          else: {:ok, acc}
+        next(c, {url, q, auth, allowed?}, cursor + length(results), acc, results, r["remaining"])
 
       other ->
         unexpected(other, "Data API search")
+    end
+  end
+
+  defp next(c, {url, q, auth, allowed?}, cursor, acc, results, remaining) do
+    cond do
+      not Enum.all?(results, &(is_map(&1) and allowed?.(&1))) ->
+        {:error,
+         Error.new(:invalid_input, "Bubble returned records outside the search constraint", %{
+           reason: :constraint_ignored
+         })}
+
+      is_integer(remaining) and remaining > 0 and results != [] ->
+        page(c, url, q, auth, allowed?, cursor, acc ++ results)
+
+      true ->
+        {:ok, acc ++ results}
     end
   end
 
@@ -255,14 +302,17 @@ defmodule BubbleEx.Verify.Replay.Client do
   # --- Workflow API --------------------------------------------------------------
 
   @doc """
-  Calls API workflow `name` with JSON `params` as `auth`. Returns the status
-  and decoded body of any HTTP answer (scenario ops observe error statuses
-  too); only transport failures and budgets are errors.
+  Calls one of the replay kit's own workflows (`:signup` or `:login`, by
+  the names in `kit`) as admin. Returns the status and decoded body of any
+  HTTP answer. No other API workflow can be called: an app's own
+  workflows are not replay-safe until V7 classifies them (WTF-358 §6.4).
   """
-  @spec call_workflow(t(), String.t(), map(), auth()) :: {:ok, response()} | {:error, Error.t()}
-  def call_workflow(%__MODULE__{} = c, name, params, auth) when is_map(params) do
-    with {:ok, url} <- Target.workflow_url(c.target, name) do
-      request(c, :post, url, params, auth, :write)
+  @spec call_kit(t(), Kit.t(), :signup | :login, map()) ::
+          {:ok, response()} | {:error, Error.t()}
+  def call_kit(%__MODULE__{} = c, %Kit{} = kit, which, params)
+      when which in [:signup, :login] and is_map(params) do
+    with {:ok, url} <- Target.workflow_url(c.target, Map.fetch!(kit, which)) do
+      request(c, :post, url, params, :admin, :write)
     end
   end
 
@@ -280,9 +330,10 @@ defmodule BubbleEx.Verify.Replay.Client do
 
   defp attempt(c, method, url, body, auth, mode, n) do
     with :ok <- Target.check_url(c.target, url),
+         {:ok, encoded} <- encode(body),
          :ok <- budget(c, mode) do
       :counters.add(c.counter, slot(mode), 1)
-      result = send_once(c, method, url, body, auth, mode)
+      result = send_once(c, method, url, encoded, auth, mode)
 
       case retry_delay(c, result, mode, n) do
         nil ->
@@ -292,6 +343,15 @@ defmodule BubbleEx.Verify.Replay.Client do
           c.sleep.(delay)
           attempt(c, method, url, body, auth, mode, n + 1)
       end
+    end
+  end
+
+  defp encode(nil), do: {:ok, nil}
+
+  defp encode(body) do
+    case Jason.encode(body) do
+      {:ok, text} -> {:ok, text}
+      {:error, _} -> {:error, Error.new(:invalid_input, "request body is not JSON-encodable")}
     end
   end
 
@@ -329,7 +389,7 @@ defmodule BubbleEx.Verify.Replay.Client do
     now = System.monotonic_time(:millisecond)
     deadline = if mode == :cleanup, do: now + 60_000, else: min(c.deadline, now + 60_000)
 
-    HTTP.request(method, url, body && Jason.encode!(body), headers,
+    HTTP.request(method, url, body, headers,
       follow_redirect: false,
       redact_values: Enum.reject([c.target.admin_token, token], &is_nil/1),
       timeout: 10_000,

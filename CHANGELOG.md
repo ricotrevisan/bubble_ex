@@ -27,27 +27,34 @@ All notable changes to this project are documented here.
   `Inspect`), and builds every URL under
   `https://<app>.bubbleapps.io/version-<branch>/api/1.1/`;
   `check_url/2` re-checks each one before it is sent.
-  `Replay.Client` is the Data API (search with `_id in` constraints and
-  cursor paging, get, create) and Workflow API client over
-  `BubbleEx.HTTP`: admin, persona-token or anonymous auth, a call budget
-  (every attempt counts) and a wall-time budget, exponential backoff and
-  `Retry-After` on 429/5xx (creates and workflow calls only on 429), no
-  redirects, errors without bodies or credentials. Updates and deletes take
-  a `Replay.Ledger` and a seed key, never a Bubble ID, so cleanup deletes
-  only what the run created. `Replay.Seeder` signs personas up and logs
-  them in through the replay kit (per-run sink-domain emails, random
-  passwords kept in a redacted `Replay.Session`), creates records as their
-  `Created By` user, defers forward references and supports
+  `Replay.Client` is a Data API client over `BubbleEx.HTTP`: every search
+  is constrained to the run's ledger IDs (an empty list makes no call; a
+  result outside the constraint stops it), the kit preflight probes with an
+  ID that cannot exist, and the only workflows it calls are the replay
+  kit's sign-up and login (`call_kit/4`): **no app workflow is called**
+  until V7 classifies them replay-safe. Admin, persona-token or anonymous
+  auth, a call and a wall-time budget, backoff and `Retry-After` on 429/5xx
+  (creates only on 429), no redirects, non-raising encoding, errors
+  without bodies or credentials. Updates and deletes take a
+  `Replay.Ledger` and a seed key, never a Bubble ID. The ledger is an
+  fsynced journal (`<ledger_dir>/<run id>.jsonl`): the intent (with a
+  sign-up's unique run email) is written before each create and the ID
+  after. `Replay.Cleanup` deletes confirmed entries, finds unconfirmed
+  sign-ups by their exact `+<run id>@` email, reports other unconfirmed
+  creates, and `resume/2` finishes a dead run's cleanup from its journal.
+  `Replay.Seeder` signs personas up and logs them in (per-run sink emails,
+  random passwords in a redacted `Replay.Session`), creates records as
+  their `Created By` user, defers forward references and supports
   delete-after-seed (dangling references). `Replay.Recorder` requires the
-  dry run's `plan_sha256`, refuses plans over budget and ops it cannot
-  record yet (V7/V8), preflights the kit (`Replay.Kit`: `/meta`
-  workflows, Data API exposure per type, read-only), records every
-  scenario twice with `Replay.Differential` masks (a differing privacy
-  verdict is unstable and makes the recording incomplete), always cleans
-  up, reports calls, leftovers and the assumption flags each op can
-  calibrate, and drops any recording that `Replay.CredentialScan` (the
-  run's own secrets, bearer tokens, detector hits, credential-named
-  members) refuses. The owner checklist is `docs/replay-kit.md`.
+  dry run's `plan_sha256` and a `:ledger_dir`, refuses plans over budget
+  and ops it cannot record yet, preflights the kit (read-only), records
+  every scenario twice with `Replay.Differential` masks (in privacy, data
+  and auth scenarios only differing field values are masked: a differing
+  verdict, a field seen in one run only, or any other difference makes the
+  recording incomplete), runs seeding and observing under `try` so cleanup
+  always runs, reports calls, leftovers and the assumption flags each op
+  can calibrate, and drops any recording that `Replay.CredentialScan`
+  refuses. The owner checklist is `docs/replay-kit.md`.
   `BubbleEx.HTTP.request/5` now also accepts `:patch` and `:delete`.
   Tests run only against an in-memory fake Bubble.
 

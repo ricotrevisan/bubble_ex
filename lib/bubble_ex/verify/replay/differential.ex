@@ -9,10 +9,12 @@ defmodule BubbleEx.Verify.Replay.Differential do
   What may be masked follows the V1 rules (`Mask.check_class/2`):
 
     * never a whole observation (a difference at the root is unstable)
-    * in privacy, data and auth scenarios, never a verdict: a differing
-      `visible`, `visible_fields` or `record_set` is unstable, and a
-      differing `values` observation is masked field by field
-      (`/<field ID>`), never deeper or wider
+    * in privacy, data and auth scenarios, only field values: a differing
+      `visible`, `visible_fields` or `record_set` is unstable, a field
+      present in one run's `values` and absent in another's is unstable
+      (a visibility difference), any other differing kind is unstable, and
+      a `values` field whose value differs is masked (`/<field ID>`),
+      never deeper or wider
     * elsewhere, the differing leaves (JSON pointers into the value)
 
   A scenario with an unstable observation cannot yield a complete
@@ -58,28 +60,46 @@ defmodule BubbleEx.Verify.Replay.Differential do
     if Enum.any?(observations, &is_nil/1) do
       {:unstable, :missing_in_a_run}
     else
-      [a | others] = Enum.map(observations, &Observation.value_json/1)
-      pointers = others |> Enum.flat_map(&diff(a, &1, "")) |> Enum.uniq()
-      masks_for(key, pointers, class)
+      [a | others] = values = Enum.map(observations, &Observation.value_json/1)
+
+      if field_visibility_differs?(key, values, class) do
+        {:unstable, :field_visibility_differs}
+      else
+        pointers = others |> Enum.flat_map(&diff(a, &1, "")) |> Enum.uniq()
+        masks_for(key, pointers, class)
+      end
     end
   end
 
   defp masks_for(_key, [], _class), do: {:ok, []}
 
-  defp masks_for({_op, kind, _record} = key, pointers, class) do
+  defp masks_for({_op, kind, _record} = key, pointers, class)
+       when class in [:privacy, :data, :auth] do
     cond do
-      class in [:privacy, :data, :auth] and kind in @verdicts ->
-        {:unstable, :verdict_differs}
-
-      "" in pointers ->
-        {:unstable, :whole_value_differs}
-
-      class in [:privacy, :data, :auth] and kind == :values ->
-        {:ok, pointers |> Enum.map(&top_level/1) |> Enum.uniq() |> Enum.map(&mask(key, &1))}
-
-      true ->
-        {:ok, Enum.map(pointers, &mask(key, &1))}
+      kind in @verdicts -> {:unstable, :verdict_differs}
+      kind == :values -> field_masks(key, pointers)
+      true -> {:unstable, :not_maskable_in_class}
     end
+  end
+
+  defp masks_for(key, pointers, _class) do
+    if "" in pointers,
+      do: {:unstable, :whole_value_differs},
+      else: {:ok, Enum.map(pointers, &mask(key, &1))}
+  end
+
+  # A field present in one run and absent in another is a visibility
+  # difference, never a value to mask.
+  defp field_visibility_differs?({_op, :values, _record}, values, class)
+       when class in [:privacy, :data, :auth],
+       do: values |> Enum.map(&(&1 |> Map.keys() |> Enum.sort())) |> Enum.uniq() |> length() > 1
+
+  defp field_visibility_differs?(_key, _values, _class), do: false
+
+  defp field_masks(key, pointers) do
+    if "" in pointers,
+      do: {:unstable, :whole_value_differs},
+      else: {:ok, pointers |> Enum.map(&top_level/1) |> Enum.uniq() |> Enum.map(&mask(key, &1))}
   end
 
   defp top_level("/" <> rest), do: "/" <> (rest |> String.split("/") |> hd())
