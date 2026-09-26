@@ -29,6 +29,10 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   @number_types [:integer, :decimal]
 
+  # Transforms that are not the schema's: the plan interprets them
+  # (`BubbleEx.Plan`), so the schema generator skips them.
+  @not_schema [:replace_plugin]
+
   # Resource name map members holding names in one attribute scope.
   @resource_scope ~w(attributes relationships privacy_rules privacy_relationships)
 
@@ -52,6 +56,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
     with :ok <- all_applied(decisions),
          :ok <- unique_keys(decisions),
+         decisions = decisions |> Enum.reject(&(&1.transform in @not_schema)),
          decisions = Enum.sort_by(decisions, & &1.key),
          {:ok, checked} <- collect(decisions, &check(&1, ctx)),
          {deferred, checked} = Enum.split_with(checked, &(elem(&1, 0) == :defer)),

@@ -1,7 +1,7 @@
 defmodule BubbleEx.PlanTest do
   use ExUnit.Case, async: true
 
-  alias BubbleEx.{Error, Index, Model, Plan, SampleHelper}
+  alias BubbleEx.{Decision, Error, Findings, Index, Model, Plan, SampleHelper}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.{Node, Source}
   alias BubbleEx.Plan.{Criteria, Residue, Task}
@@ -41,7 +41,7 @@ defmodule BubbleEx.PlanTest do
                     acceptance:reusable/rB backend:fOne backend:fTwo backend:unfiled
                     api_group:grpMail data:dry_run data:full_load replay:app
                     delivery:staging delivery:callers delivery:production) ++
-                   ["plugin:" <> @plugin] ++
+                   ["plugin:" <> @plugin, "decision:plugin/" <> @plugin] ++
                    Enum.map(
                      ~w(rehearsal runbook communications freeze final_delta switch verify sign_off),
                      &("cutover:" <> &1)
@@ -87,7 +87,7 @@ defmodule BubbleEx.PlanTest do
       assert %Task{status: :open, actor: :owner, subjects: ["api_group:grpMail"]} =
                task!(plan, "setup:secrets")
 
-      assert %Task{subjects: ["action:aPlug", "element:ePlug"]} =
+      assert %Task{subjects: ["action:aPlug", "element:ePlug", "plugin:" <> @plugin]} =
                task!(plan, "plugin:" <> @plugin)
     end
 
@@ -375,6 +375,126 @@ defmodule BubbleEx.PlanTest do
 
       for t <- untouched,
           do: assert(t.source_sha256 == task!(ctx.faithful, t.id).source_sha256)
+    end
+  end
+
+  describe "plugins" do
+    # The plugin (not installed, no known equivalent) has an element on the
+    # home page and an action in wPlug; wPlugEvent (added here) runs on one
+    # of its events.
+    setup ctx do
+      app =
+        put_in(@app, ["pages", "pgHome", "workflows", "wfPlugEvent"], %{
+          "id" => "wPlugEvent",
+          "type" => @plugin <> "-AAC",
+          "properties" => %{"element_id" => "ePlug"},
+          "actions" => %{"0" => %{"id" => "aAfterEvent", "type" => "RefreshPage"}}
+        })
+
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, %{findings: findings}} = Findings.analyze(app, model: model, index: index)
+      finding = Enum.find(findings, &(&1.kind == :plugin))
+      {:ok, undecided} = Plan.build(model, index)
+
+      decide = fn choice, params ->
+        {:ok, record} = Decision.for_finding(finding, choice, params)
+
+        {:ok, resolved} =
+          Decision.resolve([record], findings, index: index, now: ~U[2026-09-26 00:00:00Z])
+
+        applied = Decision.applicable(resolved, findings)
+        {:ok, plan} = Plan.build(model, index, nil, applied, resolved: resolved)
+        {plan, "finding:" <> finding.id}
+      end
+
+      Map.merge(ctx, %{finding: finding, undecided: undecided, decide: decide})
+    end
+
+    test "an undecided plugin blocks its task on the owner's decision", ctx do
+      %{undecided: plan, finding: finding} = ctx
+      key = "finding:" <> finding.id
+      id = "decision:plugin/" <> @plugin
+
+      assert %Task{kind: :decision, actor: :owner, status: :open, subjects: [sym]} =
+               decision = task!(plan, id)
+
+      assert sym == "plugin:" <> @plugin
+      assert [%{check: :decision_recorded, args: %{key: ^key}}] = decision.criteria
+
+      plugin = task!(plan, "plugin:" <> @plugin)
+      assert {id, :decision} in deps(plugin)
+      assert Enum.find(plugin.criteria, &(&1.check == :decision_recorded)).args.key == key
+
+      for user <- ~w(surface:page/pHome workflow:wPlug workflow:wPlugEvent),
+          do: assert({"plugin:" <> @plugin, :plugin} in deps(task!(plan, user)), user)
+
+      order = Map.new(plan.tasks, &{&1.id, &1.order})
+      assert order[id] < order["plugin:" <> @plugin]
+
+      assert plan.coverage["units"]["plugins"] == %{
+               "tasks" => 1,
+               "undecided" => 1,
+               "dropped" => 0
+             }
+    end
+
+    test "a decided rebuild unblocks the plugin and is part of its users' hashes", ctx do
+      assert ctx.finding.proposal.option == :rebuild
+      {plan, key} = ctx.decide.(:accept, %{})
+
+      refute Plan.task(plan, "decision:plugin/" <> @plugin)
+      plugin = task!(plan, "plugin:" <> @plugin)
+      assert %Task{status: :open, actor: :agent} = plugin
+      assert key in plugin.decisions
+      refute Enum.any?(plugin.depends_on, &(&1.kind == :decision))
+
+      for user <- ~w(surface:page/pHome workflow:wPlug workflow:wPlugEvent) do
+        task = task!(plan, user)
+        assert {"plugin:" <> @plugin, :plugin} in deps(task)
+        assert key in task.decisions
+        assert task.source_sha256 != task!(ctx.undecided, user).source_sha256
+      end
+
+      untouched = task!(plan, "workflow:wClick")
+      assert untouched.decisions == []
+      assert untouched.source_sha256 == task!(ctx.undecided, "workflow:wClick").source_sha256
+    end
+
+    test "a decided drop removes the plugin, its uses and the dependency", ctx do
+      {plan, key} = ctx.decide.(:modify, %{"option" => "drop"})
+
+      assert %Task{kind: :plugin, status: :closed, actor: :generator, closed_by: ^key} =
+               plugin = task!(plan, "plugin:" <> @plugin)
+
+      assert [%{check: :decision_recorded, args: %{key: ^key}}] = plugin.criteria
+      refute Plan.task(plan, "decision:plugin/" <> @plugin)
+      refute Enum.any?(plan.tasks, fn t -> Enum.any?(t.depends_on, &(&1.kind == :plugin)) end)
+
+      # Its element renders nothing, its action is skipped and the workflow
+      # its event triggers never runs.
+      home = task!(plan, "surface:page/pHome")
+      refute Enum.any?(home.residue, &(&1.subject == "element:ePlug"))
+      assert key in home.decisions
+      assert %Task{residue: [], status: :auto} = wplug = task!(plan, "workflow:wPlug")
+      assert Enum.find(wplug.criteria, &(&1.check == :step_order)).args.steps == []
+      refute Plan.task(plan, "workflow:wPlugEvent")
+      assert Plan.task(ctx.undecided, "workflow:wPlugEvent")
+
+      assert plan.coverage["units"]["plugins"] == %{
+               "tasks" => 0,
+               "undecided" => 0,
+               "dropped" => 1
+             }
+
+      assert plan.coverage["units"]["workflows_removed"] == 1
+    end
+
+    test "a plugin decision cannot be a reject", ctx do
+      assert {:error, %Error{kind: :invalid_input}} = Decision.for_finding(ctx.finding, :reject)
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Decision.for_finding(ctx.finding, :modify, %{"option" => "replace_native"})
     end
   end
 

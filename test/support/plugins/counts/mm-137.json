@@ -1,0 +1,74 @@
+{
+  "findings": {
+    "confidence": {
+      "high": 3,
+      "low": 2,
+      "medium": 28
+    },
+    "offering_replace_native": 15,
+    "suggested": {
+      "drop": 3,
+      "rebuild": 15,
+      "replace_native": 15
+    },
+    "total": 33
+  },
+  "inventory": {
+    "in_catalog": 15,
+    "installed": 31,
+    "installed_unused": 3,
+    "members_used": 138,
+    "plugins": 33,
+    "surfaces_per_plugin": {
+      "0": 7,
+      "1-9": 20,
+      "10-99": 5,
+      "100+": 1
+    },
+    "used_not_installed": 2,
+    "uses": {
+      "actions": 620,
+      "elements": 717,
+      "events": 258,
+      "state_reads": 458
+    },
+    "uses_per_plugin": {
+      "0": 3,
+      "1-9": 14,
+      "10-99": 12,
+      "100+": 4
+    }
+  },
+  "plan": {
+    "suggestions_accepted": {
+      "decision_edges": 0,
+      "plugin_edges": 1046,
+      "plugins": {
+        "dropped": 0,
+        "tasks": 30,
+        "undecided": 0
+      },
+      "top_level": {
+        "auto": 103,
+        "closed": 0,
+        "open": 347,
+        "total": 450
+      }
+    },
+    "undecided": {
+      "decision_edges": 30,
+      "plugin_edges": 1046,
+      "plugins": {
+        "dropped": 0,
+        "tasks": 30,
+        "undecided": 30
+      },
+      "top_level": {
+        "auto": 103,
+        "closed": 0,
+        "open": 377,
+        "total": 480
+      }
+    }
+  }
+}

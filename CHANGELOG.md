@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Plugin inventory and replacement findings** (WTF-376, T10 of WTF-359).
+  The index has a `:plugin` symbol (`plugin:<marketplace id>`, `installed`,
+  `version`) for every plugin installed in `settings.client_safe.plugins`
+  or named by an element, action or event type, and `:uses_plugin` edges
+  (`role`, `code`) from those elements, actions and workflows (index
+  `schema_version` 3; Bubble's own plugins such as `apiconnector2` are
+  not plugins). `BubbleEx.Plugins.Inventory.build(index)` lists each
+  plugin's members used (with counts), uses, element state reads,
+  surfaces and workflows. A new decision finding kind `:plugin` (one per
+  plugin, subject `%{plugin: id}`) proposes `replace_plugin` with
+  `options` among `drop`, `replace_native` (an equivalent from
+  `BubbleEx.Plugins.Catalog`, public marketplace plugins only) and
+  `rebuild`, and the suggested `option`; its basis is the plugin's
+  installed version, its proposal hash covers its uses. `Decision.Params`
+  whitelists `option` (one of the finding's `options`) for
+  `replace_plugin`; plugin findings cannot be rejected. `BubbleEx.Plan`
+  (`schema_version` 3) gates each plugin task on its decision: undecided
+  plugins get an owner `decision:plugin/<id>` task the plugin task depends
+  on; `drop` closes the plugin task and removes its elements (no residue),
+  actions and event workflows; the plugin decision is in the
+  `decisions_sha256` of every task covering a use. `coverage.units.plugins`
+  is now `%{tasks, undecided, dropped}`. `Target.Ash.map/3` skips plugin
+  decisions. Finding IDs and hashes of the other kinds are unchanged
+  (mm-137: 147). mm-137: 31 installed plugins, 2 more used but not
+  installed; 33 findings (15 `replace_native`, 15 `rebuild`, 3 `drop`).
+
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
   verification proposal). `BubbleEx.Verify.Interpreter` evaluates
   `BubbleEx.Privacy` rules (compiled to the expression IR) over seed data

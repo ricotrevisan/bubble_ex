@@ -18,6 +18,60 @@ defmodule BubbleEx.IndexTest do
 
   defp wf!(index, id), do: Index.symbol(index, "workflow:" <> id)
 
+  describe "plugins" do
+    test "installed and used plugins are symbols; their elements, actions and events use them" do
+      installed = "1500000000000x200"
+      used = "1500000000000x300"
+
+      app = %{
+        "settings" => %{
+          "client_safe" => %{
+            "plugins" => %{installed => "2.1.4", "1500000000000x400" => true, "select2" => true}
+          }
+        },
+        "pages" => %{
+          "pg" => %{
+            "id" => "pA",
+            "type" => "Page",
+            "elements" => %{
+              "e1" => %{"id" => "eP", "type" => used <> "-AAC"},
+              "e2" => %{"id" => "eS", "type" => "select2-MultiDropdown"}
+            },
+            "workflows" => %{
+              "w1" => %{
+                "id" => "wEv",
+                "type" => used <> "_current-AAX",
+                "properties" => %{"element_id" => "eP"},
+                "actions" => %{"0" => %{"id" => "aRun", "type" => used <> "-AAg"}}
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, index} = Index.build(app)
+
+      assert Index.symbols(index, :plugin) |> Enum.map(&{&1.id, &1.attrs, &1.path}) == [
+               {"plugin:" <> installed, %{installed: true, version: "2.1.4"},
+                "/settings/client_safe/plugins/" <> installed},
+               {"plugin:" <> used, %{installed: false}, ""},
+               {"plugin:1500000000000x400", %{installed: true},
+                "/settings/client_safe/plugins/1500000000000x400"}
+             ]
+
+      assert index
+             |> Index.references_to("plugin:" <> used, [:uses_plugin])
+             |> Enum.map(&{&1.from, &1.attrs}) == [
+               {"action:aRun", %{role: :action, code: "AAg"}},
+               {"element:eP", %{role: :element, code: "AAC"}},
+               {"workflow:wEv", %{role: :event, code: "AAX"}}
+             ]
+
+      assert Index.references_to(index, "plugin:" <> installed) == []
+      assert index.diagnostics == []
+    end
+  end
+
   describe "symbols" do
     test "cover every definition kind, keyed by stable Bubble IDs", %{index: index} do
       assert Index.summary(index).symbols == %{
@@ -34,7 +88,8 @@ defmodule BubbleEx.IndexTest do
                action: 32,
                api_group: 1,
                api_call: 2,
-               privacy_rule: 2
+               privacy_rule: 2,
+               plugin: 1
              }
 
       assert %Symbol{
@@ -653,7 +708,7 @@ defmodule BubbleEx.IndexTest do
       assert map.content_sha256 == index.content_sha256
       assert map.semantic_sha256 == index.semantic_sha256
       refute Map.has_key?(map, :lookup)
-      assert Jason.decode!(Index.to_json(index))["schema_version"] == 2
+      assert Jason.decode!(Index.to_json(index))["schema_version"] == 3
     end
   end
 

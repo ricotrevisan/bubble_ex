@@ -87,7 +87,10 @@ defmodule BubbleEx.Verify.Check do
     number_type:
       {~w(row_hashes workflow_side_effects api_workflow),
        ~w(row_hash field_value response_field) ++ @writes},
-    search_index: {[], []}
+    search_index: {[], []},
+    # A plugin decision changes what renders and runs; differences it causes
+    # are excused by parity exceptions, not explained by the finding.
+    plugin: {[], []}
   }
 
   for kind <- BubbleEx.Finding.Kinds.all(), not Map.has_key?(@explains, kind) do
@@ -150,6 +153,7 @@ defmodule BubbleEx.Verify.Check do
   | `id_in_text` | `row_hashes`, `dangling_refs` | `row_hash`, `field_value`, `dangling_refs` |
   | `number_type` | `row_hashes`, `workflow_side_effects`, `api_workflow` | `row_hash`, `field_value`, `response_field`, `field_changed`, `record_updated` |
   | `search_index` (a hint) | none | none |
+  | `plugin` | none (differences need a parity exception) | none |
 
   Renames are not findings and explain nothing: a rename changes names,
   not behaviour.

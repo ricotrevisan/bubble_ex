@@ -18,6 +18,7 @@ defmodule BubbleEx.Plan.Order do
     remove_writes: 0,
     delete_workflows: 0,
     setup_secrets: 1,
+    decision: 1,
     auth: 2,
     styles_residue: 2,
     plugin: 3,

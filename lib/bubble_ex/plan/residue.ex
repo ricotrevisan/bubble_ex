@@ -66,14 +66,7 @@ defmodule BubbleEx.Plan.Residue do
   with `_current`/`_test` version suffixes ignored), or nil.
   """
   @spec plugin(term()) :: String.t() | nil
-  def plugin(type) when is_binary(type) do
-    case Regex.run(~r/^(\d+x\d+)(?:_[a-z]+)?-/, type) do
-      [_, id] -> id
-      _ -> nil
-    end
-  end
-
-  def plugin(_), do: nil
+  defdelegate plugin(type), to: BubbleEx.Index.Plugins
 
   # --- expressions ------------------------------------------------------------
 

@@ -4,11 +4,12 @@ defmodule BubbleEx.Plan.Builder do
   # Derives the task graph of BubbleEx.Plan. See that module for the task
   # kinds and dependency rules; this one only computes them.
 
-  alias BubbleEx.{CanonicalJson, Decision, Index}
+  alias BubbleEx.{CanonicalJson, Decision, Finding, Index}
   alias BubbleEx.Decision.Applied
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Index.{Graph, Subject, Symbol}
   alias BubbleEx.Plan.{Criteria, Order, Residue, Task}
+  alias BubbleEx.Plugins.Catalog
 
   # Generator groups, as full task IDs (the group names are plan IDs, not
   # data-model members).
@@ -126,10 +127,39 @@ defmodule BubbleEx.Plan.Builder do
   # actions dropped, and field writes dropped (an action whose every field
   # write is dropped goes too).
   defp decisions(%{index: index, applied: applied} = ctx) do
-    touched = Map.new(applied, &{&1.key, touched(&1)})
+    plugin_uses = plugin_uses(index)
+    touched = Map.new(applied, &{&1.key, touched(&1, plugin_uses)})
 
-    deleted = applied |> Enum.flat_map(&list(&1.proposal, :delete_workflows)) |> MapSet.new()
-    dropped_calls = applied |> Enum.flat_map(&list(&1.proposal, :remove_calls)) |> MapSet.new()
+    # Plugin symbol ID -> the applied plugin decision (WTF-376).
+    plugins =
+      for %Applied{kind: :finding, transform: :replace_plugin, proposal: %{plugin: p}} = a <-
+            applied,
+          into: %{},
+          do: {p, %{key: a.key, option: a.proposal[:option]}}
+
+    dropped = for {p, %{option: :drop}} <- plugins, into: MapSet.new(), do: bubble_id(p)
+
+    # A dropped plugin's event never fires: the workflows it triggers go.
+    deleted =
+      applied
+      |> Enum.flat_map(&list(&1.proposal, :delete_workflows))
+      |> Enum.concat(
+        for %{kind: :workflow} = w <- index.symbols,
+            MapSet.member?(dropped, Residue.plugin(w.attrs[:event_type])),
+            do: w.id
+      )
+      |> MapSet.new()
+
+    # ... and its actions are skipped.
+    dropped_calls =
+      applied
+      |> Enum.flat_map(&list(&1.proposal, :remove_calls))
+      |> Enum.concat(
+        for %{kind: :action} = a <- index.symbols,
+            MapSet.member?(dropped, Residue.plugin(a.attrs[:type])),
+            do: a.id
+      )
+      |> MapSet.new()
 
     dropped_writes =
       applied
@@ -145,10 +175,26 @@ defmodule BubbleEx.Plan.Builder do
 
     Map.merge(ctx, %{
       touched: touched,
+      plugin_uses: plugin_uses,
+      plugin_decisions: plugins,
+      dropped_plugins: dropped,
       deleted_workflows: deleted,
       removed_actions: removed_actions
     })
   end
+
+  # Plugin symbol ID -> the symbols using it (its elements, actions and
+  # the workflows its events trigger).
+  defp plugin_uses(index) do
+    for %{kind: :plugin, id: id} <- index.symbols,
+        into: %{},
+        do: {id, index |> Index.references_to(id, [:uses_plugin]) |> Enum.map(& &1.from)}
+  end
+
+  # A plugin decision concerns every use of the plugin too, so it is part of
+  # the decisions of every task covering one.
+  defp with_plugin_uses(ids, plugin_uses),
+    do: Enum.flat_map(ids, &[&1 | Map.get(plugin_uses, &1, [])])
 
   defp writes_dropped?(index, action, dropped) do
     case Index.references_from(index, action, [:writes_field]) do
@@ -166,8 +212,11 @@ defmodule BubbleEx.Plan.Builder do
 
   # Every symbol an applied decision names: its subject and every symbol ID
   # in its proposal.
-  defp touched(%Applied{subject: subject, proposal: proposal}),
-    do: MapSet.new(Subject.symbol_ids(subject) ++ symbol_ids(proposal))
+  defp touched(%Applied{subject: subject, proposal: proposal}, plugin_uses),
+    do:
+      (Subject.symbol_ids(subject) ++ symbol_ids(proposal))
+      |> with_plugin_uses(plugin_uses)
+      |> MapSet.new()
 
   defp symbol_ids(value) when is_binary(value) do
     case String.split(value, ":", parts: 2) do
@@ -190,13 +239,20 @@ defmodule BubbleEx.Plan.Builder do
     by_subject =
       (Residue.index(ctx.index, ctx.model) ++
          Residue.frontend(ctx.frontend, ctx.index) ++ ctx.extra)
-      |> Enum.reject(&MapSet.member?(removed, &1.subject))
+      |> Enum.reject(&(MapSet.member?(removed, &1.subject) or dropped_plugin?(ctx, &1)))
       |> Enum.uniq()
       |> Residue.sort()
       |> Enum.group_by(& &1.subject)
 
     Map.put(ctx, :residue, by_subject)
   end
+
+  # A dropped plugin's elements render nothing and its styles go unused.
+  defp dropped_plugin?(ctx, %{reason: reason, detail: %{plugin: plugin}})
+       when reason in [:plugin_element, :plugin_action, :plugin_event, :plugin_style],
+       do: MapSet.member?(ctx.dropped_plugins, plugin)
+
+  defp dropped_plugin?(_ctx, _entry), do: false
 
   defp residue_of(ctx, ids),
     do: ids |> Enum.flat_map(&Map.get(ctx.residue, &1, [])) |> Residue.sort()
@@ -557,17 +613,87 @@ defmodule BubbleEx.Plan.Builder do
     workflow_callers ++ element_callers ++ surface_callers
   end
 
+  # One task per plugin used by kept code (WTF-359 §2.10, WTF-376). Its
+  # users wait for it; it waits for the owner's plugin decision
+  # (`decision:plugin/<id>`, open while undecided). A dropped plugin's uses
+  # are gone, so its task is closed by the decision and nothing waits for it.
   defp plugin_tasks(ctx) do
-    ctx
-    |> plugin_users()
-    |> Enum.map(fn {plugin, users} ->
-      %Task{
-        id: "plugin:" <> plugin,
-        kind: :plugin,
-        actor: :agent,
-        subjects: users |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort()
-      }
+    used =
+      ctx
+      |> plugin_users()
+      |> Enum.map(fn {plugin, users} ->
+        id = Symbol.id(:plugin, plugin)
+
+        %Task{
+          id: "plugin:" <> plugin,
+          kind: :plugin,
+          actor: :agent,
+          subjects: Enum.sort([id | users |> Enum.map(&elem(&1, 1)) |> Enum.uniq()]),
+          label: plugin_name(plugin)
+        }
+      end)
+
+    undecided =
+      for %Task{subjects: subjects} = t <- used,
+          not Map.has_key?(ctx.plugin_decisions, "plugin:" <> bubble_id(t.id)),
+          do: %Task{
+            id: decision_task_id(t.id),
+            kind: :decision,
+            actor: :owner,
+            subjects: Enum.filter(subjects, &String.starts_with?(&1, "plugin:")),
+            label: t.label
+          }
+
+    dropped =
+      for plugin <- Enum.sort(ctx.dropped_plugins),
+          id = Symbol.id(:plugin, plugin),
+          used_in_scope?(ctx, id) do
+        %Task{
+          id: "plugin:" <> plugin,
+          kind: :plugin,
+          actor: :generator,
+          status: :closed,
+          closed_by: ctx.plugin_decisions[id].key,
+          subjects: [id],
+          label: plugin_name(plugin)
+        }
+      end
+
+    used ++ undecided ++ dropped
+  end
+
+  defp decision_task_id("plugin:" <> plugin), do: "decision:plugin/" <> plugin
+
+  defp plugin_name(plugin) do
+    case Catalog.fetch(plugin) do
+      {:ok, %{name: name}} -> name
+      :error -> nil
+    end
+  end
+
+  # Whether kept code (before the drop) used the plugin: an element of a
+  # surface, or an action or event of a surface or backend workflow.
+  defp used_in_scope?(ctx, plugin) do
+    ctx.plugin_uses
+    |> Map.get(plugin, [])
+    |> Enum.any?(fn id ->
+      case Index.symbol(ctx.index, id) do
+        %{kind: :element} -> Map.has_key?(ctx.element_surface, id)
+        %{kind: :action, parent: w} -> workflow_in_scope?(ctx, w)
+        %{kind: :workflow} -> workflow_in_scope?(ctx, id)
+        _ -> false
+      end
     end)
+  end
+
+  defp workflow_in_scope?(ctx, id) do
+    case Index.symbol(ctx.index, id) do
+      %{kind: :workflow} = w ->
+        w.attrs[:backend] == true or MapSet.member?(ctx.surface_ids, w.parent)
+
+      _ ->
+        false
+    end
   end
 
   # Plugin ID -> [{task, symbol}] of kept users (styles are the styles
@@ -627,7 +753,8 @@ defmodule BubbleEx.Plan.Builder do
 
   # --- statuses ---------------------------------------------------------------
 
-  @always_open ~w(auth setup_secrets styles_residue plugin acceptance data replay delivery cutover)a
+  @always_open ~w(auth setup_secrets styles_residue plugin decision acceptance data replay delivery
+                  cutover)a
 
   defp statuses(tasks) do
     children = tasks |> Map.values() |> Enum.filter(& &1.parent) |> Enum.group_by(& &1.parent)
@@ -853,10 +980,20 @@ defmodule BubbleEx.Plan.Builder do
     List.flatten(surface_fragments) ++ acceptance ++ Enum.sort_by(cycles, &{&1.from, &1.to})
   end
 
-  defp plugin_edges(ctx, _tasks) do
-    for {plugin, users} <- ctx |> plugin_users() |> Enum.sort(),
-        {task, subject} <- Enum.sort(users),
-        do: edge(task, "plugin:" <> plugin, :plugin, [subject])
+  # Users on their plugin; a plugin nobody decided on its decision.
+  defp plugin_edges(ctx, tasks) do
+    users =
+      for {plugin, users} <- ctx |> plugin_users() |> Enum.sort(),
+          {task, subject} <- Enum.sort(users),
+          do: edge(task, "plugin:" <> plugin, :plugin, [subject])
+
+    decisions =
+      for t <- tasks |> Map.values() |> Enum.sort_by(& &1.id),
+          t.kind == :plugin and t.status != :closed,
+          Map.has_key?(tasks, decision_task_id(t.id)),
+          do: edge(t.id, decision_task_id(t.id), :decision, [Symbol.id(:plugin, bubble_id(t.id))])
+
+    decisions ++ users
   end
 
   defp api_edges(ctx, tasks) do
@@ -969,7 +1106,9 @@ defmodule BubbleEx.Plan.Builder do
       for %{decision: d, state: state} <- ctx.resolved,
           state != :superseded,
           not MapSet.disjoint?(
-            MapSet.new(Subject.symbol_ids(d.subject) ++ symbol_ids(d.params)),
+            (Subject.symbol_ids(d.subject) ++ symbol_ids(d.params))
+            |> with_plugin_uses(ctx.plugin_uses)
+            |> MapSet.new(),
             set
           ),
           do: %{key: d.key, state: state, inputs_sha256: Decision.decisions_sha256([d])}
@@ -1052,7 +1191,21 @@ defmodule BubbleEx.Plan.Builder do
     %{elements: [s | elements], surface: surface_task(ctx, s)}
   end
 
+  defp facts(ctx, %Task{kind: :plugin, id: id}, _tasks) do
+    case ctx.plugin_decisions[Symbol.id(:plugin, bubble_id(id))] do
+      %{key: key} -> %{decision: key}
+      nil -> %{decision: plugin_decision_key(id)}
+    end
+  end
+
+  defp facts(_ctx, %Task{kind: :decision, id: "decision:plugin/" <> plugin}, _tasks),
+    do: %{decision: plugin_decision_key("plugin:" <> plugin)}
+
   defp facts(_ctx, t, children), do: %{children: Map.get(children, t.id, [])}
+
+  # The decision key of a plugin's finding.
+  defp plugin_decision_key("plugin:" <> plugin),
+    do: "finding:" <> Finding.id(:plugin, %{plugin: plugin})
 
   defp symbols(ctx, ids), do: Enum.map(ids, &Index.symbol(ctx.index, &1))
 
@@ -1092,7 +1245,11 @@ defmodule BubbleEx.Plan.Builder do
           "total" => length(style_subjects(ctx)),
           "residue" => Enum.count(with_residue, &String.starts_with?(&1, "style:"))
         },
-        "plugins" => Enum.count(tasks, &(&1.kind == :plugin)),
+        "plugins" => %{
+          "tasks" => Enum.count(tasks, &(&1.kind == :plugin and &1.status == :open)),
+          "undecided" => Enum.count(tasks, &(&1.kind == :decision)),
+          "dropped" => Enum.count(tasks, &(&1.kind == :plugin and &1.status == :closed))
+        },
         "cycles" => %{
           "workflow" => length(ctx.cycles),
           "self_recursive" => ctx.self_recursive,

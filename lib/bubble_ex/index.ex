@@ -30,7 +30,14 @@ defmodule BubbleEx.Index do
 
   Data types, fields, option sets, option values, option set attributes,
   pages (and mobile views), reusable elements, elements, workflows (frontend
-  and backend), actions, API Connector groups and calls, and privacy rules.
+  and backend), actions, API Connector groups and calls, privacy rules and
+  marketplace plugins.
+
+  Plugin symbols (`plugin:<plugin id>`) are every plugin installed in
+  `settings.client_safe.plugins` and every plugin an element, action or
+  event type names (`"<plugin id>-<code>"`), with `attrs.installed` and,
+  when the settings name one, `attrs.version`. Bubble's own plugins (short
+  slugs such as `apiconnector2`) are not plugin symbols.
 
   Every data type also has Bubble's built-in fields as field symbols
   (`_id` - unique id, `Created By`, `Created Date`, `Modified Date`, `Slug`,
@@ -90,6 +97,7 @@ defmodule BubbleEx.Index do
   | `:listens_to`     | workflow                      | element / page / reusable / data type (database trigger) | |
   | `:targets_element`| action                        | element / page / reusable  | |
   | `:instance_of`    | element                       | reusable element           | |
+  | `:uses_plugin`    | element / action / workflow of a plugin type | plugin      | `role`: `:element`, `:action`, `:event`; `code`: the plugin's member code |
 
   Expression hosts are pages, reusables, elements, workflows (their event and
   conditions), actions and privacy rules (their conditions).
@@ -157,6 +165,7 @@ defmodule BubbleEx.Index do
   alias BubbleEx.Index.{
     DataModel,
     Graph,
+    Plugins,
     PrivacyRules,
     Reads,
     Reference,
@@ -165,7 +174,7 @@ defmodule BubbleEx.Index do
     Symbol
   }
 
-  @schema_version 2
+  @schema_version 3
 
   @enforce_keys [:schema_version, :source_sha256, :content_sha256, :symbols, :references]
   defstruct [
@@ -237,12 +246,13 @@ defmodule BubbleEx.Index do
       host_refs = Enum.flat_map(structure.hosts, &Reads.scan(&1.value, &1.path, &1.symbol, ctx))
       {wf_symbols, wf_refs, wf_diags} = BubbleEx.Index.Workflows.build(inventory, ctx)
       {rule_symbols, rule_refs} = PrivacyRules.build(model, ctx)
+      {plugin_symbols, plugin_refs} = Plugins.build(app, structure.symbols ++ wf_symbols)
 
       index =
         assemble(
           inventory.source_sha256,
-          model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols,
-          model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs,
+          model_symbols ++ structure.symbols ++ wf_symbols ++ rule_symbols ++ plugin_symbols,
+          model_refs ++ structure.references ++ host_refs ++ wf_refs ++ rule_refs ++ plugin_refs,
           structure.diagnostics ++ wf_diags
         )
 

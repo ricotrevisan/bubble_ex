@@ -14,7 +14,12 @@ defmodule BubbleEx.Decision.Params do
   | `:normalize_list_to_join` | `keep_order` - boolean; `join_name` - snake_case name of the join |
   | `:text_to_reference` | `target_type` - the data type symbol (`"data_type:<key>"`) the IDs reference: one of the finding's `evidence.target_types`, only when the finding named none |
   | `:add_indexes` | `drop` - indexes (from 0) into `proposal.indexes` not to create |
+  | `:replace_plugin` | `option` - `:drop`, `:replace_native` or `:rebuild`: one of the finding's `proposal.options` |
   | `:membership_policy`, `:derive_reverse_relationship` | none |
+
+  A `:plugin` finding has no source-faithful mapping to fall back to (a
+  plugin's code is not part of the app), so it cannot be rejected: the
+  owner accepts the suggested option or picks another with `modify`.
 
   `cast/3` checks shapes when a decision is decoded (it knows the finding's
   kind, not yet the finding); `check/2` checks them against the finding's
@@ -31,11 +36,16 @@ defmodule BubbleEx.Decision.Params do
     normalize_list_to_join: [:keep_order, :join_name],
     text_to_reference: [:target_type],
     add_indexes: [:drop],
+    replace_plugin: [:option],
     membership_policy: [],
     derive_reverse_relationship: []
   }
 
   @number_types [:integer, :decimal]
+  @plugin_options [:drop, :replace_native, :rebuild]
+
+  # Finding kinds with no faithful mapping to keep: never rejected.
+  @no_reject [:plugin]
 
   @type t :: %{optional(atom()) => term()}
 
@@ -53,6 +63,13 @@ defmodule BubbleEx.Decision.Params do
   allowed by one of the kind's transforms and of the right shape.
   """
   @spec cast(atom(), atom(), map()) :: {:ok, t()} | {:error, Error.t()}
+  def cast(kind, :reject, _params) when kind in @no_reject,
+    do:
+      error(
+        "#{kind} findings cannot be rejected: accept the suggested option or modify it",
+        %{kind: kind}
+      )
+
   def cast(_kind, choice, params)
       when choice in [:accept, :reject, :acknowledge] and map_size(params) == 0,
       do: {:ok, %{}}
@@ -111,6 +128,13 @@ defmodule BubbleEx.Decision.Params do
     end
   end
 
+  defp value(:option, option) when is_binary(option) do
+    case Enum.find(@plugin_options, &(Atom.to_string(&1) == option)) do
+      nil -> bad(:option, option)
+      option -> {:ok, option}
+    end
+  end
+
   defp value(:keep_order, bool) when is_boolean(bool), do: {:ok, bool}
 
   defp value(:join_name, name) when is_binary(name) do
@@ -135,7 +159,8 @@ defmodule BubbleEx.Decision.Params do
   Checks cast `params` against the finding `proposal` they modify and its
   `evidence`: every parameter is allowed by its transform and points into
   it (an existing alternative or index; a `target_type` only where the
-  finding named none, and one of its `evidence.target_types`).
+  finding named none, and one of its `evidence.target_types`; an `option`
+  among the finding's `options`).
   """
   @spec check(map(), t(), map()) :: :ok | {:error, Error.t()}
   def check(%{transform: transform} = proposal, params, evidence \\ %{}) when is_map(params) do
@@ -180,6 +205,15 @@ defmodule BubbleEx.Decision.Params do
     if Enum.all?(drop, &(&1 < count)),
       do: :ok,
       else: error("the finding has #{count} indexes", %{drop: drop})
+  end
+
+  defp fits(proposal, _evidence, {:option, option}) do
+    options = Map.get(proposal, :options, [])
+
+    if option in options,
+      do: :ok,
+      else:
+        error("the finding does not offer option #{option}", %{option: option, allowed: options})
   end
 
   defp fits(_proposal, _evidence, _param), do: :ok

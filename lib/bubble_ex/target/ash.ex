@@ -209,6 +209,9 @@ defmodule BubbleEx.Target.Ash do
   | `derive_from_related` | the attribute is dropped (no column) and becomes a public calculation of the same name, `calculate <name>, <source type>, expr(<relationship path>.<source attribute>)`: owned code that reads it still compiles; only writes to it break, and the decision removes those |
   | `rename` | overrides one name of the name map (below) |
 
+  `replace_plugin` decisions (`:plugin` findings) do not concern the
+  schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
+
   **Renames.** `slot` names what is renamed; the name must be valid for it
   and not reserved (`BubbleEx.Target.Ash.Naming.reserved/1`, Elixir and
   library namespaces, the generated `Privacy` module), must not be taken in
