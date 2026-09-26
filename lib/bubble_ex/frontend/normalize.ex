@@ -783,8 +783,6 @@ defmodule BubbleEx.Frontend.Normalize do
     Regex.match?(~r/^fa fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
   end
 
-  defp fontawesome_4_icon?(_), do: false
-
   defp supported_sprite_icon?(icon) when is_binary(icon) do
     fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon) or
       Regex.match?(~r/^phosphor (regular|bold|fill) [a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
@@ -2180,8 +2178,6 @@ defmodule BubbleEx.Frontend.Normalize do
     |> Enum.map(&elem(&1, 1))
   end
 
-  defp workflow_actions(_), do: []
-
   defp conditioned?(node) when is_map(node) do
     Enum.any?(
       [
@@ -2242,7 +2238,7 @@ defmodule BubbleEx.Frontend.Normalize do
   defp workflow_slot(raw, exporter_id) do
     workflows = Payload.workflows(raw)
 
-    if is_map(workflows) and map_size(workflows) > 0 do
+    if map_size(workflows) > 0 do
       binding = %{
         id: exporter_id <> " :: workflow",
         kind: :workflow,

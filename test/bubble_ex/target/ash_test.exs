@@ -699,7 +699,6 @@ defmodule BubbleEx.Target.AshTest do
     end
 
     for {name, path} <- @fixtures do
-      @name name
       @path path
       test "#{name}: no policy machinery, otherwise the :unverified mapping" do
         app = load(@path)

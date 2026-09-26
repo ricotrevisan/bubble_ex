@@ -1,0 +1,63 @@
+{
+  "check": "api_workflow",
+  "covers": {
+    "findings": [],
+    "rules": [],
+    "tasks": [
+      "workflow:bTHcK"
+    ]
+  },
+  "format": "bubble_ex.verify.scenario",
+  "id": "api_workflow.complete_task.w1_member",
+  "kind": "api_workflow",
+  "masks": [
+    {
+      "kind": "db_diff",
+      "op": "call",
+      "pointer": "/*/fields/Modified Date",
+      "reason": "time",
+      "record": null,
+      "tolerance_ms": 5000
+    },
+    {
+      "kind": "response",
+      "op": "call",
+      "pointer": "/response/log_id",
+      "reason": "random",
+      "record": null,
+      "tolerance_ms": null
+    }
+  ],
+  "ops": [
+    {
+      "auth": "persona",
+      "id": "call",
+      "observe": [
+        "db_diff",
+        "response",
+        "status",
+        "step_trace"
+      ],
+      "op": "call_api_workflow",
+      "params": {
+        "points": {
+          "number": 5.0
+        },
+        "task": {
+          "ref": "task_w1"
+        }
+      },
+      "workflow": "bTHcK"
+    }
+  ],
+  "persona": "w1_member",
+  "schema_version": 1,
+  "seed": {
+    "id": "privacy_matrix",
+    "sha256": "eb77f55e705fd65ea0b648ff426b57d4ed503350c4b613450983256a9f4ae510"
+  },
+  "source_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "subjects": {
+    "workflow": "bTHcK"
+  }
+}

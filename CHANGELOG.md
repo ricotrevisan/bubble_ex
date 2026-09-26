@@ -40,6 +40,31 @@ All notable changes to this project are documented here.
   `Index.schema_version/0` is 2. The test split-export loader restores
   `wf_folder` from folder directories and loads named styles.
   `Index.WorkflowAnalysis.action_class/1` is public.
+- **Parity exceptions name the checks they excuse** (WTF-381). `BubbleEx.Decision`
+  parity exceptions take a required `params.checks`: a non-empty list of
+  registered `BubbleEx.Verify.Check` names (sorted, unique). Still
+  `schema_version` 1 (no parity exceptions had been stored); bubble_wtf
+  (WTF-402) must send it when it bumps its bubble_ex pin.
+- **`BubbleEx.Verify` formats** (WTF-381, V1 of the WTF-358 verification
+  proposal). Stack-neutral, versioned (`schema_version` 1), strict JSON
+  codecs with canonical encoding and content hashes for seeds
+  (`Verify.Seed`), scenarios (`Verify.Scenario`), recordings
+  (`Verify.Recording`) and check results (`Verify.Result`), plus canonical
+  Bubble values (`Verify.Value`, WTF-338), observations, masks, the check
+  registry (`Verify.Check`) and staleness (`Verify.Staleness`). Result
+  status rules are enforced on decode: privacy, data and auth differences
+  are accepted only through the owner's decisions, agents may only
+  quarantine behaviour checks (at most 7 days from the first quarantine),
+  owner waivers cannot be self-declared, structural and gate checks accept
+  nothing; `decision` references are the decision `key` plus
+  `proposal_sha256`. A decoded result never counts by itself:
+  `Result.evaluate/3` links its decision against `Decision.resolve/3`
+  (owner authorship, relevance, hashes, pinned scenario), trusts only
+  listed reviewers and the cited recording, and reports passing and
+  Bubble-verified (never on the `model` oracle). Bubble evidence comes only
+  from `wtfreplay…` branches of a Bubble app ID (`Verify.Replay`); masks
+  are part of the scenario hash and never hide a privacy verdict. Golden
+  examples in `test/support/verify/`.
 
 - **`Target.Ash.map/3` applies owner decisions, cut 1** (WTF-401, D-2 of
   WTF-352). `decisions` is the output of `Decision.applicable/2` (a list of
