@@ -72,7 +72,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
           do: rule.id
 
     everyone =
-      if (info.default && all_supported) and not grants_nothing?(info.default, info),
+      if info.default != nil and all_supported and not grants_nothing?(info.default, info),
         do: ["everyone"],
         else: []
 
