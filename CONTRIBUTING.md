@@ -87,18 +87,36 @@ module name, so the dependencies compile once), then per fixture runs
 `mix compile --warnings-as-errors`, `mix ash.codegen` and
 `mix ash.codegen --check`, and, with `PHOENIX_COMPILE_CHECK_DB` set, the
 scaffolded smoke test (`mix test`: migrations, endpoint boot, magic-link
-sign-in). A fixture whose app has backend workflows (the workflow fixtures
+sign-in) and the generated API client tests (`Req.Test` request shapes,
+WTF-374; the `phoenix_api_clients` fixture covers every kind of call). A
+fixture whose app has backend workflows (the workflow fixtures
 `test/support/target/workflows/*.json`, including `hostile_ids`, and the
 private export) renders them too (`BubbleEx.Target.Ash.Workflows`, WTF-373),
 and its generated workflow tests run; the `workflows_backend` fixture also
 runs the behavior tests in `test/support/target/workflows/backend_behavior.exs`
 (an exposed workflow over HTTP, a privacy bypass, a custom event, a database
-trigger through Oban, a self-scheduling cycle). The dependencies are locked by
+trigger through Oban, a self-scheduling cycle). The
+dependencies are locked by
 `scripts/phoenix_compile_check/mix.lock`; after changing the pins in
 `BubbleEx.Target.Phoenix.deps/1`, refresh it with
 `PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1`. `PHOENIX_COMPILE_CHECK_FIXTURES`
 limits the run to some fixtures. CI runs it as the `phoenix-compile-check`
 job: every fixture on Elixir 1.18, a representative subset on 1.20.
+Fixtures with pages (the frozen fidelity cases, `fidelity_<case>`, and the
+expression fixture) also compile their LiveViews and, with the database,
+mount every page and check each element's `data-bubble-id`.
+
+To check the HEEx emitter's pages against the frozen fidelity references
+(after the compile check has fetched the dependencies, and with the
+fidelity npm dependencies installed):
+
+```bash
+scripts/heex_fidelity.sh    # HEEX_FIDELITY_CASES="bpgwgmpz" for some cases
+```
+
+It serves each case's page from its generated LiveView, builds the
+project's Tailwind stylesheet and runs `test/support/fidelity/run.mjs`
+(and `overlay-states.mjs` for `bptvorpv`), then prints the parity summary.
 
 ## Testing
 

@@ -1,5 +1,6 @@
 # Renders one fixture through BubbleEx.Target.Phoenix (privacy: :omit, what
-# an owner downloads) into a scratch Phoenix project directory, replacing
+# an owner downloads; with the API clients of BubbleEx.Target.ApiClients
+# when the fixture has a Model) into a scratch Phoenix project directory, replacing
 # the previous fixture's files. Every fixture renders with the same name
 # (module PhxCheck, app :phx_check), so the dependencies, configured the
 # same way, compile once for all of them (scripts/phoenix_compile_check.sh).
@@ -10,9 +11,15 @@
 #
 # `list` prints the fixture names: every BubbleEx.Model fixture
 # (test/support/model/*.json), every target fixture
-# (test/support/target/ash/*.json), the expression fixture and the owner
-# decision fixtures (BubbleEx.Test.DecidedFixture), plus `private_app` when
-# BUBBLE_EX_PRIVATE_EXPORT is set (never committed).
+# (test/support/target/ash/*.json), the Phoenix fixtures
+# (test/support/target/phoenix/*.json, e.g. API clients), the expression
+# fixture, every frozen fidelity case's payload (`fidelity_<case>`, with its
+# pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), two
+# frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`), plus
+# `private_app` when BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An
+# app with a frontend renders its pages (WTF-370), with the bindings the
+# expression compiler lowers; an app with a Model its API Connector clients
+# (WTF-374).
 #
 # The committed scripts/phoenix_compile_check/mix.lock replaces the stub
 # lock, and with PHOENIX_COMPILE_CHECK_DB (a PostgreSQL URL without a
@@ -22,24 +29,118 @@
 
 alias BubbleEx.Target.Phoenix
 
+# The app's frontend (pages, reusable elements, styles) and its compiled
+# bindings, when the app JSON has one (WTF-370).
+frontend = fn app, model, project ->
+  case BubbleEx.Frontend.normalize(app) do
+    {:ok, frontend} ->
+      {:ok, expressions} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "PhxCheck.Bubble.Runtime",
+          namespace: "PhxCheck"
+        )
+
+      [frontend: frontend, expressions: expressions]
+
+    {:error, _} ->
+      []
+  end
+end
+
+# A frozen fidelity case's images and icons, from its committed files (the
+# URL -> file map of its case.json; never downloaded): served by the app
+# from priv/static/images/bubble.
+with_case_assets = fn {:ok, project, opts}, case_dir ->
+  files =
+    for asset <-
+          Jason.decode!(File.read!(Path.join(case_dir, "case.json")))["public_assets"] || [],
+        into: %{},
+        do: {asset["url"], Path.join(case_dir, asset["path"])}
+
+  nodes =
+    case opts[:frontend] do
+      nil -> []
+      frontend -> frontend.pages ++ frontend.reusables
+    end
+
+  {assets, _findings} = BubbleEx.Frontend.Export.Assets.collect(nodes, asset_files: files)
+  {:ok, project, Keyword.put(opts, :assets, assets)}
+end
+
+# The backend workflows of an app (WTF-373), bound to its project for the
+# PhxCheck module; nil when the app has none.
+workflows = fn app, model, project ->
+  with {:ok, index} <- BubbleEx.Index.build(app, model: model),
+       {:ok, backend} <- BubbleEx.Workflows.Backend.build(app, model, index),
+       [_ | _] <- backend.workflows,
+       {:ok, spec} <- BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "PhxCheck") do
+    spec
+  else
+    _ -> nil
+  end
+end
+
+# {project, render options} of an app JSON.
+app_fixture = fn app ->
+  {:ok, model} = BubbleEx.Model.build(app)
+  {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+  # The API client Spec of its API Connector calls (WTF-374).
+  {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
+
+  {:ok, project,
+   [api_clients: clients, workflows: workflows.(app, model, project)] ++
+     frontend.(app, model, project)}
+end
+
 fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
         {"test/support/target/ash/*.json", "target_"},
+        {"test/support/target/phoenix/*.json", "phoenix_"},
         {"test/support/expression/*.json", "expr_"},
+        {"test/support/fidelity/cases/*/source/payload.json", "fidelity_"},
         {"test/support/target/workflows/*.json", "workflows_"}
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort(),
       into: %{} do
-    {prefix <> Path.basename(path, ".json"),
-     fn ->
-       {:ok, model} = path |> File.read!() |> Jason.decode!() |> BubbleEx.Model.build()
-       BubbleEx.Target.Ash.map(model, [], privacy: :omit)
-     end}
+    name =
+      if prefix == "fidelity_",
+        do: prefix <> (path |> Path.dirname() |> Path.dirname() |> Path.basename()),
+        else: prefix <> Path.basename(path, ".json")
+
+    fixture = fn -> path |> File.read!() |> Jason.decode!() |> app_fixture.() end
+
+    if prefix == "fidelity_",
+      do: {name, fn -> with_case_assets.(fixture.(), Path.dirname(Path.dirname(path))) end},
+      else: {name, fixture}
   end
   |> Map.merge(%{
-    "decided_combined" => fn -> BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit) end,
-    "decided_locked" => fn -> BubbleEx.Test.DecidedFixture.locked_project(privacy: :omit) end
+    # Hostile Bubble IDs (quotes, `#{`, a newline, `*/`, `--%>`, an EEx tag,
+    # braces) on a page, a reusable, an instance inside a reusable, a Text,
+    # a modal Popup and a Group Focus: the generated code must compile and
+    # its test find them (WTF-370).
+    "hostile_ids" => fn ->
+      "test/support/fidelity/cases/bpgwgmpz/source/payload.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> BubbleEx.Test.HostileIds.rename(~w(bpgwgmpz bpmvuzce bpcjyrzt bpcjyrzr))
+      |> app_fixture.()
+    end,
+    "hostile_overlays" => fn ->
+      "test/support/fidelity/cases/bptvorpv/source/payload.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> BubbleEx.Test.HostileIds.rename(~w(bptvorpv bptvorpw bptvorqc))
+      |> app_fixture.()
+    end,
+    "decided_combined" => fn ->
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit)
+      {:ok, project, []}
+    end,
+    "decided_locked" => fn ->
+      {:ok, project} = BubbleEx.Test.DecidedFixture.locked_project(privacy: :omit)
+      {:ok, project, []}
+    end
   })
   |> Map.merge(
     case System.get_env("BUBBLE_EX_PRIVATE_EXPORT") do
@@ -48,10 +149,7 @@ fixtures =
 
       path ->
         %{
-          "private_app" => fn ->
-            {:ok, model} = path |> BubbleEx.Test.SplitExport.load() |> BubbleEx.Model.build()
-            BubbleEx.Target.Ash.map(model, [], privacy: :omit)
-          end
+          "private_app" => fn -> path |> BubbleEx.Test.SplitExport.load() |> app_fixture.() end
         }
     end
   )
@@ -61,6 +159,7 @@ app_json = fn name ->
   [
     {"test/support/model/", ""},
     {"test/support/target/ash/", "target_"},
+    {"test/support/target/phoenix/", "phoenix_"},
     {"test/support/expression/", "expr_"},
     {"test/support/target/workflows/", "workflows_"}
   ]
@@ -70,28 +169,6 @@ app_json = fn name ->
   end)
   |> File.read!()
   |> Jason.decode!()
-end
-
-# The backend workflows of a fixture's app (WTF-373), bound to its project
-# for the PhxCheck module; nil when the app has none (or no app JSON).
-workflows = fn name, project ->
-  app =
-    case name do
-      "private_app" -> BubbleEx.Test.SplitExport.load(System.fetch_env!("BUBBLE_EX_PRIVATE_EXPORT"))
-      "decided_" <> _ -> nil
-      _ -> app_json.(name)
-    end
-
-  with %{} <- app,
-       {:ok, model} <- BubbleEx.Model.build(app),
-       {:ok, index} <- BubbleEx.Index.build(app, model: model),
-       {:ok, backend} <- BubbleEx.Workflows.Backend.build(app, model, index),
-       [_ | _] <- backend.workflows,
-       {:ok, spec} <- BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "PhxCheck") do
-    spec
-  else
-    _ -> nil
-  end
 end
 
 case System.argv() do
@@ -105,8 +182,8 @@ case System.argv() do
     {:ok, plan} = BubbleEx.Plan.build(model, index)
     :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
 
-    {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
+    opts = [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 
@@ -131,8 +208,11 @@ case System.argv() do
     fixtures |> Map.keys() |> Enum.sort() |> Enum.each(&IO.puts/1)
 
   [dir, name] ->
-    {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck", workflows: workflows.(name, project)]
+    {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
+
+    opts =
+      [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
+
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 
@@ -149,7 +229,8 @@ case System.argv() do
     File.cp!("scripts/phoenix_compile_check/mix.lock", Path.join(dir, "mix.lock"))
 
     # Behavior tests of a workflow fixture's generated app (WTF-373).
-    behavior = "test/support/target/workflows/#{String.replace_prefix(name, "workflows_", "")}_behavior.exs"
+    behavior =
+      "test/support/target/workflows/#{String.replace_prefix(name, "workflows_", "")}_behavior.exs"
 
     if String.starts_with?(name, "workflows_") and File.exists?(behavior),
       do: File.cp!(behavior, Path.join(dir, "test/phx_check/workflows_behavior_test.exs"))
@@ -173,14 +254,18 @@ case System.argv() do
         uri = URI.parse(url)
         [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
 
-        File.write!(Path.join(dir, "config/test.exs"), """
+        File.write!(
+          Path.join(dir, "config/test.exs"),
+          """
 
-        config :phx_check, PhxCheck.Repo,
-          hostname: #{inspect(uri.host)},
-          port: #{uri.port || 5432},
-          username: #{inspect(user)},
-          password: #{inspect(password)}
-        """, [:append])
+          config :phx_check, PhxCheck.Repo,
+            hostname: #{inspect(uri.host)},
+            port: #{uri.port || 5432},
+            username: #{inspect(user)},
+            password: #{inspect(password)}
+          """,
+          [:append]
+        )
     end
 
     generated = files[".wtf/generated.json"] |> Jason.decode!() |> Map.fetch!("generated")

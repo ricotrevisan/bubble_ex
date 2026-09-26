@@ -105,7 +105,7 @@ jobs:
             fixtures: ""
           - elixir: "1.20.2"
             otp: "28.1.1"
-            fixtures: "field_types external_types hostile_long_unicode_names target_policies decided_locked"
+            fixtures: "field_types external_types hostile_long_unicode_names target_policies decided_locked expr_app fidelity_bpgwgmpz fidelity_bptvorpv"
     services:
       postgres:
         image: postgres:16
@@ -135,6 +135,19 @@ jobs:
       - run: scripts/phoenix_compile_check.sh
         env:
           PHOENIX_COMPILE_CHECK_FIXTURES: ${{ matrix.fixtures }}
+      # The frozen fidelity cases against the pages the HEEx emitter
+      # scaffolds (WTF-370), served by their LiveViews.
+      - uses: actions/setup-node@v4
+        if: matrix.elixir == '1.18.4'
+        with:
+          node-version: "22"
+      - name: HEEx fidelity (frozen cases)
+        if: matrix.elixir == '1.18.4'
+        run: |
+          (cd test/support/fidelity && npm ci && npx playwright install --with-deps chromium)
+          scripts/heex_fidelity.sh
+        env:
+          HEEX_FIDELITY_STRICT: "1"
 
   fidelity:
     runs-on: ubuntu-latest
