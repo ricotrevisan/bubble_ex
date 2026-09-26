@@ -25,7 +25,10 @@
 #     its generated policies (WTF-356) logged out and as stored users, and
 #     requires the policy fixture's reads, visible fields and auto-binding
 #     updates to match its hand-authored expectation table
-#     (test/support/target/ash/expectations/policies.json); and
+#     (test/support/target/ash/expectations/policies.json); both checks
+#     also compare the privacy interpreter's verdicts on those tables
+#     (BubbleEx.Verify.Interpreter, WTF-382; written by render.exs) with
+#     what PostgreSQL selects; and
 #     scripts/ash_compile_check/ecto_migrate.exs runs the Db.Ecto
 #     migrations in one database per fixture and naming; and
 #     scripts/ash_compile_check/decisions.exs checks the owner decision

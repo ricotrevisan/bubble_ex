@@ -319,8 +319,88 @@ defmodule PolicyExpectations do
   defp outcome({:error, error}, _), do: ["failed: #{Exception.message(error)}"]
 end
 
+# The privacy interpreter (BubbleEx.Verify.Interpreter, WTF-382) against
+# the generated policies: render.exs wrote its verdicts on the policy
+# table's get and search reads (interpreter_policies.json); here the same
+# reads run through the policies in PostgreSQL. Where the interpreter
+# decides, the records read and their visible fields must match; where an
+# unsupported rule leaves it unknown, the policies must deny (the record
+# unread, or exactly the known fields visible). It runs on the table's
+# rows after PolicyExpectations (which seeds them); its auto-binding
+# updates change titles and secrets, which no condition of the fixture
+# reads.
+defmodule InterpreterCheck do
+  @namespace Fixtures.TargetPolicies
+
+  def run(path, table_path) do
+    doc = path |> File.read!() |> Jason.decode!()
+    table = table_path |> File.read!() |> Jason.decode!() |> Map.fetch!("records")
+    privacy = Module.concat(@namespace, Privacy)
+    resource = fn type -> Module.concat(@namespace, Macro.camelize(type)) end
+    actor = fn "logged_out" -> nil; id -> privacy.load_actor(id) end
+
+    outcomes =
+      for %{"type" => type, "action" => action, "verdicts" => verdicts} <- doc,
+          {persona, mine} <- verdicts do
+        res = resource.(type)
+        ids = Enum.map(table[type], & &1["id"])
+        all = res |> PolicyCheck.fields() |> Enum.map(&Atom.to_string/1) |> Enum.sort()
+        got = reads(res, action, actor.(persona), ids)
+
+        for id <- Enum.sort(ids) do
+          verdict = compare(Map.get(mine, id, :hidden), Map.get(got, id, :hidden), all)
+          {verdict, "#{type}.#{action} #{id} as #{persona}: interpreter #{inspect(Map.get(mine, id))}, policies #{inspect(Map.get(got, id))}"}
+        end
+      end
+      |> List.flatten()
+
+    disagreements = for {:disagree, message} <- outcomes, do: message
+    counts = outcomes |> Enum.map(&elem(&1, 0)) |> Enum.frequencies()
+
+    if disagreements != [] do
+      Enum.each(disagreements, &IO.puts/1)
+      raise "privacy interpreter disagrees with the generated policies: #{length(disagreements)} cells"
+    end
+
+    IO.puts(
+      "privacy interpreter check passed: agrees with the generated policies on #{counts[:agree] || 0} " <>
+        "record reads; #{counts[:unknown] || 0} undecided by the interpreter are denied by the policies"
+    )
+  end
+
+  defp reads(resource, "get", actor, ids) do
+    for id <- ids, {:ok, r} <- [Ash.get(resource, id, actor: actor)], into: %{},
+        do: {id, Enum.sort(PolicyCheck.visible(r, resource))}
+  end
+
+  defp reads(resource, "search", actor, _ids) do
+    case PolicyCheck.read(resource, :search, actor) do
+      {:ok, records} -> Map.new(records, &{&1.id, Enum.sort(PolicyCheck.visible(&1, resource))})
+      :forbidden -> %{}
+      {:error, message} -> raise message
+    end
+  end
+
+  defp compare("unknown", :hidden, _all), do: :unknown
+  defp compare(%{"known" => known}, got, _all) when got == known, do: :unknown
+  defp compare("all", got, all) when got == all, do: :agree
+  defp compare(fields, got, _all) when is_list(fields) and got == fields, do: :agree
+  defp compare(:hidden, :hidden, _all), do: :agree
+  defp compare(_, _, _), do: :disagree
+end
+
 PolicySmoke.run()
 
 if File.exists?("policy_expectations.json") and
      Code.ensure_loaded?(Fixtures.TargetPolicies.Privacy),
    do: PolicyExpectations.run("policy_expectations.json")
+
+# Wherever the policy table is checked, the interpreter's verdicts must be
+# too: a missing file (render.exs writes it) fails the harness.
+if File.exists?("policy_expectations.json") and
+     Code.ensure_loaded?(Fixtures.TargetPolicies.Privacy) do
+  File.exists?("interpreter_policies.json") ||
+    raise "interpreter_policies.json is missing: render.exs did not write the privacy interpreter's verdicts"
+
+  InterpreterCheck.run("interpreter_policies.json", "policy_expectations.json")
+end

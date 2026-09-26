@@ -54,7 +54,9 @@ the policy fixture against its hand-authored persona table
 (`test/support/target/ash/expectations/policies.json`), and checks the owner
 decision fixtures (`BubbleEx.Test.DecidedFixture`): derived fields have no
 column and read back through their relationship, refined numbers are
-bigint / numeric columns.
+bigint / numeric columns. It also compares the privacy interpreter's
+verdicts (`BubbleEx.Verify.Interpreter`) on both expectation tables with what
+PostgreSQL selects through the compiled conditions and generated policies.
 With `BUBBLE_EX_PRIVATE_EXPORT`
 set it also checks a private app export. CI runs it as the `ash-compile-check`
 job.

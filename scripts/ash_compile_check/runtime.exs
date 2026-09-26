@@ -211,7 +211,9 @@ FilterRuntimeCheck.run()
 # fields, empty and nil lists, dangling references) and, per privacy rule
 # and actor (logged out, u1, u2, u3), exactly the records it must select,
 # in PostgreSQL and in Ash's in-memory evaluation. The Elixir backend is
-# held to the same table by BubbleEx.Target.ElixirTest.
+# held to the same table by BubbleEx.Target.ElixirTest, and the privacy
+# interpreter's verdicts (interpreter_conditions.json, written by
+# render.exs) must match what PostgreSQL selects.
 defmodule ExpectationCheck do
   require Ash.Query
 
@@ -226,6 +228,17 @@ defmodule ExpectationCheck do
     end
 
     table = Map.new(doc["records"], fn {type, rows} -> {type, Enum.map(rows, & &1["id"])} end)
+
+    # render.exs writes it whenever it renders the expression fixture: a
+    # missing file is a harness failure, never a skipped comparison.
+    File.exists?("interpreter_conditions.json") ||
+      raise "interpreter_conditions.json is missing: render.exs did not write the privacy interpreter's verdicts"
+
+    interpreter =
+      "interpreter_conditions.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> Map.new(&{{&1["type"], &1["rule"]}, &1["verdicts"]})
 
     results =
       for %{"type" => type, "rule" => rule, "expected" => expected} <- doc["cases"],
@@ -242,10 +255,25 @@ defmodule ExpectationCheck do
           for {where, got} <- [sql: sql, memory: memory], got != Enum.sort(ids),
               do: "#{type}/#{rule} as #{actor_key} (#{where}): selected #{inspect(got)}, expected #{inspect(Enum.sort(ids))}"
 
-        {shape, failures}
+        # The privacy interpreter (WTF-382) must select what PostgreSQL does;
+        # an "unknown" verdict (unsupported rule) is not compared.
+        mine = get_in(interpreter, [{type, rule}, actor_key])
+
+        {agreement, failures} =
+          case mine do
+            nil -> {:absent, failures ++ ["#{type}/#{rule} as #{actor_key}: no interpreter verdict"]}
+            "unknown" -> {:unknown, failures}
+            list when is_list(list) ->
+              if Enum.sort(list) == sql,
+                do: {:agree, failures},
+                else: {:disagree, failures ++ ["#{type}/#{rule} as #{actor_key}: the interpreter selects #{inspect(Enum.sort(list))}, PostgreSQL #{inspect(sql)}"]}
+          end
+
+        {shape, failures, agreement}
       end
 
     failures = Enum.flat_map(results, &elem(&1, 1))
+    agreement = results |> Enum.map(&elem(&1, 2)) |> Enum.frequencies()
 
     if failures != [] do
       Enum.each(failures, &IO.puts/1)
@@ -256,7 +284,9 @@ defmodule ExpectationCheck do
 
     IO.puts(
       "privacy expectation check passed: #{length(doc["cases"])} rules, #{length(results)} reads " <>
-        "(selecting none: #{shape[:none] || 0}, all: #{shape[:all] || 0}, some: #{shape[:some] || 0})"
+        "(selecting none: #{shape[:none] || 0}, all: #{shape[:all] || 0}, some: #{shape[:some] || 0}); " <>
+        "the privacy interpreter agrees on #{agreement[:agree] || 0} " <>
+        "(unknown: #{agreement[:unknown] || 0}, not compared: #{agreement[:absent] || 0})"
     )
   end
 
