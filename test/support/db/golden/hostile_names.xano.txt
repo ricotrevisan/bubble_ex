@@ -1,0 +1,154 @@
+[
+  {
+    "_note": "Schema described in Xano's field vocabulary (type + style). Not guaranteed drop-in for the current Metadata API import endpoint; adapt field wrapping, the list attribute, and the enum values config as needed."
+  },
+  {
+    "name": "order_s_list_x",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "customer_drop_table_x_next_ls_ps_nel_vt_ff_q",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "status_x",
+        "type": "enum",
+        "values": [],
+        "description": "enum:status_quoted (option values not rendered)",
+        "style": "single"
+      },
+      {
+        "name": "note",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "target",
+        "type": "text",
+        "description": "ref:target_line_q_end._id (link manually in Xano)",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "target_line_q_end",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "created_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "modified_date",
+        "type": "timestamp",
+        "style": "single"
+      },
+      {
+        "name": "created_by",
+        "type": "text",
+        "description": "ref:user._id (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email",
+        "type": "text",
+        "style": "single"
+      },
+      {
+        "name": "email_2",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  },
+  {
+    "name": "status_quoted",
+    "fields": [
+      {
+        "name": "db_value",
+        "type": "text",
+        "description": "Bubble primary key (link manually in Xano)",
+        "style": "single"
+      },
+      {
+        "name": "display",
+        "type": "text",
+        "style": "single"
+      }
+    ]
+  }
+]
+--- diagnostics ---
+model_option_key_missing /option_sets/status/values/open
+db_name_suffixed /user_types/user/fields/email_text

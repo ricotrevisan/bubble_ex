@@ -63,6 +63,12 @@ CREATE TABLE "option"."TASK_3" (
 -- "custom"."Task"."created by_2" -> "custom"."User"."_id"
 -- "custom"."task_2"."Created By" -> "custom"."User"."_id"
 -- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."Task"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Task"."Status" IS E'References "option"."Status"."db_value" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Task"."created by_2" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."task_2"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
 --- diagnostics ---
 db_duplicate_option_value_dropped /option_sets/status/values/v2
 model_duplicate_option_key /option_sets/status/values/v2

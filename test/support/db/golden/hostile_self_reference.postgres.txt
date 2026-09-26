@@ -25,5 +25,9 @@ CREATE TABLE "custom"."User" (
 -- "custom"."Node"."Created By" -> "custom"."User"."_id"
 -- "custom"."Node"."Parent" -> "custom"."Node"."_id"
 -- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."Node"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Node"."Parent" IS E'References "custom"."Node"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
 --- diagnostics ---
 model_synthesized_user_type /user_types/user
