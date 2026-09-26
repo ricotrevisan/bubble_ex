@@ -2,18 +2,19 @@
   "assumptions": {
     "changed": [],
     "dependent_checks": {
-      "actor_empty_denies": 109,
+      "actor_empty_denies": 110,
       "builtin_fields_hidden_unless_listed": 49,
+      "defaults_applied_at_creation": 2,
       "empty_yes_no_is_no": 4,
       "everyone_exclusive": 37,
       "everyone_guards_record_values": 15,
       "logged_out_user_is_empty": 8,
-      "no_visible_field_unreadable": 651,
+      "no_visible_field_unreadable": 631,
       "search_independent_of_view": 45
     },
     "jointly_dependent_checks": {
       "empty_equals_empty": {
-        "actor_empty_denies": 53
+        "actor_empty_denies": 55
       },
       "empty_item_not_contained": {
         "everyone_guards_record_values": 6
@@ -28,7 +29,8 @@
       "actor_empty_denies": "exercised",
       "builtin_fields_hidden_unless_listed": "exercised",
       "dangling_ref_is_empty": "not exercised: seeds cannot hold a reference to a missing record (V1 seed references must resolve)",
-      "empty_equals_empty": "exercised only jointly with actor_empty_denies (53 checks)",
+      "defaults_applied_at_creation": "exercised",
+      "empty_equals_empty": "exercised only jointly with actor_empty_denies (55 checks)",
       "empty_item_not_contained": "exercised only jointly with everyone_guards_record_values (6 checks)",
       "empty_list_contains_nothing": "exercised only jointly with actor_empty_denies (10 checks), everyone_guards_record_values (3 checks)",
       "empty_text_contains_nothing": "not exercised: no supported rule reads what it governs",
@@ -41,11 +43,17 @@
       "search_independent_of_view": "exercised"
     }
   },
-  "checks": 1578,
-  "observations": 2598,
+  "checks": 1554,
+  "defaults": {
+    "explicit_empties": 3,
+    "fields": 185,
+    "seed_values_equal_to_default": 642,
+    "unmodeled": 0
+  },
+  "observations": 2550,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 170,
+  "records": 166,
   "rules": {
     "conditional": 77,
     "everyone": 48,

@@ -105,7 +105,7 @@ map_fixture = fn app ->
   end
 end
 
-fixtures =
+fixture_apps =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
         {"test/support/target/ash/*.json", "target_"},
@@ -114,8 +114,21 @@ fixtures =
       path <- pattern |> Path.wildcard() |> Enum.sort() do
     name = prefix <> Path.basename(path, ".json")
     app = path |> File.read!() |> Jason.decode!()
-    {"Fixtures." <> Macro.camelize(name), name, map_fixture.(app)}
+    {"Fixtures." <> Macro.camelize(name), name, app}
   end
+
+# Where each fixture's app comes from (matrix_render.exs reloads it).
+fixture_paths =
+  for {pattern, prefix} <- [
+        {"test/support/model/*.json", ""},
+        {"test/support/target/ash/*.json", "target_"},
+        {"test/support/expression/*.json", "expr_"}
+      ],
+      path <- Path.wildcard(pattern),
+      into: %{"private_app" => "BUBBLE_EX_PRIVATE_EXPORT"},
+      do: {prefix <> Path.basename(path, ".json"), path}
+
+fixtures = for {namespace, name, app} <- fixture_apps, do: {namespace, name, map_fixture.(app)}
 
 decided = [
   {"Fixtures.DecidedCombined", "decided_combined",
@@ -124,12 +137,14 @@ decided = [
    fn -> BubbleEx.Test.DecidedFixture.locked_project(privacy: privacy) end}
 ]
 
-private =
+private_apps =
   case System.get_env("BUBBLE_EX_PRIVATE_EXPORT") do
     nil -> []
     "" -> []
-    path -> [{"Private.App", "private_app", map_fixture.(BubbleEx.Test.SplitExport.load(path))}]
+    path -> [{"Private.App", "private_app", BubbleEx.Test.SplitExport.load(path)}]
   end
+
+private = for {namespace, name, app} <- private_apps, do: {namespace, name, map_fixture.(app)}
 
 lib = Path.join(dir, "lib/generated")
 File.rm_rf!(lib)
@@ -257,7 +272,7 @@ if privacy == :unverified do
     |> Enum.map(&{Path.basename(&1, ".json"), &1 |> File.read!() |> Jason.decode!()})
 
   ecto_private =
-    Enum.map(private, fn {_namespace, name, app} -> {name, app} end)
+    Enum.map(private_apps, fn {_namespace, name, app} -> {name, app} end)
 
   for {name, app} <- ecto_fixtures ++ ecto_private, naming <- [:proper, :id] do
     {:ok, db} = BubbleEx.Db.Reader.parse(app)
@@ -288,6 +303,32 @@ if privacy == :unverified do
   IO.puts("wrote the privacy interpreter's verdicts on both expectation tables")
 end
 
+# Generated privacy-matrix tests (BubbleEx.Target.Ash.MatrixTests, WTF-383):
+# every fixture with privacy rules (and the private export). Their repos
+# go into the test environment's config below; matrix_plan.json lists
+# them for scripts/ash_compile_check/matrix_render.exs, which synthesizes
+# the matrices (slow: the solver) and writes the tests while the scratch
+# project compiles (scripts/ash_compile_check.sh runs it in the
+# background).
+matrix =
+  if privacy == :unverified do
+    for {namespace, name, app} <- fixture_apps ++ private_apps,
+        {:ok, model} = BubbleEx.Model.build(app),
+        model.data_types |> Enum.flat_map(& &1.rules) |> Enum.any?() do
+      %{
+        name: name,
+        namespace: namespace,
+        repo: namespace <> "Repo",
+        app: if(name == "private_app", do: "private-app", else: "fixture-app"),
+        source: Map.fetch!(fixture_paths, name)
+      }
+    end
+  else
+    []
+  end
+
+File.write!(Path.join(dir, "matrix_plan.json"), Jason.encode!(matrix, pretty: true))
+
 deps = Enum.map_join(BubbleEx.Target.Ash.versions(privacy: privacy), ", ", &inspect/1)
 
 File.write!(Path.join(dir, "mix.exs"), """
@@ -296,8 +337,17 @@ defmodule AshCompileCheck.MixProject do
   # BubbleEx.Target.Ash.versions/1 (privacy: #{privacy}).
   use Mix.Project
 
+  # One build for every environment: the privacy-matrix tests run with
+  # MIX_ENV=test on the build the dev checks compiled (only runtime config
+  # differs), so nothing compiles twice.
   def project do
-    [app: :ash_compile_check, version: "0.1.0", elixir: "~> 1.17", deps: deps()]
+    [
+      app: :ash_compile_check,
+      version: "0.1.0",
+      elixir: "~> 1.17",
+      build_per_environment: false,
+      deps: deps()
+    ]
   end
 
   def application, do: [extra_applications: [:logger]]
@@ -314,6 +364,16 @@ repo_config =
     "config :ash_compile_check, #{repo}, url: base <> \"/#{database_prefix}#{name}\", pool_size: 2, log: false"
   end)
 
+# The test environment runs the privacy-matrix tests only: their repos, in
+# the Ecto sandbox, on databases of their own (ash_matrix_<fixture>).
+matrix_repos = Enum.map_join(matrix, ", ", & &1.repo)
+
+matrix_config =
+  Enum.map_join(matrix, "\n", fn %{repo: repo, name: name} ->
+    "  config :ash_compile_check, #{repo}, url: base <> \"/ash_matrix_#{name}\", " <>
+      "pool: Ecto.Adapters.SQL.Sandbox, pool_size: 2, log: false"
+  end)
+
 File.write!(Path.join(dir, "config/config.exs"), """
 import Config
 
@@ -325,4 +385,9 @@ config :ash_compile_check, ecto_repos: [#{repos}], ash_domains: [#{domains}]
 config :ash, default_string_length_count: :codepoints
 config :logger, level: :warning
 #{repo_config}
+
+if config_env() == :test do
+  config :ash_compile_check, ecto_repos: [#{matrix_repos}]
+#{matrix_config}
+end
 """)

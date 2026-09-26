@@ -53,7 +53,8 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
           required(:user) => String.t() | nil,
           required(:this) => String.t() | nil,
           required(:flags) => map(),
-          required(:model) => Model.t()
+          required(:model) => Model.t(),
+          optional(:defaults) => BubbleEx.Verify.Interpreter.Defaults.t()
         }
   @type flags :: [atom()]
 
@@ -434,6 +435,9 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
       %{open: true, fields: fields} when not is_map_key(fields, field) ->
         throw({:need, key, field})
 
+      %{type: type, fields: fields} when not is_map_key(fields, field) ->
+        omitted(type, field, ctx)
+
       %{fields: fields} ->
         Map.get(fields, field)
     end
@@ -451,6 +455,19 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   end
 
   defp read(other, _field, _ctx), do: throw({:unsupported, "a field of #{inspect(other)}"})
+
+  # A field the record omits: its default when defaults apply at creation
+  # (an explicitly empty field is present with nil); a default the
+  # interpreter cannot express makes the verdict unknown.
+  defp omitted(type, field, ctx) do
+    if Map.get(ctx.flags, :defaults_applied_at_creation, false) do
+      case ctx |> Map.get(:defaults, %{}) |> Map.get(type, %{}) |> Map.get(field) do
+        nil -> nil
+        {:ok, value} -> value
+        :unmodeled -> throw({:unsupported, "the default of #{type}.#{field}"})
+      end
+    end
+  end
 
   defp list([]), do: nil
   defp list(items), do: {:list, items}
