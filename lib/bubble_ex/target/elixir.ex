@@ -159,14 +159,14 @@ defmodule BubbleEx.Target.Elixir do
 
   # --- values ---------------------------------------------------------------------
 
-  defp value(%IR{op: :literal, args: [v]}, st), do: {inspect(v), st}
+  defp value(%IR{op: :literal, args: [v]}, st), do: {lit(v), st}
   defp value(%IR{op: :empty}, st), do: {"nil", st}
 
   defp value(%IR{op: :option, args: [set, _value, key]}, st) do
     case st.lookup.enums[set] do
       %{values: values} when is_binary(key) ->
         if Enum.any?(values, &(&1.value == key)),
-          do: {inspect(key), st},
+          do: {lit(key), st},
           else: unsupported(st, {"an unmapped option", "#{set}.#{key}"})
 
       _ ->
@@ -250,7 +250,7 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: :concat, args: parts}, st) do
     {texts, st} =
       Enum.map_reduce(parts, st, fn
-        %IR{op: :literal, args: [text]}, st when is_binary(text) -> {inspect(text), st}
+        %IR{op: :literal, args: [text]}, st when is_binary(text) -> {lit(text), st}
         part, st -> part |> value(st) |> then(fn {p, st} -> text(p, st) end)
       end)
 
@@ -275,12 +275,12 @@ defmodule BubbleEx.Target.Elixir do
 
   defp value(%IR{op: :date_add, args: [x, n, unit]}, st) do
     {[a, b], st} = Enum.map_reduce([x, n], st, &value/2)
-    runtime(st, :date_add, [a, b, inspect(unit)])
+    runtime(st, :date_add, [a, b, lit(unit)])
   end
 
   defp value(%IR{op: :replace, args: [x, find, replace, regex]}, st) do
     {parts, st} = Enum.map_reduce([x, find, replace], st, &value/2)
-    runtime(st, :replace, parts ++ [inspect(regex)])
+    runtime(st, :replace, parts ++ [lit(regex)])
   end
 
   defp value(%IR{op: op, args: args}, st)
@@ -647,4 +647,7 @@ defmodule BubbleEx.Target.Elixir do
       )
     ]
   end
+
+  # Source of a literal, never truncated (`inspect/1` cuts long strings).
+  defp lit(value), do: inspect(value, limit: :infinity, printable_limit: :infinity)
 end

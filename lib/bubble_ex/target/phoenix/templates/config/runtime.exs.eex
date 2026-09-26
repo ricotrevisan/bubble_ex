@@ -83,5 +83,5 @@ if config_env() == :prod do
              do: {key, value}
            )
 
-  config :<%= @app %>, :mailer_from, {<%= inspect(@name) %>, mailer_from}
+  config :<%= @app %>, :mailer_from, {<%= BubbleEx.Target.Phoenix.Templates.source(@name) %>, mailer_from}
 end

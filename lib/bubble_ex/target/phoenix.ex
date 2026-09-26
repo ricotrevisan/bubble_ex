@@ -66,11 +66,41 @@ defmodule BubbleEx.Target.Phoenix do
   (`BubbleEx.Target.Phoenix.Manifest`) records their SHA-256 and the input
   hashes, and `check_manifest/2` finds hand edits.
 
+  With `api_clients:` (a `BubbleEx.Target.ApiClients.Spec`, WTF-374) the
+  API Connector clients are generated too: the `<Module>.ApiClients`
+  runtime (Req; secrets from environment variables at call time), one
+  `<Module>.ApiClients.<Group>` module per group with one function per
+  call, `<Module>.ApiClients.Decode` (responses into the external typed
+  structs), a `Req.Test` request-shape test per call under
+  `test/<app>/api_clients/`, and `.wtf/api_clients.json` (environment
+  variables, residue, names); the manifest's inputs record the Spec's
+  hash (see `BubbleEx.Target.Phoenix.ApiClients`).
+
   **Owned** files are everything else (mix.exs, config, router, layouts,
   controllers, the sender, tests…): scaffolded once, then the owner's; a
   packager writes them only when absent. `owned_paths/1` and the
-  manifest's `owned` list them. Later surfaces (LiveViews, per-surface
-  `Workflows` modules) will be owned too.
+  manifest's `owned` list them. Pages are owned too (below); per-surface
+  `Workflows` modules will be.
+
+  ## Pages (WTF-370)
+
+  With `frontend:` (a `BubbleEx.Frontend.Normalized`) the app gets its
+  Bubble pages, printed by `BubbleEx.Target.Phoenix.Pages`: one owned
+  LiveView per page (module + `.html.heex`), one owned function component
+  per reusable element, `data-bubble-id` on every element, the owned
+  `<Module>.Bubble.Runtime` the compiled bindings call, and generated
+  `<Web>.BubbleRoutes` (the page routes at their Bubble paths, in an
+  `ash_authentication_live_session`; the owned router calls its
+  `bubble_routes/0` once, with or without a frontend, so pages added later
+  are routed on regeneration), `assets/css/bubble.css` (`@theme` tokens,
+  named styles as component classes), `assets/css/bubble_residue.css`,
+  `<Web>.Bubble` (overlay JS commands and the Escape hook),
+  `.wtf/surfaces.json` (locked page and component names) and a
+  traceability test that checks every page's route, mounts it and renders
+  every reusable element. A router scaffolded before WTF-370 lacks the
+  call: `check_manifest/3` lists the pages as `unrouted` and the
+  traceability test fails for them with the fix. `frontend_report/2`
+  counts it.
 
   ## Options
 
@@ -79,11 +109,25 @@ defmodule BubbleEx.Target.Phoenix do
     * `:module` - the root module (one alias segment), default
       `module_name/1` of the name; the web module is `<module>Web`
     * `:app` - the OTP application, default the module underscored
+    * `:frontend` - the normalized frontend whose pages to render
+    * `:expressions` - its compiled bindings
+      (`BubbleEx.Target.Elixir.Frontend.compile/5`, with `runtime:
+      "<Module>.Bubble.Runtime"` and `namespace: "<Module>"`)
+    * `:surface_names` - the previous `.wtf/surfaces.json`, decoded: its
+      page modules and paths and component names are kept (WTF-352 D5)
+    * `:assets` - downloaded images and icons by exporter ID (as
+      `BubbleEx.Frontend` collects them), served from
+      `priv/static/images/bubble`; without it images keep their URLs
+    * `:api_clients` - a `BubbleEx.Target.ApiClients.Spec` to render the
+      API Connector clients of (see above); none by default
   """
 
   alias BubbleEx.{CanonicalJson, Error}
+  alias BubbleEx.Frontend.Json
+  alias BubbleEx.Frontend.Normalized
+  alias BubbleEx.Target.ApiClients.Spec
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
-  alias BubbleEx.Target.Phoenix.{Manifest, Templates}
+  alias BubbleEx.Target.Phoenix.{ApiClients, Manifest, Pages, Templates}
 
   @version Mix.Project.config()[:version]
 
@@ -168,7 +212,11 @@ defmodule BubbleEx.Target.Phoenix do
                       "Add Ash policies before exposing this data through any API,\n" <>
                       "LiveView or controller."
 
-  @type option :: {:name, String.t() | nil} | {:module, String.t()} | {:app, String.t()}
+  @type option ::
+          {:name, String.t() | nil}
+          | {:module, String.t()}
+          | {:app, String.t()}
+          | {:api_clients, Spec.t() | nil}
   @type files :: %{String.t() => binary()}
 
   @doc """
@@ -227,12 +275,26 @@ defmodule BubbleEx.Target.Phoenix do
 
   def render(%Project{privacy: :omit} = project, opts) when is_list(opts) do
     with {:ok, ctx} <- context(project, opts),
+         {:ok, clients} <- api_clients(opts),
          {:ok, user, email} <- user(project),
-         :ok <- check_claims(project),
-         ctx = Map.merge(ctx, %{user: user.module, email: email}),
+         :ok <- check_claims(project, clients),
+         {:ok, frontend} <- frontend(opts),
+         ctx = Map.merge(ctx, %{user: user.module, email: email, api_clients: clients}),
          {:ok, source} <- ash_source(project, user, ctx) do
-      generated = generated_files(project, source, ctx)
-      owned = owned_files(ctx)
+      pages = pages(frontend, ctx, opts)
+      ctx = Map.merge(ctx, %{routes: pages.routes, frontend: frontend_inputs(frontend)})
+
+      generated =
+        project
+        |> generated_files(source, ctx)
+        |> Map.merge(Map.new(pages.generated, fn {p, c} -> {p, mark_generated(p, c, false)} end))
+        |> Map.merge(
+          clients
+          |> ApiClients.files(project, ctx)
+          |> Map.new(fn {path, content} -> {path, mark_generated(path, content, false)} end)
+        )
+
+      owned = ctx |> owned_files() |> Map.merge(pages.owned)
 
       case Enum.filter(Map.keys(generated), &Map.has_key?(owned, &1)) do
         [] ->
@@ -258,6 +320,47 @@ defmodule BubbleEx.Target.Phoenix do
 
   def render(_project, _opts),
     do: invalid("expected a BubbleEx.Target.Ash.Project and a keyword list")
+
+  @doc """
+  What `render/2` made of the frontend (`frontend:`), as counts: pages and
+  reusable elements rendered, elements emitted natively, as placeholders
+  and inside runtime templates, markers, compiled and marked bindings, and
+  style declarations as utilities or residue. No names or IDs.
+
+  `"elements"` = `"native"` + `"placeholder"` + `"in_runtime_template"`,
+  counted per rendered surface (an element of a reusable counts once, in
+  its component, not per instance; the pages themselves are not counted):
+
+    * `"native"` - printed as an HTML element of its own kind (a Text as
+      `<p>`, a Button as `<button>`, a reusable instance as its component
+      call…) outside any runtime template. It is **not** a measure of
+      finished work: it includes elements that carry
+      `TODO(bubble:<id>)` markers (an uncompiled binding, a dropped HTML
+      ID) and elements with rules in the residue stylesheet. The Plan's
+      coverage (`BubbleEx.Plan`) counts residue-free elements, so it is
+      lower
+    * `"placeholder"` - a sized stand-in with a marker: plugin and
+      unsupported elements, missing or recursive reusables, HTML styles
+      sized from other elements, runtime containers (dynamic Repeating
+      Groups, Tables)
+    * `"in_runtime_template"` - inside a runtime container's per-item
+      template, whatever its kind
+
+  `"markers"` counts `TODO(bubble:<id>)` notes (an element can carry
+  several); `"bindings_compiled"` / `"bindings_marked"` value bindings;
+  `"utilities"` / `"residue_declarations"` style declarations, and
+  `"elements_with_residue"` the elements with a residue rule.
+  """
+  @spec frontend_report(Project.t(), [option()]) :: {:ok, map()} | {:error, Error.t()}
+  def frontend_report(%Project{} = project, opts) do
+    with {:ok, ctx} <- context(project, opts),
+         {:ok, %Normalized{} = frontend} <- frontend(opts) do
+      {:ok, pages(frontend, ctx, opts).report}
+    else
+      {:ok, nil} -> invalid("frontend_report/2 needs the frontend: option")
+      error -> error
+    end
+  end
 
   @doc """
   The owned (scaffold-once) paths of a rendered file map, per its manifest.
@@ -308,6 +411,21 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
+  defp api_clients(opts) do
+    case Keyword.get(opts, :api_clients) do
+      nil ->
+        {:ok, nil}
+
+      %Spec{} = spec ->
+        {:ok, spec}
+
+      other ->
+        invalid(
+          "invalid api_clients #{inspect(other)}: expected a BubbleEx.Target.ApiClients.Spec"
+        )
+    end
+  end
+
   defp check(option, value, pattern) do
     if is_binary(value) and Regex.match?(pattern, value),
       do: :ok,
@@ -339,10 +457,13 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
-  defp check_claims(%Project{resources: resources}) do
+  defp check_claims(%Project{resources: resources}, clients) do
+    # The API clients' root module (WTF-374), when they are rendered.
+    claimed = if clients, do: ["ApiClients" | @claimed_modules], else: @claimed_modules
+
     clashes =
       for %Resource{} = r <- resources,
-          r.module in @claimed_modules or r.table in @claimed_tables,
+          r.module in claimed or r.table in @claimed_tables,
           do: "#{r.module} (table #{r.table})"
 
     if clashes == [],
@@ -352,6 +473,49 @@ defmodule BubbleEx.Target.Phoenix do
           "the Phoenix scaffold uses the module or table of #{Enum.join(clashes, ", ")}; " <>
             "rename it with a rename decision"
         )
+  end
+
+  # --- the frontend (WTF-370) -----------------------------------------------------
+
+  defp frontend(opts) do
+    case Keyword.get(opts, :frontend) do
+      nil -> {:ok, nil}
+      %Normalized{} = frontend -> {:ok, frontend}
+      _ -> invalid("frontend: must be a BubbleEx.Frontend.Normalized")
+    end
+  end
+
+  defp pages(nil, ctx, _opts),
+    do: %{
+      routes: [],
+      owned: %{},
+      generated: %{
+        Pages.routes_path(ctx) => Pages.routes_module(ctx, []),
+        "assets/css/bubble.css" => Pages.empty_stylesheet(),
+        "assets/css/bubble_residue.css" => "/* No frontend was rendered. */\n"
+      },
+      report: %{}
+    }
+
+  defp pages(%Normalized{} = frontend, ctx, opts) do
+    Pages.render(frontend, ctx,
+      names: Keyword.get(opts, :surface_names),
+      expressions: Keyword.get(opts, :expressions, %{}),
+      assets: Keyword.get(opts, :assets, %{})
+    )
+  end
+
+  # The frontend's identity in the manifest inputs: the rendered pages are
+  # a function of it.
+  defp frontend_inputs(nil), do: nil
+
+  defp frontend_inputs(%Normalized{} = frontend) do
+    %{
+      "bubble_id" => frontend.identity.bubble_id,
+      "app_version" => frontend.identity.app_version,
+      "normalized_schema_version" => frontend.normalized_schema_version,
+      "source_sha256" => Json.sha256(frontend.source.payload || %{})
+    }
   end
 
   # --- the Ash layer --------------------------------------------------------------
@@ -412,8 +576,7 @@ defmodule BubbleEx.Target.Phoenix do
       (lib <> "accounts/token.ex") => "lib/app/accounts/token.ex",
       (lib <> "accounts/resources.ex") => "lib/app/accounts/resources.ex",
       (web <> "controllers/workflow_api_controller.ex") =>
-        "lib/web/controllers/workflow_api_controller.ex",
-      "assets/css/bubble.css" => "assets/css/bubble.css"
+        "lib/web/controllers/workflow_api_controller.ex"
     }
 
     templated = Map.new(templates, fn {path, t} -> {path, Templates.render(t, assigns)} end)
@@ -475,6 +638,11 @@ defmodule BubbleEx.Target.Phoenix do
       "test/#{ctx.app}_web/smoke_test.exs" => "test/smoke_test.exs"
     }
 
+    templates =
+      if ctx.routes == [],
+        do: templates,
+        else: Map.put(templates, "#{lib}/bubble/runtime.ex", "lib/app/bubble/runtime.ex")
+
     templates
     |> Map.new(fn {path, t} -> {path, Templates.render(t, assigns)} end)
     |> Map.put(
@@ -501,11 +669,11 @@ defmodule BubbleEx.Target.Phoenix do
     deps()
     |> Enum.map_join(",\n", fn
       {app, requirement} ->
-        "      {#{inspect(app)}, #{inspect(requirement)}}"
+        "      {#{inspect(app)}, #{Templates.source(requirement)}}"
 
       {app, requirement, opts} ->
-        options = Enum.map_join(opts, ", ", fn {k, v} -> "#{k}: #{inspect(v)}" end)
-        "      {#{inspect(app)}, #{inspect(requirement)}, #{options}}"
+        options = Enum.map_join(opts, ", ", fn {k, v} -> "#{k}: #{Templates.source(v)}" end)
+        "      {#{inspect(app)}, #{Templates.source(requirement)}, #{options}}"
     end)
   end
 
@@ -537,7 +705,7 @@ defmodule BubbleEx.Target.Phoenix do
   defp html_attribute(text) do
     if String.match?(text, ~r/\A[^"'{}<>&\\#]*\z/),
       do: ~s("#{text}"),
-      else: "{" <> inspect(text) <> "}"
+      else: "{" <> Templates.heex_literal(text) <> "}"
   end
 
   # One `{module, code}` per top-level `defmodule` of the Source output (its

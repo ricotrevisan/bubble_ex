@@ -14,23 +14,35 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           "project_sha256": "…",
           "decisions_sha256": null,
           "applied_sha256": null,
-          "privacy": "omit"
+          "privacy": "omit",
+          "frontend": {"bubble_id": "acme", "app_version": "live",
+                       "normalized_schema_version": 3, "source_sha256": "…"}
         },
         "generated": {"lib/acme_import/invoice.ex": "<sha256>", …},
-        "owned": {"mix.exs": "<sha256 as scaffolded>", …}
+        "owned": {"mix.exs": "<sha256 as scaffolded>", …},
+        "routes": {"router": "lib/acme_import_web/router.ex",
+                   "call": "bubble_routes", "pages": ["bTGYf", …]}
       }
 
     * `inputs` - what the generated files are a function of:
       `project_sha256` is the SHA-256 of the canonical JSON of the
       `BubbleEx.Target.Ash.Project` (`Project.to_map/1`: resources, names,
       applied decisions, diagnostics…); `decisions_sha256` and
-      `applied_sha256` are the Project's (nil without decisions)
+      `applied_sha256` are the Project's (nil without decisions);
+      `frontend` identifies the normalized frontend the pages were
+      rendered from (nil without one, WTF-370);
+      `api_clients_sha256`, present when API clients were rendered, is the
+      SHA-256 of the `BubbleEx.Target.ApiClients.Spec`'s canonical JSON
     * `generated` - every generated file (path → SHA-256 of its content).
       Regeneration overwrites them; `check/2` finds hand edits. The
       manifest does not list itself
     * `owned` - every owned file (path → SHA-256 as scaffolded): written
       once, then the owner's; never overwritten, so their hashes are
       informational (did the owner change the scaffold?)
+    * `routes` - with Bubble pages (WTF-370): the owned router, the call to
+      the generated routes it must make, and the pages (Bubble IDs) that
+      call routes. `check/3` lists the pages as `unrouted` when the router
+      lacks the call (scaffolded before WTF-370, or edited away)
 
   The JSON is canonical (sorted keys) and pretty-printed, so the same
   project gives the same bytes. It holds no secret: the plan content key
@@ -38,6 +50,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   """
 
   alias BubbleEx.{CanonicalJson, Error}
+  alias BubbleEx.Target.ApiClients.Spec
   alias BubbleEx.Target.Ash.Project
 
   @path ".wtf/generated.json"
@@ -50,7 +63,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           modified: [String.t()],
           missing: [String.t()],
           unchanged: [String.t()],
-          stale: [String.t()]
+          stale: [String.t()],
+          unrouted: [String.t()]
         }
 
   @doc "The manifest's path in the project."
@@ -69,18 +83,37 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       "target" => "phoenix",
       "app" => ctx.app,
       "module" => ctx.module,
-      "inputs" => %{
-        "bubble_ex_version" => ctx.bubble_ex_version,
-        "project_schema_version" => project.schema_version,
-        "project_sha256" => project |> Project.to_map() |> CanonicalJson.sha256(),
-        "decisions_sha256" => project.decisions_sha256,
-        "applied_sha256" => project.applied_sha256,
-        "privacy" => Atom.to_string(project.privacy)
-      },
+      "inputs" =>
+        %{
+          "bubble_ex_version" => ctx.bubble_ex_version,
+          "project_schema_version" => project.schema_version,
+          "project_sha256" => project |> Project.to_map() |> CanonicalJson.sha256(),
+          "decisions_sha256" => project.decisions_sha256,
+          "applied_sha256" => project.applied_sha256,
+          "privacy" => Atom.to_string(project.privacy),
+          "frontend" => Map.get(ctx, :frontend)
+        }
+        |> put_api_clients(Map.get(ctx, :api_clients)),
       "generated" => hashes(generated),
       "owned" => hashes(owned)
     }
+    |> put_routes(ctx)
   end
+
+  defp put_routes(manifest, %{routes: [_ | _] = routes} = ctx) do
+    Map.put(manifest, "routes", %{
+      "router" => "lib/#{ctx.app}_web/router.ex",
+      "call" => "bubble_routes",
+      "pages" => routes |> Enum.map(& &1.id) |> Enum.sort()
+    })
+  end
+
+  defp put_routes(manifest, _ctx), do: manifest
+
+  defp put_api_clients(inputs, nil), do: inputs
+
+  defp put_api_clients(inputs, %Spec{} = spec),
+    do: Map.put(inputs, "api_clients_sha256", Spec.sha256(spec))
 
   @doc "Canonical, pretty-printed JSON text of a manifest."
   @spec encode(t()) :: String.t()
@@ -120,6 +153,11 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   generation made that the new one no longer does and that are still
   present: a packager removes them (after checking them against the
   previous manifest). Otherwise `stale` is `[]`.
+
+  `unrouted` lists the Bubble pages (by Bubble ID) that have no route:
+  the owned router exists but never calls the generated routes (see
+  `routes` above). Such pages need their route before they are verified
+  again (`<Web>.BubbleSurfacesTest` fails for them too).
   """
   @spec check(String.t() | map(), %{String.t() => binary()} | Path.t(), keyword()) ::
           {:ok, report()} | {:error, Error.t()}
@@ -145,10 +183,28 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
          modified: Map.get(by, :modified, []),
          missing: Map.get(by, :missing, []),
          unchanged: Map.get(by, :unchanged, []),
-         stale: stale
+         stale: stale,
+         unrouted: unrouted(manifest, read)
        }}
     end
   end
+
+  defp unrouted(%{"routes" => %{"router" => router, "call" => call, "pages" => pages}}, read)
+       when is_binary(router) and is_binary(call) and is_list(pages) do
+    case relative?(router) && read.(router) do
+      content when is_binary(content) ->
+        if String.contains?(uncommented(content), call), do: [], else: pages
+
+      _ ->
+        []
+    end
+  end
+
+  defp unrouted(_manifest, _read), do: []
+
+  # Elixir source without its `#` comments (a commented-out call is no
+  # call). Approximate: a `#` inside a string also starts one here.
+  defp uncommented(content), do: Regex.replace(~r/#.*$/m, content, "")
 
   defp previous(nil), do: {:ok, %{}}
 

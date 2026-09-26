@@ -30,7 +30,7 @@ config :<%= @app %>, Oban,
 # Emails are stored locally (see /dev/mailbox) in development; production
 # requires a real adapter (MAILER_ADAPTER, see config/runtime.exs).
 config :<%= @app %>, <%= @module %>.Mailer, adapter: Swoosh.Adapters.Local
-config :<%= @app %>, :mailer_from, {<%= inspect(@name) %>, "noreply@example.com"}
+config :<%= @app %>, :mailer_from, {<%= BubbleEx.Target.Phoenix.Templates.source(@name) %>, "noreply@example.com"}
 
 config :esbuild,
   version: "<%= @esbuild %>",
