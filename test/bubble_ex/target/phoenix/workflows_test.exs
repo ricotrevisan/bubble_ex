@@ -80,7 +80,7 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
     assert bodies =~ "IGNORES PRIVACY RULES"
     assert bodies =~ ~s|Runtime.start(input, context, "wCreate", true)|
     assert bodies =~ ~s|Runtime.start(input, context, "wNotify", :inherit)|
-    assert files["lib/acme/workflows/registry.ex"] =~ ~s|@privacy_bypasses ["wClose"]|
+    assert files["lib/acme/workflows/registry.ex"] =~ ~s|def privacy_bypasses, do: ["wClose"]|
   end
 
   test "a workflow that reaches residue fails before its first step", %{files: files} do

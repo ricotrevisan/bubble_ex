@@ -201,45 +201,51 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
       |> Enum.sort()
       |> Enum.map_join(",\n", fn {id, cycle} -> "#{inspect(id)} => #{inspect(cycle)}" end)
 
+    lookups = [
+      {"workflows", workflows,
+       "A workflow by Bubble ID: its resource, action, kind, privacy mode, cycle and parameters.",
+       "workflow", "id", "nil"},
+      {"endpoints", endpoints, "An exposed workflow by its endpoint name (`/api/1.1/wf/<name>`).",
+       "endpoint", "name", "nil"},
+      {"triggers", triggers, "The database-trigger workflows of a data resource.", "triggers",
+       "resource", "[]"},
+      {"trigger_types", trigger_types, "A trigger resource's Bubble data type.", "trigger_type",
+       "resource", "nil"},
+      {"trigger_resources", trigger_resources, "The resource of a trigger's Bubble data type.",
+       "trigger_resource", "type", "nil"},
+      {"stamps", stamps,
+       "The attributes Bubble sets itself on a data resource (Created Date, Modified Date, Created By).",
+       "stamps", "resource", "%{}"},
+      {"cycles", cycles, "The call cycle a workflow is in, or nil.", "cycle", "id", "nil"}
+    ]
+
     """
     defmodule #{ns}.Workflows.Registry do
       @moduledoc #{inspect(registry_doc())}
 
-      @workflows %{#{workflows}}
-      @endpoints %{#{endpoints}}
-      @triggers %{#{triggers}}
-      @trigger_types %{#{trigger_types}}
-      @trigger_resources %{#{trigger_resources}}
-      @stamps %{#{stamps}}
-      @cycles %{#{cycles}}
-      @privacy_bypasses #{inspect(spec.privacy_bypasses, limit: :infinity)}
-
-      @doc "A workflow by Bubble ID: its resource, action, kind, privacy mode, cycle and parameters."
-      def workflow(id) when is_binary(id), do: Map.get(@workflows, id)
-      def workflow(_id), do: nil
-
-      @doc "An exposed workflow by its endpoint name (`/api/1.1/wf/<name>`)."
-      def endpoint(name) when is_binary(name), do: Map.get(@endpoints, name)
-      def endpoint(_name), do: nil
-
-      @doc "The database-trigger workflows of a data resource."
-      def triggers(resource), do: Map.get(@triggers, resource, [])
-
-      @doc "A trigger resource's Bubble data type."
-      def trigger_type(resource), do: Map.get(@trigger_types, resource)
-
-      @doc "The resource of a trigger's Bubble data type."
-      def trigger_resource(type), do: Map.get(@trigger_resources, type)
-
-      @doc "The attributes Bubble sets itself on a data resource (Created Date, Modified Date, Created By)."
-      def stamps(resource), do: Map.get(@stamps, resource, %{})
-
-      @doc "The call cycle a workflow is in, or nil."
-      def cycle(id), do: Map.get(@cycles, id)
+    #{Enum.map_join(lookups, "\n", &lookup/1)}
 
       @doc "The workflows that ignore privacy rules in Bubble and run with authorization bypassed."
-      def privacy_bypasses, do: @privacy_bypasses
+      def privacy_bypasses, do: #{inspect(spec.privacy_bypasses, limit: :infinity)}
     end
+    """
+  end
+
+  # A lookup function over a map attribute; with no entries a constant
+  # (a lookup in an empty map is a type warning on Elixir 1.20).
+  defp lookup({_attr, "", doc, fun, arg, default}) do
+    """
+    @doc #{inspect(doc)}
+    def #{fun}(_#{arg}), do: #{default}
+    """
+  end
+
+  defp lookup({attr, entries, doc, fun, arg, default}) do
+    """
+    @#{attr} %{#{entries}}
+
+    @doc #{inspect(doc)}
+    def #{fun}(#{arg}), do: Map.get(@#{attr}, #{arg}, #{default})
     """
   end
 

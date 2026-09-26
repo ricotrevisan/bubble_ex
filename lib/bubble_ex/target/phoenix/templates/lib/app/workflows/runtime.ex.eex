@@ -87,7 +87,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   """
   @spec run(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(id, params, opts \\ []) do
-    case Registry.workflow(id) do
+    case registry(:workflow, [id]) do
       nil ->
         {:error, {:unknown_workflow, id}}
 
@@ -126,7 +126,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   @spec start(Ash.ActionInput.t(), term(), String.t(), boolean() | :inherit) :: t()
   def start(input, context, id, authorize) do
     bubble = Map.get(input.context, :bubble) || %{}
-    w = Registry.workflow(id)
+    w = registry(:workflow, [id])
 
     %__MODULE__{
       workflow: id,
@@ -183,7 +183,7 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   @doc "A parameter's value; a thing (or list of things) is loaded by ID."
   def param(ctx, id, loads) do
-    w = Registry.workflow(ctx.workflow)
+    w = registry(:workflow, [ctx.workflow])
     spec = Enum.find(w.params, &(&1.id == id))
     value = Map.get(ctx.params, id)
 
@@ -394,7 +394,7 @@ defmodule <%= @module %>.Workflows.Runtime do
     do: Enum.reduce(items, list, fn item, acc -> if item in acc, do: acc, else: acc ++ [item] end)
 
   defp stamp(attrs, resource, kind, value) do
-    case Registry.stamps(resource) do
+    case registry(:stamps, [resource]) do
       %{^kind => attribute} when is_atom(attribute) and not is_nil(attribute) ->
         Map.put_new(attrs, attribute, value)
 
@@ -406,7 +406,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   # A write's options. When the resource has database triggers, the write
   # reserves their jobs from this run's budget and hands each its share.
   defp write_opts(ctx, resource) do
-    case length(Registry.triggers(resource)) do
+    case length(registry(:triggers, [resource])) do
       0 ->
         {:ok, options(ctx, nil), ctx}
 
@@ -491,7 +491,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   end
 
   defp chain_guard(ctx, callee) do
-    if Registry.cycle(callee) && ctx.chain >= config(:max_chain, 10_000) do
+    if registry(:cycle, [callee]) && ctx.chain >= config(:max_chain, 10_000) do
       Logger.error("bubble workflow #{inspect(callee)}: chain limit reached, not scheduled")
       {:error, {:chain_limit, callee}}
     else
@@ -571,7 +571,7 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   @doc "Runs a scheduled job's workflow (`<%= @module %>.Workflows.Scheduler`)."
   def perform(%{"workflow" => id} = args) do
-    case Registry.workflow(id) do
+    case registry(:workflow, [id]) do
       nil ->
         {:cancel, {:unknown_workflow, id}}
 
@@ -612,7 +612,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   # The record as the write left it ("Thing now") and as it was before
   # ("Thing before change"), both read at write time.
   defp job_trigger(%{"type" => type, "now" => now, "before" => before}, _actor) do
-    resource = Registry.trigger_resource(type)
+    resource = registry(:trigger_resource, [type])
     {:ok, %{now: restore(resource, now), before: restore(resource, before)}}
   end
 
@@ -626,7 +626,7 @@ defmodule <%= @module %>.Workflows.Runtime do
     resource = changeset.resource
     bubble = Map.get(changeset.context, :bubble) || %{}
     chain = bubble[:chain] || 0
-    workflows = Registry.triggers(resource)
+    workflows = registry(:triggers, [resource])
 
     # A write by a workflow reserved each job's share (Runtime.write_opts);
     # any other write is a root and splits the whole budget.
@@ -650,7 +650,7 @@ defmodule <%= @module %>.Workflows.Runtime do
           "chain" => chain + 1,
           "budget" => budget,
           "trigger" => %{
-            "type" => Registry.trigger_type(resource),
+            "type" => registry(:trigger_type, [resource]),
             "record" => record.id,
             "now" => now,
             "before" => before
@@ -739,7 +739,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   end
 
   defp endpoint(name) do
-    case Registry.endpoint(name) do
+    case registry(:endpoint, [name]) do
       nil -> {:error, :not_found}
       endpoint -> {:ok, endpoint}
     end
@@ -765,7 +765,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   defp admin?(_), do: false
 
   defp endpoint_params(endpoint, params) do
-    w = Registry.workflow(endpoint.workflow)
+    w = registry(:workflow, [endpoint.workflow])
 
     Enum.reduce_while(w.params, {:ok, %{}}, fn p, {:ok, acc} ->
       case Map.fetch(params, p.key) do
@@ -775,6 +775,11 @@ defmodule <%= @module %>.Workflows.Runtime do
       end
     end)
   end
+
+  # The generated registry, through `apply/3`: its lookups are constants
+  # for some apps (no endpoints, no triggers), and the type checker must
+  # not specialize this module on one app's data.
+  defp registry(fun, args), do: apply(Registry, fun, args)
 
   defp config(key, default) do
     :<%= @app %> |> Application.get_env(<%= @module %>.Workflows, []) |> Keyword.get(key, default)
