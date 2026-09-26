@@ -643,6 +643,29 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **DBML and Zod escape hostile names** (WTF-408). The `hostile_names`
+  fixture showed DBML writing `"` unescaped inside quoted identifiers and
+  Zod writing a raw line break inside a quoted object key (a TypeScript
+  syntax error); a line break or LS/PS in a table name also ended Zod's
+  `// <table>` comment and ran as code. The new
+  `Db.Encoder.Literal` quotes per format: DBML identifiers
+  (`dbml_quoted/1`: `\"`, `\\`, and `\n`, `\r`, `\t`, `\v`, `\f` or `\uXXXX`
+  for control characters, NEL, LS and PS), JavaScript single-quoted strings
+  (`js_single_quoted/1`, the same escapes plus `\'`) and line comments
+  (`line_comment/1`, formerly the SQL encoders' private reference-comment
+  escaping, now also used for Zod's comments). DBML's project name and API
+  type names use the same quoting. Ecto's string literals also escape `#{`.
+  Only the `hostile_names` DBML and Zod goldens change: each name now stays
+  on one line with its escapes. Convex, Xano, Ecto, SQLite, PostgreSQL and
+  T-SQL were already correct for this fixture (converted names, JSON
+  encoding or SQL quoting). A new syntax check
+  (`test/support/syntax_check`, pinned `@dbml/core` 10.2.0 and TypeScript
+  5.9.3) parses the DBML, Zod and Convex output of every schema fixture, both
+  namings and both external-type modes, and checks that hostile names parse
+  back unchanged; CI runs it with `mix test --only syntax_check` in the
+  fidelity job. Without Node, a structural check over `hostile_names` (no
+  literal or comment crosses a line) runs in the default suite.
+
 - **Ecto, Convex, Xano and Zod names are unique after case conversion**
   (WTF-391). The Reader's names are unique case-insensitively, but the
   converting encoders could merge them again: a type with `created_date`,

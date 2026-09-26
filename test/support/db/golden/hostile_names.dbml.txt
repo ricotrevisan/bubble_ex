@@ -5,21 +5,19 @@ Project "synthetic-hostile-names" {
   '''
 }
 
-Table custom."Order's "list" */ -- x" {
+Table custom."Order's \"list\" */ -- x" {
 	"_id" varchar [pk]
 	"Created Date" datetime
 	"Modified Date" datetime
 	"Created By" user.id
 	"Slug" varchar
-	"customer'); DROP TABLE x; --
-next LS PSNELVTFF \' */ /* "q"" user.id
+	"customer'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\vVT\fFF \\' */ /* \"q\"" user.id
 	"status' || 'x" status.id
 	"note -- */" varchar
 	"target" target.id
 
 }
-Table custom."Target
-line 'q' \   */ end" {
+Table custom."Target\nline 'q' \\ \u2028 */ end" {
 	"_id" varchar [pk]
 	"Created Date" datetime
 	"Modified Date" datetime
@@ -37,20 +35,17 @@ Table custom."User" {
 	"Email_2" varchar
 
 }
-Table option."Status 'quoted' \" {
+Table option."Status 'quoted' \\" {
 	"db_value" varchar [pk]
 	"Display" varchar
 
 }
 
-Ref: custom."Order's "list" */ -- x"."Created By" > custom."User"."_id"
-Ref: custom."Order's "list" */ -- x"."customer'); DROP TABLE x; --
-next LS PSNELVTFF \' */ /* "q"" > custom."User"."_id"
-Ref: custom."Order's "list" */ -- x"."status' || 'x" > option."Status 'quoted' \"."db_value"
-Ref: custom."Order's "list" */ -- x"."target" > custom."Target
-line 'q' \   */ end"."_id"
-Ref: custom."Target
-line 'q' \   */ end"."Created By" > custom."User"."_id"
+Ref: custom."Order's \"list\" */ -- x"."Created By" > custom."User"."_id"
+Ref: custom."Order's \"list\" */ -- x"."customer'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\vVT\fFF \\' */ /* \"q\"" > custom."User"."_id"
+Ref: custom."Order's \"list\" */ -- x"."status' || 'x" > option."Status 'quoted' \\"."db_value"
+Ref: custom."Order's \"list\" */ -- x"."target" > custom."Target\nline 'q' \\ \u2028 */ end"."_id"
+Ref: custom."Target\nline 'q' \\ \u2028 */ end"."Created By" > custom."User"."_id"
 Ref: custom."User"."Created By" > custom."User"."_id"--- diagnostics ---
 model_option_key_missing /option_sets/status/values/open
 db_name_suffixed /user_types/user/fields/email_text

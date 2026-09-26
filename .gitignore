@@ -34,3 +34,6 @@ test/support/fidelity/node_modules/
 
 # Local frontend export and visual-comparison artifacts
 /output/
+
+# Pinned parsers for the generated-schema syntax check (WTF-408)
+test/support/syntax_check/node_modules/
