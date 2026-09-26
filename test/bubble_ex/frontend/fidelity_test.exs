@@ -567,10 +567,35 @@ defmodule BubbleEx.Frontend.FidelityTest do
 
     @tag :fidelity
     @tag :tmp_dir
-    test "bptvorpv keeps runtime overlays closed in the static initial state", %{tmp_dir: tmp} do
-      assert {:ok, report} = Fidelity.run("bptvorpv", out_dir: Path.join(tmp, "pkg"))
+    test "bptvorpv keeps runtime overlays closed and opens them at Bubble's geometry", %{
+      tmp_dir: tmp
+    } do
+      out = Path.join(tmp, "pkg")
+      assert {:ok, report} = Fidelity.run("bptvorpv", out_dir: out)
       assert report["status"] == "pass"
       assert report["collapse"]["sampleCount"] == 4
+
+      html = Path.join(out, "pages/bubbleex-overlay-boundaries/index.html")
+      document = html |> File.read!() |> Floki.parse_document!()
+
+      assert [_] =
+               Floki.find(document, "[data-bubble-id=bptvorpw][hidden] [data-bubble-id=bptvorpy]")
+
+      assert [_] =
+               Floki.find(document, "[data-bubble-id=bptvorqc][hidden] [data-bubble-id=bptvorqd]")
+
+      # A runtime reveals an overlay by removing `hidden`; the opened Popup and
+      # Group Focus must match the committed source observation exactly.
+      {output, status} =
+        System.cmd(
+          "node",
+          ["overlay-states.mjs", Path.expand(Fidelity.case_dir("bptvorpv")), Path.expand(html)],
+          cd: "test/support/fidelity",
+          stderr_to_stdout: true
+        )
+
+      assert status == 0, output
+      assert output =~ "PASS bptvorpv overlay states: 32 samples"
     end
 
     @tag :fidelity

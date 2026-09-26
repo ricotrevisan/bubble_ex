@@ -667,11 +667,15 @@ defmodule BubbleEx.PlanTest do
         %{node.(id, :placeholder, []) | variant: variant, placeholder?: true}
       end
 
-      # eBig is a runtime container: its content (eT1, eT2, eBtn) is not normalized.
+      # eBig is a runtime container whose content (eT1, eT2, eBtn) is missing
+      # from this frontend.
       frontend = %Normalized{
         pages: [
           node.("pHome", :page, [
-            placeholder.("eBig", :runtime_overlay),
+            %{
+              placeholder.("eBig", :unsupported_kind)
+              | runtime: %{"boundary" => "container", "type" => "RepeatingGroup"}
+            },
             placeholder.("ePlug", :unsupported_kind),
             node.("eCard", :reusable_instance, []),
             node.("eLogin", :button, [])
@@ -683,7 +687,11 @@ defmodule BubbleEx.PlanTest do
 
       # The plugin element stays the index's plugin residue.
       assert Residue.frontend(frontend, ctx.index) == [
-               %{subject: "element:eBig", reason: :runtime_container, detail: %{}},
+               %{
+                 subject: "element:eBig",
+                 reason: :runtime_container,
+                 detail: %{variant: :unsupported_kind}
+               },
                %{
                  subject: "workflow:wClick",
                  reason: :trigger_not_normalized,
@@ -702,10 +710,70 @@ defmodule BubbleEx.PlanTest do
                "generated" => 3,
                "residue" => 2,
                "not_normalized" => 5,
-               "not_normalized_with_residue" => 0
+               "not_normalized_with_residue" => 0,
+               "in_runtime_template" => 0,
+               "generated_in_runtime_template" => 0
              }
 
       assert plan.coverage["units"]["workflows_trigger_not_normalized"] == 1
+    end
+
+    test "a runtime container's template is not generated and blocks its triggers", ctx do
+      node = fn id, kind, children ->
+        %Node{
+          exporter_id: id,
+          kind: kind,
+          map_key: id,
+          source: %Source{bubble_id: id},
+          children: children
+        }
+      end
+
+      # eBig keeps eT1 and eBtn as its runtime template; eT2 is missing.
+      big = %{
+        node.("eBig", :placeholder, [node.("eT1", :text, []), node.("eBtn", :button, [])])
+        | variant: :unsupported_kind,
+          placeholder?: true,
+          runtime: %{"boundary" => "container", "type" => "RepeatingGroup", "repeats" => true}
+      }
+
+      frontend = %Normalized{
+        pages: [
+          node.("pHome", :page, [
+            big,
+            %{node.("ePlug", :placeholder, []) | variant: :unsupported_kind, placeholder?: true},
+            node.("eCard", :reusable_instance, []),
+            node.("eLogin", :button, [])
+          ])
+        ],
+        reusables: [node.("rCard", :reusable_definition, [node.("eCardText", :text, [])])],
+        styles: []
+      }
+
+      assert Residue.runtime_template_ids(frontend) == %{"eT1" => "eBig", "eBtn" => "eBig"}
+
+      assert %{
+               subject: "workflow:wClick",
+               reason: :trigger_in_runtime_template,
+               detail: %{element: "element:eBtn", container: "element:eBig"}
+             } in Residue.frontend(frontend, ctx.index)
+
+      {:ok, plan} = Plan.build(ctx.model, ctx.index, frontend)
+      assert %Task{status: :open} = task!(plan, "workflow:wClick")
+      units = plan.coverage["units"]
+
+      assert units["elements"] == %{
+               "total" => 10,
+               "generated" => 3,
+               "residue" => 2,
+               "not_normalized" => 3,
+               "not_normalized_with_residue" => 0,
+               "in_runtime_template" => 2,
+               "generated_in_runtime_template" => 2
+             }
+
+      assert units["workflows_trigger_not_normalized"] == 0
+      assert units["workflows_trigger_in_runtime_template"] == 1
     end
 
     test "expressions that do not compile are residue of their owner" do

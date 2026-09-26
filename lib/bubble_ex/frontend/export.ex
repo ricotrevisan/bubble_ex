@@ -886,6 +886,10 @@ defmodule BubbleEx.Frontend.Export do
     |> Enum.map(&%{&1 | children: []})
   end
 
+  # A placeholder's children are runtime content the static export does not
+  # emit: they are neither counted nor fetched as assets.
+  defp collect_expanded(%Node{kind: :placeholder} = node, _model, _stack), do: [node]
+
   defp collect_expanded(%Node{} = node, model, stack) do
     nested = Enum.flat_map(node.children, &collect_expanded(&1, model, stack))
 
