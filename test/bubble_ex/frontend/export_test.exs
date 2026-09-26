@@ -181,7 +181,7 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert result.files == Enum.sort(result.files)
       assert result.files == result.manifest["files"]
       assert result.manifest["package_version"] == 1
-      assert result.manifest["normalized_schema_version"] == 2
+      assert result.manifest["normalized_schema_version"] == 3
       assert result.manifest["bubble_id"] == "s1app"
       assert result.manifest["app_version"] == "live"
       assert is_binary(result.manifest["source_sha256"])
@@ -242,7 +242,7 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert fragment =~ "Nav"
 
       model_json = File.read!(Path.join(out, "model.json")) |> Jason.decode!()
-      assert model_json["normalized_schema_version"] == 2
+      assert model_json["normalized_schema_version"] == 3
     end
 
     @tag :tmp_dir
@@ -616,7 +616,7 @@ defmodule BubbleEx.Frontend.ExportTest do
 
       assert html =~ ~s(data-placeholder-kind="Dropdown")
       assert result.manifest["package_version"] == 1
-      assert result.manifest["normalized_schema_version"] == 2
+      assert result.manifest["normalized_schema_version"] == 3
       assert result.coverage["overall"]["elements"]["native"] == 5
       assert result.coverage["overall"]["elements"]["placeholder"] == 1
       assert Enum.any?(result.findings, &(&1["type"] == "unsupported_element"))
@@ -1068,9 +1068,14 @@ defmodule BubbleEx.Frontend.ExportTest do
       assert html =~ ~s(aria-label="Range start")
       assert html =~ ~s(aria-label="Range end")
       refute html =~ "<dialog"
-      refute html =~ "Popup body"
-      assert html =~ ~s(data-placeholder-kind="Popup")
-      assert html |> Floki.parse_document!() |> Floki.find("[data-bubble-id=p1][hidden]") != []
+      refute html =~ "data-placeholder-kind"
+      document = Floki.parse_document!(html)
+
+      assert [{"div", _, _}] =
+               Floki.find(document, "[data-bubble-id=p1][hidden][data-overlay=popup]")
+
+      assert Floki.find(document, "[data-bubble-id=p1][hidden] [data-bubble-id=t1]") != []
+      assert File.read!(Path.join(out, "styles/shared.css")) =~ "[data-overlay][hidden]"
       refute html =~ ~s(<input aria-label="Range start" data-bubble-id="r1")
     end
 
@@ -1524,6 +1529,10 @@ defmodule BubbleEx.Frontend.ExportTest do
     |> List.first()
   end
 
+  defp find_node(node, fun) do
+    if fun.(node), do: node, else: Enum.find_value(node.children, &find_node(&1, fun))
+  end
+
   defp decode_key_order(json) do
     json
     |> String.split("\n")
@@ -1535,6 +1544,114 @@ defmodule BubbleEx.Frontend.ExportTest do
       |> hd()
       |> String.trim("\"")
     end)
+  end
+
+  @tag :tmp_dir
+  test "overlays render closed with runtime placement CSS; container templates stay unrendered",
+       %{tmp_dir: tmp} do
+    text = fn id, value -> %{"id" => id, "type" => "Text", "properties" => %{"text" => value}} end
+
+    payload = %{
+      "_id" => "overlays",
+      "app_version" => "test",
+      "pages" => %{
+        "home" => %{
+          "id" => "pg",
+          "type" => "Page",
+          "name" => "index",
+          "properties" => %{"container_layout" => "column"},
+          "elements" => %{
+            "menu" => %{
+              "id" => "menu",
+              "type" => "Button",
+              "properties" => %{"text" => "Menu", "order" => 1}
+            },
+            "centered" => %{
+              "id" => "centered",
+              "type" => "Popup",
+              "properties" => %{"container_layout" => "column", "vertical_centering" => true},
+              "elements" => %{"t" => text.("centered-text", "Centered popup")}
+            },
+            "focus" => %{
+              "id" => "focus",
+              "type" => "GroupFocus",
+              "properties" => %{
+                "container_layout" => "column",
+                "reference" => "menu",
+                "offset_top" => 6,
+                "offset_left" => -20
+              },
+              "elements" => %{"t" => text.("focus-text", "Focus item")}
+            },
+            "bar" => %{
+              "id" => "bar",
+              "type" => "FloatingGroup",
+              "properties" => %{
+                "container_layout" => "row",
+                "floating_reference" => "bottom",
+                "floating_reference_horizontal_resp" => "center",
+                "width" => 320
+              },
+              "elements" => %{"t" => text.("bar-text", "Floating bar")}
+            },
+            "list" => %{
+              "id" => "list",
+              "type" => "RepeatingGroup",
+              "properties" => %{"data_source" => %{"type" => "Search"}},
+              "elements" => %{"t" => text.("cell-text", "Cell template")}
+            }
+          }
+        }
+      }
+    }
+
+    out = Path.join(tmp, "overlays")
+    assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
+    html = File.read!(Path.join(out, "pages/index/index.html"))
+    css = File.read!(Path.join(out, "styles/pages/index.css"))
+    document = Floki.parse_document!(html)
+    [page] = result.model.pages
+    by = Map.new(page.children, &{&1.source.bubble_id, &1})
+
+    rule = fn id ->
+      Regex.run(~r/\[data-exporter-id="#{Regex.escape(by[id].exporter_id)}"\] \{([^}]*)\}/s, css)
+      |> List.last()
+    end
+
+    assert [_] = Floki.find(document, "[data-bubble-id=centered][hidden][role=dialog]")
+    assert [_] = Floki.find(document, "[data-bubble-id=focus][hidden][data-overlay=group_focus]")
+    assert html =~ "Centered popup" and html =~ "Focus item"
+    assert [_] = Floki.find(document, "[data-bubble-id=bar][data-overlay=floating_group]")
+    assert Floki.find(document, "[data-bubble-id=bar][hidden]") == []
+
+    centered = rule.("centered")
+    assert centered =~ "position: fixed;"
+    assert centered =~ "top: 0;" and centered =~ "bottom: 0;"
+    assert centered =~ "margin-top: auto;" and centered =~ "margin-left: auto;"
+    assert centered =~ "height: fit-content;"
+
+    [anchor_name] =
+      Regex.run(~r/anchor-name: (--bubbleex-anchor-[0-9a-f]{16});/, rule.("menu"),
+        capture: :all_but_first
+      )
+
+    focus = rule.("focus")
+    assert focus =~ "position: absolute;"
+    assert focus =~ "position-anchor: #{anchor_name};"
+    assert focus =~ "top: calc(anchor(bottom) + 6px);"
+    assert focus =~ "left: calc(anchor(left) + -20px);"
+
+    bar = rule.("bar")
+    assert bar =~ "position: fixed;"
+    assert bar =~ "bottom: 0;" and bar =~ "margin-left: auto;" and bar =~ "margin-right: auto;"
+    refute bar =~ "top: 0;"
+
+    # The dynamic list stays a placeholder: its template is in the model only.
+    assert [%{kind: :text}] = by["list"].children
+    assert by["list"].runtime["repeats"]
+    refute html =~ "Cell template"
+    refute css =~ hd(by["list"].children).exporter_id
+    assert result.coverage["overall"]["elements"]["placeholder"] == 1
   end
 
   @tag :tmp_dir
@@ -1569,13 +1686,28 @@ defmodule BubbleEx.Frontend.ExportTest do
     assert {:ok, result} = Frontend.export_payload(payload, out, @scan)
     html = File.read!(Path.join(out, "pages/index/index.html"))
     document = Floki.parse_document!(html)
-    assert [_] = Floki.find(document, "[data-bubble-id=outer-instance][hidden]")
-    refute html =~ "Inner label"
-    definition = Enum.find(result.model.reusables, &(&1.map_key == "outer-map"))
-    assert definition.placeholder?
 
-    assert definition.bindings["plugin"].payload["element"] ==
-             payload["element_definitions"]["outer-map"]
+    assert [_] =
+             Floki.find(document, "[data-bubble-id=outer-instance][hidden][data-overlay=popup]")
+
+    assert Floki.text(Floki.find(document, "[data-bubble-id=outer-instance]")) =~ "Nested label"
+    definition = Enum.find(result.model.reusables, &(&1.map_key == "outer-map"))
+    refute definition.placeholder?
+    assert definition.variant == :popup
+    assert definition.runtime["overlay"] == "popup"
+    assert definition.children != []
+
+    instance =
+      Enum.find_value(
+        result.model.pages,
+        &find_node(&1, fn n -> n.source.bubble_id == "outer-instance" end)
+      )
+
+    assert instance.runtime == definition.runtime
+    css = File.read!(Path.join(out, "styles/pages/index.css"))
+
+    assert css =~
+             ~r/\[data-exporter-id="#{Regex.escape(instance.exporter_id)}"\] \{[^}]*position: fixed;/s
   end
 
   @tag :tmp_dir

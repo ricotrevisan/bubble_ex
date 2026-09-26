@@ -667,11 +667,15 @@ defmodule BubbleEx.PlanTest do
         %{node.(id, :placeholder, []) | variant: variant, placeholder?: true}
       end
 
-      # eBig is a runtime container: its content (eT1, eT2, eBtn) is not normalized.
+      # eBig is a runtime container whose content (eT1, eT2, eBtn) is missing
+      # from this frontend.
       frontend = %Normalized{
         pages: [
           node.("pHome", :page, [
-            placeholder.("eBig", :runtime_overlay),
+            %{
+              placeholder.("eBig", :unsupported_kind)
+              | runtime: %{"boundary" => "container", "type" => "RepeatingGroup"}
+            },
             placeholder.("ePlug", :unsupported_kind),
             node.("eCard", :reusable_instance, []),
             node.("eLogin", :button, [])
@@ -683,7 +687,11 @@ defmodule BubbleEx.PlanTest do
 
       # The plugin element stays the index's plugin residue.
       assert Residue.frontend(frontend, ctx.index) == [
-               %{subject: "element:eBig", reason: :runtime_container, detail: %{}},
+               %{
+                 subject: "element:eBig",
+                 reason: :runtime_container,
+                 detail: %{variant: :unsupported_kind}
+               },
                %{
                  subject: "workflow:wClick",
                  reason: :trigger_not_normalized,

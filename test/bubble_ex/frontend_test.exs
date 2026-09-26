@@ -40,7 +40,7 @@ defmodule BubbleEx.FrontendTest do
       payload = modern_page()
 
       assert {:ok, %Normalized{} = model} = Frontend.normalize(payload)
-      assert model.normalized_schema_version == 2
+      assert model.normalized_schema_version == 3
       assert model.identity.bubble_id == "s1app"
       assert model.identity.app_version == "live"
       assert is_list(model.diagnostics)
@@ -1545,7 +1545,7 @@ defmodule BubbleEx.FrontendTest do
       assert length(search.content["choices"].resolved) == 3
     end
 
-    test "lowers two-handle SliderInput while retaining Popup as a runtime boundary" do
+    test "lowers two-handle SliderInput and normalizes a Popup's content" do
       payload =
         page_with_elements(%{
           "range" => %{
@@ -1567,7 +1567,9 @@ defmodule BubbleEx.FrontendTest do
           }
         })
 
-      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics}} =
+               Frontend.normalize(payload)
+
       by = Map.new(page.children, &{&1.kind, &1})
 
       range = by[:slider]
@@ -1576,21 +1578,31 @@ defmodule BubbleEx.FrontendTest do
       assert range.attributes["value"] == 0
       assert range.attributes["value_high"] == 100
 
-      popup = by[:placeholder]
-      assert popup.variant == :runtime_overlay
-      assert popup.placeholder?
-      refute Map.has_key?(popup.attributes, "open")
-      assert popup.bindings["plugin"].payload["element"]["elements"]["body"]["id"] == "t1"
+      popup = by[:popup]
+      refute popup.placeholder?
+      assert popup.variant == :column
+      assert popup.runtime["initial"] == "hidden"
+      assert [%{kind: :text, source: %{bubble_id: "t1"}} = body] = popup.children
+      assert body.content["text"].resolved == "Popup body"
+      assert body.exporter_id == "s1app/live/text/pages/home/elements/popup/elements/body"
+      assert popup.exporter_id == "s1app/live/popup/pages/home/elements/popup"
+      assert diagnostics == []
     end
 
-    test "overlay visibility flags do not imply static support" do
+    test "overlays start hidden whatever their visibility flag and keep their box" do
       for type <- ["Popup", "GroupFocus"],
           visible <- [nil, false, true],
           workflows <- [%{}, %{"event" => %{"type" => "ElementClicked"}}] do
         raw = %{
           "id" => "overlay",
           "type" => type,
-          "properties" => %{"is_visible" => visible, "width" => 320, "height" => 180},
+          "properties" => %{
+            "is_visible" => visible,
+            "width" => 320,
+            "height" => 180,
+            "left" => 40,
+            "top" => 60
+          },
           "workflows" => workflows
         }
 
@@ -1598,21 +1610,202 @@ defmodule BubbleEx.FrontendTest do
                  Frontend.normalize(page_with_elements(%{"overlay" => raw}))
 
         [overlay] = page.children
-        assert overlay.kind == :placeholder
-        assert overlay.variant == :runtime_overlay
+        assert overlay.kind == if(type == "Popup", do: :popup, else: :group_focus)
+        refute overlay.placeholder?
         assert overlay.box.width == 320
         assert overlay.box.height == 180
-        assert overlay.bindings["plugin"].payload["element"] == raw
-        assert overlay.attributes["hidden"] == true
-        assert Enum.any?(diagnostics, &(&1.details[:reason] == :runtime_overlay))
+        refute Map.has_key?(overlay.box, :hidden?)
+        refute Map.has_key?(overlay.box, :x)
+        refute Map.has_key?(overlay.box, :y)
+        assert overlay.runtime["boundary"] == "overlay"
+        assert overlay.runtime["initial"] == "hidden"
+        assert overlay.runtime["toggle"] == "workflow"
+        assert workflows == %{} == is_nil(overlay.bindings["workflow"])
+        assert diagnostics == []
       end
+    end
+
+    test "describes Popup, Group Focus and Floating Group runtime behavior" do
+      payload =
+        page_with_elements(%{
+          "anchor" => %{
+            "id" => "btn",
+            "type" => "Button",
+            "properties" => %{"text" => "Menu", "order" => 1}
+          },
+          "popup" => %{
+            "id" => "pop",
+            "type" => "Popup",
+            "properties" => %{
+              "container_layout" => "column",
+              "vertical_centering" => true,
+              "greyout_color" => "rgba(0,0,0,0.5)",
+              "greyout_blur" => 4,
+              "prevent_user_from_closing_through_esc" => true,
+              "zindex" => 7
+            }
+          },
+          "plain_popup" => %{"id" => "pop2", "type" => "Popup", "properties" => %{}},
+          "focus" => %{
+            "id" => "focus",
+            "type" => "GroupFocus",
+            "properties" => %{"reference" => "btn", "offset_top" => 6, "offset_left" => -170},
+            "elements" => %{
+              "item" => %{"id" => "item", "type" => "Text", "properties" => %{"text" => "Item"}}
+            }
+          },
+          "dangling_focus" => %{
+            "id" => "focus2",
+            "type" => "GroupFocus",
+            "properties" => %{"reference" => "missing"}
+          },
+          "bar" => %{
+            "id" => "bar",
+            "type" => "FloatingGroup",
+            "properties" => %{
+              "floating_reference" => "bottom",
+              "floating_reference_horizontal_resp" => "center",
+              "float_zindex" => "front",
+              "is_visible" => false
+            },
+            "states" => %{"0" => %{"condition" => "x"}},
+            "workflows" => %{"w" => %{"type" => "ButtonClicked"}},
+            "elements" => %{
+              "label" => %{"id" => "lbl", "type" => "Text", "properties" => %{"text" => "Bar"}}
+            }
+          },
+          "default_bar" => %{"id" => "bar2", "type" => "FloatingGroup", "properties" => %{}}
+        })
+
+      assert {:ok, %Normalized{pages: [page], diagnostics: []}} = Frontend.normalize(payload)
+      by = Map.new(page.children, &{&1.source.bubble_id, &1})
+
+      assert by["pop"].runtime == %{
+               "boundary" => "overlay",
+               "overlay" => "popup",
+               "initial" => "hidden",
+               "toggle" => "workflow",
+               "modal" => true,
+               "placement" => %{
+                 "anchor" => "viewport",
+                 "horizontal" => "center",
+                 "vertical" => "center"
+               },
+               "backdrop" => %{"color" => "rgba(0,0,0,0.5)", "blur" => 4},
+               "dismiss" => [],
+               "layer" => 7
+             }
+
+      assert by["pop2"].runtime["placement"] == %{
+               "anchor" => "viewport",
+               "horizontal" => "center",
+               "vertical" => "top",
+               "top" => 100
+             }
+
+      assert by["pop2"].runtime["dismiss"] == ["escape"]
+      refute Map.has_key?(by["pop2"].runtime, "backdrop")
+
+      assert by["focus"].runtime["placement"] == %{
+               "anchor" => "element",
+               "reference" => %{"bubble_id" => "btn", "exporter_id" => by["btn"].exporter_id},
+               "side" => "below",
+               "offset_top" => 6,
+               "offset_left" => -170
+             }
+
+      assert by["focus"].runtime["dismiss"] == ["outside_click"]
+      assert by["focus"].runtime["modal"] == false
+      assert [%{kind: :text}] = by["focus"].children
+      assert by["focus2"].runtime["placement"]["reference"] == %{"bubble_id" => "missing"}
+
+      bar = by["bar"]
+      assert bar.kind == :floating_group
+      refute bar.placeholder?
+      assert bar.box.hidden?
+      assert [%{kind: :text, source: %{bubble_id: "lbl"}}] = bar.children
+      assert bar.bindings["condition"] && bar.bindings["workflow"]
+
+      assert bar.runtime == %{
+               "boundary" => "overlay",
+               "overlay" => "floating_group",
+               "initial" => "hidden",
+               "toggle" => "workflow",
+               "modal" => false,
+               "placement" => %{
+                 "anchor" => "viewport",
+                 "vertical" => "bottom",
+                 "horizontal" => "center"
+               },
+               "dismiss" => [],
+               "layer" => "front"
+             }
+
+      assert by["bar2"].runtime["initial"] == "visible"
+
+      assert by["bar2"].runtime["placement"] == %{
+               "anchor" => "viewport",
+               "vertical" => "top",
+               "horizontal" => "both"
+             }
+    end
+
+    test "placeholder containers keep their content as a runtime template" do
+      payload =
+        page_with_elements(%{
+          "list" => %{
+            "id" => "rg",
+            "type" => "RepeatingGroup",
+            "properties" => %{"data_source" => %{"type" => "Search"}},
+            "elements" => %{
+              "cell_text" => %{
+                "id" => "cell",
+                "type" => "Text",
+                "properties" => %{"text" => "Row"}
+              },
+              "cell_plugin" => %{"id" => "plug", "type" => "1600000000000x1-AAC"}
+            }
+          },
+          "table" => %{"id" => "tbl", "type" => "Table", "properties" => %{}},
+          "leaf" => %{"id" => "leaf", "type" => "UnknownLeaf", "properties" => %{}}
+        })
+
+      assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics}} =
+               Frontend.normalize(payload)
+
+      by = Map.new(page.children, &{&1.source.bubble_id, &1})
+      list = by["rg"]
+      assert list.kind == :placeholder
+      assert list.variant == :unsupported_kind
+
+      assert list.runtime == %{
+               "boundary" => "container",
+               "type" => "RepeatingGroup",
+               "repeats" => true
+             }
+
+      assert [%{kind: :placeholder}, %{kind: :text} = text] =
+               Enum.sort_by(list.children, & &1.map_key)
+
+      assert text.exporter_id == "s1app/live/text/pages/home/elements/list/elements/cell_text"
+      assert by["tbl"].runtime["repeats"]
+      assert by["tbl"].children == []
+      assert is_nil(by["leaf"].runtime)
+
+      assert diagnostics |> Enum.flat_map(& &1.refs) |> Enum.sort() ==
+               Enum.sort([
+                 list.exporter_id,
+                 by["tbl"].exporter_id,
+                 by["leaf"].exporter_id,
+                 hd(Enum.sort_by(list.children, & &1.map_key)).exporter_id
+               ])
     end
 
     test "normalizes the characterized S2 static-control slice" do
       assert {:ok, %Normalized{pages: [page], diagnostics: diagnostics} = model} =
                Frontend.normalize(BubbleEx.FrontendFixtures.s2_controls_app())
 
-      assert model.normalized_schema_version == 2
+      assert model.normalized_schema_version == 3
 
       [multiline, checkbox, unchecked_checkbox, dropdown, radios, dynamic_dropdown] =
         page.children

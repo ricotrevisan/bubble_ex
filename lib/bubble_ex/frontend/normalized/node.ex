@@ -1,6 +1,20 @@
 defmodule BubbleEx.Frontend.Normalized.Node do
   @moduledoc false
 
+  # `runtime` describes behavior static markup cannot express, stack-neutrally
+  # (string keys, JSON-ready), or is nil:
+  #
+  #   * `"boundary" => "overlay"` - a Popup, Group Focus or Floating Group:
+  #     `"overlay"` (`"popup"`, `"group_focus"`, `"floating_group"`),
+  #     `"initial"` (`"hidden"` or `"visible"`), `"toggle"` (`"workflow"`: shown
+  #     and hidden by workflow actions), `"modal"`, `"placement"` (`"anchor"`
+  #     `"viewport"` or `"element"` with its `"reference"`), `"dismiss"`
+  #     (`"escape"`, `"outside_click"`), and optional `"backdrop"` / `"layer"`.
+  #   * `"boundary" => "container"` - a placeholder container whose content is
+  #     rendered at runtime (a dynamic Repeating Group, a Table, a plugin
+  #     container): its `children` are the normalized content, a per-item
+  #     template when `"repeats"` is true. Static exports do not render them.
+
   @type kind ::
           :page
           | :group
@@ -17,6 +31,8 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           | :dropdown
           | :radio_buttons
           | :floating_group
+          | :popup
+          | :group_focus
           | :reusable_definition
           | :reusable_instance
           | :repeating_group
@@ -40,7 +56,8 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           definition_ref: String.t() | nil,
           attributes: map(),
           responsive: [map()],
-          occurrence: [non_neg_integer()]
+          occurrence: [non_neg_integer()],
+          runtime: map() | nil
         }
 
   @enforce_keys [:exporter_id, :kind, :map_key, :source]
@@ -62,6 +79,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
     placeholder?: false,
     attributes: %{},
     responsive: [],
-    occurrence: []
+    occurrence: [],
+    runtime: nil
   ]
 end

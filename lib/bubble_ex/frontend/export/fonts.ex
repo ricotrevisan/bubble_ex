@@ -417,10 +417,15 @@ defmodule BubbleEx.Frontend.Export.Fonts do
         _ -> []
       end
 
-    own ++ Enum.flat_map(node.children, &style_values/1)
+    own ++ Enum.flat_map(emitted_children(node), &style_values/1)
   end
 
-  defp collect_nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &collect_nodes/1)]
+  defp collect_nodes(%Node{} = node),
+    do: [node | Enum.flat_map(emitted_children(node), &collect_nodes/1)]
+
+  # A placeholder's children are runtime content the static export does not emit.
+  defp emitted_children(%Node{kind: :placeholder}), do: []
+  defp emitted_children(%Node{children: children}), do: children
 
   defp map_style_values(map) when is_map(map) do
     [

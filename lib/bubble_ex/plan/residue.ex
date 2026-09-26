@@ -19,8 +19,8 @@ defmodule BubbleEx.Plan.Residue do
   | `:dynamic_url` | API call | `index/2`: its URL has no plain host |
   | `:oauth` | API call | `index/2`: its group authenticates users with OAuth |
   | `:malformed_call` | API call | `index/2`: the call or its types registry is not an object |
-  | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`) |
-  | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain (inside a runtime container), so its event wiring cannot be generated yet (`detail.element`) |
+  | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`); `:runtime_container` when it is a container whose normalized content is rendered at runtime (a dynamic Repeating Group, a Table) |
+  | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain, so its event wiring cannot be generated yet (`detail.element`) |
   | `:trigger_dropped` | workflow | `BubbleEx.Plan.build/5`: a dropped plugin's event triggered it and it runs other actions, so it needs a new trigger (`detail.plugin`) |
   | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
@@ -305,14 +305,16 @@ defmodule BubbleEx.Plan.Residue do
   @doc """
   Residue of a normalized frontend: every element node
   `BubbleEx.Frontend.normalize/2` emits as a placeholder, as
-  `:runtime_container` (popups, floating groups and other runtime overlays,
-  whose content it does not normalize) or `:no_native_lowering` (with the
-  placeholder's `variant`). Plugin elements are left to `index/2`.
+  `:runtime_container` (a container rendered at runtime, such as a dynamic
+  Repeating Group or a Table, whose content is normalized as its template) or
+  `:no_native_lowering`, both with the placeholder's `variant`. Plugin
+  elements are left to `index/2`. Popups, Group Focuses and Floating Groups
+  are native nodes with their content; their show/hide behavior is in the
+  node's `runtime` description.
 
   A workflow listening to an element the normalized frontend does not
-  contain (content of a runtime container, which normalization does not
-  descend into) is `:trigger_not_normalized`: its body may compile, but
-  its event cannot be wired to generated markup.
+  contain is `:trigger_not_normalized`: its body may compile, but its event
+  cannot be wired to generated markup.
   """
   @spec frontend(Normalized.t() | nil, Index.t()) :: [t()]
   def frontend(nil, _index), do: []
@@ -326,7 +328,7 @@ defmodule BubbleEx.Plan.Residue do
       with true <- node.placeholder? and node.kind == :placeholder,
            %{attrs: attrs} <- id && Index.symbol(index, id),
            nil <- plugin(attrs[:type]) do
-        [placeholder(id, node.variant)]
+        [placeholder(id, node)]
       else
         _ -> []
       end
@@ -357,8 +359,11 @@ defmodule BubbleEx.Plan.Residue do
     |> MapSet.new()
   end
 
-  defp placeholder(id, :runtime_overlay), do: entry(id, :runtime_container, %{})
-  defp placeholder(id, variant), do: entry(id, :no_native_lowering, %{variant: variant})
+  defp placeholder(id, %Node{runtime: %{"boundary" => "container"}, variant: variant}),
+    do: entry(id, :runtime_container, %{variant: variant})
+
+  defp placeholder(id, %Node{variant: variant}),
+    do: entry(id, :no_native_lowering, %{variant: variant})
 
   defp nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &nodes/1)]
 
