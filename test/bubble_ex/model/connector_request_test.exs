@@ -71,6 +71,59 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
           do: refute(Reader.safe_name?(name), name)
     end
 
+    test "safe_name? refuses random tokens: under 0.5% per shape over 5,000 samples" do
+      :rand.seed(:exsss, {3, 7, 4})
+      pick = fn alphabet, n -> for _ <- 1..n, into: "", do: <<Enum.random(alphabet)>> end
+      lower = Enum.concat([?a..?z, ?0..?9])
+      hex = Enum.concat([?0..?9, ?a..?f])
+      mixed = Enum.concat([?a..?z, ?A..?Z, ?0..?9])
+
+      uuid = fn ->
+        <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> = pick.(hex, 32)
+        Enum.join([a, b, c, d, e], "-")
+      end
+
+      shapes = [
+        lower16: fn -> pick.(lower, 16) end,
+        uuid: uuid,
+        hex16: fn -> pick.(hex, 16) end,
+        hex32: fn -> pick.(hex, 32) end,
+        mixed32: fn -> pick.(mixed, 32) end,
+        mixed12: fn -> pick.(mixed, 12) end,
+        lower8: fn -> pick.(lower, 8) end,
+        letters10: fn -> pick.(Enum.to_list(?a..?z), 10) end
+      ]
+
+      for {shape, sample} <- shapes do
+        accepted = Enum.count(1..5000, fn _ -> Reader.safe_name?(sample.()) end)
+        assert accepted < 25, "#{shape}: #{accepted} of 5000 accepted"
+      end
+    end
+
+    test "safe_name? refuses the reviewer's names and keeps real API names" do
+      for name <- [
+            "kERbTLL13G8y9F0kdul9UqIZri0EvYQ6",
+            "e298a9d4709fe526fec1ec8ab4abc5a4",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "deadbeef",
+            "ab12cd"
+          ],
+          do: refute(Reader.safe_name?(name), name)
+
+      for name <- ~w(Content-Type Authorization X-Api-Key anthropic-version OpenAI-Organization
+                     max_tokens response_format messages[0][content] page_size utm_source line1
+                     oauth2 employee_count),
+          do: assert(Reader.safe_name?(name), name)
+    end
+
+    test "media types are an allowlist" do
+      for type <- ["application/json", "text/plain; charset=utf-8", "application/vnd.api+json"],
+          do: assert(Reader.media_type?(type), type)
+
+      for type <- ["application/x-hunter2", "text/plain; charset=latin1", "application/json2"],
+          do: refute(Reader.media_type?(type), type)
+    end
+
     test "credential? matches any name containing a credential word" do
       for name <-
             ~w(token api_key apiKey X-Api-Key client_secret password Authorization accesstoken
@@ -125,6 +178,15 @@ defmodule BubbleEx.Model.ConnectorRequestTest do
         assert request.query == [%{name: "ok", value: [redacted(1)]}]
         assert request.unsupported == [:query]
       end
+    end
+
+    test "a host with a label that is not a plain name is configured from the environment" do
+      {request, _} = request(%{"url" => "https://eo1a2b3c4d5e6f.m.pipedream.net/users"})
+      assert request.host == [redacted(1)]
+      assert request.path == [[literal("users")]]
+
+      {request, _} = request(%{"url" => "https://api.stripe.com/v1"})
+      assert request.host == [literal("api.stripe.com")]
     end
 
     test "a placeholder host is a parameter; user info or a whole-URL parameter is no host" do

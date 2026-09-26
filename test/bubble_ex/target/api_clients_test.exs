@@ -276,6 +276,93 @@ defmodule BubbleEx.Target.ApiClientsTest do
       end
     end
 
+    test "hostile IDs and names never become code", %{project: project} do
+      # A group, call and parameter ID and names that would run code if
+      # printed unescaped into a heredoc, a string or an attribute.
+      evil = fn tag ->
+        "x" <>
+          "\#{send(self(), :" <> tag <> ")}\n\"\"\"\n" <> "\#{send(self(), :" <> tag <> "_2)}"
+      end
+
+      app = %{
+        "settings" => %{
+          "client_safe" => %{
+            "apiconnector2" => %{
+              evil.("pwned_group") => %{
+                "human" => evil.("pwned_group_name"),
+                "shared_headers" => %{evil.("pwned_shared") => %{"private" => true}},
+                "calls" => %{
+                  evil.("pwned_call") => %{
+                    "name" => evil.("pwned_call_name"),
+                    "method" => "post",
+                    "url" => "https://api.example.com/users",
+                    "body" => "{\"a\": \"\#{send(self(), :pwned_body)}\"}",
+                    "headers" => %{evil.("pwned_header") => %{"private" => true}}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, model} = Model.build(app)
+      {:ok, spec} = ApiClients.map(model)
+      assert [%{calls: [_]}] = spec.groups
+      {:ok, files} = Phoenix.render(project, name: "Hostile Ids", api_clients: spec)
+
+      sources =
+        for {path, source} <- files,
+            String.contains?(path, "api_clients"),
+            path =~ ~r/\.exs?$/,
+            do: {path, source}
+
+      for {path, source} <- sources do
+        {:ok, ast} = Code.string_to_quoted(source)
+
+        {_, atoms} =
+          Macro.prewalk(ast, [], fn
+            atom, acc when is_atom(atom) -> {atom, [atom | acc]}
+            node, acc -> {node, acc}
+          end)
+
+        pwned = Enum.filter(atoms, &String.starts_with?(Atom.to_string(&1), "pwned"))
+        assert pwned == [], "#{path} has code from an ID or name: #{inspect(pwned)}"
+      end
+
+      # The runtime and the client compile without running anything.
+      runtime = Map.new(sources)["lib/hostile_ids/api_clients.ex"]
+      [client] = for {path, s} <- sources, path =~ ~r{lib/hostile_ids/api_clients/}, do: s
+
+      modules =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          send(self(), {:compiled, Code.compile_string(runtime) ++ Code.compile_string(client)})
+        end)
+
+      assert is_binary(modules)
+      assert_received {:compiled, compiled}
+      refute_received :pwned_group
+      refute_received :pwned_call
+      refute_received :pwned_body
+
+      # The IDs are in the documentation as text.
+      {:ok, ast} = Code.string_to_quoted(runtime)
+
+      {_, [doc]} =
+        Macro.prewalk(ast, [], fn
+          {:@, _, [{:moduledoc, _, [doc]}]} = node, acc -> {node, [doc | acc]}
+          node, acc -> {node, acc}
+        end)
+
+      assert doc =~ "send(self(), :pwned_group)"
+      assert doc =~ ~s(\n"""\n)
+
+      for {module, _} <- compiled do
+        :code.purge(module)
+        :code.delete(module)
+      end
+    end
+
     test "lists the environment and the residue", %{files: files} do
       document = Jason.decode!(files[".wtf/api_clients.json"])
       assert length(document["env"]) == 20

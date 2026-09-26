@@ -84,12 +84,17 @@ All notable changes to this project are documented here.
   (`<GROUP>_API_KEY`, `<GROUP>_<CALL>_<PARAM>`, `<GROUP>_<CALL>_LITERAL_<N>`,
   …; a header or parameter whose name Bubble strips holds `Name: value` /
   `name=value`). Supported authentication: none, private key in header or
-  URL, basic. `scripts/phoenix_compile_check.sh` renders every fixture's
+  URL, basic. Redirects are not followed unless `follow_redirects: true`,
+  and then another origin or a downgrade gets no headers or
+  authentication and a cross-origin 307/308 is refused. App IDs and names
+  are escaped everywhere they are printed.
+  `scripts/phoenix_compile_check.sh` renders every fixture's
   clients (new fixture `phoenix_api_clients`) and runs their tests, each
   tagged `bubble: <call ID>` for the plan's `request_shape` check. On
-  mm-137 (a 2026-09-26 fetch: 31 groups, 204 calls), 200 of 204 calls
-  are generated, 196 of them reading environment variables (residue: 2
-  non-JSON bodies, 1 file parameter, 1 call without a URL).
+  the mm-137 test export, 198 of 203 calls are generated, 194 of them
+  reading environment variables (residue: 2 non-JSON bodies, 1 file
+  parameter, 1 call without a URL, 1 query name that is not a plain
+  name); 18 of 35 hosts are configured from the environment.
 - **Leak-safe API Connector request templates** (WTF-374). The Model
   (`schema_version` 4) reads each call's request as a
   `BubbleEx.Model.ConnectorRequest`: scheme, port, path segments,
@@ -101,8 +106,14 @@ All notable changes to this project are documented here.
   text are kept; every other literal (query values, body strings and
   numbers, header values, other path segments) is `redacted` and read
   from an environment variable by the generated client. Query names and
-  body keys must be plain names (no detector match, nothing
-  random-looking) or the call is unsupported. Parameter values are
+  body keys must be plain names (dictionary, abbreviation or
+  English-like segments under a letter-pair model; UUIDs, hex runs and
+  detector matches refused; random tokens accepted under 0.5% per
+  measured shape) or the call is unsupported; header and parameter names
+  and `token_param_name` get the same check (a failing non-private name
+  makes the call unsupported). Host labels that are not plain names
+  (account-specific subdomains) are redacted, so the base URL comes from
+  the environment. Media types are an allowlist. Parameter values are
   never read, except a group's non-private shared values, which pass the
   same policy (`Connector.shared_values`); groups gain `key_name`
   (`token_param_name`). The leak test and the security-review probes

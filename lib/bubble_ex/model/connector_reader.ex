@@ -157,16 +157,19 @@ defmodule BubbleEx.Model.ConnectorReader do
   # Header names are HTTP tokens; anything else (e.g. `Authorization: Bearer
   # …` typed into the key) is not a name and is dropped. Other names are
   # dropped when they hold `=`, `:` or whitespace (a `key=value` or
-  # `key: value` pair) or are implausibly long.
+  # `key: value` pair) or are implausibly long. Every name must also be a
+  # plain name (`ConnectorRequest.Reader.safe_name?/1`, WTF-374): a
+  # random-looking or credential-shaped key is dropped too.
   @token ~r/\A[!#$%&'*+.^_`|~0-9A-Za-z\-]{1,128}\z/
   defp parameter_name(nil, _), do: nil
 
   defp parameter_name(name, :header),
-    do: if(Regex.match?(@token, name), do: name)
+    do: if(Regex.match?(@token, name) and RequestReader.safe_name?(name), do: name)
 
   defp parameter_name(name, _) do
-    if String.length(name) in 1..128 and not String.match?(name, ~r/[=:\s\x00-\x1f\x7f]/u),
-      do: name
+    if String.length(name) in 1..128 and not String.match?(name, ~r/[=:\s\x00-\x1f\x7f]/u) and
+         RequestReader.safe_name?(name),
+       do: name
   end
 
   # A types registry is the JSON text of an object: type ID => definition.

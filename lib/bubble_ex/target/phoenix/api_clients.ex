@@ -807,6 +807,72 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         assert {:error, {:unknown_parameters, [:c]}} = ApiClients.params(%{c: 1}, [:a])
       end
 
+      defp redirecting(location, status \\\\ 302) do
+        test = self()
+
+        fn conn ->
+          send(test, {:request, conn.scheme, conn.host, conn.request_path, conn.req_headers})
+
+          if conn.request_path == "/x",
+            do:
+              conn
+              |> Plug.Conn.put_resp_header("location", location)
+              |> Plug.Conn.send_resp(status, ""),
+            else: Req.Test.json(conn, %{"ok" => true})
+        end
+      end
+
+      defp secret_request(respond, opts) do
+        Req.Test.stub(__MODULE__, respond)
+
+        ApiClients.request(
+          __MODULE__,
+          [plug: {Req.Test, __MODULE__}, retry: false] ++ opts,
+          %{
+            method: :post,
+            base: "https://api.example.com",
+            path: "/x",
+            query: [],
+            headers: [{"x-api-key", "secret"}],
+            body: {:json, %{"a" => 1}},
+            auth: {:basic, "user", "password"},
+            response: :json
+          }
+        )
+      end
+
+      test "redirects are not followed by default" do
+        assert {:error, {:status, 302, _}} =
+                 secret_request(redirecting("https://api.example.com/y"), [])
+      end
+
+      test "a followed same-origin redirect keeps the headers" do
+        assert {:ok, %{"ok" => true}} =
+                 secret_request(redirecting("/y"), follow_redirects: true)
+
+        assert_received {:request, :https, "api.example.com", "/x", _}
+        assert_received {:request, :https, "api.example.com", "/y", headers}
+        assert {"x-api-key", "secret"} in headers
+      end
+
+      test "a cross-origin or downgrading redirect drops every header and the auth" do
+        for location <- ["https://evil.example.com/y", "http://api.example.com/y"] do
+          assert {:ok, %{"ok" => true}} =
+                   secret_request(redirecting(location), follow_redirects: true)
+
+          assert_received {:request, _, _, "/x", _}
+          assert_received {:request, _, _, "/y", headers}
+          refute Enum.any?(headers, fn {name, _} -> name in ["x-api-key", "authorization"] end)
+        end
+      end
+
+      test "a 307 redirect to another origin is refused" do
+        assert {:error, {:redirect_refused, 307, "https://evil.example.com/y"}} =
+                 secret_request(redirecting("https://evil.example.com/y", 307),
+                   follow_redirects: true
+                 )
+      end
+
       test "header and parameter lines, path segments and response paths" do
         assert ApiClients.header_line("X-Key: abc") == {"X-Key", "abc"}
         assert ApiClients.param_line("key=a=b") == {"key", "a=b"}
@@ -824,12 +890,15 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
   defp env_doc(%Spec{env: []}), do: "  No environment variables: no call reads a secret."
 
+  # Printed into the runtime's @moduledoc heredoc: every piece that comes
+  # from the app (IDs, descriptions holding names) is escaped.
   defp env_doc(%Spec{env: env}) do
     env
     |> Enum.map_join("\n", fn e ->
       where = if e.call, do: "call `#{e.call}` of group `#{e.group}`", else: "group `#{e.group}`"
-      "    * `#{e.name}` - #{escape_doc(e.description)} (#{where})"
+      "    * `#{e.name}` - #{e.description} (#{where})"
     end)
+    |> escape_doc()
   end
 
   defp json_document(%Spec{} = spec) do
@@ -874,12 +943,14 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
   # --- text ---------------------------------------------------------------------------------------
 
+  # Text for a heredoc: backslashes, interpolation and every double quote
+  # (so no `"""` can close it) escaped.
   defp escape_doc(text),
     do:
       text
       |> String.replace("\\", "\\\\")
       |> String.replace("\#{", "\\\#{")
-      |> String.replace(~s("""), ~s(\\"""))
+      |> String.replace(~s("), ~s(\\"))
 
   defp heredoc(text) do
     body =

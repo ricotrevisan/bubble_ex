@@ -16,9 +16,25 @@ defmodule BubbleEx.ApiConnectorProbeTest do
   @stripe "sk_" <> "live_" <> "4eC39HqLyjWDarjtT1zdp7dc"
   @github "ghp_" <> "16C7e42F292c6912E7710c838347Ae178B4a"
   @random "Zx81kQpLm20aRt"
+  @random_query "kERbTLL13G8y9F0kdul9UqIZri0EvYQ6"
+  @random_key "e298a9d4709fe526fec1ec8ab4abc5a4"
+  @random_header "X-Qz81Lmk7Rt"
+  @random_host "eo1a2b3c4d5e6f"
+  @random_media "application/x-q7hunter"
 
-  # Secret-shaped query-string names.
-  @names [@aws, @stripe, @github, @random]
+  # Secret-shaped names: query-string names, a body key, header and key
+  # parameter names, a host label, a media type.
+  @names [
+    @aws,
+    @stripe,
+    @github,
+    @random,
+    @random_query,
+    @random_key,
+    @random_header,
+    @random_host,
+    @random_media
+  ]
 
   # Low-entropy values a word test would keep.
   @values [
@@ -57,6 +73,31 @@ defmodule BubbleEx.ApiConnectorProbeTest do
           }),
         "body_params" => %{"w" => %{"key" => "who", "value" => v4}}
       },
+      "cRandomQuery" => %{
+        "name" => "Random query",
+        "method" => "get",
+        "url" => "https://api.example.com/users?#{@random_query}=1"
+      },
+      "cRandomKey" => %{
+        "name" => "Random key",
+        "method" => "post",
+        "url" => "https://api.example.com/users",
+        "body" => Jason.encode!(%{"outer" => %{@random_key => true}})
+      },
+      "cRandomHeader" => %{
+        "name" => "Random header",
+        "method" => "get",
+        "url" => "https://api.example.com/users",
+        "headers" => %{
+          "h1" => %{"key" => @random_header, "value" => "x", "private" => true},
+          "h2" => %{"key" => @random_header <> "2", "value" => "x"}
+        }
+      },
+      "cRandomHost" => %{
+        "name" => "Random host",
+        "method" => "get",
+        "url" => "https://#{@random_host}.m.pipedream.net/users"
+      },
       "cKeyPath" => %{
         "name" => "Key path",
         "method" => "get",
@@ -77,10 +118,13 @@ defmodule BubbleEx.ApiConnectorProbeTest do
           "apiconnector2" => %{
             "gProbe" => %{
               "human" => "Probe",
+              "auth" => "private_key_header",
+              "token_param_name" => @random_header,
               "shared_headers" => %{
                 "h1" => %{"key" => "X-Key", "value" => v8},
                 "h2" => %{"key" => "Accept", "value" => v1},
-                "h3" => %{"key" => "Content-Type", "value" => "application/json"}
+                "h3" => %{"key" => "Content-Type", "value" => "application/json"},
+                "h4" => %{"key" => "Accept", "value" => @random_media}
               },
               "calls" => calls
             }
@@ -118,7 +162,10 @@ defmodule BubbleEx.ApiConnectorProbeTest do
     assert Map.has_key?(outputs, "test/probe/api_clients/probe_test.exs")
 
     for {name, text} <- outputs, probe <- @names ++ @values do
-      refute String.contains?(text, probe), "#{name} contains #{inspect(probe)}"
+      # The Model's `host` (WTF-396) keeps the host; its request template
+      # and everything generated do not.
+      unless name == "model" and probe == @random_host,
+        do: refute(String.contains?(text, probe), "#{name} contains #{inspect(probe)}")
     end
   end
 
@@ -140,7 +187,12 @@ defmodule BubbleEx.ApiConnectorProbeTest do
 
   test "secret-shaped query names make the call unsupported; values become variables",
        %{spec: spec} do
-    assert [%{call: "cNames", reasons: [:query]}] = spec.residue
+    assert [
+             %{call: "cNames", reasons: [:query]},
+             %{call: "cRandomHeader", reasons: [:unnamed_parameter]},
+             %{call: "cRandomKey", reasons: [:body_key]},
+             %{call: "cRandomQuery", reasons: [:query]}
+           ] = Enum.sort_by(spec.residue, & &1.call)
 
     [group] = spec.groups
     values = Enum.find(group.calls, &(&1.id == "cValues"))

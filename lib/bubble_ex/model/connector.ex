@@ -11,6 +11,7 @@ defmodule BubbleEx.Model.Connector do
     * `key_name` - the header or query parameter a `private_key_header` or
       `private_key_url` authentication sends its key in
       (`token_param_name`), when it is a plain name
+      (`BubbleEx.Model.ConnectorRequest.Reader.safe_name?/1`)
     * `parameters` - `BubbleEx.Model.ConnectorParameter`s shared by its calls
       (`shared_headers`, `shared_params`)
     * `shared_values` - the values of its non-private shared parameters,
@@ -144,7 +145,9 @@ defmodule BubbleEx.Model.ConnectorParameter do
     * `name` - its key (`key`, live payload `%k`), verbatim; nil when absent
       (Bubble strips the key of some private headers) or not a name: a
       header key that is not an HTTP token, or another key holding `=`, `:`
-      or whitespace, empty or longer than 128 characters
+      or whitespace, empty or longer than 128 characters, or any key that
+      is not a plain name (`BubbleEx.Model.ConnectorRequest.Reader.safe_name?/1`:
+      random-looking or credential-shaped)
     * `private` - Bubble's `private` flag: its value is a secret kept on the
       server
     * `path` - JSON pointer to it

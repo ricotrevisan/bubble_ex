@@ -50,8 +50,8 @@ defmodule BubbleEx.Target.ApiClients do
   A call is not generated, and is listed in `residue` with its reasons,
   when it is not an object (`:malformed_call`), its method is unknown
   (`:method`), its group's authentication is unsupported
-  (`:unsupported_auth`), a non-private header or query
-  parameter has no usable name (`:unnamed_parameter`), or its request
+  (`:unsupported_auth`), a non-private parameter has no usable name
+  (`:unnamed_parameter`: absent, or not a plain name), or its request
   template is incomplete (the reasons of
   `BubbleEx.Model.ConnectorRequest`'s `unsupported`).
 
@@ -306,10 +306,7 @@ defmodule BubbleEx.Target.ApiClients do
     request = call.request
 
     unnamed =
-      Enum.any?(
-        call.parameters,
-        &(not &1.private and is_nil(&1.name) and &1.in in [:header, :query, :param])
-      )
+      Enum.any?(call.parameters, &(not &1.private and is_nil(&1.name)))
 
     reasons =
       (group_reasons ++

@@ -11,7 +11,10 @@ defmodule <%= @module %>.ApiClients do
     * `:env` - a map of environment variables that takes precedence over
       the system environment (tests pass stubs here)
     * `:base_url` - replaces the call's scheme, host and port
-    * any `Req` option (`:plug`, `:retry`, `:receive_timeout`, …)
+    * `:follow_redirects` - follow redirects (default `false`; see
+      "Redirects"), at most `:max_redirects` (default 5)
+    * any `Req` option (`:plug`, `:retry`, `:receive_timeout`, …) but
+      `:redirect`, which is always `false`
 
   Options also come from the application environment, per group module,
   under the call's own options:
@@ -22,7 +25,23 @@ defmodule <%= @module %>.ApiClients do
 
   The defaults are a <%= @receive_timeout %> ms receive timeout, a <%= @connect_timeout %> ms
   connect timeout and up to <%= @max_retries %> retries of safe (GET/HEAD)
-  requests on transient errors.
+  requests on transient errors. Redirects are not followed.
+
+  **Credentials go wherever the request goes.** The call's secrets (keys,
+  private headers and parameters, redacted literals) are sent to the
+  `:base_url` given in the options or the configuration when there is one:
+  point it only at a host you trust with them.
+
+  ## Redirects
+
+  A 3xx response is an error (`{:status, status, body}`) unless
+  `follow_redirects: true` is given (in the options or the configuration).
+  Then a redirect to the same origin (scheme, host and port) keeps the
+  request's headers and authentication; a redirect to another origin, or
+  from HTTPS to HTTP, drops **every** header and the authentication
+  (they may hold secrets), and a 307/308 redirect to another origin (which
+  would resend the body) is refused (`{:redirect_refused, status,
+  location}`). 301, 302 and 303 continue as a GET without a body.
 
   A function returns `{:ok, body}` for a 2xx response (decoded JSON, a
   typed struct when the call returns a known API Connector type, text, or
@@ -48,7 +67,8 @@ defmodule <%= @module %>.ApiClients do
     receive_timeout: <%= @receive_timeout %>,
     connect_options: [timeout: <%= @connect_timeout %>],
     retry: :safe_transient,
-    max_retries: <%= @max_retries %>
+    max_retries: <%= @max_retries %>,
+    redirect: false
   ]
 
   @doc false
@@ -94,20 +114,64 @@ defmodule <%= @module %>.ApiClients do
         url: String.trim_trailing(base, "/") <> request.path,
         params: entries(request.query),
         headers: entries(request.headers),
-        decode_body: false
+        decode_body: false,
+        redirect: false
       )
       |> Keyword.merge(body(request.body))
       |> Keyword.merge(auth(request.auth))
 
+    {follow?, options} = Keyword.pop(options, :follow_redirects, false)
+    {max, options} = Keyword.pop(options, :max_redirects, 5)
+    send_request(options, if(follow?, do: max, else: 0), request.response)
+  end
+
+  @redirects [301, 302, 303, 307, 308]
+
+  defp send_request(options, redirects, response) do
     case Req.request(options) do
+      {:ok, %Req.Response{status: status} = resp} when status in @redirects and redirects > 0 ->
+        with {:ok, options} <- redirect(options, resp),
+             do: send_request(options, redirects - 1, response)
+
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-        decode(body, request.response)
+        decode(body, response)
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:status, status, body}}
 
       {:error, exception} ->
         {:error, exception}
+    end
+  end
+
+  # The next request of a redirect. Another origin (or a downgrade to
+  # HTTP) gets no headers and no authentication; a 307/308 to another
+  # origin, which would resend the body, is refused.
+  defp redirect(options, %Req.Response{status: status} = resp) do
+    case Req.Response.get_header(resp, "location") do
+      [location | _] ->
+        from = options |> Keyword.fetch!(:url) |> URI.parse()
+        to = URI.merge(from, location)
+        same_origin? = {to.scheme, to.host, to.port} == {from.scheme, from.host, from.port}
+
+        options =
+          options
+          |> Keyword.put(:url, URI.to_string(to))
+          |> Keyword.delete(:params)
+
+        options =
+          if status in [301, 302, 303],
+            do: options |> Keyword.put(:method, :get) |> Keyword.drop([:json, :form, :body]),
+            else: options
+
+        cond do
+          same_origin? -> {:ok, options}
+          status in [307, 308] -> {:error, {:redirect_refused, status, URI.to_string(to)}}
+          true -> {:ok, options |> Keyword.put(:headers, []) |> Keyword.delete(:auth)}
+        end
+
+      [] ->
+        {:error, {:status, status, resp.body}}
     end
   end
 

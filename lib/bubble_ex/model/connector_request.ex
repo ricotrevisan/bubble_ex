@@ -7,12 +7,18 @@ defmodule BubbleEx.Model.ConnectorRequest do
   API Connector calls hold credentials in their URLs, bodies and parameter
   values, private or not. The template keeps only:
 
+    * **hosts**: a host's literal labels are kept when they are plain
+      names; a chunk with any other label (an account-specific subdomain,
+      a number) is redacted, so the client reads it from the environment
     * **structure**: the URL's scheme, port and path segments, the body's
       JSON structure (object keys, arrays), the body type and the response
       type. Query-string names and body keys are kept only when they are
-      plain names (`Reader.safe_name?/1`: words, known abbreviations, short
-      numbers; nothing random-looking or detector-matched); a query entry
-      or body key that is not is dropped and the call marked unsupported
+      plain names (`Reader.safe_name?/1`: dictionary words, abbreviations
+      and English-like words, short numbers; UUIDs, hex runs and detector
+      matches refused; random tokens refused with high probability, not
+      certainty); a query entry or body key that is not is dropped and the
+      call marked unsupported. Header and parameter names get the same
+      check (`BubbleEx.Model.ConnectorParameter`)
     * **placeholders**: a `[name]` in the URL or `<name>` in the body that
       names one of the call's parameters becomes a reference to that
       parameter by Bubble ID (`%{kind: :parameter, id: id}`); the value is
@@ -39,8 +45,9 @@ defmodule BubbleEx.Model.ConnectorRequest do
   Fields:
 
     * `scheme` - `"https"` or `"http"`, lowercase; nil when unknown
-    * `host` - the host as parts (literals and URL parameters); nil when the
-      call has no plain host (`BubbleEx.Model.ConnectorReader.host/1`)
+    * `host` - the host as parts (literals, URL parameters and redacted
+      account-specific labels); nil when the call has no plain host
+      (`BubbleEx.Model.ConnectorReader.host/1`)
     * `port` - the URL's explicit port, or nil
     * `path` - the path's segments (after the host, split at `/`), each a
       list of parts; a trailing `/` gives a last empty segment
@@ -120,6 +127,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
   # never read.
 
   alias BubbleEx.Model.{ConnectorParameter, ConnectorRequest}
+  alias BubbleEx.Model.ConnectorRequest.English
   alias BubbleEx.Secrets.Native.Detectors
 
   @url ~r{\A\s*([A-Za-z][A-Za-z0-9+.\-]*)://([^/?#\\]*)([^?#\\]*)(?:\?([^#\\]*))?(?:#.*)?\s*\z}s
@@ -255,7 +263,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
         state = if scheme in ["http", "https"], do: state, else: unsupported(state, :scheme)
 
         {port, state} = port(host_port, state)
-        {host_parts, state} = url_parts(host, named, state, :host)
+        {host_parts, state} = host(host, named, state)
         {segments, state} = path(path, named, state)
 
         {query, state} = query(List.first(rest) || "", named, state)
@@ -288,6 +296,23 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
       {port, ""} when port in 0..65_535 -> {port, state}
       _ -> {nil, unsupported(state, :dynamic_port)}
     end
+  end
+
+  # The host as parts. A literal chunk with a label that is not a plain
+  # name (an account-specific subdomain such as `eo1a2b3c.m.example.net`,
+  # a number) is redacted, so it is configured from the environment;
+  # placeholders stay parameters.
+  defp host(host, named, state) do
+    {parts, state} = url_parts(host, named, state, :host)
+
+    Enum.flat_map_reduce(parts, state, fn
+      %{kind: :literal, text: text} = part, state ->
+        labels = String.split(text, ".", trim: true)
+        if Enum.all?(labels, &safe_name?/1), do: {[part], state}, else: redact(state)
+
+      part, state ->
+        {[part], state}
+    end)
   end
 
   # Path segments; every literal segment after one named like a credential
@@ -567,7 +592,15 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
     by id ids all new latest current next previous count
   )
 
-  @media ~r{\A[a-z]+/[a-z0-9][a-z0-9.+\-]*(?:\s*;\s*charset=[a-z0-9\-]+)?\z}i
+  # Media types kept verbatim; any other is redacted.
+  @media_types ~w(
+    application/json application/x-www-form-urlencoded multipart/form-data text/plain
+    text/html text/csv text/xml application/xml application/octet-stream application/pdf
+    application/javascript application/graphql application/x-ndjson application/ld+json
+    application/problem+json application/merge-patch+json application/json-patch+json
+    application/vnd.api+json application/hal+json image/png image/jpeg image/gif image/webp
+    image/svg+xml audio/mpeg audio/wav video/mp4 */*
+  )
 
   @doc """
   Whether a path literal is kept: an API version (`v1`, `v2.1`,
@@ -592,9 +625,21 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
         text
       )
 
-  @doc "Whether a text is a media type (`application/json`)."
+  @doc "Whether a text is an allowlisted media type (`application/json`), with an optional UTF-8 charset."
   @spec media_type?(term()) :: boolean()
-  def media_type?(text) when is_binary(text), do: Regex.match?(@media, text)
+  def media_type?(text) when is_binary(text) do
+    case Regex.run(~r{\A\s*([^;\s]+)\s*(?:;\s*charset=([A-Za-z0-9\-]+))?\s*\z}, text) do
+      [_, type] ->
+        String.downcase(type) in @media_types
+
+      [_, type, charset] ->
+        String.downcase(type) in @media_types and String.downcase(charset) in ["utf-8", "utf8"]
+
+      nil ->
+        false
+    end
+  end
+
   def media_type?(_), do: false
 
   @doc """
@@ -604,31 +649,50 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
   @spec structural?(term()) :: boolean()
   def structural?(text), do: text == "" or path_word?(text) or media_type?(text)
 
-  # Letter runs that are names though they have no vowel.
-  @consonant_words ~w(id db url uri urls xml html http https sms mms pdf csv tsv cc bcc ts
-                      utc gmt tz cdn dns ssl tls jwt cb fn src dst dt qty pct px rgb lng
-                      cnt msg msgs ttl crm cms css js png jpg gif svg mp mb kb gb sdk nft
-                      pwd lst rx tx)
+  # Short words and abbreviations (up to three letters), and common API
+  # words the letter model scores low, that are names.
+  @short_words ~w(
+    a i x id ids db url uri api key to cc bcc at by of on in is it as or and an be do so if
+    no up us we he me my go you our ips pin who how two see low the for new get set put add all any max min sum avg num qty ref src
+    dst utc gmt tz ip os ui ux sdk app web dev log msg sms mms pdf csv tsv xml css js ts png jpg
+    gif svg cdn dns ssl tls jwt ttl crm cms seo raw bin hex top end day hr sec ms eu gb kb mb
+    tag via per pre sub pub now old out off yes ok row col tab pos neg dir doc img vid bot ai
+    gpt llm org acc amt bal btn cfg cmd ctx env err evt exp ext fmt idx inc len lst obj opt pct
+    pkg pwd req res ret rev seq sig sql std str sys tmp txt val var ver win zip eq ne lt gt lte
+    gte not has few job due did use run fix hq uid gid svc www com net io co ai mtg utm iso ftp
+    ssh vpn gcal http html json uuid ascii yaml toml grpc cors csrf oidc saml ldap smtp imap
+    input output subject keywords workflow emoji enum skip view webhook oauth employee
+  )
+
+  @hex_run ~r/[0-9a-f]{8,}/i
+  @uuid ~r/[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i
 
   @doc """
-  Whether a name (a query-string name, a body key, a placeholder) is kept:
-  an identifier of plain words (runs of up to three letters, letter runs
-  with a vowel or a known abbreviation up to 20 letters and not
-  random-looking, numbers up to four digits, upper-case acronyms up to
-  five letters) that no secret detector matches. Credential-shaped names are refused.
+  Whether a name (a header, parameter or query-string name, a body key, a
+  placeholder, a host label) is kept: an identifier (up to 64 characters,
+  optionally with `[segment]` suffixes)
+  of segments (split at `_`, `-`, `.`, camel case and digits) that are
+  each a known short word or abbreviation, a three-letter word with a
+  vowel scoring at least -2.6, or an English-like word (four
+  to twenty letters scoring at least -3.2, or -3.0 from seven letters, under an English letter-pair
+  model, with vowels and no five-consonant run); at most one other single
+  letter and
+  at most two numbers of up to four digits. UUIDs, runs of eight or more
+  hex digits, digits between lowercase letters (`ab12cd`) and
+  secret-detector matches are refused. This is a
+  heuristic: random tokens are refused with high probability, not
+  certainty (measured under 0.5% for random 16-character lowercase
+  alphanumerics, UUIDs, 16-character hex and 32-character mixed-case
+  alphanumerics; see the test).
   """
   @spec safe_name?(term()) :: boolean()
   def safe_name?(name) when is_binary(name) do
     String.length(name) in 1..64 and
-      Regex.match?(~r/\A[$@]?[A-Za-z_][A-Za-z0-9_.\-]*(?:\[\])?\z/, name) and
+      Regex.match?(~r/\A[$@]?[A-Za-z_][A-Za-z0-9_.\-]*(?:\[[A-Za-z0-9_.\-]*\])*\z/, name) and
+      not Regex.match?(@hex_run, name) and not Regex.match?(@uuid, name) and
+      not Regex.match?(~r/[A-Za-z][0-9]+[a-z]/, name) and
       not looks_like_credential?(name) and
-      name
-      |> String.replace(~r/[$@\[\]]/, "")
-      |> String.replace(~r/([a-z])([A-Z])/, "\\1 \\2")
-      |> String.replace(~r/([A-Za-z])([0-9])/, "\\1 \\2")
-      |> String.replace(~r/([0-9])([A-Za-z])/, "\\1 \\2")
-      |> String.split(~r/[\s_.\-]+/, trim: true)
-      |> plain_words?()
+      name |> segments() |> plain_segments?()
   end
 
   def safe_name?(_), do: false
@@ -637,39 +701,48 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
   defp safe_key?(key),
     do: key != "" and key |> String.split(" ", trim: true) |> Enum.all?(&safe_name?/1)
 
-  # Every token a word, and at most one short vowelless abbreviation that
-  # is not a known one (`Zx81kQpLm` is four).
-  defp plain_words?(tokens) do
-    Enum.all?(tokens, &name_word?/1) and
-      Enum.count(tokens, fn t ->
-        String.length(t) in 2..3 and Regex.match?(~r/\A[A-Za-z]+\z/, t) and
-          not Regex.match?(~r/[aeiouy]/i, t) and String.downcase(t) not in @consonant_words
-      end) <= 1
+  defp segments(name) do
+    name
+    |> String.replace(~r/[$@\[\]]/, " ")
+    |> String.replace(~r/([a-z])([A-Z])/, "\\1 \\2")
+    |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1 \\2")
+    |> String.replace(~r/([A-Za-z])([0-9])/, "\\1 \\2")
+    |> String.replace(~r/([0-9])([A-Za-z])/, "\\1 \\2")
+    |> String.split(~r/[\s_.\-]+/, trim: true)
   end
 
-  defp name_word?(token) do
+  defp plain_segments?(segments) do
+    {numbers, words} = Enum.split_with(segments, &Regex.match?(~r/\A\d+\z/, &1))
+    words = Enum.map(words, &String.downcase/1)
+
+    words != [] and length(numbers) <= 2 and
+      Enum.all?(numbers, &(String.length(&1) <= 4)) and
+      Enum.count(words, &(String.length(&1) == 1 and &1 not in ["a", "i", "x"])) <= 1 and
+      Enum.all?(words, &word?/1)
+  end
+
+  defp word?(word) do
     cond do
-      Regex.match?(~r/\A\d{1,4}\z/, token) -> true
-      Regex.match?(~r/\A[A-Z]{2,5}\z/, token) -> true
-      not Regex.match?(~r/\A[A-Za-z]{1,20}\z/, token) -> false
-      String.length(token) <= 3 -> true
-      String.downcase(token) in @consonant_words -> true
-      not Regex.match?(~r/[aeiouy]/i, token) -> false
-      true -> not gibberish?(token)
+      not Regex.match?(~r/\A[a-z]+\z/, word) -> false
+      String.length(word) == 1 -> true
+      word in @short_words or word in @path_words -> true
+      String.length(word) == 2 -> false
+      String.length(word) == 3 -> Regex.match?(~r/[aeiouy]/, word) and English.score(word) >= -2.6
+      true -> english_like?(word)
     end
   end
 
-  # A long run of letters with few vowels or a long consonant run is more
-  # likely a random string than a word.
-  defp gibberish?(token) do
-    letters = String.downcase(token)
-    length = String.length(letters)
+  # At least as English-like as -3.2 (-3.0 from seven letters; mean
+  # letter-pair log-probability, `English.score/1`), with vowels and no
+  # five-consonant run.
+  defp english_like?(word) do
+    length = String.length(word)
+    vowels = word |> String.graphemes() |> Enum.count(&(&1 in ~w(a e i o u y)))
 
-    Regex.match?(~r/[bcdfghjklmnpqrstvwxz]{5,}/, letters) or
-      (length >= 8 and count_vowels(letters) / length < 0.18)
+    length <= 20 and vowels / length >= 0.15 and vowels / length <= 0.7 and
+      not Regex.match?(~r/[bcdfghjklmnpqrstvwxz]{5,}/, word) and
+      English.score(word) >= if(length >= 7, do: -3.0, else: -3.2)
   end
-
-  defp count_vowels(text), do: text |> String.graphemes() |> Enum.count(&(&1 in ~w(a e i o u y)))
 
   defp looks_like_credential?(text) do
     Regex.match?(~r/bearer\s+\S{8,}|basic\s+[A-Za-z0-9+\/=]{8,}/i, text) or
