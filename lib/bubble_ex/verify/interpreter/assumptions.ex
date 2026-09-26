@@ -27,11 +27,19 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   | `empty_item_not_contained` | `true` | a record-side list `doesn't contain` an empty item | `doesn't contain` an empty item is false |
   | `search_independent_of_view` | `true` | `search_for` alone decides whether a record is found in searches | a record is found only when it is also visible by ID |
   | `logged_out_user_is_empty` | `true` | a logged-out user has no identity: `Current User` is empty | a logged-out user is Bubble's temporary user: a user of its own (never equal to a record's user) with empty fields |
+  | `defaults_applied_at_creation` | `true` | a record created without a value for a field that has a default (WTF-338: defaults are kept) stores the default: a field a record omits reads as its default; an explicitly empty field (`null` in a seed) stays empty | a field a record omits is empty; defaults are never applied |
 
   The four of WTF-384/385 (the Bubble semantics the compiler's
   `privacy: :unverified` gate rests on) are `empty_equals_empty`,
   `empty_yes_no_is_no`, `empty_list_contains_nothing` and
   `dangling_ref_is_empty` (`wtf_384/0`).
+
+  `defaults_applied_at_creation` is not a compiler hedge: the generated
+  Ash resources carry the same defaults (`BubbleEx.Target.Ash`), so either
+  reading agrees with them only for records created without the field. It
+  is the interpreter's reading of when Bubble applies a field's default
+  (on creation, through every creation path: workflows, the Data API, bulk
+  uploads), for V5 to calibrate.
 
   Not listed: Bubble's `ignore_empty_constraints` default. It only matters
   for searches inside a condition, which the interpreter does not evaluate
@@ -55,7 +63,8 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     ordering_with_empty_false: true,
     empty_item_not_contained: true,
     search_independent_of_view: true,
-    logged_out_user_is_empty: true
+    logged_out_user_is_empty: true,
+    defaults_applied_at_creation: true
   ]
 
   @type name ::
@@ -74,6 +83,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
           | :empty_item_not_contained
           | :search_independent_of_view
           | :logged_out_user_is_empty
+          | :defaults_applied_at_creation
   @type t :: %{name() => boolean()}
 
   @doc "Every flag name, in the documented order."

@@ -25,7 +25,13 @@ defmodule BubbleEx.Verify.Seed do
     * `records` - each has a symbolic `key` (the seed ledger binds it to the
       Bubble ID the Bubble loader gets back), a `type` Bubble ID and
       `fields` keyed by field Bubble ID, holding `BubbleEx.Verify.Value`s. A
-      `ref` names another record's key. Sorted by key; keys are unique
+      `ref` names another record's key. Sorted by key; keys are unique.
+      A seed describes records **as stored after creation**: a field it
+      omits is what creation leaves (its default, if it has one, under the
+      interpreter's `defaults_applied_at_creation`; matrix seeds write
+      defaults out). A field set to `null` is **explicitly empty**: for a
+      field with a default, a loader must clear it after creating the
+      record (whether Bubble can store it empty at creation is unverified)
     * `personas` - symbolic personas: `user` is the key of a `user` record,
       or `null` for an anonymous visitor. Never passwords or tokens: the
       driver creates those per run

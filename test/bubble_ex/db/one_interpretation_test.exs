@@ -50,10 +50,14 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "installed plugin IDs and versions under `client_safe.plugins`, not API Connector types",
     "lib/bubble_ex/apps/parser.ex" =>
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
+    "lib/bubble_ex/target/ash/matrix_tests.ex" =>
+      "the observation format's own `value` member, written by the emitted tests; reads no app JSON",
     "lib/bubble_ex/verify/observation.ex" =>
       "the verification observation format's own members (`value`, `values`, `fields`, `deleted`); reads no app JSON",
     "lib/bubble_ex/verify/replay/ledger.ex" =>
       "the ledger journal's own `deleted` event; reads no app JSON",
+    "lib/bubble_ex/verify/replay/kit.ex" =>
+      "the Bubble Data API `/meta` schema's own `fields` member; reads no app JSON",
     "lib/bubble_ex/verify/replay/client.ex" =>
       "the Bubble Data API search constraint's `value` member; reads no app JSON",
     "lib/bubble_ex/verify/recording.ex" =>

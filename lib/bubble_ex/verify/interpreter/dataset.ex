@@ -6,6 +6,11 @@ defmodule BubbleEx.Verify.Interpreter.Dataset do
   another record). A reference to a key with no record is dangling, as a
   deleted record's ID left behind in Bubble data.
 
+  A field a record **omits** holds what Bubble stores on creation: its
+  default, if it has one (`defaults_applied_at_creation`, see
+  `BubbleEx.Verify.Interpreter.Assumptions`), else empty. A field present
+  with `nil` is **explicitly empty** (cleared), default or not.
+
   Built from a `BubbleEx.Verify.Seed` (`from_seed/1`) or directly
   (`new/1`), e.g. from data loaded elsewhere. Matrix synthesis also holds
   *open* records: their unset fields are still to be chosen, and reading one
@@ -23,7 +28,8 @@ defmodule BubbleEx.Verify.Interpreter.Dataset do
 
   @doc """
   A dataset from `{key, type_id, fields}` triples (or maps with those
-  keys). Empty values (`nil`) are dropped; every value must be canonical.
+  keys). A `nil` value is kept as an explicitly empty field; every value
+  must be canonical.
   """
   @spec new([{String.t(), String.t(), map()} | map()]) :: {:ok, t()} | {:error, Error.t()}
   def new(records) do
@@ -46,7 +52,6 @@ defmodule BubbleEx.Verify.Interpreter.Dataset do
   defp canonical(fields, key) do
     Enum.reduce_while(fields, {:ok, %{}}, fn {field, value}, {:ok, acc} ->
       case Value.canonical(value) do
-        {:ok, nil} -> {:cont, {:ok, acc}}
         {:ok, v} -> {:cont, {:ok, Map.put(acc, field, v)}}
         {:error, e} -> {:halt, {:error, %{e | context: Map.merge(e.context, %{record: key})}}}
       end
@@ -89,14 +94,13 @@ defmodule BubbleEx.Verify.Interpreter.Dataset do
   def keys(%__MODULE__{records: records}, type_id),
     do: for({k, %{type: ^type_id}} <- records, do: k) |> Enum.sort()
 
-  @doc "Closes every open record: its unset fields stay empty."
+  @doc """
+  Closes every open record: its unset fields are omitted (as created: a
+  default applies), and fields set to `nil` stay explicitly empty.
+  """
   @spec close(t()) :: t()
   def close(%__MODULE__{} = ds) do
-    records =
-      Map.new(ds.records, fn {k, r} ->
-        {k, %{r | open: false, fields: Map.reject(r.fields, fn {_, v} -> is_nil(v) end)}}
-      end)
-
+    records = Map.new(ds.records, fn {k, r} -> {k, %{r | open: false}} end)
     %{ds | records: records}
   end
 end

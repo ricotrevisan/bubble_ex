@@ -21,7 +21,7 @@ defmodule BubbleEx.Verify.Replay.Cleanup do
   """
 
   alias BubbleEx.Error
-  alias BubbleEx.Verify.Replay.{Client, Ledger, Target}
+  alias BubbleEx.Verify.Replay.{Client, Kit, Ledger, Target}
 
   @type leftover :: %{
           key: String.t(),
@@ -53,20 +53,32 @@ defmodule BubbleEx.Verify.Replay.Cleanup do
   end
 
   @doc "Loads the journal at `path` and cleans it up (see the moduledoc)."
-  @spec resume(Client.t(), String.t()) ::
+  @spec resume(Client.t(), String.t(), Kit.t()) ::
           {:ok, %{ledger: Ledger.t(), leftovers: [leftover()]}} | {:error, Error.t()}
-  def resume(%Client{target: %Target{} = target} = client, path) do
+  def resume(%Client{target: %Target{} = target} = client, path, kit \\ %Kit{}) do
     with {:ok, ledger} <- Ledger.load(path) do
-      if {ledger.app, ledger.branch} == {target.app, target.branch} do
-        {ledger, leftovers} = run(client, ledger)
-        {:ok, %{ledger: ledger, leftovers: leftovers}}
+      if {ledger.app, ledger.branch, ledger.branch_id, ledger.host} ==
+           {target.app, target.branch, target.branch_id, target.host} do
+        resume_verified(client, ledger, kit)
       else
         {:error,
-         Error.new(:invalid_input, "the journal is for another app or branch", %{
+         Error.new(:invalid_input, "the journal is for another app, branch or host", %{
            reason: :wrong_target
          })}
       end
     end
+  end
+
+  defp resume_verified(client, ledger, kit) do
+    with {:ok, _} <- verified(client, kit) do
+      {ledger, leftovers} = run(client, ledger)
+      {:ok, %{ledger: ledger, leftovers: leftovers}}
+    end
+  end
+
+  # A fresh client proves the target (no token) before deleting anything.
+  defp verified(client, kit) do
+    if Client.verified?(client), do: {:ok, :verified}, else: Client.verify(client, kit)
   end
 
   defp resolve(client, ledger, %{type: "user", email: email} = entry) when is_binary(email) do

@@ -26,6 +26,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   up front until V7 classifies workflows as replay-safe (WTF-358 §6.4); the
   only workflows the driver calls are the replay kit's sign-up and login.
 
+  **Preflight** (`BubbleEx.Verify.Replay.Kit.preflight/4`): the kit is in
+  place, every type is exposed, no exposed type shows a logged-out visitor
+  more than IDs and dates (the anonymous exposure probe), and a seed that
+  signs users up has a safely exposed `User` Data API to clean them up
+  with. Anything else refuses the run before any write.
+
   **Dry run first (§6.1 rule 3).** `plan/4` makes no call: it validates
   the scenarios against the seed and the target, estimates the calls and
   hashes the run's inputs. `record/4` needs that hash (`:plan_sha256`) and
@@ -58,6 +64,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       `{:observed, run_id}`
     * `:runs` - at least 2 (default 2)
     * `:kit` - `BubbleEx.Verify.Replay.Kit` (workflow names)
+    * `:anonymous_cap`, `:anonymous_proof`, `:allow_unproven` - passed to
+      the preflight (`BubbleEx.Verify.Replay.Kit.preflight/4`)
     * `:delete_after_seed` - seed keys to delete right after seeding
     * `:dependencies` - `%{{scenario ID, op ID} => [flag]}`
     * `:run_id` - prefix of the runs' IDs (lowercase letters, digits, `-`;
@@ -103,14 +111,21 @@ defmodule BubbleEx.Verify.Replay.Recorder do
            CanonicalJson.sha256(%{
              "app" => client.target.app,
              "branch" => client.target.branch,
+             "branch_id" => client.target.branch_id,
+             "host" => client.target.host,
              "seed_sha256" => Seed.sha256(seed),
              "scenarios" => scenarios |> Enum.map(&[&1.id, Scenario.sha256(&1)]) |> Enum.sort(),
              "runs" => runs,
-             "kit" => [kit.signup, kit.login],
+             "kit" => [kit.signup, kit.login, kit.marker],
+             "anonymous" => %{
+               "cap" => Keyword.get(opts, :anonymous_cap, 200),
+               "proof" => opts |> Keyword.get(:anonymous_proof, %{}) |> Map.keys() |> Enum.sort(),
+               "allow_unproven" => opts |> Keyword.get(:allow_unproven, []) |> Enum.sort()
+             },
              "delete_after_seed" => opts |> Keyword.get(:delete_after_seed, []) |> Enum.sort(),
              "max_calls" => client.max_calls
            }),
-         calls: 1 + length(types) + runs * per_run,
+         calls: preflight_calls(types, opts) + runs * per_run,
          cleanup_calls: runs * length(seed.records),
          runs: runs
        }}
@@ -126,7 +141,14 @@ defmodule BubbleEx.Verify.Replay.Recorder do
          :ok <- ledger_dir(opts),
          :ok <- affordable(client, plan),
          {:ok, run_id} <- run_id(opts),
-         {:ok, preflight} <- Kit.preflight(client, kit(opts), types(seed, scenarios)) do
+         {:ok, preflight} <-
+           Kit.preflight(
+             client,
+             kit(opts),
+             types(seed, scenarios),
+             [personas: Enum.any?(seed.records, &(&1.type == "user"))] ++
+               Keyword.take(opts, [:anonymous_cap, :anonymous_proof, :allow_unproven])
+           ) do
       if preflight.ok? do
         {:ok, run(client, seed, scenarios, plan, run_id, preflight, opts)}
       else
@@ -295,13 +317,23 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     |> Enum.sort()
   end
 
+  # Target verification (meta, marker), admin meta, then per type the
+  # exposure probe and the anonymous pages.
+  defp preflight_calls(types, opts) do
+    pages = div(Keyword.get(opts, :anonymous_cap, 200) + 99, 100)
+    3 + length(types) * (1 + pages)
+  end
+
   defp seeding_calls(seed, opts) do
     {users, records} = Enum.split_with(seed.records, &(&1.type == "user"))
 
     refs =
       Enum.count(records, fn r -> Enum.any?(r.fields, fn {_, v} -> Value.refs(v) != [] end) end)
 
-    3 * length(users) + length(records) + refs + length(Keyword.get(opts, :delete_after_seed, []))
+    clears = Enum.count(seed.records, &(Seeder.empties(&1) != []))
+
+    3 * length(users) + length(records) + refs + clears +
+      length(Keyword.get(opts, :delete_after_seed, []))
   end
 
   defp op_calls(client, seed, scenarios) do
@@ -353,6 +385,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     %{
       app: client.target.app,
       branch: client.target.branch,
+      branch_id: client.target.branch_id,
+      host: client.target.host,
       preflight: preflight,
       calls: Client.calls(client),
       cleanup_calls: Client.cleanup_calls(client),
@@ -372,6 +406,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     %{
       run_id: r.run_id,
       seeded: length(r.ledger.entries),
+      uncleared: r.uncleared,
       journal: r.journal,
       error: r.error && error_summary(r.error),
       leftovers: r.leftovers
@@ -396,6 +431,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
           ledger: ledger,
           journal: ledger.path,
           session: state.session,
+          uncleared: Map.get(state, :uncleared, %{}),
           leftovers: leftovers,
           error: run_error(seeded, observed)
         }
@@ -410,6 +446,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
           ledger: empty,
           journal: nil,
           session: %Session{},
+          uncleared: %{},
           leftovers: [],
           error: error
         }
@@ -446,7 +483,14 @@ defmodule BubbleEx.Verify.Replay.Recorder do
          ) do
       {:ok, state} ->
         progress.({:seeded, ledger.run_id})
-        observed = Map.new(scenarios, &{&1.id, observe(client, seed, &1, state)})
+        uncleared = state |> Map.get(:uncleared, %{}) |> Map.keys() |> MapSet.new()
+
+        observed =
+          Map.new(
+            scenarios,
+            &{&1.id, observe_unless_uncleared(client, seed, &1, state, uncleared)}
+          )
+
         progress.({:observed, ledger.run_id})
         {:ok, state, observed}
 
@@ -470,6 +514,52 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       {_id, {:error, %Error{context: %{reason: :budget_exhausted}} = e, _}} -> e
       _ -> nil
     end)
+  end
+
+  defp observe_unless_uncleared(client, seed, scenario, state, uncleared) do
+    if depends_on?(seed, scenario, uncleared),
+      do: {:error, :clear_failed, 0},
+      else: observe(client, seed, scenario, state)
+  end
+
+  # A scenario depends on the records its ops read (a get's record, every
+  # record of a searched type), its personas' users, and everything those
+  # reference, transitively: a privacy condition can follow any of them.
+  defp depends_on?(_seed, _scenario, uncleared) when map_size(uncleared) == 0, do: false
+
+  defp depends_on?(seed, scenario, uncleared) do
+    users =
+      for op <- scenario.ops,
+          persona = Map.get(op, :persona) || scenario.persona,
+          user = get_in(seed.personas, [persona, :user]),
+          do: user
+
+    touched =
+      Enum.flat_map(scenario.ops, fn
+        %{op: :search, type: type} -> for r <- seed.records, r.type == type, do: r.key
+        op -> List.wrap(Map.get(op, :record))
+      end)
+
+    seed
+    |> closure(users ++ touched)
+    |> Enum.any?(&MapSet.member?(uncleared, &1))
+  end
+
+  defp closure(seed, keys) do
+    refs =
+      Map.new(seed.records, fn r ->
+        {r.key, Enum.flat_map(r.fields, fn {_, v} -> Value.refs(v) end)}
+      end)
+
+    walk(keys, refs, MapSet.new())
+  end
+
+  defp walk([], _refs, seen), do: seen
+
+  defp walk([key | rest], refs, seen) do
+    if MapSet.member?(seen, key),
+      do: walk(rest, refs, seen),
+      else: walk(Map.get(refs, key, []) ++ rest, refs, MapSet.put(seen, key))
   end
 
   # --- observing ------------------------------------------------------------------------
@@ -618,7 +708,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
 
     attrs = [
       oracle: :bubble,
-      source: %{app: client.target.app, branch: client.target.branch},
+      source: %{
+        app: client.target.app,
+        branch: client.target.branch,
+        branch_id: client.target.branch_id,
+        host: client.target.host
+      },
       recorded_at: first.started,
       t0: DateTime.to_unix(first.started, :millisecond),
       runs: length(runs),
@@ -643,6 +738,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   end
 
   defp failure(:seeding_failed), do: :seeding_failed
+  defp failure(:clear_failed), do: :clear_failed
   defp failure(%Error{context: %{reason: :budget_exhausted}}), do: :budget_exhausted
   defp failure(%Error{kind: kind}), do: kind
 

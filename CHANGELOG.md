@@ -25,6 +25,38 @@ All notable changes to this project are documented here.
   served LiveViews; the Phoenix compile check now also renders every
   frozen case's pages and mounts them.
 
+- **Generated Ash policy-matrix tests** (WTF-383, V3 of the WTF-358
+  verification proposal; closes WTF-356's matrix criterion against the
+  interpreter). `BubbleEx.Target.Ash.MatrixTests.render/3` prints, for a
+  Project mapped with `privacy: :unverified` and a privacy matrix
+  (`Verify.Matrix`, or the decoded `.wtf/verification` files via
+  `MatrixTests.plan/1`), one ExUnit module for the generated project: it
+  seeds the Ecto sandbox once (`Ash.Seed`, primary keys = Bubble IDs from a
+  ledger, else deterministic Bubble-shaped synthetic IDs), loads each
+  persona with the generated `load_actor/1` and, per scenario, compares
+  keyed `:read` visibility, `:search` record sets and visible fields
+  (`Ash.ForbiddenField`) with the expected recording: a Bubble recording
+  when given (complete, not stale), else the `model` one. With
+  `WTF_VERIFY_OBSERVATIONS` set the tests write their observations;
+  `MatrixTests.results/3` turns them into `Verify.Result`s
+  (`Matrix.result/4`, which now also accepts Bubble recordings) for
+  `Result.evaluate/3`: passing, never Bubble-verified with the model
+  oracle. `scripts/ash_compile_check.sh` runs them for every fixture with
+  privacy rules (and a private export) against PostgreSQL and reports the
+  counts.
+- **Field defaults in the privacy interpreter and matrix seeds** (WTF-383).
+  A field a record omits now reads as its Model default (WTF-338), behind
+  the new assumption `defaults_applied_at_creation` (default true; 16
+  flags), and verdicts resting on a default list it. Defaults the
+  interpreter cannot express (lists, references, mismatched values,
+  unknown option keys) make such reads unknown. `Interpreter.Dataset` keeps
+  `nil` as an explicitly empty field. Matrix seeds describe records as
+  Bubble stores them after creation: omitted defaulted fields are written
+  out, and a defaulted field a branch needs empty is `null` (listed in
+  `report.explicit_empties`: a loader must clear it after creation);
+  `report.defaults` counts them. On mm-137: 185 defaulted fields,
+  166 records, 1,554 checks; rules solved and observable unchanged
+  (120 / 77).
 - **Phoenix target adapter** (WTF-369, T4 of WTF-359).
   `BubbleEx.Target.Phoenix.render(project, name:, module:, app:)` renders a
   `privacy: :omit` `BubbleEx.Target.Ash.Project` as the file map of a
@@ -89,6 +121,41 @@ All notable changes to this project are documented here.
   workflows blocked by `trigger_not_normalized` 832 → 0 (203 now
   `trigger_in_runtime_template`), frontend workflows auto 824 → 1,179 of
   2,275.
+
+- **Replay driver prerequisites for a real app** (WTF-385). Bubble serves
+  a child branch at `/version-<branch ID>/`, not at its name, and apps on a
+  custom domain redirect `bubbleapps.io` to it. `Replay.Target.new/4` now
+  requires the operator-supplied `branch_id:` (validated; `live`/`test`
+  refused; the `wtfreplay…` name rules are unchanged and the name stays in
+  ledgers, reports and recordings) and takes an optional owner-confirmed
+  custom `host:` (bare DNS name, HTTPS, exact-host re-check on every
+  request, no redirects, not another Bubble host). Recordings, ledgers and
+  reports keep the branch ID and host; `Cleanup.resume/2` refuses a journal
+  for another branch ID or host. Enabling the Data API on a branch exposes
+  the development database it shares with `test` to anyone, as far as the
+  privacy rules allow, so `Replay.Kit.preflight/4` now runs an anonymous
+  exposure probe on every exposed type (no token, one page, field names and
+  counts only) and refuses the run when a logged-out caller gets more than
+  `_id`, `Created Date` and `Modified Date`; a seed that signs users up
+  also needs a safely exposed `User` Data API (persona cleanup), otherwise
+  the run is refused and must be recorded logged-out only.
+  No token before verification: a client sends no token-bearing request
+  until `Client.verify/2` has checked, without a token, Bubble's `/meta`
+  shape and the kit's tokenless marker workflow (`wtf_replay_marker`),
+  which must return exactly the branch name and the operator's
+  `marker_nonce:` (required by `Target.new/4`), so a mistyped host or
+  branch ID never receives the admin token. The exposure probe fails
+  closed: it pages up to `:anonymous_cap` (200) records, `:exposed` on any
+  extra field, `:may_leak` when records show only IDs and dates but `/meta`
+  lists other fields (Bubble omits empty ones) and no proof
+  (`anonymous_proof:`, `Kit.anonymous_proof/1` from the Model) is given,
+  `:unproven` when no record answers (unless proven or accepted with
+  `allow_unproven:`, as a warning). Branch IDs need a letter and a digit.
+  The seeder clears a seed's explicit empties (`nil` fields, which Bubble
+  would fill with defaults) after creation, journals each clear, and a
+  refused clear makes the scenarios depending on that record
+  (transitively, through references and personas) incomplete
+  (`:clear_failed`). `docs/replay-kit.md` documents all of it.
 
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits

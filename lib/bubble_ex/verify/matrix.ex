@@ -145,7 +145,8 @@ defmodule BubbleEx.Verify.Matrix do
       rules = coverage(interpreter, ds, personas)
       observability = Coverage.observability(interpreter, ds, personas, rules)
 
-      with {:ok, seed} <- seed(Keyword.get(opts, :seed_id, "privacy_matrix"), personas, ds),
+      with {:ok, seed} <-
+             seed(Keyword.get(opts, :seed_id, "privacy_matrix"), personas, ds, interpreter),
            {:ok, built} <- scenarios(interpreter, ds, personas, seed, types, app, opts) do
         {:ok, assemble(interpreter, ds, personas, seed, built, rules, observability)}
       end
@@ -394,15 +395,33 @@ defmodule BubbleEx.Verify.Matrix do
 
   # --- seed ----------------------------------------------------------------------------
 
-  defp seed(id, personas, ds) do
+  defp seed(id, personas, ds, interpreter) do
     Seed.new(
       id: id,
       personas: Map.new(personas, fn {p, user} -> {p, %{user: user}} end),
       records:
         for {key, r} <- Enum.sort(ds.records) do
-          %{key: key, type: Type.record(r.type), fields: r.fields}
+          %{key: key, type: Type.record(r.type), fields: as_created(r, interpreter)}
         end
     )
+  end
+
+  # A record's fields as Bubble stores them after creation: a field it
+  # omits holds its default (`defaults_applied_at_creation`), written out;
+  # an explicitly empty field with a default stays `null` (the loader must
+  # clear it); other empty fields are omitted. A default the interpreter
+  # cannot express stays omitted (verdicts reading it are unknown).
+  defp as_created(record, interpreter) do
+    defaults = Map.get(interpreter.defaults, record.type, %{})
+    set = Map.reject(record.fields, fn {f, v} -> is_nil(v) and not Map.has_key?(defaults, f) end)
+
+    if interpreter.assumptions.defaults_applied_at_creation,
+      do:
+        Enum.reduce(defaults, set, fn
+          {f, {:ok, v}}, acc -> Map.put_new(acc, f, v)
+          {_f, :unmodeled}, acc -> acc
+        end),
+      else: set
   end
 
   # --- scenarios and recordings ----------------------------------------------------------
@@ -659,6 +678,8 @@ defmodule BubbleEx.Verify.Matrix do
           Enum.count(infos, &(not &1.type.deleted and match?({:unknown, _}, &1.status)))
       },
       seed_values_from_condition_literals: literal_values(matrix.seed, interpreter),
+      defaults: defaults_report(matrix.seed, interpreter),
+      explicit_empties: explicit_empties(matrix.seed),
       oracle_scope:
         "model: expectations from the interpreter over the shared expression compiler's IR; " <>
           "agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, " <>
@@ -700,6 +721,42 @@ defmodule BubbleEx.Verify.Matrix do
     end
   end
 
+  # Fields with a default (modeled or not), seed values equal to their
+  # field's default (applied on creation, or chosen), and defaulted fields
+  # the seed keeps explicitly empty.
+  defp defaults_report(seed, interpreter) do
+    entries = interpreter.defaults |> Map.values() |> Enum.flat_map(&Map.values/1)
+
+    %{
+      fields: length(entries),
+      unmodeled: Enum.count(entries, &(&1 == :unmodeled)),
+      seed_values_equal_to_default:
+        Enum.count(
+          for r <- seed.records,
+              {f, v} <- r.fields,
+              v != nil,
+              default?(interpreter, r, f, v),
+              do: f
+        ),
+      explicit_empties: length(explicit_empties(seed))
+    }
+  end
+
+  defp default?(interpreter, record, field, value) do
+    type = Dataset.type_id(record.type)
+    get_in(interpreter.defaults, [type, field]) == {:ok, value}
+  end
+
+  # Defaulted fields a seed record holds explicitly empty: Bubble would
+  # store the default on creation, so a loader must create the record and
+  # then clear them (V4); whether Bubble can store them empty on creation
+  # is unverified.
+  defp explicit_empties(seed) do
+    for r <- seed.records,
+        {f, nil} <- Enum.sort(r.fields),
+        do: %{record: r.key, type: r.type, field: f}
+  end
+
   defp percent(_n, 0), do: 100.0
   defp percent(n, total), do: Float.round(n * 100 / total, 1)
 
@@ -737,7 +794,7 @@ defmodule BubbleEx.Verify.Matrix do
   @spec counts(map()) :: map()
   def counts(report) do
     report
-    |> Map.drop([:unsolved, :unobservable])
+    |> Map.drop([:unsolved, :unobservable, :explicit_empties])
     |> Map.update!(:assumptions, &Map.drop(&1, [:in_force]))
     |> stringify()
   end
@@ -756,11 +813,13 @@ defmodule BubbleEx.Verify.Matrix do
 
   @doc """
   A `privacy_read` `BubbleEx.Verify.Result` comparing a subject's
-  `observations` of `scenario` (e.g. a target app's replay, V3) with the
-  expected `model` recording: `pass` when every expected observation is
-  matched, else `fail` with a diff (`record_visible`, `field_visible` per
-  field, `record_set`). The oracle and evidence cite the recording, so
-  `Result.evaluate/3` can count it as passing, never as Bubble-verified.
+  `observations` of `scenario` (e.g. the generated Ash tests,
+  `BubbleEx.Target.Ash.MatrixTests`, V3) with the expected recording: `pass`
+  when every expected observation is matched, else `fail` with a diff
+  (`record_visible`, `field_visible` per field, `record_set`). The oracle
+  and evidence cite the recording, so `Result.evaluate/3` can count it as
+  passing; as Bubble-verified only with a `bubble` recording (its replay
+  branch is the oracle's), never with the `model` one.
 
   ## Options
 
@@ -771,7 +830,7 @@ defmodule BubbleEx.Verify.Matrix do
   """
   @spec result(Scenario.t(), Recording.t(), [Observation.t()], keyword()) ::
           {:ok, BubbleEx.Verify.Result.t()} | {:error, Error.t()}
-  def result(%Scenario{} = scenario, %Recording{oracle: :model} = recording, observations, opts) do
+  def result(%Scenario{} = scenario, %Recording{} = recording, observations, opts) do
     actual = Map.new(observations, &{Observation.key(&1), &1.value})
     sha = Recording.sha256(recording)
 
@@ -793,7 +852,11 @@ defmodule BubbleEx.Verify.Matrix do
         source_sha256: scenario.source_sha256,
         seed_sha256: recording.seed_sha256
       },
-      oracle: %{kind: :model, sha256: sha, branch: nil},
+      oracle: %{
+        kind: recording.oracle,
+        sha256: sha,
+        branch: if(recording.oracle == :bubble, do: recording.source.branch)
+      },
       evidence: [
         %{
           kind: :recording,
@@ -808,7 +871,7 @@ defmodule BubbleEx.Verify.Matrix do
   end
 
   def result(_scenario, _recording, _observations, _opts),
-    do: {:error, Error.new(:invalid_input, "expected a scenario and its model recording")}
+    do: {:error, Error.new(:invalid_input, "expected a scenario and its recording")}
 
   defp diff(%Observation{value: v}, v), do: []
 
