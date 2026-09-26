@@ -1,0 +1,1653 @@
+{
+  "actor_loads": [],
+  "applied": [
+    {
+      "automatic": false,
+      "basis_sha256": "f3f9b7f9c4b38d3cc12d421f15750874417d2ff6164a0b7e7d5368f3b5d19c1a",
+      "finding_id": "denormalized_field:671c6b64fcee5682",
+      "key": "finding:denormalized_field:671c6b64fcee5682",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "c0be6308e5df3754f0a4543d08b7d6fe25943e8e5dd62a62312614d408642db4",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "board_watcher_count_number",
+        "type": "card"
+      },
+      "target": null,
+      "transform": "derive_count"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "579a02efc6527267de0e175433e23987aea2acfd66fa739aced15a3da65054ae",
+      "finding_id": "denormalized_field:805069ce233b7b93",
+      "key": "finding:denormalized_field:805069ce233b7b93",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "d9a56b8c31ead409b7b621dc504b597161e1abcda0c4a7785b222fc97bdfe3b7",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "card_count_number",
+        "type": "board"
+      },
+      "target": null,
+      "transform": "derive_count"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "25dce4e6ea9d73a6f4edab20af6f528105fd360c4cfff748d4ee62414b57d9b4",
+      "finding_id": "denormalized_field:936d3a0bb3475c6b",
+      "key": "finding:denormalized_field:936d3a0bb3475c6b",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "4cfae7e490b72bb3db8a19196e727470ac457e5f2a4407059837ce23aed21564",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "board_card_count_number",
+        "type": "card"
+      },
+      "target": null,
+      "transform": "derive_count"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "cd322f673b7ac3113ccb5ebd4f2868727c29517597ef7b8e41c7e99813885607",
+      "finding_id": "denormalized_field:d8c5d54da46b523e",
+      "key": "finding:denormalized_field:d8c5d54da46b523e",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "48923e0fe9de691fc0a83b9ce60c13c7393ce5a35241eae19d4fa35a4f1c46b7",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "watcher_count_number",
+        "type": "board"
+      },
+      "target": null,
+      "transform": "derive_count"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "324e62f18afdfac29122853245cbf43a587ed95df898d700b57106a4e1748065",
+      "finding_id": "id_in_text:0d5ff6e43053f6ce",
+      "key": "finding:id_in_text:0d5ff6e43053f6ce",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "097f88571a936ec87cc6f8e78c7af687ac8e15c6619117c438ba2f5db8b0040b",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "assignee_id_text",
+        "type": "card"
+      },
+      "target": null,
+      "transform": "text_to_reference"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "80f83803056fc0dc0a42e3f2f0dccb44cee0f118f02847cb501dee2420e0d788",
+      "finding_id": "id_in_text:c251727320e72584",
+      "key": "finding:id_in_text:c251727320e72584",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "8574b3a614f1b756315180c898883e80a1f4c14b6cb46a8b4570eeede638997c",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "blocker_ids_list_text",
+        "type": "card"
+      },
+      "target": null,
+      "transform": "text_to_reference"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "7c30d1308eb5106f202a5b771ae030cf53553772f2f4658f7496058f9dd3d382",
+      "finding_id": "redundant_reverse_list:968d326f7de95cb4",
+      "key": "finding:redundant_reverse_list:968d326f7de95cb4",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "5c70d2be23e7d5fed0b96e422a7099e1a8df5a43f3dec1669e6a78d9475c767a",
+      "rewrite_reads": [
+        "action:aCountCards",
+        "action:aCreateCard",
+        "element:eCardCount",
+        "element:eHolding",
+        "privacy_rule:board/busy_"
+      ],
+      "subject": {
+        "field": "cards_list_custom_card",
+        "type": "board"
+      },
+      "target": null,
+      "transform": "derive_reverse_relationship"
+    },
+    {
+      "automatic": true,
+      "basis_sha256": "488b374f04829122daa563865645e2038c356058e3f34e63cb5ba44ca71c00b0",
+      "finding_id": "search_index:dc580d21c9d8e8ca",
+      "key": "finding:search_index:dc580d21c9d8e8ca",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "801e33a3f1e766fc09b2c9db5dc0f27be1ae16dc05395802ef54ab95dba9c5e2",
+      "rewrite_reads": [],
+      "subject": {
+        "type": "card"
+      },
+      "target": null,
+      "transform": "add_indexes"
+    }
+  ],
+  "applied_sha256": "c46a4c692374a29f2fa496073c203dae0f9b426089c35d0fa4036c24a5316967",
+  "authorization_bypasses": [],
+  "bubble_id": "synthcuttwo",
+  "decisions_sha256": "3f1cb287cb795c64c7d74399b10d3ccc7be6c7a7a01739cd50c0ae98af27383e",
+  "deferred": [
+    {
+      "automatic": true,
+      "basis_sha256": "fc423154b44800420ddbd741ecc423550c3bf53a572bd7bab11652b575efe764",
+      "finding_id": "search_index:82293b826b32ec25",
+      "indexes": [
+        0,
+        1,
+        2
+      ],
+      "key": "finding:search_index:82293b826b32ec25",
+      "kind": "finding",
+      "params": {},
+      "proposal_sha256": "75fe5fb64999a2e7bbb8963a66a7ad9ba73c4565a0d211a38e1c5912f5c60b21",
+      "rewrite_reads": [],
+      "subject": {
+        "type": "board"
+      },
+      "target": null,
+      "transform": "add_indexes"
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "ash_decision_deferred",
+      "details": {
+        "indexes": [
+          {
+            "access": [
+              "range"
+            ],
+            "fields": [
+              "field:board/card_count_number"
+            ],
+            "index": 0,
+            "reason": "a field it covers is derived by a decision and has no column"
+          },
+          {
+            "access": [
+              "membership"
+            ],
+            "fields": [
+              "field:board/cards_list_custom_card"
+            ],
+            "index": 1,
+            "reason": "a field it covers is derived by a decision and has no column"
+          },
+          {
+            "access": [
+              "geo"
+            ],
+            "fields": [
+              "field:board/location_geographic_address"
+            ],
+            "index": 2,
+            "reason": "geographic search needs PostGIS; geographic addresses are stored as JSON and the generated project has no geographic index"
+          }
+        ],
+        "key": "finding:search_index:82293b826b32ec25",
+        "transform": "add_indexes"
+      },
+      "message": "3 index(es) of finding:search_index:82293b826b32ec25 are not created (index 0: a field it covers is derived by a decision and has no column; index 1: a field it covers is derived by a decision and has no column; index 2: geographic search needs PostGIS; geographic addresses are stored as JSON and the generated project has no geographic index); deferred",
+      "outcome": "unresolved",
+      "path": "/user_types/board",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "board"
+      }
+    },
+    {
+      "code": "ash_privacy_omitted",
+      "details": {
+        "rules": 3,
+        "types": [
+          "board"
+        ],
+        "unavailable": []
+      },
+      "message": "privacy rules were not compiled (privacy: :omit): 3 rules on 1 data types; the generated resources have no authorization",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {}
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "aggregate": true,
+        "key": "finding:denormalized_field:805069ce233b7b93",
+        "source_field": "field:board/cards_list_custom_card",
+        "transform": "derive_count",
+        "via": []
+      },
+      "message": "board.card_count_number counts board.cards_list_custom_card (owner decision finding:denormalized_field:805069ce233b7b93); it is not stored and cannot be written",
+      "outcome": "degraded",
+      "path": "/user_types/board/fields/card_count_number",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "card_count_number",
+        "type": "board"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "key": "finding:redundant_reverse_list:968d326f7de95cb4",
+        "rewrite_reads": [
+          "action:aCountCards",
+          "action:aCreateCard",
+          "element:eCardCount",
+          "element:eHolding",
+          "privacy_rule:board/busy_"
+        ],
+        "transform": "derive_reverse_relationship",
+        "via": "field:card/board_custom_board"
+      },
+      "message": "board.cards_list_custom_card is a has_many of card through card.board_custom_board (owner decision finding:redundant_reverse_list:968d326f7de95cb4); the list is not stored, and its reads need rewriting",
+      "outcome": "degraded",
+      "path": "/user_types/board/fields/cards_list_custom_card",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "cards_list_custom_card",
+        "type": "board"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "aggregate": false,
+        "key": "finding:denormalized_field:d8c5d54da46b523e",
+        "source_field": "field:board/watchers_list_user",
+        "transform": "derive_count",
+        "via": []
+      },
+      "message": "board.watcher_count_number counts board.watchers_list_user (owner decision finding:denormalized_field:d8c5d54da46b523e); it is not stored and cannot be written",
+      "outcome": "degraded",
+      "path": "/user_types/board/fields/watcher_count_number",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "watcher_count_number",
+        "type": "board"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "automatic": true,
+        "indexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "key": "finding:search_index:dc580d21c9d8e8ca",
+        "transform": "add_indexes"
+      },
+      "message": "5 index(es) of card from finding:search_index:dc580d21c9d8e8ca (a hint, applied by default)",
+      "outcome": "degraded",
+      "path": "/user_types/card",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "type": "card"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "cardinality": "one",
+        "key": "finding:id_in_text:0d5ff6e43053f6ce",
+        "target": "user",
+        "transform": "text_to_reference"
+      },
+      "message": "card.assignee_id_text holds user IDs and is a belongs_to user (no foreign key) (owner decision finding:id_in_text:0d5ff6e43053f6ce); the loader must convert its text values to IDs",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/assignee_id_text",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "assignee_id_text",
+        "type": "card"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "cardinality": "many",
+        "key": "finding:id_in_text:c251727320e72584",
+        "target": "card",
+        "transform": "text_to_reference"
+      },
+      "message": "card.blocker_ids_list_text holds card IDs and is a list of card IDs (owner decision finding:id_in_text:c251727320e72584); the loader must convert its text values to IDs",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/blocker_ids_list_text",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "blocker_ids_list_text",
+        "type": "card"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "aggregate": true,
+        "key": "finding:denormalized_field:936d3a0bb3475c6b",
+        "source_field": "field:board/cards_list_custom_card",
+        "transform": "derive_count",
+        "via": [
+          "field:card/board_custom_board"
+        ]
+      },
+      "message": "card.board_card_count_number counts board.cards_list_custom_card (owner decision finding:denormalized_field:936d3a0bb3475c6b); it is not stored and cannot be written",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/board_card_count_number",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "board_card_count_number",
+        "type": "card"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "aggregate": false,
+        "key": "finding:denormalized_field:671c6b64fcee5682",
+        "source_field": "field:board/watchers_list_user",
+        "transform": "derive_count",
+        "via": [
+          "field:card/board_custom_board"
+        ]
+      },
+      "message": "card.board_watcher_count_number counts board.watchers_list_user (owner decision finding:denormalized_field:671c6b64fcee5682); it is not stored and cannot be written",
+      "outcome": "degraded",
+      "path": "/user_types/card/fields/board_watcher_count_number",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "board_watcher_count_number",
+        "type": "card"
+      }
+    }
+  ],
+  "enums": [],
+  "extensions": [
+    "pg_trgm"
+  ],
+  "names": {
+    "enums": {},
+    "external_types": {},
+    "resources": {
+      "board": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "card_count_number": "card_count",
+          "cards_list_custom_card": "cards",
+          "location_geographic_address": "location",
+          "name_text": "name",
+          "watcher_count_number": "watcher_count",
+          "watchers_list_user": "watchers"
+        },
+        "module": "Board",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "board"
+      },
+      "card": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "assignee_id_text": "assignee_id",
+          "blocker_ids_list_text": "blockers",
+          "board_card_count_number": "board_card_count",
+          "board_custom_board": "board_id",
+          "board_watcher_count_number": "board_watcher_count",
+          "points_number": "points",
+          "status_text": "status",
+          "tags_list_text": "tags",
+          "title_text": "title"
+        },
+        "module": "Card",
+        "relationships": {
+          "Created By": "creator",
+          "assignee_id_text": "assignee",
+          "board_custom_board": "board"
+        },
+        "table": "card"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "email": "email",
+          "name_text": "name"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      }
+    },
+    "version": 1
+  },
+  "policies_verified": false,
+  "privacy": "omit",
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [
+        {
+          "authorize?": false,
+          "description": "The count of cards (owner decision finding:denormalized_field:805069ce233b7b93); not stored",
+          "kind": "count",
+          "name": "card_count",
+          "path": [
+            "cards"
+          ],
+          "public?": true,
+          "source": {
+            "field": "card_count_number",
+            "type": "board"
+          }
+        }
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "board"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "board"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "geographic_address",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "location",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "location_geographic_address",
+            "type": "board"
+          },
+          "type": [
+            "module",
+            "Types.GeographicAddress"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "board"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.user",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "watchers",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "user"
+          },
+          "source": {
+            "field": "watchers_list_user",
+            "type": "board"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Board",
+      "calculations": [
+        {
+          "constraints": [],
+          "description": "The length of watchers (owner decision finding:denormalized_field:d8c5d54da46b523e); not stored",
+          "expr": {
+            "actor_loads": [],
+            "arguments": [],
+            "expr": [
+              "call",
+              "length",
+              [
+                [
+                  "op",
+                  "||",
+                  [
+                    "ref",
+                    [],
+                    "watchers"
+                  ],
+                  [
+                    "value",
+                    []
+                  ]
+                ]
+              ]
+            ],
+            "resource": "Board",
+            "sort": [],
+            "source": {
+              "field": "watcher_count_number",
+              "type": "board"
+            }
+          },
+          "kind": "derived",
+          "name": "watcher_count",
+          "public?": true,
+          "source": {
+            "field": "watcher_count_number",
+            "type": "board"
+          },
+          "type": "integer"
+        }
+      ],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [],
+      "migration_types": [],
+      "module": "Board",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "board"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Card",
+          "destination_attribute": "board_id",
+          "gate": null,
+          "kind": "has_many",
+          "name": "cards",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "cards_list_custom_card",
+            "type": "board"
+          },
+          "source_attribute": "id"
+        }
+      ],
+      "source": {
+        "type": "board"
+      },
+      "synthesized": false,
+      "table": "board"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [
+        {
+          "authorize?": false,
+          "description": "The count of board.cards (owner decision finding:denormalized_field:936d3a0bb3475c6b); not stored",
+          "kind": "count",
+          "name": "board_card_count",
+          "path": [
+            "board",
+            "cards"
+          ],
+          "public?": true,
+          "source": {
+            "field": "board_card_count_number",
+            "type": "card"
+          }
+        }
+      ],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "card"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "card"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "assignee_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "assignee_id_text",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.text",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "blockers",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "card"
+          },
+          "source": {
+            "field": "blocker_ids_list_text",
+            "type": "card"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.board",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "board_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "board"
+          },
+          "source": {
+            "field": "board_custom_board",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "points",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "points_number",
+            "type": "card"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "status",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "status_text",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.text",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "tags",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "tags_list_text",
+            "type": "card"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "title_text",
+            "type": "card"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Card",
+      "calculations": [
+        {
+          "constraints": [],
+          "description": "The length of board.watchers (owner decision finding:denormalized_field:671c6b64fcee5682); not stored",
+          "expr": {
+            "actor_loads": [],
+            "arguments": [],
+            "expr": [
+              "call",
+              "length",
+              [
+                [
+                  "op",
+                  "||",
+                  [
+                    "ref",
+                    [
+                      "board"
+                    ],
+                    "watchers"
+                  ],
+                  [
+                    "value",
+                    []
+                  ]
+                ]
+              ]
+            ],
+            "resource": "Card",
+            "sort": [],
+            "source": {
+              "field": "board_watcher_count_number",
+              "type": "card"
+            }
+          },
+          "kind": "derived",
+          "name": "board_watcher_count",
+          "public?": true,
+          "source": {
+            "field": "board_watcher_count_number",
+            "type": "card"
+          },
+          "type": "integer"
+        }
+      ],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [
+        {
+          "columns": [
+            "points"
+          ],
+          "expression": null,
+          "fields": [
+            "points"
+          ],
+          "method": "btree",
+          "name": "card_points_index",
+          "source": {
+            "index": [
+              0
+            ],
+            "key": "finding:search_index:dc580d21c9d8e8ca",
+            "type": "card"
+          },
+          "using": null
+        },
+        {
+          "columns": [
+            "status",
+            "title"
+          ],
+          "expression": null,
+          "fields": [
+            "status",
+            "title"
+          ],
+          "method": "btree",
+          "name": "card_status_title_index",
+          "source": {
+            "index": [
+              1
+            ],
+            "key": "finding:search_index:dc580d21c9d8e8ca",
+            "type": "card"
+          },
+          "using": null
+        },
+        {
+          "columns": [
+            "tags"
+          ],
+          "expression": null,
+          "fields": [
+            "tags"
+          ],
+          "method": "gin",
+          "name": "card_tags_gin_index",
+          "source": {
+            "index": [
+              2
+            ],
+            "key": "finding:search_index:dc580d21c9d8e8ca",
+            "type": "card"
+          },
+          "using": "gin"
+        },
+        {
+          "columns": [
+            "title"
+          ],
+          "expression": "to_tsvector('simple'::regconfig, coalesce(\"title\", ''))",
+          "fields": [
+            "to_tsvector('simple'::regconfig, coalesce(\"title\", ''))"
+          ],
+          "method": "full_text",
+          "name": "card_title_fts_index",
+          "source": {
+            "index": [
+              3
+            ],
+            "key": "finding:search_index:dc580d21c9d8e8ca",
+            "type": "card"
+          },
+          "using": "gin"
+        },
+        {
+          "columns": [
+            "title"
+          ],
+          "expression": null,
+          "fields": [
+            "\"title\" gin_trgm_ops"
+          ],
+          "method": "trigram",
+          "name": "card_title_trgm_index",
+          "source": {
+            "index": [
+              4
+            ],
+            "key": "finding:search_index:dc580d21c9d8e8ca",
+            "type": "card"
+          },
+          "using": "gin"
+        }
+      ],
+      "migration_types": [],
+      "module": "Card",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "card"
+          },
+          "source_attribute": "creator_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "assignee",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "assignee_id_text",
+            "type": "card"
+          },
+          "source_attribute": "assignee_id"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Board",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "board",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "board_custom_board",
+            "type": "card"
+          },
+          "source_attribute": "board_id"
+        }
+      ],
+      "source": {
+        "type": "card"
+      },
+      "synthesized": false,
+      "table": "card"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "calculations": [],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [],
+      "migration_types": [],
+      "module": "User",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "gate": null,
+          "kind": "belongs_to",
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id"
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": false,
+      "table": "user"
+    }
+  ],
+  "schema_version": 5,
+  "typed_structs": [
+    {
+      "bubble_name": null,
+      "description": "A Bubble geographic address.",
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "formatted_address",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "formatted_address",
+            "structured": "geographic_address"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "lat",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "lat",
+            "structured": "geographic_address"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "lng",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "lng",
+            "structured": "geographic_address"
+          },
+          "type": "float",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "Types.GeographicAddress",
+      "source": {
+        "structured": "geographic_address"
+      }
+    }
+  ],
+  "types": []
+}

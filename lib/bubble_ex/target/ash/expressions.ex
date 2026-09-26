@@ -31,6 +31,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | a yes/no value used as a condition | `x == true` |
   | `logged in` | `not is_nil(^actor(:id))` |
   | `list contains item` | `item in list` (lists of things are `{:array, :string}` of IDs, WTF-338) |
+  | `list contains item`, `list is empty` on a list an owner decision derives as a `has_many` | `exists(list, id == item)` (a record-side item read as `parent(...)`), `not exists(list, true)`; the list has no other use as a value |
   | `list doesn't contain item` | `is_nil(list) or is_nil(item) or not (item in list)` (an empty list contains nothing); an actor-side item must not be empty and an actor-side list needs a logged-in actor |
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
@@ -228,7 +229,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp lookup(%Project{} = project) do
     types =
       Map.new(project.resources, fn resource ->
-        rels = Map.new(resource.relationships, &{&1.source.field, &1.name})
+        belongs_to = Enum.filter(resource.relationships, &(&1.kind == :belongs_to))
+        rels = Map.new(belongs_to, &{&1.source.field, &1.name})
         pk = Enum.find(resource.attributes, & &1.primary_key?)
 
         fields =
@@ -241,10 +243,24 @@ defmodule BubbleEx.Target.Ash.Expressions do
              }}
           end
 
-        # A field derived by an owner decision is read as its calculation.
+        # A field derived by an owner decision is read as its calculation
+        # or aggregate.
         fields =
           for c <- resource.calculations, c.kind == :derived, into: fields do
             {c.source.field, %{attribute: c.name, relationship: nil, references: nil}}
+          end
+
+        fields =
+          for g <- resource.aggregates, into: fields do
+            {g.source.field, %{attribute: g.name, relationship: nil, references: nil}}
+          end
+
+        # A list derived as a has_many is tested through it (membership,
+        # emptiness); it has no value.
+        fields =
+          for %{kind: :has_many} = r <- resource.relationships, into: fields do
+            {r.source.field,
+             %{attribute: nil, relationship: nil, references: nil, has_many: r.name}}
           end
 
         {resource.source.type, %{module: resource.module, pk: pk && pk.name, fields: fields}}
@@ -431,18 +447,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # `list contains item` is `item in list`. Its negation: an empty list (and
   # an empty record-side item) contains nothing, so it matches; `not (x in
   # list)` alone would be NULL.
-  defp atom_(%IR{op: :member, args: [list, item]}, st) do
-    if list_type?(list.type) do
-      {[l, i], st} = values([list, item], st)
-
-      nil_item =
-        if nonnull?(i, st) or actor?(i), do: [], else: [{:call, "is_nil", [i]}]
-
-      member = {:op, "in", i, l}
-      absent = {:or, [{:call, "is_nil", [l]} | nil_item] ++ [{:not, member}]}
-      {all_ok({member, absent, [{l, list.type}, {i, item.type}]}, [l, i]), st}
-    else
-      unsupported(st, {"contains on a value that is not a list", nil})
+  defp atom_(%IR{op: :member, args: [list, _item]} = ir, st) do
+    case has_many(list, st) do
+      {:ok, ref, st} -> has_many_member(ir, ref, st)
+      :no -> member(ir, st)
     end
   end
 
@@ -462,7 +470,73 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"the condition #{inspect(op)}", nil})
 
+  defp member(%IR{args: [list, item]}, st) do
+    if list_type?(list.type) do
+      {[l, i], st} = values([list, item], st)
+
+      nil_item =
+        if nonnull?(i, st) or actor?(i), do: [], else: [{:call, "is_nil", [i]}]
+
+      member = {:op, "in", i, l}
+      absent = {:or, [{:call, "is_nil", [l]} | nil_item] ++ [{:not, member}]}
+      {all_ok({member, absent, [{l, list.type}, {i, item.type}]}, [l, i]), st}
+    else
+      unsupported(st, {"contains on a value that is not a list", nil})
+    end
+  end
+
+  # A record-side list derived as a has_many (`derive_reverse_relationship`):
+  # `{:ok, {:ref, rels, has_many}, st}`, else `:no`.
+  defp has_many(%IR{op: :field} = list, st) do
+    case path(list, [], st, :has_many) do
+      {{:has_many, rels, many}, st} -> {:ok, {:ref, rels, many}, st}
+      _ -> :no
+    end
+  end
+
+  defp has_many(_list, _st), do: :no
+
+  # `list contains item` on a has_many: some related record is the item,
+  # `exists(list, id == item)` (a record-side item is read as `parent(...)`
+  # from inside). The related records are the ones whose reference points
+  # here; a deleted one is not listed (the stored list kept its ID).
+  defp has_many_member(%IR{args: [list, item]}, {:ref, _rels, many} = ref, st) do
+    {i, st} = value(item, st)
+
+    case {i, destination_pk(list, many, st)} do
+      {:error, _} ->
+        {:error, st}
+
+      {_, nil} ->
+        unmapped(st, {"the list", many})
+
+      {i, pk} ->
+        inner = if actor?(i) or match?({:value, _}, i), do: i, else: {:call, "parent", [i]}
+        member = {:call, "exists", [ref, {:op, "==", {:ref, [], pk}, inner}]}
+        nil_item = if nonnull?(i, st) or actor?(i), do: [], else: [{:call, "is_nil", [i]}]
+        absent = {:or, nil_item ++ [{:not, member}]}
+        {{member, absent, [{i, item.type}]}, st}
+    end
+  end
+
+  # The primary key of the records a has_many lists.
+  defp destination_pk(%IR{type: type}, _many, st) do
+    case classify(type) do
+      %Type{kind: :ref, target: target} -> get_in(st.lookup, [:types, target, :pk])
+      _ -> nil
+    end
+  end
+
   defp empty(%IR{op: :field} = x, st) do
+    case has_many(x, st) do
+      {:ok, ref, st} -> {{:not, {:call, "exists", [ref, {:value, true}]}}, st}
+      :no -> empty_field(x, st)
+    end
+  end
+
+  defp empty(x, st), do: empty_value(x, st)
+
+  defp empty_field(x, st) do
     case {classify(x.type), path(x, [], st, :relationship)} do
       {%Type{kind: :ref, cardinality: :one}, {{:related, rels, rel}, st}} ->
         {{:not, {:call, "exists", [{:ref, rels, rel}, {:value, true}]}}, st}
@@ -474,8 +548,6 @@ defmodule BubbleEx.Target.Ash.Expressions do
         empty_value(x, st)
     end
   end
-
-  defp empty(x, st), do: empty_value(x, st)
 
   defp empty_value(x, st) do
     {node, st} = value(x, st)
@@ -649,6 +721,12 @@ defmodule BubbleEx.Target.Ash.Expressions do
       {:ok, rels, %{relationship: rel}} when mode == :relationship and is_binary(rel) ->
         {{:related, rels, rel}, st}
 
+      {:ok, rels, %{has_many: many}} when mode == :has_many ->
+        {{:has_many, rels, many}, st}
+
+      {:ok, _rels, %{has_many: _}} ->
+        unsupported(st, {"a list derived as a has_many, used as a value", nil})
+
       {:ok, rels, info} ->
         {{:ref, rels, info.attribute}, st}
 
@@ -664,6 +742,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
       {:ok, rels, %{relationship: rel}} when mode == :relationship and is_binary(rel) ->
         {{:actor_related, rels ++ [rel]}, st}
+
+      {:ok, _rels, %{has_many: _}} ->
+        unsupported(st, {"the current user's list derived as a has_many", nil})
 
       {:ok, rels, info} ->
         st = if rels == [], do: st, else: %{st | loads: MapSet.put(st.loads, rels)}
@@ -700,6 +781,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
           {:cont, {:ok, rels ++ [rel]}}
 
         {:ok, %{references: %{cardinality: :many}}} ->
+          {:halt,
+           {:error, {:unsupported, {"a path through a list of things", "#{type}.#{field}"}}}}
+
+        {:ok, %{has_many: _}} ->
           {:halt,
            {:error, {:unsupported, {"a path through a list of things", "#{type}.#{field}"}}}}
 

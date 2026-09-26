@@ -1,0 +1,676 @@
+{
+  "_id": "synthcuttwo",
+  "api": {
+    "wfAddCard": {
+      "actions": {
+        "0": {
+          "id": "aCreateCard",
+          "properties": {
+            "initial_values": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "board_custom_board",
+                "value": {
+                  "properties": {
+                    "btype_id": "custom.board",
+                    "param_id": "board"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "1": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "title_text",
+                "value": {
+                  "properties": {
+                    "btype_id": "text",
+                    "param_id": "title"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "2": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "points_number",
+                "value": 1
+              },
+              "3": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "status_text",
+                "value": "open"
+              },
+              "4": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "board_card_count_number",
+                "value": {
+                  "next": {
+                    "name": "cards_list_custom_card",
+                    "next": {
+                      "name": "count",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.board",
+                    "param_id": "board"
+                  },
+                  "type": "APIEventParameter"
+                }
+              },
+              "5": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "board_watcher_count_number",
+                "value": {
+                  "next": {
+                    "name": "watchers_list_user",
+                    "next": {
+                      "name": "count",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.board",
+                    "param_id": "board"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            },
+            "thing_type": "custom.card"
+          },
+          "type": "NewThing"
+        },
+        "1": {
+          "id": "aAddToBoard",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "cards_list_custom_card",
+                "value": {
+                  "properties": {
+                    "action_id": "aCreateCard"
+                  },
+                  "type": "PreviousStep"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.board",
+                "param_id": "board"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "2": {
+          "id": "aCountCards",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "card_count_number",
+                "value": {
+                  "next": {
+                    "name": "cards_list_custom_card",
+                    "next": {
+                      "name": "count",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.board",
+                    "param_id": "board"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.board",
+                "param_id": "board"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wAddCard",
+      "properties": {
+        "expose": false,
+        "wf_name": "add-card"
+      },
+      "type": "APIEvent"
+    },
+    "wfAssign": {
+      "actions": {
+        "0": {
+          "id": "aAssign",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "assignee_id_text",
+                "value": {
+                  "next": {
+                    "name": "_id",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.card",
+                "param_id": "card"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aBlockers",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "status_text",
+                "value": "blocked"
+              }
+            },
+            "to_change": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "in",
+                    "key": "_id",
+                    "value": {
+                      "next": {
+                        "name": "blocker_ids_list_text",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "btype_id": "custom.card",
+                        "param_id": "card"
+                      },
+                      "type": "APIEventParameter"
+                    }
+                  }
+                },
+                "type_to_find": "custom.card"
+              },
+              "type": "Search"
+            },
+            "type_to_change": "custom.card"
+          },
+          "type": "ChangeListOfThings",
+          "type_to_change": "custom.card"
+        }
+      },
+      "id": "wAssign",
+      "properties": {
+        "expose": false,
+        "wf_name": "assign-card"
+      },
+      "type": "APIEvent"
+    },
+    "wfWatch": {
+      "actions": {
+        "0": {
+          "id": "aWatch",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": "add",
+                "key": "watchers_list_user",
+                "value": {
+                  "type": "CurrentUser"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.board",
+                "param_id": "board"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aCountWatchers",
+          "properties": {
+            "changes": {
+              "0": {
+                "action": {
+                  "type": "Empty"
+                },
+                "key": "watcher_count_number",
+                "value": {
+                  "next": {
+                    "name": "watchers_list_user",
+                    "next": {
+                      "name": "count",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "btype_id": "custom.board",
+                    "param_id": "board"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.board",
+                "param_id": "board"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        }
+      },
+      "id": "wWatch",
+      "properties": {
+        "expose": false,
+        "wf_name": "watch-board"
+      },
+      "type": "APIEvent"
+    }
+  },
+  "app_version": "test",
+  "option_sets": {},
+  "pages": {
+    "pgHome": {
+      "elements": {
+        "rgBusy": {
+          "default_name": "RG Busy",
+          "id": "eBusy",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "greater than",
+                    "key": "card_count_number",
+                    "value": 3
+                  }
+                },
+                "type_to_find": "custom.board"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgFind": {
+          "default_name": "RG Find",
+          "id": "eFind",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains",
+                    "key": "title_text",
+                    "value": "plan"
+                  }
+                },
+                "type_to_find": "custom.card"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgHolding": {
+          "default_name": "RG Holding",
+          "id": "eHolding",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "contains",
+                    "key": "cards_list_custom_card",
+                    "value": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    }
+                  }
+                },
+                "type_to_find": "custom.board"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgNear": {
+          "default_name": "RG Near",
+          "id": "eNear",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "geographic_search",
+                    "key": "location_geographic_address",
+                    "value": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    }
+                  }
+                },
+                "type_to_find": "custom.board"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgOpen": {
+          "default_name": "RG Open",
+          "id": "eOpen",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "status_text",
+                    "value": "open"
+                  }
+                },
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.card"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgPart": {
+          "default_name": "RG Part",
+          "id": "ePart",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": "pla"
+                  }
+                },
+                "type_to_find": "custom.card"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgPoints": {
+          "default_name": "RG Points",
+          "id": "ePoints",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "greater than",
+                    "key": "points_number",
+                    "value": 2
+                  }
+                },
+                "type_to_find": "custom.card"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "rgTagged": {
+          "default_name": "RG Tagged",
+          "id": "eTagged",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "contains",
+                    "key": "tags_list_text",
+                    "value": "urgent"
+                  }
+                },
+                "type_to_find": "custom.card"
+              },
+              "type": "Search"
+            }
+          },
+          "type": "RepeatingGroup"
+        },
+        "txtCards": {
+          "default_name": "Text Cards",
+          "id": "eCardCount",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "first_element",
+                    "next": {
+                      "name": "cards_list_custom_card",
+                      "next": {
+                        "name": "count",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type_to_find": "custom.board"
+                  },
+                  "type": "Search"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "pHome",
+      "name": "index",
+      "properties": {
+        "title": "Home"
+      },
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "board": {
+      "display": "Board",
+      "fields": {
+        "card_count_number": {
+          "display": "Card Count",
+          "value": "number"
+        },
+        "cards_list_custom_card": {
+          "display": "Cards",
+          "value": "list.custom.card"
+        },
+        "location_geographic_address": {
+          "display": "Location",
+          "value": "geographic_address"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "watcher_count_number": {
+          "display": "Watcher Count",
+          "value": "number"
+        },
+        "watchers_list_user": {
+          "display": "Watchers",
+          "value": "list.user"
+        }
+      },
+      "privacy_role": {
+        "busy_": {
+          "condition": {
+            "next": {
+              "name": "cards_list_custom_card",
+              "next": {
+                "name": "is_not_empty",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Busy",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "name_text",
+              "card_count_number",
+              "cards_list_custom_card",
+              "watcher_count_number"
+            ]
+          }
+        },
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "name_text",
+              "card_count_number"
+            ]
+          }
+        },
+        "watcher_": {
+          "condition": {
+            "next": {
+              "name": "watchers_list_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "contains",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Watcher",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "card": {
+      "display": "Card",
+      "fields": {
+        "assignee_id_text": {
+          "display": "Assignee ID",
+          "value": "text"
+        },
+        "blocker_ids_list_text": {
+          "display": "Blockers",
+          "value": "list.text"
+        },
+        "board_card_count_number": {
+          "display": "Board card count",
+          "value": "number"
+        },
+        "board_custom_board": {
+          "display": "Board",
+          "value": "custom.board"
+        },
+        "board_watcher_count_number": {
+          "display": "Board watcher count",
+          "value": "number"
+        },
+        "points_number": {
+          "display": "Points",
+          "value": "number"
+        },
+        "status_text": {
+          "display": "Status",
+          "value": "text"
+        },
+        "tags_list_text": {
+          "display": "Tags",
+          "value": "list.text"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

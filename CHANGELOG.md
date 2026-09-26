@@ -26,6 +26,30 @@ All notable changes to this project are documented here.
   unless `--trusted`: the plan and manifest must then match `.wtf/plan.sig`
   (`BubbleEx.Plan.sign/2`, HMAC-SHA256 with `WTF_PLAN_SIGNING_KEY`), only
   signed results count, and reviewer independence comes from git authors.
+- **`Target.Ash` applies owner decisions, cut 2** (WTF-405, WTF-352 §4.2).
+  `derive_count` drops a stored count for a public calculation of the same
+  name, the length of the stored list (`length(path.list || [])`), or a
+  `count` aggregate (`authorize? false`) when the list is derived as a
+  `has_many` in the same set; `text_to_reference` keeps the text attribute
+  (name, column, type) with `references` and, for one ID, a `belongs_to`
+  with no foreign key (the loader must convert the values);
+  `derive_reverse_relationship` replaces a redundant reverse list by a
+  `has_many` and records the finding's `rewrite_reads` in `project.applied`
+  (privacy rules testing the list compile to `exists(...)`); `add_indexes`
+  hints apply by default as `postgres custom_indexes` (btree for equality,
+  range and sort; GIN trigram with the `pg_trgm` extension in
+  `project.extensions`; GIN over a `to_tsvector` expression for keyword
+  search; GIN over arrays for membership). Geographic accesses and indexes
+  over derived fields stay in `project.deferred` (with the deferred
+  `indexes`) and a warning. With `privacy: :unverified` derived fields read
+  through private `*_for_privacy` twins (also of ungated relationships, so
+  they sort) and a derived `has_many` is gated like the list it replaces
+  (`privacy.relationship_checks`). New `Aggregate` and `Index` structs,
+  `Resource.aggregates`/`indexes`, `Relationship` kind `:has_many`;
+  Project schema version 5. mm-137 with every cut-2 finding accepted: 55
+  of 55 index hints apply (302 indexes: 289 btree, 8 GIN, 3 trigram, 2
+  full text, none deferred), 15 `has_many`, 1 count and 1 text reference.
+
 - **Generated Ash policy-matrix tests** (WTF-383, V3 of the WTF-358
   verification proposal; closes WTF-356's matrix criterion against the
   interpreter). `BubbleEx.Target.Ash.MatrixTests.render/3` prints, for a

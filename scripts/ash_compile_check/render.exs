@@ -18,12 +18,17 @@
 #
 #     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir> [unverified|omit]
 #
-# The owner decision sets of BubbleEx.Test.DecidedFixture (WTF-401) are
-# rendered too: `decided_combined` (every cut-1 transform, before the name
-# lock) and `decided_locked` (after it: renamed attributes keep their
-# columns through `source:`). Their expectations (derived fields are
-# calculations with no column, refined numbers are bigint/numeric columns,
-# kept columns exist) are written to decisions.json for decisions.exs.
+# The owner decision sets of BubbleEx.Test.DecidedFixture (WTF-401,
+# WTF-405) are rendered too: `decided_combined` (every cut-1 transform,
+# before the name lock), `decided_locked` (after it: renamed attributes
+# keep their columns through `source:`), `decided_count` (every count as
+# the length of a stored list) and `decided_cut2` (every cut-2 transform,
+# with the index hints applied by default). Their expectations (derived
+# fields are calculations or aggregates with no column, refined numbers
+# are bigint/numeric columns, kept columns exist, the counts, has_many and
+# text references to check, the indexes and extensions to find) are
+# written to decisions.json for decisions.exs. Each repo installs the
+# extensions its Project lists (`pg_trgm` for trigram indexes).
 #
 # With `unverified`, the privacy interpreter's verdicts on the expression
 # and policy expectation tables are written to interpreter_conditions.json
@@ -134,7 +139,11 @@ decided = [
   {"Fixtures.DecidedCombined", "decided_combined",
    fn -> BubbleEx.Test.DecidedFixture.project(:combined, privacy: privacy) end},
   {"Fixtures.DecidedLocked", "decided_locked",
-   fn -> BubbleEx.Test.DecidedFixture.locked_project(privacy: privacy) end}
+   fn -> BubbleEx.Test.DecidedFixture.locked_project(privacy: privacy) end},
+  {"Fixtures.DecidedCount", "decided_count",
+   fn -> BubbleEx.Test.DecidedFixture.project(:count, privacy: privacy) end},
+  {"Fixtures.DecidedCut2", "decided_cut2",
+   fn -> BubbleEx.Test.DecidedFixture.project(:cut2, privacy: privacy) end}
 ]
 
 private_apps =
@@ -144,7 +153,26 @@ private_apps =
     path -> [{"Private.App", "private_app", BubbleEx.Test.SplitExport.load(path)}]
   end
 
-private = for {namespace, name, app} <- private_apps, do: {namespace, name, map_fixture.(app)}
+# With a private export, also `private_cut2`: every cut-2 finding accepted
+# and the index hints applied by default (WTF-405), so its derived counts,
+# has_many relationships, text references and indexes compile and migrate.
+private_cut2 = fn app ->
+  fn ->
+    {:ok, model} = BubbleEx.Model.build(app)
+    {:ok, index} = BubbleEx.Index.build(app, model: model)
+    {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
+    {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut2(findings, [], index)
+    BubbleEx.Target.Ash.map(model, applied, privacy: privacy, decisions_sha256: sha)
+  end
+end
+
+private =
+  Enum.flat_map(private_apps, fn {namespace, name, app} ->
+    [
+      {namespace, name, map_fixture.(app)},
+      {"Private.Cut2", "private_cut2", private_cut2.(app)}
+    ]
+  end)
 
 lib = Path.join(dir, "lib/generated")
 File.rm_rf!(lib)
@@ -168,7 +196,7 @@ rendered =
     defmodule #{repo} do
       use AshPostgres.Repo, otp_app: :ash_compile_check
 
-      def installed_extensions, do: ["ash-functions"]
+      def installed_extensions, do: #{inspect(["ash-functions" | project.extensions])}
       def min_pg_version, do: %Version{major: 16, minor: 0, patch: 0}
     end
     """
@@ -207,10 +235,17 @@ udt = fn
   _ -> nil
 end
 
+# The relationship to load for `rel`: its private twin when it has one.
+twin_of = fn r, rel ->
+  Enum.find_value(r.privacy_relationships, rel.name, fn twin ->
+    if twin.source == rel.source, do: twin.name
+  end)
+end
+
 # What decisions.exs checks in the database of each decided fixture.
 decision_expectations =
   for {namespace, repo, name, project} <- rendered,
-      String.starts_with?(name, "decided_") do
+      String.starts_with?(name, "decided_") or name == "private_cut2" do
     by_module = Map.new(project.resources, &{&1.module, &1})
 
     resources =
@@ -224,7 +259,7 @@ decision_expectations =
             |> Map.reject(fn {_, t} -> t == nil end),
           stored: Enum.map(r.attributes, &(&1.column || &1.name)),
           derived:
-            for c <- r.calculations, c.kind == :derived do
+            for c <- r.calculations, c.kind == :derived, match?({:ref, [_], _}, c.expr.expr) do
               {:ref, [rel], attribute} = c.expr.expr
               # (privacy: :unverified reads a gated relationship's twin)
               relationship =
@@ -245,11 +280,51 @@ decision_expectations =
                 destination: namespace <> "." <> destination.module,
                 attribute: attribute
               }
+            end,
+          # counts (cut 2): the length of a stored list, or an aggregate
+          # over a derived has_many; `path` from the resource (through the
+          # private twins with privacy: :unverified)
+          counts:
+            (for c <- r.calculations,
+                 c.kind == :derived,
+                 match?({:call, "length", _}, c.expr.expr) do
+               {:call, "length", [{:op, "||", {:ref, path, list}, {:value, []}}]} = c.expr.expr
+               %{name: c.name, kind: "length", path: path, list: list}
+             end) ++
+              for(
+                g <- r.aggregates,
+                do: %{name: g.name, kind: "count", path: g.path, list: nil}
+              ),
+          # (privacy: :unverified loads a gated relationship's twin: the
+          # public one is filtered by the actor's grants, and there is none)
+          has_many:
+            for rel <- r.relationships, rel.kind == :has_many do
+              %{name: twin_of.(r, rel), destination: namespace <> "." <> rel.destination}
+            end,
+          # belongs_to relationships a text_to_reference decision made
+          text_references:
+            for rel <- r.relationships,
+                rel.kind == :belongs_to,
+                Enum.any?(
+                  project.applied,
+                  &(&1.transform == :text_to_reference and &1.subject == rel.source)
+                ) do
+              %{name: twin_of.(r, rel), destination: namespace <> "." <> rel.destination}
+            end,
+          indexes:
+            for i <- r.indexes do
+              %{name: i.name, method: i.method, columns: i.columns}
             end
         }
       end
 
-    %{namespace: namespace, repo: repo, name: name, resources: resources}
+    %{
+      namespace: namespace,
+      repo: repo,
+      name: name,
+      extensions: project.extensions,
+      resources: resources
+    }
   end
 
 File.write!(Path.join(dir, "decisions.json"), Jason.encode!(decision_expectations, pretty: true))
