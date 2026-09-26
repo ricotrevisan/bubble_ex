@@ -16,7 +16,7 @@ defmodule BubbleEx.Plan.Criteria do
   | `:render_smoke` | the surface renders with fixtures and no placeholder is left |
   | `:visual_parity` | screenshots match the Bubble snapshot within tolerance |
   | `:step_order` | one step marker per action of `args.workflow`, in the order of `args.steps` |
-  | `:unit_test` | a test calls each listed workflow or flow with fixtures |
+  | `:unit_test` | a test calls each listed workflow or flow with fixtures; re-run when a task in `args.rerun_after` (a non-blocking `:coordinate` dependency) closes |
   | `:request_shape` | a test asserts each listed API call's method, URL, headers and body |
   | `:policy_matrix` | the privacy rules' allow and deny matrix holds |
   | `:replay` | recorded Bubble scenarios in `args.scope` replay identically |
@@ -44,12 +44,14 @@ defmodule BubbleEx.Plan.Criteria do
   The criteria of `task`. `facts` carries what the checks need beyond the
   task: `:elements` (traced element IDs), `:steps` (a workflow's action
   types in order), `:children` (subtask IDs), `:backend` (a backend
-  workflow), `:surface` (an acceptance task's surface task).
+  workflow), `:surface` (an acceptance task's surface task), `:coordinate`
+  (the tasks of its non-blocking `:coordinate` dependencies).
   """
   @spec for_task(Task.t(), map()) :: [Task.criterion()]
   def for_task(%Task{} = task, facts) do
     task
     |> checks_for(facts)
+    |> rerun_after(task, Map.get(facts, :coordinate, []))
     |> then(&if(Map.get(facts, :children, []) != [], do: &1 ++ [{:subtasks_done, %{}}], else: &1))
     |> Enum.with_index(1)
     |> Enum.map(fn {{check, args}, id} ->
@@ -144,6 +146,22 @@ defmodule BubbleEx.Plan.Criteria do
 
   defp checks_for(%Task{kind: kind, id: id}, _facts) when kind in [:delivery, :cutover],
     do: [{:attested, %{about: id}}]
+
+  # A `:coordinate` dependency does not block the task: its tests re-run
+  # once the callee's task closes.
+  defp rerun_after(checks, _task, []), do: checks
+
+  defp rerun_after(checks, task, tasks) do
+    if Enum.any?(checks, &match?({:unit_test, _}, &1)) do
+      Enum.map(checks, fn
+        {:unit_test, args} -> {:unit_test, Map.put(args, :rerun_after, tasks)}
+        check -> check
+      end)
+    else
+      checks ++
+        [{:unit_test, %{workflows: Enum.filter(task.subjects, &workflow?/1), rerun_after: tasks}}]
+    end
+  end
 
   defp code, do: [{:compiles, %{}}, {:lint, %{}}]
 

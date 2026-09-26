@@ -26,8 +26,8 @@ defmodule BubbleEx.Plan do
 
   | kind | one per | actor | status |
   |------|---------|-------|--------|
-  | `:generate` | generator output group: `schema`, `options` (option sets), `policies`, `styles`, `api_clients`, `routes`, `surfaces`, `workflow_entry_points` | generator | auto |
-  | `:remove_writes`, `:delete_workflows` | accepted finding that removes writes or workflows | generator | closed by the decision |
+  | `:generate` | generator output group: `schema`, `option_sets`, `policies`, `styles`, `api_clients`, `routes`, `surfaces`, `workflow_entry_points` | generator | auto |
+  | `:remove_writes`, `:delete_workflows` | applied finding (accepted, or a hint applied by default) that removes writes or workflows | generator | closed by the decision |
   | `:setup_secrets` | app, when an API Connector value is private | owner | open |
   | `:auth` | app; subjects are the log-in, sign-up and credential workflows | agent | open |
   | `:styles_residue` | app, when a named style is residue | agent | open |
@@ -70,14 +70,22 @@ defmodule BubbleEx.Plan do
     * `:api` - a workflow or surface on the API group it calls
     * `:calls` - a workflow on the workflows it triggers or schedules
       (callees first)
+    * `:coordinate` - non-blocking: a call edge that would close a cycle
+      between top-level tasks (see below)
     * `:release` - data dry run, full load, replay (after every acceptance
       and implementation task), delivery and the cutover ladder, in a chain
 
   A subtask is done with its parent, so cycles are checked between
-  top-level tasks: an edge that would close one is left out and listed in
-  `skipped` (`reason: :would_cycle`), in the order above (call edges go
-  first). Tasks are ordered topologically, preferring the batch just
-  started, then by kind, then by ID; subtasks follow their parent.
+  top-level tasks. Candidate edges are added by rule priority: `generate`,
+  `release`, `early` and `secrets`, `decision`, `reusable` and
+  `acceptance`, `fragment`, `plugin`, `api`, then `calls` last. An edge
+  that would close a cycle with those already added (on mm-137, only
+  `calls` edges between backend folders that call each other both ways) is
+  kept as a non-blocking `:coordinate` edge instead: ordering ignores it,
+  the calling task's `unit_test` criterion lists the callee in
+  `rerun_after`, and `skipped` reports it (`reason: :would_cycle`). Tasks
+  are ordered topologically, preferring the batch just started, then by
+  kind, then by ID; subtasks follow their parent.
 
   ## JSON
 
@@ -118,7 +126,9 @@ defmodule BubbleEx.Plan do
     * `frontend` - a `BubbleEx.Frontend.Normalized` of the same app, or nil
       (element placeholders are then not residue)
     * `applied` - `BubbleEx.Decision.Applied` entries, exactly as
-      `BubbleEx.Decision.applicable/2` returns them
+      `BubbleEx.Decision.applicable/2` returns them; a stale entry (its
+      recorded basis differs from the finding's current hashes) is
+      `:invalid_input`
 
   Options:
 
@@ -177,10 +187,38 @@ defmodule BubbleEx.Plan do
        )}
 
   defp check_applied(applied) do
-    if Enum.all?(applied, &is_struct(&1, Applied)),
-      do: :ok,
-      else: error("applied must be BubbleEx.Decision.Applied entries from Decision.applicable/2")
+    cond do
+      not Enum.all?(applied, &is_struct(&1, Applied)) ->
+        error("applied must be BubbleEx.Decision.Applied entries from Decision.applicable/2")
+
+      stale = Enum.find(applied, &stale?/1) ->
+        {:error,
+         Error.new(
+           :invalid_input,
+           "the decision is stale: it was recorded against another proposal or basis; " <>
+             "resolve the decisions against this snapshot",
+           %{key: stale.key}
+         )}
+
+      true ->
+        :ok
+    end
   end
+
+  # Like `BubbleEx.Target.Ash`: an owner's finding decision must carry the
+  # finding's current hashes as its basis; a hint applied by default has
+  # no basis and no record.
+  defp stale?(%Applied{kind: :finding, automatic: true} = a),
+    do: a.basis != nil or a.decision_id != nil or not hash?(a.proposal_sha256)
+
+  defp stale?(%Applied{kind: :finding} = a),
+    do:
+      not (hash?(a.proposal_sha256) and hash?(a.basis_sha256)) or
+        a.basis != %{proposal_sha256: a.proposal_sha256, basis_sha256: a.basis_sha256}
+
+  defp stale?(_rename), do: false
+
+  defp hash?(value), do: is_binary(value) and value =~ ~r/\A[0-9a-f]{64}\z/
 
   defp check_residue(entries) when is_list(entries) do
     if Enum.all?(entries, &residue_entry?/1),

@@ -20,6 +20,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:oauth` | API call | `index/2`: its group authenticates users with OAuth |
   | `:malformed_call` | API call | `index/2`: the call or its types registry is not an object |
   | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`) |
+  | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain (inside a runtime container), so its event wiring cannot be generated yet (`detail.element`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
 
   `index/2` and `frontend/2` are computed by `BubbleEx.Plan.build/5` itself;
@@ -39,7 +40,8 @@ defmodule BubbleEx.Plan.Residue do
 
   @reasons ~w(uncompiled_expression plugin_element plugin_action plugin_event unsupported_action
               unsupported_event auth_action unresolved_reference dynamic_url oauth malformed_call
-              runtime_container no_native_lowering style_condition plugin_style)a
+              runtime_container no_native_lowering trigger_not_normalized style_condition
+              plugin_style)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded
@@ -311,6 +313,11 @@ defmodule BubbleEx.Plan.Residue do
   `:runtime_container` (popups, floating groups and other runtime overlays,
   whose content it does not normalize) or `:no_native_lowering` (with the
   placeholder's `variant`). Plugin elements are left to `index/2`.
+
+  A workflow listening to an element the normalized frontend does not
+  contain (content of a runtime container, which normalization does not
+  descend into) is `:trigger_not_normalized`: its body may compile, but
+  its event cannot be wired to generated markup.
   """
   @spec frontend(Normalized.t() | nil, Index.t()) :: [t()]
   def frontend(nil, _index), do: []
@@ -329,8 +336,30 @@ defmodule BubbleEx.Plan.Residue do
         _ -> []
       end
     end)
+    |> Enum.concat(triggers(index, normalized_ids(model)))
     |> Enum.uniq()
     |> sort()
+  end
+
+  defp triggers(index, present) do
+    for %{kind: :workflow, id: id} <- index.symbols,
+        %{to: "element:" <> element = to} <- Index.references_from(index, id, [:listens_to]),
+        Index.symbol(index, to),
+        not MapSet.member?(present, element),
+        do: entry(id, :trigger_not_normalized, %{element: to})
+  end
+
+  @doc """
+  The Bubble IDs of every node (page, reusable, element, placeholder) of a
+  normalized frontend.
+  """
+  @spec normalized_ids(Normalized.t()) :: MapSet.t()
+  def normalized_ids(%Normalized{} = model) do
+    (model.pages ++ model.reusables)
+    |> Enum.flat_map(&nodes/1)
+    |> Enum.map(& &1.source.bubble_id)
+    |> Enum.reject(&is_nil/1)
+    |> MapSet.new()
   end
 
   defp placeholder(id, :runtime_overlay), do: entry(id, :runtime_container, %{})

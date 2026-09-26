@@ -10,16 +10,28 @@ defmodule BubbleEx.Plan.Builder do
   alias BubbleEx.Index.{Graph, Subject, Symbol}
   alias BubbleEx.Plan.{Criteria, Order, Residue, Task}
 
-  @generate ~w(schema options policies styles api_clients routes surfaces workflow_entry_points)a
+  # Generator groups, as full task IDs (the group names are plan IDs, not
+  # data-model members).
+  @generate [
+    "generate:schema",
+    "generate:option_sets",
+    "generate:policies",
+    "generate:styles",
+    "generate:api_clients",
+    "generate:routes",
+    "generate:surfaces",
+    "generate:workflow_entry_points"
+  ]
 
   # generate:<a> depends on generate:<b>
   @generate_deps [
-    schema: [:options],
-    policies: [:schema],
-    api_clients: [:schema],
-    routes: [:schema],
-    surfaces: [:styles, :routes, :api_clients, :policies],
-    workflow_entry_points: [:policies, :api_clients]
+    {"generate:schema", ["generate:option_sets"]},
+    {"generate:policies", ["generate:schema"]},
+    {"generate:api_clients", ["generate:schema"]},
+    {"generate:routes", ["generate:schema"]},
+    {"generate:surfaces",
+     ["generate:styles", "generate:routes", "generate:api_clients", "generate:policies"]},
+    {"generate:workflow_entry_points", ["generate:policies", "generate:api_clients"]}
   ]
 
   @cutover ~w(rehearsal runbook communications freeze final_delta switch verify sign_off)
@@ -289,19 +301,19 @@ defmodule BubbleEx.Plan.Builder do
 
   defp generate_tasks(%{index: index} = ctx) do
     subjects = %{
-      schema: ids(index, [:data_type, :field]),
-      options: ids(index, [:option_set, :option_value, :option_attribute]),
-      policies: ids(index, [:privacy_rule]),
-      styles: style_subjects(ctx),
-      api_clients: ids(index, [:api_group, :api_call]),
-      routes: ctx.surfaces |> Enum.filter(&(&1.kind == :page)) |> Enum.map(& &1.id),
-      surfaces: Enum.map(ctx.surfaces, & &1.id),
-      workflow_entry_points: for(w <- ctx.workflows, w.attrs[:backend], do: w.id)
+      "generate:schema" => ids(index, [:data_type, :field]),
+      "generate:option_sets" => ids(index, [:option_set, :option_value, :option_attribute]),
+      "generate:policies" => ids(index, [:privacy_rule]),
+      "generate:styles" => style_subjects(ctx),
+      "generate:api_clients" => ids(index, [:api_group, :api_call]),
+      "generate:routes" => ctx.surfaces |> Enum.filter(&(&1.kind == :page)) |> Enum.map(& &1.id),
+      "generate:surfaces" => Enum.map(ctx.surfaces, & &1.id),
+      "generate:workflow_entry_points" => for(w <- ctx.workflows, w.attrs[:backend], do: w.id)
     }
 
     for group <- @generate do
       %Task{
-        id: "generate:#{group}",
+        id: group,
         kind: :generate,
         actor: :generator,
         status: :auto,
@@ -319,10 +331,10 @@ defmodule BubbleEx.Plan.Builder do
   defp ids(index, kinds),
     do: for(s <- index.symbols, s.kind in kinds, do: s.id)
 
-  # remove_writes / delete_workflows of accepted findings: generated nodes
-  # the decision closes.
+  # remove_writes / delete_workflows of applied findings (accepted, or
+  # hints applied by default): generated nodes the decision closes.
   defp decision_tasks(ctx) do
-    for %Applied{kind: :finding, automatic: false} = a <- ctx.applied,
+    for %Applied{kind: :finding} = a <- ctx.applied,
         {kind, subjects} <- [
           remove_writes: a.proposal |> list(:remove_writes) |> Enum.map(& &1[:action]),
           delete_workflows: list(a.proposal, :delete_workflows) ++ list(a.proposal, :remove_calls)
@@ -650,7 +662,7 @@ defmodule BubbleEx.Plan.Builder do
     chain =
       for {group, deps} <- @generate_deps,
           dep <- deps,
-          do: edge("generate:#{group}", "generate:#{dep}", :generate)
+          do: edge(group, dep, :generate)
 
     entry =
       for t <- Map.values(tasks),
@@ -870,7 +882,8 @@ defmodule BubbleEx.Plan.Builder do
   defp finish(%Task{} = t, ctx, children) do
     covered = covered(ctx, t)
     decisions = effective(ctx, covered)
-    facts = facts(ctx, t, children)
+    coordinate = for %{kind: :coordinate, task: task} <- t.depends_on, do: task
+    facts = ctx |> facts(t, children) |> Map.put(:coordinate, coordinate)
 
     %{
       t
@@ -994,8 +1007,7 @@ defmodule BubbleEx.Plan.Builder do
         |> Map.new(fn {k, ts} -> {k, statuses_count(ts)} end),
       "residue" => residue |> Enum.frequencies_by(&Atom.to_string(&1.reason)),
       "units" => %{
-        "elements" =>
-          unit(elements, with_residue) |> Map.put("not_normalized", not_normalized(ctx, elements)),
+        "elements" => element_units(ctx, elements, with_residue),
         "actions" =>
           unit(kept_actions, with_residue) |> Map.put("removed", MapSet.size(ctx.removed_actions)),
         "workflows_frontend" =>
@@ -1003,6 +1015,11 @@ defmodule BubbleEx.Plan.Builder do
         "workflows_backend" =>
           workflow_tasks |> Enum.filter(&backend?(ctx, &1)) |> statuses_count(),
         "workflows_removed" => MapSet.size(ctx.deleted_workflows),
+        "workflows_trigger_not_normalized" =>
+          residue
+          |> Enum.filter(&(&1.reason == :trigger_not_normalized))
+          |> Enum.uniq_by(& &1.subject)
+          |> length(),
         "api_calls" => api_units(ctx, tasks),
         "styles" => %{
           "total" => length(style_subjects(ctx)),
@@ -1034,18 +1051,26 @@ defmodule BubbleEx.Plan.Builder do
     %{"total" => length(ids), "generated" => length(ids) - residue, "residue" => residue}
   end
 
-  defp not_normalized(%{frontend: nil}, _elements), do: nil
+  # With a frontend, an element counts as generated only when it was
+  # normalized and has no residue; one normalization never reached (inside
+  # a runtime container) is `not_normalized`, whatever its residue. Without
+  # one, `not_normalized` is nil and generated means no residue.
+  defp element_units(%{frontend: nil}, elements, with_residue),
+    do: elements |> unit(with_residue) |> Map.put("not_normalized", nil)
 
-  defp not_normalized(%{frontend: frontend}, elements) do
-    present =
-      (frontend.pages ++ frontend.reusables)
-      |> Enum.flat_map(&node_ids/1)
-      |> MapSet.new()
+  defp element_units(%{frontend: frontend}, elements, with_residue) do
+    present = Residue.normalized_ids(frontend)
+    {normalized, missing} = Enum.split_with(elements, &MapSet.member?(present, bubble_id(&1)))
+    residue = Enum.count(normalized, &MapSet.member?(with_residue, &1))
 
-    Enum.count(elements, &(not MapSet.member?(present, bubble_id(&1))))
+    %{
+      "total" => length(elements),
+      "generated" => length(normalized) - residue,
+      "residue" => residue,
+      "not_normalized" => length(missing),
+      "not_normalized_with_residue" => Enum.count(missing, &MapSet.member?(with_residue, &1))
+    }
   end
-
-  defp node_ids(node), do: [node.source.bubble_id | Enum.flat_map(node.children, &node_ids/1)]
 
   defp api_units(ctx, tasks) do
     calls = ids(ctx.index, [:api_call])

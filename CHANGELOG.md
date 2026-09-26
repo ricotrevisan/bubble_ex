@@ -18,12 +18,17 @@ All notable changes to this project are documented here.
   cutover ladder. Dependencies are typed (`generate`, `early`, `secrets`,
   `decision`, `reusable`, `fragment`, `acceptance`, `plugin`, `api`,
   `calls`, `release`) with the symbols justifying them; an edge that would
-  close a cycle between top-level tasks is skipped and reported. Order is
+  close a cycle between top-level tasks is kept as a non-blocking
+  `coordinate` edge (the caller's `unit_test` re-runs after the callee;
+  reported in `skipped`). Order is
   topological with batch affinity, then kind, then ID. Criteria are
   abstract checks (`Plan.Criteria`, 17 kinds; only `attested` can be
-  waived). Each task has a `source_sha256` over its subjects' content,
+  waived). Stale applied decisions are rejected. A frontend workflow whose
+  trigger element was not normalized is residue (`trigger_not_normalized`);
+  an element counts as generated only when normalized without residue.
+  Each task has a `source_sha256` over its subjects' content,
   references, residue and the effective decisions on them. Accepted
-  `remove_writes` / `delete_workflows` become generator nodes closed by the
+  `remove_writes` / `delete_workflows` (and hints applied by default) become generator nodes closed by the
   decision; deleted workflows get no task and dropped actions are not
   steps. `to_json/1` is canonical (`.wtf/plan.json`, schema_version 1);
   task IDs are kind plus Bubble IDs. `Plan.Residue` computes residue from

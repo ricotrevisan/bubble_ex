@@ -6,7 +6,8 @@ defmodule BubbleEx.Plan.Order do
   # A subtask is done with its parent, so dependencies are checked for
   # cycles between top-level tasks ("roots"): an edge from a subtask counts
   # as an edge from its root. Candidate edges are added in priority order;
-  # one that would close a cycle between roots is skipped and reported.
+  # one that would close a cycle between roots is kept as a non-blocking
+  # `:coordinate` edge (ordering ignores it) and reported in `skipped`.
   # Edges between subtasks of one root only order those subtasks.
 
   alias BubbleEx.Plan.Task
@@ -55,8 +56,11 @@ defmodule BubbleEx.Plan.Order do
           rf == rt ->
             {[edge | kept], skipped, graph}
 
+          # Kept for the task's agent as a non-blocking `:coordinate`
+          # edge; ordering ignores it.
           reaches?(graph, rt, rf) ->
-            {kept, [Map.put(edge, :reason, :would_cycle) | skipped], graph}
+            {[%{edge | kind: :coordinate} | kept],
+             [Map.merge(edge, %{reason: :would_cycle, kept_as: :coordinate}) | skipped], graph}
 
           true ->
             {[edge | kept], skipped, Map.update(graph, rf, [rt], &[rt | &1])}
@@ -143,6 +147,7 @@ defmodule BubbleEx.Plan.Order do
   defp root_deps(tasks, id, children) do
     [tasks[id] | Map.get(children, id, [])]
     |> Enum.flat_map(& &1.depends_on)
+    |> Enum.reject(&(&1.kind == :coordinate))
     |> Enum.map(&root(tasks, &1.task))
     |> Enum.reject(&(&1 == id))
     |> MapSet.new()
@@ -182,6 +187,7 @@ defmodule BubbleEx.Plan.Order do
       Map.new(subs, fn t ->
         {t.id,
          t.depends_on
+         |> Enum.reject(&(&1.kind == :coordinate))
          |> Enum.map(& &1.task)
          |> Enum.filter(&MapSet.member?(ids, &1))
          |> MapSet.new()}

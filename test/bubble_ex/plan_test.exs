@@ -32,7 +32,7 @@ defmodule BubbleEx.PlanTest do
     test "one per surface and backend folder, workflows as subtasks", %{plan: plan} do
       assert plan |> Plan.top_level() |> ids() ==
                Enum.sort(
-                 ~w(generate:schema generate:options generate:policies generate:styles
+                 ~w(generate:schema generate:option_sets generate:policies generate:styles
                     generate:api_clients generate:routes generate:surfaces
                     generate:workflow_entry_points setup:secrets auth
                     surface:page/pHome surface:reusable/rCard fragment:eBig
@@ -165,10 +165,18 @@ defmodule BubbleEx.PlanTest do
       assert plan.skipped |> Enum.filter(&(&1.kind != :calls)) == []
     end
 
-    test "an edge that would close a cycle between top-level tasks is skipped", %{plan: plan} do
+    test "an edge that would close a cycle between top-level tasks is kept non-blocking",
+         %{plan: plan} do
       # fOne's wApiA calls fTwo's wApiC first (by ID), so fTwo's wApiB -> fOne's
       # wApiD would make the folders wait on each other.
       assert {"workflow:wApiC", :calls} in deps(task!(plan, "workflow:wApiA"))
+
+      caller = task!(plan, "workflow:wApiB")
+      assert deps(caller) == [{"workflow:wApiD", :coordinate}]
+      assert [%{via: ["action:aToD"]}] = caller.depends_on
+
+      assert %{args: %{workflows: ["workflow:wApiB"], rerun_after: ["workflow:wApiD"]}} =
+               Enum.find(caller.criteria, &(&1.check == :unit_test))
 
       assert plan.skipped == [
                %{
@@ -176,7 +184,8 @@ defmodule BubbleEx.PlanTest do
                  to: "workflow:wApiD",
                  kind: :calls,
                  via: ["action:aToD"],
-                 reason: :would_cycle
+                 reason: :would_cycle,
+                 kept_as: :coordinate
                }
              ]
     end
@@ -187,7 +196,7 @@ defmodule BubbleEx.PlanTest do
 
       assert Enum.map(plan.tasks, & &1.order) == Enum.to_list(0..(length(plan.tasks) - 1))
 
-      for t <- plan.tasks, d <- t.depends_on do
+      for t <- plan.tasks, d <- t.depends_on, d.kind != :coordinate do
         if root.(t.id) == root.(d.task),
           do: assert(order[d.task] < order[t.id], "#{t.id} before #{d.task}"),
           else: assert(order[root.(d.task)] < order[root.(t.id)], "#{t.id} before #{d.task}")
@@ -347,6 +356,17 @@ defmodule BubbleEx.PlanTest do
       assert derive.key in task!(plan, "generate:schema").decisions
     end
 
+    test "a hint applied by default that removes writes gets its node too", ctx do
+      hint = %{ctx.derive | automatic: true, basis: nil, decision_id: nil}
+      %{model: model, index: index} = ctx.fixture
+      {:ok, plan} = Plan.build(model, index, nil, [hint])
+
+      assert %Task{status: :closed, closed_by: key} =
+               task!(plan, "remove_writes:" <> hint.finding_id)
+
+      assert key == hint.key
+    end
+
     test "a task no decision touches keeps its hash", ctx do
       untouched =
         for t <- ctx.decided.tasks, t.decisions == [], t.kind == :workflow, do: t
@@ -430,46 +450,61 @@ defmodule BubbleEx.PlanTest do
   defp rename_all(other), do: other
 
   describe "residue" do
-    test "frontend placeholders are element residue", ctx do
+    test "frontend placeholders are element residue; unreached triggers keep workflows open",
+         ctx do
+      node = fn id, kind, children ->
+        %Node{
+          exporter_id: id,
+          kind: kind,
+          map_key: id,
+          source: %Source{bubble_id: id},
+          children: children
+        }
+      end
+
+      placeholder = fn id, variant ->
+        %{node.(id, :placeholder, []) | variant: variant, placeholder?: true}
+      end
+
+      # eBig is a runtime container: its content (eT1, eT2, eBtn) is not normalized.
       frontend = %Normalized{
         pages: [
-          %Node{
-            exporter_id: "p",
-            kind: :page,
-            map_key: "pgHome",
-            source: %Source{bubble_id: "pHome"},
-            children: [
-              %Node{
-                exporter_id: "big",
-                kind: :placeholder,
-                variant: :runtime_overlay,
-                placeholder?: true,
-                map_key: "grpBig",
-                source: %Source{bubble_id: "eBig"}
-              },
-              %Node{
-                exporter_id: "plug",
-                kind: :placeholder,
-                variant: :unsupported_kind,
-                placeholder?: true,
-                map_key: "plug",
-                source: %Source{bubble_id: "ePlug"}
-              }
-            ]
-          }
+          node.("pHome", :page, [
+            placeholder.("eBig", :runtime_overlay),
+            placeholder.("ePlug", :unsupported_kind),
+            node.("eCard", :reusable_instance, []),
+            node.("eLogin", :button, [])
+          ])
         ],
-        reusables: [],
+        reusables: [node.("rCard", :reusable_definition, [node.("eCardText", :text, [])])],
         styles: []
       }
 
       # The plugin element stays the index's plugin residue.
       assert Residue.frontend(frontend, ctx.index) == [
-               %{subject: "element:eBig", reason: :runtime_container, detail: %{}}
+               %{subject: "element:eBig", reason: :runtime_container, detail: %{}},
+               %{
+                 subject: "workflow:wClick",
+                 reason: :trigger_not_normalized,
+                 detail: %{element: "element:eBtn"}
+               }
              ]
 
       {:ok, plan} = Plan.build(ctx.model, ctx.index, frontend)
       assert %Task{status: :open} = task!(plan, "surface:page/pHome")
-      assert plan.coverage["units"]["elements"]["not_normalized"] == 8
+      assert %Task{status: :open} = task!(plan, "workflow:wClick")
+      assert %Task{status: :auto} = task!(plan, "workflow:wCard")
+
+      # Only normalized elements without residue count as generated.
+      assert plan.coverage["units"]["elements"] == %{
+               "total" => 10,
+               "generated" => 3,
+               "residue" => 2,
+               "not_normalized" => 5,
+               "not_normalized_with_residue" => 0
+             }
+
+      assert plan.coverage["units"]["workflows_trigger_not_normalized"] == 1
     end
 
     test "expressions that do not compile are residue of their owner" do
@@ -537,7 +572,48 @@ defmodule BubbleEx.PlanTest do
     end
   end
 
+  describe "backend folders" do
+    test "without folder membership every backend workflow is in backend:unfiled" do
+      # Live payloads carry no backend workflows; `wf_folder` comes from
+      # `.bubble` exports (the split-export loader restores it).
+      app =
+        update_in(@app, ["api"], fn api ->
+          Map.new(api, fn {k, wf} ->
+            {k, update_in(wf, ["properties"], &Map.delete(&1, "wf_folder"))}
+          end)
+        end)
+
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, plan} = Plan.build(model, index)
+
+      assert plan |> Plan.top_level() |> Enum.filter(&(&1.kind == :backend)) |> ids() ==
+               ["backend:unfiled"]
+
+      assert plan |> Plan.subtasks("backend:unfiled") |> ids() ==
+               ~w(workflow:wApiA workflow:wApiB workflow:wApiC workflow:wApiD workflow:wApiE)
+
+      # One task, so no calls between folders to coordinate.
+      assert plan.skipped == []
+    end
+  end
+
   describe "input" do
+    test "rejects stale decisions" do
+      %{model: model, index: index, applied: applied} = DecidedFixture.build(:derive)
+      [decided | _] = for a <- applied, not a.automatic, do: a
+
+      stale = %{decided | basis: %{decided.basis | basis_sha256: String.duplicate("0", 64)}}
+
+      assert {:error, %Error{kind: :invalid_input, context: %{key: key}}} =
+               Plan.build(model, index, nil, [stale | List.delete(applied, decided)])
+
+      assert key == decided.key
+
+      forged = %{decided | automatic: true}
+      assert {:error, %Error{}} = Plan.build(model, index, nil, [forged])
+    end
+
     test "rejects what is not a plan input", ctx do
       assert {:error, %Error{kind: :invalid_input}} = Plan.build(%{}, ctx.index)
       assert {:error, %Error{kind: :invalid_input}} = Plan.build(ctx.model, ctx.index, nil, [%{}])
