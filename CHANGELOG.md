@@ -6,6 +6,36 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`BubbleEx.Plan`: stack-neutral migration task graph** (WTF-366, T1 of
+  WTF-359). `Plan.build(model, index, frontend, applied, opts)` derives
+  generator nodes (`generate:*`, auto), one task per page or reusable
+  (mobile views excluded) and per backend workflow folder, workflows as
+  subtasks that close automatically when they have no residue, workflow
+  call cycles (SCC, more than one member) and reusables containing each
+  other as one `cycle` task, fragments for large top-level containers,
+  per-surface acceptance (reviewer), plugins, API groups and calls (used
+  ones only), auth, secrets, style residue, data, replay, delivery and the
+  cutover ladder. Dependencies are typed (`generate`, `early`, `secrets`,
+  `decision`, `reusable`, `fragment`, `acceptance`, `plugin`, `api`,
+  `calls`, `release`) with the symbols justifying them; an edge that would
+  close a cycle between top-level tasks is skipped and reported. Order is
+  topological with batch affinity, then kind, then ID. Criteria are
+  abstract checks (`Plan.Criteria`, 17 kinds; only `attested` can be
+  waived). Each task has a `source_sha256` over its subjects' content,
+  references, residue and the effective decisions on them. Accepted
+  `remove_writes` / `delete_workflows` become generator nodes closed by the
+  decision; deleted workflows get no task and dropped actions are not
+  steps. `to_json/1` is canonical (`.wtf/plan.json`, schema_version 1);
+  task IDs are kind plus Bubble IDs. `Plan.Residue` computes residue from
+  the index, the normalized frontend, expressions (IR compile, with an
+  optional target check) and named styles. Private opt-in dry run
+  (`test/bubble_ex/plan_private_fixture_test.exs`) with a counts-only
+  mm-137 snapshot (`test/support/plan/counts/mm-137.json`).
+- Index workflow symbols carry `folder` (the Bubble `wf_folder` ID);
+  `Index.schema_version/0` is 2. The test split-export loader restores
+  `wf_folder` from folder directories and loads named styles.
+  `Index.WorkflowAnalysis.action_class/1` is public.
+
 - **`Target.Ash.map/3` applies owner decisions, cut 1** (WTF-401, D-2 of
   WTF-352). `decisions` is the output of `Decision.applicable/2` (a list of
   `Decision.Applied`); raw decision records, stale entries (recorded basis

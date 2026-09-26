@@ -41,6 +41,8 @@ defmodule BubbleEx.Index do
 
     * `event_type`, `backend` (defined in the backend `api` collection) and
       `public` (a backend workflow exposed as a public API endpoint)
+    * `folder` - the Bubble ID of the editor folder the workflow is filed
+      in (`wf_folder`), when it is in one
     * `ignore_privacy_rules` - a backend workflow's own setting, as supplied;
       `runs_ignoring_privacy_rules: true` when it effectively runs ignoring
       privacy rules (see below)
@@ -163,7 +165,7 @@ defmodule BubbleEx.Index do
     Symbol
   }
 
-  @schema_version 1
+  @schema_version 2
 
   @enforce_keys [:schema_version, :source_sha256, :content_sha256, :symbols, :references]
   defstruct [

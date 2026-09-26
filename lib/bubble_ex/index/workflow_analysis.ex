@@ -155,11 +155,17 @@ defmodule BubbleEx.Index.WorkflowAnalysis do
     end)
   end
 
-  defp action_class(type) when type in @server, do: :server
-  defp action_class(type) when type in @client, do: :client
-  defp action_class("apiconnector2-" <> _), do: :server
+  @doc """
+  Where a built-in action type runs: `:server`, `:client`, `:inherit` (a
+  custom event call: its callee's class) or `:unknown` (plugin and
+  unrecognized actions).
+  """
+  @spec action_class(term()) :: :server | :client | :inherit | :unknown
+  def action_class(type) when type in @server, do: :server
+  def action_class(type) when type in @client, do: :client
+  def action_class("apiconnector2-" <> _), do: :server
 
-  defp action_class(type) do
+  def action_class(type) do
     case Workflows.call_kind(type) do
       {"custom_event", _} -> :inherit
       {_, _} -> :server

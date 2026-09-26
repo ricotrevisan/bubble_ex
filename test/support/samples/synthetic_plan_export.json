@@ -1,0 +1,381 @@
+{
+  "_id": "plan-demo",
+  "api": {
+    "wfApiA": {
+      "actions": {
+        "0": {
+          "id": "aToC",
+          "properties": {
+            "api_event": "wApiC"
+          },
+          "type": "ScheduleAPIEvent"
+        }
+      },
+      "id": "wApiA",
+      "properties": {
+        "wf_folder": "fOne",
+        "wf_name": "a"
+      },
+      "type": "APIEvent"
+    },
+    "wfApiB": {
+      "actions": {
+        "0": {
+          "id": "aToD",
+          "properties": {
+            "api_event": "wApiD"
+          },
+          "type": "ScheduleAPIEvent"
+        }
+      },
+      "id": "wApiB",
+      "properties": {
+        "wf_folder": "fTwo",
+        "wf_name": "b"
+      },
+      "type": "APIEvent"
+    },
+    "wfApiC": {
+      "actions": {
+        "0": {
+          "id": "aNewTask",
+          "properties": {
+            "thing_type": "custom.task"
+          },
+          "type": "NewThing"
+        }
+      },
+      "id": "wApiC",
+      "properties": {
+        "wf_folder": "fTwo",
+        "wf_name": "c"
+      },
+      "type": "APIEvent"
+    },
+    "wfApiD": {
+      "actions": {
+        "0": {
+          "id": "aAgain",
+          "properties": {
+            "api_event": "wApiD"
+          },
+          "type": "ScheduleAPIEvent"
+        }
+      },
+      "id": "wApiD",
+      "properties": {
+        "expose": true,
+        "wf_folder": "fOne",
+        "wf_name": "d"
+      },
+      "type": "APIEvent"
+    },
+    "wfApiE": {
+      "actions": {
+        "0": {
+          "id": "aNewTask2",
+          "properties": {
+            "thing_type": "custom.task"
+          },
+          "type": "NewThing"
+        }
+      },
+      "id": "wApiE",
+      "properties": {
+        "wf_name": "e"
+      },
+      "type": "APIEvent"
+    }
+  },
+  "app_version": "test",
+  "element_definitions": {
+    "rA": {
+      "elements": {
+        "b": {
+          "default_name": "B Instance",
+          "id": "eInstB",
+          "properties": {
+            "custom_id": "rB"
+          },
+          "type": "CustomElement"
+        }
+      },
+      "id": "rA",
+      "name": "Tree A",
+      "properties": {},
+      "type": "CustomDefinition"
+    },
+    "rB": {
+      "elements": {
+        "a": {
+          "default_name": "A Instance",
+          "id": "eInstA",
+          "properties": {
+            "custom_id": "rA"
+          },
+          "type": "CustomElement"
+        }
+      },
+      "id": "rB",
+      "name": "Tree B",
+      "properties": {},
+      "type": "CustomDefinition"
+    },
+    "rCard": {
+      "elements": {
+        "txt": {
+          "default_name": "Text Card",
+          "id": "eCardText",
+          "properties": {},
+          "type": "Text"
+        }
+      },
+      "id": "rCard",
+      "name": "Card",
+      "properties": {},
+      "type": "CustomDefinition",
+      "workflows": {
+        "wfCard": {
+          "actions": {
+            "0": {
+              "id": "aGo",
+              "properties": {},
+              "type": "ChangePage"
+            }
+          },
+          "id": "wCard",
+          "properties": {
+            "element_id": "eCardText"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "mobile_views": {
+    "mvOne": {
+      "id": "mOne",
+      "name": "mobile",
+      "properties": {},
+      "type": "Page",
+      "workflows": {
+        "wfMob": {
+          "actions": {
+            "0": {
+              "id": "aMob",
+              "properties": {},
+              "type": "ChangePage"
+            }
+          },
+          "id": "wMob",
+          "properties": {},
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "pages": {
+    "pgHome": {
+      "elements": {
+        "btnLogin": {
+          "default_name": "Button Login",
+          "id": "eLogin",
+          "properties": {},
+          "type": "Button"
+        },
+        "card": {
+          "default_name": "Card Instance",
+          "id": "eCard",
+          "properties": {
+            "custom_id": "rCard"
+          },
+          "type": "CustomElement"
+        },
+        "grpBig": {
+          "default_name": "Group Big",
+          "elements": {
+            "btn": {
+              "default_name": "Button Go",
+              "id": "eBtn",
+              "properties": {},
+              "type": "Button"
+            },
+            "t1": {
+              "default_name": "Text One",
+              "id": "eT1",
+              "properties": {},
+              "type": "Text"
+            },
+            "t2": {
+              "default_name": "Text Two",
+              "id": "eT2",
+              "properties": {},
+              "type": "Text"
+            }
+          },
+          "id": "eBig",
+          "properties": {},
+          "type": "Group"
+        },
+        "plug": {
+          "default_name": "Plugin Chart",
+          "id": "ePlug",
+          "properties": {},
+          "type": "1600000000000x100000000000000000-AAA"
+        }
+      },
+      "id": "pHome",
+      "name": "index",
+      "properties": {},
+      "type": "Page",
+      "workflows": {
+        "wfClick": {
+          "actions": {
+            "0": {
+              "id": "aNotify",
+              "properties": {
+                "custom_event": "wNotify"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "1": {
+              "id": "aSched",
+              "properties": {
+                "api_event": "wApiA"
+              },
+              "type": "ScheduleAPIEvent"
+            },
+            "2": {
+              "id": "aSend",
+              "properties": {},
+              "type": "apiconnector2-grpMail.callSend"
+            }
+          },
+          "id": "wClick",
+          "properties": {
+            "element_id": "eBtn"
+          },
+          "type": "ButtonClicked"
+        },
+        "wfLogin": {
+          "actions": {
+            "0": {
+              "id": "aLogin",
+              "properties": {},
+              "type": "LogIn"
+            }
+          },
+          "id": "wLogin",
+          "properties": {
+            "element_id": "eLogin"
+          },
+          "type": "ButtonClicked"
+        },
+        "wfLoopA": {
+          "actions": {
+            "0": {
+              "id": "aToB",
+              "properties": {
+                "custom_event": "wLoopB"
+              },
+              "type": "TriggerCustomEvent"
+            }
+          },
+          "id": "wLoopA",
+          "properties": {
+            "event_name": "loop a"
+          },
+          "type": "CustomEvent"
+        },
+        "wfLoopB": {
+          "actions": {
+            "0": {
+              "id": "aToA",
+              "properties": {
+                "custom_event": "wLoopA"
+              },
+              "type": "TriggerCustomEvent"
+            }
+          },
+          "id": "wLoopB",
+          "properties": {
+            "event_name": "loop b"
+          },
+          "type": "CustomEvent"
+        },
+        "wfNotify": {
+          "actions": {
+            "0": {
+              "id": "aShow",
+              "properties": {
+                "element_id": "eT1"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wNotify",
+          "properties": {
+            "event_name": "notify"
+          },
+          "type": "CustomEvent"
+        },
+        "wfPlug": {
+          "actions": {
+            "0": {
+              "id": "aPlug",
+              "properties": {},
+              "type": "1600000000000x100000000000000000-AAB"
+            }
+          },
+          "id": "wPlug",
+          "properties": {
+            "element_id": "ePlug"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "settings": {
+    "client_safe": {
+      "apiconnector2": {
+        "grpMail": {
+          "auth": "none",
+          "calls": {
+            "callSend": {
+              "method": "post",
+              "name": "Send",
+              "publish_as": "action",
+              "url": "https://api.mail.test/send"
+            },
+            "callUnused": {
+              "method": "get",
+              "name": "Unused",
+              "publish_as": "data",
+              "url": "https://api.mail.test/list"
+            }
+          },
+          "human": "Mail",
+          "shared_headers": {
+            "h1": {
+              "key": "Authorization",
+              "private": true,
+              "value": ""
+            }
+          }
+        }
+      }
+    }
+  },
+  "user_types": {
+    "task": {
+      "display": "Task",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    }
+  }
+}
