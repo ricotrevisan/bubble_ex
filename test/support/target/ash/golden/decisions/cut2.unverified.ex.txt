@@ -264,6 +264,8 @@ defmodule MyApp.Card do
       reference :creator, ignore?: true
       reference :assignee, ignore?: true
       reference :board, ignore?: true
+      reference :creator_for_privacy, ignore?: true
+      reference :assignee_for_privacy, ignore?: true
       reference :board_for_privacy, ignore?: true
     end
 
@@ -351,6 +353,7 @@ defmodule MyApp.Card do
       allow_nil? true
       public? true
       sortable? false
+      filter expr(parent(privacy_rule_creator))
     end
 
     belongs_to :assignee, MyApp.User do
@@ -361,6 +364,7 @@ defmodule MyApp.Card do
       allow_nil? true
       public? true
       sortable? false
+      filter expr(parent(privacy_rule_creator))
     end
 
     belongs_to :board, MyApp.Board do
@@ -371,6 +375,25 @@ defmodule MyApp.Card do
       allow_nil? true
       public? true
       sortable? false
+      filter expr(parent(privacy_rule_creator))
+    end
+
+    belongs_to :creator_for_privacy, MyApp.User do
+      source_attribute :creator_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
+    end
+
+    belongs_to :assignee_for_privacy, MyApp.User do
+      source_attribute :assignee_id
+      destination_attribute :id
+      attribute_type :string
+      define_attribute? false
+      allow_nil? true
+      public? false
     end
 
     belongs_to :board_for_privacy, MyApp.Board do
@@ -388,6 +411,10 @@ defmodule MyApp.Card do
       public?: true,
       description:
         "The length of board.watchers (owner decision finding:denormalized_field:671c6b64fcee5682); not stored"
+
+    calculate :privacy_rule_creator, :boolean, expr(creator_id == ^actor(:id)),
+      public?: false,
+      description: "Bubble privacy rule \"Creator\" (creator_): its condition holds"
   end
 
   aggregates do
@@ -431,12 +458,12 @@ defmodule MyApp.Card do
 
     policy action(:read) do
       description "Direct view (by ID, or through a reference): the user may view some field of the record"
-      authorize_if always()
+      authorize_if expr(privacy_rule_creator)
     end
 
     policy action(:search) do
       description "Searches: the user may find the record in searches"
-      authorize_if always()
+      authorize_if expr(privacy_rule_creator)
     end
   end
 
@@ -458,7 +485,7 @@ defmodule MyApp.Card do
       :board_watcher_count,
       :board_card_count
     ] do
-      authorize_if always()
+      authorize_if expr(privacy_rule_creator)
     end
   end
 end

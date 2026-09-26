@@ -799,6 +799,18 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Cut-2 follow-ups** (WTF-410). A `derive_count` computed as a list
+  length now says in its `ash_decision_applied` diagnostic that the loader
+  must drop IDs of deleted records from the list, which Bubble's `:count`
+  hides (WTF-357); the behaviour is unchanged. The trigram index is
+  documented as serving `contains` against a value (LIKE/ILIKE), not
+  against another column (strpos). The cut-2 fixture's Card has a Creator
+  read rule, and `scripts/ash_compile_check.sh` loads the derived
+  `has_many` through its public relationship with authorization on (a
+  non-creator sees `[]`, the creator only their child). The mm-137 encoder
+  count snapshot records the Postgres DDL size after WTF-393's
+  `COMMENT ON COLUMN`.
+
 - **T-SQL names cannot split the sqlcmd batch** (WTF-409). T-SQL allows raw
   line breaks inside `[...]`, so a Bubble name holding a line that is only
   `GO` (or `GO 5`, `go`, a `:r` or `!!` sqlcmd command) cut the generated

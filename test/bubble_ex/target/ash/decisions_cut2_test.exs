@@ -198,13 +198,33 @@ defmodule BubbleEx.Target.Ash.DecisionsCut2Test do
       assert %Aggregate{path: ["cards_for_privacy"]} =
                derived(project, "board", "card_count_number")
 
-      # the ungated `board` relationship gets a twin too: public
-      # relationships are unsortable, a derived count must sort
+      # a derived count reads through the twin: public relationships are
+      # unsortable (and `board` is gated by Card's Creator rule), a
+      # derived count must sort
       assert %Aggregate{path: ["board_for_privacy", "cards_for_privacy"]} =
                derived(project, "card", "board_card_count_number")
 
       assert Enum.any?(card.privacy_relationships, &(&1.name == "board_for_privacy"))
-      assert Enum.find(card.relationships, &(&1.name == "board")).gate == nil
+
+      assert Enum.find(card.relationships, &(&1.name == "board")).gate ==
+               {:visible_if, ["privacy_rule_creator"]}
+
+      # an ungated relationship gets a twin too (Card without its rules)
+      %{model: model, applied: applied} = DecidedFixture.build(:cut2)
+
+      open = %{
+        model
+        | data_types:
+            Enum.map(model.data_types, fn
+              %{id: "card"} = t -> %{t | rules: [], privacy: :none}
+              t -> t
+            end)
+      }
+
+      {:ok, open} = map(open, applied, privacy: :unverified)
+      open_card = resource(open, "card")
+      assert Enum.find(open_card.relationships, &(&1.name == "board")).gate == nil
+      assert Enum.any?(open_card.privacy_relationships, &(&1.name == "board_for_privacy"))
 
       assert derived(project, "card", "board_watcher_count_number").expr.expr ==
                {:call, "length",
