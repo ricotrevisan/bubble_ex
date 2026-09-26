@@ -395,6 +395,12 @@ if File.exists?("policy_expectations.json") and
      Code.ensure_loaded?(Fixtures.TargetPolicies.Privacy),
    do: PolicyExpectations.run("policy_expectations.json")
 
-if File.exists?("interpreter_policies.json") and
-     Code.ensure_loaded?(Fixtures.TargetPolicies.Privacy),
-   do: InterpreterCheck.run("interpreter_policies.json", "policy_expectations.json")
+# Wherever the policy table is checked, the interpreter's verdicts must be
+# too: a missing file (render.exs writes it) fails the harness.
+if File.exists?("policy_expectations.json") and
+     Code.ensure_loaded?(Fixtures.TargetPolicies.Privacy) do
+  File.exists?("interpreter_policies.json") ||
+    raise "interpreter_policies.json is missing: render.exs did not write the privacy interpreter's verdicts"
+
+  InterpreterCheck.run("interpreter_policies.json", "policy_expectations.json")
+end

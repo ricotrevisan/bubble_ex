@@ -140,7 +140,7 @@ defmodule BubbleEx.Verify.Matrix.Personas do
   # {field key or {:set, option set}, op, literal value} for every
   # comparison of a user-side field chain with a literal or an option.
   defp literals(%IR{op: op, args: [l, r]} = ir)
-       when op in [:eq, :neq, :member, :gt, :lt, :gte, :lte] do
+       when op in [:eq, :neq, :member, :gt, :lt, :gte, :lte, :text_contains] do
     found =
       for {side, other} <- [{l, r}, {r, l}],
           lit = literal(other),
@@ -262,13 +262,13 @@ defmodule BubbleEx.Verify.Matrix.Personas do
   end
 
   defp value(st, _key, _kind, spec, at, %Type{kind: :scalar, base: base, cardinality: card}) do
-    lits = for {^at, _op, {tag, v}} <- st.literals, tag == base, do: v
+    lits = for {^at, op, {tag, v}} <- st.literals, tag == base, do: {op, v}
 
     v =
       case base do
         :boolean -> {:boolean, spec.admin}
         :text -> {:text, text(lits, spec)}
-        :number -> {:number, List.first(Enum.sort(lits)) || spec.world / 1}
+        :number -> {:number, number(lits, spec)}
         :date -> {:date, @base_date + spec.world * @day}
         _ -> nil
       end
@@ -278,11 +278,29 @@ defmodule BubbleEx.Verify.Matrix.Personas do
 
   defp value(st, _key, _kind, _spec, _at, _type), do: {st, nil}
 
+  # A number satisfying the first comparison: the literal for `is`, one
+  # past it for an ordering (synthetic, same side of the literal).
+  defp number([], spec), do: spec.world / 1
+
+  defp number(lits, _spec) do
+    {op, v} = lits |> Enum.sort_by(fn {op, v} -> {v, op} end) |> hd()
+
+    case op do
+      op when op in [:eq, :member] -> v
+      op when op in [:lt, :lte] -> v - 1.0
+      _ -> v + 1.0
+    end
+  end
+
   defp many(:many, v), do: {:list, [v]}
   defp many(_, v), do: v
 
+  # A condition's text literal only where a comparison needs exactly it
+  # (`is`, `contains`); otherwise synthetic text.
   defp text(lits, spec) do
-    case {Enum.sort(lits), spec.variant} do
+    exact = for({op, v} <- lits, op in [:eq, :member, :text_contains], do: v) |> Enum.uniq()
+
+    case {Enum.sort(exact), spec.variant} do
       {[first | _], 0} -> first
       {_, 1} -> "other"
       {[], 0} -> "w#{spec.world}"

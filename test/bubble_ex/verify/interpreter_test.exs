@@ -135,7 +135,15 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
   describe "assumption flags (defaults: the compiler's fail-safe reading)" do
     test "the registry" do
-      assert length(Assumptions.names()) == 10
+      assert length(Assumptions.names()) == 15
+
+      assert Assumptions.wtf_384() == [
+               :empty_equals_empty,
+               :empty_yes_no_is_no,
+               :empty_list_contains_nothing,
+               :dangling_ref_is_empty
+             ]
+
       assert Assumptions.defaults().actor_empty_denies
       refute Assumptions.defaults().empty_yes_no_is_no
       assert {:ok, a} = Assumptions.new(empty_equals_empty: false)
@@ -190,7 +198,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
       this = IR.node(:this, [:rule_record], "custom.task")
       public = IR.node(:field, [this, "task", "public_boolean"], "boolean")
       is_no = IR.node(:eq, [public, IR.node(:literal, [false], "boolean")], "boolean")
-      ctx = %{ds: ds, user: "u1", this: "k2", flags: Assumptions.defaults(), model: model}
+      ctx = ctx(model, ds, "u1", "k2")
 
       assert {false, [:empty_yes_no_is_no]} = Eval.holds(is_no, true, ctx)
       {:ok, flipped} = Assumptions.new(empty_yes_no_is_no: true)
@@ -286,6 +294,161 @@ defmodule BubbleEx.Verify.InterpreterTest do
       # u3 is an admin: doc's admin_ grants everything, whatever the flags.
       {:ok, access} = Interpreter.access(interpreter(model), ds, "u3", "d1")
       assert access.visible and access.assumptions == []
+    end
+  end
+
+  defp ctx(model, ds, user, this, flags \\ []) do
+    {:ok, assumptions} = Assumptions.new(flags)
+    %{ds: ds, user: user, logged_in: user != nil, this: this, flags: assumptions, model: model}
+  end
+
+  defp task_field(field, type),
+    do: IR.node(:field, [IR.node(:this, [:rule_record], "custom.task"), "task", field], type)
+
+  describe "assumption flags for unmodeled Bubble facts" do
+    test "empty_text_contains_nothing: contains with an empty text", %{model: model, ds: ds} do
+      # k3's title is empty; does it contain ""?
+      ir =
+        IR.node(
+          :text_contains,
+          [task_field("title_text", "text"), IR.node(:literal, [""], "text")],
+          "boolean"
+        )
+
+      assert {false, [:empty_text_contains_nothing]} =
+               Eval.holds(ir, true, ctx(model, ds, "u1", "k3"))
+
+      assert {true, _} =
+               Eval.holds(
+                 ir,
+                 true,
+                 ctx(model, ds, "u1", "k3", empty_text_contains_nothing: false)
+               )
+    end
+
+    test "ordering_with_empty_false: an empty number compared", %{model: model, ds: ds} do
+      ir =
+        IR.node(
+          :gt,
+          [task_field("estimate_number", "number"), IR.node(:literal, [-1], "number")],
+          "boolean"
+        )
+
+      assert {false, [:ordering_with_empty_false]} =
+               Eval.holds(ir, true, ctx(model, ds, "u1", "k2"))
+
+      assert {false, _} = Eval.holds(ir, false, ctx(model, ds, "u1", "k2"))
+
+      assert {true, _} =
+               Eval.holds(ir, true, ctx(model, ds, "u1", "k2", ordering_with_empty_false: false))
+    end
+
+    test "empty_item_not_contained: doesn't contain an empty record item", %{model: model, ds: ds} do
+      # k4: access [u1, u3], no assignee
+      ir =
+        IR.node(
+          :member,
+          [task_field("access_list_user", "list.user"), task_field("assignee_user", "user")],
+          "boolean"
+        )
+
+      assert {true, [:empty_item_not_contained]} =
+               Eval.holds(ir, false, ctx(model, ds, "u1", "k4"))
+
+      assert {false, _} =
+               Eval.holds(ir, false, ctx(model, ds, "u1", "k4", empty_item_not_contained: false))
+    end
+
+    test "logged_out_user_is_empty: Bubble's temporary user", %{model: model, ds: ds} do
+      # p_not_owner_: This's Created By is not Current User; k1 was created by u1.
+      assert {false, flags} = holds(model, ds, nil, "task", "p_not_owner_", "k1")
+      assert :logged_out_user_is_empty in flags and :actor_empty_denies in flags
+
+      assert {true, _} =
+               holds(model, ds, nil, "task", "p_not_owner_", "k1",
+                 logged_out_user_is_empty: false
+               )
+
+      # still logged out
+      assert {false, _} =
+               holds(model, ds, nil, "task", "d_public_", "k1", logged_out_user_is_empty: false)
+    end
+
+    test "search_independent_of_view: found in searches but not viewable" do
+      app =
+        update_in(
+          @policy_app,
+          ["user_types", "board", "privacy_role", "lead_", "permissions"],
+          fn p ->
+            Map.merge(p, %{"view_all" => false, "search_for" => true})
+          end
+        )
+
+      {:ok, model} = Model.build(app)
+      {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :unverified)
+      ds = PrivacyCrossCheck.dataset(model, project, @policies["records"])
+
+      {:ok, access} = Interpreter.access(interpreter(model), ds, "u1", "b1")
+      assert access.visible == false and access.searchable == true
+      assert :search_independent_of_view in access.assumptions
+
+      {:ok, flipped} =
+        Interpreter.access(interpreter(model, search_independent_of_view: false), ds, "u1", "b1")
+
+      assert flipped.searchable == false
+    end
+
+    test "a condition used as a value reports its flags", %{model: model, ds: ds} do
+      # This's public is (This's team is empty): k3's team is dangling
+      ir =
+        IR.node(
+          :eq,
+          [
+            task_field("public_boolean", "boolean"),
+            IR.node(:is_empty, [task_field("team_custom_team", "custom.team")], "boolean")
+          ],
+          "boolean"
+        )
+
+      assert {_, flags} = Eval.holds(ir, true, ctx(model, ds, "u1", "k3"))
+      assert :dangling_ref_is_empty in flags
+    end
+  end
+
+  describe "mutation and the everyone rule's reach" do
+    test "observe/4 is the verdict; mutate/4 drops or negates a rule", %{pmodel: model, pds: ds} do
+      interpreter = interpreter(model)
+      {:ok, access} = Interpreter.access(interpreter, ds, "u2", "n2")
+
+      assert Interpreter.observe(interpreter, ds, "u2", "n2") ==
+               {access.visible, access.fields, access.unknown_fields, access.searchable}
+
+      # n2 is hidden and u2's own: only mine_ shows it to u2
+      assert {true, _, [], true} = Interpreter.observe(interpreter, ds, "u2", "n2")
+      dropped = Interpreter.mutate(interpreter, "note", "mine_", :drop)
+      assert {false, [], [], false} = Interpreter.observe(dropped, ds, "u2", "n2")
+      negated = Interpreter.mutate(interpreter, "note", "mine_", :negate)
+      assert {false, _, _, false} = Interpreter.observe(negated, ds, "u2", "n2")
+      no_everyone = Interpreter.mutate(interpreter, "note", "everyone", :drop)
+      assert {false, _, _, _} = Interpreter.observe(no_everyone, ds, "u1", "n1")
+    end
+
+    test "everyone_applies/5 computes what the verdicts use", %{pmodel: model, pds: ds} do
+      interpreter = interpreter(model)
+      # n2 is hidden: hidden_ holds
+      refute Interpreter.everyone_applies(interpreter, ds, "u1", "note", "n2")
+      # logged out: mine_ reads the user; its negation is guarded
+      refute Interpreter.everyone_applies(interpreter, ds, nil, "note", "n1")
+
+      # no guards, and the temporary user (who created nothing): it applies
+      unguarded =
+        interpreter(model,
+          actor_empty_denies: false,
+          everyone_guards_record_values: false,
+          logged_out_user_is_empty: false
+        )
+
+      assert Interpreter.everyone_applies(unguarded, ds, nil, "note", "n1")
     end
   end
 

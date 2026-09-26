@@ -229,14 +229,16 @@ defmodule ExpectationCheck do
 
     table = Map.new(doc["records"], fn {type, rows} -> {type, Enum.map(rows, & &1["id"])} end)
 
+    # render.exs writes it whenever it renders the expression fixture: a
+    # missing file is a harness failure, never a skipped comparison.
+    File.exists?("interpreter_conditions.json") ||
+      raise "interpreter_conditions.json is missing: render.exs did not write the privacy interpreter's verdicts"
+
     interpreter =
-      if File.exists?("interpreter_conditions.json"),
-        do:
-          "interpreter_conditions.json"
-          |> File.read!()
-          |> Jason.decode!()
-          |> Map.new(&{{&1["type"], &1["rule"]}, &1["verdicts"]}),
-        else: %{}
+      "interpreter_conditions.json"
+      |> File.read!()
+      |> Jason.decode!()
+      |> Map.new(&{{&1["type"], &1["rule"]}, &1["verdicts"]})
 
     results =
       for %{"type" => type, "rule" => rule, "expected" => expected} <- doc["cases"],
@@ -259,7 +261,7 @@ defmodule ExpectationCheck do
 
         {agreement, failures} =
           case mine do
-            nil -> {:absent, failures}
+            nil -> {:absent, failures ++ ["#{type}/#{rule} as #{actor_key}: no interpreter verdict"]}
             "unknown" -> {:unknown, failures}
             list when is_list(list) ->
               if Enum.sort(list) == sql,

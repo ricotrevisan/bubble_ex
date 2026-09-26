@@ -24,6 +24,15 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
       empty yes/no is `empty_yes_no_is_no`
     * `is empty` is nil, `""` or an empty list; a dangling reference is
       `dangling_ref_is_empty`
+    * `text contains` with an empty side is `empty_text_contains_nothing`;
+      ordering with an empty side `ordering_with_empty_false`; `doesn't
+      contain` an empty record-side item `empty_item_not_contained`
+    * a logged-out user is empty, or Bubble's temporary user
+      (`logged_out_user_is_empty`; the context's `user` is then a key no
+      record has, and `logged_in` false); every atom reading the user when
+      logged out consults the flag
+    * a condition used as a value (`a is (b contains c)`) reports the flags
+      it consulted too
 
   Every function returns the flags of `BubbleEx.Verify.Interpreter.Assumptions`
   it consulted (read at a point where the flag decides), so a verdict can
@@ -158,16 +167,28 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
 
   # --- atoms ----------------------------------------------------------------------
 
-  defp atom(%IR{op: :logged_in}, positive, ctx), do: {is_nil(ctx.user) != positive, []}
+  # Every atom reading the user, when logged out, also rests on what a
+  # logged-out user is (`logged_out_user_is_empty`).
+  defp atom(ir, positive, ctx) do
+    {b, flags} = atom_(ir, positive, ctx)
 
-  defp atom(%IR{op: :is_empty, args: [x]}, positive, ctx) do
+    if not logged_in?(ctx) and reads_actor?(ir),
+      do: {b, [:logged_out_user_is_empty | flags]},
+      else: {b, flags}
+  end
+
+  defp logged_in?(ctx), do: Map.get(ctx, :logged_in, not is_nil(ctx.user))
+
+  defp atom_(%IR{op: :logged_in}, positive, ctx), do: {logged_in?(ctx) == positive, []}
+
+  defp atom_(%IR{op: :is_empty, args: [x]}, positive, ctx) do
     guarded(reads_actor?(x) and is_nil(ctx.user), ctx, fn ->
       {empty, flags} = empty?(x, value(x, ctx), ctx)
       {empty == positive, flags}
     end)
   end
 
-  defp atom(%IR{op: op, args: [l, r]}, positive, ctx) when op in [:eq, :neq] do
+  defp atom_(%IR{op: op, args: [l, r]}, positive, ctx) when op in [:eq, :neq] do
     {a, b, flags} = operands([l, r], ctx)
 
     guarded(actor_empty?([{l, a}, {r, b}]), ctx, fn ->
@@ -176,47 +197,53 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
     end)
   end
 
-  defp atom(%IR{op: op, args: [l, r]}, positive, ctx) when op in @compare do
+  defp atom_(%IR{op: op, args: [l, r]}, positive, ctx) when op in @compare do
     {a, b, flags} = operands([l, r], ctx)
 
     guarded(actor_empty?([{l, a}, {r, b}]), ctx, fn ->
-      case compare(op, a, b) do
-        nil -> {false, flags}
-        result -> {result == positive, flags}
+      case compare(op, a, b, ctx) do
+        {nil, more} -> {false, flags ++ more}
+        {result, more} -> {result == positive, flags ++ more}
       end
     end)
   end
 
-  defp atom(%IR{op: :member, args: [list, item]}, positive, ctx) do
-    lv = value(list, ctx)
-    iv = value(item, ctx)
+  defp atom_(%IR{op: :member, args: [list, item]}, positive, ctx) do
+    {lv, f1} = value_flags(list, ctx)
+    {iv, f2} = value_flags(item, ctx)
 
     guarded(actor_empty?([{list, lv}, {item, iv}]), ctx, fn ->
       found = not is_nil(iv) and iv in items(lv)
 
-      cond do
-        positive -> {not is_nil(lv) and found, []}
-        is_nil(lv) -> {ctx.flags.empty_list_contains_nothing, [:empty_list_contains_nothing]}
-        is_nil(iv) and not nonnull?(item) and not actor?(item) -> {true, []}
-        true -> {not found, []}
-      end
+      {b, more} =
+        cond do
+          positive ->
+            {not is_nil(lv) and found, []}
+
+          is_nil(lv) ->
+            {ctx.flags.empty_list_contains_nothing, [:empty_list_contains_nothing]}
+
+          is_nil(iv) and not nonnull?(item) and not actor?(item) ->
+            {ctx.flags.empty_item_not_contained, [:empty_item_not_contained]}
+
+          true ->
+            {not found, []}
+        end
+
+      {b, f1 ++ f2 ++ more}
     end)
   end
 
-  defp atom(%IR{op: :text_contains, args: [text, part]}, positive, ctx) do
+  defp atom_(%IR{op: :text_contains, args: [text, part]}, positive, ctx) do
     tv = value(text, ctx)
     pv = value(part, ctx)
 
     guarded(actor_empty?([{text, tv}, {part, pv}]), ctx, fn ->
-      case {tv, pv} do
-        {{:text, t}, {:text, p}} -> {String.contains?(t, p) == positive, []}
-        {nil, _} -> {not positive, []}
-        _ -> {false, []}
-      end
+      contains(tv, pv, positive, ctx)
     end)
   end
 
-  defp atom(%IR{op: op} = ir, positive, ctx) when op in @boolean_values do
+  defp atom_(%IR{op: op} = ir, positive, ctx) when op in @boolean_values do
     {v, flags} = stored_boolean(ir, value(ir, ctx), ctx)
 
     guarded(actor_empty?([{ir, v}]), ctx, fn ->
@@ -224,7 +251,32 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
     end)
   end
 
-  defp atom(%IR{op: op}, _positive, _ctx), do: throw({:unsupported, "the condition #{op}"})
+  defp atom_(%IR{op: op}, _positive, _ctx), do: throw({:unsupported, "the condition #{op}"})
+
+  # `text contains`: with an empty side, the compiler's reading (an empty
+  # text contains nothing; nothing is found by an empty part) or, under
+  # `empty_text_contains_nothing: false`, empty read as "".
+  defp contains({:text, t}, {:text, p}, positive, _ctx),
+    do: {String.contains?(t, p) == positive, []}
+
+  defp contains(tv, pv, positive, ctx) when is_nil(tv) or is_nil(pv) do
+    cond do
+      not ctx.flags.empty_text_contains_nothing ->
+        {String.contains?(text_or_empty(tv), text_or_empty(pv)) == positive,
+         [:empty_text_contains_nothing]}
+
+      is_nil(tv) ->
+        {not positive, [:empty_text_contains_nothing]}
+
+      true ->
+        {false, [:empty_text_contains_nothing]}
+    end
+  end
+
+  defp contains(_tv, _pv, _positive, _ctx), do: {false, []}
+
+  defp text_or_empty({:text, t}), do: t
+  defp text_or_empty(_), do: ""
 
   # The fail-safe guard: an atom reading an empty value from the user is
   # false in either polarity.
@@ -242,10 +294,20 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   defp actor_empty?(operands), do: Enum.any?(operands, fn {ir, v} -> actor?(ir) and blank?(v) end)
 
   defp operands([l, r], ctx) do
-    {a, f1} = stored_boolean(l, value(l, ctx), ctx)
-    {b, f2} = stored_boolean(r, value(r, ctx), ctx)
-    {a, b, f1 ++ f2}
+    {lv, f1} = value_flags(l, ctx)
+    {rv, f2} = value_flags(r, ctx)
+    {a, f3} = stored_boolean(l, lv, ctx)
+    {b, f4} = stored_boolean(r, rv, ctx)
+    {a, b, f1 ++ f2 ++ f3 ++ f4}
   end
+
+  # A value, with the flags consulted when it is a condition used as a value.
+  defp value_flags(%IR{op: op} = ir, ctx) when op in @predicates do
+    {b, flags} = holds(ir, true, ctx)
+    {{:boolean, b}, flags}
+  end
+
+  defp value_flags(ir, ctx), do: {value(ir, ctx), []}
 
   # An empty stored yes/no, under `empty_yes_no_is_no`, reads as no.
   defp stored_boolean(%IR{op: op, type: "boolean"}, nil, ctx) when op in @boolean_values do
@@ -261,10 +323,20 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   defp equal(_, nil, _ctx), do: {false, []}
   defp equal(a, b, _ctx), do: {a == b, []}
 
-  defp compare(_op, nil, _), do: nil
-  defp compare(_op, _, nil), do: nil
+  # Ordering with an empty side: false in either polarity
+  # (`ordering_with_empty_false`), or empty read as zero.
+  defp compare(op, a, b, ctx) when is_nil(a) or is_nil(b) do
+    if ctx.flags.ordering_with_empty_false do
+      {nil, [:ordering_with_empty_false]}
+    else
+      tag = elem(a || b || {:number, 0}, 0)
+      {ordered(op, a || zero(tag), b || zero(tag)), [:ordering_with_empty_false]}
+    end
+  end
 
-  defp compare(op, {tag, a}, {tag, b}) when tag in [:number, :date, :text] do
+  defp compare(op, a, b, _ctx), do: {ordered(op, a, b), []}
+
+  defp ordered(op, {tag, a}, {tag, b}) when tag in [:number, :date, :text] do
     case op do
       :gt -> a > b
       :lt -> a < b
@@ -273,7 +345,12 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
     end
   end
 
-  defp compare(op, _, _), do: throw({:unsupported, "#{op} between values of different types"})
+  defp ordered(op, _, _), do: throw({:unsupported, "#{op} between values of different types"})
+
+  defp zero(:number), do: {:number, 0.0}
+  defp zero(:date), do: {:date, 0}
+  defp zero(:text), do: {:text, ""}
+  defp zero(tag), do: throw({:unsupported, "ordering #{tag} values"})
 
   defp empty?(%IR{} = x, {:ref, key} = _v, ctx) do
     if ref_one?(x.type) and is_nil(Dataset.fetch(ctx.ds, key)),

@@ -6,6 +6,10 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
   #
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
+  # Both measures are reported: rules solved (each condition exercised both
+  # ways) and rules observable (mutation coverage), with per-flag counts of
+  # the checks that depend on each assumption.
+  #
   # The report's counts (no names or Bubble IDs; `Matrix.counts/1`) are
   # compared with a committed snapshot, by default the mm-137 test
   # version's. A changed count means updating the snapshot, with the reason
@@ -13,7 +17,8 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
   #
-  # BUBBLE_EX_MATRIX_COUNTS names another snapshot file. Unsolved rules are
+  # BUBBLE_EX_MATRIX_COUNTS names another snapshot file. Unsolved and
+  # unobservable rules are
   # printed with their reasons (and IDs) to the console only.
   use ExUnit.Case, async: true
 
@@ -46,6 +51,8 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
     #{counts |> CanonicalJson.ordered() |> Jason.encode!(pretty: true)}
     unsolved rules:
     #{Enum.map_join(matrix.report.unsolved, "\n", &"  #{&1.type}/#{&1.rule}: #{&1.reason} (#{&1.detail})")}
+    unobservable rules:
+    #{Enum.map_join(matrix.report.unobservable, "\n", &"  #{&1.type}/#{&1.rule}: #{&1.reason}")}
     """)
 
     if System.get_env("BUBBLE_EX_UPDATE_COUNTS") do

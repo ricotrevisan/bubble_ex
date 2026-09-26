@@ -27,12 +27,22 @@ defmodule BubbleEx.Verify.Matrix do
      (`BubbleEx.Verify.Matrix.Solver`) builds a record that does, for the
      first persona it can (members, then admin, then the empty user, then
      anonymous), chains included; the same for false. So each rule's true
-     and false branches are exercised by some cell.
-  4. **Scenarios**, one per (type, persona): a `search` of the type and a
+     and false branches are exercised by some cell. A false branch is
+     first sought where it holds without the fail-safe actor guard (a cell
+     false only because the user is logged out says nothing about the
+     condition); the `everyone` rule gets a cell where it applies and one
+     where it does not, computed as the verdicts compute it
+     (`Interpreter.everyone_applies/5`).
+  4. **Observability and assumptions** (`BubbleEx.Verify.Matrix.Coverage`):
+     records that make masked rules decide a verdict alone (mutation
+     coverage: dropping or negating the rule changes a recorded verdict),
+     and records whose verdict depends on each assumption flag, so V5 has
+     something to calibrate.
+  5. **Scenarios**, one per (type, persona): a `search` of the type and a
      `get` of each of its records, observing `record_set`, `visible` and
      `visible_fields`. An op whose verdict an unsupported rule could decide
      is left out (the report counts it).
-  5. **Recordings**: the interpreter's verdicts under the chosen
+  6. **Recordings**: the interpreter's verdicts under the chosen
      assumptions, oracle `model` (never Bubble-verified, decision D2 on
      WTF-358). `dependencies` holds, per scenario op, the assumption flags
      its expected observations depend on.
@@ -43,6 +53,20 @@ defmodule BubbleEx.Verify.Matrix do
   and it both applies (no other rule holds) and does not somewhere (or,
   alone, applies). Deleted types, types whose rules the source lacks, and
   unsupported rules are listed with reasons.
+
+  **Observable** is the stronger measure (`report.rules.observable`,
+  `report.unobservable`): a solved rule can still decide nothing (it grants
+  nothing, or other rules grant the same wherever it holds).
+
+  Text values come from synthetic placeholders; a condition's own text
+  literal is used only where a branch needs exactly it (equality,
+  containment), and `report.seed_values_from_condition_literals` counts
+  those seed values. Numbers compared by ordering take values either side
+  of the literal.
+
+  The expectations rest on the shared expression compiler: see
+  `BubbleEx.Verify.Interpreter` ("scope of the cross-check") and
+  `report.oracle_scope`.
 
   Output is deterministic: the same Model and options give the same
   documents. Seeds are synthetic (reserved-domain emails), keyed by symbolic
@@ -66,7 +90,7 @@ defmodule BubbleEx.Verify.Matrix do
   alias BubbleEx.Verify.{Observation, Recording, Replay, Scenario, Seed}
   alias BubbleEx.Verify.Interpreter
   alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset}
-  alias BubbleEx.Verify.Matrix.{Personas, Solver}
+  alias BubbleEx.Verify.Matrix.{Coverage, Personas, Solver}
 
   @enforce_keys [:seed, :assumptions]
   defstruct [
@@ -76,6 +100,9 @@ defmodule BubbleEx.Verify.Matrix do
     recordings: [],
     dependencies: %{},
     rules: [],
+    observability: [],
+    flags: %{},
+    joint: %{},
     skipped: %{gets: 0, searches: 0},
     report: %{}
   ]
@@ -87,9 +114,10 @@ defmodule BubbleEx.Verify.Matrix do
           scenarios: [Scenario.t()],
           recordings: [Recording.t()],
           dependencies: %{{String.t(), String.t()} => [atom()]},
-          rules: [
-            %{type: String.t(), rule: String.t(), default: boolean(), status: rule_status()}
-          ],
+          rules: [map()],
+          observability: [map()],
+          flags: %{atom() => :exercised | {:not_exercised, String.t()}},
+          joint: %{atom() => %{atom() => pos_integer()}},
           skipped: %{gets: non_neg_integer(), searches: non_neg_integer()},
           report: map()
         }
@@ -106,27 +134,44 @@ defmodule BubbleEx.Verify.Matrix do
            Interpreter.new(model, assumptions: Keyword.get(opts, :assumptions, [])) do
       {personas, ds} = Personas.build(interpreter)
       types = matrix_types(interpreter)
-      ds = types |> Enum.reduce(ds, &empty_record/2) |> witnesses(interpreter, types, personas)
+
+      ds =
+        types
+        |> Enum.reduce(ds, &empty_record/2)
+        |> witnesses(interpreter, types, personas)
+        |> then(&Coverage.isolate(interpreter, &1, personas))
+        |> then(&Coverage.exercise_flags(interpreter, &1, personas))
+
       rules = coverage(interpreter, ds, personas)
+      observability = Coverage.observability(interpreter, ds, personas, rules)
 
       with {:ok, seed} <- seed(Keyword.get(opts, :seed_id, "privacy_matrix"), personas, ds),
            {:ok, built} <- scenarios(interpreter, ds, personas, seed, types, app, opts) do
-        matrix = %__MODULE__{
-          seed: seed,
-          assumptions: interpreter.assumptions,
-          scenarios: built.scenarios,
-          recordings: built.recordings,
-          dependencies: built.dependencies,
-          skipped: built.skipped,
-          rules: rules
-        }
-
-        {:ok, %{matrix | report: report(matrix, interpreter)}}
+        {:ok, assemble(interpreter, ds, personas, seed, built, rules, observability)}
       end
     end
   end
 
   def synthesize(_, _), do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Model")}
+
+  defp assemble(interpreter, ds, personas, seed, built, rules, observability) do
+    matrix = %__MODULE__{
+      seed: seed,
+      assumptions: interpreter.assumptions,
+      scenarios: built.scenarios,
+      recordings: built.recordings,
+      dependencies: built.dependencies,
+      skipped: built.skipped,
+      rules: rules,
+      observability: observability,
+      flags: Coverage.flag_outcomes(interpreter, built.dependencies)
+    }
+
+    unexercised = for {flag, {:not_exercised, _}} <- matrix.flags, do: flag
+    matrix = %{matrix | joint: Coverage.joint(interpreter, ds, personas, unexercised)}
+
+    %{matrix | report: report(matrix, interpreter)}
+  end
 
   defp matrix_types(interpreter) do
     for {id, %{status: status}} <- Enum.sort(interpreter.types),
@@ -140,15 +185,95 @@ defmodule BubbleEx.Verify.Matrix do
   # --- witnesses --------------------------------------------------------------------
 
   defp witnesses(ds, interpreter, types, personas) do
+    ds =
+      for type_id <- types,
+          %{status: :rules, rules: rules} <- [Interpreter.type(interpreter, type_id)],
+          %{status: :ok} = info <- rules,
+          target <- [true, false],
+          reduce: ds,
+          do: (ds -> ensure(ds, interpreter, info, type_id, personas, target))
+
+    # The everyone rule: a cell where it applies (no other rule holds, as
+    # the verdicts compute it, record-value guard included) and one where
+    # it does not.
     for type_id <- types,
-        %{status: :rules, rules: rules} <- [Interpreter.type(interpreter, type_id)],
-        %{status: :ok} = info <- rules,
+        %{status: :rules, default: %{}, rules: [_ | _] = rules} <- [
+          Interpreter.type(interpreter, type_id)
+        ],
+        Enum.all?(rules, &(&1.status == :ok)),
         target <- [true, false],
         reduce: ds,
-        do: (ds -> ensure(ds, interpreter, info, type_id, personas, target))
+        do: (ds -> ensure_everyone(ds, interpreter, rules, type_id, personas, target))
   end
 
-  defp ensure(ds, interpreter, info, type_id, personas, target) do
+  defp ensure_everyone(ds, interpreter, rules, type_id, personas, target) do
+    applies? = fn ds, user, key ->
+      Interpreter.everyone_applies(interpreter, ds, user, type_id, key) == target
+    end
+
+    found? =
+      Enum.any?(Enum.sort(personas), fn {_, u} ->
+        Enum.any?(Dataset.keys(ds, type_id), &applies?.(ds, u, &1))
+      end)
+
+    if found?,
+      do: ds,
+      else:
+        first_found(personas, ds, fn user ->
+          Solver.find(interpreter, ds, type_id, &applies?.(&1, user, &2),
+            irs: Enum.map(rules, & &1.ir)
+          )
+        end)
+  end
+
+  # The dataset of the first persona (in solve order) for which `solve`
+  # finds a record, or `default`.
+  defp first_found(personas, default, solve) do
+    Enum.find_value(@solve_order, default, fn persona ->
+      case solve.(personas[persona]) do
+        {:ok, ds, _key} -> ds
+        :none -> nil
+      end
+    end)
+  end
+
+  # A false branch that holds only through the fail-safe actor guard
+  # (`actor_empty_denies`) says nothing about the condition itself: look
+  # for a false cell that stays false with the guard off, first.
+  defp ensure(ds, interpreter, info, type_id, personas, false) do
+    unguarded = unguarded(interpreter)
+
+    if robust_false?(ds, interpreter, unguarded, info, type_id, personas) do
+      ds
+    else
+      first_found(personas, nil, fn user ->
+        goal = &false_either_way?(interpreter, unguarded, info, &1, user, &2)
+        Solver.find(interpreter, ds, type_id, goal, irs: [info.ir], empty_first: true)
+      end) || plain_ensure(ds, interpreter, info, type_id, personas, false)
+    end
+  end
+
+  defp ensure(ds, interpreter, info, type_id, personas, target),
+    do: plain_ensure(ds, interpreter, info, type_id, personas, target)
+
+  defp unguarded(interpreter),
+    do: %{interpreter | assumptions: %{interpreter.assumptions | actor_empty_denies: false}}
+
+  defp robust_false?(ds, interpreter, unguarded, info, type_id, personas) do
+    Enum.any?(Enum.sort(personas), fn {_, user} ->
+      Enum.any?(
+        Dataset.keys(ds, type_id),
+        &false_either_way?(interpreter, unguarded, info, ds, user, &1)
+      )
+    end)
+  end
+
+  defp false_either_way?(interpreter, unguarded, info, ds, user, key) do
+    match?({false, _}, Interpreter.eval_rule(interpreter, info, ds, user, key)) and
+      match?({false, _}, Interpreter.eval_rule(unguarded, info, ds, user, key))
+  end
+
+  defp plain_ensure(ds, interpreter, info, type_id, personas, target) do
     if target in cells(ds, interpreter, info, type_id, personas),
       do: ds,
       else:
@@ -182,14 +307,26 @@ defmodule BubbleEx.Verify.Matrix do
   defp coverage(interpreter, ds, personas) do
     for {type_id, info} <- Enum.sort(interpreter.types),
         rule <- info.type.rules do
+      status = rule_status(info, rule, interpreter, ds, personas)
+
       %{
         type: type_id,
         rule: rule.id,
         default: rule.default?,
-        status: rule_status(info, rule, interpreter, ds, personas)
+        status: status,
+        robust_false: robust_false(status, rule, info, interpreter, ds, personas)
       }
     end
   end
+
+  # Whether a solved conditional rule has a false cell that does not rest
+  # on the fail-safe actor guard (nil for other rules).
+  defp robust_false(:solved, %{default?: false} = rule, info, interpreter, ds, personas) do
+    rinfo = Enum.find(info.rules, &(&1.rule.id == rule.id))
+    robust_false?(ds, interpreter, unguarded(interpreter), rinfo, info.type.id, personas)
+  end
+
+  defp robust_false(_status, _rule, _info, _interpreter, _ds, _personas), do: nil
 
   defp rule_status(%{status: {:unknown, reason}} = info, _rule, _i, _ds, _p),
     do: {:unsolved, if(info.type.deleted, do: :deleted_type, else: :privacy_unavailable), reason}
@@ -241,14 +378,12 @@ defmodule BubbleEx.Verify.Matrix do
   end
 
   defp everyone_status(info, interpreter, ds, personas) do
+    # The same computation the verdicts use (negated conditions, guards).
     applies =
       for {_persona, user} <- Enum.sort(personas),
           key <- Dataset.keys(ds, info.type.id),
-          uniq: true do
-        not Enum.any?(info.rules, fn r ->
-          match?({true, _}, Interpreter.eval_rule(interpreter, r, ds, user, key))
-        end)
-      end
+          uniq: true,
+          do: Interpreter.everyone_applies(interpreter, ds, user, info.type.id, key)
 
     cond do
       true not in applies -> {:unsolved, :no_true_witness, "another rule always holds"}
@@ -464,15 +599,25 @@ defmodule BubbleEx.Verify.Matrix do
   @doc """
   The coverage report of a matrix (also in `matrix.report`):
 
-    * `rules` - `total`, `conditional`, `everyone`, `solved`, `unsolved`
-      and `solved_percent` (of all rules, one decimal)
+    * `rules` - `total`, `conditional`, `everyone`, `solved`, `unsolved`,
+      `solved_percent` (of all rules, one decimal), `observable`,
+      `observable_percent` (mutation coverage) and
+      `false_branch_only_via_actor_guard` (solved rules whose only false
+      cells rest on the fail-safe actor guard)
+    * `unobservable` / `unobservable_by_reason` - rules no mutant changes a
+      recorded verdict of: `unsolved`, `grants_nothing`, `masked`,
+      `undecided_type`
+    * `seed_values_from_condition_literals`, `oracle_scope`
     * `unsolved` - `%{type, rule, reason, detail}` per unsolved rule
       (Bubble IDs); `unsolved_by_reason` counts them
     * `types` - `total`, `with_rules`, `public`, `deleted`, `unavailable`
     * `personas`, `records`, `scenarios`, `checks` (ops: one per search and
       per get), `observations`, `skipped` (ops left out as undetermined)
-    * `assumptions` - the assumptions in force, and per flag the number of
-      ops whose expectations depend on it
+    * `assumptions` - the assumptions in force, per flag the number of ops
+      whose expectations depend on it (`dependent_checks`), and per flag
+      whether some check depends on it and if not why (`outcomes`); for
+      flags a fail-safe hedge hides, the checks that depend on them with
+      the hedge lifted (`jointly_dependent_checks`)
   """
   @spec report(t(), Interpreter.t()) :: map()
   def report(%__MODULE__{} = matrix, %Interpreter{} = interpreter) do
@@ -480,8 +625,13 @@ defmodule BubbleEx.Verify.Matrix do
       for %{status: {:unsolved, reason, detail}} = r <- matrix.rules,
           do: %{type: r.type, rule: r.rule, reason: reason, detail: detail}
 
+    unobservable =
+      for %{status: {:unobservable, reason, detail}} = r <- matrix.observability,
+          do: %{type: r.type, rule: r.rule, reason: reason, detail: detail}
+
     total = length(matrix.rules)
     solved = total - length(unsolved)
+    observable = total - length(unobservable)
     infos = Map.values(interpreter.types)
 
     %{
@@ -491,10 +641,15 @@ defmodule BubbleEx.Verify.Matrix do
         everyone: Enum.count(matrix.rules, & &1.default),
         solved: solved,
         unsolved: length(unsolved),
-        solved_percent: if(total == 0, do: 100.0, else: Float.round(solved * 100 / total, 1))
+        solved_percent: percent(solved, total),
+        observable: observable,
+        observable_percent: percent(observable, total),
+        false_branch_only_via_actor_guard: Enum.count(matrix.rules, &(&1[:robust_false] == false))
       },
       unsolved: unsolved,
       unsolved_by_reason: Enum.frequencies_by(unsolved, &Atom.to_string(&1.reason)),
+      unobservable: unobservable,
+      unobservable_by_reason: Enum.frequencies_by(unobservable, &Atom.to_string(&1.reason)),
       types: %{
         total: length(infos),
         with_rules: Enum.count(infos, &(&1.status == :rules)),
@@ -503,6 +658,11 @@ defmodule BubbleEx.Verify.Matrix do
         unavailable:
           Enum.count(infos, &(not &1.type.deleted and match?({:unknown, _}, &1.status)))
       },
+      seed_values_from_condition_literals: literal_values(matrix.seed, interpreter),
+      oracle_scope:
+        "model: expectations from the interpreter over the shared expression compiler's IR; " <>
+          "agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, " <>
+          "not the compiler (typing, lowering to IR); never Bubble-verified",
       personas: map_size(matrix.seed.personas),
       records: length(matrix.seed.records),
       scenarios: length(matrix.scenarios),
@@ -512,6 +672,11 @@ defmodule BubbleEx.Verify.Matrix do
       assumptions: %{
         in_force: Assumptions.to_map(matrix.assumptions),
         changed: Assumptions.changed(matrix.assumptions),
+        outcomes: Map.new(matrix.flags, &outcome(&1, matrix.joint)),
+        jointly_dependent_checks:
+          Map.new(matrix.joint, fn {flag, partners} ->
+            {Atom.to_string(flag), Map.new(partners, fn {p, n} -> {Atom.to_string(p), n} end)}
+          end),
         dependent_checks:
           matrix.dependencies
           |> Map.values()
@@ -522,6 +687,49 @@ defmodule BubbleEx.Verify.Matrix do
     }
   end
 
+  defp outcome({flag, :exercised}, _joint), do: {Atom.to_string(flag), "exercised"}
+
+  defp outcome({flag, {:not_exercised, why}}, joint) do
+    case joint[flag] do
+      nil ->
+        {Atom.to_string(flag), "not exercised: " <> why}
+
+      partners ->
+        with_ = Enum.map_join(Enum.sort(partners), ", ", fn {p, n} -> "#{p} (#{n} checks)" end)
+        {Atom.to_string(flag), "exercised only jointly with " <> with_}
+    end
+  end
+
+  defp percent(_n, 0), do: 100.0
+  defp percent(n, total), do: Float.round(n * 100 / total, 1)
+
+  # Seed text values that equal a text literal of some condition: kept
+  # only where a branch needs exactly them (the solver and personas prefer
+  # synthetic values); counted so the owner sees them.
+  defp literal_values(seed, interpreter) do
+    literals =
+      for {_, %{rules: rules}} <- interpreter.types,
+          %{status: :ok, ir: ir} <- rules,
+          text <- texts(ir),
+          into: MapSet.new(),
+          do: text
+
+    seed.records
+    |> Enum.flat_map(fn r -> Map.values(r.fields) end)
+    |> Enum.flat_map(fn
+      {:list, items} -> items
+      v -> [v]
+    end)
+    |> Enum.count(
+      &(match?({:text, t} when is_binary(t), &1) and MapSet.member?(literals, elem(&1, 1)))
+    )
+  end
+
+  defp texts(%IR{op: :literal, args: [v]}) when is_binary(v), do: [v]
+  defp texts(%IR{args: args}), do: Enum.flat_map(args, &texts/1)
+  defp texts(list) when is_list(list), do: Enum.flat_map(list, &texts/1)
+  defp texts(_), do: []
+
   @doc """
   The report without Bubble IDs (counts only), as JSON-ready string-keyed
   maps: what a committed snapshot of a private app may hold.
@@ -529,7 +737,7 @@ defmodule BubbleEx.Verify.Matrix do
   @spec counts(map()) :: map()
   def counts(report) do
     report
-    |> Map.drop([:unsolved])
+    |> Map.drop([:unsolved, :unobservable])
     |> Map.update!(:assumptions, &Map.drop(&1, [:in_force]))
     |> stringify()
   end
@@ -603,6 +811,14 @@ defmodule BubbleEx.Verify.Matrix do
     do: {:error, Error.new(:invalid_input, "expected a scenario and its model recording")}
 
   defp diff(%Observation{value: v}, v), do: []
+
+  # An unordered record set compares as a set.
+  defp diff(%Observation{kind: :record_set, value: %{ordered: false} = v}, %{records: records})
+       when is_list(records) do
+    if Enum.sort(Enum.uniq(records)) == Enum.sort(v.records),
+      do: [],
+      else: [%{op: "record_set", expected: v.records, actual: records}]
+  end
 
   defp diff(%Observation{kind: :visible, record: record, value: v}, actual),
     do: [%{op: "record_visible", record: record, expected: v, actual: present(actual)}]

@@ -240,4 +240,108 @@ defmodule BubbleEx.Verify.MatrixTest do
     assert {:ok, %Result{status: :fail, diff: [%{op: "record_set", actual: nil}]}} =
              Matrix.result(scenario, recording, missing, opts)
   end
+
+  describe "observability (mutation coverage) and assumption coverage" do
+    test "observable rules change a recorded verdict when dropped or negated",
+         %{pmodel: model, policies: matrix} do
+      {:ok, interpreter} = Interpreter.new(model)
+      {:ok, ds} = Dataset.from_seed(matrix.seed)
+      recorded = recorded_cells(matrix)
+
+      for %{status: :observable, type: type, rule: rule} <- matrix.observability do
+        mutants =
+          if rule == "everyone",
+            do: [Interpreter.mutate(interpreter, type, rule, :drop)],
+            else: for(m <- [:drop, :negate], do: Interpreter.mutate(interpreter, type, rule, m))
+
+        assert Enum.any?(recorded[type] || [], fn {user, key} ->
+                 base = Interpreter.observe(interpreter, ds, user, key)
+                 Enum.any?(mutants, &(Interpreter.observe(&1, ds, user, key) != base))
+               end),
+               "#{type}/#{rule}"
+      end
+
+      assert matrix.report.rules.observable == 8
+
+      assert matrix.report.unobservable_by_reason == %{
+               "grants_nothing" => 1,
+               "undecided_type" => 1,
+               "unsolved" => 4
+             }
+
+      assert %{type: "board", rule: "everyone", reason: :grants_nothing} in Enum.map(
+               matrix.report.unobservable,
+               &Map.take(&1, [:type, :rule, :reason])
+             )
+    end
+
+    test "the everyone rule's status uses the verdicts' own reach", %{
+      pmodel: model,
+      policies: matrix
+    } do
+      {:ok, interpreter} = Interpreter.new(model)
+      {:ok, ds} = Dataset.from_seed(matrix.seed)
+
+      for %{status: :solved, default: true, type: type} <- matrix.rules,
+          Interpreter.type(interpreter, type).rules != [] do
+        reach =
+          for {_, %{user: user}} <- matrix.seed.personas,
+              key <- Dataset.keys(ds, type),
+              uniq: true,
+              do: Interpreter.everyone_applies(interpreter, ds, user, type, key)
+
+        assert true in reach and false in reach, type
+      end
+    end
+
+    test "every flag reports whether a check depends on it", %{policies: matrix} do
+      assert map_size(matrix.flags) == 15
+      assert matrix.flags[:everyone_guards_record_values] == :exercised
+      assert {:not_exercised, "seeds cannot hold" <> _} = matrix.flags[:dangling_ref_is_empty]
+
+      for {flag, :exercised} <- matrix.flags do
+        assert Enum.any?(matrix.dependencies, fn {_, flags} -> flag in flags end), "#{flag}"
+      end
+
+      outcomes = matrix.report.assumptions.outcomes
+      assert outcomes["everyone_exclusive"] == "exercised"
+      assert matrix.report.rules.false_branch_only_via_actor_guard == 0
+      assert Enum.all?(matrix.rules, &(&1.robust_false in [true, nil]))
+    end
+
+    test "counts carry no Bubble IDs of unobservable rules", %{policies: matrix} do
+      counts = Matrix.counts(matrix.report)
+      refute Map.has_key?(counts, "unobservable")
+      assert counts["rules"]["observable"] == 8
+      assert counts["oracle_scope"] =~ "not the compiler"
+    end
+  end
+
+  test "result/4 compares an unordered record set as a set", %{policies: matrix} do
+    scenario = Enum.find(matrix.scenarios, &(&1.id == "privacy_read.custom.note.w1_member"))
+    recording = Enum.find(matrix.recordings, &(&1.scenario.id == scenario.id))
+    opts = [app: "fixture-app", ran_at: ~U[2026-10-02 09:15:00Z]]
+
+    reordered =
+      Enum.map(recording.observations, fn
+        %{kind: :record_set, value: v} = o ->
+          %{o | value: %{v | records: Enum.reverse(v.records)}}
+
+        o ->
+          o
+      end)
+
+    assert {:ok, %Result{status: :pass}} = Matrix.result(scenario, recording, reordered, opts)
+  end
+
+  defp recorded_cells(matrix) do
+    for scenario <- matrix.scenarios,
+        %{op: :get, record: key} <- scenario.ops,
+        reduce: %{} do
+      acc ->
+        type = Dataset.type_id(scenario.subjects.type)
+        user = matrix.seed.personas[scenario.persona].user
+        Map.update(acc, type, [{user, key}], &[{user, key} | &1])
+    end
+  end
 end

@@ -33,6 +33,25 @@ defmodule BubbleEx.Verify.Interpreter do
   fail-safe reading. `access/4` reports in `assumptions` the flags its
   verdict depends on: those consulted whose flip changes the verdict.
 
+  ## What it shares with the Ash target (scope of the cross-check)
+
+  The interpreter evaluates the IR of the shared expression compiler
+  (`BubbleEx.Expression.Typing` / `Compiler`), the same IR the Ash backend
+  lowers. Its agreement with the generated policies
+  (`scripts/ash_compile_check.sh`) therefore checks the IR-to-Ash lowering
+  and the policy generator, **not the compiler**: a typing or lowering bug
+  in the compiler would reach both sides alike. The hand-authored
+  expectation tables (`test/support/expression/expectations/privacy.json`,
+  `test/support/target/ash/expectations/policies.json`) stay the
+  independent signal, and Bubble recordings (V5) the ground truth. An
+  evaluator working on the AST directly would remove the shared step (a
+  follow-up).
+
+  `everyone_applies/5` is the rule-level form of the `everyone` rule's
+  reach (no other rule holds, negated conditions with their guards), the
+  same function the verdicts use per permission; `observe/4` and
+  `mutate/4` serve mutation coverage (`BubbleEx.Verify.Matrix.Coverage`).
+
   ## Unknown
 
   A rule whose condition does not compile to IR, or uses a construct the
@@ -46,7 +65,7 @@ defmodule BubbleEx.Verify.Interpreter do
   """
 
   alias BubbleEx.{Error, Model}
-  alias BubbleEx.Expression.{Compiler, Env, Schema}
+  alias BubbleEx.Expression.{Compiler, Env, IR, Schema}
   alias BubbleEx.Model.DataType
   alias BubbleEx.Privacy.Rule
   alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset, Eval}
@@ -260,8 +279,24 @@ defmodule BubbleEx.Verify.Interpreter do
 
   defp observable(%Access{} = a), do: {a.visible, a.fields, a.unknown_fields, a.searchable}
 
-  defp ctx(interpreter, ds, user, this, flags),
-    do: %{ds: ds, user: user, this: this, flags: flags, model: interpreter.model}
+  # A logged-out user is empty, or (`logged_out_user_is_empty: false`)
+  # Bubble's temporary user: a key no record has, so its fields are empty
+  # and it equals no stored user.
+  @temporary_user "~temporary_user"
+
+  defp ctx(interpreter, ds, user, this, flags) do
+    effective =
+      if is_nil(user) and not flags.logged_out_user_is_empty, do: @temporary_user, else: user
+
+    %{
+      ds: ds,
+      user: effective,
+      logged_in: not is_nil(user),
+      this: this,
+      flags: flags,
+      model: interpreter.model
+    }
+  end
 
   defp verdict(interpreter, ds, user, key, type_id, flags) do
     base = %Access{record: key, type: type_id}
@@ -285,7 +320,7 @@ defmodule BubbleEx.Verify.Interpreter do
     results = Enum.map(info.rules, &rule_result(&1, ctx))
 
     {view, f1} = view(info, results, ctx)
-    {search, f2} = grant(info, results, ctx, &flag(&1, :search_for, &2))
+    {search, f2} = search_grant(info, results, ctx, view)
     {fields, unknown, f3} = fields(info, results, view, ctx)
 
     reason =
@@ -401,14 +436,34 @@ defmodule BubbleEx.Verify.Interpreter do
         {true, flags}
 
       {true, flags} ->
-        if ctx.flags.everyone_exclusive do
-          {none, f1} = and3(Enum.map(lacking, & &1.neg))
-          {guard, f2} = record_guard(lacking, ctx)
-          {v, _} = and3([{none, []}, {guard, []}])
-          {v, [:everyone_exclusive | flags ++ f1 ++ f2]}
-        else
-          {true, [:everyone_exclusive | flags]}
-        end
+        {v, more} = applies(lacking, ctx)
+        {v, flags ++ more}
+    end
+  end
+
+  # Whether the everyone rule applies, as far as the rules `others` go:
+  # none of them holds (their negated conditions, with the compiler's
+  # record-value guard), or, under `everyone_exclusive: false`, always.
+  defp applies(others, ctx) do
+    if ctx.flags.everyone_exclusive do
+      {none, f1} = and3(Enum.map(others, & &1.neg))
+      {guard, f2} = record_guard(others, ctx)
+      {v, _} = and3([{none, []}, {guard, []}])
+      {v, [:everyone_exclusive | f1 ++ f2]}
+    else
+      {true, [:everyone_exclusive]}
+    end
+  end
+
+  # Search: `search_for`, and (`search_independent_of_view: false`) also
+  # visible by ID.
+  defp search_grant(info, results, ctx, view) do
+    {search, flags} = grant(info, results, ctx, &flag(&1, :search_for, &2))
+
+    cond do
+      search != true or view == true -> {search, flags}
+      ctx.flags.search_independent_of_view -> {search, [:search_independent_of_view | flags]}
+      true -> {view, [:search_independent_of_view | flags]}
     end
   end
 
@@ -528,6 +583,61 @@ defmodule BubbleEx.Verify.Interpreter do
         r <- info.rules,
         do: %{type: type_id, rule: r.rule.id, status: r.status}
   end
+
+  @doc """
+  Whether the `everyone` rule of `type_id` applies to `user` for record
+  `key`: no other rule holds, computed exactly as the verdicts compute it
+  (negated conditions with their guards, `everyone_exclusive`,
+  `everyone_guards_record_values`). `true`, `false` or `:unknown`.
+  """
+  @spec everyone_applies(t(), Dataset.t(), String.t() | nil, String.t(), String.t()) ::
+          boolean() | :unknown
+  def everyone_applies(%__MODULE__{} = interpreter, ds, user, type_id, key) do
+    info = type(interpreter, type_id)
+    ctx = ctx(interpreter, ds, user, key, interpreter.assumptions)
+    {v, _} = applies(Enum.map(info.rules, &rule_result(&1, ctx)), ctx)
+    v
+  end
+
+  @doc """
+  The observable verdict for `user` on record `key` (visible, fields,
+  unknown fields, searchable) without the dependency analysis; `{:need,
+  key, field}` throws from open records pass through (matrix synthesis).
+  """
+  @spec observe(t(), Dataset.t(), String.t() | nil, String.t()) :: tuple()
+  def observe(%__MODULE__{} = interpreter, ds, user, key) do
+    %{type: type_id} = Dataset.fetch(ds, key)
+    {access, _} = verdict(interpreter, ds, user, key, type_id, interpreter.assumptions)
+    observable(access)
+  end
+
+  @doc """
+  The interpreter with rule `rule_id` of `type_id` mutated: `:drop`
+  removes it (for `everyone`, its grants), `:negate` negates its
+  condition. For mutation coverage: a rule is observable when a mutant
+  changes some recorded verdict.
+  """
+  @spec mutate(t(), String.t(), String.t(), :drop | :negate) :: t()
+  def mutate(%__MODULE__{} = interpreter, type_id, "everyone", :drop),
+    do: update_in(interpreter.types[type_id], &%{&1 | default: nil})
+
+  def mutate(%__MODULE__{} = interpreter, type_id, rule_id, :drop),
+    do:
+      update_in(interpreter.types[type_id].rules, fn rules ->
+        Enum.reject(rules, &(&1.rule.id == rule_id))
+      end)
+
+  def mutate(%__MODULE__{} = interpreter, type_id, rule_id, :negate),
+    do:
+      update_in(interpreter.types[type_id].rules, fn rules ->
+        Enum.map(rules, fn
+          %{rule: %{id: ^rule_id}, ir: %IR{} = ir} = info ->
+            %{info | ir: IR.node(:not, [ir], "boolean")}
+
+          info ->
+            info
+        end)
+      end)
 
   @doc false
   # For matrix synthesis: evaluate a rule's condition with the given flags,

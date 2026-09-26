@@ -16,13 +16,17 @@ defmodule BubbleEx.Verify.Matrix.Solver do
       per solution), then empty
     * a list of records: each such record alone, a new one, then empty
     * an option: the options the condition names, then one it does not,
-      then empty; a yes/no: yes, no, empty; text and numbers: the literals
-      the condition uses, values already in the dataset (e.g. a persona's
-      name), then a sample value, then empty; a date: two fixed days, then
+      then empty; a yes/no: yes, no, empty; text and numbers: synthetic
+      values first (a sample, numbers either side of each literal), then
+      values already in the dataset (e.g. a persona's name), and the
+      condition's own literals last, only when a branch needs exactly them
+      (equality, containment); then empty; a date: two fixed days, then
       empty
     * anything else: empty
 
-  When looking for false, empty comes first. The search is bounded (3000
+  When looking for false, empty comes first. `find/5` searches for any
+  goal (e.g. a cell whose verdict a rule mutation or an assumption flip
+  changes); `solve/6` for a condition's value. The search is bounded (3000
   evaluations) and deterministic; new records get keys `r.<type>.<n>`.
   """
 
@@ -49,18 +53,39 @@ defmodule BubbleEx.Verify.Matrix.Solver do
   @spec solve(Interpreter.t(), map(), Dataset.t(), String.t(), String.t() | nil, boolean()) ::
           {:ok, Dataset.t(), String.t()} | :none
   def solve(%Interpreter{} = interpreter, info, %Dataset{} = ds, type_id, user, target) do
+    goal = fn ds, this ->
+      match?({^target, _}, Interpreter.eval_rule(interpreter, info, ds, user, this))
+    end
+
+    find(interpreter, ds, type_id, goal, irs: [info.ir], empty_first: not target)
+  end
+
+  @doc """
+  A dataset extending `ds` with a new record of `type_id` for which
+  `goal.(ds, key)` holds, and its key; or `:none`. `goal` may read unset
+  fields of open records (the solver chooses them). Options: `:irs`
+  (conditions whose literals seed the domains), `:empty_first`, `:budget`.
+  """
+  @spec find(
+          Interpreter.t(),
+          Dataset.t(),
+          String.t(),
+          (Dataset.t(), String.t() -> boolean()),
+          keyword()
+        ) ::
+          {:ok, Dataset.t(), String.t()} | :none
+  def find(%Interpreter{} = interpreter, %Dataset{} = ds, type_id, goal, opts \\ []) do
     this = next_key(ds, type_id)
 
     st = %{
       interpreter: interpreter,
-      info: info,
-      user: user,
+      goal: goal,
       this: this,
-      target: target,
-      budget: @budget,
+      empty_first: Keyword.get(opts, :empty_first, false),
+      budget: Keyword.get(opts, :budget, @budget),
       depth: %{this => 0},
       new: 1,
-      literals: literals(info.ir)
+      literals: opts |> Keyword.get(:irs, []) |> Enum.reject(&is_nil/1) |> literals()
     }
 
     case search(Dataset.put(ds, this, type_id, %{}, true), st) do
@@ -75,10 +100,7 @@ defmodule BubbleEx.Verify.Matrix.Solver do
     st = %{st | budget: st.budget - 1}
 
     try do
-      case Interpreter.eval_rule(st.interpreter, st.info, ds, st.user, st.this) do
-        {b, _flags} when b == st.target -> {:ok, ds}
-        _ -> {:none, st}
-      end
+      if st.goal.(ds, st.this), do: {:ok, ds}, else: {:none, st}
     catch
       {:need, key, field} -> branch(ds, key, field, st)
     end
@@ -95,12 +117,15 @@ defmodule BubbleEx.Verify.Matrix.Solver do
 
     ds
     |> candidates(type, key, st)
-    |> Enum.reduce_while({:none, st}, fn candidate, {_, st} ->
-      {ds, st, value} = materialize(ds, candidate, key, st)
+    |> Enum.reduce_while({:none, st}, fn candidate, {_, acc} ->
+      # Each candidate starts from this branch point: a new record made
+      # for a failed candidate does not use up the allowance.
+      base = %{st | budget: acc.budget}
+      {ds, next, value} = materialize(ds, candidate, key, base)
 
-      case search(Dataset.set(ds, key, field, value), st) do
+      case search(Dataset.set(ds, key, field, value), next) do
         {:ok, ds} -> {:halt, {:ok, ds}}
-        {:none, st} -> {:cont, {:none, st}}
+        {:none, spent} -> {:cont, {:none, %{base | budget: spent.budget}}}
       end
     end)
   end
@@ -119,7 +144,7 @@ defmodule BubbleEx.Verify.Matrix.Solver do
 
   defp candidates(ds, type, parent, st) do
     values = domain(ds, type, parent, st)
-    if st.target, do: values ++ [{:value, nil}], else: [{:value, nil} | values]
+    if st.empty_first, do: [{:value, nil} | values], else: values ++ [{:value, nil}]
   end
 
   defp domain(ds, %Type{kind: :ref, cardinality: card, target: target}, parent, st) do
@@ -147,11 +172,14 @@ defmodule BubbleEx.Verify.Matrix.Solver do
         :boolean ->
           [{:boolean, true}, {:boolean, false}]
 
+        # Synthetic values first; a condition's own literal only when a
+        # branch needs exactly it (equality, containment).
         :text ->
-          texts(st.literals) ++ present(ds, :text) ++ [{:text, "sample"}]
+          [{:text, "sample"}] ++ present(ds, :text) ++ texts(st.literals)
 
         :number ->
-          numbers(st.literals) ++ present(ds, :number) ++ [{:number, 1.0}, {:number, 10.0}]
+          [{:number, 1.0}, {:number, 10.0}] ++
+            around(st.literals) ++ present(ds, :number) ++ numbers(st.literals)
 
         :date ->
           [{:date, @base_date}, {:date, @base_date + @day}]
@@ -198,11 +226,14 @@ defmodule BubbleEx.Verify.Matrix.Solver do
     |> Enum.take(@max_present)
   end
 
+  # Either side of each number literal, for orderings.
+  defp around(literals), do: for({:number, v} <- literals, d <- [-1.0, 1.0], do: {:number, v + d})
+
   defp texts(literals), do: for({:text, v} <- literals, do: {:text, v})
   defp numbers(literals), do: for({:number, v} <- literals, do: {:number, v})
 
-  defp literals(ir) do
-    ir
+  defp literals(irs) do
+    irs
     |> collect()
     |> Enum.uniq()
     |> Enum.sort()

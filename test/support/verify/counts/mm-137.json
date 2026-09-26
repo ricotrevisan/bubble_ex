@@ -2,26 +2,63 @@
   "assumptions": {
     "changed": [],
     "dependent_checks": {
-      "actor_empty_denies": 105,
+      "actor_empty_denies": 109,
       "builtin_fields_hidden_unless_listed": 49,
+      "empty_yes_no_is_no": 4,
       "everyone_exclusive": 37,
       "everyone_guards_record_values": 15,
-      "no_visible_field_unreadable": 576
+      "logged_out_user_is_empty": 8,
+      "no_visible_field_unreadable": 651,
+      "search_independent_of_view": 45
+    },
+    "jointly_dependent_checks": {
+      "empty_equals_empty": {
+        "actor_empty_denies": 53
+      },
+      "empty_item_not_contained": {
+        "everyone_guards_record_values": 6
+      },
+      "empty_list_contains_nothing": {
+        "actor_empty_denies": 10,
+        "everyone_guards_record_values": 3
+      }
+    },
+    "outcomes": {
+      "absent_permission_denied": "not exercised: no persona and record found whose verdict it decides",
+      "actor_empty_denies": "exercised",
+      "builtin_fields_hidden_unless_listed": "exercised",
+      "dangling_ref_is_empty": "not exercised: seeds cannot hold a reference to a missing record (V1 seed references must resolve)",
+      "empty_equals_empty": "exercised only jointly with actor_empty_denies (53 checks)",
+      "empty_item_not_contained": "exercised only jointly with everyone_guards_record_values (6 checks)",
+      "empty_list_contains_nothing": "exercised only jointly with actor_empty_denies (10 checks), everyone_guards_record_values (3 checks)",
+      "empty_text_contains_nothing": "not exercised: no supported rule reads what it governs",
+      "empty_yes_no_is_no": "exercised",
+      "everyone_exclusive": "exercised",
+      "everyone_guards_record_values": "exercised",
+      "logged_out_user_is_empty": "exercised",
+      "no_visible_field_unreadable": "exercised",
+      "ordering_with_empty_false": "not exercised: no supported rule reads what it governs",
+      "search_independent_of_view": "exercised"
     }
   },
-  "checks": 1482,
-  "observations": 2406,
+  "checks": 1578,
+  "observations": 2598,
+  "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 154,
+  "records": 170,
   "rules": {
     "conditional": 77,
     "everyone": 48,
-    "solved": 123,
-    "solved_percent": 98.4,
+    "false_branch_only_via_actor_guard": 3,
+    "observable": 77,
+    "observable_percent": 61.6,
+    "solved": 120,
+    "solved_percent": 96.0,
     "total": 125,
-    "unsolved": 2
+    "unsolved": 5
   },
   "scenarios": 558,
+  "seed_values_from_condition_literals": 0,
   "skipped": {
     "gets": 0,
     "searches": 0
@@ -33,7 +70,13 @@
     "unavailable": 0,
     "with_rules": 47
   },
+  "unobservable_by_reason": {
+    "grants_nothing": 33,
+    "masked": 10,
+    "unsolved": 5
+  },
   "unsolved_by_reason": {
-    "deleted_type": 2
+    "deleted_type": 2,
+    "no_true_witness": 3
   }
 }
