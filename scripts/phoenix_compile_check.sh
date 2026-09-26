@@ -12,7 +12,10 @@
 #     database, e.g. ecto://postgres:postgres@localhost:5432): mix test,
 #     the scaffolded smoke test, which migrates a fresh database, boots the
 #     endpoint, renders the home and sign-in pages, calls the workflow API
-#     and signs a stored user in with a magic link (Oban job, Swoosh email)
+#     and signs a stored user in with a magic link (Oban job, Swoosh email),
+#     and the generated API client tests; for phoenix_api_clients also
+#     `mix wtf.task complete` of its api_call tasks, whose request_shape
+#     check runs the tests tagged with each call (request_shape.exs)
 #   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
 #     complete/audit end to end on one generated project (WTF-375)
 #
@@ -61,6 +64,13 @@ for fixture in $fixtures; do
   if [[ -n "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
     mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
     mix test
+
+    # The plan's request_shape check binds to the generated API client
+    # tests: mix wtf.task completes the fixture's api_call tasks (WTF-374).
+    if [[ "$fixture" == phoenix_api_clients ]]; then
+      (cd "$root" && mix run --no-compile scripts/phoenix_compile_check/request_shape.exs \
+        "$scratch" test/support/target/phoenix/api_clients.json)
+    fi
   fi
 done
 
