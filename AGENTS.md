@@ -49,7 +49,12 @@ The codebase follows a modular architecture with clear separation of concerns:
 - **BubbleEx.Frontend** - Modern-responsive frontend export: normalize a decoded
   payload, then write a portable HTML/CSS package (`pages/`, `reusables/`,
   hashed `assets/`, bindings/findings/coverage, `MANIFEST.json`). S1 native
-  slice only; other kinds are dimension-preserving placeholders. Separate from
+  slice only; other kinds are dimension-preserving placeholders. Popups,
+  Group Focuses and Floating Groups are native containers whose show/hide,
+  placement and dismissal are a stack-neutral `runtime` description on the
+  node (emitted closed with `hidden`); placeholder containers (dynamic
+  Repeating Groups, Tables) keep their content as a `runtime` template the
+  static export does not render (WTF-407). Separate from
   `BubbleEx.AppTree`. Frozen-case fidelity is `BubbleEx.Frontend.Fidelity` /
   `mix bubble.fidelity` (Playwright 1.55, Chromium 140); default `mix test`
   excludes `:fidelity`.

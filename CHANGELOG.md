@@ -6,6 +6,26 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Popups, Group Focuses and Floating Groups are normalized** (WTF-407).
+  Their content gets Exporter IDs, bindings and coverage like any container;
+  they are native `:popup` / `:group_focus` / `:floating_group` nodes (every
+  Floating Group anchor, not only always-visible top-right) and reusables
+  with those bases keep their children. A new stack-neutral `runtime` field
+  on `Normalized.Node` describes overlay behavior (initial state, workflow
+  toggling, modality, placement, dismissal, backdrop, layer) and marks the
+  content of placeholder containers (dynamic Repeating Groups, Tables,
+  plugin containers), now normalized as a runtime template the static
+  export does not render. The static exporter emits Popup and Group Focus
+  closed with `hidden` and `data-overlay` (shared CSS keeps them hidden),
+  places an opened Popup fixed and centered and a Group Focus with CSS anchor
+  positioning; `test/support/fidelity/overlay-states.mjs` checks opened
+  geometry against `bptvorpv`'s committed source observation. Normalized
+  schema version 3. `Plan.Residue`: `:runtime_container` now means a
+  placeholder container with runtime content (`detail.variant`). mm-137
+  plan coverage: elements generated 3,359 → 6,274 of 8,455, not normalized
+  3,620 → 1, workflows blocked by `trigger_not_normalized` 832 → 0,
+  frontend workflows auto 824 → 1,348 of 2,275.
+
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits
   `COMMENT ON COLUMN "schema"."table"."column" IS E'References ... (no

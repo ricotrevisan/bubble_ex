@@ -109,3 +109,32 @@ Run `mix quality`, `scripts/fidelity_linux.sh`, and
 `scripts/package_consumer_smoke.sh`. The current
 [support matrix](native-element-support-matrix.md) replaces stale planning tiers
 with actual static lowerings, their frozen evidence, and remaining limitations.
+
+## Normalized overlays (WTF-407, 2026-09-26)
+
+Popup, Group Focus and Floating Group contents are now normalized like any
+other container: their elements get Exporter IDs, bindings and coverage, and
+workflows listening to them are no longer `trigger_not_normalized`. The
+stack-neutral node `runtime` field records what static markup cannot: the
+initial state (`hidden` for Popup and Group Focus, whatever `is_visible`
+says, as measured above), that workflows toggle it, modality, placement
+(viewport-centered with a 100px top, or vertically centered; below a
+reference element plus `offset_top`/`offset_left`; pinned viewport edges),
+dismissal (Escape unless prevented; outside click), backdrop and layer.
+
+The static exporter emits Popup and Group Focus closed with the HTML `hidden`
+attribute and `data-overlay`; shared CSS keeps `[data-overlay][hidden]`
+hidden over the node's own display rule. Closed, they have no box and no
+layout contribution, which is what Bubble's initial DOM (no nodes at all)
+measures as, so every initial-state case is unchanged. Their content stays
+in the document so a runtime (LiveView `JS.toggle_attribute`, a small
+script) opens them by removing the attribute, with no re-render. Group Focus
+placement uses CSS anchor positioning (`anchor-name` on the reference,
+`position-anchor` and `anchor()` on the overlay), so no script is emitted.
+
+`test/support/fidelity/overlay-states.mjs` checks that contract against the
+committed source observation of `bptvorpv`: it removes `hidden` from the
+exported Popup, then the Group Focus, and compares the overlay and content
+geometry of every observed state at 390 and 1440px exactly (32 samples). No
+new capture was taken; the observation was recorded on 2026-09-10.
+
