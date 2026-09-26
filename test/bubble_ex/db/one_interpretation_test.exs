@@ -45,8 +45,14 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "workflow action parameters' own `key`/`value` members, not fields",
     "lib/bubble_ex/apps/parser.ex" =>
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
-    "lib/bubble_ex/verify/" =>
-      "the verification formats' own JSON members (`fields`, `value`, `values`, `deleted`); they read no app JSON"
+    "lib/bubble_ex/verify/observation.ex" =>
+      "the verification observation format's own members (`value`, `values`, `fields`, `deleted`); reads no app JSON",
+    "lib/bubble_ex/verify/recording.ex" =>
+      "the recording format's observation members (`value`, `values`); reads no app JSON",
+    "lib/bubble_ex/verify/scenario.ex" =>
+      "the scenario format's `input` op `value` member; reads no app JSON",
+    "lib/bubble_ex/verify/seed.ex" =>
+      "the seed format's record `fields` member; reads no app JSON"
   }
 
   defp sources do

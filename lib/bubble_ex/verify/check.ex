@@ -10,12 +10,17 @@ defmodule BubbleEx.Verify.Check do
   |-------|--------|----------------------|
   | `structural` (L0) | `generated_unchanged`, `deterministic`, `compiles`, `lint`, `boundary`, `migrations_in_sync`, `symbol_coverage`, `policy_coverage`, `bypass_inventory`, `secrets_absent` | none: fix it, or change the generator or a decision |
   | `traceability` (L1) | `traceability.source`, `traceability.rendered` | a finding decision (`decided_difference`) only |
-  | `attested` (L1) | `acceptance` | finding decision; parity exception; waiver by an agent, reviewer or owner with a reason |
-  | `privacy` (L2, L4) | `privacy_read`, `privacy_spot_check` | finding decision; parity exception (owner) only, **never a waiver or quarantine** |
+  | `attested` (L1) | `acceptance` | finding decision; parity exception; waiver by an agent or reviewer with a reason |
+  | `privacy` (L2, L4) | `privacy_read`, `privacy_spot_check` | the owner's finding decision or parity exception only, **never a waiver or quarantine** |
   | `data` (L4) | `row_counts`, `row_hashes`, `dangling_refs`, `files` | as `privacy` |
   | `auth` (L4) | `auth_users` | as `privacy` |
-  | `behavior` (L2, L3) | `workflow_side_effects`, `api_workflow`, `dom_text`, `journey` | finding decision; parity exception; waiver by a reviewer or owner; an agent may only quarantine (at most 7 days) |
-  | `visual` (L2) | `visual_parity` | finding decision; parity exception; waiver by a reviewer (with an attestation) or owner |
+  | `behavior` (L2, L3) | `workflow_side_effects`, `api_workflow`, `dom_text`, `journey` | finding decision; parity exception; waiver by a reviewer; an agent may only quarantine (at most 7 days from the first quarantine) |
+  | `visual` (L2) | `visual_parity` | finding decision; parity exception; waiver by a reviewer with an attestation |
+
+  The owner accepts only through decisions (the decision store records the
+  author); a waiver's actor is self-declared, so a result never carries an
+  owner waiver, and a reviewer's waiver counts only for reviewers the caller
+  trusts (`BubbleEx.Verify.Result.evaluate/3`).
   | `gate` (L5) | `cutover_gate` | none: the owner's sign-off is the gate |
   """
 
@@ -51,13 +56,14 @@ defmodule BubbleEx.Verify.Check do
   }
 
   # Who may waive (status `waived` with a `waiver`), per class.
+  # Owners never appear: an owner accepts through a parity exception.
   @waivers %{
-    attested: [:agent, :reviewer, :owner],
-    behavior: [:reviewer, :owner],
-    visual: [:reviewer, :owner]
+    attested: [:agent, :reviewer],
+    behavior: [:reviewer],
+    visual: [:reviewer]
   }
   # Who may quarantine, per class.
-  @quarantines %{behavior: [:agent, :reviewer, :owner]}
+  @quarantines %{behavior: [:agent, :reviewer]}
   # Classes a parity exception can excuse (status `waived` citing it).
   @parity [:attested, :privacy, :data, :auth, :behavior, :visual]
   # Classes a finding decision can explain (status `decided_difference`).

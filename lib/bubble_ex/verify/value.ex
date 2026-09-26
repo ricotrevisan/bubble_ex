@@ -9,12 +9,12 @@ defmodule BubbleEx.Verify.Value do
 
   | JSON | Elixir | Rule |
   |------|--------|------|
-  | `null` | `nil` | empty; distinct from `{"text": ""}` and `{"list": []}` |
+  | `null` | `nil` | empty; distinct from `{"text": ""}` |
   | `{"text": "…"}` | `{:text, s}` | kept verbatim: no trimming, `""` is not empty |
   | `{"number": 3.0}` | `{:number, 3.0}` | always a float (`3` decodes to `3.0`; `-0.0` to `0.0`) |
   | `{"boolean": true}` | `{:boolean, b}` | |
   | `{"date": 1727222400000}` | `{:date, ms}` | integer milliseconds since the Unix epoch, UTC |
-  | `{"file": "…"}`, `{"image": "…"}` | `{:file, url}`, `{:image, url}` | the URL |
+  | `{"file": "…"}`, `{"image": "…"}` | `{:file, url}`, `{:image, url}` | the URL; Bubble's protocol-relative `//host/…` becomes `https://host/…` |
   | `{"ref": "seed_key"}` | `{:ref, key}` | a record, by its seed or recording key |
   | `{"option": "key"}` | `{:option, key}` | an option value's stable key |
   | `{"geographic_address": {…}}` | `{:geographic_address, map}` | components of `BubbleEx.Model.Structured`: `formatted_address` (string), `lat`, `lng` (floats); each may be `null` |
@@ -22,7 +22,7 @@ defmodule BubbleEx.Verify.Value do
   | `{"number_range": {"min": 1.0, "max": 2.0}}` | `{:number_range, map}` | floats, each may be `null` |
   | `{"date_interval": 86400000.0}` | `{:date_interval, ms}` | float milliseconds |
   | `{"json": …}` | `{:json, term}` | any JSON value, kept verbatim (the Ash target's `Types.JsonValue`) |
-  | `{"list": [v, …]}` | `{:list, [v]}` | ordered; no `null` items, no nested lists, one item type |
+  | `{"list": [v, …]}` | `{:list, [v]}` | ordered; no `null` items, no nested lists, one item type. `{"list": []}` decodes to `null`: Bubble has one empty state for a list (`is empty` holds for both, and the Data API omits both), so an empty list and an unset one compare equal |
 
   Structured component maps use atom keys in Elixir (`%{lat: 1.0, …}`) and
   every component is present.
@@ -66,7 +66,7 @@ defmodule BubbleEx.Verify.Value do
   def cast(%{"list" => items} = map) when map_size(map) == 1 and is_list(items) do
     with {:ok, values} <- Json.list(items, "list", &item/1),
          :ok <- homogeneous(values) do
-      {:ok, {:list, values}}
+      {:ok, if(values == [], do: nil, else: {:list, values})}
     end
   end
 
@@ -97,6 +97,12 @@ defmodule BubbleEx.Verify.Value do
   defp scalar("date", ms) when is_integer(ms), do: {:ok, {:date, ms}}
   defp scalar("date_interval", n) when is_number(n), do: {:ok, {:date_interval, float(n)}}
   defp scalar("json", term), do: {:ok, {:json, term}}
+
+  defp scalar(tag, "//" <> rest) when tag in ~w(file image) do
+    if rest == "",
+      do: Json.error("invalid #{tag} value", %{value: "//"}),
+      else: {:ok, {String.to_existing_atom(tag), "https://" <> rest}}
+  end
 
   defp scalar(tag, s) when tag in ~w(file image ref option) and is_binary(s) and s != "",
     do: {:ok, {String.to_existing_atom(tag), s}}

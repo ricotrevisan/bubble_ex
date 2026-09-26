@@ -60,9 +60,9 @@ defmodule BubbleEx.Verify.Scenario do
   | `page` | `visit`, `click`, `input` |
   | `journey` | any |
 
-  `sha256/1` is the scenario's recording identity: everything but `masks`,
-  `covers` and `subjects`, which change how results are read, not what is
-  recorded.
+  `sha256/1` hashes the whole scenario, masks and subjects included: a new
+  mask (which can hide a difference) makes every recording and result made
+  before it stale.
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -170,7 +170,7 @@ defmodule BubbleEx.Verify.Scenario do
     with :ok <- Json.envelope(map, @format, @schema_version, @members, @required, "scenario"),
          {:ok, id} <- Json.symbol(map["id"], "scenario id"),
          {:ok, kind} <- Json.enum(map["kind"], @kinds, "scenario kind"),
-         {:ok, check} <- check(map["check"]),
+         {:ok, {check, class}} <- check(map["check"]),
          {:ok, seed} <- seed_ref(map["seed"]),
          {:ok, persona} <- Json.symbol(map["persona"], "scenario persona"),
          {:ok, subjects} <- Check.subjects(Map.get(map, "subjects") || %{}),
@@ -179,6 +179,7 @@ defmodule BubbleEx.Verify.Scenario do
          {:ok, masks} <-
            Json.list(Map.get(map, "masks") || [], "scenario masks", &Mask.from_map/1),
          :ok <- masks_fit(masks, ops),
+         :ok <- Mask.check_class(masks, class),
          {:ok, covers} <- covers(Map.get(map, "covers") || %{}),
          {:ok, source} <- Json.sha256(map["source_sha256"], "scenario source_sha256") do
       {:ok,
@@ -198,10 +199,7 @@ defmodule BubbleEx.Verify.Scenario do
   end
 
   defp check(name) do
-    case Check.fetch(name) do
-      {:ok, _} -> {:ok, name}
-      error -> error
-    end
+    with {:ok, {_level, class}} <- Check.fetch(name), do: {:ok, {name, class}}
   end
 
   defp seed_ref(map) do
@@ -328,7 +326,6 @@ defmodule BubbleEx.Verify.Scenario do
 
   defp mask_fits(mask, by_id) do
     case Map.fetch(by_id, mask.op) do
-      {:ok, op} when mask.kind == nil -> {:ok, op}
       {:ok, op} -> if mask.kind in op.observe, do: {:ok, op}, else: mask_error(mask)
       :error -> Json.error("mask names an unknown op", %{op: mask.op})
     end
@@ -358,7 +355,6 @@ defmodule BubbleEx.Verify.Scenario do
     })
   end
 
-  # What a recording depends on.
   defp identity(%__MODULE__{} = s) do
     %{
       "format" => @format,
@@ -393,12 +389,12 @@ defmodule BubbleEx.Verify.Scenario do
   def from_json(text), do: Json.from_json(text, "scenario", &from_map/1)
 
   @doc """
-  The recording identity: SHA-256 of the canonical JSON without `masks`,
-  `covers` and `subjects`. Recordings pin it (`scenario.sha256`), and a
-  parity exception's `basis.scenario_sha256` is this hash.
+  SHA-256 of the canonical JSON (every member, masks included). Recordings
+  and results pin it (`scenario.sha256`), and a parity exception's
+  `basis.scenario_sha256` is this hash.
   """
   @spec sha256(t()) :: String.t()
-  def sha256(%__MODULE__{} = s), do: s |> identity() |> CanonicalJson.sha256()
+  def sha256(%__MODULE__{} = s), do: s |> to_map() |> CanonicalJson.sha256()
 
   @doc """
   Checks the scenario against its seed set: the seed ID and hash match,

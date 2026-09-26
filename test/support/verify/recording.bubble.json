@@ -47,7 +47,7 @@
   "runs": 2,
   "scenario": {
     "id": "privacy_read.custom.task.w2_member",
-    "sha256": "66912ad57afa03b58031449262701f0f598b4cd16bb1cc3403ea17153b5c1636",
+    "sha256": "eb51de63bf03982d03608fdea107a6b0f5ca88de12f73c7293510de49327a084",
     "source_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
   },
   "schema_version": 1,

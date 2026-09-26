@@ -11,10 +11,16 @@ defmodule BubbleEx.Verify.ValueTest do
 
   defp invalid(json), do: assert({:error, %Error{kind: :invalid_input}} = Value.cast(json))
 
-  test "empty, empty text and an empty list are three different values" do
+  test "empty text is not empty; an empty list is Bubble's one empty state" do
     assert cast!(nil) == nil
     assert cast!(%{"text" => ""}) == {:text, ""}
-    assert cast!(%{"list" => []}) == {:list, []}
+    assert cast!(%{"list" => []}) == nil
+  end
+
+  test "protocol-relative file URLs become https" do
+    assert cast!(%{"file" => "//files.example/a.pdf"}) == {:file, "https://files.example/a.pdf"}
+    assert cast!(%{"image" => "//files.example/a.png"}) == {:image, "https://files.example/a.png"}
+    assert {:error, _} = Value.cast(%{"file" => "//"})
   end
 
   test "text is kept verbatim" do

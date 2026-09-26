@@ -25,13 +25,17 @@ defmodule BubbleEx.Verify do
   symbolic seed keys, never target names.
 
   The decisions that shape these formats (WTF-358): replay runs on a child
-  branch, never live (D1: `Recording` rejects `live`/`test`); Bubble
-  recordings are the oracle and interpreter results are marked `model`
-  (D2: `Result.bubble_verified?/1`); privacy and data differences are
-  accepted only through an owner `parity_exception` decision, agents may
-  quarantine other behavioural scenarios for at most 7 days, and structural
-  checks are never waivable (D4: `Result` status rules); seeds, scenarios
-  and recordings live in the owner repo (D6).
+  branch, never live (D1: `BubbleEx.Verify.Replay` accepts only
+  `wtfreplay…` branches); Bubble recordings are the oracle and interpreter
+  results are marked `model` (D2: `Result.evaluate/3`); privacy and data
+  differences are accepted only through the owner's decisions (a parity
+  exception for a difference with no finding), agents may quarantine other
+  behavioural scenarios for at most 7 days, and structural checks are
+  never waivable (D4: `Result` status rules and `Result.evaluate/3`);
+  seeds, scenarios and recordings live in the owner repo (D6).
+
+  A decoded result never counts by itself: only `Result.evaluate/3`,
+  against the resolved decisions, says whether it passes.
   """
 
   alias BubbleEx.Error

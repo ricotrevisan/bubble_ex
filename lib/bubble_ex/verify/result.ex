@@ -37,25 +37,31 @@ defmodule BubbleEx.Verify.Result do
 
   ## Statuses
 
-  | status | counts as passing | rule (enforced by `from_map/1`) |
-  |--------|-------------------|---------------------------------|
+  Decoding (`from_map/1`) enforces each status's shape; whether a result
+  **counts** is only known after `evaluate/3` has checked it against the
+  decision store. A decoded result alone never counts as passing.
+
+  | status | counts after `evaluate/3` | rule (enforced by `from_map/1`) |
+  |--------|---------------------------|---------------------------------|
   | `pass` | yes | no diff, decision or waiver |
-  | `decided_difference` | yes | a diff explained by an owner **finding** decision: `decision` = its `key` + the finding's `proposal_sha256`; the class must be decidable |
-  | `waived` | yes, listed at cutover | a diff excused by an owner **parity exception** (`decision` = its `key`, `proposal_sha256` null, no `waiver`), or by a `waiver` from an actor the class allows (visual reviewer waivers need an `attestation` in `evidence`) |
-  | `quarantined` | no, blocks cutover | `behavior` checks only: a `waiver` with a reason and `expires_at` after `ran_at` and at most 7 days later; no decision |
+  | `decided_difference` | yes, if the decision links | a diff explained by a **finding** decision: `decision` = its `key` + the finding's `proposal_sha256`; the class must be decidable |
+  | `waived` | yes (listed at cutover), if the decision links or the reviewer is trusted | a diff excused by an owner **parity exception** (`decision` = its `key`, `proposal_sha256` null, no `waiver`), or by a `waiver` from an agent or reviewer the class allows (visual reviewer waivers need an `attestation` with its `sha256` in `evidence`). Owner waivers are refused: owners accept through decisions |
+  | `quarantined` | no, blocks cutover | `behavior` checks only: a `waiver` with a reason, `since` (the first quarantine, not after `ran_at`) and `expires_at` after `ran_at` and at most 7 days after `since`; no decision |
   | `fail` | no | no decision or waiver |
   | `stale` | no | `stale_reasons` (`BubbleEx.Verify.Staleness`); the rest is kept as it was |
   | `skipped` | no for privacy, data and auth; yes elsewhere | a `reason` |
   | `error` | no | a `reason` |
 
   So agents can never accept a privacy, data or auth difference: those
-  classes have no waivers and no quarantine, and a parity exception must be
-  the owner's (`link_decision/2` checks the author). Structural and gate
-  checks accept no difference at all.
+  classes have no waivers and no quarantine, and a finding decision or
+  parity exception must be the owner's (`link_decision/3` checks the
+  author recorded in the decision store). Structural and gate checks accept
+  no difference at all.
 
   L2 and L3 results other than `stale`, `skipped` and `error` need a
-  `scenario` and an `oracle`. An L2/L3 result whose oracle is `model` (the
-  interpreter) never counts as Bubble-verified (`bubble_verified?/1`,
+  `scenario` and an `oracle`. A Bubble oracle names its replay branch
+  (`BubbleEx.Verify.Replay`). A result whose oracle is `model` (the
+  interpreter) never counts as Bubble-verified at any level (`evaluate/3`,
   decision D2 on WTF-358).
 
   ## Decisions
@@ -64,13 +70,14 @@ defmodule BubbleEx.Verify.Result do
   with the finding's `proposal_sha256`, or a `parity_exception:` key with
   `proposal_sha256` null (parity exceptions are the `BubbleEx.Decision`
   envelope of kind `:parity_exception`; they have no proposal).
-  `link_decision/2` checks the reference against `BubbleEx.Decision.resolve/3`
-  output and turns the result `stale` when the decision no longer holds.
+  `link_decision/3` checks the reference against `BubbleEx.Decision.resolve/3`
+  output (author, relevance, hashes) and turns the result `stale` when the
+  decision no longer holds.
   """
 
-  alias BubbleEx.{CanonicalJson, Decision, Error}
+  alias BubbleEx.{CanonicalJson, Decision, Error, Finding}
   alias BubbleEx.Decision.Resolved
-  alias BubbleEx.Verify.{Check, Json}
+  alias BubbleEx.Verify.{Check, Json, Recording, Replay, Scenario}
 
   @format "bubble_ex.verify.result"
   @schema_version 1
@@ -93,7 +100,7 @@ defmodule BubbleEx.Verify.Result do
     :decision_withdrawn
   ]
   @oracles [:bubble, :model, :export]
-  @actors [:agent, :reviewer, :owner]
+  @actors [:agent, :reviewer]
   @evidence [:recording, :scenario, :seed, :attestation, :screenshot, :artifact, :log, :decision]
   @diff_ops ~w(record_visible field_visible field_value record_set record_created record_updated
                record_deleted field_changed status response_field step_order dom_text pixel_ratio
@@ -286,18 +293,13 @@ defmodule BubbleEx.Verify.Result do
     with :ok <- Json.members(map, ~w(kind sha256 branch), ~w(kind sha256), "result oracle"),
          {:ok, kind} <- Json.enum(map["kind"], @oracles, "oracle kind"),
          {:ok, sha} <- Json.sha256(map["sha256"], "oracle sha256"),
-         {:ok, branch} <- Json.optional_string(map["branch"], "oracle branch"),
-         :ok <- oracle_branch(kind, branch) do
+         {:ok, branch} <- oracle_branch(kind, map["branch"]) do
       {:ok, %{kind: kind, sha256: sha, branch: branch}}
     end
   end
 
-  defp oracle_branch(:bubble, branch) when branch in ["live", "test"],
-    do:
-      Json.error("a Bubble oracle is a replay child branch, never live or test", %{branch: branch})
-
-  defp oracle_branch(:bubble, _branch), do: :ok
-  defp oracle_branch(_kind, nil), do: :ok
+  defp oracle_branch(:bubble, branch), do: Replay.branch(branch)
+  defp oracle_branch(_kind, nil), do: {:ok, nil}
   defp oracle_branch(kind, _branch), do: Json.error("a #{kind} oracle has no branch")
 
   defp basis(map) do
@@ -399,18 +401,27 @@ defmodule BubbleEx.Verify.Result do
   defp waiver(nil), do: {:ok, nil}
 
   defp waiver(map) do
-    with :ok <- Json.members(map, ~w(actor reason expires_at), ~w(actor reason), "waiver"),
+    with :ok <- Json.members(map, ~w(actor reason expires_at since), ~w(actor reason), "waiver"),
          {:ok, actor} <- waiver_actor(map["actor"]),
          {:ok, reason} <- Json.string(map["reason"], "waiver reason"),
-         {:ok, expires} <- Json.optional_timestamp(map["expires_at"], "waiver expires_at") do
-      {:ok, %{actor: actor, reason: reason, expires_at: expires}}
+         {:ok, expires} <- Json.optional_timestamp(map["expires_at"], "waiver expires_at"),
+         {:ok, since} <- Json.optional_timestamp(map["since"], "waiver since") do
+      {:ok, %{actor: actor, reason: reason, expires_at: expires, since: since}}
     end
   end
 
+  # An owner never waives by declaration: the owner's acceptance is a
+  # parity exception decision, whose author the decision store records.
+  defp waiver_actor(%{"kind" => "owner"}),
+    do:
+      Json.error(
+        "an owner accepts a difference through a parity exception decision, not a waiver"
+      )
+
   defp waiver_actor(map) do
-    with :ok <- Json.members(map, ~w(kind id), ~w(kind), "waiver actor"),
+    with :ok <- Json.members(map, ~w(kind id), ~w(kind id), "waiver actor"),
          {:ok, kind} <- Json.enum(map["kind"], @actors, "waiver actor kind"),
-         {:ok, id} <- Json.optional_string(map["id"], "waiver actor id") do
+         {:ok, id} <- Json.string(map["id"], "waiver actor id") do
       {:ok, %{kind: kind, id: id}}
     end
   end
@@ -425,10 +436,17 @@ defmodule BubbleEx.Verify.Result do
 
   defp status_rules(%__MODULE__{} = r) do
     with :ok <- stale_rule(r),
+         :ok <- since_rule(r),
          :ok <- status_rule(r.status, r) do
       evidence_rule(r)
     end
   end
+
+  defp since_rule(%{waiver: %{since: since}, status: status})
+       when since != nil and status not in [:quarantined, :stale],
+       do: Json.error("only a quarantine has since")
+
+  defp since_rule(_), do: :ok
 
   defp stale_rule(%{status: :stale, stale_reasons: []}),
     do: Json.error("a stale result needs stale_reasons")
@@ -529,15 +547,27 @@ defmodule BubbleEx.Verify.Result do
   defp quarantine_window(%{waiver: %{expires_at: nil}}),
     do: Json.error("a quarantine needs expires_at")
 
-  defp quarantine_window(%{waiver: %{expires_at: expires}, ran_at: ran_at}) do
-    limit = DateTime.add(ran_at, @quarantine_days * 86_400, :second)
+  defp quarantine_window(%{waiver: %{since: nil}}),
+    do: Json.error("a quarantine needs since (when the scenario was first quarantined)")
 
-    if DateTime.compare(expires, ran_at) == :gt and DateTime.compare(expires, limit) != :gt,
-      do: :ok,
-      else:
-        Json.error("a quarantine expires within #{@quarantine_days} days of ran_at", %{
-          expires_at: expires
-        })
+  # `since` is the first quarantine: renewing never extends past 7 days
+  # from it.
+  defp quarantine_window(%{waiver: %{expires_at: expires, since: since}, ran_at: ran_at}) do
+    limit = DateTime.add(since, @quarantine_days * 86_400, :second)
+
+    cond do
+      DateTime.compare(since, ran_at) == :gt ->
+        Json.error("a quarantine's since is before ran_at", %{since: since})
+
+      DateTime.compare(expires, ran_at) == :gt and DateTime.compare(expires, limit) != :gt ->
+        :ok
+
+      true ->
+        Json.error(
+          "a quarantine expires after ran_at and within #{@quarantine_days} days of its first quarantine",
+          %{expires_at: expires, since: since}
+        )
+    end
   end
 
   defp none(r, members) do
@@ -553,19 +583,28 @@ defmodule BubbleEx.Verify.Result do
   # Behavioural results need what they were compared against, and a
   # reviewer's visual waiver needs the attestation.
   defp evidence_rule(r) do
-    cond do
-      r.level in [:l2, :l3] and r.status not in [:stale, :skipped, :error] and
-          (is_nil(r.scenario) or is_nil(r.oracle)) ->
-        Json.error("an #{Check.level_json(r.level)} result needs its scenario and oracle")
-
-      r.class == :visual and match?(%{actor: %{kind: :reviewer}}, r.waiver) and
-          not Enum.any?(r.evidence, &(&1.kind == :attestation)) ->
-        Json.error("a reviewer's visual waiver needs an attestation in evidence")
-
-      true ->
-        :ok
-    end
+    with :ok <- compared_rule(r), do: attestation_rule(r)
   end
+
+  defp compared_rule(%{level: level, status: status} = r)
+       when level in [:l2, :l3] and status not in [:stale, :skipped, :error] do
+    if is_nil(r.scenario) or is_nil(r.oracle),
+      do: Json.error("an #{Check.level_json(level)} result needs its scenario and oracle"),
+      else: :ok
+  end
+
+  defp compared_rule(_r), do: :ok
+
+  defp attestation_rule(%{class: :visual, waiver: %{actor: %{kind: :reviewer}}} = r) do
+    if Enum.any?(r.evidence, &(&1.kind == :attestation and &1.sha256 != nil)),
+      do: :ok,
+      else:
+        Json.error(
+          "a reviewer's visual waiver needs an attestation (with its sha256) in evidence"
+        )
+  end
+
+  defp attestation_rule(_r), do: :ok
 
   # --- encoding -----------------------------------------------------------------
 
@@ -612,30 +651,137 @@ defmodule BubbleEx.Verify.Result do
 
   # --- reading results ------------------------------------------------------------
 
-  @doc """
-  Whether the result counts as passing (the table above): `pass`,
-  `decided_difference`, `waived`, and `skipped` outside the privacy, data
-  and auth classes.
-  """
-  @spec passing?(t()) :: boolean()
-  def passing?(%__MODULE__{status: status}) when status in [:pass, :decided_difference, :waived],
-    do: true
-
-  def passing?(%__MODULE__{status: :skipped, class: class}),
-    do: class not in [:privacy, :data, :auth]
-
-  def passing?(%__MODULE__{}), do: false
+  @typedoc "What `evaluate/3` concludes about a result."
+  @type verdict :: %{result: t(), passing: boolean(), bubble_verified: boolean()}
 
   @doc """
-  Whether a passing result counts at cutover as verified against Bubble:
-  an L2 or L3 result passes only on a `bubble` oracle; a `model` oracle
-  (the interpreter) is a pre-check and never counts (decision D2).
-  """
-  @spec bubble_verified?(t()) :: boolean()
-  def bubble_verified?(%__MODULE__{level: level} = r) when level in [:l2, :l3],
-    do: passing?(r) and match?(%{kind: :bubble}, r.oracle)
+  Evaluates a decoded result against the current decisions. This is the
+  only way to learn whether a result counts: decoding checks a result's
+  shape and status rules, but a `waived` or `decided_difference` result
+  only counts once its decision is checked against the decision store, and
+  a reviewer's waiver only once the reviewer is known.
 
-  def bubble_verified?(%__MODULE__{} = r), do: passing?(r)
+  `resolved` is `BubbleEx.Decision.resolve/3` output. Options:
+
+    * `:now` (required) - a `ran_at` more than `:skew_seconds` (default
+      300) after it is `:invalid_input`
+    * `:reviewers` - IDs of the acceptance reviewers the caller trusts
+      (default `[]`). A reviewer's waiver whose actor ID is not listed does
+      not count: waiver actors are self-declared
+    * `:findings`, `:scenario` - passed to `link_decision/3` (relevance)
+    * `:recording` - the recording the oracle cites (`check_recording/2`).
+      Without it a `bubble` oracle is not trusted, so the result is not
+      Bubble-verified
+
+  Returns the result after `link_decision/3` (possibly `stale`) and:
+
+    * `passing` - `pass`, `decided_difference` or `waived` (a reviewer
+      waiver only from a trusted reviewer), and `skipped` outside the
+      privacy, data and auth classes
+    * `bubble_verified` - passing and, for privacy, data, auth, behaviour
+      and visual checks at any level, compared against a `bubble` oracle
+      whose recording was given and matches, or an `export` oracle (L4
+      data). A `model` oracle (the interpreter) never counts (decision D2)
+  """
+  @spec evaluate(t(), Resolved.t(), keyword()) :: {:ok, verdict()} | {:error, Error.t()}
+  def evaluate(%__MODULE__{} = r, %Resolved{} = resolved, opts) do
+    with :ok <- not_future(r, opts),
+         {:ok, linked} <- link_decision(r, resolved, opts),
+         :ok <- maybe_recording(linked, opts[:recording]) do
+      passing = counts?(linked, Keyword.get(opts, :reviewers, []))
+
+      {:ok,
+       %{
+         result: linked,
+         passing: passing,
+         bubble_verified: passing and oracle_verified?(linked, opts[:recording])
+       }}
+    end
+  end
+
+  @doc "`evaluate/3`'s `passing`; `false` when the result does not evaluate."
+  @spec passing?(t(), Resolved.t(), keyword()) :: boolean()
+  def passing?(r, resolved, opts),
+    do: match?({:ok, %{passing: true}}, evaluate(r, resolved, opts))
+
+  @doc "`evaluate/3`'s `bubble_verified`; `false` when the result does not evaluate."
+  @spec bubble_verified?(t(), Resolved.t(), keyword()) :: boolean()
+  def bubble_verified?(r, resolved, opts),
+    do: match?({:ok, %{bubble_verified: true}}, evaluate(r, resolved, opts))
+
+  defp not_future(r, opts) do
+    case Keyword.get(opts, :now) do
+      %DateTime{} = now ->
+        limit = DateTime.add(now, Keyword.get(opts, :skew_seconds, 300), :second)
+
+        if DateTime.compare(r.ran_at, limit) == :gt,
+          do: Json.error("result ran_at is in the future", %{ran_at: r.ran_at, now: now}),
+          else: :ok
+
+      _ ->
+        Json.error("evaluate needs now: %DateTime{}")
+    end
+  end
+
+  defp maybe_recording(_r, nil), do: :ok
+  defp maybe_recording(r, recording), do: check_recording(r, recording)
+
+  defp counts?(%{status: status}, _) when status in [:pass, :decided_difference], do: true
+
+  defp counts?(%{status: :waived, waiver: %{actor: %{kind: :reviewer, id: id}}}, reviewers),
+    do: id in reviewers
+
+  defp counts?(%{status: :waived}, _), do: true
+  defp counts?(%{status: :skipped, class: class}, _), do: class not in [:privacy, :data, :auth]
+  defp counts?(_, _), do: false
+
+  @oracle_classes [:privacy, :data, :auth, :behavior, :visual]
+
+  defp oracle_verified?(%{class: class, oracle: oracle}, recording)
+       when class in @oracle_classes do
+    case oracle do
+      %{kind: :bubble} -> recording != nil
+      %{kind: :export} -> class in [:data, :auth, :privacy]
+      _ -> false
+    end
+  end
+
+  defp oracle_verified?(%{oracle: %{kind: :model}}, _), do: false
+  defp oracle_verified?(_, _), do: true
+
+  @doc """
+  Checks that the result's oracle is `recording`: same SHA-256, same kind
+  (`bubble` / `model`), same branch, and the same scenario.
+  """
+  @spec check_recording(t(), Recording.t()) :: :ok | {:error, Error.t()}
+  def check_recording(%__MODULE__{oracle: oracle} = r, %Recording{} = rec) do
+    branch = if rec.oracle == :bubble, do: rec.source.branch
+
+    cond do
+      oracle == nil ->
+        Json.error("the result has no oracle to check")
+
+      oracle.sha256 != Recording.sha256(rec) ->
+        Json.error("the result's oracle is another recording", %{sha256: oracle.sha256})
+
+      oracle.kind != rec.oracle ->
+        Json.error("the result's oracle kind differs from its recording's", %{
+          kind: oracle.kind,
+          recording: rec.oracle
+        })
+
+      oracle.branch != branch ->
+        Json.error("the result's oracle branch differs from its recording's", %{
+          branch: oracle.branch
+        })
+
+      r.scenario == nil or r.scenario.id != rec.scenario.id ->
+        Json.error("the recording is for another scenario", %{scenario: rec.scenario.id})
+
+      true ->
+        :ok
+    end
+  end
 
   @doc """
   The result turned `stale` for `reasons` (a subset of `stale_reasons/0`),
@@ -661,34 +807,55 @@ defmodule BubbleEx.Verify.Result do
   when the decision no longer holds:
 
     * finding decisions: the current record of the key must accept or
-      modify; a different `proposal_sha256` is `:decision_changed`, and a
-      `:stale` or `:orphaned` record is `:decision_stale` /
-      `:decision_orphaned`
+      modify, and be **relevant**: its subject is contained in the result's
+      subjects, or `opts[:scenario]` is the result's scenario (same ID and
+      hash) and lists the finding in `covers.findings`. For privacy, data
+      and auth checks it must also be authored by the **owner**. A
+      different `proposal_sha256` is `:decision_changed`; a `:stale` or
+      `:orphaned` record is `:decision_stale` / `:decision_orphaned`
     * parity exceptions: the current record must accept, be authored by the
       **owner** (an agent's parity exception excuses nothing), have a `scope`
-      equal to the result's scenario ID or result ID, and a subject whose
-      every entry the result's subjects contain; an `:expired` or
-      `:withdrawn` one is `:decision_expired` / `:decision_withdrawn`
+      equal to the result's scenario ID or result ID, a subject whose every
+      entry the result's subjects contain and, when the result has a
+      scenario, pin it: `basis.scenario_sha256` is required, and a
+      different hash is `:decision_changed`. An `:expired` or `:withdrawn`
+      one is `:decision_expired` / `:decision_withdrawn`
 
   A key with no record, or a record that breaks these rules, is
   `:invalid_input`. A result without a decision is returned unchanged.
+  Options: `:scenario` (a `BubbleEx.Verify.Scenario`), `:findings` (the
+  current `BubbleEx.Finding`s; a finding listed in the scenario's covers
+  must also be among them when given).
   """
-  @spec link_decision(t(), Resolved.t()) :: {:ok, t()} | {:error, Error.t()}
-  def link_decision(%__MODULE__{decision: nil} = r, %Resolved{}), do: {:ok, r}
+  @spec link_decision(t(), Resolved.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def link_decision(result, resolved, opts \\ [])
+  def link_decision(%__MODULE__{decision: nil} = r, %Resolved{}, _opts), do: {:ok, r}
 
-  def link_decision(%__MODULE__{decision: ref} = r, %Resolved{entries: entries}) do
+  def link_decision(%__MODULE__{decision: ref} = r, %Resolved{entries: entries}, opts) do
     case Enum.find(entries, &(&1.decision.key == ref.key and &1.state != :superseded)) do
       nil -> Json.error("the result cites a decision that does not exist", %{key: ref.key})
-      entry -> linked(r, ref, entry)
+      entry -> linked(r, ref, entry, opts)
     end
   end
 
-  defp linked(r, %{kind: :finding} = ref, %{decision: %Decision{} = d, state: state}) do
+  defp linked(r, %{kind: :finding} = ref, %{decision: %Decision{} = d, state: state}, opts) do
     cond do
       d.choice not in [:accept, :modify] ->
         Json.error("only an accepted or modified finding explains a difference", %{
           key: ref.key,
           choice: d.choice
+        })
+
+      r.class in [:privacy, :data, :auth] and not owner?(d) ->
+        Json.error("#{r.class} differences are explained only by the owner's decisions", %{
+          key: ref.key,
+          author: d.author
+        })
+
+      not relevant?(r, d, opts) ->
+        Json.error("the finding decision is about another subject or scenario", %{
+          key: ref.key,
+          subject: d.subject
         })
 
       d.basis[:proposal_sha256] != ref.proposal_sha256 ->
@@ -699,30 +866,73 @@ defmodule BubbleEx.Verify.Result do
     end
   end
 
-  defp linked(r, %{kind: :parity_exception} = ref, %{decision: %Decision{} = d, state: state}) do
-    cond do
-      state == :withdrawn ->
-        {:ok, mark_stale(r, [:decision_withdrawn])}
+  defp linked(r, %{kind: :parity_exception}, %{state: :withdrawn}, _),
+    do: {:ok, mark_stale(r, [:decision_withdrawn])}
 
-      not match?(%{kind: :owner}, d.author) ->
+  defp linked(r, %{kind: :parity_exception} = ref, %{decision: %Decision{} = d, state: state}, _) do
+    with :ok <- parity_owner(ref, d),
+         :ok <- parity_covers(r, d),
+         :ok <- parity_pins(r, ref, d) do
+      if r.scenario != nil and d.basis.scenario_sha256 != r.scenario.sha256,
+        do: {:ok, mark_stale(r, [:decision_changed])},
+        else: {:ok, mark_stale(r, state_reasons(state))}
+    end
+  end
+
+  defp parity_owner(ref, d) do
+    if owner?(d),
+      do: :ok,
+      else:
         Json.error("only an owner's parity exception excuses a difference", %{
           key: ref.key,
           author: d.author
         })
+  end
 
+  defp parity_covers(r, d) do
+    cond do
       d.params.scope not in [r.id, r.scenario && r.scenario.id] ->
         Json.error("the parity exception's scope is another scenario or check", %{
           scope: d.params.scope,
           result: r.id
         })
 
-      not Enum.all?(d.subject, fn {k, v} -> Map.get(r.subjects, k) == v end) ->
+      not within?(d.subject, r.subjects) ->
         Json.error("the parity exception is about another subject", %{subject: d.subject})
 
       true ->
-        {:ok, mark_stale(r, state_reasons(state))}
+        :ok
     end
   end
+
+  defp parity_pins(%{scenario: nil}, _ref, _d), do: :ok
+
+  defp parity_pins(_r, ref, d) do
+    if d.basis[:scenario_sha256],
+      do: :ok,
+      else:
+        Json.error("a parity exception on a scenario must pin basis.scenario_sha256", %{
+          key: ref.key
+        })
+  end
+
+  defp owner?(%Decision{author: author}), do: match?(%{kind: :owner}, author)
+
+  defp within?(subject, subjects),
+    do: map_size(subject) > 0 and Enum.all?(subject, fn {k, v} -> Map.get(subjects, k) == v end)
+
+  defp relevant?(r, d, opts) do
+    within?(d.subject, r.subjects) or covered?(r, d, opts[:scenario], opts[:findings])
+  end
+
+  defp covered?(%{scenario: %{id: id, sha256: sha}}, d, %Scenario{id: id} = s, findings) do
+    finding_id = d.basis[:finding_id]
+
+    Scenario.sha256(s) == sha and finding_id in s.covers.findings and
+      (findings == nil or Enum.any?(findings, &match?(%Finding{id: ^finding_id}, &1)))
+  end
+
+  defp covered?(_r, _d, _scenario, _findings), do: false
 
   defp state_reasons(:active), do: []
   defp state_reasons(:stale), do: [:decision_stale]

@@ -16,17 +16,25 @@ defmodule BubbleEx.Verify.Mask do
   ```
 
     * `op` - the scenario op ID whose observations it covers (required)
-    * `kind` - one observation kind (`BubbleEx.Verify.Observation.kinds/0`),
-      or `null` for every kind of that op
+    * `kind` - the observation kind (`BubbleEx.Verify.Observation.kinds/0`)
+      it covers (required: a mask never covers every kind of an op)
     * `record` - one record key, or `null` for every record
-    * `pointer` - an RFC 6901 JSON pointer into the observation's JSON
-      `value` (`""`: the whole value); a `*` segment matches every member or
-      item. A pointer that matches nothing masks nothing
+    * `pointer` - a non-empty RFC 6901 JSON pointer into the observation's
+      JSON `value`; a `*` segment matches every member or item. A mask never
+      covers a whole observation. A pointer that matches nothing masks
+      nothing
     * `reason` - `random`, `time`, `created_id`, `differential` or
       `external`
     * `tolerance_ms` - `time` masks only: compare within this many
       milliseconds of the recording's `t0`-relative value instead of
       ignoring it. `null` ignores the value
+
+  **Privacy, data and auth scenarios** (`check_class/2`): masks may not
+  cover `visible`, `visible_fields` or `record_set` observations at all
+  (they are the privacy verdict), and a `values` mask names exactly one
+  field (`/<field ID>`, no `*`). Masks are part of the scenario's hash
+  (`BubbleEx.Verify.Scenario.sha256/1`), so adding one makes recordings
+  and results stale.
 
   `masked_value/2` replaces every masked part of an observation's JSON value by
   `{"masked": "<reason>"}`, except tolerance masks, which a comparator
@@ -58,11 +66,11 @@ defmodule BubbleEx.Verify.Mask do
   @doc "Decodes and validates the JSON form."
   @spec from_map(term()) :: {:ok, t()} | {:error, BubbleEx.Error.t()}
   def from_map(map) do
-    with :ok <- Json.members(map, @members, ~w(op reason), "mask"),
+    with :ok <- Json.members(map, @members, ~w(op kind pointer reason), "mask"),
          {:ok, op} <- Json.symbol(map["op"], "mask op"),
-         {:ok, kind} <- Json.optional_enum(map["kind"], Observation.kinds(), "mask kind"),
+         {:ok, kind} <- Json.enum(map["kind"], Observation.kinds(), "mask kind"),
          {:ok, record} <- optional_symbol(map["record"], "mask record"),
-         {:ok, pointer} <- pointer(Map.get(map, "pointer", "")),
+         {:ok, pointer} <- pointer(map["pointer"]),
          {:ok, reason} <- Json.enum(map["reason"], @reasons, "mask reason"),
          {:ok, tolerance} <- Json.count(map["tolerance_ms"], "mask tolerance_ms", :optional),
          :ok <- tolerance(reason, tolerance) do
@@ -81,13 +89,42 @@ defmodule BubbleEx.Verify.Mask do
   defp optional_symbol(nil, _), do: {:ok, nil}
   defp optional_symbol(value, name), do: Json.symbol(value, name)
 
-  defp pointer("" = p), do: {:ok, p}
-  defp pointer("/" <> _ = p), do: {:ok, p}
-  defp pointer(p), do: Json.error("mask pointer must be \"\" or start with /", %{pointer: p})
+  defp pointer("/" <> rest = p) when rest != "", do: {:ok, p}
+
+  defp pointer(p),
+    do:
+      Json.error("mask pointer must be a non-empty JSON pointer (never the whole value)", %{
+        pointer: p
+      })
 
   defp tolerance(:time, _), do: :ok
   defp tolerance(_reason, nil), do: :ok
   defp tolerance(_reason, _), do: Json.error("only time masks have a tolerance_ms")
+
+  @doc """
+  Checks masks against the class of the scenario's check: privacy, data
+  and auth scenarios may not mask their verdict (see above).
+  """
+  @spec check_class([t()], atom()) :: :ok | {:error, BubbleEx.Error.t()}
+  def check_class(masks, class) when class in [:privacy, :data, :auth] do
+    case Enum.reject(masks, &verdict_safe?/1) do
+      [] ->
+        :ok
+
+      bad ->
+        Json.error("#{class} scenarios may not mask visibility or whole records", %{
+          masks: Enum.map(bad, &{&1.op, &1.kind, &1.pointer})
+        })
+    end
+  end
+
+  def check_class(_masks, _class), do: :ok
+
+  defp verdict_safe?(%__MODULE__{kind: :values, pointer: "/" <> field}),
+    do: field != "*" and not String.contains?(field, "/")
+
+  defp verdict_safe?(%__MODULE__{kind: kind}),
+    do: kind not in [:visible, :visible_fields, :record_set, :values]
 
   @doc "JSON form."
   @spec to_map(t()) :: map()
@@ -113,7 +150,7 @@ defmodule BubbleEx.Verify.Mask do
   @doc "Whether `mask` covers observation `obs`."
   @spec covers?(t(), Observation.t()) :: boolean()
   def covers?(%__MODULE__{} = m, %Observation{} = obs) do
-    m.op == obs.op and m.kind in [nil, obs.kind] and m.record in [nil, obs.record]
+    m.op == obs.op and m.kind == obs.kind and m.record in [nil, obs.record]
   end
 
   @doc """

@@ -83,6 +83,41 @@ defmodule BubbleEx.Verify.FormatsTest do
       invalid(Seed.from_map(leak), "reserved domain")
     end
 
+    test "file and image URLs must be on a reserved domain" do
+      for url <- [
+            "https://s3.amazonaws.com/appforest_uf/f1/secret.pdf",
+            "//cdn.bubble.io/x.png",
+            "not a url"
+          ] do
+        raw =
+          put_record(raw("seed.json"), "task_w1", fn r ->
+            put_in(r, ["fields", "attachment_file"], %{"file" => url})
+          end)
+
+        invalid(Seed.from_map(raw), "URLs")
+      end
+    end
+
+    test "phone numbers must be fictional 555-01xx numbers" do
+      for text <- ["Call +1 (415) 867-5309", "tel 020 7946 0123 4", "0612345678"] do
+        raw =
+          put_record(raw("seed.json"), "task_w2", fn r ->
+            put_in(r, ["fields", "title_text"], %{"text" => text})
+          end)
+
+        invalid(Seed.from_map(raw), "phone")
+      end
+
+      for text <- ["Call +1 (415) 555-0123", "555-0199", "Ship 3 of 12", "v2.10.3"] do
+        raw =
+          put_record(raw("seed.json"), "task_w2", fn r ->
+            put_in(r, ["fields", "title_text"], %{"text" => text})
+          end)
+
+        assert {:ok, _} = Seed.from_map(raw)
+      end
+    end
+
     test "invalid values are rejected with the seed" do
       raw =
         put_record(raw("seed.json"), "task_w2", fn r ->
@@ -149,21 +184,32 @@ defmodule BubbleEx.Verify.FormatsTest do
     end
 
     test "masks must name an op and a kind it observes" do
-      mask = %{"op" => "o9", "reason" => "random"}
+      mask = %{
+        "op" => "o9",
+        "kind" => "record_set",
+        "pointer" => "/records",
+        "reason" => "random"
+      }
 
       invalid(
         Scenario.from_map(Map.put(raw("scenario.privacy_read.json"), "masks", [mask])),
         "unknown op"
       )
 
-      mask = %{"op" => "o1", "kind" => "values", "reason" => "random"}
+      mask = %{"op" => "o1", "kind" => "values", "pointer" => "/x", "reason" => "random"}
 
       invalid(
         Scenario.from_map(Map.put(raw("scenario.privacy_read.json"), "masks", [mask])),
         "does not make"
       )
 
-      mask = %{"op" => "o1", "reason" => "random", "tolerance_ms" => 10}
+      mask = %{
+        "op" => "o2",
+        "kind" => "values",
+        "pointer" => "/x",
+        "reason" => "random",
+        "tolerance_ms" => 10
+      }
 
       invalid(
         Scenario.from_map(Map.put(raw("scenario.privacy_read.json"), "masks", [mask])),
@@ -171,20 +217,52 @@ defmodule BubbleEx.Verify.FormatsTest do
       )
     end
 
-    test "sha256 ignores masks, covers and subjects but not ops" do
+    test "sha256 covers every member, masks included" do
       s = scenario()
       base = Scenario.sha256(s)
 
-      assert Scenario.sha256(%{
-               s
-               | masks: [],
-                 covers: %{findings: [], rules: [], tasks: []},
-                 subjects: %{}
-             }) ==
-               base
-
+      refute Scenario.sha256(%{s | masks: []}) == base
+      refute Scenario.sha256(%{s | subjects: %{}}) == base
       refute Scenario.sha256(%{s | persona: "w1_member"}) == base
       refute Scenario.sha256(%{s | ops: tl(s.ops)}) == base
+    end
+
+    test "probe H5: a mask never covers a whole op or a whole observation" do
+      for mask <- [
+            %{"op" => "o2", "reason" => "random", "pointer" => "/x"},
+            %{"op" => "o2", "kind" => nil, "reason" => "random", "pointer" => "/x"},
+            %{"op" => "o2", "kind" => "values", "reason" => "random"},
+            %{"op" => "o2", "kind" => "values", "reason" => "random", "pointer" => ""},
+            %{"op" => "o2", "kind" => "values", "reason" => "random", "pointer" => "/"},
+            %{"op" => "o2", "kind" => "vibes", "reason" => "random", "pointer" => "/x"}
+          ] do
+        invalid(Mask.from_map(mask))
+      end
+    end
+
+    test "probe H5: privacy scenarios never mask their verdict" do
+      for {kind, pointer} <- [
+            {"visible", "/x"},
+            {"visible_fields", "/0"},
+            {"record_set", "/records"},
+            {"values", "/*"},
+            {"values", "/a/b"}
+          ] do
+        op = if kind == "record_set", do: "o1", else: "o2"
+        mask = %{"op" => op, "kind" => kind, "pointer" => pointer, "reason" => "differential"}
+
+        invalid(
+          Scenario.from_map(Map.put(raw("scenario.privacy_read.json"), "masks", [mask])),
+          "may not mask"
+        )
+      end
+
+      rec = recording()
+      verdict = %Mask{op: "o2", kind: :visible_fields, pointer: "/0", reason: :differential}
+      invalid(Recording.check_scenario(%{rec | masks: [verdict]}, scenario()), "may not mask")
+
+      stray = %Mask{op: "o1", kind: :values, pointer: "/x", reason: :differential}
+      invalid(Recording.check_scenario(%{rec | masks: [stray]}, scenario()), "does not have")
     end
 
     test "check_seed catches unknown personas, records and a changed seed" do
@@ -208,9 +286,31 @@ defmodule BubbleEx.Verify.FormatsTest do
 
   describe "recording" do
     test "a Bubble recording never comes from live or test" do
-      for branch <- ["live", "test", "Live"] do
+      for branch <- [
+            "live",
+            "test",
+            "Live",
+            " live",
+            "test\n",
+            "version-live",
+            "version-test",
+            "VERSION-TEST",
+            "main",
+            "",
+            nil
+          ] do
         raw = put_in(raw("recording.bubble.json"), ["source", "branch"], branch)
-        invalid(Recording.from_map(raw), "never live")
+        invalid(Recording.from_map(raw))
+      end
+
+      raw = put_in(raw("recording.bubble.json"), ["source", "branch"], "wtfreplay_v2")
+      assert {:ok, _} = Recording.from_map(raw)
+    end
+
+    test "probe M1: the source app is a Bubble app ID, not a domain" do
+      for app <- ["app.example.com", "https://acme.bubbleapps.io", "Acme", " acme", ""] do
+        raw = put_in(raw("recording.bubble.json"), ["source", "app"], app)
+        invalid(Recording.from_map(raw), "app")
       end
     end
 
@@ -340,7 +440,7 @@ defmodule BubbleEx.Verify.FormatsTest do
           tolerance_ms: 5000
         },
         %Mask{op: "call", kind: :db_diff, pointer: "/7/record", reason: :random},
-        %Mask{op: "other", pointer: "", reason: :random}
+        %Mask{op: "other", kind: :db_diff, pointer: "/0", reason: :random}
       ]
 
       [created, updated] = Mask.masked_value(obs, masks)
@@ -351,11 +451,9 @@ defmodule BubbleEx.Verify.FormatsTest do
       rec = recording()
       comparable = Recording.comparable(rec)
       assert comparable[{"o2", :values, "task_w1"}] == %{}
-      whole = %Mask{op: "o2", kind: :visible, pointer: "", reason: :differential}
-
-      assert Recording.comparable(rec, [whole])[{"o2", :visible, "task_w1"}] == %{
-               "masked" => "differential"
-             }
+      field = %Mask{op: "o2", kind: :values, pointer: "/slug", reason: :differential}
+      tolerant = %Mask{op: "o2", kind: :values, pointer: "/x", reason: :time, tolerance_ms: 5}
+      assert Recording.comparable(rec, [field, tolerant])[{"o2", :visible, "task_w1"}] == false
     end
   end
 
@@ -375,10 +473,9 @@ defmodule BubbleEx.Verify.FormatsTest do
       assert Staleness.recording(%{rec | complete: false}, s, seed) == [:recording_incomplete]
     end
 
-    test "editing masks or covers does not make a recording stale" do
+    test "editing masks makes a recording stale" do
       s = scenario()
-      edited = %{s | masks: [], covers: %{findings: ["x:1"], rules: [], tasks: []}}
-      assert Staleness.recording(recording(), edited, seed()) == []
+      assert Staleness.recording(recording(), %{s | masks: []}, seed()) == [:scenario_changed]
     end
   end
 end

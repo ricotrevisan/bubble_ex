@@ -24,13 +24,14 @@ defmodule BubbleEx.Verify.Recording do
   ```
 
   **Oracles (decision D2 on WTF-358).** `bubble`: recorded from a Bubble
-  replay branch; the ground truth. `source` needs `app` and `branch`, and
-  the branch may not be `live` or `test` (D1: replay runs on a child branch,
-  never live); `app_version` is Bubble's version marker when known.
+  replay branch; the ground truth. `source` needs the Bubble app ID and the
+  branch, both checked by `BubbleEx.Verify.Replay` (D1: replay runs on a
+  `wtfreplay…` child branch, never live or test; the app is an app ID, never
+  a custom domain); `app_version` is Bubble's version marker when known.
   `model`: expectations from the model interpreter; `source` needs
   `bubble_ex` (the interpreter's version) and may carry
   `index_semantic_sha256`. A `model` recording never counts as
-  Bubble-verified (see `BubbleEx.Verify.Result.bubble_verified?/1`).
+  Bubble-verified (see `BubbleEx.Verify.Result.evaluate/3`).
 
   **Staleness.** A recording pins `scenario.sha256` (`Scenario.sha256/1`),
   the scenario's `source_sha256` and `seed_sha256`;
@@ -43,7 +44,7 @@ defmodule BubbleEx.Verify.Recording do
   """
 
   alias BubbleEx.{CanonicalJson, Error}
-  alias BubbleEx.Verify.{Json, Mask, Observation, Scenario, Seed}
+  alias BubbleEx.Verify.{Check, Json, Mask, Observation, Replay, Scenario, Seed}
 
   @format "bubble_ex.verify.recording"
   @schema_version 1
@@ -52,7 +53,6 @@ defmodule BubbleEx.Verify.Recording do
   @required ~w(format schema_version scenario seed_sha256 oracle source recorded_at t0 complete
                observations)
   @oracles [:bubble, :model]
-  @forbidden_branches ~w(live test)
 
   @type oracle :: :bubble | :model
   @type t :: %__MODULE__{
@@ -173,9 +173,8 @@ defmodule BubbleEx.Verify.Recording do
 
   defp source(:bubble, map) do
     with :ok <- Json.members(map, ~w(app branch app_version), ~w(app branch), "bubble source"),
-         {:ok, app} <- Json.string(map["app"], "source app"),
-         {:ok, branch} <- Json.string(map["branch"], "source branch"),
-         :ok <- replay_branch(branch),
+         {:ok, app} <- Replay.app(map["app"]),
+         {:ok, branch} <- Replay.branch(map["branch"]),
          {:ok, version} <- Json.optional_string(map["app_version"], "source app_version") do
       {:ok, %{app: app, branch: branch, app_version: version}}
     end
@@ -189,16 +188,6 @@ defmodule BubbleEx.Verify.Recording do
            Json.optional_sha256(map["index_semantic_sha256"], "source index_semantic_sha256") do
       {:ok, %{bubble_ex: version, index_semantic_sha256: sha}}
     end
-  end
-
-  # D1: never live, never the shared test version.
-  defp replay_branch(branch) do
-    if String.downcase(branch) in @forbidden_branches,
-      do:
-        Json.error("Bubble recordings come from a replay child branch, never live or test", %{
-          branch: branch
-        }),
-      else: :ok
   end
 
   defp t0(ms) when is_integer(ms), do: {:ok, ms}
@@ -246,7 +235,7 @@ defmodule BubbleEx.Verify.Recording do
   @spec from_json(String.t()) :: {:ok, t()} | {:error, Error.t()}
   def from_json(text), do: Json.from_json(text, "recording", &from_map/1)
 
-  @doc "SHA-256 of the canonical JSON: what results pin as `oracle.recording_sha256`."
+  @doc "SHA-256 of the canonical JSON: what results pin as `oracle.sha256`."
   @spec sha256(t()) :: String.t()
   def sha256(%__MODULE__{} = r), do: r |> to_map() |> CanonicalJson.sha256()
 
@@ -255,7 +244,8 @@ defmodule BubbleEx.Verify.Recording do
   belongs to an op the scenario has and is a kind that op observes; a per-record
   observation of a `get` is about that op's record; a `record_set` is
   ordered exactly when its `search` declares a sort; masks name ops the
-  scenario has. Hash drift is not an error here: it is staleness
+  scenario has, for observations its ops make, and never mask a privacy,
+  data or auth verdict (`BubbleEx.Verify.Mask.check_class/2`). Hash drift is not an error here: it is staleness
   (`BubbleEx.Verify.Staleness.recording/3`).
   """
   @spec check_scenario(t(), Scenario.t()) :: :ok | {:error, Error.t()}
@@ -271,11 +261,14 @@ defmodule BubbleEx.Verify.Recording do
           observations: Enum.map(bad, &Observation.key/1)
         })
 
-      (bad = Enum.reject(r.masks, &Map.has_key?(ops, &1.op))) != [] ->
-        Json.error("recording masks name unknown ops", %{ops: Enum.map(bad, & &1.op)})
+      (bad = Enum.reject(r.masks, &(ops[&1.op] && &1.kind in ops[&1.op].observe))) != [] ->
+        Json.error("recording masks name ops or observations the scenario does not have", %{
+          masks: Enum.map(bad, &{&1.op, &1.kind})
+        })
 
       true ->
-        :ok
+        {:ok, {_level, class}} = Check.fetch(s.check)
+        Mask.check_class(r.masks, class)
     end
   end
 

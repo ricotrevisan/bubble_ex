@@ -30,10 +30,17 @@ defmodule BubbleEx.Verify.Seed do
       or `null` for an anonymous visitor. Never passwords or tokens: the
       driver creates those per run
 
-  **Synthetic data only.** Seeds are committed, so every text value that
-  contains an email address must use a reserved domain (`.invalid`,
-  `.test`, `.example`, `.localhost`, or `example.com`/`.net`/`.org`);
-  anything else is `:invalid_input`.
+  **Synthetic data only.** Seeds are committed, so anything else is
+  `:invalid_input`:
+
+    * every email address in a text value must use a reserved domain
+      (`.invalid`, `.test`, `.example`, `.localhost`, or
+      `example.com`/`.net`/`.org`)
+    * every file and image URL must be on such a domain (a real Bubble
+      file URL can reach a private upload)
+    * a phone-like digit run in text (7 to 15 digits, optionally with `+`,
+      spaces, dots, dashes or parentheses) must end in a fictional
+      `555-01xx` number; `json` values are not checked for these
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -44,6 +51,7 @@ defmodule BubbleEx.Verify.Seed do
   @members ~w(format schema_version id personas records)
 
   @email ~r/[A-Za-z0-9._%+\-]+@([A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+)/
+  @phone ~r/(?<![\w.])\+?\(?\d[\d ().\-]{5,}\d(?![\w])/
   @reserved_tlds ~w(invalid test example localhost)
   @reserved_domains ~w(example.com example.net example.org)
 
@@ -153,18 +161,52 @@ defmodule BubbleEx.Verify.Seed do
   end
 
   defp synthetic(seed) do
-    leaks =
-      for %{key: key, fields: fields} <- seed.records,
-          {field, value} <- fields,
-          text <- texts(value),
-          [_, domain] <- Regex.scan(@email, text),
-          not reserved?(domain),
-          do: %{record: key, field: field}
+    values = for %{key: key, fields: fields} <- seed.records, {f, v} <- fields, do: {key, f, v}
 
-    if leaks == [],
-      do: :ok,
-      else:
-        Json.error("seed emails must use a reserved domain (synthetic data only)", %{at: leaks})
+    checks = [
+      {"seed emails must use a reserved domain", &email_leak?/1},
+      {"seed file and image URLs must use a reserved domain", &url_leak?/1},
+      {"seed phone numbers must be fictional (555-01xx)", &phone_leak?/1}
+    ]
+
+    Enum.find_value(checks, :ok, fn {message, leak?} -> leaks(values, message, leak?) end)
+  end
+
+  defp leaks(values, message, leak?) do
+    case for({key, field, value} <- values, leak?.(value), do: %{record: key, field: field}) do
+      [] -> nil
+      at -> Json.error(message <> " (synthetic data only)", %{at: at})
+    end
+  end
+
+  defp email_leak?(value) do
+    Enum.any?(texts(value), fn text ->
+      Enum.any?(Regex.scan(@email, text), fn [_, domain] -> not reserved?(domain) end)
+    end)
+  end
+
+  defp url_leak?({kind, url}) when kind in [:file, :image] do
+    case URI.parse(url) do
+      %URI{host: host} when is_binary(host) and host != "" -> not reserved?(host)
+      _ -> true
+    end
+  end
+
+  defp url_leak?({:list, items}), do: Enum.any?(items, &url_leak?/1)
+  defp url_leak?(_), do: false
+
+  # Text only: JSON payloads carry timestamps and IDs that look like numbers.
+  defp phone_leak?({:json, _}), do: false
+
+  defp phone_leak?(value) do
+    Enum.any?(texts(value), fn text ->
+      @phone
+      |> Regex.scan(text)
+      |> Enum.any?(fn [run] ->
+        digits = String.replace(run, ~r/\D/, "")
+        byte_size(digits) in 7..15 and not (digits =~ ~r/55501\d\d\z/)
+      end)
+    end)
   end
 
   defp texts({:text, s}), do: [s]

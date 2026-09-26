@@ -58,7 +58,7 @@ defmodule BubbleEx.VerifyTest do
       assert scenario.seed.sha256 == Seed.sha256(seed)
 
       assert Scenario.sha256(scenario) ==
-               "66912ad57afa03b58031449262701f0f598b4cd16bb1cc3403ea17153b5c1636"
+               "eb51de63bf03982d03608fdea107a6b0f5ca88de12f73c7293510de49327a084"
     end
 
     test "the examples are consistent with each other and current" do
