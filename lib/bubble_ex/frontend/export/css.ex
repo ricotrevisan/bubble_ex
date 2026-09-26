@@ -211,8 +211,6 @@ defmodule BubbleEx.Frontend.Export.Css do
     end
   end
 
-  defp token_css(_), do: ""
-
   defp payload_client(%{payload: payload}) when is_map(payload) do
     get_in(payload, ["settings", "client_safe"]) || %{}
   end

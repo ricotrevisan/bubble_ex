@@ -55,12 +55,12 @@ defmodule BubbleEx.Verify.Seed do
   @reserved_tlds ~w(invalid test example localhost)
   @reserved_domains ~w(example.com example.net example.org)
 
-  @type record :: %{key: String.t(), type: String.t(), fields: %{String.t() => Value.t()}}
+  @type seed_record :: %{key: String.t(), type: String.t(), fields: %{String.t() => Value.t()}}
   @type persona :: %{user: String.t() | nil}
   @type t :: %__MODULE__{
           id: String.t(),
           personas: %{String.t() => persona()},
-          records: [record()]
+          records: [seed_record()]
         }
 
   @enforce_keys [:id]
@@ -257,6 +257,6 @@ defmodule BubbleEx.Verify.Seed do
   def sha256(%__MODULE__{} = seed), do: seed |> to_map() |> CanonicalJson.sha256()
 
   @doc "The record with `key`, or nil."
-  @spec record(t(), String.t()) :: record() | nil
+  @spec record(t(), String.t()) :: seed_record() | nil
   def record(%__MODULE__{records: records}, key), do: Enum.find(records, &(&1.key == key))
 end

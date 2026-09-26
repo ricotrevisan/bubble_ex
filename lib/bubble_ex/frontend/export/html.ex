@@ -353,7 +353,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     max = Map.get(node.attributes, "max")
     low = Map.get(node.attributes, "value") || min
     high = Map.get(node.attributes, "value_high") || max
-    base = Map.take(node.attributes || %{}, ["min", "max", "step", "disabled"])
+    base = Map.take(node.attributes, ["min", "max", "step", "disabled"])
 
     inner_source =
       case node.source do
@@ -384,7 +384,7 @@ defmodule BubbleEx.Frontend.Export.Html do
     container = %{
       node
       | attributes:
-          (node.attributes || %{})
+          node.attributes
           |> Map.drop(["min", "max", "step", "value", "value_high", "type"])
           |> Map.put("role", "group")
     }
