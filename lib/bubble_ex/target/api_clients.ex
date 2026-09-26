@@ -68,6 +68,7 @@ defmodule BubbleEx.Target.ApiClients do
   alias BubbleEx.{Error, Model}
   alias BubbleEx.Model.{Connector, ConnectorCall, ConnectorParameter, ExternalType, Type}
   alias BubbleEx.Model.ConnectorRequest.Reader
+  alias BubbleEx.Index.Symbol
   alias BubbleEx.Target.Ash.Naming
   alias BubbleEx.Target.ApiClients.{Call, Group, Spec}
 
@@ -102,7 +103,7 @@ defmodule BubbleEx.Target.ApiClients do
   def map(model, opts \\ [])
 
   def map(%Model{} = model, _opts) do
-    state = %{modules: MapSet.new(@reserved_modules), env: %{}, residue: []}
+    state = %{modules: MapSet.new(@reserved_modules), env: %{}, residue: [], hosts: %{}}
 
     {groups, state} = Enum.map_reduce(model.connectors, state, &group(&1, model, &2))
 
@@ -349,7 +350,7 @@ defmodule BubbleEx.Target.ApiClients do
 
     ctx = Map.put(ctx, :private, Map.new(private))
 
-    {host, state} = values(request.host, ctx, state)
+    {host, state} = host_values(request.host, ctx, prefix, state)
     {path, state} = Enum.map_reduce(request.path, state, &values(&1, ctx, &2))
 
     {url_query, state} =
@@ -374,6 +375,7 @@ defmodule BubbleEx.Target.ApiClients do
 
     built = %Call{
       id: call.id,
+      subject: Symbol.id(:api_call, [group.id, call.id]),
       bubble_name: call.name,
       function: function,
       method: method,
@@ -500,6 +502,41 @@ defmodule BubbleEx.Target.ApiClients do
     {{:env, name}, state}
   end
 
+  # A host's redacted chunks are one variable per distinct host (the
+  # Model's `host`, never printed) and chunk in the group, shared by its
+  # calls; `:base_url` makes it unnecessary.
+  defp host_values(nil, _ctx, _prefix, state), do: {[], state}
+
+  defp host_values(parts, ctx, prefix, state) do
+    parts
+    |> Enum.with_index()
+    |> Enum.map_reduce(state, fn
+      {%{kind: :redacted}, i}, state ->
+        key = {:host, ctx.group.id, ctx.call.host, i}
+
+        case Map.fetch(state.hosts, key) do
+          {:ok, name} ->
+            {{:env, name}, state}
+
+          :error ->
+            {name, state} =
+              env(
+                state,
+                prefix <> "_HOST",
+                :host,
+                %{group: ctx.group.id, call: nil, parameter: nil, host: key},
+                "an API host (or part of one) whose labels are not plain names; " <>
+                  "not needed when the group's :base_url is configured"
+              )
+
+            {{:env, name}, %{state | hosts: Map.put(state.hosts, key, name)}}
+        end
+
+      {part, _i}, state ->
+        value(part, ctx, state)
+    end)
+  end
+
   defp template(%{kind: :object, members: members}, ctx, state) do
     # A repeated key keeps its last value, as JSON decoders do.
     members = members |> Enum.reverse() |> Enum.uniq_by(& &1.key) |> Enum.reverse()
@@ -606,7 +643,8 @@ defmodule BubbleEx.Target.ApiClients do
   # Registers a variable: a new name for a new subject (`_2`, … when taken),
   # the same name for a subject already registered.
   defp env(state, base, kind, subject, description) do
-    key = {subject[:group], subject[:call], subject[:parameter], kind, description}
+    key =
+      {subject[:group], subject[:call], subject[:parameter], subject[:host], kind, description}
 
     case Enum.find(Map.values(state.env), &(&1.key == key)) do
       %{name: name} ->

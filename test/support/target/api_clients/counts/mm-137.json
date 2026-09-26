@@ -3,7 +3,8 @@
     "calls": 203,
     "env": {
       "auth": 17,
-      "literal": 1151,
+      "host": 21,
+      "literal": 1079,
       "private": 21,
       "private_line": 49
     },

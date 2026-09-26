@@ -98,6 +98,11 @@ defmodule BubbleEx.ApiConnectorProbeTest do
         "method" => "get",
         "url" => "https://#{@random_host}.m.pipedream.net/users"
       },
+      "cRandomHost2" => %{
+        "name" => "Random host again",
+        "method" => "get",
+        "url" => "https://#{@random_host}.m.pipedream.net/orders"
+      },
       "cKeyPath" => %{
         "name" => "Key path",
         "method" => "get",
@@ -207,6 +212,13 @@ defmodule BubbleEx.ApiConnectorProbeTest do
              "Content-Type" => [literal: "application/json"]
            } =
              Map.new(values.headers, &{&1.name, &1.value})
+
+    host = Enum.find(group.calls, &(&1.id == "cRandomHost"))
+    assert host.base.host == [env: "PROBE_HOST"]
+    assert %{kind: :host, call: nil} = Enum.find(spec.env, &(&1.name == "PROBE_HOST"))
+    # One variable per host in the group, shared by its calls.
+    assert Enum.find(group.calls, &(&1.id == "cRandomHost2")).base.host == [env: "PROBE_HOST"]
+    assert Enum.count(spec.env, &(&1.kind == :host)) == 1
 
     key_path = Enum.find(group.calls, &(&1.id == "cKeyPath"))
     assert [[literal: "v1"], [env: _], [env: _], [env: _]] = key_path.path

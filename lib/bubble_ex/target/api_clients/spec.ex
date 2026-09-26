@@ -13,7 +13,10 @@ defmodule BubbleEx.Target.ApiClients.Spec do
       header or parameter whose name Bubble stripped: the variable holds
       `Name: value` for a header, `name=value` for a parameter), `:auth`
       (the group's key, user name or password) or `:literal` (a literal
-      that is not structure, see `BubbleEx.Model.ConnectorRequest`)
+      that is not structure, see `BubbleEx.Model.ConnectorRequest`) or
+      `:host` (an API host, or part of one, whose labels are not plain
+      names; one per distinct host in a group, shared by its calls, and
+      not needed when the group's `:base_url` is configured)
     * `types` - the response shapes of the external types calls decode
       into: external type ID => `%{field ID => response path}`
     * `residue` - calls not generated: `%{group, call, name, reasons}`
@@ -132,7 +135,8 @@ defmodule BubbleEx.Target.ApiClients.Call do
   An API Connector call as a client function.
 
     * `id` / `bubble_name` - its Bubble ID and name; `function` its function
-      name
+      name; `subject` its plan subject (`api_call:<group>/<call>`, the
+      Index symbol ID), which its tests carry as `@tag bubble:`
     * `method` - `:get`, `:post`, `:put`, `:patch` or `:delete`
     * `publish_as` - Bubble's `"data"` or `"action"`, as supplied
     * `base` - `%{scheme, host: [value], port}`
@@ -152,6 +156,7 @@ defmodule BubbleEx.Target.ApiClients.Call do
   @enforce_keys [:id, :function, :method]
   defstruct [
     :id,
+    :subject,
     :bubble_name,
     :function,
     :method,
@@ -170,6 +175,7 @@ defmodule BubbleEx.Target.ApiClients.Call do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          subject: String.t(),
           bubble_name: String.t() | nil,
           function: String.t(),
           method: :get | :post | :put | :patch | :delete,

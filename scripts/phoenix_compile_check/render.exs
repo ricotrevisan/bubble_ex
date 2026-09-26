@@ -69,7 +69,12 @@ fixtures =
 
 # The app JSON of a fixture rendered from one (not the decision fixtures).
 app_json = fn name ->
-  [{"test/support/model/", ""}, {"test/support/target/ash/", "target_"}, {"test/support/expression/", "expr_"}]
+  [
+    {"test/support/model/", ""},
+    {"test/support/target/ash/", "target_"},
+    {"test/support/target/phoenix/", "phoenix_"},
+    {"test/support/expression/", "expr_"}
+  ]
   |> Enum.find_value(fn {dir, prefix} ->
     path = dir <> String.replace_prefix(name, prefix, "") <> ".json"
     if String.starts_with?(name, prefix) and File.exists?(path), do: path
@@ -89,8 +94,13 @@ case System.argv() do
     {:ok, plan} = BubbleEx.Plan.build(model, index)
     :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
 
-    {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    {project, clients} =
+      case Map.fetch!(fixtures, name).() do
+        {:ok, project, clients} -> {project, clients}
+        {:ok, project} -> {project, nil}
+      end
+
+    opts = [name: "Phx Check #{name}", module: "PhxCheck", api_clients: clients]
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 

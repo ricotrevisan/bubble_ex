@@ -106,14 +106,25 @@ All notable changes to this project are documented here.
   URL, basic. Redirects are not followed unless `follow_redirects: true`,
   and then another origin or a downgrade gets no headers or
   authentication and a cross-origin 307/308 is refused. App IDs and names
-  are escaped everywhere they are printed.
-  `scripts/phoenix_compile_check.sh` renders every fixture's
-  clients (new fixture `phoenix_api_clients`) and runs their tests, each
-  tagged `bubble: <call ID>` for the plan's `request_shape` check. On
-  the mm-137 test export, 198 of 203 calls are generated, 194 of them
-  reading environment variables (residue: 2 non-JSON bodies, 1 file
-  parameter, 1 call without a URL, 1 query name that is not a plain
-  name); 18 of 35 hosts are configured from the environment.
+  are escaped everywhere they are printed. A host whose labels are not
+  plain names is one `<GROUP>_HOST` variable per group, not needed when
+  the group's `:base_url` is configured (well-known brand API hosts are
+  not allowlisted: `safe_name?` decides). `scripts/phoenix_compile_check.sh`
+  renders every fixture's clients (new fixture `phoenix_api_clients`) and
+  runs their tests, each tagged `bubble: "api_call:<group>/<call>"` (the
+  plan's subject); for `phoenix_api_clients` it also completes the plan's
+  `api_call` tasks with `mix wtf.task`, whose `request_shape` check runs
+  those tests. On the mm-137 test export, 198 of 203 calls are generated,
+  194 of them reading environment variables (residue: 2 non-JSON bodies,
+  1 file parameter, 1 call without a URL, 1 query name that is not a
+  plain name); 18 of 35 hosts are configured from the environment.
+  Known gaps of the name check (`safe_name?`, a heuristic): random 6–7
+  letter tokens pass 1–4% of the time, pronounceable random strings
+  34–59%, dictionary-word passphrases about 90%; the Model's and Index's
+  `host` keeps full hosts (never publish their JSON); the
+  `generate:api_clients` task's `request_shape` lists every API call,
+  residue included, so it fails while any call is residue (the `api_call`
+  tasks of generated calls pass).
 - **Leak-safe API Connector request templates** (WTF-374). The Model
   (`schema_version` 4) reads each call's request as a
   `BubbleEx.Model.ConnectorRequest`: scheme, port, path segments,

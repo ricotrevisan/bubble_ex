@@ -56,7 +56,10 @@ defmodule <%= @module %>.ApiClients do
   structure (path words, versions, media types), are never in the code: they are read from these environment
   variables when a call is made (`.wtf/api_clients.json` lists them too).
   A variable holding a header or parameter whose name Bubble does not send
-  holds `Name: value` (a header) or `name=value` (a parameter).
+  holds `Name: value` (a header) or `name=value` (a parameter). A host
+  variable (`<GROUP>_HOST`) holds an API host, or part of one, that is
+  account-specific; it is shared by the group's calls and not needed when
+  the group's `:base_url` is configured.
 
 <%= @env_doc %>
   """
@@ -85,9 +88,17 @@ defmodule <%= @module %>.ApiClients do
   def params(_params, _keys), do: {:error, :invalid_parameters}
 
   @doc false
-  @spec env(keyword(), [String.t()]) :: {:ok, %{String.t() => String.t()}} | {:error, term()}
-  def env(opts, names) do
+  @spec env(keyword(), [String.t()], module() | nil, [String.t()]) ::
+          {:ok, %{String.t() => String.t()}} | {:error, term()}
+  def env(opts, names, group \\ nil, hosts \\ []) do
     overrides = Keyword.get(opts, :env, %{})
+
+    # Host variables are needed only without a configured base URL.
+    base_url? =
+      Keyword.has_key?(opts, :base_url) or
+        (group != nil and Keyword.has_key?(Application.get_env(@app, group, []), :base_url))
+
+    names = if base_url?, do: names, else: names ++ hosts
 
     values =
       Map.new(names, fn name -> {name, Map.get(overrides, name) || System.get_env(name)} end)

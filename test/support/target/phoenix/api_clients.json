@@ -262,5 +262,26 @@
         }
       }
     }
+  },
+  "api": {
+    "wCharge": {
+      "id": "wCharge",
+      "type": "APIEvent",
+      "properties": {
+        "wf_name": "charge"
+      },
+      "actions": {
+        "0": {
+          "id": "aCharge",
+          "type": "apiconnector2-gPay.cCharge",
+          "properties": {}
+        },
+        "1": {
+          "id": "aPing",
+          "type": "apiconnector2-gTenants.cPing",
+          "properties": {}
+        }
+      }
+    }
   }
 }

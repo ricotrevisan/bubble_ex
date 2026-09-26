@@ -232,7 +232,7 @@ defmodule BubbleEx.Target.ApiClientsTest do
       assert length(Regex.scan(~r/sends its request shape/, test)) == 3
       assert test =~ ~s(assert conn.request_path == "/v1/customers/stub-customer-id")
       assert test =~ ~s(assert decoded.plan_name == "stub")
-      assert test =~ ~s(@tag bubble: "cCustomer")
+      assert test =~ ~s(@tag bubble: "api_call:gPay/cCustomer")
 
       decode = files["lib/acme/api_clients/decode.ex"]
       assert decode =~ ~s{plan_name: ApiClients.at(value, ["plan", "name"])}

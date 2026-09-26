@@ -163,7 +163,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
       ["{:ok, #{p}} <- ApiClients.params(params, [#{keys}])"] ++
         if call.env == [],
           do: [],
-          else: ["{:ok, env} <- ApiClients.env(opts, #{code(call.env)})"]
+          else: [env_step(call, ctx)]
 
     """
     @doc #{heredoc(call_doc(call))}
@@ -183,6 +183,20 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
       end
     end
     """
+  end
+
+  # The variables a call reads; its host variables are not needed when a
+  # base URL is configured.
+  defp env_step(%Call{env: env}, ctx) do
+    hosts = for %{kind: :host, name: name} <- ctx.spec.env, name in env, do: name
+
+    case hosts do
+      [] ->
+        "{:ok, env} <- ApiClients.env(opts, #{code(env)})"
+
+      hosts ->
+        "{:ok, env} <- ApiClients.env(opts, #{code(env -- hosts)}, __MODULE__, #{code(hosts)})"
+    end
   end
 
   defp call_doc(%Call{} = call) do
@@ -524,8 +538,8 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     query = Enum.map(call.query, &eval_entry(&1, :param))
 
     """
-    @tag bubble: #{code(call.id)}
-    test #{code("#{call.function} (Bubble call #{call.id}) sends its request shape")} do
+    @tag bubble: #{code(call.subject)}
+    test #{code("#{call.function} sends its request shape (#{short_id(call.id)})")} do
       opts = capture(#{respond})
 
       assert #{expected} =
@@ -544,6 +558,15 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     end
     """
   end
+
+  # A call ID short enough for a test name (ExUnit caps names at 255
+  # characters): as is up to 24 characters, else a hash.
+  defp short_id(id) when byte_size(id) <= 24 and id != "", do: id
+
+  defp short_id(id),
+    do:
+      "call " <>
+        (:sha256 |> :crypto.hash(id) |> Base.encode16(case: :lower) |> binary_part(0, 12))
 
   defp literal(term), do: inspect(term, limit: :infinity, printable_limit: :infinity)
 
@@ -800,6 +823,13 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
         assert {:error, {:missing_env, ["BUBBLE_EX_UNSET_VARIABLE"]}} =
                  ApiClients.env([], ["BUBBLE_EX_UNSET_VARIABLE"])
+
+        # A host variable is needed only without a base URL.
+        assert {:error, {:missing_env, ["BUBBLE_EX_UNSET_HOST"]}} =
+                 ApiClients.env([], [], nil, ["BUBBLE_EX_UNSET_HOST"])
+
+        assert {:ok, %{}} =
+                 ApiClients.env([base_url: "https://api.example.com"], [], nil, ["BUBBLE_EX_UNSET_HOST"])
       end
 
       test "unknown parameters are refused" do

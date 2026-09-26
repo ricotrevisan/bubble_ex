@@ -187,6 +187,9 @@ defmodule BubbleEx.Index.DataModel do
           name: call.name,
           parent: id,
           path: call.path,
+          # `host` is the full host of the call's URL, account-specific
+          # subdomains (capability URLs such as webhook endpoints) included:
+          # the Index and Model JSON must never be published.
           attrs:
             %{method: call.method, publish_as: call.publish_as, host: call.host}
             |> compact()
