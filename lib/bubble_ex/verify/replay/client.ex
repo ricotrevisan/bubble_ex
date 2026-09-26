@@ -4,7 +4,10 @@ defmodule BubbleEx.Verify.Replay.Client do
   `BubbleEx.Verify.Replay.Target` (a `wtfreplay…` branch). The only
   workflows it calls are the replay kit's own sign-up and login
   (`call_kit/4`); searches are always constrained to known IDs (or, for
-  cleanup, one exact per-run email).
+  cleanup, one exact per-run email). The one exception is
+  `anonymous_probe/3`, the preflight's check of what a logged-out visitor
+  can already read from an exposed type: it keeps only field names and a
+  count, never a value or an ID.
 
   Every request goes through `BubbleEx.HTTP.request/5` (public-destination
   checks, bounded bodies, sanitized telemetry) after
@@ -153,6 +156,67 @@ defmodule BubbleEx.Verify.Replay.Client do
   def probe(%__MODULE__{} = c, type) do
     with {:ok, []} <- search(c, type, :admin, ids: [@probe_id]), do: {:ok, :exposed}
   end
+
+  @anonymous_fields ["_id", "Created Date", "Modified Date"]
+
+  @doc """
+  What an anonymous caller (no token) gets from `type`'s Data API: one
+  unconstrained page of at most `limit` records (default 25). Enabling the
+  Data API on a branch exposes the development database, which the branch
+  shares with `test`, to anyone, as far as the privacy rules allow; this
+  measures that. Values and IDs are dropped as soon as the answer is
+  decoded: the result holds only the count of records answered, the
+  `remaining` count and the sorted names of the fields beyond `_id`,
+  `Created Date` and `Modified Date` (`extra_fields`, empty when only
+  those came back).
+
+  `{:ok, %{status: :denied, http_status: s}}` when Bubble refused the
+  anonymous search (401, 403, 404).
+  """
+  @spec anonymous_probe(t(), String.t(), pos_integer()) :: {:ok, map()} | {:error, Error.t()}
+  def anonymous_probe(%__MODULE__{} = c, type, limit \\ 25)
+      when is_integer(limit) and limit > 0 and limit <= 100 do
+    with {:ok, path} <- Names.type_path(c.names, type),
+         {:ok, url} <- Target.data_url(c.target, path) do
+      query = URI.encode_query([{"cursor", "0"}, {"limit", Integer.to_string(limit)}])
+
+      case request(c, :get, url <> "?" <> query, nil, :none, :read) do
+        {:ok, %{status: 200, body: %{"response" => %{"results" => results} = r}}}
+        when is_list(results) ->
+          {:ok, anonymous_answer(results, r["remaining"])}
+
+        {:ok, %{status: status}} when status in [401, 403, 404] ->
+          {:ok, %{status: :denied, http_status: status}}
+
+        other ->
+          unexpected(other, "anonymous Data API probe")
+      end
+    end
+  end
+
+  # Only names and counts leave this function: values and IDs are dropped here.
+  defp anonymous_answer(results, remaining) do
+    fields =
+      results
+      |> Enum.flat_map(&record_keys/1)
+      |> Enum.uniq()
+      |> Enum.reject(&(&1 in @anonymous_fields))
+      |> Enum.sort()
+
+    %{
+      status: :answered,
+      records: length(results),
+      remaining: if(is_integer(remaining), do: remaining, else: nil),
+      extra_fields: fields
+    }
+  end
+
+  defp record_keys(record) when is_map(record), do: Map.keys(record)
+  defp record_keys(_), do: ["(not an object)"]
+
+  @doc "Field names an anonymous caller may see on an exposed type."
+  @spec anonymous_fields() :: [String.t()]
+  def anonymous_fields, do: @anonymous_fields
 
   @doc """
   Finds users (as admin) whose `email` is exactly `email`: for cleanup of

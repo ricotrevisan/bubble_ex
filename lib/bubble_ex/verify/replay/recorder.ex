@@ -26,6 +26,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   up front until V7 classifies workflows as replay-safe (WTF-358 §6.4); the
   only workflows the driver calls are the replay kit's sign-up and login.
 
+  **Preflight** (`BubbleEx.Verify.Replay.Kit.preflight/4`): the kit is in
+  place, every type is exposed, no exposed type shows a logged-out visitor
+  more than IDs and dates (the anonymous exposure probe), and a seed that
+  signs users up has a safely exposed `User` Data API to clean them up
+  with. Anything else refuses the run before any write.
+
   **Dry run first (§6.1 rule 3).** `plan/4` makes no call: it validates
   the scenarios against the seed and the target, estimates the calls and
   hashes the run's inputs. `record/4` needs that hash (`:plan_sha256`) and
@@ -103,6 +109,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
            CanonicalJson.sha256(%{
              "app" => client.target.app,
              "branch" => client.target.branch,
+             "branch_id" => client.target.branch_id,
+             "host" => client.target.host,
              "seed_sha256" => Seed.sha256(seed),
              "scenarios" => scenarios |> Enum.map(&[&1.id, Scenario.sha256(&1)]) |> Enum.sort(),
              "runs" => runs,
@@ -110,7 +118,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
              "delete_after_seed" => opts |> Keyword.get(:delete_after_seed, []) |> Enum.sort(),
              "max_calls" => client.max_calls
            }),
-         calls: 1 + length(types) + runs * per_run,
+         calls: 1 + 2 * length(types) + runs * per_run,
          cleanup_calls: runs * length(seed.records),
          runs: runs
        }}
@@ -126,7 +134,10 @@ defmodule BubbleEx.Verify.Replay.Recorder do
          :ok <- ledger_dir(opts),
          :ok <- affordable(client, plan),
          {:ok, run_id} <- run_id(opts),
-         {:ok, preflight} <- Kit.preflight(client, kit(opts), types(seed, scenarios)) do
+         {:ok, preflight} <-
+           Kit.preflight(client, kit(opts), types(seed, scenarios),
+             personas: Enum.any?(seed.records, &(&1.type == "user"))
+           ) do
       if preflight.ok? do
         {:ok, run(client, seed, scenarios, plan, run_id, preflight, opts)}
       else
@@ -353,6 +364,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     %{
       app: client.target.app,
       branch: client.target.branch,
+      branch_id: client.target.branch_id,
+      host: client.target.host,
       preflight: preflight,
       calls: Client.calls(client),
       cleanup_calls: Client.cleanup_calls(client),
@@ -618,7 +631,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
 
     attrs = [
       oracle: :bubble,
-      source: %{app: client.target.app, branch: client.target.branch},
+      source: %{
+        app: client.target.app,
+        branch: client.target.branch,
+        branch_id: client.target.branch_id,
+        host: client.target.host
+      },
       recorded_at: first.started,
       t0: DateTime.to_unix(first.started, :millisecond),
       runs: length(runs),

@@ -12,6 +12,9 @@ defmodule BubbleEx.Test.FakeBubble do
   #   * user: visible to itself
   #   * workspace: visible to everyone
   #
+  # `host:` serves the app from a custom domain instead of
+  # `acme.bubbleapps.io` (which then answers 301 to it, as Bubble does).
+  #
   # Every request is logged. `script` queues canned responses
   # (`{method, path_suffix, status, headers}`) served before the real
   # handler, for 429/5xx tests. Owner records (`owner_records`) stand for
@@ -21,10 +24,14 @@ defmodule BubbleEx.Test.FakeBubble do
 
   @app "acme"
   @branch "wtfreplay"
+  # Bubble serves a child branch at /version-<its short ID>, not its name.
+  @branch_id "4k2xq"
   @admin "admin-token-0123456789abcdef"
 
   def app, do: @app
   def branch, do: @branch
+  def branch_id, do: @branch_id
+  def host, do: "#{@app}.bubbleapps.io"
   def admin_token, do: @admin
 
   def start(opts \\ []) do
@@ -40,6 +47,7 @@ defmodule BubbleEx.Test.FakeBubble do
       workflows:
         Keyword.get(opts, :workflows, ~w(wtf_replay_signup wtf_replay_login echo_now leaky)),
       meta: Keyword.get(opts, :meta, true),
+      host: Keyword.get(opts, :host, host()),
       # :lost_signup (create the user, answer 502), :odd_user_id,
       # :ignore_constraints, :leak (task titles echo the caller's credentials)
       quirks: Keyword.get(opts, :quirks, [])
@@ -74,10 +82,16 @@ defmodule BubbleEx.Test.FakeBubble do
     }
 
     Agent.update(pid, &%{&1 | log: [entry | &1.log]})
-    prefix = "/version-#{@branch}/api/1.1/"
+    prefix = "/version-#{@branch_id}/api/1.1/"
+    served = Agent.get(pid, & &1.host)
 
     cond do
-      conn.host != "#{@app}.bubbleapps.io" or not String.starts_with?(conn.request_path, prefix) ->
+      conn.host == host() and served != host() ->
+        conn
+        |> Conn.put_resp_header("location", "https://#{served}#{conn.request_path}")
+        |> Conn.send_resp(301, "")
+
+      conn.host != served or not String.starts_with?(conn.request_path, prefix) ->
         json(conn, 599, %{"error" => "outside the replay branch"})
 
       (canned = pop_script(pid, conn.method, conn.request_path)) != nil ->

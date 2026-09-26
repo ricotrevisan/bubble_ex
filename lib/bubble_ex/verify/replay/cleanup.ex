@@ -57,12 +57,13 @@ defmodule BubbleEx.Verify.Replay.Cleanup do
           {:ok, %{ledger: Ledger.t(), leftovers: [leftover()]}} | {:error, Error.t()}
   def resume(%Client{target: %Target{} = target} = client, path) do
     with {:ok, ledger} <- Ledger.load(path) do
-      if {ledger.app, ledger.branch} == {target.app, target.branch} do
+      if {ledger.app, ledger.branch, ledger.branch_id, ledger.host} ==
+           {target.app, target.branch, target.branch_id, target.host} do
         {ledger, leftovers} = run(client, ledger)
         {:ok, %{ledger: ledger, leftovers: leftovers}}
       else
         {:error,
-         Error.new(:invalid_input, "the journal is for another app or branch", %{
+         Error.new(:invalid_input, "the journal is for another app, branch or host", %{
            reason: :wrong_target
          })}
       end

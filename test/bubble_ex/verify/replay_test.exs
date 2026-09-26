@@ -22,7 +22,8 @@ defmodule BubbleEx.Verify.ReplayTest do
   }
 
   @admin FakeBubble.admin_token()
-  @prefix "/version-wtfreplay/api/1.1/"
+  @branch_id FakeBubble.branch_id()
+  @prefix "/version-#{FakeBubble.branch_id()}/api/1.1/"
 
   # --- fixtures ------------------------------------------------------------------------
 
@@ -33,8 +34,8 @@ defmodule BubbleEx.Verify.ReplayTest do
     fake
   end
 
-  defp target do
-    {:ok, t} = Target.new("acme", "wtfreplay", @admin)
+  defp target(opts \\ []) do
+    {:ok, t} = Target.new("acme", "wtfreplay", @admin, [branch_id: @branch_id] ++ opts)
     t
   end
 
@@ -193,7 +194,8 @@ defmodule BubbleEx.Verify.ReplayTest do
   describe "Target" do
     test "accepts an app ID and a wtfreplay branch only" do
       for branch <- ~w(wtfreplay wtfreplay-2 wtfreplay_v5) do
-        assert {:ok, %Target{branch: ^branch}} = Target.new("acme", branch, @admin)
+        assert {:ok, %Target{branch: ^branch}} =
+                 Target.new("acme", branch, @admin, branch_id: @branch_id)
       end
 
       for branch <-
@@ -220,7 +222,7 @@ defmodule BubbleEx.Verify.ReplayTest do
               "wtfreplay" <> String.duplicate("x", 60)
             ] do
         assert {:error, %Error{kind: :invalid_input, context: %{reason: :not_a_replay_branch}}} =
-                 Target.new("acme", branch, @admin),
+                 Target.new("acme", branch, @admin, branch_id: @branch_id),
                "accepted branch #{inspect(branch)}"
       end
 
@@ -237,18 +239,110 @@ defmodule BubbleEx.Verify.ReplayTest do
             String.duplicate("a", 64)
           ] do
         assert {:error, %Error{context: %{reason: :not_an_app_id}}} =
-                 Target.new(app, "wtfreplay", @admin),
+                 Target.new(app, "wtfreplay", @admin, branch_id: @branch_id),
                "accepted app #{inspect(app)}"
       end
 
       for token <- [nil, "", "short", "has a space in it", "tab\there-012345"] do
-        assert {:error, %Error{kind: :invalid_input}} = Target.new("acme", "wtfreplay", token)
+        assert {:error, %Error{kind: :invalid_input}} =
+                 Target.new("acme", "wtfreplay", token, branch_id: @branch_id)
       end
+    end
+
+    test "URLs use the operator-supplied branch ID; live and test are refused" do
+      assert {:error, %Error{context: %{reason: :missing_branch_id}}} =
+               Target.new("acme", "wtfreplay", @admin)
+
+      for id <- ~w(4k2xq 1a2b 7qz0p abcdef123456) do
+        assert {:ok, %Target{branch: "wtfreplay", branch_id: ^id}} =
+                 Target.new("acme", "wtfreplay", @admin, branch_id: id)
+      end
+
+      for id <- [
+            "live",
+            "test",
+            "version-test",
+            "version-live",
+            "version-4k2xq",
+            "wtfreplay",
+            "abcd",
+            "4K2XQ",
+            "4k2",
+            "4k2xq/../live",
+            "4k2xq ",
+            "4k2%2F",
+            String.duplicate("1", 13),
+            "",
+            nil,
+            :live,
+            12_345
+          ] do
+        assert {:error, %Error{context: %{reason: :not_a_branch_id}}} =
+                 Target.new("acme", "wtfreplay", @admin, branch_id: id),
+               "accepted branch ID #{inspect(id)}"
+      end
+
+      t = target()
+      assert Target.api_root(t) == "https://acme.bubbleapps.io/version-#{@branch_id}/api/1.1"
+    end
+
+    test "an owner-confirmed custom host replaces bubbleapps.io, exactly" do
+      t = target(host: "beta.example.com")
+      assert t.host == "beta.example.com"
+      root = "https://beta.example.com/version-#{@branch_id}/api/1.1"
+      assert Target.api_root(t) == root
+      assert :ok = Target.check_url(t, root <> "/obj/task?limit=1")
+
+      for url <- [
+            "https://acme.bubbleapps.io/version-#{@branch_id}/api/1.1/obj/task",
+            "https://beta.example.com.evil.com/version-#{@branch_id}/api/1.1/obj/task",
+            "https://evil.beta.example.com/version-#{@branch_id}/api/1.1/obj/task",
+            "https://beta.example.com:8443/version-#{@branch_id}/api/1.1/obj/task",
+            "https://beta.example.com:443/version-#{@branch_id}/api/1.1/obj/task",
+            "http://beta.example.com/version-#{@branch_id}/api/1.1/obj/task",
+            "https://BETA.example.com/version-#{@branch_id}/api/1.1/obj/task",
+            "https://beta.example.com/version-live/api/1.1/obj/task",
+            "https://beta.example.com/api/1.1/obj/task"
+          ] do
+        assert {:error, %Error{context: %{reason: :outside_replay_branch}}} =
+                 Target.check_url(t, url),
+               "accepted #{inspect(url)}"
+      end
+
+      assert target(host: "acme.bubbleapps.io").host == "acme.bubbleapps.io"
+
+      for host <- [
+            "https://beta.example.com",
+            "beta.example.com/",
+            "beta.example.com:443",
+            "Beta.example.com",
+            "beta.example.com.",
+            "localhost",
+            "127.0.0.1",
+            "10.0.0.8",
+            "[::1]",
+            "0x7f.1",
+            "other.bubbleapps.io",
+            "bubbleapps.io",
+            "acme.bubble.io",
+            "bubble.io",
+            "user@beta.example.com",
+            "beta example.com",
+            "",
+            nil
+          ] do
+        assert {:error, %Error{context: %{reason: :not_a_replay_host}}} =
+                 Target.new("acme", "wtfreplay", @admin, branch_id: @branch_id, host: host),
+               "accepted host #{inspect(host)}"
+      end
+
+      refute inspect(t) =~ @admin
+      assert inspect(t) =~ "beta.example.com"
     end
 
     test "builds branch URLs from validated segments only" do
       t = target()
-      root = "https://acme.bubbleapps.io/version-wtfreplay/api/1.1"
+      root = "https://acme.bubbleapps.io/version-#{@branch_id}/api/1.1"
       assert Target.api_root(t) == root
       assert {:ok, root <> "/obj/task"} == Target.data_url(t, "task")
       assert {:ok, root <> "/obj/task/1700x12"} == Target.data_url(t, "task", "1700x12")
@@ -269,6 +363,10 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       for url <- [
             "https://acme.bubbleapps.io/version-test/api/1.1/obj/task",
+            "https://acme.bubbleapps.io/version-wtfreplay/api/1.1/obj/task",
+            "https://acme.bubbleapps.io/version-#{@branch_id}x/api/1.1/obj/task",
+            "https://other.bubbleapps.io/version-#{@branch_id}/api/1.1/obj/task",
+            "https://acme.bubbleapps.io/version-#{@branch_id}/api/1.1/../../version-live/api/1.1/obj/x",
             "https://acme.bubbleapps.io/api/1.1/obj/task",
             "https://acme.bubbleapps.io/version-wtfreplay2/api/1.1/obj/task",
             "https://other.bubbleapps.io/version-wtfreplay/api/1.1/obj/task",
@@ -535,8 +633,10 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert result.report.leftovers == []
       assert length(result.ledgers) == 2
 
-      # Searches were constrained to the run's own records.
-      for %{method: "GET", path: @prefix <> "obj/task", query: q} <- log do
+      # Searches were constrained to the run's own records; the only
+      # unconstrained read is the preflight's anonymous probe (no token).
+      for %{method: "GET", path: @prefix <> "obj/task", query: q, auth: auth} <- log,
+          q["constraints"] != nil or auth != nil do
         [%{"key" => "_id", "constraint_type" => "in", "value" => ids}] =
           Jason.decode!(q["constraints"])
 
@@ -551,7 +651,15 @@ defmodule BubbleEx.Verify.ReplayTest do
         assert {:ok, rec} = Recording.from_json(json)
         assert path == ".wtf/verification/recordings/#{rec.scenario.id}.json"
         assert rec.oracle == :bubble and rec.complete and rec.runs == 2
-        assert rec.source == %{app: "acme", branch: "wtfreplay", app_version: nil}
+
+        assert rec.source == %{
+                 app: "acme",
+                 branch: "wtfreplay",
+                 branch_id: @branch_id,
+                 host: "acme.bubbleapps.io",
+                 app_version: nil
+               }
+
         scenario = Enum.find(scenarios, &(&1.id == rec.scenario.id))
         assert rec.scenario.sha256 == Scenario.sha256(scenario)
         assert :ok = Recording.check_scenario(rec, scenario)
@@ -768,6 +876,125 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert %{status: :ok} = Enum.find(report.checks, &(&1[:workflow] == "wtf_replay_login"))
       assert :privacy_rules_unchanged_from_parent in report.manual
     end
+
+    test "the anonymous exposure probe refuses a type that shows a logged-out visitor fields" do
+      # The fake's workspaces are visible to everyone: an owner workspace
+      # with a name leaks it to anonymous callers once the type is exposed.
+      fake =
+        start_fake(
+          owner_records: [
+            %{type: "workspace", fields: %{"Name" => "owner-private-name"}},
+            %{type: "task", fields: %{"Title" => "owner-task"}}
+          ]
+        )
+
+      seed = seed()
+
+      assert {:error, %Error{context: %{preflight: checks}}} =
+               record(client(), seed, [privacy_scenario(seed, "alice")])
+
+      assert %{status: :exposed, extra_fields: ["Name"], records: 1} =
+               Enum.find(
+                 checks,
+                 &(&1[:check] == :anonymous_exposure and &1.type == "custom.workspace")
+               )
+
+      assert %{status: :ok, anonymous: :ids_only, records: 0} =
+               Enum.find(
+                 checks,
+                 &(&1[:check] == :anonymous_exposure and &1.type == "custom.task")
+               )
+
+      # Names and counts only: no value or ID reaches the report, and nothing was written.
+      refute inspect(checks) =~ "owner-private-name"
+      refute inspect(checks) =~ ~r/\d+x\d+/
+      assert Enum.all?(FakeBubble.log(fake), &(&1.method == "GET"))
+
+      anonymous =
+        for %{auth: nil, query: q} = e <- FakeBubble.log(fake), q["constraints"] == nil, do: e
+
+      assert anonymous != []
+      assert Enum.all?(anonymous, &(&1.query["limit"] == "25"))
+    end
+
+    test "a type that shows a logged-out visitor only IDs and dates passes" do
+      start_fake(owner_records: [%{type: "workspace", fields: %{}}])
+
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.workspace))
+      assert report.ok?
+
+      assert %{status: :ok, anonymous: :ids_only, records: 1, remaining: 0} =
+               Enum.find(report.checks, &(&1[:check] == :anonymous_exposure))
+    end
+
+    test "persona seeding needs a safely exposed User Data API; logged-out only does not" do
+      seed = seed()
+
+      fake = start_fake(exposed: ~w(task workspace))
+
+      assert {:error, %Error{context: %{preflight: checks}}} =
+               record(client(), seed, [privacy_scenario(seed, "alice")])
+
+      assert %{status: :missing, detail: detail} =
+               Enum.find(checks, &(&1[:check] == :persona_cleanup))
+
+      assert detail =~ "logged-out"
+      assert Enum.all?(FakeBubble.log(fake), &(&1.method == "GET"))
+
+      assert {:ok, %{ok?: true, checks: checks}} =
+               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace))
+
+      refute Enum.any?(checks, &(&1[:check] == :persona_cleanup))
+
+      # A seed without users records logged-out, with User not exposed.
+      {:ok, anon_seed} =
+        Seed.new(
+          id: "logged_out",
+          personas: %{"anonymous" => %{user: nil}},
+          records: [
+            %{key: "ws_1", type: "custom.workspace", fields: %{"name_text" => {:text, "W1"}}},
+            %{key: "task_a", type: "custom.task", fields: %{"title_text" => {:text, "A"}}},
+            %{key: "task_b", type: "custom.task", fields: %{"title_text" => {:text, "B"}}}
+          ]
+        )
+
+      fake = start_fake(exposed: ~w(task workspace))
+
+      assert {:ok, result} =
+               record(client(), anon_seed, [privacy_scenario(anon_seed, "anonymous")])
+
+      assert result.report.leftovers == []
+      assert [%Recording{complete: true}] = result.recordings
+      assert FakeBubble.records(fake) == %{}
+      refute Enum.any?(FakeBubble.log(fake), &(&1.path =~ "/obj/user" or &1.path =~ "/wf/"))
+    end
+
+    test "a custom-domain app: bubbleapps.io redirects and is refused; the confirmed host records" do
+      host = "beta.example.com"
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+
+      fake = start_fake(host: host)
+      assert {:error, %Error{context: %{reason: :redirect_refused}}} = Client.meta(client())
+      assert [%{host: "acme.bubbleapps.io"}] = FakeBubble.log(fake)
+
+      fake = start_fake(host: host)
+      {:ok, c} = Client.new(target(host: host), names: names(), sleep: fn _ -> :ok end)
+      assert {:ok, result} = record(c, seed, scenarios)
+      assert result.report.leftovers == []
+      assert result.report.host == host and result.report.branch_id == @branch_id
+
+      assert Enum.all?(
+               FakeBubble.log(fake),
+               &(&1.host == host and String.starts_with?(&1.path, @prefix))
+             )
+
+      for {_path, json} <- result.files do
+        assert {:ok, rec} = Recording.from_json(json)
+        assert rec.source.host == host and rec.source.branch_id == @branch_id
+        assert rec.source.branch == "wtfreplay"
+      end
+    end
   end
 
   # --- differential masking --------------------------------------------------------------------
@@ -829,8 +1056,9 @@ defmodule BubbleEx.Verify.ReplayTest do
         assert FakeBubble.records(fake) == %{}
 
         [lookup] =
-          for %{path: @prefix <> "obj/user", query: q} <- FakeBubble.log(fake),
-              q["constraints"] =~ "equals",
+          for %{path: @prefix <> "obj/user", query: %{"constraints" => c} = q} <-
+                FakeBubble.log(fake),
+              c =~ "equals",
               do: Jason.decode!(q["constraints"])
 
         assert [%{"key" => "email", "constraint_type" => "equals", "value" => email}] = lookup
@@ -839,7 +1067,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     end
 
     test "a crash mid-run still cleans up, from the journal" do
-      fake = start_fake(owner_records: [%{type: "workspace", fields: %{"Name" => "owner"}}])
+      fake = start_fake(owner_records: [%{type: "task", fields: %{"Title" => "owner"}}])
       [owner_id] = Map.keys(FakeBubble.records(fake))
       seed = seed()
 
@@ -866,11 +1094,17 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:ok, state} = Seeder.seed(client(), seed(), ledger("dead", dir: d))
       assert map_size(FakeBubble.records(fake)) == 6
 
-      {:ok, other} = Target.new("acme", "wtfreplay-2", @admin)
-      {:ok, wrong} = Client.new(other, names: names())
+      for {branch, opts} <- [
+            {"wtfreplay-2", [branch_id: @branch_id]},
+            {"wtfreplay", [branch_id: "9z9zz"]},
+            {"wtfreplay", [branch_id: @branch_id, host: "beta.example.com"]}
+          ] do
+        {:ok, other} = Target.new("acme", branch, @admin, opts)
+        {:ok, wrong} = Client.new(other, names: names())
 
-      assert {:error, %Error{context: %{reason: :wrong_target}}} =
-               Cleanup.resume(wrong, state.ledger.path)
+        assert {:error, %Error{context: %{reason: :wrong_target}}} =
+                 Cleanup.resume(wrong, state.ledger.path)
+      end
 
       assert {:ok, %{leftovers: []}} = Cleanup.resume(client(), state.ledger.path)
       assert Map.keys(FakeBubble.records(fake)) == [owner_id]

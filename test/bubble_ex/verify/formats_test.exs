@@ -340,6 +340,30 @@ defmodule BubbleEx.Verify.FormatsTest do
       assert {:ok, _} = Recording.from_map(raw)
     end
 
+    test "a Bubble recording keeps the branch ID and host it was recorded from" do
+      raw =
+        raw("recording.bubble.json")
+        |> put_in(["source", "branch_id"], "4k2xq")
+        |> put_in(["source", "host"], "beta.example.com")
+
+      assert {:ok, rec} = Recording.from_map(raw)
+      assert %{branch: "wtfreplay", branch_id: "4k2xq", host: "beta.example.com"} = rec.source
+      assert Recording.to_map(rec)["source"]["branch_id"] == "4k2xq"
+
+      # Older recordings without them keep their canonical form.
+      {:ok, old} = Recording.from_map(raw("recording.bubble.json"))
+      assert old.source.branch_id == nil
+      refute Map.has_key?(Recording.to_map(old)["source"], "host")
+
+      for id <- ["live", "test", "version-test", "wtfreplay", "4K2XQ", ""] do
+        invalid(Recording.from_map(put_in(raw, ["source", "branch_id"], id)))
+      end
+
+      for host <- ["https://beta.example.com", "other.bubbleapps.io", "127.0.0.1", "localhost"] do
+        invalid(Recording.from_map(put_in(raw, ["source", "host"], host)))
+      end
+    end
+
     test "probe M1: the source app is a Bubble app ID, not a domain" do
       for app <- ["app.example.com", "https://acme.bubbleapps.io", "Acme", " acme", ""] do
         raw = put_in(raw("recording.bubble.json"), ["source", "app"], app)

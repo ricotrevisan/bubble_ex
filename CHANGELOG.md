@@ -103,6 +103,25 @@ All notable changes to this project are documented here.
   `trigger_in_runtime_template`), frontend workflows auto 824 → 1,179 of
   2,275.
 
+- **Replay driver prerequisites for a real app** (WTF-385). Bubble serves
+  a child branch at `/version-<branch ID>/`, not at its name, and apps on a
+  custom domain redirect `bubbleapps.io` to it. `Replay.Target.new/4` now
+  requires the operator-supplied `branch_id:` (validated; `live`/`test`
+  refused; the `wtfreplay…` name rules are unchanged and the name stays in
+  ledgers, reports and recordings) and takes an optional owner-confirmed
+  custom `host:` (bare DNS name, HTTPS, exact-host re-check on every
+  request, no redirects, not another Bubble host). Recordings, ledgers and
+  reports keep the branch ID and host; `Cleanup.resume/2` refuses a journal
+  for another branch ID or host. Enabling the Data API on a branch exposes
+  the development database it shares with `test` to anyone, as far as the
+  privacy rules allow, so `Replay.Kit.preflight/4` now runs an anonymous
+  exposure probe on every exposed type (no token, one page, field names and
+  counts only) and refuses the run when a logged-out caller gets more than
+  `_id`, `Created Date` and `Modified Date`; a seed that signs users up
+  also needs a safely exposed `User` Data API (persona cleanup), otherwise
+  the run is refused and must be recorded logged-out only.
+  `docs/replay-kit.md` documents both.
+
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits
   `COMMENT ON COLUMN "schema"."table"."column" IS E'References ... (no

@@ -45,12 +45,14 @@ defmodule BubbleEx.Verify.Replay.Ledger do
           run_id: String.t(),
           app: String.t(),
           branch: String.t(),
+          branch_id: String.t() | nil,
+          host: String.t() | nil,
           path: String.t() | nil,
           entries: [entry()]
         }
 
   @enforce_keys [:run_id, :app, :branch]
-  defstruct [:run_id, :app, :branch, :path, entries: []]
+  defstruct [:run_id, :app, :branch, :branch_id, :host, :path, entries: []]
 
   @doc """
   A new ledger for run `run_id` on `target`. With `dir:`, its journal is
@@ -59,7 +61,13 @@ defmodule BubbleEx.Verify.Replay.Ledger do
   """
   @spec new(Target.t(), String.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def new(%Target{} = target, run_id, opts \\ []) when is_binary(run_id) do
-    ledger = %__MODULE__{run_id: run_id, app: target.app, branch: target.branch}
+    ledger = %__MODULE__{
+      run_id: run_id,
+      app: target.app,
+      branch: target.branch,
+      branch_id: target.branch_id,
+      host: target.host
+    }
 
     case Keyword.get(opts, :dir) do
       nil ->
@@ -77,7 +85,9 @@ defmodule BubbleEx.Verify.Replay.Ledger do
                  "format" => @format,
                  "run_id" => run_id,
                  "app" => target.app,
-                 "branch" => target.branch
+                 "branch" => target.branch,
+                 "branch_id" => target.branch_id,
+                 "host" => target.host
                }) do
           {:ok, ledger}
         end
@@ -272,13 +282,25 @@ defmodule BubbleEx.Verify.Replay.Ledger do
            "run_id" => run,
            "app" => app,
            "branch" => b
-         },
+         } = h,
          path
        )
        when is_binary(run) and is_binary(app) and is_binary(b),
-       do: {:ok, %__MODULE__{run_id: run, app: app, branch: b, path: path}}
+       do:
+         {:ok,
+          %__MODULE__{
+            run_id: run,
+            app: app,
+            branch: b,
+            branch_id: string_or_nil(h["branch_id"]),
+            host: string_or_nil(h["host"]),
+            path: path
+          }}
 
   defp header(_, _), do: invalid_journal()
+
+  defp string_or_nil(value) when is_binary(value), do: value
+  defp string_or_nil(_), do: nil
 
   defp invalid_journal, do: {:error, Error.new(:parse_failed, "malformed ledger journal")}
 
@@ -312,6 +334,8 @@ defmodule BubbleEx.Verify.Replay.Ledger do
       "run_id" => l.run_id,
       "app" => l.app,
       "branch" => l.branch,
+      "branch_id" => l.branch_id,
+      "host" => l.host,
       "entries" =>
         Enum.map(l.entries, fn e ->
           %{
