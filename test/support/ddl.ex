@@ -10,6 +10,12 @@ defmodule BubbleEx.Test.Ddl do
   sqlite3.connect(":memory:").executescript(sys.stdin.read())
   """
 
+  # System.unique_integer/1 is unique only within this VM, and concurrent test
+  # runs on one host (several worktrees) share /tmp and the PostgreSQL server:
+  # another VM once deleted this VM's SQL file mid-test (WTF-395). The OS pid
+  # makes the names unique across VMs.
+  defp unique, do: "#{System.pid()}_#{System.unique_integer([:positive])}"
+
   @spec sqlite(String.t()) :: {String.t(), non_neg_integer()}
   def sqlite(sql) do
     with_file(sql, fn path ->
@@ -19,7 +25,7 @@ defmodule BubbleEx.Test.Ddl do
 
   @spec postgres(String.t(), String.t()) :: {String.t(), non_neg_integer()}
   def postgres(url, sql) do
-    database = "bubble_ex_ddl_#{System.unique_integer([:positive])}"
+    database = "bubble_ex_ddl_#{unique()}"
     {_, 0} = psql(url <> "/postgres", ["-c", "CREATE DATABASE #{database}"])
 
     try do
@@ -32,7 +38,7 @@ defmodule BubbleEx.Test.Ddl do
   defp psql(url, args), do: System.cmd("psql", [url | args], stderr_to_stdout: true)
 
   defp with_file(contents, fun) do
-    path = Path.join(System.tmp_dir!(), "bubble_ex_ddl_#{System.unique_integer([:positive])}.sql")
+    path = Path.join(System.tmp_dir!(), "bubble_ex_ddl_#{unique()}.sql")
     File.write!(path, contents)
 
     try do

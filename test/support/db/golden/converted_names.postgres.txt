@@ -59,5 +59,12 @@ CREATE TABLE "option"."Blog-Post" (
 -- "custom"."Post"."Owner" -> "custom"."User"."_id"
 -- "custom"."Repo"."Created By" -> "custom"."User"."_id"
 -- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."Blog Post"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Post"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Post"."Created-By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Post"."Owner" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Repo"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
 --- diagnostics ---
 model_synthesized_user_type /user_types/user

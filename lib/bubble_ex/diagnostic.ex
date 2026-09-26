@@ -15,8 +15,8 @@ defmodule BubbleEx.Diagnostic do
     * `stage` - `:read | :parse | :model | {:target, format}`
     * `subject` - the Bubble IDs involved, keyed by `:type` (data type),
       `:option_set`, `:external_type` (API Connector type, e.g.
-      `"api.apiconnector2.bTa.bTb.obj"`), `:field`, `:rule` and `:workflow`.
-      IDs only, never display names.
+      `"api.apiconnector2.bTa.bTb.obj"`), `:field`, `:rule`, `:workflow` and
+      `:plugin` (marketplace plugin ID). IDs only, never display names.
     * `path` - RFC 6901 JSON pointer into the supplied source
     * `details` - code-specific data (e.g. the unresolved external type)
     * `message` - for people; not part of the diagnostic's identity
@@ -34,7 +34,8 @@ defmodule BubbleEx.Diagnostic do
   @type severity :: :error | :warning | :info
   @type outcome :: :preserved | :degraded | :unresolved
   @type stage :: :read | :parse | :model | {:target, atom()}
-  @type subject_key :: :type | :option_set | :external_type | :field | :rule | :workflow
+  @type subject_key ::
+          :type | :option_set | :external_type | :field | :rule | :workflow | :plugin
   @type subject :: %{optional(subject_key()) => String.t()}
   @type key :: {stage(), atom(), subject(), String.t()}
 
@@ -52,7 +53,7 @@ defmodule BubbleEx.Diagnostic do
   @enforce_keys [:code, :severity, :outcome, :stage, :path, :message]
   defstruct [:code, :severity, :outcome, :stage, :path, :message, subject: %{}, details: %{}]
 
-  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow]
+  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin]
   @severity_rank %{error: 0, warning: 1, info: 2}
 
   @type option :: {:subject, subject()} | {:details, map()} | {:target, atom()}

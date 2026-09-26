@@ -22,6 +22,7 @@ defmodule BubbleEx.Index.Symbol do
   | `:api_group`      | API Connector group ID         | `api_group:bLmN`                 |
   | `:api_call`       | group ID, call ID              | `api_call:bLmN/bOpQ`             |
   | `:privacy_rule`   | type key, rule key             | `privacy_rule:task/owner_`       |
+  | `:plugin`         | marketplace plugin ID          | `plugin:1488796042609x768734193128308700` |
 
   Pages, reusables, elements, workflows and actions use the Bubble `id`
   member (what other definitions reference), falling back to the map key.
@@ -48,6 +49,7 @@ defmodule BubbleEx.Index.Symbol do
           | :api_group
           | :api_call
           | :privacy_rule
+          | :plugin
 
   @type id :: String.t()
 
@@ -65,7 +67,7 @@ defmodule BubbleEx.Index.Symbol do
   defstruct [:id, :kind, :bubble_id, :name, :parent, :path, attrs: %{}]
 
   @kinds ~w(data_type field option_set option_value option_attribute page reusable element
-            workflow action api_group api_call privacy_rule)a
+            workflow action api_group api_call privacy_rule plugin)a
 
   @doc "All symbol kinds."
   @spec kinds() :: [kind()]

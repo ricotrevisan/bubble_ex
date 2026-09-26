@@ -564,6 +564,22 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       assert map(faithful(), [refine, derive]) |> message() =~ "two decisions transform one field"
     end
 
+    test "plugin decisions are not the schema's: skipped" do
+      plugin =
+        applied_finding(:plugin, %{plugin: "1600000000000x100"}, %{
+          transform: :replace_plugin,
+          plugin: "plugin:1600000000000x100",
+          option: :drop,
+          options: [:drop],
+          equivalent: nil
+        })
+
+      {:ok, faithful} = Ash.map(faithful())
+      assert {:ok, project} = map(faithful(), [plugin])
+      assert project.applied == [] and project.deferred == []
+      assert project.resources == faithful.resources
+    end
+
     test "decisions need decisions_sha256" do
       %{model: model, applied: applied} = DecidedFixture.build(:refine)
       assert Ash.map(model, applied) |> message() =~ "decisions_sha256"

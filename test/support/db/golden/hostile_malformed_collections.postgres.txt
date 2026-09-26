@@ -12,6 +12,8 @@ CREATE TABLE "custom"."User" (
 
 -- References without a foreign key (Bubble does not enforce referential integrity):
 -- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
 --- diagnostics ---
 model_malformed_node /option_sets
 model_malformed_node /user_types

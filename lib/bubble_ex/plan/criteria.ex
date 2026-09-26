@@ -92,13 +92,19 @@ defmodule BubbleEx.Plan.Criteria do
           {:attested, %{about: :styles_match}}
         ]
 
-  defp checks_for(%Task{kind: :plugin, subjects: subjects}, _facts),
+  defp checks_for(%Task{kind: :plugin, status: :closed, closed_by: key}, _facts),
+    do: [{:decision_recorded, %{key: key}}]
+
+  defp checks_for(%Task{kind: :plugin, subjects: subjects}, facts),
     do:
-      code() ++
+      [{:decision_recorded, %{key: facts[:decision]}} | code()] ++
         [
           {:render_smoke, %{elements: Enum.filter(subjects, &element?/1)}},
           {:attested, %{about: :plugin_replaced}}
         ]
+
+  defp checks_for(%Task{kind: :decision}, facts),
+    do: [{:decision_recorded, %{key: facts[:decision]}}]
 
   defp checks_for(%Task{kind: :surface, subjects: subjects}, facts),
     do:

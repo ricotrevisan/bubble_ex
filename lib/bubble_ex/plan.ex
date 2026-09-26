@@ -31,7 +31,8 @@ defmodule BubbleEx.Plan do
   | `:setup_secrets` | app, when an API Connector value is private | owner | open |
   | `:auth` | app; subjects are the log-in, sign-up and credential workflows | agent | open |
   | `:styles_residue` | app, when a named style is residue | agent | open |
-  | `:plugin` | plugin used by a kept element, action or event | agent | open |
+  | `:decision` | plugin used by kept code with no applicable owner decision (`decision:plugin/<id>`) | owner | open |
+  | `:plugin` | plugin used by a kept element, action or event; subjects are the plugin symbol and its uses | agent (generator when dropped) | open (closed by a `drop` decision) |
   | `:surface` | page (mobile views excluded) or reusable | agent | auto unless it or a subtask has residue |
   | `:fragment` | top-level container of a surface with more than `fragment_threshold` elements | agent | as surface |
   | `:workflow` (subtask) | workflow; parent is its surface, backend folder or cycle | agent | auto unless residue |
@@ -43,6 +44,37 @@ defmodule BubbleEx.Plan do
   | `:replay` | `replay:app` | harness | open |
   | `:delivery` | `delivery:staging`, `delivery:callers` (when workflows are public), `delivery:production` | agent / owner | open |
   | `:cutover` | ladder step: `rehearsal`, `runbook`, `communications`, `freeze`, `final_delta`, `switch`, `verify`, `sign_off` | owner | open |
+
+  ## Plugins
+
+  Each plugin has a `:plugin` finding (WTF-376) that the owner decides
+  (`BubbleEx.Decision`, `replace_plugin` with the chosen `option`); nothing
+  is guessed while it is undecided:
+
+    * undecided (no applicable decision: none recorded, or stale; plugin
+      findings cannot be rejected or acknowledged) - the plugin task
+      depends on a `decision:plugin/<id>` task for the owner, so the plugin
+      and every surface, fragment and workflow using it wait for the
+      decision
+    * `replace_native` or `rebuild` - the plugin task is open (its
+      criteria cite the decision) and its users wait for it
+    * `drop` - the plugin goes, not the logic around it: its elements are
+      no residue (they render nothing) and its actions are dropped like
+      `remove_calls`. A workflow one of its events triggers is removed only
+      when the plugin's actions are all it runs, or when the decision lists
+      it in `delete_workflows`; otherwise it keeps its body with
+      `:trigger_dropped` residue (an agent gives it a new trigger). Every
+      symbol reading a dropped element's states, a dropped action's result
+      (`Result of step N`) or naming a dropped plugin data type gets
+      `:reads_dropped_plugin` residue, so its task stays open. The plugin
+      task is closed by the decision (`closed_by`, actor `generator`), its
+      subjects list everything the drop removed, and tasks that lost a use
+      or must rewrite one have a `:decision` edge to it; no `:plugin` edge
+      remains
+
+  A plugin decision is part of the `decisions` and `decisions_sha256` of
+  every task covering the plugin, one of its uses or a read of one, so deciding (or
+  changing the decision) changes those tasks' `source_sha256`.
 
   A workflow that calls itself stays in its owner's task. Workflows removed
   by an accepted `delete_workflows` get no subtask, and actions an accepted
@@ -60,7 +92,9 @@ defmodule BubbleEx.Plan do
     * `:early` - surfaces, fragments, backend folders and cycles on `auth`
       and `styles:residue`
     * `:secrets` - an API group with a private value on `setup:secrets`
-    * `:decision` - a workflow on the decision node removing its actions
+    * `:decision` - a workflow on the decision node removing its actions;
+      a plugin task on its plugin's `decision:plugin/<id>` task; a task that
+      lost a use to a plugin `drop` on the closed plugin task
     * `:reusable` - a host surface (or fragment) on the surface and
       acceptance of every reusable it instances
     * `:fragment` - a surface on its fragments
@@ -127,7 +161,7 @@ defmodule BubbleEx.Plan do
 
   ## JSON
 
-  `to_json/1` is canonical JSON (`schema_version` 2), the
+  `to_json/1` is canonical JSON (`schema_version` 3), the
   `.wtf/plan.json` of the owner's project: the same inputs give the same
   bytes. Task IDs and `source_sha256` depend only on Bubble IDs and content,
   not on JSON order, source paths or display names. `coverage` holds
@@ -140,7 +174,7 @@ defmodule BubbleEx.Plan do
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Plan.{Builder, Content, Diff, Residue, Task}
 
-  @schema_version 2
+  @schema_version 3
   @fragment_threshold 150
 
   @enforce_keys [:schema_version, :inputs, :tasks]

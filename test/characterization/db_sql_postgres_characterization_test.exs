@@ -43,6 +43,9 @@ defmodule BubbleEx.Characterization.DbSqlPostgresTest do
              ~s[-- "custom"."Survey Response"."onboarding answer" -> "custom"."Onboarding Answer"."_id"]
 
     assert sql =~ ~s[-- "custom"."Survey Response"."status" -> "option"."Status Type"."db_value"]
+
+    assert sql =~
+             ~s[COMMENT ON COLUMN "custom"."Survey Response"."status" IS E'References "option"."Status Type"."db_value" (no foreign key: Bubble does not enforce referential integrity)';]
   end
 
   test "with foreign_keys: :enforced, emits foreign keys for the custom and option-set references" do
@@ -56,5 +59,7 @@ defmodule BubbleEx.Characterization.DbSqlPostgresTest do
              ~s[ALTER TABLE "custom"."Survey Response" ADD FOREIGN KEY ("status") REFERENCES "option"."Status Type" ("db_value");]
 
     assert sql =~ ~s[-- "custom"."Survey Response"."Created By" -> "custom"."User"."_id"]
+    assert sql =~ ~s[COMMENT ON COLUMN "custom"."Survey Response"."Created By" IS E'References]
+    refute sql =~ ~s[COMMENT ON COLUMN "custom"."Survey Response"."status"]
   end
 end

@@ -1,0 +1,63 @@
+CREATE SCHEMA IF NOT EXISTS "custom";
+CREATE SCHEMA IF NOT EXISTS "option";
+
+CREATE TABLE "custom"."Order's ""list"" */ -- x" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "customer'); DROP TABLE x; --
+next LS PSNELVTFF \' */ /* ""q""" text,
+  "status' || 'x" text,
+  "note -- */" text,
+  "target" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."Target
+line 'q' \   */ end" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "custom"."User" (
+  "_id" text,
+  "Created Date" timestamptz,
+  "Modified Date" timestamptz,
+  "Created By" text,
+  "Slug" text,
+  "email" text,
+  "Email_2" text,
+  PRIMARY KEY ("_id")
+);
+
+CREATE TABLE "option"."Status 'quoted' \" (
+  "db_value" text,
+  "Display" text,
+  PRIMARY KEY ("db_value")
+);
+
+-- References without a foreign key (Bubble does not enforce referential integrity):
+-- "custom"."Order's ""list"" */ -- x"."Created By" -> "custom"."User"."_id"
+-- "custom"."Order's ""list"" */ -- x"."customer'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\vVT\fFF \\' */ /* ""q""" -> "custom"."User"."_id"
+-- "custom"."Order's ""list"" */ -- x"."status' || 'x" -> "option"."Status 'quoted' \\"."db_value"
+-- "custom"."Order's ""list"" */ -- x"."target" -> "custom"."Target\nline 'q' \\ \u2028 */ end"."_id"
+-- "custom"."Target\nline 'q' \\ \u2028 */ end"."Created By" -> "custom"."User"."_id"
+-- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."Order's ""list"" */ -- x"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Order's ""list"" */ -- x"."customer'); DROP TABLE x; --
+next LS PSNELVTFF \' */ /* ""q""" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Order's ""list"" */ -- x"."status' || 'x" IS E'References "option"."Status ''quoted'' \\"."db_value" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Order's ""list"" */ -- x"."target" IS E'References "custom"."Target\nline ''q'' \\ \u2028 */ end"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Target
+line 'q' \   */ end"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+--- diagnostics ---
+model_option_key_missing /option_sets/status/values/open
+db_name_suffixed /user_types/user/fields/email_text

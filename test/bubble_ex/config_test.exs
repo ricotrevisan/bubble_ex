@@ -1,7 +1,21 @@
 defmodule BubbleEx.ConfigTest do
-  use ExUnit.Case, async: true
+  # These tests put and delete the global :bubble_ex application env that other
+  # modules read, so they must not run alongside async tests, and every test
+  # restores the original :logs and :apps config (WTF-395).
+  use ExUnit.Case, async: false
 
   alias BubbleEx.Config
+
+  setup do
+    saved = for key <- [:logs, :apps], do: {key, Application.fetch_env(:bubble_ex, key)}
+
+    on_exit(fn ->
+      Enum.each(saved, fn
+        {key, {:ok, value}} -> Application.put_env(:bubble_ex, key, value)
+        {key, :error} -> Application.delete_env(:bubble_ex, key)
+      end)
+    end)
+  end
 
   describe "get/3" do
     test "returns value from application config" do

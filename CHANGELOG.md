@@ -38,6 +38,54 @@ All notable changes to this project are documented here.
   `report.defaults` counts them. On mm-137: 185 defaulted fields,
   166 records, 1,554 checks; rules solved and observable unchanged
   (120 / 77).
+- **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
+  the trailing `--` comment block, `Db.Sql.Postgres` now emits
+  `COMMENT ON COLUMN "schema"."table"."column" IS E'References ... (no
+  foreign key: ...)';` for every scalar reference kept without a foreign
+  key, so database tools show it. The text is an escape string literal
+  (`Db.Sql.Postgres.string_literal/1`: quotes and backslashes doubled, line
+  breaks as backslash escapes), which reads the same whether
+  `standard_conforming_strings` is on or off. SQLite and T-SQL keep only the
+  `--` comments. Every PostgreSQL golden gains these statements; a new
+  `hostile_names` fixture (quotes, `--`, `*/`, line breaks, LS/PS in names)
+  has goldens for every format, and the PostgreSQL DDL job checks that its
+  comments reach `pg_description` byte for byte in both
+  `standard_conforming_strings` modes.
+- **Plugin inventory and replacement findings** (WTF-376, T10 of WTF-359).
+  The index has a `:plugin` symbol (`plugin:<marketplace id>`, `installed`,
+  `version`; `_current` / `_test` keys are the same plugin) for every
+  plugin installed in `settings.client_safe.plugins` or used, and
+  `:uses_plugin` edges (`role`, `code`) from its elements, actions, events
+  and from symbols naming one of its data types
+  (`api.<id>.plugin_api.<code>`); a new `:reads_step` edge records reads of
+  an earlier step's result (index `schema_version` 3; Bubble's own
+  plugins such as `apiconnector2` are not plugins).
+  `BubbleEx.Plugins.Inventory.build(index)` lists each plugin's members
+  and feature set, uses, state and step reads, surfaces and workflows. A
+  new decision finding kind `:plugin` (one per plugin, subject
+  `%{plugin: id}`) proposes `replace_plugin` with `options` among `drop`,
+  `replace_native` (only when `BubbleEx.Plugins.Catalog`, per feature and
+  for public marketplace plugins, has an equivalent for every feature
+  used; code-level equivalents are low confidence) and `rebuild`, and the
+  suggested `option`. Its proposal is the plugin and the set of features
+  used (uses are evidence facts, so a new use of a used feature does not
+  make a decision stale); its basis is the installed version.
+  `Decision.Params` whitelists `option` (one of the finding's `options`)
+  and, with `drop`, `delete_workflows` (among the finding's
+  `evidence.rewire`); plugin findings cannot be rejected or acknowledged.
+  `BubbleEx.Plan` (`schema_version` 3) gates each plugin task on its
+  decision (an owner `decision:plugin/<id>` task while undecided). `drop`
+  closes the plugin task (its subjects list what was removed), removes its
+  elements and actions and the workflows its events trigger that run
+  nothing else; workflows that run other actions keep them with
+  `:trigger_dropped` residue unless the decision deletes them, and every
+  read of a dropped element, action result or data type is
+  `:reads_dropped_plugin` residue. The plugin decision is in the
+  `decisions_sha256` of every task covering a use or read.
+  `coverage.units.plugins` is now `%{tasks, undecided, dropped}`.
+  `Target.Ash.map/3` skips plugin decisions. Finding IDs and hashes of the
+  other kinds are unchanged (mm-137: 147).
+
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
   verification proposal). `BubbleEx.Verify.Interpreter` evaluates
   `BubbleEx.Privacy` rules (compiled to the expression IR) over seed data

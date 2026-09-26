@@ -19,7 +19,9 @@ defmodule BubbleEx.Finding.Kinds do
     {:search_index, :hint, [:add_indexes],
      "the access patterns database searches use on a data type (equality columns, ranges, sorts, membership, text and geographic search); a performance hint"},
     {:number_type, :decision, [:refine_number_type],
-     "a number field whose every write is integral (counts, integer literals, integer increments); store it as an integer"}
+     "a number field whose every write is integral (counts, integer literals, integer increments); store it as an integer"},
+    {:plugin, :decision, [:replace_plugin],
+     "a marketplace plugin the app installs or uses; drop it, replace it with a known native equivalent or rebuild it"}
   ]
 
   @categories [:decision, :hint]
@@ -63,6 +65,15 @@ defmodule BubbleEx.Finding.Kinds do
     * `:text_to_reference` - store a reference instead of an ID as text
     * `:add_indexes` - index the listed access patterns
     * `:refine_number_type` - store a number as an integer
+    * `:replace_plugin` - carry out `proposal.option` for a plugin, one of
+      `proposal.options`: `:drop` (its elements render nothing and its
+      actions are skipped; workflows its events trigger go when they run
+      nothing else, otherwise they keep their body and need a new trigger
+      unless listed in `delete_workflows`; reads of its elements, results
+      and data types need rewriting), `:replace_native` (each feature in
+      `proposal.features` becomes its `equivalent`, see
+      `BubbleEx.Plugins.Catalog`) or `:rebuild` (an agent rebuilds what the
+      app uses of it)
   """
 
   @type category :: :decision | :hint

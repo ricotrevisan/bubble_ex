@@ -69,6 +69,12 @@ CREATE TABLE "option"."40. Levels" (
 -- "custom"."Thing"."Created By" -> "custom"."User"."_id"
 -- "custom"."Thing_2"."Created By" -> "custom"."User"."_id"
 -- "custom"."User"."Created By" -> "custom"."User"."_id"
+
+COMMENT ON COLUMN "custom"."00. Thing - Join"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."🚀 Launch"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Thing"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."Thing_2"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
+COMMENT ON COLUMN "custom"."User"."Created By" IS E'References "custom"."User"."_id" (no foreign key: Bubble does not enforce referential integrity)';
 --- diagnostics ---
 db_name_suffixed /user_types/00__thing___join/fields/title_text1
 db_name_suffixed /user_types/thing0

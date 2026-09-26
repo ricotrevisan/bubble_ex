@@ -43,6 +43,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
     "lib/bubble_ex/workflows/node.ex" => "classifies a JSON pointer's section (`user_types`)",
     "lib/bubble_ex/workflows/explanation.ex" =>
       "workflow action parameters' own `key`/`value` members, not fields",
+    "lib/bubble_ex/index/plugins.ex" =>
+      "installed plugin IDs and versions under `client_safe.plugins`, not API Connector types",
     "lib/bubble_ex/apps/parser.ex" =>
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
     "lib/bubble_ex/target/ash/matrix_tests.ex" =>

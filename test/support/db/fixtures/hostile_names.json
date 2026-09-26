@@ -1,0 +1,51 @@
+{
+  "_id": "synthetic-hostile-names",
+  "user_types": {
+    "order": {
+      "display": "Order's \"list\" */ -- x",
+      "fields": {
+        "a_customer_user": {
+          "display": "customer'); DROP TABLE x; --\nnext\r\u2028LS\u2029PS\u0085NEL\u000bVT\fFF \\' */ /* \"q\"",
+          "value": "user"
+        },
+        "b_status_option_status": {
+          "display": "status' || 'x",
+          "value": "option.status"
+        },
+        "c_note_text": {
+          "display": "note -- */",
+          "value": "text"
+        },
+        "d_target_custom_target": {
+          "display": "target",
+          "value": "custom.target"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email_text": {
+          "display": "Email",
+          "value": "text"
+        }
+      }
+    },
+    "target": {
+      "display": "Target\nline 'q' \\ \u2028 */ end",
+      "fields": {}
+    }
+  },
+  "option_sets": {
+    "status": {
+      "display": "Status 'quoted' \\",
+      "attributes": {},
+      "values": {
+        "open": {
+          "display": "Open",
+          "sort_factor": 1
+        }
+      }
+    }
+  }
+}
