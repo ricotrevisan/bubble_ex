@@ -117,12 +117,14 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
             c <- [%{column: t.key, encoding: :text} | t.columns],
             not (t.type == "card" and c.column == "points") do
           udt = if t.type == "card" and c.column == "title", do: "int4", else: udt(c.encoding)
-          [t.table, c.column, udt]
+          nullable = if t.type == "card" and c.column == "status", do: "NO", else: "YES"
+          nullable = if c.column == t.key, do: "NO", else: nullable
+          [t.table, c.column, udt, nullable]
         end
 
       query = fn sql, _params ->
         assert sql =~ "information_schema.columns"
-        {:ok, %{rows: rows ++ [["user", "confirmed_at", "timestamp"]]}}
+        {:ok, %{rows: rows ++ [["user", "confirmed_at", "timestamp", "YES"]]}}
       end
 
       {:ok, project} = F.project(:cut2)
@@ -140,7 +142,8 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       assert {:load_schema_mismatch, %{type: "card", field: "points_number"}, :column} in found
       assert {:load_schema_mismatch, %{type: "card", field: "title_text"}, "int4"} in found
       assert {:load_column_extra, %{type: "user"}, ["confirmed_at"]} in found
-      assert length(found) == 4
+      assert {:load_schema_mismatch, %{type: "card", field: "status_text"}, :not_null} in found
+      assert length(found) == 5
     end
 
     defp udt(:text), do: "text"
@@ -174,6 +177,28 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       rows = [%{"id" => "1x1"}, %{"id" => "1x2"}, %{"id" => "1x3"}]
       assert {:ok, %{inserted: 1, updated: 1, unchanged: 1}} = Loader.upsert(config, table, rows)
       assert_received {:query, ^sql, ^rows}
+    end
+
+    test "reads a column's values and clears it by key" do
+      table = Plan.table(plan(:cut2), "user")
+      test = self()
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params})
+        {:ok, %{rows: [["1x1", "a@example.test"]]}}
+      end
+
+      {:ok, project} = F.project(:cut2)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, [{"1x1", "a@example.test"}]} = Loader.existing(config, table, "email")
+      assert_received {:query, sql, []}
+      assert sql =~ ~s(SELECT "id", "email"::text FROM "public"."user" WHERE "email" IS NOT NULL)
+
+      assert :ok = Loader.clear(config, table, "email", ["1x1"])
+      assert_received {:query, sql, [["1x1"]]}
+      assert sql == ~s[UPDATE "public"."user" SET "email" = NULL WHERE "id" = ANY($1)]
+      assert :ok = Loader.clear(config, table, "email", [])
+      refute_received {:query, _, _}
     end
 
     test "quotes identifiers" do

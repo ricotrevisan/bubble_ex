@@ -240,4 +240,105 @@ defmodule BubbleEx.Load.DataApiTest do
                files: false
              )
   end
+
+  test "a page without `remaining` fails the type instead of completing it", %{tmp_dir: dir} do
+    # A handler answering one row and no `remaining`.
+    plug = fn conn ->
+      body = Jason.encode!(%{"response" => %{"results" => [%{"_id" => F.project1()}]}})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, body)
+    end
+
+    {:ok, export} = export(dir, [plug: plug], types: ["project"], files: false)
+    assert Export.type(export, "project")["error"] == "no_remaining"
+  end
+
+  test "resumes only an export of the same app and version", %{tmp_dir: dir} do
+    {_fake, http} = start()
+    assert {:error, _} = export(dir, http, max_calls: 2)
+
+    assert {:error, %{message: message}} =
+             DataApi.export(F.model(:field_types), dir,
+               app_url: "https://other.bubbleapps.io",
+               version: "test",
+               token: Fake.token(),
+               http: http
+             )
+
+    assert message =~ "another app"
+  end
+
+  test "streams large files to disk under a configurable cap", %{tmp_dir: dir} do
+    big = :binary.copy("0123456789abcdef", 200_000)
+
+    {_fake, http} =
+      start(files: Map.put(files(), F.cdn_url(), %{body: big, content_type: "image/png"}))
+
+    {:ok, export} = export(Path.join(dir, "a"), http)
+    cover = Enum.find(Export.files(export), &(&1["url"] == F.cdn_url()))
+    assert cover["bytes"] == byte_size(big) and cover["sha256"] == Export.sha256_hex(big)
+    assert File.read!(Export.blob_path(export, cover["sha256"])) == big
+    assert Path.wildcard(Path.join(export.dir, "files/.fetch-*")) == []
+
+    {_fake, http} =
+      start(files: Map.put(files(), F.cdn_url(), %{body: big, content_type: "image/png"}))
+
+    {:ok, capped} = export(Path.join(dir, "b"), http, max_file_bytes: 1_000)
+
+    assert Enum.find(Export.files(capped), &(&1["url"] == F.cdn_url()))["error"] ==
+             "body_too_large"
+  end
+
+  test "a file that takes too long fails alone", %{tmp_dir: dir} do
+    {fake, _http} = start()
+
+    slow = fn conn ->
+      if String.ends_with?(conn.host, ".cdn.bubble.io"), do: Process.sleep(:infinity)
+      Fake.plug(fake).(conn)
+    end
+
+    {:ok, export} = export(dir, [plug: slow], file_timeout: 300)
+    assert Enum.find(Export.files(export), &(&1["url"] == F.cdn_url()))["error"] == "timeout"
+    assert Enum.find(Export.files(export), &(&1["url"] == F.private_url()))["status"] == "ok"
+  end
+
+  test "the token never prints" do
+    secret = BubbleEx.Load.Secret.new("fake-admin-token-0123456789")
+    assert inspect(secret) == "#Secret<redacted>"
+    assert inspect(%{token: secret}) =~ "redacted"
+    refute inspect(%{token: secret}) =~ "fake-admin"
+  end
+
+  describe "Bubble file URLs" do
+    alias BubbleEx.Load.Files
+
+    test "only Bubble's storage hosts, and the app's own for private files" do
+      assert Files.bubble?("//meta-q.cdn.bubble.io/f1x2/a.png")
+      assert Files.bubble?("https://s3.amazonaws.com/appforest_uf/f1x2/a.png")
+      assert Files.bubble?("https://dd7tel2830j4w.cloudfront.net/f1700000000000x5/a.png")
+
+      assert Files.bubble?("https://acme.bubbleapps.io/fileupload/f1x2/a.pdf", [
+               "acme.bubbleapps.io"
+             ])
+
+      refute Files.bubble?("https://evil.example/appforest_uf/f1x2/a.png")
+      refute Files.bubble?("https://evil.example/fileupload/f1x2/a.pdf", ["acme.bubbleapps.io"])
+      refute Files.bubble?("https://acme.bubbleapps.io/fileupload/f1x2/a.pdf")
+      refute Files.bubble?("https://s3.amazonaws.com/other-bucket/a.png")
+      refute Files.bubble?("https://dd7tel2830j4w.cloudfront.net/other/a.png")
+      refute Files.bubble?("http://meta-q.cdn.bubble.io/f1x2/a.png")
+      refute Files.bubble?("https://u:p@meta-q.cdn.bubble.io/f1x2/a.png")
+    end
+
+    test "names are sanitized, and again when read from an export" do
+      assert Files.file_name("https://x.cdn.bubble.io/f1x2/..%2F..%2Fetc%2Fpasswd") ==
+               "_.._etc_passwd"
+
+      assert Files.safe_name("../../x") == "_.._x"
+      assert Files.safe_name(nil) == "file"
+      assert Files.file_name("https://x.cdn.bubble.io/f1x2/%E0%A4%A") =~ "A"
+    end
+  end
 end

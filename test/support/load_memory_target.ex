@@ -26,6 +26,36 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
 
   def tables({__MODULE__, %__MODULE__{agent: a}}), do: Agent.get(a, & &1.tables)
 
+  def put_rows({__MODULE__, %__MODULE__{agent: a}}, table, rows) do
+    Agent.update(a, fn s ->
+      %{s | tables: Map.update(s.tables, table, rows, &Map.merge(&1, rows))}
+    end)
+  end
+
+  # Called before each upsert (e.g. to block or crash mid-run).
+  def on_upsert({__MODULE__, %__MODULE__{agent: a}}, fun),
+    do: Agent.update(a, &Map.put(&1, :on_upsert, fun))
+
+  @impl true
+  def existing(%__MODULE__{agent: a}, table, column) do
+    rows = Agent.get(a, &Map.get(&1.tables, table.table, %{}))
+    {:ok, for({id, row} <- rows, v = row[column], v != nil, do: {id, v})}
+  end
+
+  @impl true
+  def clear(%__MODULE__{agent: a}, table, column, ids) do
+    Agent.update(a, fn s ->
+      rows =
+        s.tables
+        |> Map.get(table.table, %{})
+        |> Map.new(fn {id, row} ->
+          {id, if(id in ids, do: Map.put(row, column, nil), else: row)}
+        end)
+
+      %{s | tables: Map.put(s.tables, table.table, rows)}
+    end)
+  end
+
   @impl true
   def plan(%__MODULE__{project: project}, model),
     do: Loader.plan(%Loader{project: project, query: fn _, _ -> {:ok, %{rows: []}} end}, model)
@@ -38,6 +68,11 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
 
   @impl true
   def upsert(%__MODULE__{agent: a}, table, rows) do
+    case Agent.get(a, &Map.get(&1, :on_upsert)) do
+      nil -> :ok
+      fun -> fun.(table, rows)
+    end
+
     Agent.get_and_update(a, fn state ->
       calls = state.calls + 1
 
@@ -49,10 +84,25 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
         zero = %{inserted: 0, updated: 0, unchanged: 0}
         {counts, current} = Enum.reduce(rows, {zero, current}, &put(&1, &2, table.key))
 
-        {{:ok, counts},
-         %{state | calls: calls, tables: Map.put(state.tables, table.table, current)}}
+        commit(state, calls, table, current, counts)
       end
     end)
+  end
+
+  # A unique email identity, as the Phoenix project has (ignoring case).
+  defp commit(state, calls, table, current, counts) do
+    if unique_emails?(current),
+      do:
+        {{:ok, counts},
+         %{state | calls: calls, tables: Map.put(state.tables, table.table, current)}},
+      else:
+        {{:error, Error.new(:request_failed, "unique email", %{sqlstate: :unique_violation})},
+         %{state | calls: calls}}
+  end
+
+  defp unique_emails?(rows) do
+    emails = for {_id, %{"email" => e}} <- rows, is_binary(e), do: String.downcase(e)
+    length(emails) == length(Enum.uniq(emails))
   end
 
   defp put(row, {c, t}, key) do

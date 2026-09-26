@@ -38,6 +38,7 @@ defmodule BubbleEx.Load.Convert do
 
   @type issue :: {atom(), term()}
   @type ctx :: %{
+          optional(:app_hosts) => [String.t()],
           optional(:ids) => %{String.t() => MapSet.t(String.t())},
           optional(:files) => %{String.t() => String.t()},
           optional(:failed_files) => MapSet.t(String.t())
@@ -94,9 +95,9 @@ defmodule BubbleEx.Load.Convert do
        when is_binary(raw),
        do: file(raw, ctx)
 
-  defp item(%Field{type: %Type{kind: :scalar, base: :text}}, _column, :text, raw, _ctx)
+  defp item(%Field{type: %Type{kind: :scalar, base: :text}}, _column, :text, raw, ctx)
        when is_binary(raw) do
-    if Files.urls_in_text(raw) == [],
+    if Files.urls_in_text(raw, Map.get(ctx, :app_hosts, [])) == [],
       do: {raw, []},
       else: {raw, [{:load_file_url_in_text, :text}]}
   end
@@ -126,7 +127,7 @@ defmodule BubbleEx.Load.Convert do
     url = Files.normalize(raw)
 
     cond do
-      not Files.bubble?(url) ->
+      not Files.bubble?(url, Map.get(ctx, :app_hosts, [])) ->
         {raw, [{:load_file_not_bubble, :external}]}
 
       ref = Map.get(Map.get(ctx, :files, %{}), url) ->
@@ -170,6 +171,39 @@ defmodule BubbleEx.Load.Convert do
   defp structured(:date_range, [a, b]), do: %{"start" => a, "end" => b}
   defp structured(:number_range, [a, b]), do: %{"min" => a, "max" => b}
   defp structured(_base, raw), do: raw
+
+  @doc """
+  Strips NUL characters from every string of a converted value (PostgreSQL
+  text and jsonb cannot hold them). Returns the value and whether any was
+  stripped.
+  """
+  @spec strip_nul(term()) :: {term(), boolean()}
+  def strip_nul(s) when is_binary(s) do
+    if String.contains?(s, <<0>>), do: {String.replace(s, <<0>>, ""), true}, else: {s, false}
+  end
+
+  def strip_nul(list) when is_list(list) do
+    {items, found} = Enum.map_reduce(list, false, fn v, f -> strip(v, f) end)
+    {items, found}
+  end
+
+  def strip_nul(%{} = map) do
+    {pairs, found} =
+      Enum.map_reduce(map, false, fn {k, v}, f ->
+        {k, fk} = strip_nul(k)
+        {v, fv} = strip_nul(v)
+        {{k, v}, f or fk or fv}
+      end)
+
+    {Map.new(pairs), found}
+  end
+
+  def strip_nul(v), do: {v, false}
+
+  defp strip(v, found) do
+    {v, f} = strip_nul(v)
+    {v, found or f}
+  end
 
   # --- encodings -------------------------------------------------------------------------
 

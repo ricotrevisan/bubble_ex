@@ -326,13 +326,16 @@ defmodule BubbleEx.Target.Ash.Loader do
   @impl true
   def check_schema(%__MODULE__{} = c, %Plan{tables: tables}) do
     sql = """
-    SELECT table_name, column_name, udt_name
+    SELECT table_name, column_name, udt_name, is_nullable
     FROM information_schema.columns
     WHERE table_schema = $1 AND table_name = ANY($2)
     """
 
     with {:ok, rows} <- run(c, sql, [c.schema, Enum.map(tables, & &1.table)]) do
-      actual = Enum.group_by(rows, &Enum.at(&1, 0), fn [_, col, udt] -> {col, udt} end)
+      actual =
+        Enum.group_by(rows, &Enum.at(&1, 0), fn [_, col, udt, nullable] ->
+          {col, {udt, nullable}}
+        end)
 
       {:ok,
        Diagnostic.normalize(Enum.flat_map(tables, &table_diags(&1, Map.get(actual, &1.table))))}
@@ -357,7 +360,7 @@ defmodule BubbleEx.Target.Ash.Loader do
 
     mismatches =
       for col <- [key | table.columns],
-          diag = column_diag(table, col, Map.get(actual, col.column)),
+          diag = column_diag(table, col, Map.get(actual, col.column), col.column == table.key),
           do: diag
 
     planned = MapSet.new([table.key | Enum.map(table.columns, & &1.column)])
@@ -379,7 +382,7 @@ defmodule BubbleEx.Target.Ash.Loader do
     mismatches ++ extra_diag
   end
 
-  defp column_diag(table, col, nil) do
+  defp column_diag(table, col, nil, _key?) do
     Diagnostic.new(
       :load_schema_mismatch,
       "",
@@ -389,12 +392,13 @@ defmodule BubbleEx.Target.Ash.Loader do
     )
   end
 
-  defp column_diag(table, col, udt) do
+  # Every column but the key may receive nil (Bubble has no required
+  # fields), so NOT NULL is a mismatch too.
+  defp column_diag(table, col, {udt, nullable}, key?) do
     expected = udts(col.encoding)
 
-    if udt in expected,
-      do: nil,
-      else:
+    cond do
+      udt not in expected ->
         Diagnostic.new(
           :load_schema_mismatch,
           "",
@@ -402,6 +406,19 @@ defmodule BubbleEx.Target.Ash.Loader do
           subject: %{type: table.type, field: col.field},
           details: %{table: table.table, column: col.column, expected: expected, actual: udt}
         )
+
+      nullable == "NO" and not key? ->
+        Diagnostic.new(
+          :load_schema_mismatch,
+          "",
+          "#{table.table}.#{col.column} is NOT NULL; Bubble values may be empty",
+          subject: %{type: table.type, field: col.field},
+          details: %{table: table.table, column: col.column, actual: :not_null}
+        )
+
+      true ->
+        nil
+    end
   end
 
   defp udts(:text), do: ["text", "citext", "varchar"]
@@ -430,6 +447,28 @@ defmodule BubbleEx.Target.Ash.Loader do
         {:error, %{e | context: Map.put(e.context, :type, table.type)}}
     end
   end
+
+  @impl true
+  def existing(%__MODULE__{} = c, %Table{} = table, column) do
+    sql =
+      "SELECT #{ident(table.key)}, #{ident(column)}::text FROM #{qualified(c.schema, table)} " <>
+        "WHERE #{ident(column)} IS NOT NULL"
+
+    with {:ok, rows} <- run(c, sql, []), do: {:ok, Enum.map(rows, fn [k, v] -> {k, v} end)}
+  end
+
+  @impl true
+  def clear(%__MODULE__{} = _c, %Table{}, _column, []), do: :ok
+
+  def clear(%__MODULE__{} = c, %Table{} = table, column, keys) do
+    sql =
+      "UPDATE #{qualified(c.schema, table)} SET #{ident(column)} = NULL " <>
+        "WHERE #{ident(table.key)} = ANY($1)"
+
+    with {:ok, _} <- run(c, sql, [keys]), do: :ok
+  end
+
+  defp qualified(schema, table), do: ident(schema) <> "." <> ident(table.table)
 
   @doc false
   # The upsert statement of a table (see the moduledoc).

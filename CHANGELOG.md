@@ -37,7 +37,22 @@ All notable changes to this project are documented here.
   fixtures into PostgreSQL (dry run, interrupted and resumed run, rerun,
   delta sync), reads them back through Ash, and checks the plan's column
   types against every fixture database. `postgrex` is a test-only
-  dependency.
+  dependency. Review hardening before merge: a file that fails, raises
+  or times out fails alone and each copied file is in the ledger at once;
+  the ledger is an append-only, `fsync`ed journal with periodic snapshots
+  (linear, crash-safe), keyed also by the storage and the `:keys` map;
+  exported emails are checked against the target's (`load_email_conflict`
+  blocks; changed emails are cleared first, so swaps load); keys naming
+  no field (`load_unmapped_key`) or several (`load_ambiguous_key`) block a
+  real run unless allowed or mapped with `:keys`; only Bubble's storage
+  hosts count as Bubble files; copied files should be served from a
+  separate origin (documented; the generated Phoenix project serves no
+  uploads yet); the exporter streams files to disk, hashing as it goes,
+  under a configurable cap; NUL characters are stripped and reported;
+  the schema check also flags NOT NULL columns; the token is a
+  `Load.Secret` that never inspects to its value. `HTTP.request/5` takes a
+  `sink:` for streamed bodies. Known limitation: an email changing only
+  in case is not cleared first.
 
 - **Task CLI and verifier runner for the Phoenix target** (WTF-375, T9 of
   WTF-359). `mix wtf.task` works `.wtf/plan.json` in the owner's

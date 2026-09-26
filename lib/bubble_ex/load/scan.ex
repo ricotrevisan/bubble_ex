@@ -42,6 +42,7 @@ defmodule BubbleEx.Load.Scan do
         keys: keys,
         needed: Map.get(needed, table.type, []),
         plan: plan,
+        app_hosts: Keyword.get(opts, :app_hosts, []),
         restricted: MapSet.member?(restricted, table.type)
       }
 
@@ -53,24 +54,32 @@ defmodule BubbleEx.Load.Scan do
   # --- keys ---------------------------------------------------------------------------
 
   @doc false
-  # Row key => {:field, id} | {:deleted, id}: overrides first, then field
-  # IDs, then display names (live fields before deleted ones).
+  # Row key => {:field, id} | {:deleted, id} | {:ambiguous, ids}: the
+  # owner's explicit `overrides` first; then live fields by ID and by
+  # display name, where a key naming two live fields (two fields sharing a
+  # display name, or a display name that is another field's ID) is
+  # ambiguous, never resolved by order; then deleted fields, for keys no
+  # live field claims.
   def keys(%DataType{} = type, overrides) do
     {gone, live} =
       (type.system_fields ++ type.fields)
       |> Enum.split_with(&(&1.deleted or not is_nil(&1.raw)))
 
-    candidates =
-      Enum.map(live, &{&1.id, {:field, &1.id}}) ++
-        Enum.map(live, &{&1.name, {:field, &1.id}}) ++
-        Enum.map(gone, &{&1.id, {:deleted, &1.id}}) ++
-        Enum.map(gone, &{&1.name, {:deleted, &1.id}})
+    live_keys =
+      (Enum.map(live, &{&1.id, &1.id}) ++ Enum.map(live, &{&1.name, &1.id}))
+      |> Enum.reject(&is_nil(elem(&1, 0)))
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Map.new(fn {key, ids} ->
+        case Enum.uniq(ids) do
+          [id] -> {key, {:field, id}}
+          ids -> {key, {:ambiguous, Enum.sort(ids)}}
+        end
+      end)
 
     base =
-      Enum.reduce(candidates, %{}, fn
-        {nil, _}, acc -> acc
-        {key, v}, acc -> Map.put_new(acc, key, v)
-      end)
+      (Enum.map(gone, &{&1.id, &1.id}) ++ Enum.map(gone, &{&1.name, &1.id}))
+      |> Enum.reject(&is_nil(elem(&1, 0)))
+      |> Enum.reduce(live_keys, fn {key, id}, acc -> Map.put_new(acc, key, {:deleted, id}) end)
 
     Map.merge(base, Map.new(overrides, fn {k, f} -> {k, {:field, f}} end))
   end
@@ -78,14 +87,51 @@ defmodule BubbleEx.Load.Scan do
   def keys(nil, _overrides), do: %{}
 
   @doc false
-  # The row as field ID => stored value, and the keys that are no field.
+  # Checks the owner's key map: `%{type => %{row key => live field ID}}`.
+  def check_keys(%Model{} = model, overrides) when is_map(overrides) do
+    bad =
+      for {type, map} <- overrides,
+          {key, field} <- (is_map(map) && map) || [{nil, nil}],
+          not (is_binary(key) and live_field?(model, type, field)),
+          do: "#{type}: #{inspect(key)} => #{inspect(field)}"
+
+    if bad == [],
+      do: :ok,
+      else:
+        {:error,
+         BubbleEx.Error.new(
+           :invalid_input,
+           "the :keys map names fields the Model does not have",
+           %{
+             entries: Enum.take(Enum.sort(bad), 20)
+           }
+         )}
+  end
+
+  def check_keys(_model, _overrides),
+    do:
+      {:error, BubbleEx.Error.new(:invalid_input, ":keys must be %{type => %{key => field ID}}")}
+
+  defp live_field?(model, type, field) when is_binary(field) do
+    case Model.field(model, type, field) do
+      {:ok, %Field{deleted: false, raw: nil}} -> true
+      _ -> false
+    end
+  end
+
+  defp live_field?(_model, _type, _field), do: false
+
+  @doc false
+  # The row as field ID => stored value, and the keys that name a deleted
+  # field, no field, or several fields.
   def fields(row, keys) do
-    Enum.reduce(row, {%{}, [], []}, fn {key, v}, {fields, deleted, unknown} ->
+    Enum.reduce(row, {%{}, [], [], []}, fn {key, v}, {fields, deleted, unknown, ambiguous} ->
       case Map.get(keys, key) do
-        {:field, f} -> {Map.put(fields, f, v), deleted, unknown}
-        {:deleted, f} -> {fields, [f | deleted], unknown}
-        nil when key in @not_fields -> {fields, deleted, unknown}
-        nil -> {fields, deleted, [key | unknown]}
+        {:field, f} -> {Map.put(fields, f, v), deleted, unknown, ambiguous}
+        {:deleted, f} -> {fields, [f | deleted], unknown, ambiguous}
+        {:ambiguous, _} -> {fields, deleted, unknown, [key | ambiguous]}
+        nil when key in @not_fields -> {fields, deleted, unknown, ambiguous}
+        nil -> {fields, deleted, [key | unknown], ambiguous}
       end
     end)
   end
@@ -158,8 +204,8 @@ defmodule BubbleEx.Load.Scan do
   defp row(%{"_id" => id} = row, idx, ctx, state, acc) when is_binary(id) and id != "" do
     t = ctx.table.type
     state = %{state | rows: state.rows + 1}
-    {fields, deleted, unknown} = fields(row, ctx.keys)
-    acc = row_issues(acc, t, id, deleted, unknown)
+    {fields, deleted, unknown, ambiguous} = fields(row, ctx.keys)
+    acc = row_issues(acc, t, id, deleted, unknown, ambiguous)
 
     acc =
       if Convert.record_id?(id),
@@ -201,8 +247,9 @@ defmodule BubbleEx.Load.Scan do
     {%{state | rows: state.rows + 1, invalid: state.invalid + 1}, acc}
   end
 
-  defp row_issues(acc, t, id, deleted, unknown) do
+  defp row_issues(acc, t, id, deleted, unknown, ambiguous) do
     acc = Enum.reduce(deleted, acc, &issue(&2, :load_deleted_field_data, t, &1, id, :deleted))
+    acc = Enum.reduce(ambiguous, acc, &issue(&2, :load_ambiguous_key, t, nil, id, {:keys, &1}))
     Enum.reduce(unknown, acc, &issue(&2, :load_unmapped_key, t, nil, id, {:keys, &1}))
   end
 
@@ -225,7 +272,7 @@ defmodule BubbleEx.Load.Scan do
           |> Enum.filter(&is_binary/1)
           |> Enum.map(&Files.normalize/1)
 
-        bubble = Enum.filter(urls, &Files.bubble?/1)
+        bubble = Enum.filter(urls, &Files.bubble?(&1, ctx.app_hosts))
         acc = %{acc | files: Enum.into(bubble, acc.files)}
 
         if ctx.restricted and Enum.any?(bubble, &(Files.visibility(&1) == :public)),

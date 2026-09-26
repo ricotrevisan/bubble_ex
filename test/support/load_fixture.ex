@@ -297,7 +297,8 @@ defmodule BubbleEx.Test.LoadFixture do
     Export.write(dir, %{
       app: "fixture-app",
       model_sha256: Model.sha256(model(which)),
-      source: %{"kind" => "fixture"},
+      # The app's host, where its private (/fileupload/) files live.
+      source: %{"kind" => "fixture", "base_url" => "https://acme.bubbleapps.io/version-test"},
       created_at: "2026-09-26T00:00:00Z",
       types: for({type, list} <- Enum.sort(rows), do: %{type: type, path: type, rows: list}),
       files: files(which)

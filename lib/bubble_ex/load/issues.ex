@@ -163,6 +163,36 @@ defmodule BubbleEx.Load.Issues do
         details: d
       )
 
+  defp build(:load_ambiguous_key, s, d),
+    do:
+      Diagnostic.new(
+        :load_ambiguous_key,
+        "",
+        "rows of #{where(s)} hold keys naming more than one field; map them with :keys",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_nul_stripped, s, d),
+    do:
+      Diagnostic.new(
+        :load_nul_stripped,
+        "",
+        "#{d.count} values of #{where(s)} held NUL characters, stripped",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_email_conflict, s, d),
+    do:
+      Diagnostic.new(
+        :load_email_conflict,
+        "",
+        "#{d.count} users of #{where(s)} have an email the target gives a record the export does not hold",
+        subject: s,
+        details: d
+      )
+
   defp build(:load_deleted_field_data, s, d),
     do:
       Diagnostic.new(

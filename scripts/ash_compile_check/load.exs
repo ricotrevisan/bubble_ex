@@ -18,6 +18,10 @@
 #   * rerunning a finished load changes nothing (0 inserted, 0 updated)
 #   * a new export with one changed and one new record (a delta sync)
 #     updates one and inserts one
+#   * under a unique index on lower(email) (the Phoenix identity), two
+#     users whose emails were swapped in the target load back (emails are
+#     cleared first); an exported email held by a record the export does
+#     not hold blocks the dry run and the run (load_email_conflict)
 #   * stored values: trimmed and converted text references, dropped IDs
 #     of deleted records, arrays, typed structs, option keys, dates at
 #     microsecond precision, emails, integer/decimal refinements, and
@@ -46,7 +50,9 @@ work = Path.join(scratch, "load")
 File.rm_rf!(work)
 File.mkdir_p!(work)
 
-base = URI.parse(System.get_env("ASH_COMPILE_CHECK_DB", "ecto://postgres:postgres@localhost:5432"))
+base =
+  URI.parse(System.get_env("ASH_COMPILE_CHECK_DB", "ecto://postgres:postgres@localhost:5432"))
+
 [user, password] = String.split(base.userinfo || "postgres:postgres", ":", parts: 2)
 
 defmodule LoadCheck do
@@ -70,7 +76,10 @@ defmodule LoadCheck do
     fn sql, params ->
       if String.starts_with?(sql, "INSERT") do
         :counters.add(counter, 1, 1)
-        if :counters.get(counter, 1) == n, do: {:error, :injected_crash}, else: Postgrex.query(conn, sql, params)
+
+        if :counters.get(counter, 1) == n,
+          do: {:error, :injected_crash},
+          else: Postgrex.query(conn, sql, params)
       else
         Postgrex.query(conn, sql, params)
       end
@@ -86,7 +95,11 @@ defmodule LoadCheck do
   def snapshot(conn, plan) do
     Map.new(plan.tables, fn t ->
       %{rows: rows} =
-        Postgrex.query!(conn, "SELECT to_jsonb(t)::text FROM \"public\".\"#{t.table}\" t ORDER BY \"#{t.key}\"", [])
+        Postgrex.query!(
+          conn,
+          "SELECT to_jsonb(t)::text FROM \"public\".\"#{t.table}\" t ORDER BY \"#{t.key}\"",
+          []
+        )
 
       {t.table, Enum.map(rows, fn [json] -> Jason.decode!(json) end)}
     end)
@@ -95,9 +108,13 @@ defmodule LoadCheck do
   def row(snapshot, table, id), do: Enum.find(Map.fetch!(snapshot, table), &(&1["id"] == id))
 
   def codes(report),
-    do: report.diagnostics |> Enum.map(&{&1.code, &1.subject[:type], &1.subject[:field]}) |> MapSet.new()
+    do:
+      report.diagnostics
+      |> Enum.map(&{&1.code, &1.subject[:type], &1.subject[:field]})
+      |> MapSet.new()
 
-  def total(report, key), do: report.types |> Map.values() |> Enum.map(&Map.get(&1, key, 0)) |> Enum.sum()
+  def total(report, key),
+    do: report.types |> Map.values() |> Enum.map(&Map.get(&1, key, 0)) |> Enum.sum()
 end
 
 # --- the schema check over every fixture database ----------------------------------------
@@ -137,14 +154,14 @@ decided = fn set ->
 end
 
 schema_fixtures =
-  (for {pattern, prefix} <- [
-         {"test/support/model/*.json", ""},
-         {"test/support/target/ash/*.json", "target_"},
-         {"test/support/expression/*.json", "expr_"}
-       ],
-       path <- pattern |> Path.wildcard() |> Enum.sort() do
-     {prefix <> Path.basename(path, ".json"), faithful.(path |> File.read!() |> Jason.decode!())}
-   end) ++
+  for {pattern, prefix} <- [
+        {"test/support/model/*.json", ""},
+        {"test/support/target/ash/*.json", "target_"},
+        {"test/support/expression/*.json", "expr_"}
+      ],
+      path <- pattern |> Path.wildcard() |> Enum.sort() do
+    {prefix <> Path.basename(path, ".json"), faithful.(path |> File.read!() |> Jason.decode!())}
+  end ++
     for set <- [:combined, :locked, :count, :cut2] do
       {"decided_#{set}", decided.(set)}
     end
@@ -162,7 +179,10 @@ private_fixtures =
         {:ok, index} = BubbleEx.Index.build(app, model: model)
         {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
         {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut2(findings, [], index)
-        {:ok, project} = BubbleEx.Target.Ash.map(model, applied, privacy: :unverified, decisions_sha256: sha)
+
+        {:ok, project} =
+          BubbleEx.Target.Ash.map(model, applied, privacy: :unverified, decisions_sha256: sha)
+
         {model, project}
       end
 
@@ -179,11 +199,18 @@ private_fixtures =
     GenServer.stop(conn)
 
     case Enum.filter(diags, &(&1.code == :load_schema_mismatch)) do
-      [] -> :ok
-      found -> LoadCheck.fail!(name, "#{length(found)} schema mismatches, e.g. #{inspect(hd(found).details)}")
+      [] ->
+        :ok
+
+      found ->
+        LoadCheck.fail!(
+          name,
+          "#{length(found)} schema mismatches, e.g. #{inspect(hd(found).details)}"
+        )
     end
 
-    {tables + length(plan.tables), columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1)))}
+    {tables + length(plan.tables),
+     columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1)))}
   end)
 
 IO.puts(
@@ -255,20 +282,26 @@ loaded =
     target = Loader.target(project, query: LoadCheck.query(conn))
     {Loader, config} = target
     {:ok, plan} = Loader.plan(config, model)
-    storage = Local.new(root: Path.join(dir, "storage"), public_url: "/uploads")
+    storage = Local.new(root: Path.join(dir, "storage"), public_url: "https://files.example.test")
+    # field_types has a key no field names ("Legacy Field"): allowed here.
+    base_opts = if which == :field_types, do: [allow_unmapped_keys: true], else: []
     ledger = Path.join(dir, "ledger")
-    opts = [storage: storage, ledger_dir: ledger, batch_size: 1]
+    opts = [storage: storage, ledger_dir: ledger, batch_size: 1] ++ base_opts
 
     LoadCheck.truncate(conn, plan)
 
     # --- dry run: counts and diagnostics, nothing written ---------------------------
-    {:ok, dry} = Load.dry_run(export, model, target)
+    {:ok, dry} = Load.dry_run(export, model, target, base_opts)
     LoadCheck.eq!(fixture, dry.blocked, [], "dry run blocked")
     codes = LoadCheck.codes(dry)
 
     for code <- Map.fetch!(expected_codes, which),
         not MapSet.member?(codes, code),
-        do: LoadCheck.fail!(fixture, "dry run lacks #{inspect(code)}: #{inspect(MapSet.to_list(codes))}")
+        do:
+          LoadCheck.fail!(
+            fixture,
+            "dry run lacks #{inspect(code)}: #{inspect(MapSet.to_list(codes))}"
+          )
 
     empty = LoadCheck.snapshot(conn, plan) |> Map.values() |> Enum.all?(&(&1 == []))
     LoadCheck.check!(fixture, empty, "the dry run wrote rows")
@@ -276,7 +309,7 @@ loaded =
 
     # --- a schema lacking the tables: reported, and a real run refused ------------------
     wrong = Loader.target(project, query: LoadCheck.query(conn), schema: "no_such_schema")
-    {:ok, wrong_dry} = Load.dry_run(export, model, wrong)
+    {:ok, wrong_dry} = Load.dry_run(export, model, wrong, base_opts)
     LoadCheck.eq!(fixture, wrong_dry.blocked, [:load_schema_mismatch], "missing schema")
     {:error, refused} = Load.run(export, model, wrong, opts)
     LoadCheck.eq!(fixture, refused.context.blocked, [:load_schema_mismatch], "refused run")
@@ -303,7 +336,10 @@ loaded =
 
     # --- a clean load gives the same state as the resumed one -------------------------------------
     LoadCheck.truncate(conn, plan)
-    {:ok, clean} = Load.run(export, model, target, storage: storage, batch_size: 500)
+
+    {:ok, clean} =
+      Load.run(export, model, target, [storage: storage, batch_size: 500] ++ base_opts)
+
     LoadCheck.eq!(fixture, LoadCheck.total(clean, :inserted), records, "clean load inserted")
     snapshot = LoadCheck.snapshot(conn, plan)
     LoadCheck.eq!(fixture, snapshot, after_resume, "clean load vs resumed load")
@@ -319,7 +355,62 @@ loaded =
     LoadCheck.eq!(fixture, LoadCheck.total(delta, :inserted), 1, "delta inserted")
     LoadCheck.eq!(fixture, LoadCheck.total(delta, :updated), 1, "delta updated")
     LoadCheck.truncate(conn, plan)
-    {:ok, _} = Load.run(export, model, target, storage: storage)
+    {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
+
+    # --- emails against a unique index (as the Phoenix project's identity) ---------------------
+    Postgrex.query!(conn, "DROP INDEX IF EXISTS load_check_email", [])
+    set_email = ~s[UPDATE "public"."user" SET email = $2 WHERE id = $1]
+    Postgrex.query!(conn, set_email, [F.ada(), "bob@example.test"])
+    Postgrex.query!(conn, set_email, [F.bob(), "ada@example.test"])
+
+    Postgrex.query!(
+      conn,
+      ~s[CREATE UNIQUE INDEX load_check_email ON "public"."user" (lower(email))],
+      []
+    )
+
+    {:ok, swapped} =
+      Load.run(export, model, target, [storage: storage, batch_size: 1] ++ base_opts)
+
+    LoadCheck.eq!(fixture, swapped.blocked, [], "email swap")
+
+    %{rows: emails} =
+      Postgrex.query!(
+        conn,
+        ~s[SELECT id, email FROM "public"."user" WHERE id = ANY($1) ORDER BY id],
+        [[F.ada(), F.bob()]]
+      )
+
+    LoadCheck.eq!(
+      fixture,
+      emails,
+      [[F.ada(), "Ada@Example.test"], [F.bob(), "bob@example.test"]],
+      "swapped back"
+    )
+
+    # Carol is new in the export, and a record the export does not hold
+    # (a user deleted in Bubble) has her email in the target.
+    Postgrex.query!(conn, ~s[DELETE FROM "public"."user" WHERE id = $1], [F.carol()])
+
+    Postgrex.query!(
+      conn,
+      ~s[INSERT INTO "public"."user" (id, email) VALUES ($1, 'CAROL@example.test')],
+      [F.id(500)]
+    )
+
+    {:ok, conflict} = Load.dry_run(export, model, target, base_opts)
+
+    LoadCheck.eq!(
+      fixture,
+      conflict.blocked,
+      [:load_email_conflict],
+      "email held by a deleted user"
+    )
+
+    {:error, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
+    Postgrex.query!(conn, ~s[DELETE FROM "public"."user" WHERE id = $1], [F.id(500)])
+    Postgrex.query!(conn, "DROP INDEX load_check_email", [])
+    {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
 
     # --- stored values -----------------------------------------------------------------------------
     user = LoadCheck.row(snapshot, "user", F.ada())
@@ -331,16 +422,54 @@ loaded =
       :field_types ->
         t = LoadCheck.row(snapshot, "task", F.task1())
         LoadCheck.eq!(fixture, t["title"], "  keeps spaces ", "text verbatim")
-        LoadCheck.eq!(fixture, t["labels"], ["open", "closed"], "option keys (a label mapped, an unknown dropped)")
+
+        LoadCheck.eq!(
+          fixture,
+          t["labels"],
+          ["open", "closed"],
+          "option keys (a label mapped, an unknown dropped)"
+        )
+
         LoadCheck.eq!(fixture, t["status"], "open", "option by label")
-        LoadCheck.eq!(fixture, t["dates"], ["2024-01-01T00:00:00.5", "2024-01-01T00:00:00"], "list of dates")
+
+        LoadCheck.eq!(
+          fixture,
+          t["dates"],
+          ["2024-01-01T00:00:00.5", "2024-01-01T00:00:00"],
+          "list of dates"
+        )
+
         LoadCheck.eq!(fixture, t["created_date"], "2024-02-02T08:30:00.123", "microseconds")
         LoadCheck.eq!(fixture, t["scores"], [1.0, 3.5], "numbers (a text dropped)")
-        LoadCheck.eq!(fixture, t["place"], %{"formatted_address" => "1 Main St", "lat" => 50.85, "lng" => 4.35}, "address")
-        LoadCheck.eq!(fixture, t["window"], %{"start" => "2024-03-01T00:00:00.000000Z", "end" => "2024-04-01T00:00:00.000000Z"}, "date range")
+
+        LoadCheck.eq!(
+          fixture,
+          t["place"],
+          %{"formatted_address" => "1 Main St", "lat" => 50.85, "lng" => 4.35},
+          "address"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          t["window"],
+          %{"start" => "2024-03-01T00:00:00.000000Z", "end" => "2024-04-01T00:00:00.000000Z"},
+          "date range"
+        )
+
         LoadCheck.eq!(fixture, t["watchers"], [F.ada(), F.gone_user()], "dangling IDs kept")
-        LoadCheck.check!(fixture, String.starts_with?(t["attachment"], "private/"), "private file reference")
-        LoadCheck.check!(fixture, String.starts_with?(t["cover"], "/uploads/"), "public file URL")
+
+        LoadCheck.check!(
+          fixture,
+          String.starts_with?(t["attachment"], "private/"),
+          "private file reference"
+        )
+
+        LoadCheck.check!(
+          fixture,
+          String.starts_with?(t["cover"], "https://files.example.test/"),
+          "public file URL"
+        )
+
         [private, lost, external] = t["files"]
         LoadCheck.eq!(fixture, private, t["attachment"], "one private file, one reference")
         LoadCheck.eq!(fixture, lost, F.missing_url(), "a failed file keeps its Bubble URL")
@@ -351,7 +480,13 @@ loaded =
         LoadCheck.eq!(fixture, File.read!(stored), "%PDF private contract", "private file bytes")
         LoadCheck.eq!(fixture, clean.files.copied, 2, "files copied")
         t2 = LoadCheck.row(snapshot, "task", F.task2())
-        LoadCheck.eq!(fixture, {t2["title"], t2["estimate"], t2["done"]}, {"", nil, nil}, "empty text kept, mismatches empty")
+
+        LoadCheck.eq!(
+          fixture,
+          {t2["title"], t2["estimate"], t2["done"]},
+          {"", nil, nil},
+          "empty text kept, mismatches empty"
+        )
 
       :cut2 ->
         b1 = LoadCheck.row(snapshot, "board", F.board1())
@@ -359,10 +494,23 @@ loaded =
         LoadCheck.check!(fixture, not Map.has_key?(b1, "cards"), "a has_many list has no column")
         c1 = LoadCheck.row(snapshot, "card", F.card1())
         LoadCheck.eq!(fixture, c1["assignee_id"], F.ada(), "text reference trimmed")
-        LoadCheck.eq!(fixture, c1["blockers"], [F.card2(), F.gone_card()], "list of text references")
+
+        LoadCheck.eq!(
+          fixture,
+          c1["blockers"],
+          [F.card2(), F.gone_card()],
+          "list of text references"
+        )
+
         LoadCheck.eq!(fixture, c1["title"], "One", "the latest copy of a duplicate")
         c2 = LoadCheck.row(snapshot, "card", F.card2())
-        LoadCheck.eq!(fixture, {c2["assignee_id"], c2["points"]}, {nil, nil}, "empty reference, mismatch")
+
+        LoadCheck.eq!(
+          fixture,
+          {c2["assignee_id"], c2["points"]},
+          {nil, nil},
+          "empty reference, mismatch"
+        )
 
       :combined ->
         p1 = LoadCheck.row(snapshot, "initiative", F.initiative1())
@@ -374,7 +522,11 @@ loaded =
     end
 
     GenServer.stop(conn)
-    IO.puts("load check passed (#{fixture}): #{records} records, dry run, resume, rerun, delta sync")
+
+    IO.puts(
+      "load check passed (#{fixture}): #{records} records, dry run, resume, rerun, delta sync"
+    )
+
     {which, namespace}
   end
 

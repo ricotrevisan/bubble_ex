@@ -18,6 +18,11 @@ defmodule BubbleEx.Load.Target do
       records, replacing the plan's columns of existing ones, and leaving
       identical records untouched. Returns the counts. Must not report stored
       values in errors
+    * `existing/3` - the records of a table holding a value in a column,
+      as `{key, value}` pairs (users' emails: the loader checks the
+      export's emails against the target's unique identity before writing)
+    * `clear/4` - sets a column to nil for the records with the given keys
+      (the first phase of an email swap)
 
   `BubbleEx.Target.Ash.Loader` is the Ash/PostgreSQL adapter.
   """
@@ -37,4 +42,8 @@ defmodule BubbleEx.Load.Target do
               {:ok, [Diagnostic.t()]} | {:error, Error.t()}
   @callback upsert(config :: term(), Plan.Table.t(), [map()]) ::
               {:ok, counts()} | {:error, Error.t()}
+  @callback existing(config :: term(), Plan.Table.t(), column :: String.t()) ::
+              {:ok, [{String.t(), term()}]} | {:error, Error.t()}
+  @callback clear(config :: term(), Plan.Table.t(), column :: String.t(), [String.t()]) ::
+              :ok | {:error, Error.t()}
 end

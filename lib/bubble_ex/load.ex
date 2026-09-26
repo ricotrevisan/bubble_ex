@@ -9,7 +9,8 @@ defmodule BubbleEx.Load do
 
       {:ok, export} = BubbleEx.Load.Export.open("exports/mm-137")
       target = BubbleEx.Target.Ash.Loader.target(project, query: &MyApp.Repo.query/2)
-      storage = BubbleEx.Load.Storage.Local.new(root: "priv/uploads", public_url: "/uploads")
+      # Serve copied files from a separate origin (see BubbleEx.Load.Storage).
+      storage = BubbleEx.Load.Storage.Local.new(root: "/srv/uploads", public_url: "https://files.example.com")
 
       {:ok, report} = BubbleEx.Load.dry_run(export, model, target)
       {:ok, report} = BubbleEx.Load.run(export, model, target, storage: storage, ledger_dir: "loads")
@@ -48,8 +49,10 @@ defmodule BubbleEx.Load do
       export of the same app (a delta sync at cutover) writes only what
       changed. Records deleted in Bubble since an earlier load are not
       deleted from the target.
-    * **Resumable.** With `:ledger_dir`, an interrupted run resumes after
-      the last recorded batch. A completed ledger makes the next run start
+    * **Resumable.** With `:ledger_dir`, an interrupted run (an error, a
+      crash, a killed process) resumes after the last recorded batch and
+      file. The ledger is keyed by the export, the plan, the database, the
+      storage and the `:keys` map. A completed ledger makes the next run start
       over (it re-applies every row, changing nothing).
     * **References** (WTF-338) keep their Bubble IDs, dangling ones
       included (no foreign key), and dangling references are counted per
@@ -68,8 +71,23 @@ defmodule BubbleEx.Load do
       (the `email` field or the Data API's `authentication.email.email`),
       trimmed, and the email-confirmed status where the target has a
       column for it (else reported; it stays in the export). Emails equal
-      ignoring case stop a real run (the target's identity is unique).
-      Users with other sign-in methods are reported.
+      ignoring case stop a real run (the target's identity is unique), and
+      so does an exported email that the target gives a record the export
+      does not hold (e.g. a user deleted in Bubble whose email a new
+      signup reused: `:load_email_conflict`, IDs only). Users whose email
+      changes (swaps included) lose their old email first, in one
+      statement before any row is written, so no batch collides. Users
+      with other sign-in methods are reported. Known limitation: an email
+      that changes only in case is not cleared first (a `citext` column
+      treats it as unchanged).
+    * **Keys.** A Data API key is a field's ID or display name. A key that
+      names no field (`:load_unmapped_key`: a wrong key format would load
+      whole columns empty, and a delta sync would overwrite good data)
+      blocks a real run unless `allow_unmapped_keys: true`; a key naming
+      two fields (`:load_ambiguous_key`) blocks it until the owner's
+      `:keys` map says which. `:keys` must name live fields.
+    * **Text** loses NUL characters, which PostgreSQL cannot store
+      (`:load_nul_stripped`, with the record IDs).
     * **Files**: see `BubbleEx.Load.Files`.
 
   Nothing that does not fit is dropped silently: each case is a `:load`
@@ -112,14 +130,24 @@ defmodule BubbleEx.Load do
     5. At cutover, freeze writes in Bubble, export again and load the new
        export into the same database: only what changed is written.
 
+    6. After the cutover, delete the export:
+       `mix bubble.export.delete exports/mm-137` (`Export.delete/1`).
+
   The export holds personal data (users' emails and whatever the app
-  stores): keep it on an encrypted disk and delete it after the cutover.
+  stores) and BubbleEx does not encrypt it: it must live on an encrypted
+  disk (never a repository, a synced folder or a shared machine) and be
+  deleted after the cutover (step 6).
   """
 
   alias BubbleEx.{Diagnostic, Error, Model}
   alias BubbleEx.Load.{Convert, Export, Files, Issues, Ledger, Plan, Report, Scan}
 
-  @blocking [:load_schema_mismatch, :load_duplicate_email]
+  @blocking [
+    :load_schema_mismatch,
+    :load_duplicate_email,
+    :load_email_conflict,
+    :load_ambiguous_key
+  ]
 
   @type target :: {module(), term()}
   @type option ::
@@ -130,6 +158,9 @@ defmodule BubbleEx.Load do
           | {:keys, %{String.t() => %{String.t() => String.t()}}}
           | {:target_identity, String.t()}
           | {:file_concurrency, pos_integer()}
+          | {:file_timeout, pos_integer()}
+          | {:allow_unmapped_keys, boolean()}
+          | {:app_hosts, [String.t()]}
 
   @doc "A dry run: `run/4` writing nothing."
   @spec dry_run(Export.t() | Path.t(), Model.t(), target(), [option()]) ::
@@ -154,6 +185,10 @@ defmodule BubbleEx.Load do
     * `:target_identity` - overrides the adapter's database identity in
       the ledger key
     * `:file_concurrency` - files copied at once (default 8)
+    * `:file_timeout` - ms one file copy may take (default 300,000)
+    * `:allow_unmapped_keys` - load despite row keys that name no field
+    * `:app_hosts` - the app's own hosts besides the export's Data API
+      host (custom domains), where its private files live
 
   A real run that is blocked (see `BubbleEx.Load.Report`) returns
   `{:error, %Error{kind: :invalid_input, context: %{blocked: codes, report: report}}}`
@@ -166,12 +201,15 @@ defmodule BubbleEx.Load do
     dry? = Keyword.get(opts, :dry_run, false)
 
     with {:ok, export} <- open(export),
+         :ok <- Scan.check_keys(model, Keyword.get(opts, :keys, %{})),
          {:ok, plan} <- tmod.plan(tconf, model),
          :ok <- check_plan(plan, model),
          {:ok, identity} <- identity(tmod, tconf, opts),
-         {:ok, schema_diags} <- tmod.check_schema(tconf, plan) do
-      scan = Scan.run(export, model, plan, opts)
-      issues = Scan.drift(scan, plan, model)
+         {:ok, schema_diags} <- tmod.check_schema(tconf, plan),
+         opts = Keyword.put(opts, :app_hosts, app_hosts(export, opts)),
+         scan = Scan.run(export, model, plan, opts),
+         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags) do
+      issues = Scan.drift(%{scan | issues: issues}, plan, model)
       issues = auth_status(issues, scan, plan)
 
       state = %{
@@ -184,7 +222,8 @@ defmodule BubbleEx.Load do
         dry?: dry?,
         identity: identity,
         schema: schema_diags,
-        issues: issues
+        issues: issues,
+        clears: clears
       }
 
       blocked = blocked(state)
@@ -202,6 +241,76 @@ defmodule BubbleEx.Load do
 
   defp open(_),
     do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Load.Export or its directory")}
+
+  # The app's own hosts, where its private files live: the export's Data
+  # API host, and any the caller names (custom domains).
+  defp app_hosts(export, opts) do
+    exported =
+      case get_in(export.manifest, ["source", "base_url"]) do
+        url when is_binary(url) -> List.wrap(URI.parse(url).host)
+        _ -> []
+      end
+
+    Enum.uniq(exported ++ Enum.map(Keyword.get(opts, :app_hosts, []), &String.downcase/1))
+  end
+
+  # The exported users' emails against the target's (its unique email
+  # identity): an email held by a target record the export does not hold
+  # blocks the run (`:load_email_conflict`); users whose email changes
+  # are cleared first (`clears`), so swaps and reuses between exported
+  # users cannot collide within or across batches.
+  defp emails(
+         scan,
+         %Plan{auth: %Plan.Auth{type: type, email_column: column}} = plan,
+         {tmod, tconf}
+       )
+       when is_binary(column) do
+    table = Plan.table(plan, type)
+
+    with {:ok, existing} <- tmod.existing(tconf, table, column) do
+      exported = Map.get(scan.ids, type, MapSet.new())
+      target = Map.new(existing, fn {id, email} -> {id, fold(email)} end)
+      holders = Enum.group_by(target, &elem(&1, 1), &elem(&1, 0))
+
+      conflicts =
+        for {id, %{email: email}} <- scan.auth,
+            email != nil,
+            holder <- Map.get(holders, email, []),
+            holder != id,
+            not MapSet.member?(exported, holder),
+            uniq: true,
+            do: id
+
+      issues =
+        conflicts
+        |> Enum.sort()
+        |> Enum.reduce(
+          scan.issues,
+          &Issues.add(&2, :load_email_conflict, type, "email", &1, :held)
+        )
+
+      clears =
+        for {id, old} <- target,
+            MapSet.member?(exported, id),
+            old != get_in(scan.auth, [id, :email]),
+            do: id
+
+      {:ok, issues, Enum.sort(clears)}
+    end
+  end
+
+  defp emails(scan, _plan, _target), do: {:ok, scan.issues, []}
+
+  # Not read when the schema check failed (the table may not exist; the
+  # run is blocked anyway).
+  defp emails(scan, plan, target, schema) do
+    if Enum.any?(schema, &(&1.code == :load_schema_mismatch)),
+      do: {:ok, scan.issues, []},
+      else: emails(scan, plan, target)
+  end
+
+  defp fold(nil), do: nil
+  defp fold(email), do: email |> String.trim() |> String.downcase()
 
   defp identity(tmod, tconf, opts) do
     case Keyword.get(opts, :target_identity) do
@@ -246,6 +355,11 @@ defmodule BubbleEx.Load do
     partial =
       if Keyword.get(state.opts, :allow_partial, false), do: [], else: [:load_export_partial]
 
+    partial =
+      if Keyword.get(state.opts, :allow_unmapped_keys, false),
+        do: partial,
+        else: [:load_unmapped_key | partial]
+
     (state.schema ++ Issues.diagnostics(state.issues))
     |> Enum.filter(&(&1.code in (@blocking ++ partial)))
     |> Enum.map(& &1.code)
@@ -285,14 +399,15 @@ defmodule BubbleEx.Load do
     ids = %{
       export_sha256: state.export.sha256,
       plan_sha256: Plan.sha256(state.plan),
-      target: state.identity
+      target: run_identity(state)
     }
 
     with {:ok, ledger} <- Ledger.open(Keyword.get(state.opts, :ledger_dir), ids),
          # A finished run starts over: every row is re-applied, changing
          # nothing that did not change.
          ledger = if(Ledger.complete?(ledger), do: Ledger.restart(ledger), else: ledger),
-         {:ok, refs, ledger} <- copy_files(state, ledger) do
+         {:ok, refs, ledger} <- copy_files(state, ledger),
+         :ok <- clear_emails(state) do
       result =
         convert_all(
           state,
@@ -308,11 +423,32 @@ defmodule BubbleEx.Load do
           ledger = Ledger.complete(ledger)
           {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
 
-        {:error, error, _ledger} ->
+        {:error, error, ledger} ->
+          Ledger.close(ledger)
           {:error, error}
       end
     end
   end
+
+  # The ledger's target: the database, the storage and the key map, so a
+  # ledger never claims rows or files written elsewhere or read otherwise.
+  defp run_identity(state) do
+    storage =
+      case Keyword.get(state.opts, :storage) do
+        {mod, config} -> mod.identity(config)
+        nil -> "none"
+      end
+
+    keys = state.opts |> Keyword.get(:keys, %{}) |> BubbleEx.CanonicalJson.sha256()
+    Enum.join([state.identity, "storage:" <> storage, "keys:" <> keys], "\n")
+  end
+
+  # The first phase of an email change: exported users whose email changes
+  # lose their old one before any row is written.
+  defp clear_emails(%{clears: []}), do: :ok
+
+  defp clear_emails(%{plan: %Plan{auth: auth} = plan, target: {tmod, tconf}, clears: ids}),
+    do: tmod.clear(tconf, Plan.table(plan, auth.type), auth.email_column, ids)
 
   defp copy_files(state, ledger) do
     cond do
@@ -326,19 +462,20 @@ defmodule BubbleEx.Load do
          })}
 
       true ->
-        # The ledger is threaded through an agent: copies run concurrently.
-        {:ok, agent} = Agent.start_link(fn -> ledger end)
-
-        result =
+        # Each file is recorded in the ledger as it completes.
+        {refs, _failed, ledger} =
           Files.copy(state.export, Keyword.fetch!(state.opts, :storage), state.scan.files,
             done: Ledger.files(ledger),
             concurrency: Keyword.get(state.opts, :file_concurrency, 8),
-            on_copied: fn {url, ref} -> Agent.update(agent, &Ledger.file_copied(&1, url, ref)) end
+            timeout: Keyword.get(state.opts, :file_timeout, 300_000),
+            acc: ledger,
+            on_result: fn
+              {:ok, url, ref}, ledger -> Ledger.file_copied(ledger, url, ref)
+              {:failed, _url, _reason}, ledger -> ledger
+            end
           )
 
-        ledger = Agent.get(agent, & &1)
-        Agent.stop(agent)
-        {:ok, result.refs, ledger}
+        {:ok, refs, ledger}
     end
   end
 
@@ -376,7 +513,9 @@ defmodule BubbleEx.Load do
   # Converts every winning row of every table, handing each batch of
   # `{row, stream index}` (winners only, possibly empty) to `sink`.
   defp convert_all(state, ctx, sink, acc \\ nil) do
-    ctx = Map.put(ctx, :ids, state.scan.ids)
+    ctx =
+      Map.merge(ctx, %{ids: state.scan.ids, app_hosts: Keyword.get(state.opts, :app_hosts, [])})
+
     size = Keyword.get(state.opts, :batch_size, 500)
 
     Enum.reduce_while(state.plan.tables, {:ok, state.issues, acc}, fn table, {:ok, issues, acc} ->
@@ -428,7 +567,7 @@ defmodule BubbleEx.Load do
 
   defp convert_row(state, table, keys, fields, auth?, row, ctx, issues) do
     id = row["_id"]
-    {values, _deleted, _unknown} = Scan.fields(row, keys)
+    {values, _deleted, _unknown, _ambiguous} = Scan.fields(row, keys)
 
     {pairs, issues} =
       Enum.map_reduce(table.columns, issues, fn column, issues ->
@@ -442,6 +581,9 @@ defmodule BubbleEx.Load do
                 Map.get(values, column.field),
                 ctx
               )
+
+        {v, nul?} = Convert.strip_nul(v)
+        found = if nul?, do: [{:load_nul_stripped, :nul} | found], else: found
 
         issues =
           Enum.reduce(found, issues, fn {code, detail}, acc ->

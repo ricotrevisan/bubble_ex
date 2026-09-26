@@ -17,13 +17,16 @@ defmodule BubbleEx.Load.DataApi do
   the environment variable `:token_env` (default `BUBBLE_API_TOKEN`) and
   nowhere else; it is sent only to the app's own host, never logged, and
   redacted from errors, telemetry and the export (the manifest records
-  the host and version, not the token).
+  the host and version, not the token). It is held as a
+  `BubbleEx.Load.Secret`, which never inspects to its value.
 
   **Paging.** Each type is read in pages of up to 100, sorted by Created
   Date, following Bubble's cursor until `remaining` is 0. Pages are
   appended to a part file and the cursor recorded in `state.json` after
   each page, so an interrupted export resumes where it stopped (rerun the
-  same call). The Data API does not snapshot: records created or changed
+  same call; it refuses to resume an export of another app or version). A
+  non-empty page without `remaining` fails the type rather than
+  completing it. The Data API does not snapshot: records created or changed
   during the export can shift pages, so a record may appear twice (the
   loader keeps the latest copy) or be missed. Export during a write freeze
   for the final load, and load again (a delta sync) at cutover.
@@ -33,13 +36,18 @@ defmodule BubbleEx.Load.DataApi do
   dropped). No password material exists in the Data API or the export.
 
   **Files.** After the rows, every Bubble file URL in a file or image field
-  (`BubbleEx.Load.Files.bubble?/1`) is fetched once (`GET`, at most
-  `:file_concurrency` at a time, default 8), checked against its
-  `Content-Length`, hashed with SHA-256 and stored as a blob. Public files
-  are fetched without credentials. A private file (`/fileupload/`) is
-  fetched with the token only when its host is the app's host (unverified
-  against Bubble: how Bubble serves private files to an admin token has
-  not been confirmed); failures are recorded, not fatal.
+  (`BubbleEx.Load.Files.bubble?/2`: Bubble's storage hosts, and the app's
+  own hosts for `/fileupload/`) is fetched once (`GET`, at most
+  `:file_concurrency` at a time, default 8, each within `:file_timeout`,
+  default 10 minutes). A file is streamed to disk and hashed with SHA-256
+  as it arrives (never held in memory), checked against its
+  `Content-Length` and at most `:max_file_bytes` (default 5 GB), then
+  stored as a blob; each result is appended (and synced) to a journal as
+  it finishes, so a rerun does not fetch it again. Public files are
+  fetched without credentials. A private file (`/fileupload/`) is fetched
+  with the token only when its host is the app's host (unverified against
+  Bubble: how Bubble serves private files to an admin token has not been
+  confirmed). A failure, a timeout or a crash fails that file only.
 
   **Retries.** 429 and 5xx answers and transport failures are retried with
   exponential backoff (or `Retry-After`), at most `:max_retries` times
@@ -56,7 +64,7 @@ defmodule BubbleEx.Load.DataApi do
   """
 
   alias BubbleEx.{Error, HTTP, Model}
-  alias BubbleEx.Load.{Export, Files, Scan}
+  alias BubbleEx.Load.{Export, Files, Scan, Secret}
   alias BubbleEx.Model.{DataType, Type}
   alias BubbleEx.Verify.Replay.Names
 
@@ -75,6 +83,8 @@ defmodule BubbleEx.Load.DataApi do
           | {:max_retries, non_neg_integer()}
           | {:retry_base_delay, non_neg_integer()}
           | {:file_concurrency, pos_integer()}
+          | {:file_timeout, pos_integer()}
+          | {:app_hosts, [String.t()]}
           | {:max_file_bytes, pos_integer()}
           | {:sleep, (non_neg_integer() -> any())}
           | {:now, DateTime.t()}
@@ -92,10 +102,10 @@ defmodule BubbleEx.Load.DataApi do
   def export(%Model{} = model, dir, opts) do
     with {:ok, c} <- client(model, opts),
          :ok <- Export.prepare_dir(dir) do
-      state = read_state(dir)
       types = types(model, opts)
 
-      with {:ok, state} <- export_types(c, dir, types, state),
+      with {:ok, state} <- read_state(dir, c),
+           {:ok, state} <- export_types(c, dir, types, state),
            do: finish(c, dir, model, state, opts)
     end
   end
@@ -110,6 +120,9 @@ defmodule BubbleEx.Load.DataApi do
        %{
          host: host,
          base: base,
+         source: String.replace_suffix(base, "/api/1.1/obj/", ""),
+         app_hosts:
+           Enum.uniq([host | Enum.map(Keyword.get(opts, :app_hosts, []), &String.downcase/1)]),
          token: token,
          names: names,
          page_size: min(Keyword.get(opts, :page_size, 100), 100),
@@ -152,7 +165,7 @@ defmodule BubbleEx.Load.DataApi do
     case Keyword.get(opts, :token) || System.get_env(env) do
       t when is_binary(t) and byte_size(t) >= 8 ->
         if String.match?(t, ~r/\A[\x21-\x7e]+\z/),
-          do: {:ok, t},
+          do: {:ok, Secret.new(t)},
           else: invalid("the API token has invalid characters")
 
       _ ->
@@ -182,10 +195,23 @@ defmodule BubbleEx.Load.DataApi do
 
   # --- state -----------------------------------------------------------------------------
 
-  defp read_state(dir) do
+  # An interrupted export resumes only from the same app and version.
+  defp read_state(dir, c) do
     case File.read(Path.join(dir, "state.json")) do
-      {:ok, text} -> Jason.decode!(text)
-      {:error, :enoent} -> %{"types" => %{}, "files" => []}
+      {:ok, text} ->
+        case Jason.decode(text) do
+          {:ok, %{"source" => source} = state} when source == c.source ->
+            {:ok, state}
+
+          {:ok, %{"source" => _}} ->
+            invalid("the directory holds an interrupted export of another app or version")
+
+          _ ->
+            invalid("the export state is unreadable")
+        end
+
+      {:error, :enoent} ->
+        {:ok, %{"source" => c.source, "types" => %{}}}
     end
   end
 
@@ -244,48 +270,77 @@ defmodule BubbleEx.Load.DataApi do
 
     case get_json(c, url, :token) do
       {:ok, %{"response" => %{"results" => results} = response}} when is_list(results) ->
-        lines = Enum.map(results, &[Jason.encode!(sanitize(&1)), "\n"])
-        File.write!(part, lines, [:append])
+        {progress, state} = store_page(dir, type, path, part, progress, state, results)
 
-        progress = %{
-          "status" => "running",
-          "path" => path,
-          "cursor" => progress["cursor"] + length(results),
-          "rows" => progress["rows"] + length(results),
-          "bytes" => File.stat!(part).size
-        }
-
-        state = put_in(state, ["types", type], progress)
-        save_state(dir, state)
-
-        if results == [] or remaining(response) == 0 do
-          entry = Export.complete_type(dir, type, path, part, progress["rows"])
-          state = put_in(state, ["types", type], Map.put(entry, "status", "complete"))
-          save_state(dir, state)
-          {:ok, state}
-        else
-          page(c, dir, type, path, part, progress, state)
+        case {results, remaining(response)} do
+          {[_ | _], :missing} -> failed(dir, type, path, state, "no_remaining")
+          {[], _} -> complete(dir, type, path, part, progress, state)
+          {_, 0} -> complete(dir, type, path, part, progress, state)
+          _ -> page(c, dir, type, path, part, progress, state)
         end
 
       {:ok, _other} ->
         failed(dir, type, path, state, "unexpected_response")
 
-      {:error, %Error{kind: kind} = error} when kind in [:unauthorized, :forbidden] ->
-        {:stop, {:error, error}}
-
-      {:error, %Error{context: %{reason: :budget_exhausted}} = error} ->
-        {:stop, {:error, error}}
-
-      {:error, %Error{kind: :not_found}} ->
-        failed(dir, type, path, state, "not_found")
-
-      {:error, %Error{context: context}} ->
-        failed(dir, type, path, state, to_string(Map.get(context, :reason, "request_failed")))
+      {:error, error} ->
+        page_error(dir, type, path, state, error)
     end
   end
 
-  defp remaining(%{"remaining" => r}) when is_integer(r), do: r
-  defp remaining(_), do: 0
+  # 401, 403 and an exhausted budget stop the export; other errors fail
+  # the type (a rerun retries it).
+  defp page_error(_dir, _type, _path, _state, %Error{kind: kind} = error)
+       when kind in [:unauthorized, :forbidden],
+       do: {:stop, {:error, error}}
+
+  defp page_error(_dir, _type, _path, _state, %Error{context: %{reason: :budget_exhausted}} = e),
+    do: {:stop, {:error, e}}
+
+  defp page_error(dir, type, path, state, %Error{kind: :not_found}),
+    do: failed(dir, type, path, state, "not_found")
+
+  defp page_error(dir, type, path, state, %Error{context: context}),
+    do: failed(dir, type, path, state, to_string(Map.get(context, :reason, "request_failed")))
+
+  defp store_page(dir, type, path, part, progress, state, results) do
+    append_synced(part, Enum.map(results, &[Jason.encode!(sanitize(&1)), "\n"]))
+
+    progress = %{
+      "status" => "running",
+      "path" => path,
+      "cursor" => progress["cursor"] + length(results),
+      "rows" => progress["rows"] + length(results),
+      "bytes" => File.stat!(part).size
+    }
+
+    state = put_in(state, ["types", type], progress)
+    save_state(dir, state)
+    {progress, state}
+  end
+
+  # Without `remaining` the end of the type is unknown: a non-empty page
+  # without it fails the type rather than marking it complete.
+  defp remaining(%{"remaining" => r}) when is_integer(r) and r >= 0, do: r
+  defp remaining(_), do: :missing
+
+  defp complete(dir, type, path, part, progress, state) do
+    entry = Export.complete_type(dir, type, path, part, progress["rows"])
+    state = put_in(state, ["types", type], Map.put(entry, "status", "complete"))
+    save_state(dir, state)
+    {:ok, state}
+  end
+
+  # Appends and syncs, so the state never records rows the disk lacks.
+  defp append_synced(path, data) do
+    {:ok, io} = :file.open(path, [:append, :raw, :binary])
+
+    try do
+      :ok = :file.write(io, data)
+      :ok = :file.datasync(io)
+    after
+      :file.close(io)
+    end
+  end
 
   defp failed(dir, type, path, state, error) do
     progress =
@@ -315,10 +370,7 @@ defmodule BubbleEx.Load.DataApi do
   # --- files -----------------------------------------------------------------------------------
 
   defp finish(c, dir, model, state, opts) do
-    {:ok, state} =
-      if Keyword.get(opts, :files, true),
-        do: files(c, dir, model, state, opts),
-        else: {:ok, state}
+    if Keyword.get(opts, :files, true), do: files(c, dir, model, state, opts)
 
     types =
       for {type, entry} <- Enum.sort(state["types"]) do
@@ -329,7 +381,7 @@ defmodule BubbleEx.Load.DataApi do
       end
 
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
-    entries = state["files"]
+    entries = journal(dir)
 
     File.write!(
       Path.join(dir, "files.jsonl"),
@@ -340,52 +392,77 @@ defmodule BubbleEx.Load.DataApi do
       Export.finish(dir, %{
         app: model.bubble_id,
         model_sha256: Model.sha256(model),
-        source: %{
-          "kind" => "data_api",
-          "base_url" => String.trim_trailing(c.base, "/api/1.1/obj/")
-        },
+        source: %{"kind" => "data_api", "base_url" => c.source},
         created_at: DateTime.to_iso8601(now),
         types: types,
         files: entries
       })
 
     File.rm(Path.join(dir, "state.json"))
+    File.rm(journal_path(dir))
     result
   end
 
+  # Fetched files, one entry per line, appended and synced as each file
+  # finishes, so an interrupted export resumes without fetching them again
+  # (a torn last line is ignored).
+  defp journal_path(dir), do: Path.join(dir, "files.part.jsonl")
+
+  defp journal(dir) do
+    case File.read(journal_path(dir)) do
+      {:ok, text} ->
+        text
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(&journal_entry/1)
+        |> Enum.uniq_by(& &1["url"])
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp journal_entry(line) do
+    case Jason.decode(line) do
+      {:ok, %{"url" => _} = entry} -> [entry]
+      _ -> []
+    end
+  end
+
   defp files(c, dir, model, state, opts) do
-    done = MapSet.new(state["files"], & &1["url"])
+    done = dir |> journal() |> MapSet.new(& &1["url"])
 
     urls =
       state["types"]
       |> Enum.filter(fn {_t, e} -> e["status"] == "complete" end)
-      |> Enum.flat_map(fn {type, e} -> file_urls(dir, model, type, e["object"]) end)
+      |> Enum.flat_map(fn {type, e} -> file_urls(c, dir, model, type, e["object"]) end)
       |> Enum.uniq()
       |> Enum.reject(&MapSet.member?(done, &1))
       |> Enum.sort()
 
-    max = Keyword.get(opts, :max_file_bytes, 100_000_000)
+    max = Keyword.get(opts, :max_file_bytes, 5_000_000_000)
 
-    entries =
-      urls
-      |> Task.async_stream(&fetch_file(c, dir, &1, max),
-        max_concurrency: Keyword.get(opts, :file_concurrency, 8),
-        timeout: 600_000,
-        ordered: true
-      )
-      |> Enum.zip(urls)
-      |> Enum.map(fn
-        {{:ok, entry}, _url} -> entry
-        {{:exit, _}, url} -> %{"url" => url, "status" => "failed", "error" => "crashed"}
-      end)
+    urls
+    |> Task.async_stream(&fetch_file(c, dir, &1, max),
+      max_concurrency: Keyword.get(opts, :file_concurrency, 8),
+      timeout: Keyword.get(opts, :file_timeout, 600_000),
+      on_timeout: :kill_task,
+      ordered: true
+    )
+    |> Stream.zip(urls)
+    |> Enum.each(fn {result, url} ->
+      entry =
+        case result do
+          {:ok, entry} -> entry
+          {:exit, :timeout} -> %{"url" => url, "status" => "failed", "error" => "timeout"}
+          {:exit, _} -> %{"url" => url, "status" => "failed", "error" => "crashed"}
+        end
 
-    state = Map.update!(state, "files", &(&1 ++ entries))
-    save_state(dir, state)
-    {:ok, state}
+      append_synced(journal_path(dir), [BubbleEx.CanonicalJson.encode(entry), "\n"])
+    end)
   end
 
   # The Bubble file URLs in the file and image fields of a type's rows.
-  defp file_urls(dir, model, type, object) do
+  defp file_urls(c, dir, model, type, object) do
     data_type = Model.data_type(model, type)
     keys = Scan.keys(data_type, %{})
 
@@ -399,7 +476,7 @@ defmodule BubbleEx.Load.DataApi do
     |> File.stream!(:line, [:compressed])
     |> Stream.reject(&(&1 in ["", "\n"]))
     |> Stream.flat_map(fn line ->
-      {fields, _, _} = line |> Jason.decode!() |> Scan.fields(keys)
+      {fields, _, _, _} = line |> Jason.decode!() |> Scan.fields(keys)
 
       fields
       |> Map.take(MapSet.to_list(file_fields))
@@ -407,40 +484,95 @@ defmodule BubbleEx.Load.DataApi do
       |> Enum.flat_map(&List.wrap/1)
       |> Enum.filter(&is_binary/1)
       |> Enum.map(&Files.normalize/1)
-      |> Enum.filter(&Files.bubble?/1)
+      |> Enum.filter(&Files.bubble?(&1, c.app_hosts))
     end)
     |> Enum.uniq()
   end
 
+  # Streams the file to a temporary file in `files/`, hashing as it goes,
+  # then renames it to its blob. Never raises: a failure is an entry.
   defp fetch_file(c, dir, url, max) do
+    tmp =
+      Path.join([
+        dir,
+        "files",
+        ".fetch-" <> Integer.to_string(System.unique_integer([:positive]))
+      ])
+
+    try do
+      fetch_to(c, dir, url, max, tmp)
+    rescue
+      _ -> failed_file(url, "crashed")
+    catch
+      _kind, _reason -> failed_file(url, "crashed")
+    after
+      File.rm(tmp)
+    end
+  end
+
+  defp fetch_to(c, dir, url, max, tmp) do
     %URI{host: host} = URI.parse(url)
     # The token goes only to the app's own host, for its private files.
     auth = if Files.visibility(url) == :private and host == c.host, do: :token, else: :none
+    {:ok, io} = :file.open(tmp, [:write, :read, :raw, :binary])
+    File.chmod!(tmp, 0o600)
 
-    case get(c, url, auth, max) do
+    # A fresh sink (the file emptied, a new hash) for every attempt.
+    sink = fn ->
+      {:ok, 0} = :file.position(io, 0)
+      :ok = :file.truncate(io)
+      [sink: {%{io: io, hash: :crypto.hash_init(:sha256), size: 0}, &write_chunk/2}]
+    end
+
+    result = request(c, url, auth, max, sink)
+    :file.close(io)
+
+    case result do
       {:ok, %HTTP.Response{status_code: 200, headers: headers, body: body}} ->
-        body = IO.iodata_to_binary(body)
-
-        case content_length(headers) do
-          n when is_integer(n) and n != byte_size(body) ->
-            %{"url" => url, "status" => "failed", "error" => "length_mismatch"}
-
-          _ ->
-            sha = Export.put_blob(dir, body)
-            Export.file_entry(url, sha, byte_size(body), content_type(headers))
-        end
+        stored(dir, url, tmp, sink_result(body, tmp), headers)
 
       {:ok, %HTTP.Response{status_code: status}} ->
-        %{"url" => url, "status" => "failed", "error" => "http_#{status}"}
+        failed_file(url, "http_#{status}")
 
       {:error, %Error{context: context}} ->
-        %{
-          "url" => url,
-          "status" => "failed",
-          "error" => to_string(Map.get(context, :reason, "request_failed"))
-        }
+        failed_file(url, to_string(Map.get(context, :reason, "request_failed")))
     end
   end
+
+  defp write_chunk(data, %{io: io} = acc) do
+    case :file.write(io, data) do
+      :ok ->
+        {:ok,
+         %{acc | hash: :crypto.hash_update(acc.hash, data), size: acc.size + byte_size(data)}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A body the sink never saw (an empty one) is written as is.
+  defp sink_result(%{hash: hash, size: size}, _tmp),
+    do: {Base.encode16(:crypto.hash_final(hash), case: :lower), size}
+
+  defp sink_result(body, tmp) do
+    body = IO.iodata_to_binary(body)
+    File.write!(tmp, body)
+    {Export.sha256_hex(body), byte_size(body)}
+  end
+
+  defp stored(dir, url, tmp, {sha, size}, headers) do
+    case content_length(headers) do
+      n when is_integer(n) and n != size ->
+        failed_file(url, "length_mismatch")
+
+      _ ->
+        blob = Export.blob_path(dir, sha)
+        if File.exists?(blob), do: File.rm(tmp), else: File.rename!(tmp, blob)
+        Export.file_entry(url, sha, size, content_type(headers))
+    end
+  end
+
+  defp failed_file(url, error), do: %{"url" => url, "status" => "failed", "error" => error}
 
   defp content_length(headers) do
     with v when v != nil <- header(headers, "content-length"),
@@ -464,7 +596,7 @@ defmodule BubbleEx.Load.DataApi do
   # --- HTTP ------------------------------------------------------------------------------------
 
   defp get_json(c, url, auth) do
-    case get(c, url, auth, 50_000_000) do
+    case request(c, url, auth, 50_000_000, fn -> [] end) do
       {:ok, %HTTP.Response{status_code: 200, body: body}} ->
         case Jason.decode(IO.iodata_to_binary(body)) do
           {:ok, json} ->
@@ -521,7 +653,9 @@ defmodule BubbleEx.Load.DataApi do
   end
 
   # One GET with retries on 429, 5xx and transport failures.
-  defp get(c, url, auth, max, n \\ 0) do
+  # One GET with retries on 429, 5xx and transport failures. `extra` gives
+  # each attempt's own options (a fresh sink for a file).
+  defp request(c, url, auth, max, extra_fun, n \\ 0) do
     if :counters.get(c.calls, 1) >= c.max_calls do
       {:error,
        Error.new(:request_failed, "the export's request budget is exhausted", %{
@@ -529,30 +663,30 @@ defmodule BubbleEx.Load.DataApi do
        })}
     else
       :counters.add(c.calls, 1, 1)
+      token = Secret.value(c.token)
+      extra = extra_fun.()
 
       headers =
         [{"accept", "application/json, */*"}] ++
-          if(auth == :token, do: [{"authorization", "Bearer " <> c.token}], else: [])
+          if(auth == :token, do: [{"authorization", "Bearer " <> token}], else: [])
 
-      result =
-        HTTP.request(
-          :get,
-          url,
-          nil,
-          headers,
-          Keyword.merge(
-            [
-              follow_redirect: false,
-              redact_values: [c.token],
-              timeout: 10_000,
-              recv_timeout: 60_000,
-              max_body_length: max,
-              bounded_body: true,
-              deadline: System.monotonic_time(:millisecond) + 300_000
-            ],
-            c.http
-          )
-        )
+      # A file may take long; a Data API page may not.
+      wall = if extra == [], do: 300_000, else: 3_600_000
+
+      options =
+        [
+          follow_redirect: false,
+          redact_values: [token],
+          timeout: 10_000,
+          recv_timeout: 60_000,
+          max_body_length: max,
+          bounded_body: true,
+          deadline: System.monotonic_time(:millisecond) + wall
+        ]
+        |> Keyword.merge(extra)
+        |> Keyword.merge(c.http)
+
+      result = HTTP.request(:get, url, nil, headers, options)
 
       case retry(c, result, n) do
         nil ->
@@ -560,7 +694,7 @@ defmodule BubbleEx.Load.DataApi do
 
         delay ->
           c.sleep.(delay)
-          get(c, url, auth, max, n + 1)
+          request(c, url, auth, max, extra_fun, n + 1)
       end
     end
   end

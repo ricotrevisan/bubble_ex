@@ -33,6 +33,12 @@ defmodule BubbleEx.Load.Export do
   included. The directory is created `0700` and its files `0600`; no
   password material is ever read (`authentication` keeps only the email
   and its confirmed status, and the names of other sign-in methods).
+  BubbleEx does not encrypt it: **keep exports on an encrypted disk**
+  (FileVault, LUKS, an encrypted volume), never in a repository, a synced
+  folder or a shared machine, and **delete them after the cutover** with
+  `delete/1` (`mix bubble.export.delete DIR`). The loader's ledgers hold
+  no stored values; the target storage holds the copied files, which are
+  the app's data from then on.
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -139,6 +145,37 @@ defmodule BubbleEx.Load.Export do
 
   defp safe_object(_),
     do: {:error, Error.new(:invalid_input, "an export object path is invalid")}
+
+  @doc """
+  Deletes the export in `dir` (after the cutover): the directory must hold
+  a bubble_ex export, finished (`manifest.json`) or interrupted
+  (`state.json`), and nothing else is removed. Returns the number of
+  files deleted. On an SSD or a copy-on-write file system deletion does
+  not guarantee the bytes are gone, which is why the export belongs on an
+  encrypted disk in the first place.
+  """
+  @spec delete(Path.t()) :: {:ok, non_neg_integer()} | {:error, Error.t()}
+  def delete(dir) do
+    if export_dir?(dir) do
+      files =
+        dir |> Path.join("**") |> Path.wildcard(match_dot: true) |> Enum.count(&File.regular?/1)
+
+      File.rm_rf!(dir)
+      {:ok, files}
+    else
+      {:error, Error.new(:invalid_input, "not a bubble_ex export directory; nothing deleted")}
+    end
+  end
+
+  defp export_dir?(dir) do
+    case File.read(Path.join(dir, "manifest.json")) do
+      {:ok, text} ->
+        match?({:ok, %{"format" => @format}}, Jason.decode(text))
+
+      {:error, _} ->
+        File.regular?(Path.join(dir, "state.json")) and File.dir?(Path.join(dir, "rows"))
+    end
+  end
 
   @doc "The manifest's type entries."
   @spec types(t()) :: [map()]
