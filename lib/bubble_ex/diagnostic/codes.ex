@@ -90,6 +90,14 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:workflow_uninterpreted_field, :info, :preserved, :parse,
      "a workflow node member kept in `raw` without semantic interpretation"},
 
+    # --- :model — BubbleEx.Workflows.Backend (WTF-373) ------------------------
+    {:workflow_residue, :warning, :unresolved, :model,
+     "a backend workflow event or step with no mechanical lowering (residue for agent work)"},
+    {:workflow_privacy_bypass, :warning, :degraded, :model,
+     "a backend workflow set to ignore privacy rules: lowered with authorization bypassed (`authorize?: false`)"},
+    {:workflow_action_privacy_option, :info, :preserved, :model,
+     "a scheduling action's ignore-privacy option; not a bypass (the scheduled workflow's own setting decides)"},
+
     # --- :model — BubbleEx.Index ---------------------------------------------
     {:index_unresolved_reference, :warning, :unresolved, :model,
      "a symbol-index reference to a definition absent from the supplied data, or a data action whose target data type cannot be resolved (its writes are not indexed)"},

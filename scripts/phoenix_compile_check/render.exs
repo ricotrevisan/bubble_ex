@@ -26,7 +26,8 @@ fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
         {"test/support/target/ash/*.json", "target_"},
-        {"test/support/expression/*.json", "expr_"}
+        {"test/support/expression/*.json", "expr_"},
+        {"test/support/target/workflows/*.json", "workflows_"}
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort(),
       into: %{} do
@@ -57,13 +58,40 @@ fixtures =
 
 # The app JSON of a fixture rendered from one (not the decision fixtures).
 app_json = fn name ->
-  [{"test/support/model/", ""}, {"test/support/target/ash/", "target_"}, {"test/support/expression/", "expr_"}]
+  [
+    {"test/support/model/", ""},
+    {"test/support/target/ash/", "target_"},
+    {"test/support/expression/", "expr_"},
+    {"test/support/target/workflows/", "workflows_"}
+  ]
   |> Enum.find_value(fn {dir, prefix} ->
     path = dir <> String.replace_prefix(name, prefix, "") <> ".json"
     if String.starts_with?(name, prefix) and File.exists?(path), do: path
   end)
   |> File.read!()
   |> Jason.decode!()
+end
+
+# The backend workflows of a fixture's app (WTF-373), bound to its project
+# for the PhxCheck module; nil when the app has none (or no app JSON).
+workflows = fn name, project ->
+  app =
+    case name do
+      "private_app" -> BubbleEx.Test.SplitExport.load(System.fetch_env!("BUBBLE_EX_PRIVATE_EXPORT"))
+      "decided_" <> _ -> nil
+      _ -> app_json.(name)
+    end
+
+  with %{} <- app,
+       {:ok, model} <- BubbleEx.Model.build(app),
+       {:ok, index} <- BubbleEx.Index.build(app, model: model),
+       {:ok, backend} <- BubbleEx.Workflows.Backend.build(app, model, index),
+       [_ | _] <- backend.workflows,
+       {:ok, spec} <- BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "PhxCheck") do
+    spec
+  else
+    _ -> nil
+  end
 end
 
 case System.argv() do
@@ -104,7 +132,7 @@ case System.argv() do
 
   [dir, name] ->
     {:ok, project} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"]
+    opts = [name: "Phx Check #{name}", module: "PhxCheck", workflows: workflows.(name, project)]
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 
@@ -119,6 +147,12 @@ case System.argv() do
     end
 
     File.cp!("scripts/phoenix_compile_check/mix.lock", Path.join(dir, "mix.lock"))
+
+    # Behavior tests of a workflow fixture's generated app (WTF-373).
+    behavior = "test/support/target/workflows/#{String.replace_prefix(name, "workflows_", "")}_behavior.exs"
+
+    if String.starts_with?(name, "workflows_") and File.exists?(behavior),
+      do: File.cp!(behavior, Path.join(dir, "test/phx_check/workflows_behavior_test.exs"))
 
     {:ok, %{clean?: true, modified: [], missing: []}} =
       Phoenix.check_manifest(files[".wtf/generated.json"], dir)

@@ -1,7 +1,57 @@
 defmodule <%= @web %>.WorkflowApiController do
   @moduledoc """
   Bubble's workflow API, `/api/1.1/wf/<name>` (WTF-359 Q6).
+<%= if @workflows? do %>
+  Each backend workflow the Bubble app exposes as a public API endpoint
+  runs here through `<%= @module %>.Workflows.Runtime.call_endpoint/4`:
+  authentication as the workflow requires (a user's bearer token, or the
+  admin token `WORKFLOW_API_ADMIN_TOKEN`), its parameters from the query
+  string and the body, and Bubble's response shape
+  (`{"status": "success", "response": {...}}`, or the returned text). An
+  unknown name answers 404. (Bubble's own error bodies are not reproduced
+  yet.)
+  """
+  use <%= @web %>, :controller
 
+  alias <%= @module %>.Workflows.Runtime
+
+  def dispatch(conn, %{"name" => name} = params) do
+    actor = Ash.PlugHelpers.get_actor(conn)
+    authorization = conn |> get_req_header("authorization") |> List.first()
+
+    case Runtime.call_endpoint(name, Map.delete(params, "name"), actor, authorization) do
+      {:ok, %{text: {content_type, text}}} ->
+        conn
+        |> put_resp_content_type(to_string(content_type || "text/plain"), nil)
+        |> send_resp(200, to_string(text))
+
+      {:ok, result} ->
+        json(conn, %{"status" => "success", "response" => Runtime.dump(result.data || %{})})
+
+      {:error, :not_found} ->
+        error(conn, :not_found, "NOT_FOUND", "Workflow not found")
+
+      {:error, :unauthorized} ->
+        error(conn, :unauthorized, "UNAUTHORIZED", "This workflow requires authentication")
+
+      {:error, {:missing, key}} ->
+        error(conn, :bad_request, "MISSING_DATA", "Missing parameter: #{key}")
+
+      {:error, :not_run} ->
+        error(conn, :bad_request, "NOT_RUN", "The workflow's condition is not met")
+
+      {:error, {:failed, _reason}} ->
+        error(conn, :bad_request, "ERROR", "The workflow failed")
+    end
+  end
+
+  defp error(conn, status, code, message) do
+    conn
+    |> put_status(status)
+    |> json(%{"status" => code, "message" => message})
+  end
+end
+<% else %>
   Each backend workflow the Bubble app exposes as a public API endpoint
   becomes a generated entry point here, dispatching to its Ash action. No
   workflow is lowered yet, so every name answers 404. (Bubble's own error
@@ -15,3 +65,4 @@ defmodule <%= @web %>.WorkflowApiController do
     |> json(%{"status" => "NOT_FOUND", "message" => "Workflow not found"})
   end
 end
+<% end %>

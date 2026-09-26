@@ -6,6 +6,42 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Backend workflow lowering** (WTF-373, T7 of WTF-359).
+  `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
+  workflows, backend custom events, database triggers) to a stack-neutral
+  entry point and steps: create, change and delete things (and lists),
+  change the current user, schedule an API workflow (and on a list),
+  trigger a custom event, terminate with return values and return data
+  from the API, each value compiled to `Expression.IR`. Anything else is
+  residue (`Plan.Residue`, new reasons `:api_connector_action` and
+  `:unsupported_option`) with a `:workflow_residue` diagnostic: API
+  Connector calls (waiting for WTF-374), cancelling scheduled workflows,
+  email, files, plugin and auth actions, detected request data (whose
+  sample request, which can hold credentials, is never read), request
+  headers, unresolved callees, parameters and fields, and uncompiled
+  values. `Target.Ash.Workflows.map/3` binds it to Ash and Oban
+  (`Workflows.Spec`, plain data) and `Target.Phoenix.render/2` prints it
+  with `workflows:`: one generic-action resource per backend folder in the
+  app's domain, a generated `Workflows.Registry`, `Runtime`, Oban
+  `Scheduler` (one attempt, as Bubble) and database-trigger outbox change
+  (a job inserted in the write's transaction with the values before the
+  change), `/api/1.1/wf/<name>` served by the workflow API controller
+  (Bubble's `{"status": "success", "response": …}`, a user token or the
+  `WORKFLOW_API_ADMIN_TOKEN`), and owned bodies with `# bubble:workflow` /
+  `# bubble:step` markers whose residue steps fail loudly, plus owned tests
+  tagged `bubble: "workflow:<id>"` for every workflow generated whole.
+  **Privacy:** every generated data access passes the actor and
+  `authorize?`; only a workflow whose own "ignore privacy rules" is on runs
+  with `authorize?: false` (a `:workflow_privacy_bypass` warning, the
+  registry's `privacy_bypasses/0` and `.wtf/workflows.json`); custom
+  events take their caller's. Call cycles get chain and depth guards.
+  Coverage is defined by `Backend.coverage/1` (IR level) and
+  `Workflows.Spec.coverage/1` (generated code); the mm-137 counts are in
+  `test/support/target/workflows/counts/mm-137.json`. The Phoenix compile
+  check renders the new workflow fixtures (including `hostile_ids`) and
+  the private export with their workflows and runs behavior tests on
+  `workflows_backend`. `Expression.Sites.workflow_env/4` is public.
+
 - **Task CLI and verifier runner for the Phoenix target** (WTF-375, T9 of
   WTF-359). `mix wtf.task` works `.wtf/plan.json` in the owner's
   repository: `next` (ready top-level tasks in plan order, skipping claimed,

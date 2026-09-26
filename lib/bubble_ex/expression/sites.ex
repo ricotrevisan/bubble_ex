@@ -119,6 +119,30 @@ defmodule BubbleEx.Expression.Sites do
   end
 
   defp workflow(raw, path, host, env) do
+    env = workflow_env(raw, path, host, env)
+
+    {actions, akey} =
+      case Source.get(raw, ~w(actions %a)) do
+        {key, actions} -> {Source.entries(actions), key}
+        nil -> {[], nil}
+      end
+
+    event = Map.drop(raw, ["actions", "%a"])
+
+    sites(event, path, env, :workflow) ++
+      Enum.flat_map(actions, fn {key, action} ->
+        sites(action, path ++ [akey, key], env, :workflow)
+      end)
+  end
+
+  @doc """
+  The `BubbleEx.Expression.Env` the expressions of the workflow `raw` (at
+  `path`, on the page, reusable or element `host`, nil for a backend
+  workflow) are typed and compiled in: its host element, trigger type,
+  subject and step result types. `env` is the app's base environment.
+  """
+  @spec workflow_env(map(), list(), String.t() | nil, Env.t()) :: Env.t()
+  def workflow_env(raw, path, host, %Env{} = env) when is_map(raw) do
     props =
       case Source.value(raw, ~w(properties %p)) do
         props when is_map(props) -> props
@@ -133,19 +157,13 @@ defmodule BubbleEx.Expression.Sites do
 
     env = %{env | host: host, trigger_type: trigger, subject: %{workflow: id}}
 
-    {actions, akey} =
+    actions =
       case Source.get(raw, ~w(actions %a)) do
-        {key, actions} -> {Source.entries(actions), key}
-        nil -> {[], nil}
+        {_key, actions} -> Source.entries(actions)
+        nil -> []
       end
 
-    env = %{env | steps: steps(actions, env)}
-    event = Map.drop(raw, ["actions", "%a"])
-
-    sites(event, path, env, :workflow) ++
-      Enum.flat_map(actions, fn {key, action} ->
-        sites(action, path ++ [akey, key], env, :workflow)
-      end)
+    %{env | steps: steps(actions, env)}
   end
 
   # Result types of data steps, by action Bubble ID.

@@ -11,7 +11,17 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     # The Phoenix target (WTF-369) prints a Project too.
     "lib/bubble_ex/target/phoenix.ex",
     "lib/bubble_ex/target/phoenix/manifest.ex",
-    "lib/bubble_ex/target/phoenix/templates.ex"
+    "lib/bubble_ex/target/phoenix/templates.ex",
+    # Backend workflows (WTF-373) print a Workflows.Spec, plain data.
+    "lib/bubble_ex/target/phoenix/workflows.ex",
+    "lib/bubble_ex/target/ash/workflows/spec.ex"
+  ]
+
+  # Renderers that print something other than a Project.
+  @not_project [
+    "lib/bubble_ex/target/phoenix/templates.ex",
+    "lib/bubble_ex/target/phoenix/workflows.ex",
+    "lib/bubble_ex/target/ash/workflows/spec.ex"
   ]
 
   defp forbidden do
@@ -19,7 +29,9 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
       ~r{^lib/bubble_ex/model\.ex$},
       ~r{^lib/bubble_ex/model/},
       ~r{^lib/bubble_ex/db/reader(\.ex$|/)},
-      ~r{^lib/bubble_ex/target/ash\.ex$}
+      ~r{^lib/bubble_ex/target/ash\.ex$},
+      ~r{^lib/bubble_ex/target/ash/workflows\.ex$},
+      ~r{^lib/bubble_ex/workflows/}
     ]
   end
 
@@ -40,7 +52,7 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     test "#{file} depends on neither the Model nor the Reader" do
       deps = dependencies(@file_path)
 
-      if @file_path != "lib/bubble_ex/target/phoenix/templates.ex",
+      if @file_path not in @not_project,
         do: assert("lib/bubble_ex/target/ash/project.ex" in deps, inspect(deps))
 
       for dep <- deps, pattern <- forbidden() do

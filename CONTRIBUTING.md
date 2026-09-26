@@ -87,7 +87,13 @@ module name, so the dependencies compile once), then per fixture runs
 `mix compile --warnings-as-errors`, `mix ash.codegen` and
 `mix ash.codegen --check`, and, with `PHOENIX_COMPILE_CHECK_DB` set, the
 scaffolded smoke test (`mix test`: migrations, endpoint boot, magic-link
-sign-in). The dependencies are locked by
+sign-in). A fixture whose app has backend workflows (the workflow fixtures
+`test/support/target/workflows/*.json`, including `hostile_ids`, and the
+private export) renders them too (`BubbleEx.Target.Ash.Workflows`, WTF-373),
+and its generated workflow tests run; the `workflows_backend` fixture also
+runs the behavior tests in `test/support/target/workflows/backend_behavior.exs`
+(an exposed workflow over HTTP, a privacy bypass, a custom event, a database
+trigger through Oban, a self-scheduling cycle). The dependencies are locked by
 `scripts/phoenix_compile_check/mix.lock`; after changing the pins in
 `BubbleEx.Target.Phoenix.deps/1`, refresh it with
 `PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1`. `PHOENIX_COMPILE_CHECK_FIXTURES`
@@ -114,6 +120,11 @@ captures:
 ```bash
 BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
 ```
+
+The backend-workflow coverage snapshot
+(`test/support/target/workflows/counts/mm-137.json`, counts only) is part of
+that run; refresh it with `BUBBLE_EX_UPDATE_COUNTS=1` and give the reason in
+the PR.
 
 With `BUBBLE_EX_PRIVATE_DECISIONS` naming a JSON array of decision records
 made against that export (kept outside the repository: it names private
