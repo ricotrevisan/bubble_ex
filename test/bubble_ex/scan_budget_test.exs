@@ -4,7 +4,12 @@ defmodule BubbleEx.ScanBudgetTest do
   alias BubbleEx.Secrets.Trufflehog
 
   setup do
-    root = Path.join(System.tmp_dir!(), "scanner_test_#{System.unique_integer([:positive])}")
+    root =
+      Path.join(
+        System.tmp_dir!(),
+        "scanner_test_#{System.pid()}_#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(root)
     old_path = System.fetch_env!("PATH")
     System.put_env("PATH", root <> ":" <> old_path)
