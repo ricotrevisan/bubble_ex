@@ -16,7 +16,16 @@ defmodule BubbleEx.Verify.Replay.Seeder do
        never sent. References to records not created yet are deferred.
     3. **Deferred fields**, and the users' own fields (email excluded),
        are set with ledger-only updates.
-    4. **Delete after seed** (`:delete_after_seed` keys): those records are
+    4. **Explicit empties**: a seed field whose value is `nil` must be
+       empty, but Bubble stores a field's default on creation. So after
+       creation (and the deferred updates) each such field is cleared
+       with a ledger-only update that sets it to `null`, and the clear is
+       journaled (`Ledger.note_cleared/4`, field names only). A clear
+       Bubble refuses does not stop the run: the record is listed in
+       `state.uncleared` (`%{key => [field]}`) and the recorder makes the
+       scenarios that depend on it incomplete. A budget that runs out
+       still stops the run
+    5. **Delete after seed** (`:delete_after_seed` keys): those records are
        deleted again through the ledger, so the references to them dangle.
        That is how a replay calibrates `dangling_ref_is_empty` (a V1 seed
        cannot hold a missing reference).
@@ -35,7 +44,11 @@ defmodule BubbleEx.Verify.Replay.Seeder do
 
   @never_sent ["Created By", "Created Date", "Modified Date", "_id"]
 
-  @type state :: %{ledger: Ledger.t(), session: Session.t()}
+  @type state :: %{
+          ledger: Ledger.t(),
+          session: Session.t(),
+          uncleared: %{String.t() => [String.t()]}
+        }
 
   @doc "Seeds `seed` into `ledger`'s run. See the moduledoc."
   @spec seed(Client.t(), Seed.t(), Ledger.t(), keyword()) ::
@@ -43,13 +56,14 @@ defmodule BubbleEx.Verify.Replay.Seeder do
   def seed(%Client{} = client, %Seed{} = seed, %Ledger{} = ledger, opts \\ []) do
     kit = Keyword.get(opts, :kit, %Kit{})
     run_id = ledger.run_id
-    state = %{ledger: ledger, session: %Session{}, deferred: %{}}
+    state = %{ledger: ledger, session: %Session{}, deferred: %{}, uncleared: %{}}
     {users, records} = Enum.split_with(seed.records, &(&1.type == "user"))
 
     steps = [
       &users(client, kit, run_id, users, &1),
       &records(client, records, &1),
       &deferred(client, seed.records, &1),
+      &clear_empties(client, seed.records, &1),
       &delete_after(client, Keyword.get(opts, :delete_after_seed, []), &1)
     ]
 
@@ -243,6 +257,55 @@ defmodule BubbleEx.Verify.Replay.Seeder do
 
   defp patch(_client, _ledger, _key, body) when map_size(body) == 0, do: :ok
   defp patch(client, ledger, key, body), do: Client.update_seeded(client, ledger, key, body)
+
+  # --- explicit empties ---------------------------------------------------------------
+
+  @doc false
+  @spec empties(map()) :: [String.t()]
+  def empties(record) do
+    for {field, nil} <- Enum.sort(record.fields),
+        field not in @never_sent,
+        not (record.type == "user" and field == "email"),
+        do: field
+  end
+
+  defp clear_empties(client, records, state) do
+    each(records, state, fn record, state ->
+      case empties(record) do
+        [] -> {:ok, state}
+        fields -> clear(client, record, fields, state)
+      end
+    end)
+  end
+
+  defp clear(client, record, fields, state) do
+    with {:ok, body} <- null_body(client.names, record, fields) do
+      client
+      |> Client.update_seeded(state.ledger, record.key, body)
+      |> cleared(record.key, fields, state)
+    end
+  end
+
+  defp cleared(:ok, key, fields, state) do
+    with :ok <- Ledger.note_cleared(state.ledger, key, fields, true), do: {:ok, state}
+  end
+
+  defp cleared({:error, %Error{context: %{reason: :budget_exhausted}}} = error, _, _, _),
+    do: error
+
+  defp cleared({:error, _}, key, fields, state) do
+    with :ok <- Ledger.note_cleared(state.ledger, key, fields, false),
+         do: {:ok, %{state | uncleared: Map.put(state.uncleared, key, fields)}}
+  end
+
+  defp null_body(names, record, fields) do
+    Enum.reduce_while(fields, {:ok, %{}}, fn field, {:ok, acc} ->
+      case Names.field_key(names, record.type, field) do
+        {:ok, key} -> {:cont, {:ok, Map.put(acc, key, nil)}}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   defp delete_after(client, keys, state) do
     each(Enum.sort(keys), state, fn key, state ->

@@ -53,6 +53,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "the verification observation format's own members (`value`, `values`, `fields`, `deleted`); reads no app JSON",
     "lib/bubble_ex/verify/replay/ledger.ex" =>
       "the ledger journal's own `deleted` event; reads no app JSON",
+    "lib/bubble_ex/verify/replay/kit.ex" =>
+      "the Bubble Data API `/meta` schema's own `fields` member; reads no app JSON",
     "lib/bubble_ex/verify/replay/client.ex" =>
       "the Bubble Data API search constraint's `value` member; reads no app JSON",
     "lib/bubble_ex/verify/recording.ex" =>

@@ -11,7 +11,8 @@ defmodule BubbleEx.Verify.Recording do
     "scenario": {"id": "privacy_read.custom.task.w2_member", "sha256": "…", "source_sha256": "…"},
     "seed_sha256": "…",
     "oracle": "bubble",
-    "source": {"app": "acme", "branch": "wtfreplay", "app_version": "1727222400123"},
+    "source": {"app": "acme", "branch": "wtfreplay", "branch_id": "4k2xq",
+               "host": "acme.bubbleapps.io", "app_version": "1727222400123"},
     "recorded_at": "2026-10-02T09:12:00Z",
     "t0": 1759396320000,
     "runs": 2,
@@ -25,9 +26,13 @@ defmodule BubbleEx.Verify.Recording do
 
   **Oracles (decision D2 on WTF-358).** `bubble`: recorded from a Bubble
   replay branch; the ground truth. `source` needs the Bubble app ID and the
-  branch, both checked by `BubbleEx.Verify.Replay` (D1: replay runs on a
-  `wtfreplay…` child branch, never live or test; the app is an app ID, never
-  a custom domain); `app_version` is Bubble's version marker when known.
+  branch name, both checked by `BubbleEx.Verify.Replay` (D1: replay runs on
+  a `wtfreplay…` child branch, never live or test; the app is an app ID,
+  never a domain); the replay driver also records the branch's Bubble ID
+  (`branch_id`, the `version-<id>` it called) and the `host` it called (the
+  app's `bubbleapps.io` host or an owner-confirmed custom domain), both
+  checked the same way; `app_version` is Bubble's version marker when
+  known.
   `model`: expectations from the model interpreter; `source` needs the
   Bubble app ID and `bubble_ex` (the interpreter's version) and may carry
   `index_semantic_sha256`. A `model` recording never counts as
@@ -172,11 +177,19 @@ defmodule BubbleEx.Verify.Recording do
   end
 
   defp source(:bubble, map) do
-    with :ok <- Json.members(map, ~w(app branch app_version), ~w(app branch), "bubble source"),
+    with :ok <-
+           Json.members(
+             map,
+             ~w(app branch branch_id host app_version),
+             ~w(app branch),
+             "bubble source"
+           ),
          {:ok, app} <- Replay.app(map["app"]),
          {:ok, branch} <- Replay.branch(map["branch"]),
+         {:ok, branch_id} <- optional(map["branch_id"], &Replay.branch_id/1),
+         {:ok, host} <- optional(map["host"], &Replay.host(app, &1)),
          {:ok, version} <- Json.optional_string(map["app_version"], "source app_version") do
-      {:ok, %{app: app, branch: branch, app_version: version}}
+      {:ok, %{app: app, branch: branch, branch_id: branch_id, host: host, app_version: version}}
     end
   end
 
@@ -196,6 +209,9 @@ defmodule BubbleEx.Verify.Recording do
     end
   end
 
+  defp optional(nil, _check), do: {:ok, nil}
+  defp optional(value, check), do: check.(value)
+
   defp t0(ms) when is_integer(ms), do: {:ok, ms}
   defp t0(v), do: Json.error("t0 must be integer milliseconds (UTC)", %{value: v})
 
@@ -213,6 +229,14 @@ defmodule BubbleEx.Verify.Recording do
     end
   end
 
+  # `branch_id` and `host` are written only when known, so recordings made
+  # before they existed keep their canonical form and hash.
+  defp source_json(source) do
+    source
+    |> Json.json()
+    |> Map.reject(fn {k, v} -> k in ["branch_id", "host"] and is_nil(v) end)
+  end
+
   @doc "JSON form."
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = r) do
@@ -222,7 +246,7 @@ defmodule BubbleEx.Verify.Recording do
       "scenario" => Json.json(r.scenario),
       "seed_sha256" => r.seed_sha256,
       "oracle" => Json.json(r.oracle),
-      "source" => Json.json(r.source),
+      "source" => source_json(r.source),
       "recorded_at" => Json.json(r.recorded_at),
       "t0" => r.t0,
       "runs" => r.runs,

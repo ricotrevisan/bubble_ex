@@ -4,52 +4,149 @@ defmodule BubbleEx.Verify.Replay.Target do
   decision D1): a `wtfreplay…` child branch of one Bubble app, never live,
   never `test`.
 
-      {:ok, target} = Target.new("acme", "wtfreplay", System.fetch_env!("WTF_REPLAY_ADMIN_TOKEN"))
+      {:ok, target} =
+        Target.new("acme", "wtfreplay", System.fetch_env!("WTF_REPLAY_ADMIN_TOKEN"),
+          branch_id: "4k2xq"
+        )
+
       Target.data_url(target, "task")
-      #=> "https://acme.bubbleapps.io/version-wtfreplay/api/1.1/obj/task"
+      #=> {:ok, "https://acme.bubbleapps.io/version-4k2xq/api/1.1/obj/task"}
 
   **What it accepts.**
 
     * `app` - a Bubble app ID (`BubbleEx.Verify.Replay.app/1`: lowercase
-      letters, digits and `-`, at most 63 bytes). Never a domain or a URL:
-      a custom domain serves live at its root, so the driver takes no base
-      URL at all and builds `https://<app>.bubbleapps.io` itself
+      letters, digits and `-`, at most 63 bytes). Never a domain or a URL
     * `branch` - exactly a `wtfreplay…` branch name
       (`BubbleEx.Verify.Replay.branch/1`, at most 64 bytes). `live`,
       `test`, `version-test`, `version-live`, `version-wtfreplay`, other
       case, whitespace, look-alikes (`wtf-replay`, `xwtfreplay`) and path
-      tricks (`wtfreplay/../live`) are refused, not normalized
+      tricks (`wtfreplay/../live`) are refused, not normalized. The name
+      is what the owner reviewed; it is kept in ledgers and recordings but
+      is not part of any URL
     * `admin_token` - the owner's dedicated replay API token (§6.3), in
       memory only; `Inspect` redacts it
 
+  Options:
+
+    * `:branch_id` (required) - the short ID Bubble gives that branch
+      (`BubbleEx.Verify.Replay.branch_id/1`). Bubble serves a child branch
+      at `/version-<id>/`, not at its name. The operator reads the ID next
+      to the branch's name (editor or branch list) and supplies both; the
+      driver never looks it up, so it cannot be steered to another branch.
+      `live` and `test` are refused
+    * `:marker_nonce` (required) - the operator-chosen value (16 to 128
+      letters, digits, `-`, `_`) the owner typed into the replay branch's
+      marker workflow (`BubbleEx.Verify.Replay.Kit`). Before any request
+      carries a token, the client checks, without a token, that the host
+      answers Bubble's `/meta` and that the marker at
+      `/version-<branch_id>/` returns exactly this branch name and nonce
+      (`BubbleEx.Verify.Replay.Client.verify/2`): a typo in the host or
+      the branch ID never receives the admin token. `Inspect` redacts it
+    * `:host` - an owner-confirmed custom domain the app is served from
+      (`BubbleEx.Verify.Replay.host/2`), for apps whose `bubbleapps.io`
+      host redirects to their domain. Default `<app>.bubbleapps.io`. A
+      custom domain serves live at its root; the driver still only builds
+      `/version-<id>/api/1.1/` URLs under it
+
   **URLs.** Every URL is built here, under
-  `https://<app>.bubbleapps.io/version-<branch>/api/1.1/`, from validated
-  segments (a type path, a Bubble record ID, a workflow name).
-  `check_url/2` re-checks any URL against that prefix before the client
-  sends it, so a URL that was not built for this branch never leaves the
-  process. The client never follows redirects (an app on a custom domain
-  redirects `bubbleapps.io` to it: that is an error, not a hop).
+  `https://<host>/version-<branch_id>/api/1.1/`, from validated segments
+  (a type path, a Bubble record ID, a workflow name). `check_url/2`
+  re-checks any URL against that prefix and the exact host before the
+  client sends it, so a URL that was not built for this branch never
+  leaves the process. `BubbleEx.HTTP` checks the destination on every
+  request (public addresses only), and the client never follows redirects
+  (an app on a custom domain redirects `bubbleapps.io` to it: that is an
+  error, not a hop; pass `:host`).
   """
 
   alias BubbleEx.Error
   alias BubbleEx.Verify.Replay
 
-  @enforce_keys [:app, :branch, :admin_token]
-  defstruct [:app, :branch, :admin_token]
+  @enforce_keys [:app, :branch, :branch_id, :host, :marker_nonce, :admin_token]
+  defstruct [:app, :branch, :branch_id, :host, :marker_nonce, :admin_token]
 
-  @type t :: %__MODULE__{app: String.t(), branch: String.t(), admin_token: String.t()}
+  @type t :: %__MODULE__{
+          app: String.t(),
+          branch: String.t(),
+          branch_id: String.t(),
+          host: String.t(),
+          marker_nonce: String.t(),
+          admin_token: String.t()
+        }
 
   @segment ~r/\A[a-z0-9][a-z0-9_-]{0,127}\z/
   @record_id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
   @token ~r/\A[\x21-\x7e]{8,512}\z/
+  @nonce ~r/\A[A-Za-z0-9_-]{16,128}\z/
 
   @doc "Validates and builds a target. See the moduledoc."
-  @spec new(term(), term(), term()) :: {:ok, t()} | {:error, Error.t()}
-  def new(app, branch, admin_token) do
+  @spec new(term(), term(), term(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def new(app, branch, admin_token, opts \\ []) do
     with {:ok, app} <- app(app),
          {:ok, branch} <- branch(branch),
+         {:ok, branch_id} <- branch_id(opts),
+         {:ok, host} <- host(app, opts),
+         {:ok, nonce} <- nonce(opts),
          {:ok, token} <- token(admin_token) do
-      {:ok, %__MODULE__{app: app, branch: branch, admin_token: token}}
+      {:ok,
+       %__MODULE__{
+         app: app,
+         branch: branch,
+         branch_id: branch_id,
+         host: host,
+         marker_nonce: nonce,
+         admin_token: token
+       }}
+    end
+  end
+
+  defp nonce(opts) do
+    case Keyword.get(opts, :marker_nonce) do
+      nonce when is_binary(nonce) ->
+        if nonce =~ @nonce,
+          do: {:ok, nonce},
+          else:
+            invalid(
+              "the marker nonce must be 16 to 128 letters, digits, - or _",
+              :invalid_marker_nonce
+            )
+
+      _ ->
+        invalid(
+          "a replay target needs the nonce stored in the branch's marker workflow (:marker_nonce)",
+          :missing_marker_nonce
+        )
+    end
+  end
+
+  defp branch_id(opts) when is_list(opts) do
+    case Keyword.fetch(opts, :branch_id) do
+      {:ok, id} ->
+        case Replay.branch_id(id) do
+          {:ok, id} ->
+            {:ok, id}
+
+          {:error, _} ->
+            invalid(
+              "the replay branch ID must be the short ID Bubble gives the branch, never live or test",
+              :not_a_branch_id
+            )
+        end
+
+      :error ->
+        invalid(
+          "a replay target needs the branch's Bubble ID (:branch_id): Bubble serves a branch at /version-<id>/",
+          :missing_branch_id
+        )
+    end
+  end
+
+  defp branch_id(_opts), do: invalid("replay target options must be a keyword list", :bad_options)
+
+  defp host(app, opts) do
+    case Replay.host(app, Keyword.get(opts, :host, Replay.default_host(app))) do
+      {:ok, host} -> {:ok, host}
+      {:error, _} -> invalid("the replay host must be the app's own host", :not_a_replay_host)
     end
   end
 
@@ -86,13 +183,13 @@ defmodule BubbleEx.Verify.Replay.Target do
 
   defp token(_), do: invalid("a replay admin token is required", :missing_token)
 
-  @doc "`https://<app>.bubbleapps.io`."
+  @doc "`https://<host>`."
   @spec origin(t()) :: String.t()
-  def origin(%__MODULE__{app: app}), do: "https://#{app}.bubbleapps.io"
+  def origin(%__MODULE__{host: host}), do: "https://" <> host
 
-  @doc "The API root every replay URL starts with: `…/version-<branch>/api/1.1`."
+  @doc "The API root every replay URL starts with: `…/version-<branch_id>/api/1.1`."
   @spec api_root(t()) :: String.t()
-  def api_root(%__MODULE__{} = t), do: origin(t) <> "/version-#{t.branch}/api/1.1"
+  def api_root(%__MODULE__{} = t), do: origin(t) <> "/version-#{t.branch_id}/api/1.1"
 
   @doc "Data API URL of a type (`/obj/<type path>`), or of one record of it."
   @spec data_url(t(), String.t(), String.t() | nil) ::
@@ -116,9 +213,9 @@ defmodule BubbleEx.Verify.Replay.Target do
   def meta_url(%__MODULE__{} = t), do: api_root(t) <> "/meta"
 
   @doc """
-  Checks that `url` is under this target's API root: same scheme, host and
-  `/version-<branch>/api/1.1/` prefix, no dot segments, no encoded slashes,
-  no userinfo, no fragment.
+  Checks that `url` is under this target's API root: HTTPS, exactly the
+  target's host (default port), the `/version-<branch_id>/api/1.1/` prefix,
+  no dot segments, no encoded slashes, no userinfo, no fragment.
   """
   @spec check_url(t(), String.t()) :: :ok | {:error, Error.t()}
   def check_url(%__MODULE__{} = t, url) when is_binary(url) do
@@ -130,12 +227,19 @@ defmodule BubbleEx.Verify.Replay.Target do
       String.contains?(url, "#") -> refuse(url)
       path |> String.split("/") |> Enum.any?(&(&1 in [".", ".."])) -> refuse(url)
       String.match?(path, ~r/%(?:2f|5c|2e)/i) -> refuse(url)
-      match?({:ok, %URI{userinfo: nil}}, URI.new(url)) -> :ok
+      exact_host?(t, url) -> :ok
       true -> refuse(url)
     end
   end
 
   def check_url(_t, _url), do: refuse(nil)
+
+  defp exact_host?(%__MODULE__{host: host}, url) do
+    match?(
+      {:ok, %URI{scheme: "https", host: ^host, port: 443, userinfo: nil}},
+      URI.new(url)
+    )
+  end
 
   defp refuse(_url),
     do: invalid("URL is outside the replay branch's API", :outside_replay_branch)
@@ -175,8 +279,16 @@ defimpl Inspect, for: BubbleEx.Verify.Replay.Target do
   def inspect(target, opts) do
     concat([
       "#BubbleEx.Verify.Replay.Target<",
-      to_doc(%{app: target.app, branch: target.branch}, opts),
-      ", admin_token: [REDACTED]>"
+      to_doc(
+        %{
+          app: target.app,
+          branch: target.branch,
+          branch_id: target.branch_id,
+          host: target.host
+        },
+        opts
+      ),
+      ", marker_nonce: [REDACTED], admin_token: [REDACTED]>"
     ])
   end
 end
