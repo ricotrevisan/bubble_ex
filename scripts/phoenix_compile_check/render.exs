@@ -1,5 +1,6 @@
 # Renders one fixture through BubbleEx.Target.Phoenix (privacy: :omit, what
-# an owner downloads) into a scratch Phoenix project directory, replacing
+# an owner downloads; with the API clients of BubbleEx.Target.ApiClients
+# when the fixture has a Model) into a scratch Phoenix project directory, replacing
 # the previous fixture's files. Every fixture renders with the same name
 # (module PhxCheck, app :phx_check), so the dependencies, configured the
 # same way, compile once for all of them (scripts/phoenix_compile_check.sh).
@@ -10,13 +11,15 @@
 #
 # `list` prints the fixture names: every BubbleEx.Model fixture
 # (test/support/model/*.json), every target fixture
-# (test/support/target/ash/*.json), the expression fixture, every frozen
-# fidelity case's payload (`fidelity_<case>`, with its pages) and the owner
-# decision fixtures (BubbleEx.Test.DecidedFixture), two frontends with
-# hostile Bubble IDs (`hostile_ids`, `hostile_overlays`), plus `private_app` when
-# BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An app with a frontend
-# renders its pages (WTF-370), with the bindings the expression compiler
-# lowers.
+# (test/support/target/ash/*.json), the Phoenix fixtures
+# (test/support/target/phoenix/*.json, e.g. API clients), the expression
+# fixture, every frozen fidelity case's payload (`fidelity_<case>`, with its
+# pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), two
+# frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`), plus
+# `private_app` when BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An
+# app with a frontend renders its pages (WTF-370), with the bindings the
+# expression compiler lowers; an app with a Model its API Connector clients
+# (WTF-374).
 #
 # The committed scripts/phoenix_compile_check/mix.lock replaces the stub
 # lock, and with PHOENIX_COMPILE_CHECK_DB (a PostgreSQL URL without a
@@ -67,13 +70,16 @@ end
 app_fixture = fn app ->
   {:ok, model} = BubbleEx.Model.build(app)
   {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
-  {:ok, project, frontend.(app, model, project)}
+  # The API client Spec of its API Connector calls (WTF-374).
+  {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
+  {:ok, project, [api_clients: clients] ++ frontend.(app, model, project)}
 end
 
 fixtures =
   for {pattern, prefix} <- [
         {"test/support/model/*.json", ""},
         {"test/support/target/ash/*.json", "target_"},
+        {"test/support/target/phoenix/*.json", "phoenix_"},
         {"test/support/expression/*.json", "expr_"},
         {"test/support/fidelity/cases/*/source/payload.json", "fidelity_"}
       ],
@@ -132,7 +138,12 @@ fixtures =
 
 # The app JSON of a fixture rendered from one (not the decision fixtures).
 app_json = fn name ->
-  [{"test/support/model/", ""}, {"test/support/target/ash/", "target_"}, {"test/support/expression/", "expr_"}]
+  [
+    {"test/support/model/", ""},
+    {"test/support/target/ash/", "target_"},
+    {"test/support/target/phoenix/", "phoenix_"},
+    {"test/support/expression/", "expr_"}
+  ]
   |> Enum.find_value(fn {dir, prefix} ->
     path = dir <> String.replace_prefix(name, prefix, "") <> ".json"
     if String.starts_with?(name, prefix) and File.exists?(path), do: path

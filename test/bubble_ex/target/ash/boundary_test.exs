@@ -12,6 +12,8 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     "lib/bubble_ex/target/phoenix.ex",
     "lib/bubble_ex/target/phoenix/manifest.ex",
     "lib/bubble_ex/target/phoenix/templates.ex",
+    # Its API clients (WTF-374) print a Spec and the Project.
+    "lib/bubble_ex/target/phoenix/api_clients.ex",
     # Its HEEx emitter prints the normalized frontend (WTF-370).
     "lib/bubble_ex/target/phoenix/pages.ex",
     "lib/bubble_ex/target/phoenix/tailwind.ex"
@@ -22,12 +24,16 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
                   lib/bubble_ex/target/phoenix/pages.ex
                   lib/bubble_ex/target/phoenix/tailwind.ex)
 
+  # The API client Spec is plain data too.
+  @plain ["lib/bubble_ex/target/api_clients/spec.ex"]
+
   defp forbidden do
     [
       ~r{^lib/bubble_ex/model\.ex$},
       ~r{^lib/bubble_ex/model/},
       ~r{^lib/bubble_ex/db/reader(\.ex$|/)},
-      ~r{^lib/bubble_ex/target/ash\.ex$}
+      ~r{^lib/bubble_ex/target/ash\.ex$},
+      ~r{^lib/bubble_ex/target/api_clients\.ex$}
     ]
   end
 
@@ -52,6 +58,15 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
         do: assert("lib/bubble_ex/target/ash/project.ex" in deps, inspect(deps))
 
       for dep <- deps, pattern <- forbidden() do
+        refute Regex.match?(pattern, dep), "#{@file_path} depends on #{dep}"
+      end
+    end
+  end
+
+  for file <- @plain do
+    @file_path file
+    test "#{file} depends on neither the Model nor the mappers" do
+      for dep <- dependencies(@file_path), pattern <- forbidden() do
         refute Regex.match?(pattern, dep), "#{@file_path} depends on #{dep}"
       end
     end

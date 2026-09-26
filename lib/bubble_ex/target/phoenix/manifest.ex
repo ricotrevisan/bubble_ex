@@ -30,7 +30,9 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       applied decisions, diagnostics…); `decisions_sha256` and
       `applied_sha256` are the Project's (nil without decisions);
       `frontend` identifies the normalized frontend the pages were
-      rendered from (nil without one, WTF-370)
+      rendered from (nil without one, WTF-370);
+      `api_clients_sha256`, present when API clients were rendered, is the
+      SHA-256 of the `BubbleEx.Target.ApiClients.Spec`'s canonical JSON
     * `generated` - every generated file (path → SHA-256 of its content).
       Regeneration overwrites them; `check/2` finds hand edits. The
       manifest does not list itself
@@ -48,6 +50,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   """
 
   alias BubbleEx.{CanonicalJson, Error}
+  alias BubbleEx.Target.ApiClients.Spec
   alias BubbleEx.Target.Ash.Project
 
   @path ".wtf/generated.json"
@@ -80,15 +83,17 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       "target" => "phoenix",
       "app" => ctx.app,
       "module" => ctx.module,
-      "inputs" => %{
-        "bubble_ex_version" => ctx.bubble_ex_version,
-        "project_schema_version" => project.schema_version,
-        "project_sha256" => project |> Project.to_map() |> CanonicalJson.sha256(),
-        "decisions_sha256" => project.decisions_sha256,
-        "applied_sha256" => project.applied_sha256,
-        "privacy" => Atom.to_string(project.privacy),
-        "frontend" => Map.get(ctx, :frontend)
-      },
+      "inputs" =>
+        %{
+          "bubble_ex_version" => ctx.bubble_ex_version,
+          "project_schema_version" => project.schema_version,
+          "project_sha256" => project |> Project.to_map() |> CanonicalJson.sha256(),
+          "decisions_sha256" => project.decisions_sha256,
+          "applied_sha256" => project.applied_sha256,
+          "privacy" => Atom.to_string(project.privacy),
+          "frontend" => Map.get(ctx, :frontend)
+        }
+        |> put_api_clients(Map.get(ctx, :api_clients)),
       "generated" => hashes(generated),
       "owned" => hashes(owned)
     }
@@ -104,6 +109,11 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   end
 
   defp put_routes(manifest, _ctx), do: manifest
+
+  defp put_api_clients(inputs, nil), do: inputs
+
+  defp put_api_clients(inputs, %Spec{} = spec),
+    do: Map.put(inputs, "api_clients_sha256", Spec.sha256(spec))
 
   @doc "Canonical, pretty-printed JSON text of a manifest."
   @spec encode(t()) :: String.t()
