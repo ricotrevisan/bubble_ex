@@ -6,11 +6,11 @@ defmodule <%= @web %>.SmokeTest do
 
   alias <%= @module %>.Accounts.{MagicLinkEmail, Resources}
 
-  test "the home page renders", %{conn: conn} do
+<%= unless Enum.any?(@routes, &(&1.path == "/")) do %>  test "the home page renders", %{conn: conn} do
     assert html_response(get(conn, ~p"/"), 200) =~ "Sign in"
   end
 
-  test "the sign-in page renders", %{conn: conn} do
+<% end %>  test "the sign-in page renders", %{conn: conn} do
     assert html_response(get(conn, ~p"/sign-in"), 200) =~ "email"
   end
 

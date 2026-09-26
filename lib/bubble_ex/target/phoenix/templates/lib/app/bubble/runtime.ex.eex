@@ -1,0 +1,172 @@
+defmodule <%= @module %>.Bubble.Runtime do
+  @moduledoc """
+  Bubble's value semantics for the expressions bubble_ex compiled into the
+  pages (the contract is `BubbleEx.Target.Elixir.Runtime`). Scaffolded by
+  bubble_ex; this file is yours.
+
+  Every function takes possibly-empty values (`nil`) and never raises on
+  them: in Bubble an empty value is not an error. The functions marked
+  `TODO(bubble:runtime)` approximate Bubble (formats, calendars, keyword
+  matching): check them against the Bubble app before relying on them.
+  """
+
+  import Kernel, except: [abs: 1, div: 2, round: 1]
+
+  @doc "A value as Bubble shows it in text."
+  def text(nil), do: ""
+  def text(true), do: "yes"
+  def text(false), do: "no"
+  def text(x) when is_float(x) and x == trunc(x), do: Integer.to_string(trunc(x))
+  def text(x) when is_float(x), do: Float.to_string(x)
+  def text(%DateTime{} = x), do: DateTime.to_iso8601(x)
+  def text(%Date{} = x), do: Date.to_iso8601(x)
+  def text(%Decimal{} = x), do: Decimal.to_string(x, :normal)
+  def text(x) when is_list(x), do: Enum.map_join(x, ", ", &text/1)
+  def text(%{id: id}), do: to_string(id)
+  def text(x) when is_binary(x), do: x
+  def text(x), do: to_string(x)
+
+  @doc "`is empty`."
+  def empty?(x), do: x in [nil, "", []]
+
+  @doc "`>`, `<`, `>=`, `<=`: false when either side is empty."
+  def compare(op, a, b) do
+    if empty?(a) or empty?(b) do
+      false
+    else
+      case {op, order(a, b)} do
+        {:gt, :gt} -> true
+        {:lt, :lt} -> true
+        {:gte, o} -> o in [:gt, :eq]
+        {:lte, o} -> o in [:lt, :eq]
+        _ -> false
+      end
+    end
+  end
+
+  defp order(%DateTime{} = a, %DateTime{} = b), do: DateTime.compare(a, b)
+  defp order(%Date{} = a, %Date{} = b), do: Date.compare(a, b)
+  defp order(%Decimal{} = a, b), do: Decimal.compare(a, Decimal.new("#{b}"))
+  defp order(a, %Decimal{} = b), do: Decimal.compare(Decimal.new("#{a}"), b)
+  defp order(a, b) when a > b, do: :gt
+  defp order(a, b) when a < b, do: :lt
+  defp order(_a, _b), do: :eq
+
+  def add(a, b), do: arithmetic(a, b, &Kernel.+/2)
+  def sub(a, b), do: arithmetic(a, b, &Kernel.-/2)
+  def mul(a, b), do: arithmetic(a, b, &Kernel.*/2)
+  def div(_a, b) when b in [0, 0.0], do: nil
+  def div(a, b), do: arithmetic(a, b, &Kernel.//2)
+  def mod(_a, b) when b in [0, 0.0], do: nil
+  def mod(a, b) when is_integer(a) and is_integer(b), do: Integer.mod(a, b)
+  def mod(a, b), do: arithmetic(a, b, fn x, y -> x - y * Float.floor(x / y) end)
+
+  defp arithmetic(a, b, fun) when is_number(a) and is_number(b), do: fun.(a, b)
+  defp arithmetic(_a, _b, _fun), do: nil
+
+  @doc "`defaulting to`."
+  def default(x, d), do: if(empty?(x), do: d, else: x)
+
+  def lowercase(x) when is_binary(x), do: String.downcase(x)
+  def lowercase(x), do: x
+  def uppercase(x) when is_binary(x), do: String.upcase(x)
+  def uppercase(x), do: x
+  def trim(x) when is_binary(x), do: String.trim(x)
+  def trim(x), do: x
+  def text_length(x) when is_binary(x), do: String.length(x)
+  def text_length(_x), do: 0
+  def abs(x) when is_number(x), do: Kernel.abs(x)
+  def abs(x), do: x
+  def round(x) when is_float(x), do: Kernel.round(x)
+  def round(x), do: x
+  def to_text(x), do: text(x)
+
+  def to_number(x) when is_number(x), do: x
+
+  def to_number(x) when is_binary(x) do
+    case Float.parse(String.trim(x)) do
+      {n, ""} -> if n == trunc(n) and not String.contains?(x, "."), do: trunc(n), else: n
+      _ -> nil
+    end
+  end
+
+  def to_number(_x), do: nil
+
+  @doc "`text contains string`: substring."
+  def text_contains?(a, b) when is_binary(a) and is_binary(b), do: String.contains?(a, b)
+  def text_contains?(_a, _b), do: false
+
+  def truncate(x, n) when is_binary(x) and is_integer(n), do: String.slice(x, 0, n)
+  def truncate(x, _n), do: x
+
+  def replace(x, find, replacement, false) when is_binary(x) and is_binary(find),
+    do: String.replace(x, find, text(replacement))
+
+  def replace(x, find, replacement, true) when is_binary(x) and is_binary(find) do
+    case Regex.compile(find) do
+      {:ok, regex} -> Regex.replace(regex, x, text(replacement))
+      _ -> x
+    end
+  end
+
+  def replace(x, _find, _replacement, _regex?), do: x
+
+  def split(x, sep) when is_binary(x) and is_binary(sep) and sep != "", do: String.split(x, sep)
+  def split(x, _sep), do: x
+
+  # TODO(bubble:runtime) Bubble's word-level match.
+  def text_contains_words?(a, b) when is_binary(a) and is_binary(b) do
+    words = a |> String.downcase() |> String.split(~r/\W+/u, trim: true)
+    b |> String.downcase() |> String.split(~r/\W+/u, trim: true) |> Enum.all?(&(&1 in words))
+  end
+
+  def text_contains_words?(_a, _b), do: false
+
+  # TODO(bubble:runtime) Bubble capitalizes after spaces only.
+  def capitalize_words(x) when is_binary(x),
+    do: x |> String.split(" ") |> Enum.map_join(" ", &String.capitalize/1)
+
+  def capitalize_words(x), do: x
+
+  # TODO(bubble:runtime) Bubble's JSON-safe text (quotes escaped, no outer quotes).
+  def json_encode(x) when is_binary(x), do: x |> Jason.encode!() |> String.slice(1..-2//1)
+  def json_encode(x), do: x
+
+  def url_encode(x) when is_binary(x), do: URI.encode_www_form(x)
+  def url_encode(x), do: x
+
+  # TODO(bubble:runtime) Bubble's email check.
+  def is_email(x) when is_binary(x), do: Regex.match?(~r/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/, x)
+  def is_email(_x), do: false
+
+  # TODO(bubble:runtime) Bubble's date formats (`format` is Bubble's format text).
+  def format_date(nil, _format), do: nil
+  def format_date(x, _format), do: text(x)
+
+  # TODO(bubble:runtime) Bubble's number formats (`options` are Bubble's settings).
+  def format_number(x, _options), do: x
+
+  def format_boolean(true, yes, _no), do: yes
+  def format_boolean(false, _yes, no), do: no
+  def format_boolean(_x, _yes, _no), do: nil
+
+  # TODO(bubble:runtime) Bubble's calendar arithmetic (months, time zones).
+  def date_add(%DateTime{} = x, n, unit) when is_number(n) do
+    seconds = %{second: 1, minute: 60, hour: 3600, day: 86_400, month: 2_592_000, year: 31_536_000}
+    DateTime.add(x, Kernel.round(n * seconds[unit]), :second)
+  end
+
+  def date_add(_x, _n, _unit), do: nil
+
+  # TODO(bubble:runtime) `rounded down to` a calendar unit.
+  def date_floor(x, _unit), do: x
+
+  # TODO(bubble:runtime) `extract` a calendar part.
+  def date_part(nil, _unit), do: nil
+  def date_part(%DateTime{} = x, "year"), do: x.year
+  def date_part(%DateTime{} = x, "month"), do: x.month
+  def date_part(%DateTime{} = x, "day"), do: x.day
+  def date_part(%DateTime{} = x, "hour"), do: x.hour
+  def date_part(%DateTime{} = x, "minute"), do: x.minute
+  def date_part(_x, _unit), do: nil
+end

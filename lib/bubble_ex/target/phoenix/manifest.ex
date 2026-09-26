@@ -14,7 +14,9 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           "project_sha256": "…",
           "decisions_sha256": null,
           "applied_sha256": null,
-          "privacy": "omit"
+          "privacy": "omit",
+          "frontend": {"bubble_id": "acme", "app_version": "live",
+                       "normalized_schema_version": 3, "source_sha256": "…"}
         },
         "generated": {"lib/acme_import/invoice.ex": "<sha256>", …},
         "owned": {"mix.exs": "<sha256 as scaffolded>", …}
@@ -24,7 +26,9 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       `project_sha256` is the SHA-256 of the canonical JSON of the
       `BubbleEx.Target.Ash.Project` (`Project.to_map/1`: resources, names,
       applied decisions, diagnostics…); `decisions_sha256` and
-      `applied_sha256` are the Project's (nil without decisions)
+      `applied_sha256` are the Project's (nil without decisions);
+      `frontend` identifies the normalized frontend the pages were
+      rendered from (nil without one, WTF-370)
     * `generated` - every generated file (path → SHA-256 of its content).
       Regeneration overwrites them; `check/2` finds hand edits. The
       manifest does not list itself
@@ -75,7 +79,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
         "project_sha256" => project |> Project.to_map() |> CanonicalJson.sha256(),
         "decisions_sha256" => project.decisions_sha256,
         "applied_sha256" => project.applied_sha256,
-        "privacy" => Atom.to_string(project.privacy)
+        "privacy" => Atom.to_string(project.privacy),
+        "frontend" => Map.get(ctx, :frontend)
       },
       "generated" => hashes(generated),
       "owned" => hashes(owned)

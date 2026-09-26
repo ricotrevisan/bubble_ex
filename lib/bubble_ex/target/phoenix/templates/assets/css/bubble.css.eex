@@ -1,6 +1,0 @@
-/* The Bubble app's design tokens as Tailwind v4 theme variables (WTF-359
-   Q4). Named Bubble styles will become component classes here; no daisyUI.
-   None are lowered yet. */
-
-@theme {
-}

@@ -9,6 +9,7 @@ defmodule BubbleEx.Target.PhoenixTest do
   @generated [
     ".wtf/names.json",
     "assets/css/bubble.css",
+    "assets/css/bubble_residue.css",
     "lib/acme_import/accounts/resources.ex",
     "lib/acme_import/accounts/token.ex",
     "lib/acme_import/domain.ex",
@@ -243,8 +244,11 @@ defmodule BubbleEx.Target.PhoenixTest do
     test "uses Tailwind v4 theme tokens and no daisyUI" do
       files = render!()
 
-      assert files["assets/css/app.css"] =~ ~s(@import "tailwindcss")
+      assert files["assets/css/app.css"] =~ ~s(@import "tailwindcss/utilities.css")
       assert files["assets/css/app.css"] =~ ~s(@import "./bubble.css")
+      assert files["assets/css/app.css"] =~ ~s(@import "./bubble_residue.css")
+      # No Preflight: Bubble pages assume the browser's defaults.
+      refute files["assets/css/app.css"] =~ ~s(@import "tailwindcss")
       assert files["assets/css/bubble.css"] =~ "@theme {"
 
       # no daisyUI plugin, dependency or component classes
@@ -401,7 +405,8 @@ defmodule BubbleEx.Target.PhoenixTest do
                "project_sha256" => project |> Project.to_map() |> CanonicalJson.sha256(),
                "decisions_sha256" => nil,
                "applied_sha256" => nil,
-               "privacy" => "omit"
+               "privacy" => "omit",
+               "frontend" => nil
              }
 
       assert Phoenix.generator_version() == Mix.Project.config()[:version]

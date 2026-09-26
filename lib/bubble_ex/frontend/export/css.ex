@@ -5,23 +5,24 @@ defmodule BubbleEx.Frontend.Export.Css do
   alias BubbleEx.Frontend.Export.{Bbcode, Safety}
   alias BubbleEx.Frontend.Normalized.Node
 
+  @base """
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body { margin: 0; }
+  p, h1, h2, h3, h4, fieldset, legend { margin: 0; font: inherit; }
+  fieldset { min-width: 0; padding: 0; border: 0; }
+  button, input, textarea, select { font: inherit; }
+  button { border: none; background: none; padding: 0; line-height: 1; }
+  textarea { resize: none; }
+  [data-overlay][hidden] { display: none; }
+  .bubbleex-text-default { font-family: var(--font_default); font-size: 14px; }
+  .bubbleex-button-default { line-height: 1; }
+  """
+
   @spec shared(Normalized.t(), String.t()) :: String.t()
   def shared(%Normalized{} = model, font_css \\ "") when is_binary(font_css) do
     styles = model.styles
-
-    base = """
-    * { box-sizing: border-box; }
-    html { -webkit-font-smoothing: antialiased; }
-    body { margin: 0; }
-    p, h1, h2, h3, h4, fieldset, legend { margin: 0; font: inherit; }
-    fieldset { min-width: 0; padding: 0; border: 0; }
-    button, input, textarea, select { font: inherit; }
-    button { border: none; background: none; padding: 0; line-height: 1; }
-    textarea { resize: none; }
-    [data-overlay][hidden] { display: none; }
-    .bubbleex-text-default { font-family: var(--font_default); font-size: 14px; }
-    .bubbleex-button-default { line-height: 1; }
-    """
+    base = @base
 
     style_rules =
       Enum.map_join(styles, "\n", fn style ->
@@ -99,6 +100,142 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Enum.join("\n")
     |> then(fn css -> if css == "", do: "\n", else: String.trim_trailing(css) <> "\n" end)
   end
+
+  @typedoc """
+  One node's lowered CSS (`lower/2`): its own declarations as sorted
+  `{property, value}` pairs (what `page/2` puts in the node's rule), and
+  every other rule for it as CSS text (anchor positioning, child and
+  pseudo-element rules, responsive and breakpoint media rules), selected by
+  `opts[:selector]`.
+  """
+  @type lowered :: %{
+          node: Node.t(),
+          declarations: [{String.t(), term()}],
+          rules: String.t()
+        }
+
+  @doc """
+  `page/2` per node, for a target that places declarations itself (the
+  HEEx emitter): one entry per node of the tree, in `page/2`'s order.
+  Options as `page/2`, plus `:selector` (a function of the node).
+  """
+  @spec lower(Node.t(), keyword()) :: [lowered()]
+  def lower(%Node{} = node, opts \\ []) do
+    entries = collect(node, Keyword.get(opts, :parent_mode))
+    opts = Keyword.put_new_lazy(opts, :anchors, fn -> anchors(entries, opts) end)
+    Enum.map(entries, &lower_entry(&1, opts))
+  end
+
+  @doc """
+  `expanded_definition/3`'s rule for the instance root (the definition's
+  box, sized and placed by the instance), as a `t:lowered/0` of the
+  definition node.
+  """
+  @spec lower_root(Node.t(), Node.t() | nil, keyword()) :: lowered()
+  def lower_root(%Node{} = definition, instance, opts \\ []) do
+    root =
+      definition
+      |> instance_position(instance)
+      |> instance_dimensions(instance)
+      |> drop_instance_root_alignment()
+
+    lower_entry({root, nil}, opts)
+  end
+
+  @doc """
+  The children of a reusable definition as `expanded_definition/3` lowers
+  them (their parent mode and anchor scope), per node.
+  """
+  @spec lower_definition_children(Node.t(), keyword()) :: [lowered()]
+  def lower_definition_children(%Node{} = definition, opts \\ []) do
+    opts = Keyword.put(opts, :parent_mode, layout_value(definition.layout || %{}, :mode))
+
+    opts =
+      Keyword.put(
+        opts,
+        :anchors,
+        anchors(Enum.flat_map(definition.children, &collect(&1, nil)), opts)
+      )
+
+    Enum.flat_map(definition.children, &lower(&1, opts))
+  end
+
+  defp lower_entry({node, _parent_mode} = entry, opts) do
+    anchors = Keyword.get(opts, :anchors, %{})
+    {anchored, anchor_name} = anchor_css(node, anchors)
+    selector = selector(node, opts)
+
+    rules =
+      [
+        anchored_rule(selector, anchored),
+        extra_rule(node, opts),
+        responsive_css([entry], opts),
+        breakpoint_css([entry], opts)
+      ]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("\n")
+
+    %{
+      node: node,
+      declarations: node |> css_map(elem(entry, 1)) |> Map.merge(anchor_name) |> declarations(),
+      rules: rules
+    }
+  end
+
+  @doc """
+  Paint (CSS or Bubble property names) as the sorted, safe `{property,
+  value}` declarations a rule gets.
+  """
+  @spec declarations(map()) :: [{String.t(), term()}]
+  def declarations(map) when is_map(map) do
+    map
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    |> Enum.map(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
+    |> Enum.filter(fn {_k, value} -> Safety.safe_css_value?(value) end)
+    |> Enum.sort_by(&elem(&1, 0))
+  end
+
+  @doc """
+  The named styles as `shared/2` lowers them: per style, its declarations
+  and its breakpoint rules (`{operator, width, declarations}`).
+  """
+  @spec style_rules(Normalized.t()) :: [
+          {Normalized.Style.t(), [{String.t(), term()}], [{String.t(), number(), list()}]}
+        ]
+  def style_rules(%Normalized{} = model) do
+    Enum.map(model.styles, fn style ->
+      breakpoints =
+        for %{"media" => %{"operator" => operator, "width" => width}, "paint" => paint} <-
+              style.responsive || [],
+            operator in ["<", "<=", ">", ">="] and is_number(width) and width >= 0,
+            do: {operator, width, declarations(paint)}
+
+      {style, style |> shared_paint(model) |> declarations(), breakpoints}
+    end)
+  end
+
+  @doc """
+  The app's design tokens as `shared/2` declares them on `:root`:
+  `{custom property, value}` (colors, their RGB triplets, fonts).
+  """
+  @spec tokens(Normalized.t()) :: [{String.t(), String.t()}]
+  def tokens(%Normalized{source: source}) do
+    client = payload_client(source)
+    colors = client["color_tokens"] || %{}
+
+    (color_token_decls(colors) ++
+       font_token_decls(get_in(client, ["font_tokens", "%d1"])) ++
+       user_token_decls(client["color_tokens_user"], :color) ++
+       user_token_decls(client["font_tokens_user"], :font))
+    |> Enum.map(fn decl ->
+      [name, value] = decl |> String.trim_trailing(";") |> String.split(": ", parts: 2)
+      {name, value}
+    end)
+  end
+
+  @doc "The base rules `shared/2` starts with (element resets, overlay closing, text defaults)."
+  @spec base() :: String.t()
+  def base, do: @base
 
   # Chromium can initialize a select's displayed option before stylesheet fonts
   # settle. Bubble supplies its local typography inline. Keep the same values
@@ -332,9 +469,7 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp rule({%Node{} = node, parent_mode}, opts) do
-    id = prefixed_id(node, opts)
-
-    selector = "[data-exporter-id=\"#{escape(id)}\"]"
+    selector = selector(node, opts)
     {anchored, anchor_name} = anchor_css(node, Keyword.get(opts, :anchors, %{}))
 
     decls =
@@ -415,6 +550,16 @@ defmodule BubbleEx.Frontend.Export.Css do
           nil -> node.exporter_id
           prefix -> Naming.expanded_id(prefix, node)
         end
+    end
+  end
+
+  # The selector of a node's rules: its exporter ID, or the caller's
+  # (`:selector`, a function of the node; the HEEx emitter selects by
+  # `data-bubble-id`).
+  defp selector(node, opts) do
+    case Keyword.get(opts, :selector) do
+      fun when is_function(fun, 1) -> fun.(node)
+      _ -> ~s([data-exporter-id="#{escape(prefixed_id(node, opts))}"])
     end
   end
 
@@ -998,10 +1143,8 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp extra_rule(%Node{kind: :icon, variant: :inline_svg} = node, opts) do
-    id = prefixed_id(node, opts) |> escape()
-
     """
-    [data-exporter-id="#{id}"] > svg {
+    #{selector(node, opts)} > svg {
       width: 100%;
       height: 100%;
     }
@@ -1009,10 +1152,8 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp extra_rule(%Node{kind: :icon} = node, opts) do
-    id = prefixed_id(node, opts) |> escape()
-
     """
-    [data-exporter-id="#{id}"] > svg {
+    #{selector(node, opts)} > svg {
       width: 100%;
       height: 100%;
       fill: currentColor;
@@ -1021,7 +1162,6 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp extra_rule(%Node{kind: :multiline_input, variant: :fit_height} = node, opts) do
-    id = prefixed_id(node, opts) |> escape()
     minimum = if Map.has_key?(box_css(node), "min-height"), do: nil, else: "0"
 
     declarations =
@@ -1032,7 +1172,7 @@ defmodule BubbleEx.Frontend.Export.Css do
       })
 
     """
-    [data-exporter-id="#{id}"] {
+    #{selector(node, opts)} {
     #{declarations}}
     """ <> extra_rule(%{node | variant: :fixed}, opts)
   end
@@ -1044,17 +1184,14 @@ defmodule BubbleEx.Frontend.Export.Css do
         get_in(node.style, ["resolved", "placeholder_color"])
 
     if is_binary(color) and Safety.safe_css_value?(color) do
-      id = prefixed_id(node, opts)
-
-      "[data-exporter-id=\"#{escape(id)}\"]::placeholder {\n  color: #{color};\n  opacity: 1;\n}\n"
+      "#{selector(node, opts)}::placeholder {\n  color: #{color};\n  opacity: 1;\n}\n"
     else
       ""
     end
   end
 
   defp extra_rule(%Node{kind: :radio_buttons} = node, opts) do
-    id = prefixed_id(node, opts) |> escape()
-    selector = "[data-exporter-id=\"#{id}\"]"
+    selector = selector(node, opts)
 
     """
     #{selector} > input[type="radio"] {
@@ -1110,8 +1247,7 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp extra_rule(%Node{kind: kind, variant: variant} = node, opts)
        when kind in [:button, :link] and variant in [:icon, :label_icon] do
-    id = prefixed_id(node, opts) |> escape()
-    selector = "[data-exporter-id=\"#{id}\"]"
+    selector = selector(node, opts)
 
     """
     #{selector} > svg {
@@ -1126,8 +1262,7 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp extra_rule(%Node{kind: :text} = node, opts) do
     raw = text_slot(node)
-    id = prefixed_id(node, opts) |> escape()
-    selector = "[data-exporter-id=\"#{id}\"]"
+    selector = selector(node, opts)
 
     block_whitespace =
       if Bbcode.block?(raw), do: "#{selector} { white-space: normal; }\n", else: ""
@@ -1156,13 +1291,13 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp extra_rule(%Node{kind: :slider, variant: :range} = node, opts) do
-    id = prefixed_id(node, opts) |> escape()
+    selector = selector(node, opts)
 
     # Bubble paints the track and handles, leaving the outer SliderInput box
     # transparent and borderless. The paired native controls approximate those
     # internals; painting the wrapper adds a panel absent from the source.
     """
-    [data-exporter-id="#{id}"] {
+    #{selector} {
       align-items: center;
       background: transparent;
       border: 0;
@@ -1170,7 +1305,7 @@ defmodule BubbleEx.Frontend.Export.Css do
       display: flex;
       gap: 8px;
     }
-    [data-exporter-id="#{id}"] > input {
+    #{selector} > input {
       flex: 1 1 0;
       margin: 0;
       min-width: 0;
@@ -1200,8 +1335,7 @@ defmodule BubbleEx.Frontend.Export.Css do
       inner =
         Enum.map_join(entries, "\n", fn {_w, node, rule} ->
           decls = responsive_decls(rule)
-          id = prefixed_id(node, opts)
-          "  [data-exporter-id=\"#{escape(id)}\"] {\n#{indent_decls(decls)}  }"
+          "  #{selector(node, opts)} {\n#{indent_decls(decls)}  }"
         end)
 
       "@media (max-width: #{width}px) {\n#{inner}\n}\n"
@@ -1217,8 +1351,6 @@ defmodule BubbleEx.Frontend.Export.Css do
       Enum.map_join(node.responsive || [], "\n", fn
         %{"media" => %{"operator" => operator, "width" => width}, "paint" => paint}
         when operator in ["<", "<=", ">", ">="] and is_number(width) and width >= 0 ->
-          id = prefixed_id(node, opts)
-
           decls =
             paint
             |> restore_visible_display(node, parent)
@@ -1227,7 +1359,7 @@ defmodule BubbleEx.Frontend.Export.Css do
             |> image_breakpoint_paint(node)
             |> declarations_from_paint()
 
-          "@media (width #{operator} #{width}px) {\n  [data-exporter-id=\"#{escape(id)}\"] {\n#{decls}  }\n}\n"
+          "@media (width #{operator} #{width}px) {\n  #{selector(node, opts)} {\n#{decls}  }\n}\n"
 
         _ ->
           ""
@@ -1289,10 +1421,7 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp declarations_from_paint(map) when is_map(map) do
     map
-    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-    |> Enum.map(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
-    |> Enum.filter(fn {_k, value} -> Safety.safe_css_value?(value) end)
-    |> Enum.sort_by(&elem(&1, 0))
+    |> declarations()
     |> Enum.map_join("", fn {k, v} -> "  #{k}: #{v};\n" end)
   end
 

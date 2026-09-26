@@ -80,6 +80,21 @@ sign-in). The dependencies are locked by
 `PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1`. `PHOENIX_COMPILE_CHECK_FIXTURES`
 limits the run to some fixtures. CI runs it as the `phoenix-compile-check`
 job: every fixture on Elixir 1.18, a representative subset on 1.20.
+Fixtures with pages (the frozen fidelity cases, `fidelity_<case>`, and the
+expression fixture) also compile their LiveViews and, with the database,
+mount every page and check each element's `data-bubble-id`.
+
+To check the HEEx emitter's pages against the frozen fidelity references
+(after the compile check has fetched the dependencies, and with the
+fidelity npm dependencies installed):
+
+```bash
+scripts/heex_fidelity.sh    # HEEX_FIDELITY_CASES="bpgwgmpz" for some cases
+```
+
+It serves each case's page from its generated LiveView, builds the
+project's Tailwind stylesheet and runs `test/support/fidelity/run.mjs`
+(and `overlay-states.mjs` for `bptvorpv`), then prints the parity summary.
 
 ## Testing
 
