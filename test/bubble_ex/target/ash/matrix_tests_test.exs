@@ -84,22 +84,6 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
              )
   end
 
-  test "a field the seed omits is seeded empty, not as the attribute's default" do
-    {:ok, model} =
-      "test/support/target/ash/defaults.json" |> File.read!() |> Jason.decode!() |> Model.build()
-
-    {:ok, matrix} = Matrix.synthesize(model, app: "fixture-app")
-    {:ok, project} = Ash.map(model, [], privacy: :unverified)
-    {:ok, out} = MatrixTests.render(project, matrix, namespace: "X")
-
-    card = Enum.find(project.resources, &(&1.module == "Card"))
-    defaulted = for a <- card.attributes, a.default != nil, do: a.name
-    assert "title" in defaulted
-
-    [_, rows] = String.split(out.source, "defp seed_rows")
-    for name <- defaulted, do: assert(rows =~ "#{name}: nil")
-  end
-
   test "needs policies: privacy: :omit is refused", %{model: model, matrix: matrix} do
     {:ok, omitted} = Ash.map(model, [], privacy: :omit)
     assert {:error, %{kind: :invalid_input}} = MatrixTests.render(omitted, matrix, @opts)

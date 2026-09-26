@@ -18,8 +18,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
     * `setup_all` checks out the repo's Ecto sandbox in shared mode and
       seeds every seed record with `Ash.Seed.seed!/2` (no actions, no
-      policies; a field the seed omits is empty, so attributes with a
-      default are seeded as nil), keyed by Bubble IDs: the primary key of each record is the
+      policies), keyed by Bubble IDs: the primary key of each record is the
       Bubble ID the ledger (`:ledger`) binds its seed key to. Without a
       ledger (no replay yet) each key gets a deterministic synthetic
       Bubble-shaped ID (`synthetic_id/1`). Values are converted from
@@ -303,22 +302,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
          {:ok, attrs} <-
            record.fields |> Enum.sort() |> map_ok(&seed_attribute(&1, resource, record, ids, ctx)) do
       pk = {primary_key(resource).name, {:lit, ids[record.key]}}
-
-      {:ok,
-       {module(resource, ctx), record.key, Enum.sort([pk | attrs ++ empty(resource, record)])}}
+      {:ok, {module(resource, ctx), record.key, Enum.sort([pk | attrs])}}
     end
-  end
-
-  # A field the seed omits is empty: attributes with a default (a Bubble
-  # yes/no field's "no", say) are seeded as nil, or the sandbox would hold
-  # values the expectations were not computed on.
-  defp empty(resource, record) do
-    for a <- resource.attributes,
-        a.default != nil,
-        field = a.source[:field],
-        not a.primary_key? and is_binary(field),
-        not Map.has_key?(record.fields, field),
-        do: {a.name, {:lit, nil}}
   end
 
   defp seed_attribute({field, value}, resource, record, ids, ctx) do
