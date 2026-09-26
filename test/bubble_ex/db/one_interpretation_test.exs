@@ -40,6 +40,9 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "editor write plans address raw app JSON by path; plugin schemas and versions have their own `display`/`value`/`fields`",
     "lib/bubble_ex/frontend/" =>
       "element and CSS properties (`display`, `value`), not the data model",
+    "lib/bubble_ex/target/phoenix/pages.ex" =>
+      "element properties and HTML attributes of the normalized frontend (`value`), not the data model",
+    "lib/bubble_ex/target/phoenix/tailwind.ex" => "CSS `display`",
     "lib/bubble_ex/workflows/node.ex" => "classifies a JSON pointer's section (`user_types`)",
     "lib/bubble_ex/workflows/explanation.ex" =>
       "workflow action parameters' own `key`/`value` members, not fields",

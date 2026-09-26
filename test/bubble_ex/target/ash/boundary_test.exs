@@ -13,8 +13,16 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     "lib/bubble_ex/target/phoenix/manifest.ex",
     "lib/bubble_ex/target/phoenix/templates.ex",
     # Its API clients (WTF-374) print a Spec and the Project.
-    "lib/bubble_ex/target/phoenix/api_clients.ex"
+    "lib/bubble_ex/target/phoenix/api_clients.ex",
+    # Its HEEx emitter prints the normalized frontend (WTF-370).
+    "lib/bubble_ex/target/phoenix/pages.ex",
+    "lib/bubble_ex/target/phoenix/tailwind.ex"
   ]
+
+  # Renderers that print something other than a Project.
+  @not_project ~w(lib/bubble_ex/target/phoenix/templates.ex
+                  lib/bubble_ex/target/phoenix/pages.ex
+                  lib/bubble_ex/target/phoenix/tailwind.ex)
 
   # The API client Spec is plain data too.
   @plain ["lib/bubble_ex/target/api_clients/spec.ex"]
@@ -46,7 +54,7 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     test "#{file} depends on neither the Model nor the Reader" do
       deps = dependencies(@file_path)
 
-      if @file_path != "lib/bubble_ex/target/phoenix/templates.ex",
+      if @file_path not in @not_project,
         do: assert("lib/bubble_ex/target/ash/project.ex" in deps, inspect(deps))
 
       for dep <- deps, pattern <- forbidden() do

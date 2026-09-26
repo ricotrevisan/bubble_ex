@@ -15,7 +15,9 @@
 #     and signs a stored user in with a magic link (Oban job, Swoosh email),
 #     and the generated API client tests; for phoenix_api_clients also
 #     `mix wtf.task complete` of its api_call tasks, whose request_shape
-#     check runs the tests tagged with each call (request_shape.exs)
+#     check runs the tests tagged with each call (request_shape.exs); for
+#     expr_app, its page and reusable surface tests run by their task CLI
+#     tags (`mix test --only bubble:page:<id>`)
 #   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
 #     complete/audit end to end on one generated project (WTF-375)
 #
@@ -64,6 +66,14 @@ for fixture in $fixtures; do
   if [[ -n "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
     mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
     mix test
+
+    # The surface tests are selected by the task CLI's tags (WTF-370,
+    # BubbleEx.Target.Phoenix.Checks): `mix test --only bubble:<subject>`
+    # exits non-zero when no test ran.
+    if [[ "$fixture" == "expr_app" ]]; then
+      mix test --only "bubble:page:bP1"
+      mix test --only "bubble:reusable:bU1"
+    fi
 
     # The plan's request_shape check binds to the generated API client
     # tests: mix wtf.task completes the fixture's api_call tasks (WTF-374).

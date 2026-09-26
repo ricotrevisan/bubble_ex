@@ -14,7 +14,7 @@ defmodule <%= @web %>.Layouts do
   def app(assigns) do
     ~H"""
     <header class="flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-      <a href={~p"/"} class="text-sm font-semibold">{<%= inspect(@name) %>}</a>
+      <a href={~p"/"} class="text-sm font-semibold">{<%= BubbleEx.Target.Phoenix.Templates.heex_literal(@name) %>}</a>
       <nav class="flex items-center gap-4 text-sm">
         <span :if={@current_user}>{@current_user.email}</span>
         <a :if={@current_user} href={~p"/sign-out"}>Sign out</a>

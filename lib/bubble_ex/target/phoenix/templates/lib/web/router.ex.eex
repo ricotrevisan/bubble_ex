@@ -30,8 +30,9 @@ defmodule <%= @web %>.Router do
 
   scope "/", <%= @web %> do
     pipe_through :browser
-
+<%= unless Enum.any?(@routes, &(&1.path == "/")) do %>
     get "/", PageController, :home
+<% end %>
 
     auth_routes AuthController, <%= @module %>.Accounts.Resources.user(), path: "/auth"
     sign_out_route AuthController
@@ -45,6 +46,12 @@ defmodule <%= @web %>.Router do
       overrides: [AshAuthentication.Phoenix.Overrides.Default]
     )
   end
+
+  # The pages of the Bubble app (WTF-370), at their Bubble paths. The
+  # generated <%= @web %>.BubbleRoutes defines them, so pages added in Bubble
+  # later are routed on regeneration without editing this file.
+  require <%= @web %>.BubbleRoutes
+  <%= @web %>.BubbleRoutes.bubble_routes()
 
   if Application.compile_env(:<%= @app %>, :dev_routes) do
     scope "/dev" do
