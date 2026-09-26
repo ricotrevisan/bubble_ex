@@ -424,18 +424,6 @@ defmodule BubbleEx.Plan do
   @spec decode(String.t() | map()) :: {:ok, t()} | {:error, Error.t()}
   defdelegate decode(json), to: BubbleEx.Plan.Codec
 
-  @doc """
-  Signs the plan's JSON bytes and the generated-file manifest's
-  (`%{plan:, generated:}`) with a key held outside the owner's repository:
-  see `BubbleEx.Plan.Signature`. `plan_sha256` alone proves nothing.
-  """
-  @spec sign(%{plan: binary(), generated: binary() | nil}, binary()) :: map()
-  defdelegate sign(files, key), to: BubbleEx.Plan.Signature
-
-  @doc "Verifies `%{plan:, generated:, signature:}` against the key: see `BubbleEx.Plan.Signature`."
-  @spec verify(map(), binary()) :: :ok | {:error, Error.t()}
-  defdelegate verify(files, key), to: BubbleEx.Plan.Signature
-
   @doc "Canonical JSON text of `to_map/1` (the `.wtf/plan.json` content)."
   @spec to_json(t()) :: String.t()
   def to_json(%__MODULE__{} = plan), do: plan |> to_map() |> CanonicalJson.encode()

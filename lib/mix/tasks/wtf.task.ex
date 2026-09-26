@@ -14,30 +14,28 @@ defmodule Mix.Tasks.Wtf.Task do
       mix wtf.task release ID --agent A
       mix wtf.task complete ID --agent A [--evidence PATH]… [--attest N=TEXT]…
                                           [--waive N=REASON]… [--app APP_ID]
-                                          [--trusted-reviewer R]… [--trusted]
+                                          [--trusted-reviewer R]…
       mix wtf.task review ID --reviewer R --summary TEXT
       mix wtf.task note ID --agent A (--needs-decision TEXT | --info TEXT | --resolve N)
-      mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--trusted-reviewer R]…
-                           [--trusted] [--json]
-      mix wtf.task sign-result FILE…    # with WTF_PLAN_SIGNING_KEY: writes FILE.sig
+      mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--trusted-reviewer R]… [--json]
       mix wtf.task sync NEW_PLAN.json      # diff against .wtf/plan.json, then replace it
       mix wtf.task sync --from OLD_PLAN.json   # .wtf/plan.json is already the new plan
 
   Every command takes `--root DIR` (default: the current directory).
 
-  ## Trust
+  ## Threat model: advisory only
 
-  Without `--trusted`, `complete` and `audit` are **advisory**: they run
-  every check, but the plan, the manifest, the task states and the
-  results are files the agent being verified can edit, so what they
-  record is that agent's claim, labelled `advisory`. `--trusted` needs the
-  plan signing key in `WTF_PLAN_SIGNING_KEY` (a CI secret; never in the
-  repository): the plan and `.wtf/generated.json` must match
-  `.wtf/plan.sig` (`BubbleEx.Plan.sign/2`), only results with a valid
-  `.sig` count, and reviews, attestations and waivers count only when git
-  shows an author other than the implementers recorded the review. Run
-  `audit --trusted` in CI over committed history for a verdict anyone
-  else can rely on (see `BubbleEx.Tasks`, "Trust").
+  Every verdict of `complete` and `audit` is **advisory** ("advisory: not
+  verified" in the output, `mode: advisory` in the state and in `audit
+  --json`). The plan, the manifest, the task states, the results, the
+  tests and the code are all files the agent being verified can edit, so
+  a verdict is that agent's own claim: good for coordinating agents and
+  catching honest mistakes, not for proving anything to anyone else.
+  Reviewer labels and git author emails are spoofable hints. A verdict
+  others can rely on (WTF-signed plans and results, CI verification,
+  reviews as pull-request approvals) is WTF-411, "WTF trusted
+  verification anchor". `--trusted-reviewer` only tells
+  `BubbleEx.Verify.Result.evaluate/3` whose reviewer waivers to count.
 
     * `next` - ready top-level tasks in plan order: not done, claimed by
       someone else or blocked by a needs-decision note, with every blocking
@@ -65,7 +63,7 @@ defmodule Mix.Tasks.Wtf.Task do
   """
   use Mix.Task
 
-  alias BubbleEx.Plan.{Signature, Task}
+  alias BubbleEx.Plan.Task
   alias BubbleEx.Tasks
   alias BubbleEx.Tasks.{State, Store}
 
@@ -82,7 +80,6 @@ defmodule Mix.Tasks.Wtf.Task do
     app: :string,
     trusted_reviewer: :keep,
     reviewer: :string,
-    trusted: :boolean,
     summary: :string,
     needs_decision: :string,
     info: :string,
@@ -105,7 +102,6 @@ defmodule Mix.Tasks.Wtf.Task do
   end
 
   defp command(["sync" | rest], root, opts, now), do: sync(rest, root, opts, now)
-  defp command(["sign-result" | files], _root, _opts, _now), do: sign_results(files)
 
   defp command([cmd | rest], root, opts, now) do
     board = ok!(Tasks.load(root))
@@ -157,11 +153,13 @@ defmodule Mix.Tasks.Wtf.Task do
          ) do
       {:ok, report} ->
         print_report(report)
+        print_ignored(report.ignored_results)
         info("#{id} done (#{mode(report.mode)})")
 
       {:error, %{context: %{report: report}} = e} ->
         print_report(report)
-        Mix.raise(e.message)
+        print_ignored(report.ignored_results)
+        Mix.raise("#{e.message} (#{mode(report.mode)})")
 
       {:error, e} ->
         Mix.raise(Exception.message(e))
@@ -211,17 +209,23 @@ defmodule Mix.Tasks.Wtf.Task do
 
     if opts[:json] do
       json!(%{
+        mode: result.mode,
+        ignored_results: result.ignored_results,
         checked: result.checked,
         flipped: result.flipped,
         reports: Enum.map(result.reports, &report_map/1)
       })
     else
       print_audit(result)
+      print_ignored(result.ignored_results)
       info(mode(result.mode))
     end
 
     if result.flipped != [],
-      do: Mix.raise("audit: #{length(result.flipped)} tasks need re-verifying")
+      do:
+        Mix.raise(
+          "audit: #{length(result.flipped)} tasks need re-verifying (#{mode(result.mode)})"
+        )
   end
 
   defp command(_cmd, _args, _board, _opts, _now), do: usage()
@@ -255,38 +259,20 @@ defmodule Mix.Tasks.Wtf.Task do
     if write?, do: info("wrote #{Store.plan_path()}")
   end
 
-  defp sign_results([]), do: usage()
-
-  defp sign_results(files) do
-    key = key!()
-
-    for file <- files do
-      bytes = File.read!(file)
-      ok!(BubbleEx.Verify.Result.from_json(bytes))
-      File.write!(file <> ".sig", Signature.sign_file(bytes, "result", key) <> "\n")
-      info("signed #{file}")
-    end
+  defp print_ignored(refs) do
+    for ref <- refs,
+        do: info("ignored result (unsigned; names no criterion checked here): #{ref}")
   end
-
-  defp key! do
-    case Signature.decode_key(System.get_env("WTF_PLAN_SIGNING_KEY")) do
-      {:ok, key} -> key
-      {:error, e} -> Mix.raise("--trusted: " <> e.message)
-    end
-  end
-
-  defp mode(:trusted), do: "trusted: verified against the signed plan"
 
   defp mode(_),
     do:
-      "advisory: not verified (the agent can edit everything checked); " <>
-        "run audit --trusted with WTF_PLAN_SIGNING_KEY for a verdict"
+      "advisory: not verified (the agent being verified can edit everything checked; " <>
+        "trusted verification is WTF-411)"
 
   # --- options ----------------------------------------------------------------------
 
   defp check_opts(opts, now) do
     [
-      key: if(opts[:trusted], do: key!()),
       now: now,
       evidence: Keyword.get_values(opts, :evidence),
       app: opts[:app],
@@ -421,7 +407,7 @@ defmodule Mix.Tasks.Wtf.Task do
 
   defp print_report(%{task: id, outcomes: outcomes} = report) do
     for sub <- Map.get(report, :subtasks, []), do: print_report(sub)
-    info("#{id}:")
+    info("#{id} (advisory verdict):")
 
     for o <- outcomes do
       criterion = if o.criterion, do: "#{o.criterion}. ", else: ""

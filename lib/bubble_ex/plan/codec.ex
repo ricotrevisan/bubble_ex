@@ -2,14 +2,14 @@ defmodule BubbleEx.Plan.Codec do
   @moduledoc """
   Reads `.wtf/plan.json` back into a `BubbleEx.Plan` (`BubbleEx.Plan.decode/1`),
   checking its schema, so a tool in the owner's repository (`mix wtf.task`)
-  works from a plan it can trust:
+  works from a well-formed plan (well-formed, not authentic: see below):
 
     * `schema_version` must be `BubbleEx.Plan.schema_version/0` (an older
       plan is rebuilt, not migrated)
     * `plan_sha256` must be the SHA-256 of the rest of the plan: a
       truncated or carelessly edited plan is refused. This is not
-      authentication (anyone can recompute it); a trusted run verifies
-      the plan's signature (`BubbleEx.Plan.Signature`) instead
+      authentication: anyone can recompute it (see "Threat model" in
+      `BubbleEx.Tasks`; WTF-411)
     * every task has a unique `id`, a known `kind`, `actor` and `status`,
       dependencies of a known kind on tasks of the plan, a `parent` in the
       plan, criteria with a known check (`BubbleEx.Plan.Criteria`) and

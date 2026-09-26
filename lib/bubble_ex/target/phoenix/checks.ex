@@ -3,19 +3,22 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   Binds the abstract criteria of plan tasks (`BubbleEx.Plan.Criteria`) to
   concrete checks in a project rendered by `BubbleEx.Target.Phoenix`
   (WTF-359 §4, WTF-375). `mix wtf.task complete` and `audit` run them
-  locally, in the owner's repository (`BubbleEx.Tasks`).
+  locally, in the owner's repository (`BubbleEx.Tasks`). Every verdict is
+  advisory: the project, its manifest, its tests and the results are the
+  implementing agent's to edit ("Threat model" in `BubbleEx.Tasks`;
+  WTF-411).
 
   | criterion | Phoenix binding |
   |-----------|-----------------|
-  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file |
-  | `compiles` | `mix compile --warnings-as-errors` (the compiler's xref checks: undefined and deprecated calls are warnings, so errors) |
+  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file (the manifest itself is unsigned) |
+  | `compiles` | `mix compile --warnings-as-errors`: undefined and deprecated calls are compiler warnings, so they fail it |
   | `lint` | `mix format --check-formatted`, and `mix credo --strict` when the project has Credo (`deps/credo`) |
-  | `traceability` | every listed Bubble ID is traced in the source under `lib/`: a `data-bubble-id="<id>"` attribute (what the rendered page carries), or for a page or reusable a `bubble:page <id>` / `bubble:reusable <id>` marker comment |
-  | `render_smoke` | no `TODO(bubble:` placeholder left for the listed elements or in the files tracing the listed surfaces, and the tests tagged with them pass (see Tagged tests) |
-  | `step_order` | in `lib/`, exactly one `# bubble:workflow <id>` comment, followed (before the next workflow marker) by one `# bubble:step N <Type>` comment per action, in order, read with `Code.string_to_quoted_with_comments/2` |
+  | `traceability` | every listed element is a `data-bubble-id="<id>"` attribute in `lib/` outside comments (Elixir, `<%!-- --%>`, `<%# %>` and HTML comments are removed first), and every listed page or reusable is rendered by its tagged tests (see Tagged tests; the generated LiveView tests assert each `data-bubble-id` with `has_element?`). With no page or reusable listed, only the source is checked (`advisory: true`: weaker) |
+  | `render_smoke` | no `TODO(bubble:` placeholder left for the listed elements or in the files tracing the listed surfaces, and the tests tagged with each of them pass |
+  | `step_order` | `advisory: true` (weaker: comments, not code): in `lib/`, exactly one `# bubble:workflow <id>` comment, followed (before the next workflow marker) by one `# bubble:step N <Type>` comment per action, in order, read with `Code.string_to_quoted_with_comments/2` |
   | `unit_test` | the tests tagged with each listed workflow pass |
   | `request_shape` | the tests tagged with each listed API call pass |
-  | `deterministic` | a passing `deterministic` `BubbleEx.Verify.Result` naming the task (the generator renders twice) |
+  | `deterministic` | passing `deterministic` `BubbleEx.Verify.Result`s naming the task (the generator renders twice) |
   | `policy_matrix` | passing `privacy_read` results naming the task (`BubbleEx.Target.Ash.MatrixTests.results/3`) |
   | `visual_parity` | passing `visual_parity` results naming the task |
   | `replay` | results naming the task, each passing **and Bubble-verified** (its recording, `.wtf/verification/recordings/<scenario>.json`, present and matching) |
@@ -29,19 +32,21 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       @tag bubble: "workflow:bTuV"          # or @moduletag / @describetag
       test "the workflow sends the invoice" do …
 
-  A check with subjects `S` requires every `S` to appear as a
-  `bubble: "<S>"` tag in `test/` (read statically), then runs
-  `mix test --only bubble:<S>…` once for all of them and requires it to
-  pass. A check without subjects uses the task ID as its subject.
+  Every subject `S` must appear as a `bubble: "<S>"` tag in the parsed
+  code of `test/` (a tag in a comment or a string is none). Then
+  `mix test --only bubble:<S>` runs once per subject, and only its exit
+  status counts: non-zero when a test fails or none ran (the summary line
+  is not parsed). A check without subjects uses the task ID.
 
   ## Results
 
-  Result-backed checks read `BubbleEx.Verify.Result` files (the latest per
-  result `id`) given as evidence and evaluate each with
-  `BubbleEx.Verify.Result.evaluate/3` (`app:`, `now:`, trusted
-  `reviewers:`, the decision store as `resolved:`; without one, a result
-  citing a decision does not count). A decoded result never counts by
-  itself; `skipped` never passes.
+  Result-backed checks read `BubbleEx.Verify.Result` files (unsigned)
+  given as evidence and evaluate every one naming the task with
+  `BubbleEx.Verify.Result.evaluate/3` (`app:`, `now:`, `reviewers:` whose
+  waivers count, the decision store as `resolved:`; without one, a result
+  citing a decision does not count). All of them must pass: a newer pass
+  does not mask an older failure. A decoded result never counts by itself;
+  `skipped` never passes.
   """
 
   alias BubbleEx.Decision.Resolved
@@ -104,8 +109,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     memo(cache, :generated_unchanged, fn ->
       binding = "check_manifest(.wtf/generated.json)"
 
-      # A trusted run passes the manifest bytes it verified against the
-      # plan signature: the manifest on disk is the agent's to edit.
+      # The manifest is the agent's to edit too (advisory, WTF-411).
       with {:ok, json} <- manifest(ctx),
            {:ok, report} <- Manifest.check(json, ctx.root) do
         manifest_outcome(binding, report)
@@ -289,7 +293,10 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   defp tagged([], ctx, cache), do: tagged([ctx.task.id], ctx, cache)
 
   # Every subject needs its own passing tests (one run per subject: AND,
-  # not the OR of several --only filters).
+  # not the OR of several --only filters). Only mix's exit status counts:
+  # it is non-zero when a test fails and when no test ran; the summary
+  # line is output the tests control, and its format changes between
+  # Elixir versions.
   defp tagged(subjects, ctx, cache) do
     {tags, cache} = test_tags(ctx, cache)
     binding = "mix test --only bubble:<subject>, per subject"
@@ -312,25 +319,10 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     memo(cache, {:tests, subject}, fn ->
       outcome = mix(ctx, ["test", "--only", "bubble:" <> subject], [{"MIX_ENV", "test"}])
 
-      cond do
-        outcome.status == :fail -> %{outcome | detail: "#{subject}: #{outcome.detail}"}
-        ran(outcome.raw) < 1 -> fail(outcome.binding, "#{subject}: no test ran")
-        true -> outcome
-      end
+      if outcome.status == :fail,
+        do: %{outcome | detail: "#{subject}: #{outcome.detail} (a test failed or none ran)"},
+        else: outcome
     end)
-  end
-
-  # Tests run: "N tests, M failures[, K excluded]" minus the excluded.
-  defp ran(output) do
-    total = count(~r/(\d+) tests?,/, output)
-    total - count(~r/(\d+) excluded/, output) - count(~r/(\d+) skipped/, output)
-  end
-
-  defp count(regex, output) do
-    case Regex.run(regex, output || "") do
-      [_, n] -> String.to_integer(n)
-      nil -> 0
-    end
   end
 
   # The `bubble:` tags of test/, read from the parsed code: @tag,
@@ -384,25 +376,29 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   defp uncommented(text, path) do
     text = if Path.extname(path) in [".ex", ".exs"], do: without_elixir_comments(text), else: text
-    Regex.replace(~r/<%!--.*?--%>|<!--.*?-->/s, text, "")
+    Regex.replace(~r/<%!--.*?--%>|<%#.*?%>|<!--.*?-->/s, text, "")
   end
 
   defp without_elixir_comments(text) do
     case Code.string_to_quoted_with_comments(text) do
       {:ok, _ast, comments} ->
-        by_line = Enum.group_by(comments, & &1.line, & &1.text)
+        # A comment runs from its column to the end of its line.
+        column = Map.new(comments, &{&1.line, &1.column})
 
         text
         |> String.split("\n")
         |> Enum.with_index(1)
-        |> Enum.map_join("\n", fn {line, n} ->
-          Enum.reduce(Map.get(by_line, n, []), line, &String.replace(&2, &1, "", global: false))
-        end)
+        |> Enum.map_join("\n", fn {line, n} -> before_column(line, column[n]) end)
 
       _ ->
         text
     end
   end
+
+  defp before_column(line, nil), do: line
+
+  defp before_column(line, col),
+    do: line |> String.to_charlist() |> Enum.take(col - 1) |> List.to_string()
 
   defp traced?(sources, id) do
     bubble = Regex.escape(bubble_id(id))
@@ -480,8 +476,8 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     {output, status} = ctx.cmd.(args, env)
 
     if status == 0,
-      do: %{pass(binding, nil) | raw: output},
-      else: %{fail(binding, "exit status #{status}") | output: tail(output), raw: output}
+      do: pass(binding, nil),
+      else: %{fail(binding, "exit status #{status}") | output: tail(output)}
   end
 
   defp tail(output),
@@ -529,8 +525,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false,
-      raw: nil
+      advisory: false
     }
 
   defp fail(binding, detail),
@@ -540,14 +535,8 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false,
-      raw: nil
+      advisory: false
     }
-
-  defp manifest(%{manifest: bytes}) when is_binary(bytes), do: {:ok, bytes}
-
-  defp manifest(%{trusted: true}),
-    do: {:error, %BubbleEx.Error{message: "the signed plan has no manifest"}}
 
   defp manifest(ctx) do
     case File.read(Path.join(ctx.root, Manifest.path())) do

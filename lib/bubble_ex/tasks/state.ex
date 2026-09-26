@@ -42,9 +42,9 @@ defmodule BubbleEx.Tasks.State do
       (`evidence_sha256/1`) of what it reviewed (`of`), so a review of
       other code or evidence no longer counts. Sync and audit drop it when
       they flip the task
-    * `mode` - `advisory` or `trusted`: how the last completion was
-      verified (`BubbleEx.Tasks`, "Trust"). Advisory evidence proves
-      nothing to anyone but the agent that wrote it
+    * `mode` - always `advisory`: the verdict is the implementing agent's
+      own claim (`BubbleEx.Tasks`, "Threat model"; trusted verification
+      is WTF-411)
     * `notes` - `{n, kind, text, by, at, resolved_by, resolved_at}`; kind
       `needs_decision` blocks the task until resolved, `info` does not
     * `reverify` - why it needs re-verifying: `{source, at, plan_sha256,
@@ -63,7 +63,7 @@ defmodule BubbleEx.Tasks.State do
   @note_kinds ~w(needs_decision info)a
   @members ~w(format schema_version task status claim agents completed_by completed_at basis
               evidence review notes reverify mode)
-  @modes ~w(advisory trusted)a
+  @modes [:advisory]
 
   defstruct [
     :task,
@@ -101,7 +101,7 @@ defmodule BubbleEx.Tasks.State do
           evidence: [map()],
           review:
             %{reviewer: String.t(), at: DateTime.t(), summary: String.t(), basis: map()} | nil,
-          mode: :advisory | :trusted | nil,
+          mode: :advisory | nil,
           notes: [note()],
           reverify: map() | nil
         }

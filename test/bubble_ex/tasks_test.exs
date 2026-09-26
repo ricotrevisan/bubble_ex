@@ -2,8 +2,7 @@ defmodule BubbleEx.TasksTest do
   use ExUnit.Case, async: true
 
   alias BubbleEx.{Error, Index, Model, Plan, SampleHelper, Tasks}
-  alias BubbleEx.Plan.{Content, Signature}
-  alias BubbleEx.Target.Phoenix.Manifest
+  alias BubbleEx.Plan.Content
   alias BubbleEx.Tasks.{State, Store}
   alias BubbleEx.Verify.Result
 
@@ -105,7 +104,7 @@ defmodule BubbleEx.TasksTest do
       |> Enum.map(& &1.task.id)
 
   defp complete(root, id, opts),
-    do: Tasks.complete(board(root), id, [now: @now, checks: Pass] ++ opts)
+    do: Tasks.complete(board(root), id, Keyword.merge([now: @now, checks: Pass], opts))
 
   describe "next" do
     test "lists ready top-level tasks in plan order", %{root: root} do
@@ -353,7 +352,7 @@ defmodule BubbleEx.TasksTest do
       assert {:ok, %{outcomes: outcomes}} =
                complete(root, "acceptance:reusable/rCard", agent: "rev")
 
-      assert %{status: :pass, detail: "reviewed by rev (advisory label)"} =
+      assert %{status: :pass, detail: "reviewed by rev (git hint skipped" <> _} =
                Enum.find(outcomes, &(&1.check == :independent_review))
 
       assert %{status: :pass, detail: @summary} = Enum.find(outcomes, &(&1.check == :attested))
@@ -514,9 +513,7 @@ defmodule BubbleEx.TasksTest do
     end
   end
 
-  describe "trusted runs" do
-    @signing_key :crypto.strong_rand_bytes(32)
-
+  describe "advisory limits" do
     defp git!(root, args, email \\ "impl@example.com") do
       {out, 0} =
         System.cmd(
@@ -534,40 +531,13 @@ defmodule BubbleEx.TasksTest do
       git!(root, ["commit", "-q", "--allow-empty", "-m", "c"], email)
     end
 
-    defp sign!(root) do
-      plan = File.read!(Path.join(root, ".wtf/plan.json"))
-      generated = File.read!(Path.join(root, Manifest.path()))
-      sig = Plan.sign(%{plan: plan, generated: generated}, @signing_key)
-      File.write!(Path.join(root, Signature.path()), Signature.encode(sig))
-    end
-
-    defp trusted(root, id, opts),
-      do:
-        Tasks.complete(
-          board(root),
-          id,
-          Keyword.merge([now: @now, checks: Pass, key: @signing_key], opts)
-        )
-
     setup %{root: root} do
-      File.mkdir_p!(Path.join(root, "lib"))
-      File.write!(Path.join(root, "lib/gen.ex"), "generated")
-
-      File.write!(
-        Path.join(root, Manifest.path()),
-        Manifest.encode(%{
-          "version" => 1,
-          "generated" => %{"lib/gen.ex" => Manifest.sha256("generated")}
-        })
-      )
-
-      sign!(root)
       git!(root, ["init", "-q"])
       commit!(root, "owner@example.com")
       :ok
     end
 
-    test "exploit: an edited plan with a recomputed plan_sha256 is refused", %{root: root} do
+    test "every verdict is advisory, even on a plan edited with a recomputed hash", %{root: root} do
       tampered =
         root
         |> Path.join(".wtf/plan.json")
@@ -589,64 +559,23 @@ defmodule BubbleEx.TasksTest do
 
       File.write!(Path.join(root, ".wtf/plan.json"), BubbleEx.CanonicalJson.encode(tampered))
 
-      # Advisory runs believe it: the closed task counts as done...
+      # Accepted: nothing in the repository can tell (WTF-411).
       assert Tasks.done?(board(root), "generate:option_sets")
-      # ...a trusted run does not start.
-      assert {:error, %Error{message: ".wtf/plan.json is not the signed plan"}} =
-               trusted(root, "generate:schema", agent: "a1")
-
-      assert {:error, %Error{message: ".wtf/plan.json is not the signed plan"}} =
-               Tasks.audit(board(root), now: @now, key: @signing_key)
+      assert {:ok, %{mode: :advisory}} = complete(root, "generate:schema", agent: "a1")
+      assert board(root).states["generate:schema"].mode == :advisory
+      assert {:ok, %{mode: :advisory}} = Tasks.audit(board(root), now: @now, checks: Pass)
     end
 
-    test "exploit: deleting a manifest entry is refused", %{root: root} do
-      File.write!(
-        Path.join(root, Manifest.path()),
-        Manifest.encode(%{"version" => 1, "generated" => %{}})
-      )
-
-      File.write!(Path.join(root, "lib/gen.ex"), "hand edited")
-
-      # The advisory binding checks the manifest it is given, and passes.
-      assert {:ok, %{mode: :advisory}} =
-               Tasks.complete(board(root), "generate:option_sets",
-                 now: @now,
-                 agent: "a1",
-                 checks: BubbleEx.Target.Phoenix.Checks,
-                 cmd: fn _, _ -> {"", 0} end,
-                 attest: %{}
-               )
-               |> then(fn
-                 {:error, %Error{context: %{report: r}}} ->
-                   assert Enum.find(r.outcomes, &(&1.check == :generated_unchanged)).status ==
-                            :pass
-
-                   {:ok, %{mode: :advisory}}
-
-                 other ->
-                   other
-               end)
-
-      assert {:error, %Error{message: ".wtf/generated.json is not the signed manifest"}} =
-               trusted(root, "generate:option_sets", agent: "a1")
-
-      assert {:error, %Error{message: "a trusted run needs .wtf/plan.sig"}} =
-               (
-                 File.rm!(Path.join(root, Signature.path()))
-                 trusted(root, "generate:option_sets", agent: "a1")
-               )
+    test "audit of a task that is not done says so", %{root: root} do
+      assert {:error, %Error{message: "not done, nothing to audit: generate:schema" <> _}} =
+               Tasks.audit(board(root), now: @now, checks: Pass, tasks: ["generate:schema"])
     end
 
-    test "a wrong key is refused", %{root: root} do
-      assert {:error, %Error{message: "the plan was signed with another key"}} =
-               Tasks.audit(board(root), now: @now, key: :crypto.strong_rand_bytes(32))
-    end
-
-    test "only signed results count, and all of them", %{root: root} do
+    test "every result naming a criterion must pass; unused ones are reported", %{root: root} do
       dir = Path.join(root, ".wtf/verification/results")
       File.mkdir_p!(dir)
 
-      write = fn name, status, at, sign? ->
+      write = fn name, status, at, task ->
         {:ok, r} =
           Result.new(%{
             id: "det",
@@ -655,74 +584,32 @@ defmodule BubbleEx.TasksTest do
             status: status,
             actor: "ci",
             ran_at: at,
-            tasks: ["generate:option_sets"]
+            tasks: [task]
           })
 
-        path = Path.join(dir, name <> ".json")
-        File.write!(path, Result.to_json(r))
-
-        if sign?,
-          do:
-            File.write!(
-              path <> ".sig",
-              Signature.sign_file(Result.to_json(r), "result", @signing_key)
-            )
+        File.write!(Path.join(dir, name <> ".json"), Result.to_json(r))
       end
 
-      write.("forged", :pass, ~U[2026-09-26 11:00:00Z], false)
+      write.("old", :fail, ~U[2026-09-26 09:00:00Z], "generate:option_sets")
+      write.("new", :pass, ~U[2026-09-26 10:00:00Z], "generate:option_sets")
+      write.("other", :pass, ~U[2026-09-26 10:00:00Z], "generate:styles")
       opts = [agent: "a1", app: "app1", checks: Results]
 
-      assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
-               trusted(root, "generate:option_sets", opts)
-
-      assert %{status: :fail, detail: "no result names" <> _} =
-               Enum.find(outcomes, &(&1.check == :deterministic))
-
-      assert {:ok, %{unsigned: [".wtf/verification/results/forged.json"]}} =
-               Tasks.evidence(root, [], @signing_key)
-
-      write.("old", :fail, ~U[2026-09-26 09:00:00Z], true)
-      write.("new", :pass, ~U[2026-09-26 10:00:00Z], true)
-      # Advisory: the newest wins. Trusted: a signed failure is not overridden.
-      assert {:ok, _} =
-               Tasks.complete(board(root), "generate:option_sets",
-                 now: @now,
-                 agent: "a1",
-                 app: "app1",
-                 checks: Results
-               )
-
-      File.rm_rf!(Path.join(root, ".wtf/tasks"))
-
-      assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
-               trusted(root, "generate:option_sets", opts)
+      assert {:error, %Error{context: %{report: report}}} =
+               complete(root, "generate:option_sets", opts)
 
       assert %{status: :fail, detail: ".wtf/verification/results/old.json: status fail" <> _} =
-               Enum.find(outcomes, &(&1.check == :deterministic))
+               Enum.find(report.outcomes, &(&1.check == :deterministic))
+
+      assert report.ignored_results == [".wtf/verification/results/other.json"]
+
+      File.rm!(Path.join(dir, "old.json"))
+      assert {:ok, _} = complete(root, "generate:option_sets", opts)
     end
 
-    test "attestations count only on an independent, committed review", %{root: root} do
-      done!(root, ["generate:api_clients", "generate:option_sets", "generate:schema"])
-      commit!(root, "owner@example.com")
-      attest = [agent: "owner", attest: %{1 => "Every private value is set in the vault."}]
-
-      assert {:error, %Error{context: %{report: %{outcomes: [o]}}}} =
-               trusted(root, "setup:secrets", attest)
-
-      assert o.detail =~ "needs an independent review (no review recorded"
-
-      {:ok, _} =
-        Tasks.review(board(root), "setup:secrets", "rev", "Checked each secret in the vault.",
-          now: @now
-        )
-
-      assert {:error, _} = trusted(root, "setup:secrets", attest)
-      commit!(root, "rev@example.com")
-      assert {:ok, %{mode: :trusted}} = trusted(root, "setup:secrets", attest)
-      assert board(root).states["setup:secrets"].mode == :trusted
-    end
-
-    test "exploit: a reviewer label is not an identity; git authors are", %{root: root} do
+    test "git authors are a hint: a review committed by the implementer fails it", %{
+      root: root
+    } do
       done!(root, @generators ++ ["auth"])
       commit!(root, "owner@example.com")
       {:ok, _} = complete(root, "surface:reusable/rCard", agent: "impl")
@@ -733,11 +620,12 @@ defmodule BubbleEx.TasksTest do
       {:ok, _} =
         Tasks.review(board(root), "acceptance:reusable/rCard", "someone-else", summary, now: @now)
 
-      commit!(root, "impl@example.com")
-
-      # Advisory: the label differs, so it passes.
-      assert {:ok, %{mode: :advisory}} =
+      # Uncommitted: the label check alone.
+      assert {:ok, %{outcomes: outcomes}} =
                complete(root, "acceptance:reusable/rCard", agent: "someone-else")
+
+      assert %{detail: "reviewed by someone-else (git hint skipped" <> _} =
+               Enum.find(outcomes, &(&1.check == :independent_review))
 
       File.rm!(Path.join(root, State.path("acceptance:reusable/rCard")))
 
@@ -749,32 +637,27 @@ defmodule BubbleEx.TasksTest do
       commit!(root, "impl@example.com")
 
       assert {:error, %Error{context: %{report: %{outcomes: outcomes}}}} =
-               trusted(root, "acceptance:reusable/rCard", agent: "someone-else")
+               complete(root, "acceptance:reusable/rCard", agent: "someone-else")
 
-      assert %{status: :fail, detail: "impl@example.com committed the implementation too"} =
+      assert %{
+               status: :fail,
+               detail: "git hint: the review was committed by impl@example.com" <> _
+             } =
                Enum.find(outcomes, &(&1.check == :independent_review))
 
+      # ...and a different author is just as easy to claim: a hint only.
       {:ok, _} =
         Tasks.review(board(root), "acceptance:reusable/rCard", "rev", summary,
           now: DateTime.add(@now, 2)
         )
 
       commit!(root, "rev@example.com")
-      assert {:ok, %{mode: :trusted}} = trusted(root, "acceptance:reusable/rCard", agent: "rev")
-      commit!(root, "rev@example.com")
-
-      assert {:ok, %{flipped: []}} =
-               Tasks.audit(board(root),
-                 now: @now,
-                 checks: Pass,
-                 key: @signing_key,
-                 tasks: ["acceptance:reusable/rCard"]
-               )
+      assert {:ok, _} = complete(root, "acceptance:reusable/rCard", agent: "rev")
     end
   end
 
   describe "evidence" do
-    test "reads results (latest per id) and records other files as artifacts", %{root: root} do
+    test "reads every result and records other files as artifacts", %{root: root} do
       dir = Path.join(root, ".wtf/verification/results")
       File.mkdir_p!(dir)
 
@@ -799,8 +682,11 @@ defmodule BubbleEx.TasksTest do
       shot = Path.join(root, "shot.png")
       File.write!(shot, "png")
 
-      assert {:ok, %{results: [{ref, sha, %Result{status: :pass}}], artifacts: [artifact]}} =
-               Tasks.evidence(root, [shot])
+      assert {:ok,
+              %{
+                results: [{ref, sha, %Result{status: :pass}}, {_, _, %Result{status: :fail}}],
+                artifacts: [artifact]
+              }} = Tasks.evidence(root, [shot])
 
       assert ref == ".wtf/verification/results/new.json"
 

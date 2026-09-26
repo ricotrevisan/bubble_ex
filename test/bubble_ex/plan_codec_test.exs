@@ -2,7 +2,7 @@ defmodule BubbleEx.PlanCodecTest do
   use ExUnit.Case, async: true
 
   alias BubbleEx.{CanonicalJson, Error, Index, Model, Plan, SampleHelper}
-  alias BubbleEx.Plan.{Signature, Task}
+  alias BubbleEx.Plan.Task
 
   @app SampleHelper.load_json_sample("synthetic_plan_export")
 
@@ -96,40 +96,5 @@ defmodule BubbleEx.PlanCodecTest do
       edited(json, fn m -> Map.update!(m, "tasks", &(&1 ++ [hd(&1)])) end),
       "share an id"
     )
-  end
-
-  describe "signature" do
-    @key :crypto.strong_rand_bytes(32)
-
-    test "signs the plan and manifest bytes; any change fails", %{json: json} do
-      files = %{plan: json, generated: "{}"}
-      sig = Plan.sign(files, @key)
-      assert :ok = Plan.verify(Map.put(files, :signature, Signature.encode(sig)), @key)
-      assert :ok = Plan.verify(Map.put(files, :signature, sig), @key)
-
-      assert {:error, %Error{message: ".wtf/plan.json is not the signed plan"}} =
-               Plan.verify(%{files | plan: json <> " "} |> Map.put(:signature, sig), @key)
-
-      assert {:error, %Error{message: ".wtf/generated.json is not the signed manifest"}} =
-               Plan.verify(%{plan: json, generated: nil, signature: sig}, @key)
-
-      forged = %{sig | "plan_sha256" => String.duplicate("0", 64)}
-
-      assert {:error, %Error{message: "the plan signature is invalid"}} =
-               Plan.verify(Map.put(files, :signature, forged), @key)
-
-      assert {:error, %Error{message: "the plan was signed with another key"}} =
-               Plan.verify(Map.put(files, :signature, sig), :crypto.strong_rand_bytes(32))
-    end
-
-    test "keys are base64 of at least 32 bytes; files sign per purpose" do
-      assert {:ok, @key} = Signature.decode_key(Base.encode64(@key))
-      assert {:error, _} = Signature.decode_key(Base.encode64("short"))
-      assert {:error, _} = Signature.decode_key(nil)
-      mac = Signature.sign_file("bytes", "result", @key)
-      assert Signature.verify_file("bytes", "result", mac, @key)
-      refute Signature.verify_file("bytes", "plan", mac, @key)
-      refute Signature.verify_file("bytes!", "result", mac, @key)
-    end
   end
 end

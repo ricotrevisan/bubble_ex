@@ -22,10 +22,9 @@ All notable changes to this project are documented here.
   `# bubble:step` comments, tests tagged `bubble: "<subject>"`, and
   `Verify.Result` evidence through `Result.evaluate/3`. `Plan.decode/1`
   reads a plan back with schema and `plan_sha256` checks. CI runs
-  complete/audit end to end on a generated project. Runs are **advisory**
-  unless `--trusted`: the plan and manifest must then match `.wtf/plan.sig`
-  (`BubbleEx.Plan.sign/2`, HMAC-SHA256 with `WTF_PLAN_SIGNING_KEY`), only
-  signed results count, and reviewer independence comes from git authors.
+  complete/audit end to end on a generated project. Every verdict is
+  **advisory** (the agent being verified can edit everything checked);
+  trusted verification anchored outside the repository is WTF-411.
 - **`Target.Ash` applies owner decisions, cut 2** (WTF-405, WTF-352 §4.2).
   `derive_count` drops a stored count for a public calculation of the same
   name, the length of the stored list (`length(path.list || [])`), or a

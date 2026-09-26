@@ -1,19 +1,21 @@
 defmodule BubbleEx.Tasks.Git do
   @moduledoc """
-  Who did what to a task, from git rather than from the labels in its
-  state file (WTF-375). A trusted run derives identities from the history
-  of `.wtf/tasks/<task>.json`: each commit's author email, and what the
-  commit changed in the state.
+  A spoofable **hint** about who did what to a task, from the git history
+  of `.wtf/tasks/<task>.json` (WTF-375): each commit's author email
+  (`%ae`) and what the commit changed in the state.
 
     * **implementers** - authors of commits that changed a task's
       `agents`, `claim`, `completed_by`, `completed_at` or `evidence`
     * **reviewer** - the author of the commit that recorded the task's
       current `review`
 
-  Only committed history counts: uncommitted changes have no author.
-  Author emails are as trustworthy as the repository host makes them
-  (protected branches, verified commits); on an unprotected branch they
-  are claims like any other, and a trusted run is only as strong as that.
+  Not an identity and not a security boundary: an author email is
+  whatever the committer configured (`git -c user.email=…`), authors of
+  the code itself are not counted, and a review committed again credits
+  whoever commits it. It only catches honest mix-ups. It needs the full
+  history (`actions/checkout` with `fetch-depth: 0`; a shallow clone has
+  no authors to compare) and uncommitted changes have no author. Verified
+  identities are WTF-411.
   """
 
   alias BubbleEx.Tasks.State

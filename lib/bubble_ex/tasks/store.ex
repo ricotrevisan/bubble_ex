@@ -6,13 +6,11 @@ defmodule BubbleEx.Tasks.Store do
   Nothing else in the repository is read for state or ever written. Every
   write is atomic (temporary file, then rename). Claims are coordination
   within one clone; across clones they race until the state files are
-  merged in git, which is why completion re-verifies instead of trusting
-  a claim.
+  merged in git, which is why completion re-verifies instead of relying
+  on a claim.
   """
 
   alias BubbleEx.{Error, Plan}
-  alias BubbleEx.Plan.Signature
-  alias BubbleEx.Target.Phoenix.Manifest
   alias BubbleEx.Tasks.State
 
   @plan ".wtf/plan.json"
@@ -41,47 +39,25 @@ defmodule BubbleEx.Tasks.Store do
     do: write_atomic(Path.join(root, @plan), Plan.to_json(plan))
 
   @doc """
-  Reads the plan for a trusted run: the plan, manifest and signature bytes
-  are read once, the signature is verified with `key`
-  (`BubbleEx.Plan.verify/2`) and the plan decoded from exactly those
-  bytes. Returns the plan and the verified manifest bytes (nil when the
-  project has none).
-  """
-  @spec read_trusted(Path.t(), binary()) ::
-          {:ok, %{plan: Plan.t(), manifest: binary() | nil}} | {:error, Error.t()}
-  def read_trusted(root, key) do
-    with {:ok, plan} <- read_bytes(root, @plan),
-         {:ok, sig} <- read_bytes(root, Signature.path()),
-         manifest = optional_bytes(root, Manifest.path()),
-         :ok <- Plan.verify(%{plan: plan, generated: manifest, signature: sig}, key),
-         {:ok, decoded} <- Plan.decode(plan) do
-      {:ok, %{plan: decoded, manifest: manifest}}
-    end
-  end
-
-  defp read_bytes(root, path) do
-    case File.read(Path.join(root, path)) do
-      {:ok, bytes} -> {:ok, bytes}
-      {:error, _} -> error("a trusted run needs #{path}")
-    end
-  end
-
-  defp optional_bytes(root, path) do
-    case File.read(Path.join(root, path)) do
-      {:ok, bytes} -> bytes
-      {:error, _} -> nil
-    end
-  end
-
-  @doc """
   Writes a file atomically: a temporary file in the same directory, then a
   rename, so a crash leaves the old content or the new, never half.
   """
   @spec write_atomic(Path.t(), iodata()) :: :ok
   def write_atomic(path, content) do
     File.mkdir_p!(Path.dirname(path))
-    tmp = "#{path}.#{System.unique_integer([:positive])}.tmp"
-    File.write!(tmp, content)
+    suffix = 12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    tmp = Path.join(Path.dirname(path), ".#{Path.basename(path)}.#{suffix}.tmp")
+
+    # :exclusive is O_CREAT|O_EXCL: it never follows or reuses an existing
+    # file or symlink at the temporary path.
+    {:ok, io} = File.open(tmp, [:write, :exclusive, :binary])
+
+    try do
+      :ok = IO.binwrite(io, content)
+    after
+      File.close(io)
+    end
+
     File.rename!(tmp, path)
   end
 

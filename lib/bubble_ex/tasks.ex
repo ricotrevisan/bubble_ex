@@ -31,10 +31,11 @@ defmodule BubbleEx.Tasks do
 
     * `subtasks_done` - every subtask is closed by the plan or passes its
       own criteria in the same run (automatic subtasks are completed with
-      their parent; a subtask's recorded state is never taken on trust)
+      their parent; a subtask's recorded state is never reused)
     * `independent_review` - a current review (its `basis` still matches
-      the task's source and the reviewed evidence) by someone who did not
-      implement `args.of`; the completing agent did not either
+      the task's source and the reviewed evidence) whose reviewer label is
+      not an implementer of `args.of`, nor is the completing agent's;
+      git authors are compared as a spoofable hint
     * `decision_recorded` - the owner decision `args.key` is in effect in
       the plan (a task's `decisions` or `closed_by`); an undecided plugin
       stays open until a plan built with the decision is synced
@@ -43,39 +44,30 @@ defmodule BubbleEx.Tasks do
       or, for a review against Bubble, the recorded review's summary
 
   The state records each criterion's binding, outcome and evidence files
-  (path and SHA-256), never command output, and the run's `mode`.
+  (path and SHA-256), never command output, and `mode: advisory`.
 
-  ## Trust
+  ## Threat model: advisory only
 
-  Everything in the owner's repository (`.wtf/plan.json`,
-  `.wtf/generated.json`, `.wtf/tasks/`, results) is writable by the agent
-  being verified, and `plan_sha256` is a hash anyone can recompute. So:
+  Every verdict is **advisory** (`mode: advisory` in the state, "advisory:
+  not verified" in the output). Everything these checks read is in the
+  owner's repository and writable by the agent being verified: the plan
+  (`plan_sha256` is a hash anyone can recompute), `.wtf/generated.json`,
+  the task states, the results, the tests and the code. A verdict here is
+  therefore the implementing agent's own claim, useful for coordination
+  and for catching honest mistakes, never a security boundary.
 
-    * **advisory** (no `:key`) - the default. Every check runs, but a
-      result is the agent's own claim: it is recorded as `mode:
-      advisory`, and nothing may be reported as verified from it.
-      Reviewer independence compares self-declared labels
-    * **trusted** (`key:` = the plan signing key, held by WTF and the
-      owner's CI as `WTF_PLAN_SIGNING_KEY`, never in the repository) -
-      the plan and the manifest are the bytes `.wtf/plan.sig` signs
-      (`BubbleEx.Plan.sign/2`), so an edited plan (a task marked closed, a
-      criterion made waivable) or manifest (an entry deleted) is refused
-      before anything runs, and closed tasks are closed only if the signed
-      plan says so; only results signed with the key count, all of them
-      (no newest-wins); implementers and reviewers are git authors of the
-      commits that changed the state files (`BubbleEx.Tasks.Git`), and a
-      review counts only when its author did not implement what it
-      reviews; attestations, waivers and advisory bindings
-      (`BubbleEx.Target.Phoenix.Checks`: source-only traceability,
-      step-order comments) count only on such a review; stored
-      attestations and subtask states are never reused
+    * reviewer independence compares self-declared labels; git author
+      emails (`BubbleEx.Tasks.Git`) are compared as an extra hint and are
+      just as easy to spoof (`git -c user.email=…`); they need the full
+      history (`actions/checkout` with `fetch-depth: 0`) and are skipped
+      without it
+    * results are unsigned: every result naming a criterion must pass, so
+      a newer pass cannot mask a failure, but a failure file can still be
+      deleted
 
-  Git author emails are as trustworthy as the repository host makes them
-  (protected branches, verified commits). The verdict to rely on is
-  `audit --trusted` run by CI over committed history; `complete` in a
-  trusted run checks what exists before the completion is committed.
-  Claims coordinate agents within a clone and race across clones until
-  merged; completion never relies on them.
+  A verdict anyone else can rely on needs an anchor outside the
+  repository (WTF signing the plan and results, CI verifying them, reviews
+  as pull-request approvals): WTF-411, "WTF trusted verification anchor".
 
   ## Re-verifying
 
@@ -94,15 +86,14 @@ defmodule BubbleEx.Tasks do
   alias BubbleEx.Tasks.{State, Store, Verifier}
 
   @enforce_keys [:root, :plan, :states]
-  defstruct [:root, :plan, :states, :trust, by_id: %{}, children: %{}]
+  defstruct [:root, :plan, :states, by_id: %{}, children: %{}]
 
   @type t :: %__MODULE__{
           root: Path.t(),
           plan: Plan.t(),
           states: %{String.t() => State.t()},
           by_id: %{String.t() => Task.t()},
-          children: %{String.t() => [Task.t()]},
-          trust: nil | %{key: binary(), manifest: binary() | nil}
+          children: %{String.t() => [Task.t()]}
         }
 
   @default_ttl 2 * 60 * 60
@@ -349,8 +340,6 @@ defmodule BubbleEx.Tasks do
   done by `:agent` with its evidence and the run's mode. Options:
 
     * `:agent` (required), `:now` (required)
-    * `:key` - the plan signing key: a trusted run (see "Trust"); without
-      it the run is advisory
     * `:evidence` - paths (files or directories) of `BubbleEx.Verify.Result`
       files and other artifacts; `.wtf/verification/results/` is always read
     * `:attest` - `%{criterion id => text}`
@@ -379,7 +368,7 @@ defmodule BubbleEx.Tasks do
   defdelegate audit(board, opts), to: BubbleEx.Tasks.Verifier
 
   @doc false
-  defdelegate evidence(root, paths, key \\ nil), to: BubbleEx.Tasks.Verifier
+  defdelegate evidence(root, paths), to: BubbleEx.Tasks.Verifier
 
   @doc """
   The implementers of task `id`: every agent that claimed or completed it

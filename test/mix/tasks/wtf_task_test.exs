@@ -132,10 +132,7 @@ defmodule Mix.Tasks.Wtf.TaskTest do
     assert sha == smaller.plan_sha256
   end
 
-  test "without the signing key a run is advisory; --trusted needs the key", %{
-    tmp_dir: root,
-    plan: plan
-  } do
+  test "every verdict is advisory; --attest names its criterion", %{tmp_dir: root, plan: plan} do
     done!(root, plan, ~w(generate:option_sets generate:schema generate:api_clients))
 
     assert_raise Mix.Error, ~r/name the criterion/, fn ->
@@ -158,13 +155,14 @@ defmodule Mix.Tasks.Wtf.TaskTest do
       "1=Every private value is set."
     ])
 
-    assert output() =~ "setup:secrets done (advisory: not verified"
+    out = output()
+    assert out =~ "setup:secrets (advisory verdict):"
+    assert out =~ "setup:secrets done (advisory: not verified"
 
-    System.delete_env("WTF_PLAN_SIGNING_KEY")
+    wtf(root, ["audit", "setup:secrets", "--json"])
+    assert %{"mode" => "advisory", "flipped" => []} = Jason.decode!(output())
 
-    assert_raise Mix.Error, ~r/--trusted: no signing key/, fn ->
-      wtf(root, ["audit", "--trusted"])
-    end
+    assert_raise Mix.Error, ~r/unknown options/, fn -> wtf(root, ["audit", "--trusted"]) end
   end
 
   test "is a development tool", %{tmp_dir: root} do

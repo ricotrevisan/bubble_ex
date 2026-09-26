@@ -99,12 +99,13 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
       write(root, "lib/app_web/live/home_live.html.heex", """
       <div data-bubble-id="pHome"><div data-bubble-id="eA"><p data-bubble-id='eB'>Hi</p></div></div>
       <%!-- <span data-bubble-id="eC"></span> --%>
+      <%# <span data-bubble-id="eF"></span> %>
       """)
 
       write(root, "lib/app_web/live/card.ex", """
       defmodule Card do
         # data-bubble-id="eD"
-        def render(assigns), do: ~H(<b data-bubble-id="eE"></b>)
+        def render(assigns), do: ~H(<b data-bubble-id="eE"></b>) # <i data-bubble-id="eG"></i>
       end
       """)
 
@@ -119,10 +120,13 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
                  ctx(root)
                )
 
-      assert %{status: :fail, detail: "not traced: element:eC, element:eD"} =
+      assert %{
+               status: :fail,
+               detail: "not traced: element:eC, element:eD, element:eF, element:eG"
+             } =
                run(
                  :traceability,
-                 %{"elements" => ~w(element:eA element:eC element:eD)},
+                 %{"elements" => ~w(element:eA element:eC element:eD element:eF element:eG)},
                  ctx(root)
                )
     end
@@ -189,12 +193,14 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
         ~s(@tag bubble: "workflow:wA"\n@tag bubble: "workflow:wB"\n)
       )
 
-      Process.put(:mix_result, {"2 tests, 0 failures, 2 excluded", 0})
+      # Only the exit status counts (mix exits 1 when no test ran), never
+      # the summary line the tests print.
+      Process.put(:mix_result, {"99 tests, 0 failures", 1})
 
-      assert %{status: :fail, detail: "workflow:wA: no test ran"} =
+      assert %{status: :fail, detail: "workflow:wA: exit status 1 (a test failed or none ran)"} =
                run(:unit_test, %{"workflows" => ~w(workflow:wA workflow:wB)}, ctx(root))
 
-      Process.put(:mix_result, {"3 tests, 0 failures, 2 excluded", 0})
+      Process.put(:mix_result, {"Result: 0 passed", 0})
 
       assert %{status: :pass} =
                run(:unit_test, %{"workflows" => ~w(workflow:wA workflow:wB)}, ctx(root))

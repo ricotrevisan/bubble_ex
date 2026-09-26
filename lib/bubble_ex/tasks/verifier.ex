@@ -1,25 +1,21 @@
 defmodule BubbleEx.Tasks.Verifier do
   @moduledoc """
   Runs the criteria of plan tasks for `BubbleEx.Tasks.complete/3` and
-  `BubbleEx.Tasks.audit/2` (WTF-375). See `BubbleEx.Tasks` for the trust
-  model; in short:
+  `BubbleEx.Tasks.audit/2` (WTF-375). Every verdict is **advisory**: see
+  "Threat model" in `BubbleEx.Tasks`. Within that limit it is strict:
 
-    * **advisory** (no key): every check runs, and the result is recorded
-      as `advisory`. Anything in the repository, including the plan,
-      the manifest, the task states and the results, is the agent's to
-      edit, so an advisory result is the agent's own claim
-    * **trusted** (`key:`): the plan and the manifest are read from the
-      bytes whose signature verifies (`BubbleEx.Plan.Signature`); only
-      signed results count, and all of them must pass (no newest-wins);
-      reviews count only when git says a different author than the
-      implementers recorded them (`BubbleEx.Tasks.Git`), and attestations,
-      waivers and advisory bindings (source-only traceability,
-      step-order comments) count only on such a review; subtasks are
-      re-verified, never taken from their state
+    * every result naming a criterion must pass: a newer pass does not
+      mask an older failure (delete a stale result to retire it), and
+      results read but used by no criterion are reported as ignored
+    * subtasks are re-checked in the same run, never taken from their
+      state, and a failing subtask takes its done parent with it
+    * a review counts only while it is current (it pins the task's
+      source and the evidence it reviewed) and its reviewer label is not
+      an implementer's; git authors are compared as an extra hint
+      (`BubbleEx.Tasks.Git`), which anyone can spoof
   """
 
   alias BubbleEx.{Error, Tasks}
-  alias BubbleEx.Plan.Signature
   alias BubbleEx.Target.Phoenix.Checks
   alias BubbleEx.Tasks.{Git, State, Store}
   alias BubbleEx.Verify.Result
@@ -35,12 +31,11 @@ defmodule BubbleEx.Tasks.Verifier do
     agent = opts[:agent]
 
     with :ok <- Tasks.label(agent, "agent"),
-         {:ok, board} <- trust(board, opts[:key]),
          {:ok, task} <- Tasks.fetch(board, id),
          :ok <- Tasks.workable(board, task, now, agent),
          :ok <- not_implementer(board, task, agent),
          :ok <- waivable(task, Keyword.get(opts, :waive, %{})),
-         {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, []), opts[:key]) do
+         {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, [])) do
       ctx = board |> context(opts, now, evidence) |> Map.put(:agent, agent)
       subtasks = Map.get(board.children, id, [])
 
@@ -52,7 +47,14 @@ defmodule BubbleEx.Tasks.Verifier do
         |> Enum.map_reduce({%{}, MapSet.new()}, &verify_one(board, &1, ctx, &2))
 
       {outcomes, _cache} = verify(board, task, %{ctx | passed: passed}, cache)
-      report = %{task: id, mode: mode(board), outcomes: outcomes, subtasks: sub_reports}
+
+      report = %{
+        task: id,
+        mode: :advisory,
+        outcomes: outcomes,
+        subtasks: sub_reports,
+        ignored_results: ignored(evidence, [outcomes | Enum.map(sub_reports, & &1.outcomes)])
+      }
 
       if passed?(outcomes) do
         record_subtasks(board, sub_reports, agent, now)
@@ -82,9 +84,8 @@ defmodule BubbleEx.Tasks.Verifier do
   def audit(board, opts) do
     now = Keyword.fetch!(opts, :now)
 
-    with {:ok, board} <- trust(board, opts[:key]),
-         {:ok, tasks} <- audited(board, opts[:tasks]),
-         {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, []), opts[:key]) do
+    with {:ok, tasks} <- audited(board, opts[:tasks]),
+         {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, [])) do
       ctx = board |> context(opts, now, evidence) |> Map.merge(%{audit: true, agent: nil})
 
       {reports, _acc} =
@@ -109,7 +110,8 @@ defmodule BubbleEx.Tasks.Verifier do
 
       {:ok,
        %{
-         mode: mode(board),
+         mode: :advisory,
+         ignored_results: ignored(evidence, Enum.map(reports, & &1.outcomes)),
          checked: Enum.map(reports, & &1.task),
          flipped: flipped,
          reports: reports
@@ -132,7 +134,8 @@ defmodule BubbleEx.Tasks.Verifier do
       ids ||
         for task <- board.plan.tasks, Tasks.state(board, task.id).status == :done, do: task.id
 
-    with {:ok, tasks} <- fetch_all(board, ids) do
+    with {:ok, tasks} <- fetch_all(board, ids),
+         :ok <- all_done(board, tasks) do
       subtasks =
         for t <- tasks,
             sub <- Map.get(board.children, t.id, []),
@@ -145,6 +148,26 @@ defmodule BubbleEx.Tasks.Verifier do
          & &1.id
        )}
     end
+  end
+
+  defp all_done(board, tasks) do
+    case for(t <- tasks, Tasks.state(board, t.id).status != :done, do: t.id) do
+      [] ->
+        :ok
+
+      ids ->
+        error("not done, nothing to audit: #{Enum.join(ids, ", ")} (audit checks done tasks)", %{
+          tasks: ids
+        })
+    end
+  end
+
+  # Result files read but used by no criterion of the run.
+  defp ignored(evidence, outcome_lists) do
+    used =
+      for os <- outcome_lists, o <- os, r <- Map.get(o, :refs, []), into: MapSet.new(), do: r.ref
+
+    for {ref, _sha, _r} <- evidence.results, not MapSet.member?(used, ref), do: ref
   end
 
   defp stale?(board, task) do
@@ -175,20 +198,6 @@ defmodule BubbleEx.Tasks.Verifier do
     %{state | status: :needs_reverify, reverify: reverify, review: nil}
   end
 
-  # --- trust ------------------------------------------------------------------------
-
-  # A trusted run swaps in the plan decoded from the verified bytes.
-  defp trust(board, nil), do: {:ok, %{board | trust: nil}}
-
-  defp trust(board, key) do
-    with {:ok, %{plan: plan, manifest: manifest}} <- Store.read_trusted(board.root, key) do
-      {:ok, board |> Tasks.with_plan(plan) |> Map.put(:trust, %{key: key, manifest: manifest})}
-    end
-  end
-
-  defp mode(%{trust: nil}), do: :advisory
-  defp mode(_board), do: :trusted
-
   defp context(board, opts, now, evidence) do
     root = board.root
 
@@ -196,8 +205,6 @@ defmodule BubbleEx.Tasks.Verifier do
       board: board,
       root: root,
       now: now,
-      trusted: board.trust != nil,
-      manifest: board.trust && board.trust.manifest,
       results: evidence.results,
       app: opts[:app],
       reviewers: Keyword.get(opts, :reviewers, []),
@@ -226,23 +233,9 @@ defmodule BubbleEx.Tasks.Verifier do
 
     Enum.map_reduce(task.criteria, cache, fn criterion, cache ->
       {outcome, cache} = criterion(board, criterion, ctx, cache)
-      {outcome, cache} = vouch(board, outcome, ctx, cache)
       {Map.merge(%{criterion: criterion.id, check: criterion.check}, outcome), cache}
     end)
   end
-
-  # In a trusted run an advisory binding counts only on an independent review.
-  defp vouch(board, %{status: :pass, advisory: true} = outcome, %{trusted: true} = ctx, cache) do
-    case independent(board, ctx.task, ctx, cache) do
-      {{:ok, author}, cache} ->
-        {%{outcome | detail: "#{outcome.detail}; vouched by the review of #{author}"}, cache}
-
-      {{:error, why}, cache} ->
-        {failed(outcome.binding, "advisory binding needs an independent review: #{why}"), cache}
-    end
-  end
-
-  defp vouch(_board, outcome, _ctx, cache), do: {outcome, cache}
 
   defp criterion(board, %{check: :subtasks_done}, ctx, cache) do
     pending =
@@ -259,7 +252,7 @@ defmodule BubbleEx.Tasks.Verifier do
 
   defp criterion(board, %{check: :independent_review}, ctx, cache) do
     case independent(board, ctx.task, ctx, cache) do
-      {{:ok, who}, cache} -> {ok("review record", "reviewed by #{who}"), cache}
+      {{:ok, detail}, cache} -> {ok("review record", detail), cache}
       {{:error, why}, cache} -> {failed("review record", why), cache}
     end
   end
@@ -281,23 +274,7 @@ defmodule BubbleEx.Tasks.Verifier do
 
   defp criterion(_board, criterion, ctx, cache) do
     {outcome, cache} = ctx.checks.run(criterion, ctx, cache)
-    {Map.merge(%{advisory: false, raw: nil, output: nil, refs: []}, outcome), cache}
-  end
-
-  # Trusted: an attestation or waiver counts only on an independent review.
-  defp attested(board, %{id: n} = c, %{trusted: true} = ctx, cache) do
-    text = Map.get(ctx.waive, n) || Map.get(ctx.attest, n)
-
-    case independent(board, ctx.task, ctx, cache) do
-      {{:ok, author}, cache} ->
-        outcome =
-          ok("review by #{author}", text || Tasks.state(board, ctx.task.id).review.summary)
-
-        {if(Map.has_key?(ctx.waive, n), do: %{outcome | status: :waived}, else: outcome), cache}
-
-      {{:error, why}, cache} ->
-        {failed("attestation", "#{c.args["about"]}: needs an independent review (#{why})"), cache}
-    end
+    {Map.merge(%{advisory: false, output: nil, refs: []}, outcome), cache}
   end
 
   defp attested(board, %{id: n} = c, ctx, cache) do
@@ -332,7 +309,7 @@ defmodule BubbleEx.Tasks.Verifier do
     end
   end
 
-  # An attestation from the last completion: an advisory audit cannot re-attest.
+  # An attestation from the last completion: an audit cannot re-attest.
   defp recorded(board, id, n) do
     Enum.find_value(Tasks.state(board, id).evidence, fn
       %{"criterion" => ^n, "status" => status} = e when status in ["pass", "waived"] ->
@@ -354,10 +331,12 @@ defmodule BubbleEx.Tasks.Verifier do
     ids ++ for(id <- ids, sub <- Map.get(board.children, id, []), do: sub.id)
   end
 
-  # {:ok, reviewer} when the task's review is current and independent.
+  # {:ok, detail} when the task's review is current and its reviewer is
+  # no implementer by label; git authors are a spoofable extra hint.
   defp independent(board, task, ctx, cache) do
     review = Tasks.state(board, task.id).review
     reviewed = reviewed(board, task)
+    impl = Enum.flat_map(reviewed, &Tasks.state(board, &1).agents)
 
     cond do
       review == nil ->
@@ -366,58 +345,42 @@ defmodule BubbleEx.Tasks.Verifier do
       not current?(board, task, review) ->
         {{:error, "the review is of other code or evidence; review again"}, cache}
 
-      ctx.trusted ->
-        by_git(task, reviewed, ctx, cache)
+      review.reviewer in impl ->
+        {{:error, "#{review.reviewer} implemented it"}, cache}
+
+      not ctx.audit and ctx.agent in impl ->
+        {{:error, "#{ctx.agent} implemented it"}, cache}
 
       true ->
-        by_label(board, reviewed, review, ctx, cache)
+        git_hint(task, reviewed, review, ctx, cache)
     end
   end
 
-  defp by_label(board, reviewed, review, ctx, cache) do
-    impl = Enum.flat_map(reviewed, &Tasks.state(board, &1).agents)
-
-    cond do
-      review.reviewer in impl -> {{:error, "#{review.reviewer} implemented it"}, cache}
-      not ctx.audit and ctx.agent in impl -> {{:error, "#{ctx.agent} implemented it"}, cache}
-      true -> {{:ok, review.reviewer <> " (advisory label)"}, cache}
-    end
-  end
-
-  # Implementers and the reviewer from committed history, never labels.
-  # Reviewing oneself: the reviewer is not among the task's implementers.
-  # Reviewing another task (acceptance): neither the reviewer nor whoever
-  # completes this one implemented it, and it has a committed implementation.
-  defp by_git(task, reviewed, ctx, cache) do
+  # Git authors of the state-file commits: a hint, not an identity (%ae
+  # is whatever the committer configured). Skipped without history.
+  defp git_hint(task, reviewed, review, ctx, cache) do
     {own, cache} = identities(ctx, task.id, cache)
-    others = reviewed -- [task.id]
 
     {impl, cache} =
-      Enum.flat_map_reduce(others, cache, fn id, cache ->
+      Enum.flat_map_reduce(reviewed -- [task.id], cache, fn id, cache ->
         {ids, cache} = identities(ctx, id, cache)
         {ids.implementers, cache}
       end)
 
-    {impl, completers} =
-      if others == [], do: {own.implementers, []}, else: {impl, own.implementers}
+    impl = if reviewed == [task.id], do: own.implementers, else: impl
+    label = "reviewed by #{review.reviewer}"
 
-    author = Git.review_author(own, Tasks.state(ctx.board, task.id).review)
+    case Git.review_author(own, review) do
+      nil ->
+        {{:ok, label <> " (git hint skipped: the review is not in the history)"}, cache}
 
-    cond do
-      author == nil ->
-        {{:error, "the review is not committed"}, cache}
-
-      others != [] and impl == [] ->
-        {{:error, "what it reviews has no committed implementation"}, cache}
-
-      author in impl ->
-        {{:error, "#{author} committed the implementation too"}, cache}
-
-      (bad = Enum.find(completers, &(&1 in impl))) != nil ->
-        {{:error, "#{bad} implemented it"}, cache}
-
-      true ->
-        {{:ok, author}, cache}
+      author ->
+        if author in impl,
+          do:
+            {{:error,
+              "git hint: the review was committed by #{author}, who also committed the " <>
+                "implementation"}, cache},
+          else: {{:ok, label <> " (committed by #{author}: a hint, not an identity)"}, cache}
     end
   end
 
@@ -509,19 +472,18 @@ defmodule BubbleEx.Tasks.Verifier do
         completed_by: agent,
         completed_at: now,
         basis: %{plan_sha256: board.plan.plan_sha256, source_sha256: task.source_sha256},
-        evidence: Enum.map(outcomes, &Map.drop(&1, [:output, :raw])) ++ artifact_entry,
+        evidence: Enum.map(outcomes, &Map.delete(&1, :output)) ++ artifact_entry,
         reverify: nil,
-        mode: mode(board)
+        mode: :advisory
     }
   end
 
   # --- evidence ---------------------------------------------------------------------
 
   @doc false
-  # %{results: [{ref, sha256, %Result{}}], artifacts: [%{ref, sha256}], unsigned: [ref]}.
-  # Advisory: the latest result per id. Trusted: every result signed with
-  # the key (`<file>.sig`), all of them; unsigned ones are listed, not used.
-  def evidence(root, paths, key \\ nil) do
+  # %{results: [{ref, sha256, %Result{}}], artifacts: [%{ref, sha256}]}:
+  # every result read (none is signed; all of them are checked).
+  def evidence(root, paths) do
     default = Path.join(root, @results_dir)
 
     files =
@@ -529,11 +491,9 @@ defmodule BubbleEx.Tasks.Verifier do
       |> Enum.flat_map(&expand/1)
       |> Enum.uniq()
 
-    Enum.reduce_while(files, {:ok, %{results: [], artifacts: [], unsigned: []}}, fn path,
-                                                                                    {:ok, acc} ->
-      case read_evidence(root, path, key) do
+    Enum.reduce_while(files, {:ok, %{results: [], artifacts: []}}, fn path, {:ok, acc} ->
+      case read_evidence(root, path) do
         {:ok, {:result, entry}} -> {:cont, {:ok, %{acc | results: [entry | acc.results]}}}
-        {:ok, {:unsigned, ref}} -> {:cont, {:ok, %{acc | unsigned: [ref | acc.unsigned]}}}
         {:ok, {:artifact, ref}} -> {:cont, {:ok, %{acc | artifacts: [ref | acc.artifacts]}}}
         {:error, _} = e -> {:halt, e}
       end
@@ -542,22 +502,13 @@ defmodule BubbleEx.Tasks.Verifier do
       {:ok, acc} ->
         {:ok,
          %{
-           results: acc.results |> latest(key) |> Enum.sort_by(&elem(&1, 0)),
-           artifacts: acc.artifacts |> Enum.uniq() |> Enum.sort_by(& &1.ref),
-           unsigned: Enum.sort(acc.unsigned)
+           results: Enum.sort_by(acc.results, &elem(&1, 0)),
+           artifacts: acc.artifacts |> Enum.uniq() |> Enum.sort_by(& &1.ref)
          }}
 
       error ->
         error
     end
-  end
-
-  defp latest(results, key) when is_binary(key), do: results
-
-  defp latest(results, nil) do
-    results
-    |> Enum.group_by(fn {_, _, r} -> r.id end)
-    |> Enum.map(fn {_, rs} -> Enum.max_by(rs, fn {_, _, r} -> r.ran_at end, DateTime) end)
   end
 
   defp expand(path) do
@@ -568,19 +519,17 @@ defmodule BubbleEx.Tasks.Verifier do
     end
   end
 
-  defp read_evidence(_root, {:missing, path}, _key),
+  defp read_evidence(_root, {:missing, path}),
     do: error("no evidence at #{path}", %{path: path})
 
-  defp read_evidence(root, path, key) do
+  defp read_evidence(root, path) do
     bytes = File.read!(path)
     sha = :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
     ref = ref(root, path)
 
     case Jason.decode(bytes) do
       {:ok, %{"format" => "bubble_ex.verify.result"}} ->
-        if key != nil and not signed?(path, bytes, key),
-          do: {:ok, {:unsigned, ref}},
-          else: result(bytes, ref, sha)
+        result(bytes, ref, sha)
 
       _ ->
         {:ok, {:artifact, %{ref: ref, sha256: sha}}}
@@ -591,13 +540,6 @@ defmodule BubbleEx.Tasks.Verifier do
     case Result.from_json(bytes) do
       {:ok, result} -> {:ok, {:result, {ref, sha, result}}}
       {:error, e} -> {:error, %{e | message: "#{ref}: #{e.message}"}}
-    end
-  end
-
-  defp signed?(path, bytes, key) do
-    case File.read(path <> ".sig") do
-      {:ok, mac} -> Signature.verify_file(bytes, "result", mac, key)
-      _ -> false
     end
   end
 
@@ -636,8 +578,7 @@ defmodule BubbleEx.Tasks.Verifier do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false,
-      raw: nil
+      advisory: false
     }
 
   defp failed(binding, detail),
@@ -647,8 +588,7 @@ defmodule BubbleEx.Tasks.Verifier do
       detail: detail,
       refs: [],
       output: nil,
-      advisory: false,
-      raw: nil
+      advisory: false
     }
 
   defp error(message, context \\ %{}), do: {:error, Error.new(:invalid_input, message, context)}
