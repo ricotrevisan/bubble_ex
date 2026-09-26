@@ -1,0 +1,434 @@
+defmodule BubbleEx.Target.Phoenix.Checks do
+  @moduledoc """
+  Binds the abstract criteria of plan tasks (`BubbleEx.Plan.Criteria`) to
+  concrete checks in a project rendered by `BubbleEx.Target.Phoenix`
+  (WTF-359 §4, WTF-375). `mix wtf.task complete` and `audit` run them
+  locally, in the owner's repository (`BubbleEx.Tasks`).
+
+  | criterion | Phoenix binding |
+  |-----------|-----------------|
+  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file |
+  | `compiles` | `mix compile --warnings-as-errors` (the compiler's xref checks: undefined and deprecated calls are warnings, so errors) |
+  | `lint` | `mix format --check-formatted`, and `mix credo --strict` when the project has Credo (`deps/credo`) |
+  | `traceability` | every listed Bubble ID is traced in the source under `lib/`: a `data-bubble-id="<id>"` attribute (what the rendered page carries), or for a page or reusable a `bubble:page <id>` / `bubble:reusable <id>` marker comment |
+  | `render_smoke` | no `TODO(bubble:` placeholder left for the listed elements or in the files tracing the listed surfaces, and the tests tagged with them pass (see Tagged tests) |
+  | `step_order` | in `lib/`, exactly one `# bubble:workflow <id>` comment, followed (before the next workflow marker) by one `# bubble:step N <Type>` comment per action, in order, read with `Code.string_to_quoted_with_comments/2` |
+  | `unit_test` | the tests tagged with each listed workflow pass |
+  | `request_shape` | the tests tagged with each listed API call pass |
+  | `deterministic` | a passing `deterministic` `BubbleEx.Verify.Result` naming the task (the generator renders twice) |
+  | `policy_matrix` | passing `privacy_read` results naming the task (`BubbleEx.Target.Ash.MatrixTests.results/3`) |
+  | `visual_parity` | passing `visual_parity` results naming the task |
+  | `replay` | results naming the task, each passing **and Bubble-verified** (its recording, `.wtf/verification/recordings/<scenario>.json`, present and matching) |
+  | `data_counts` | passing `row_counts` results naming the task |
+  | `subtasks_done`, `independent_review`, `decision_recorded`, `attested` | task state, not the code: see `BubbleEx.Tasks` |
+
+  ## Tagged tests
+
+  Tests prove a subject by carrying its ID in a `bubble` tag:
+
+      @tag bubble: "workflow:bTuV"          # or @moduletag / @describetag
+      test "the workflow sends the invoice" do …
+
+  A check with subjects `S` requires every `S` to appear as a
+  `bubble: "<S>"` tag in `test/` (read statically), then runs
+  `mix test --only bubble:<S>…` once for all of them and requires it to
+  pass. A check without subjects uses the task ID as its subject.
+
+  ## Results
+
+  Result-backed checks read `BubbleEx.Verify.Result` files (the latest per
+  result `id`) given as evidence and evaluate each with
+  `BubbleEx.Verify.Result.evaluate/3` (`app:`, `now:`, trusted
+  `reviewers:`, the decision store as `resolved:`; without one, a result
+  citing a decision does not count). A decoded result never counts by
+  itself; `skipped` never passes.
+  """
+
+  alias BubbleEx.Decision.Resolved
+  alias BubbleEx.Target.Phoenix.Manifest
+  alias BubbleEx.Verify.{Recording, Result}
+
+  @result_checks %{
+    deterministic: "deterministic",
+    policy_matrix: "privacy_read",
+    visual_parity: "visual_parity",
+    data_counts: "row_counts"
+  }
+
+  @typedoc """
+  The context of a run:
+
+    * `root` - the project's root directory
+    * `task` - the `BubbleEx.Plan.Task` whose criteria run
+    * `results` - `[{ref, sha256, %Result{}}]` of the evidence
+    * `app`, `now`, `reviewers`, `resolved` - for `Result.evaluate/3`
+    * `cmd` - `(args, env) -> {output, exit_status}`: runs `mix` in `root`
+  """
+  @type ctx :: %{
+          root: Path.t(),
+          task: BubbleEx.Plan.Task.t(),
+          results: [{String.t(), String.t(), Result.t()}],
+          app: String.t() | nil,
+          now: DateTime.t(),
+          reviewers: [String.t()],
+          resolved: Resolved.t() | nil,
+          cmd: (list(String.t()), list() -> {String.t(), non_neg_integer()})
+        }
+
+  @typedoc "One criterion's outcome. `output` is shown, never stored."
+  @type outcome :: %{
+          status: :pass | :fail,
+          binding: String.t(),
+          detail: String.t() | nil,
+          refs: [%{ref: String.t(), sha256: String.t()}],
+          output: String.t() | nil
+        }
+
+  @doc "The criteria this module binds to the code (the rest are task state)."
+  @spec bound() :: [atom()]
+  def bound,
+    do: ~w(generated_unchanged compiles lint traceability render_smoke step_order unit_test
+         request_shape)a ++ Map.keys(@result_checks) ++ [:replay]
+
+  @doc """
+  Runs `criterion` (`%{check, args}`). `cache` memoizes project-wide
+  checks (compile, lint, the source scans) across criteria and tasks of
+  one run; pass `%{}` to start.
+  """
+  @spec run(map(), ctx(), map()) :: {outcome(), map()}
+  def run(%{check: check, args: args}, ctx, cache), do: check(check, args, ctx, cache)
+
+  # --- structural --------------------------------------------------------------------
+
+  defp check(:generated_unchanged, _args, ctx, cache) do
+    memo(cache, :generated_unchanged, fn ->
+      binding = "check_manifest(.wtf/generated.json)"
+
+      with {:ok, json} <- File.read(Path.join(ctx.root, Manifest.path())),
+           {:ok, report} <- Manifest.check(json, ctx.root) do
+        manifest_outcome(binding, report)
+      else
+        {:error, :enoent} -> fail(binding, "no #{Manifest.path()}")
+        {:error, %BubbleEx.Error{message: m}} -> fail(binding, m)
+        {:error, reason} -> fail(binding, inspect(reason))
+      end
+    end)
+  end
+
+  defp check(:compiles, _args, ctx, cache) do
+    memo(cache, :compiles, fn -> mix(ctx, ~w(compile --warnings-as-errors)) end)
+  end
+
+  defp check(:lint, _args, ctx, cache) do
+    memo(cache, :lint, fn ->
+      format = mix(ctx, ~w(format --check-formatted))
+
+      cond do
+        format.status == :fail -> format
+        File.dir?(Path.join(ctx.root, "deps/credo")) -> mix(ctx, ~w(credo --strict))
+        true -> %{format | detail: "credo is not a dependency: format only"}
+      end
+    end)
+  end
+
+  # --- traceability ------------------------------------------------------------------
+
+  defp check(:traceability, args, ctx, cache) do
+    {sources, cache} = sources(ctx, cache)
+    ids = list(args, "elements")
+    binding = "data-bubble-id / bubble: markers in lib/"
+    missing = Enum.reject(ids, &traced?(sources, &1))
+
+    outcome =
+      cond do
+        ids == [] -> pass(binding, "nothing to trace")
+        missing == [] -> pass(binding, "#{length(ids)} Bubble IDs traced")
+        true -> fail(binding, "not traced: " <> summary(missing))
+      end
+
+    {outcome, cache}
+  end
+
+  defp check(:render_smoke, args, ctx, cache) do
+    {sources, cache} = sources(ctx, cache)
+    subjects = list(args, "surfaces") ++ list(args, "elements")
+
+    placeholders =
+      for {path, text} <- sources,
+          String.contains?(text, "TODO(bubble:"),
+          Enum.any?(subjects, &placeholder_in?(text, &1)),
+          uniq: true,
+          do: path
+
+    if placeholders == [] do
+      tagged(subjects, ctx, cache)
+    else
+      {fail("TODO(bubble: placeholders", "left in " <> summary(Enum.sort(placeholders))), cache}
+    end
+  end
+
+  defp check(:step_order, args, ctx, cache) do
+    {markers, cache} = markers(ctx, cache)
+    workflow = args["workflow"]
+    steps = list(args, "steps")
+    binding = "# bubble:workflow / # bubble:step markers in lib/"
+
+    outcome =
+      case Map.get(markers, bubble_id(workflow), []) do
+        [] ->
+          fail(binding, "no # bubble:workflow #{bubble_id(workflow)} marker")
+
+        [{_path, found}] ->
+          expected = steps |> Enum.with_index(1) |> Enum.map(fn {type, n} -> {n, type} end)
+
+          if found == expected,
+            do: pass(binding, "#{length(steps)} steps in order"),
+            else:
+              fail(
+                binding,
+                "expected steps #{steps_text(expected)}, found #{steps_text(found)}"
+              )
+
+        many ->
+          fail(binding, "the workflow is marked in #{length(many)} places")
+      end
+
+    {outcome, cache}
+  end
+
+  defp check(:unit_test, args, ctx, cache), do: tagged(list(args, "workflows"), ctx, cache)
+  defp check(:request_shape, args, ctx, cache), do: tagged(list(args, "calls"), ctx, cache)
+
+  # --- results -----------------------------------------------------------------------
+
+  defp check(:replay, _args, ctx, cache) do
+    results = for {_, _, r} = entry <- ctx.results, ctx.task.id in r.tasks, do: entry
+    {evaluate(results, "replay results", ctx, true), cache}
+  end
+
+  defp check(check, _args, ctx, cache) when is_map_key(@result_checks, check) do
+    name = @result_checks[check]
+
+    results =
+      for {_, _, r} = entry <- ctx.results, r.check == name, ctx.task.id in r.tasks, do: entry
+
+    {evaluate(results, "#{name} results", ctx, false), cache}
+  end
+
+  defp check(check, _args, _ctx, cache),
+    do: {fail("unbound", "#{check} has no Phoenix binding"), cache}
+
+  defp evaluate([], binding, ctx, _bubble?),
+    do: fail(binding, "no result names #{ctx.task.id}: pass the results with --evidence")
+
+  defp evaluate(_results, binding, %{app: nil}, _bubble?),
+    do: fail(binding, "evaluating results needs the Bubble app ID (--app)")
+
+  defp evaluate(results, binding, ctx, bubble?) do
+    refs = Enum.map(results, fn {ref, sha, _} -> %{ref: ref, sha256: sha} end)
+    resolved = ctx.resolved || %Resolved{}
+
+    failures =
+      for {ref, _sha, r} <- results,
+          reason = verdict(r, resolved, ctx, bubble?),
+          reason != nil,
+          do: "#{ref}: #{reason}"
+
+    if failures == [],
+      do: %{pass(binding, "#{length(results)} results count") | refs: refs},
+      else: %{fail(binding, summary(failures)) | refs: refs}
+  end
+
+  defp verdict(r, resolved, ctx, bubble?) do
+    opts = [
+      app: ctx.app,
+      now: ctx.now,
+      reviewers: ctx.reviewers,
+      recording: recording(ctx.root, r)
+    ]
+
+    case Result.evaluate(r, resolved, opts) do
+      {:ok, %{passing: false, result: linked}} -> "status #{linked.status} does not count"
+      {:ok, %{bubble_verified: false}} when bubble? -> "not Bubble-verified"
+      {:ok, _} -> nil
+      {:error, %BubbleEx.Error{message: m}} -> m
+    end
+  end
+
+  defp recording(root, %Result{oracle: %{kind: kind}, scenario: %{id: id}})
+       when kind in [:bubble, :model] and is_binary(id) do
+    with {:ok, text} <-
+           File.read(Path.join([root, ".wtf/verification/recordings", id <> ".json"])),
+         {:ok, rec} <- Recording.from_json(text) do
+      rec
+    else
+      _ -> nil
+    end
+  end
+
+  defp recording(_root, _r), do: nil
+
+  # --- tagged tests ------------------------------------------------------------------
+
+  defp tagged([], ctx, cache), do: tagged([ctx.task.id], ctx, cache)
+
+  defp tagged(subjects, ctx, cache) do
+    {tags, cache} = test_tags(ctx, cache)
+    binding = "mix test --only bubble:<subject>"
+
+    case Enum.reject(subjects, &MapSet.member?(tags, &1)) do
+      [] ->
+        args = ["test" | Enum.flat_map(subjects, &["--only", "bubble:" <> &1])]
+        {%{mix(ctx, args, [{"MIX_ENV", "test"}]) | binding: binding}, cache}
+
+      untagged ->
+        {fail(binding, "no test tagged bubble: " <> summary(untagged)), cache}
+    end
+  end
+
+  defp test_tags(ctx, cache) do
+    memo(cache, :test_tags, fn ->
+      for path <- files(ctx.root, "test/**/*.{exs,ex}"),
+          [_, subject] <- Regex.scan(~r/\bbubble:\s*"([^"]+)"/, File.read!(path)),
+          into: MapSet.new(),
+          do: subject
+    end)
+  end
+
+  # --- source scans ------------------------------------------------------------------
+
+  # [{relative path, text}] of lib/.
+  defp sources(ctx, cache) do
+    memo(cache, :sources, fn ->
+      for path <- files(ctx.root, "lib/**/*.{ex,exs,heex,eex}"),
+          do: {Path.relative_to(path, ctx.root), File.read!(path)}
+    end)
+  end
+
+  defp traced?(sources, id) do
+    bubble = Regex.escape(bubble_id(id))
+    kind = id |> String.split(":", parts: 2) |> hd()
+
+    patterns =
+      [~r/data-bubble-id=["']#{bubble}["']/] ++
+        if(kind in ["page", "reusable"], do: [~r/bubble:#{kind}\s+#{bubble}(?![\w-])/], else: [])
+
+    Enum.any?(sources, fn {_, text} -> Enum.any?(patterns, &Regex.match?(&1, text)) end)
+  end
+
+  # A placeholder for the element itself, or, for a page or reusable,
+  # anywhere in a file tracing it.
+  defp placeholder_in?(text, id) do
+    surface? = String.starts_with?(id, ["page:", "reusable:"])
+
+    String.contains?(text, "TODO(bubble:#{bubble_id(id)})") or
+      (surface? and traced?([{nil, text}], id))
+  end
+
+  # workflow Bubble ID => [{path, [{n, type}]}], from the comments of lib/**/*.ex.
+  defp markers(ctx, cache) do
+    memo(cache, :markers, fn ->
+      for path <- files(ctx.root, "lib/**/*.{ex,exs}"),
+          {id, steps} <- file_markers(File.read!(path)),
+          reduce: %{} do
+        acc -> Map.update(acc, id, [{path, steps}], &(&1 ++ [{path, steps}]))
+      end
+    end)
+  end
+
+  defp file_markers(source) do
+    case Code.string_to_quoted_with_comments(source) do
+      {:ok, _ast, comments} ->
+        comments
+        |> Enum.map(&String.trim(String.trim_leading(&1.text, "#")))
+        |> Enum.reduce([], &marker/2)
+        |> Enum.reverse()
+
+      _ ->
+        []
+    end
+  end
+
+  # Workflow markers open a block; step markers join the open one.
+  defp marker(text, acc) do
+    case {Regex.run(~r/\Abubble:workflow\s+(\S+)/, text),
+          Regex.run(~r/\Abubble:step\s+(\d+)\s+(\S+)/, text), acc} do
+      {[_, id], _, acc} ->
+        [{id, []} | acc]
+
+      {_, [_, n, type], [{id, steps} | rest]} ->
+        [{id, steps ++ [{String.to_integer(n), type}]} | rest]
+
+      _ ->
+        acc
+    end
+  end
+
+  defp steps_text([]), do: "none"
+  defp steps_text(steps), do: Enum.map_join(steps, ", ", fn {n, type} -> "#{n} #{type}" end)
+
+  defp manifest_outcome(binding, %{clean?: true} = report),
+    do: pass(binding, "#{length(report.unchanged)} generated files unchanged")
+
+  defp manifest_outcome(binding, report) do
+    changes =
+      Enum.map(report.modified, &"modified #{&1}") ++ Enum.map(report.missing, &"missing #{&1}")
+
+    fail(binding, summary(changes))
+  end
+
+  # --- helpers -----------------------------------------------------------------------
+
+  defp mix(ctx, args, env \\ []) do
+    binding = Enum.join(["mix" | args], " ")
+    {output, status} = ctx.cmd.(args, env)
+
+    if status == 0,
+      do: pass(binding, nil),
+      else: %{fail(binding, "exit status #{status}") | output: tail(output)}
+  end
+
+  defp tail(output),
+    do: output |> String.split("\n") |> Enum.take(-40) |> Enum.join("\n")
+
+  defp files(root, pattern), do: root |> Path.join(pattern) |> Path.wildcard() |> Enum.sort()
+
+  defp memo(cache, key, fun) do
+    case cache do
+      %{^key => value} ->
+        {value, cache}
+
+      _ ->
+        value = fun.()
+        {value, Map.put(cache, key, value)}
+    end
+  end
+
+  defp list(args, key) do
+    case args[key] do
+      list when is_list(list) -> Enum.filter(list, &is_binary/1)
+      _ -> []
+    end
+  end
+
+  # "element:bTx" -> "bTx"; a bare ID stays as it is.
+  defp bubble_id(nil), do: ""
+
+  defp bubble_id(id) do
+    case String.split(id, ":", parts: 2) do
+      [_kind, bubble] -> bubble
+      [bubble] -> bubble
+    end
+  end
+
+  defp summary(items) do
+    {shown, rest} = Enum.split(items, 10)
+    Enum.join(shown, ", ") <> if(rest == [], do: "", else: " and #{length(rest)} more")
+  end
+
+  defp pass(binding, detail),
+    do: %{status: :pass, binding: binding, detail: detail, refs: [], output: nil}
+
+  defp fail(binding, detail),
+    do: %{status: :fail, binding: binding, detail: detail, refs: [], output: nil}
+end
