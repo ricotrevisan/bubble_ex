@@ -87,6 +87,50 @@ jobs:
           MIX_ENV: test
           BUBBLE_EX_DDL_PG: postgres://postgres:postgres@localhost:5432
 
+  phoenix-compile-check:
+    # Renders every fixture through BubbleEx.Target.Phoenix as a complete
+    # Phoenix/Ash application (one scratch project; the dependencies,
+    # locked by scripts/phoenix_compile_check/mix.lock, compile once), then
+    # per fixture: mix compile --warnings-as-errors, mix ash.codegen and
+    # ash.codegen --check, and mix test (the scaffolded smoke test boots the
+    # endpoint and signs a user in with a magic link). See
+    # scripts/phoenix_compile_check.sh.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - elixir: "1.18.4"
+            otp: "28.0"
+          - elixir: "1.20.2"
+            otp: "28.1.1"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PHOENIX_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-phoenix-check-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock', 'scripts/phoenix_compile_check/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-phoenix-check-${{ matrix.elixir }}-${{ matrix.otp }}-
+      - run: mix deps.get
+      - run: scripts/phoenix_compile_check.sh
+
   fidelity:
     runs-on: ubuntu-latest
     steps:

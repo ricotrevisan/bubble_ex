@@ -1,0 +1,27 @@
+defmodule <%= @module %>.Accounts.MagicLinkSender do
+  @moduledoc """
+  Sends a magic sign-in link (AshAuthentication's magic link strategy).
+
+  Delivery is asynchronous (`<%= @module %>.Accounts.MagicLinkEmail`, an Oban
+  job) so the time a request takes does not reveal whether the email
+  belongs to a user.
+  """
+
+  use AshAuthentication.Sender
+  use <%= @web %>, :verified_routes
+
+  @impl AshAuthentication.Sender
+  def send(user_or_email, token, _opts) do
+    email =
+      case user_or_email do
+        %{email: email} -> email
+        email -> email
+      end
+
+    %{"email" => to_string(email), "url" => url(~p"/magic_link/#{token}")}
+    |> <%= @module %>.Accounts.MagicLinkEmail.new()
+    |> Oban.insert!()
+
+    :ok
+  end
+end

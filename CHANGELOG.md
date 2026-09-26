@@ -6,6 +6,35 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Phoenix target adapter** (WTF-369, T4 of WTF-359).
+  `BubbleEx.Target.Phoenix.render(project, name:, module:, app:)` renders a
+  `privacy: :omit` `BubbleEx.Target.Ash.Project` as the file map of a
+  complete Phoenix 1.8 + Ash 3 application, porting bubble_wtf's
+  `ProjectRenderer` (same file layout, `module_name/1`, `project_name/2`,
+  `deps/1`, `ash-functions`, `default_string_length_count: :codepoints`)
+  and extending it: exact framework pins (Phoenix 1.8.15, LiveView 1.2.12,
+  AshPhoenix, AshAuthentication 4.15 + Phoenix 2.17, Oban 2.24, AshOban,
+  Tailwind v4 via `tailwind`, esbuild), dev/test/prod/runtime config with
+  production secrets from the environment, Oban through `AshOban.config/2`
+  with its migration, AshAuthentication **magic link** sign-in on the User
+  (WTF-355: unique email identity, registration disabled, token resource
+  `Accounts.Token`, an Oban-backed sender stub and Swoosh mailer), an
+  endpoint, router with sign-in routes and `/api/1.1/wf/:name`, Tailwind v4
+  layouts with `@theme` tokens in `assets/css/bubble.css` (no daisyUI), a
+  `.gitignore` with `.wtf/plan.key`, and a smoke test. Generated files (the
+  Ash modules, token resource, workflow API entry point, theme tokens,
+  `.wtf/names.json`) carry a header and are listed with their SHA-256 in
+  `.wtf/generated.json` (`BubbleEx.Target.Phoenix.Manifest`, with the
+  project, decisions and applied hashes and the bubble_ex version); every
+  other file is owned (scaffold once). `check_manifest/2` detects hand
+  edits (file map or project directory). `Target.Ash.Source.render/2`
+  gains `:extend` (extensions and DSL for a resource) and
+  `:extra_resources`; the Ash pins move to `Target.Ash.Versions`
+  (`Target.Ash.versions/1` delegates). `scripts/phoenix_compile_check.sh`
+  (CI job `phoenix-compile-check`, Elixir 1.18 and 1.20) renders every
+  fixture, compiles with `--warnings-as-errors`, generates and checks the
+  migrations and runs the smoke test against PostgreSQL.
+
 - **PostgreSQL reference documentation in the catalog** (WTF-393). Besides
   the trailing `--` comment block, `Db.Sql.Postgres` now emits
   `COMMENT ON COLUMN "schema"."table"."column" IS E'References ... (no

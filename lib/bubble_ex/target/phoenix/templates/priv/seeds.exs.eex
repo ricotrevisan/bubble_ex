@@ -1,0 +1,3 @@
+# Seed data with <%= @module %>.Repo or Ash.Seed when needed:
+#
+#     mix run priv/repo/seeds.exs

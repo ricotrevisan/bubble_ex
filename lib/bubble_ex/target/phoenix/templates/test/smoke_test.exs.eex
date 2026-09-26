@@ -1,0 +1,50 @@
+defmodule <%= @web %>.SmokeTest do
+  # Scaffolded by bubble_ex: the endpoint boots, the workflow API answers
+  # and a stored user signs in with a magic link.
+  use <%= @web %>.ConnCase, async: true
+  use Oban.Testing, repo: <%= @module %>.Repo
+
+  import Swoosh.TestAssertions
+
+  alias <%= @module %>.Accounts.MagicLinkEmail
+
+  test "the home page renders", %{conn: conn} do
+    assert html_response(get(conn, ~p"/"), 200) =~ "Sign in"
+  end
+
+  test "the sign-in page renders", %{conn: conn} do
+    assert html_response(get(conn, ~p"/sign-in"), 200) =~ "email"
+  end
+
+  test "an unknown workflow is not found", %{conn: conn} do
+    conn = post(conn, "/api/1.1/wf/no_such_workflow", %{})
+    assert %{"status" => "NOT_FOUND"} = json_response(conn, 404)
+  end
+
+  test "a stored user signs in with a magic link", %{conn: conn} do
+    email = "owner@example.com"
+    Ash.Seed.seed!(<%= @module %>.<%= @user %>, %{id: "1700000000000x100000000000000001", <%= @email %>: email})
+
+    strategy = AshAuthentication.Info.strategy!(<%= @module %>.<%= @user %>, :magic_link)
+    assert :ok = AshAuthentication.Strategy.action(strategy, :request, %{"<%= @email %>" => email})
+
+    assert [%{args: %{"url" => url} = args}] = all_enqueued(worker: MagicLinkEmail)
+    assert :ok = perform_job(MagicLinkEmail, args)
+    assert_email_sent(to: email)
+
+    token = url |> URI.parse() |> Map.fetch!(:path) |> Path.basename()
+    conn = post(conn, "/auth/user/magic_link", %{"token" => token})
+    assert redirected_to(conn) == ~p"/"
+  end
+
+  test "an unknown email gets no link" do
+    strategy = AshAuthentication.Info.strategy!(<%= @module %>.<%= @user %>, :magic_link)
+
+    assert :ok =
+             AshAuthentication.Strategy.action(strategy, :request, %{
+               "<%= @email %>" => "nobody@example.com"
+             })
+
+    assert [] = all_enqueued(worker: MagicLinkEmail)
+  end
+end

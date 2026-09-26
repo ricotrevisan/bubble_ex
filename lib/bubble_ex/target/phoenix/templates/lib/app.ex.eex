@@ -1,0 +1,8 @@
+defmodule <%= @module %> do
+  @moduledoc """
+  A Phoenix/Ash application generated from a Bubble app.
+
+  The Ash resources live in `<%= @module %>.Domain`; the web interface in
+  `<%= @web %>`.
+  """
+end

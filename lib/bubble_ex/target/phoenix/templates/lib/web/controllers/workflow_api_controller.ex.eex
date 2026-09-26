@@ -1,0 +1,17 @@
+defmodule <%= @web %>.WorkflowApiController do
+  @moduledoc """
+  Bubble's workflow API, `/api/1.1/wf/<name>` (WTF-359 Q6).
+
+  Each backend workflow the Bubble app exposes as a public API endpoint
+  becomes a generated entry point here, dispatching to its Ash action. No
+  workflow is lowered yet, so every name answers 404. (Bubble's own error
+  bodies are not reproduced yet.)
+  """
+  use <%= @web %>, :controller
+
+  def dispatch(conn, %{"name" => name}) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{"status" => "NOT_FOUND", "message" => "Workflow not found: " <> name})
+  end
+end

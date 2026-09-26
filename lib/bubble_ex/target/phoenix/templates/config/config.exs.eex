@@ -1,0 +1,60 @@
+import Config
+
+config :<%= @app %>,
+  ecto_repos: [<%= @module %>.Repo],
+  ash_domains: [<%= @module %>.Domain],
+  generators: [timestamp_type: :utc_datetime_usec]
+
+# Required since Ash 3.33 (EEF-CVE-2026-82752).
+config :ash, default_string_length_count: :codepoints
+
+config :ash_authentication, return_error_on_invalid_magic_link_token?: true
+
+config :<%= @app %>, <%= @web %>.Endpoint,
+  url: [host: "localhost"],
+  adapter: Bandit.PhoenixAdapter,
+  render_errors: [
+    formats: [html: <%= @web %>.ErrorHTML, json: <%= @web %>.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: <%= @module %>.PubSub,
+  live_view: [signing_salt: "<%= @salts.live_view %>"]
+
+config :<%= @app %>, Oban,
+  engine: Oban.Engines.Basic,
+  notifier: Oban.Notifiers.Postgres,
+  queues: [default: 10, mailers: 10],
+  repo: <%= @module %>.Repo,
+  plugins: [Oban.Plugins.Pruner]
+
+# Emails are stored locally (see /dev/mailbox) until a production adapter is
+# configured in config/runtime.exs.
+config :<%= @app %>, <%= @module %>.Mailer, adapter: Swoosh.Adapters.Local
+
+config :esbuild,
+  version: "<%= @esbuild %>",
+  <%= @app %>: [
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
+  ]
+
+config :tailwind,
+  version: "<%= @tailwind %>",
+  <%= @app %>: [
+    args: ~w(
+      --input=assets/css/app.css
+      --output=priv/static/assets/css/app.css
+    ),
+    cd: Path.expand("..", __DIR__),
+    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
+  ]
+
+config :logger, :default_formatter,
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id]
+
+config :phoenix, :json_library, Jason
+
+import_config "#{config_env()}.exs"

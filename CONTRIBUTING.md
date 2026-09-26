@@ -61,6 +61,26 @@ With `BUBBLE_EX_PRIVATE_EXPORT`
 set it also checks a private app export. CI runs it as the `ash-compile-check`
 job.
 
+When changing `BubbleEx.Target.Phoenix` (or its templates under
+`lib/bubble_ex/target/phoenix/templates/`), also build its output:
+
+```bash
+PHOENIX_COMPILE_CHECK_DB=ecto://postgres:postgres@localhost:5432 scripts/phoenix_compile_check.sh
+```
+
+This renders every fixture as a complete Phoenix/Ash application into one
+scratch project (`_build/phoenix_compile_check`; every fixture uses the same
+module name, so the dependencies compile once), then per fixture runs
+`mix compile --warnings-as-errors`, `mix ash.codegen` and
+`mix ash.codegen --check`, and, with `PHOENIX_COMPILE_CHECK_DB` set, the
+scaffolded smoke test (`mix test`: migrations, endpoint boot, magic-link
+sign-in). The dependencies are locked by
+`scripts/phoenix_compile_check/mix.lock`; after changing the pins in
+`BubbleEx.Target.Phoenix.deps/1`, refresh it with
+`PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1`. `PHOENIX_COMPILE_CHECK_FIXTURES`
+limits the run to some fixtures. CI runs it as the `phoenix-compile-check`
+job on Elixir 1.18 and 1.20.
+
 ## Testing
 
 Tests are offline by default and do not require external services or credentials. Integration tests (tagged `:integration`) hit live Bubble.io endpoints and are

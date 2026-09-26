@@ -1,0 +1,27 @@
+defmodule <%= @module %>.Accounts.MagicLinkEmail do
+  @moduledoc "Emails a magic sign-in link."
+
+  use Oban.Worker, queue: :mailers, max_attempts: 3
+
+  import Swoosh.Email
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: %{"email" => email, "url" => url}}) do
+    new()
+    |> to(email)
+    |> from({<%= inspect(@name) %>, "noreply@example.com"})
+    |> subject("Your sign-in link")
+    |> text_body("""
+    Hi,
+
+    Use this link to sign in: #{url}
+
+    If you did not ask for it, ignore this email.
+    """)
+    |> <%= @module %>.Mailer.deliver()
+    |> case do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+end
