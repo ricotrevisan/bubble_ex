@@ -35,7 +35,7 @@ All notable changes to this project are documented here.
   Bubble stores them after creation: omitted defaulted fields are written
   out, and a defaulted field a branch needs empty is `null` (listed in
   `report.explicit_empties`: a loader must clear it after creation);
-  `report.defaults` counts them. On mm-137: 187 defaulted fields,
+  `report.defaults` counts them. On mm-137: 185 defaulted fields,
   166 records, 1,554 checks; rules solved and observable unchanged
   (120 / 77).
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358

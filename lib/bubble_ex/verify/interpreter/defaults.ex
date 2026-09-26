@@ -5,7 +5,8 @@ defmodule BubbleEx.Verify.Interpreter.Defaults do
   under the `defaults_applied_at_creation` assumption
   (`BubbleEx.Verify.Interpreter.Assumptions`).
 
-  `build/1` maps every data type's fields with a default to
+  `build/1` maps every data type's live (not deleted) fields with a
+  default to
   `{:ok, value}` (a canonical `BubbleEx.Verify.Value`) or `:unmodeled` (a
   default the interpreter cannot express: a list or reference default, a
   value that does not fit the field's type, an option key the set does not
@@ -36,6 +37,7 @@ defmodule BubbleEx.Verify.Interpreter.Defaults do
     for %Field{default: default} = f <- fields,
         default != nil,
         is_nil(f.system),
+        not f.deleted,
         into: %{},
         do: {f.id, value(f.type, default, model)}
   end

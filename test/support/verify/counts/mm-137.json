@@ -46,8 +46,8 @@
   "checks": 1554,
   "defaults": {
     "explicit_empties": 3,
-    "fields": 187,
-    "seed_values_equal_to_default": 645,
+    "fields": 185,
+    "seed_values_equal_to_default": 642,
     "unmodeled": 0
   },
   "observations": 2550,
