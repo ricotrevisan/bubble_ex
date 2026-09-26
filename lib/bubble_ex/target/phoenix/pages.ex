@@ -272,7 +272,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp locked_page(page, id, %{"module" => module, "path" => path}, modules, paths)
        when is_binary(module) and is_binary(path) do
     cond do
-      locked_module?(module) and String.ends_with?(module, "Live") and locked_path?(path) ->
+      locked_page_module?(module) and locked_path?(path) ->
         {page_entry(page, id, module, path), {modules, paths}}
 
       # A rejected module name: the page keeps its (valid) path, so its URL
@@ -318,10 +318,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # A locked name is kept only if it is one this emitter could have made:
   # the file is the owner's, so a hand-edited one must not reach the
   # generated source (a module alias segment, a path of slug segments; a
-  # page module ends in `Live`, so it cannot be `Router`, `Endpoint`,
+  # page module ends in `Live` (or `Live<N>` after a name collision), so it
+  # cannot be `Router`, `Endpoint`,
   # `BubbleRoutes`… of the web namespace; reusables live under
   # `<Web>.Reusables`).
   defp locked_module?(module), do: Regex.match?(~r/\A[A-Z][A-Za-z0-9]*\z/, module)
+  # A page module as new_page/4 makes it: `<Name>Live`, or `<Name>Live<N>`
+  # when names collide (Naming.claim/4).
+  defp locked_page_module?(module), do: Regex.match?(~r/\A[A-Z][A-Za-z0-9]*Live\d*\z/, module)
+
   defp locked_path?(path), do: Regex.match?(~r{\A/([a-z0-9_-]+(/[a-z0-9_-]+)*)?\z}, path)
 
   defp locked_section(locked, key) do

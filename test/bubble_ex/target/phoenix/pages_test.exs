@@ -305,6 +305,36 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     end
   end
 
+  test "colliding page names keep their suffixed modules on regeneration" do
+    page = fn name ->
+      %{
+        "type" => "Page",
+        "name" => name,
+        "properties" => %{"container_layout" => "column"},
+        "elements" => %{}
+      }
+    end
+
+    payload = %{
+      "_id" => "collisions",
+      "pages" => Map.new(["foo bar", "foo-bar", "foo_bar"], &{&1, page.(&1)})
+    }
+
+    {_, project, _} = render(app("test/support/expression/app.json"))
+    {:ok, frontend} = BubbleEx.Frontend.normalize(payload)
+    opts = [module: "Shop", frontend: frontend]
+    {:ok, files} = Phoenix.render(project, opts)
+
+    names = Jason.decode!(files[".wtf/surfaces.json"])
+    modules = names["pages"] |> Map.values() |> Enum.map(& &1["module"]) |> Enum.sort()
+    assert length(Enum.uniq(modules)) == 3
+    assert Enum.any?(modules, &Regex.match?(~r/Live\d+\z/, &1)), inspect(modules)
+
+    {:ok, again} = Phoenix.render(project, Keyword.put(opts, :surface_names, names))
+    assert Jason.decode!(again[".wtf/surfaces.json"]) == names
+    assert again == files
+  end
+
   test "one literal test per surface, tagged as the task CLI reads it" do
     {files, _, _} = render(case_app("bpgwgmpz"))
     test = files["test/shop_web/bubble_surfaces_test.exs"]
