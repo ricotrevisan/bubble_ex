@@ -27,10 +27,11 @@ All notable changes to this project are documented here.
   attribute is an error. With `privacy: :unverified`: a join row is
   readable only through a relationship (keyed `:read`, no `:search`) and
   only by an actor who may view, on its owner, a list the row is a member
-  of (`privacy_<list>`, `privacy_visible`), and each list's column only by
-  those who may view that list (field policies); the owner's
-  `many_to_many` and its join relationship are gated like the list, with
-  a private twin; rules testing a normalized list (`contains`, `is
+  of (`privacy_<list>`, `privacy_visible`), each list's column only by
+  those who may view that list (field policies), and rows read through a
+  list's relationships only by those who may view that list (policies
+  scoped with `accessing_from`); the owner's `many_to_many` is gated like
+  the list, with a private twin; rules testing a normalized list (`contains`, `is
   empty`, also through a reference) compile to `exists(<many_to_many>,
   id == ^actor(:id))`, and rules testing the current user's normalized
   list (`Current User's list contains This Thing`) to `exists(<rows>,

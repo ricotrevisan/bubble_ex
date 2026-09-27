@@ -277,10 +277,14 @@ defmodule BubbleEx.Target.Ash do
   private `belongs_to`), and `privacy_visible`, "a list's column is set
   and its calculation holds", for any of the table's lists; each list's
   column reads (field policy) only for those who may view that list.
-  The owner's `many_to_many` and its join relationship are gated like the
-  list they replace (`filter`, with a private twin the privacy
-  calculations read through), and the members keep their own read
-  policies. No policy authorizes writes to a join. A field the rules let
+  Rows read through one list's relationships (the owner's join
+  relationships, through which its `many_to_many` loads, and the member's
+  rows relationship) are that list's rows: a policy scoped with
+  `accessing_from` requires the actor may view that list, even when
+  another list sharing the table shows the row. The owner's
+  `many_to_many` is gated like the list it replaces (`filter`, with a
+  private twin the privacy calculations read through), and the members
+  keep their own read policies. No policy authorizes writes to a join. A field the rules let
   users auto-bind that a decision no longer stores is not in `:auto_bind`
   (`:ash_policy_auto_binding_dropped`).
 

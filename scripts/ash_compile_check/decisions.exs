@@ -574,10 +574,21 @@ defmodule DecisionsCheck do
               for {i, of} <- [{1, full}, {2, full}, {3, none}] do
                 item = create!(many.destination, %{dest_pk => "item-#{i}-" <> tag})
 
-                create!(many.through, %{
-                  many.source_attribute_on_join_resource => Map.fetch!(of, owner_pk),
-                  many.destination_attribute_on_join_resource => Map.fetch!(item, dest_pk)
-                })
+                # (every membership column set: the row is a member of
+                # the table's lists)
+                members =
+                  for a <- Ash.Resource.Info.attributes(many.through),
+                      not a.primary_key?,
+                      into: %{},
+                      do: {a.name, if(a.type == Ash.Type.Boolean, do: true, else: 0)}
+
+                create!(
+                  many.through,
+                  Map.merge(members, %{
+                    many.source_attribute_on_join_resource => Map.fetch!(of, owner_pk),
+                    many.destination_attribute_on_join_resource => Map.fetch!(item, dest_pk)
+                  })
+                )
               end
 
             _ ->

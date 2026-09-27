@@ -140,6 +140,11 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert indexed.extensions == ["pg_trgm"]
       files = render!(indexed)
       assert files["lib/acme_import/repo_extensions.ex"] =~ ~s(def all, do: ["pg_trgm"])
+      # the note for an owned Repo scaffolded before it is in the generated file
+      assert files["lib/acme_import/repo_extensions.ex"] =~
+               "does not call it and is never rewritten"
+
+      assert Map.has_key?(manifest(files)["generated"], "lib/acme_import/repo_extensions.ex")
       manifest = files[".wtf/generated.json"]
       assert {:ok, %{extensions_unlisted: []}} = Phoenix.check_manifest(manifest, files)
 
