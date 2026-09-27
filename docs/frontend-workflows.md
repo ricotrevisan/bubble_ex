@@ -226,7 +226,7 @@ calls or schedules generated whole): 531 workflows start. *Wired* is what
 a page actually triggers: 361 (15.9%); the rest of the native ones are
 custom events (run when called) or disabled in the editor. By surface
 (native): pages 170/637, reusable elements 361/1,638. 95 native workflows
-run in the browser; 13 touch stored data or schedule backend workflows
+run in the browser; 14 touch stored data or schedule backend workflows
 (they run only with the opt-in). 54 workflows are disabled in the editor.
 44 "Schedule API workflow" steps are generated on the backend runtime.
 
