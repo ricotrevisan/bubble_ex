@@ -1,0 +1,1119 @@
+{
+  "_id": "phx-frontend-workflows",
+  "element_definitions": {
+    "card": {
+      "custom_states": {
+        "count_": {
+          "default_val": 0,
+          "display": "Count",
+          "value": "number"
+        }
+      },
+      "elements": {
+        "bCardCount": {
+          "id": "bCardCount",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Count: ",
+                "1": {
+                  "next": {
+                    "name": "custom.count_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
+        "bCardEcho": {
+          "id": "bCardEcho",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 6,
+            "text": {
+              "entries": {
+                "0": "Note: ",
+                "1": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCardNote"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
+        "bCardInc": {
+          "id": "bCardInc",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "+1"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bCardNote": {
+          "id": "bCardNote",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "width": 200
+          },
+          "type": "Input"
+        },
+        "bCardOpen": {
+          "id": "bCardOpen",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Details"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bCardPop": {
+          "elements": {
+            "bCardPopText": {
+              "id": "bCardPopText",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": "Card details",
+                "width": 200
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bCardPop",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "width": 200
+          },
+          "type": "Popup"
+        }
+      },
+      "id": "bCard",
+      "name": "Card",
+      "properties": {
+        "height": 200,
+        "width": 300
+      },
+      "type": "CustomDefinition",
+      "workflows": {
+        "wCardInc": {
+          "actions": {
+            "0": {
+              "id": "aCardInc1",
+              "properties": {
+                "custom_state": "custom.count_",
+                "element_id": "bCard",
+                "value": {
+                  "next": {
+                    "name": "custom.count_",
+                    "next": {
+                      "args": 1,
+                      "name": "plus",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCardInc",
+          "properties": {
+            "element_id": "bCardInc"
+          },
+          "type": "ButtonClicked"
+        },
+        "wCardOpen": {
+          "actions": {
+            "0": {
+              "id": "aCardOpen1",
+              "properties": {
+                "element_id": "bCardPop"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wCardOpen",
+          "properties": {
+            "element_id": "bCardOpen"
+          },
+          "type": "ButtonClicked"
+        },
+        "wCardZero": {
+          "actions": {
+            "0": {
+              "id": "aCardZero1",
+              "properties": {
+                "custom_state": "custom.count_",
+                "element_id": "bCard",
+                "value": 0
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aCardZero2",
+              "properties": {},
+              "type": "ResetInputs"
+            }
+          },
+          "id": "wCardZero",
+          "properties": {
+            "event_name": "zero"
+          },
+          "type": "CustomEvent"
+        }
+      }
+    }
+  },
+  "pages": {
+    "home": {
+      "custom_states": {
+        "count_": {
+          "default_val": 0,
+          "display": "Count",
+          "value": "number"
+        },
+        "label_": {
+          "default_val": "start",
+          "display": "Label",
+          "value": "text"
+        },
+        "loaded_": {
+          "default_val": false,
+          "display": "Loaded",
+          "value": "boolean"
+        }
+      },
+      "elements": {
+        "bBtnCall": {
+          "id": "bBtnCall",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 11,
+            "text": {
+              "entries": {
+                "0": "Call"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnCallee": {
+          "id": "bBtnCallee",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 14,
+            "text": {
+              "entries": {
+                "0": "Callee residue"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnData": {
+          "id": "bBtnData",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 12,
+            "text": {
+              "entries": {
+                "0": "Save"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnNav": {
+          "id": "bBtnNav",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 10,
+            "text": {
+              "entries": {
+                "0": "Go"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnOpen": {
+          "id": "bBtnOpen",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnReset": {
+          "id": "bBtnReset",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 15,
+            "text": {
+              "entries": {
+                "0": "Reset card"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnResidue": {
+          "id": "bBtnResidue",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 13,
+            "text": {
+              "entries": {
+                "0": "Residue"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnState": {
+          "id": "bBtnState",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "Set"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnUrl": {
+          "id": "bBtnUrl",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 16,
+            "text": {
+              "entries": {
+                "0": "URL"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bCheck": {
+          "id": "bCheck",
+          "properties": {
+            "contents": "unchecked",
+            "height": 40,
+            "label": {
+              "entries": {
+                "0": "Agree"
+              },
+              "type": "TextExpression"
+            },
+            "min_height_css": "40px",
+            "order": 6,
+            "width": 200
+          },
+          "type": "Checkbox"
+        },
+        "bEcho": {
+          "id": "bEcho",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Typed: ",
+                "1": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bIn"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
+        "bFocus": {
+          "elements": {
+            "bFocusText": {
+              "id": "bFocusText",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": "Focus",
+                "width": 200
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bFocus",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "reference": "bBtnOpen",
+            "width": 200
+          },
+          "type": "GroupFocus"
+        },
+        "bIn": {
+          "id": "bIn",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "placeholder": {
+              "entries": {
+                "0": "Name"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Input"
+        },
+        "bInst1": {
+          "id": "bInst1",
+          "properties": {
+            "custom_id": "bCard",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 17,
+            "width": 200
+          },
+          "type": "CustomElement"
+        },
+        "bInst2": {
+          "id": "bInst2",
+          "properties": {
+            "custom_id": "bCard",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 18,
+            "width": 200
+          },
+          "type": "CustomElement"
+        },
+        "bLabel": {
+          "id": "bLabel",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Label: ",
+                "1": {
+                  "next": {
+                    "name": "custom.label_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
+        "bLoaded": {
+          "id": "bLoaded",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Loaded: ",
+                "1": {
+                  "next": {
+                    "name": "custom.loaded_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
+        "bNum": {
+          "id": "bNum",
+          "properties": {
+            "content_format": "int_number",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "value": 3,
+            "width": 200
+          },
+          "type": "Input"
+        },
+        "bPop": {
+          "elements": {
+            "bBtnClose": {
+              "id": "bBtnClose",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 2,
+                "text": {
+                  "entries": {
+                    "0": "Close"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 200
+              },
+              "type": "Button"
+            },
+            "bPopTitle": {
+              "id": "bPopTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": "Dialog",
+                "width": 200
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bPop",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "width": 200
+          },
+          "type": "Popup"
+        }
+      },
+      "id": "bHome",
+      "name": "index",
+      "properties": {
+        "title": "Home"
+      },
+      "type": "Page",
+      "workflows": {
+        "wCall": {
+          "actions": {
+            "0": {
+              "id": "aCall1",
+              "properties": {
+                "arguments": {
+                  "0": {
+                    "arg_value": {
+                      "entries": {
+                        "0": "hi"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "param_id": "pWord"
+                  }
+                },
+                "custom_event": "wEvt"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "1": {
+              "id": "aCall2",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "called"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCall",
+          "properties": {
+            "element_id": "bBtnCall"
+          },
+          "type": "ButtonClicked"
+        },
+        "wCallee": {
+          "actions": {
+            "0": {
+              "id": "aCallee1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "should not run either"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aCallee2",
+              "properties": {
+                "custom_event": "wEvtResidue"
+              },
+              "type": "TriggerCustomEvent"
+            }
+          },
+          "id": "wCallee",
+          "properties": {
+            "element_id": "bBtnCallee"
+          },
+          "type": "ButtonClicked"
+        },
+        "wChanged": {
+          "actions": {
+            "0": {
+              "id": "aChanged1",
+              "properties": {
+                "custom_state": "custom.count_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "get_data",
+                    "next": {
+                      "args": 1,
+                      "name": "plus",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bNum"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wChanged",
+          "properties": {
+            "element_id": "bNum"
+          },
+          "type": "InputChanged"
+        },
+        "wClose": {
+          "actions": {
+            "0": {
+              "id": "aClose1",
+              "properties": {
+                "element_id": "bPop"
+              },
+              "type": "HideElement"
+            }
+          },
+          "id": "wClose",
+          "properties": {
+            "element_id": "bBtnClose"
+          },
+          "type": "ButtonClicked"
+        },
+        "wCond": {
+          "actions": {
+            "0": {
+              "id": "aCond1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "big"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCond",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "custom.count_",
+                "next": {
+                  "args": 5,
+                  "name": "greater_than",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bHome"
+              },
+              "type": "GetElement"
+            },
+            "run_when": "every_time"
+          },
+          "type": "ConditionTrue"
+        },
+        "wData": {
+          "actions": {
+            "0": {
+              "id": "aData1",
+              "properties": {
+                "initial_values": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "get_data",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bIn"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
+                "thing_type": "custom.note"
+              },
+              "type": "NewThing"
+            },
+            "1": {
+              "id": "aData2",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "saved"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wData",
+          "properties": {
+            "element_id": "bBtnData"
+          },
+          "type": "ButtonClicked"
+        },
+        "wEvt": {
+          "actions": {
+            "0": {
+              "id": "aEvt1",
+              "properties": {
+                "return_values": {
+                  "0": {
+                    "return_id": "rWord",
+                    "return_value": {
+                      "entries": {
+                        "0": {
+                          "properties": {
+                            "btype_id": "text",
+                            "param_id": "pWord"
+                          },
+                          "type": "CurrentWorkflowItem"
+                        },
+                        "1": "!"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                }
+              },
+              "type": "TerminateWorkflow"
+            }
+          },
+          "id": "wEvt",
+          "properties": {
+            "event_name": "shout",
+            "parameters": {
+              "0": {
+                "btype_id": "text",
+                "is_list": false,
+                "optional": false,
+                "param_id": "pWord",
+                "param_name": "word"
+              }
+            },
+            "return_types": {
+              "0": {
+                "btype_id": "text",
+                "display": "Result",
+                "is_list": false,
+                "return_id": "rWord"
+              }
+            }
+          },
+          "type": "CustomEvent"
+        },
+        "wEvtResidue": {
+          "actions": {
+            "0": {
+              "id": "aEvtRes1",
+              "properties": {
+                "length": 100
+              },
+              "type": "PauseWFClient"
+            }
+          },
+          "id": "wEvtResidue",
+          "properties": {
+            "event_name": "broken"
+          },
+          "type": "CustomEvent"
+        },
+        "wLoad": {
+          "actions": {
+            "0": {
+              "id": "aLoad1",
+              "properties": {
+                "custom_state": "custom.loaded_",
+                "element_id": "bHome",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wLoad",
+          "properties": {},
+          "type": "PageLoaded"
+        },
+        "wNav": {
+          "actions": {
+            "0": {
+              "id": "aNav1",
+              "properties": {
+                "element_id": "bOther",
+                "url_parameters": {
+                  "0": {
+                    "key": "q",
+                    "value": {
+                      "entries": {
+                        "0": "hello"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                }
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wNav",
+          "properties": {
+            "element_id": "bBtnNav"
+          },
+          "type": "ButtonClicked"
+        },
+        "wOpen": {
+          "actions": {
+            "0": {
+              "id": "aOpen1",
+              "properties": {
+                "element_id": "bPop"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wOpen",
+          "properties": {
+            "element_id": "bBtnOpen"
+          },
+          "type": "ButtonClicked"
+        },
+        "wOpenOff": {
+          "actions": {
+            "0": {
+              "id": "aOff1",
+              "properties": {
+                "element_id": "bPop"
+              },
+              "type": "HideElement"
+            }
+          },
+          "id": "wOpenOff",
+          "properties": {
+            "element_id": "bBtnOpen",
+            "workflow_disabled": true
+          },
+          "type": "ButtonClicked"
+        },
+        "wReset": {
+          "actions": {
+            "0": {
+              "id": "aReset1",
+              "properties": {
+                "custom_event": "wCardZero",
+                "element_id": "bInst1"
+              },
+              "type": "TriggerCustomEventFromReusable"
+            }
+          },
+          "id": "wReset",
+          "properties": {
+            "element_id": "bBtnReset"
+          },
+          "type": "ButtonClicked"
+        },
+        "wResidue": {
+          "actions": {
+            "0": {
+              "id": "aRes1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "should not run"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aRes2",
+              "properties": {
+                "to": {
+                  "entries": {
+                    "0": "a@example.com"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SendEmail"
+            }
+          },
+          "id": "wResidue",
+          "properties": {
+            "element_id": "bBtnResidue"
+          },
+          "type": "ButtonClicked"
+        },
+        "wState": {
+          "actions": {
+            "0": {
+              "id": "aState1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bIn"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aState2",
+              "properties": {
+                "condition": {
+                  "next": {
+                    "name": "get_data",
+                    "next": {
+                      "name": "is_true",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCheck"
+                  },
+                  "type": "GetElement"
+                },
+                "element_id": "bFocus"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wState",
+          "properties": {
+            "element_id": "bBtnState"
+          },
+          "type": "ButtonClicked"
+        },
+        "wUrl": {
+          "actions": {
+            "0": {
+              "id": "aUrl1",
+              "properties": {
+                "element_id": "Current page",
+                "keep_current_page_params": true,
+                "url_parameters": {
+                  "0": {
+                    "key": "tab",
+                    "value": {
+                      "entries": {
+                        "0": "two"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                }
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wUrl",
+          "properties": {
+            "element_id": "bBtnUrl"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    },
+    "other": {
+      "elements": {
+        "bOtherText": {
+          "id": "bOtherText",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": "Other page",
+            "width": 200
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bOther",
+      "name": "other",
+      "properties": {
+        "title": "Other"
+      },
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "note": {
+      "display": "Note",
+      "fields": {
+        "done_boolean": {
+          "display": "Done",
+          "value": "boolean"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

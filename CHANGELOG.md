@@ -6,6 +6,41 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
+  `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every
+  page and reusable-element workflow, stack-neutrally: events (click, input
+  changed, page loaded, condition true, custom event, do every), steps in a
+  closed vocabulary shared with the backend lowering
+  (`BubbleEx.Workflows.Lowering`: show/hide/toggle/focus/scroll, reset
+  inputs/group, set state, go to page, open URL, refresh, log out, the data
+  operations, custom-event calls and schedules, terminate), values as
+  Expression IR; unsupported events, actions, options and expressions are
+  `Plan.Residue` entries with a `:frontend_workflow_residue` diagnostic,
+  never dropped. `BubbleEx.Target.Elixir.FrontendWorkflows` binds them to
+  LiveView (plain-data `Spec`: Elixir source, where every read comes from,
+  what a page tracks, browser-run and data workflows, target residue:
+  `:unavailable_input`, `:target_not_rendered`, `:backend_workflow`).
+  `BubbleEx.Target.Phoenix.render/2` with `frontend_workflows:` prints one
+  owned `Workflows` module per page and per interactive reusable element
+  (WTF-359 Q5, `# bubble:workflow`/`# bubble:step` markers), the generated
+  `<Web>.BubbleWorkflows` runtime, `phx-click` wiring (JS commands for
+  element-only workflows), a `phx-change` form per tracked input, custom
+  states and input values per reusable-element instance, and an owned test
+  per native workflow tagged with its plan subject. Browser event
+  parameters are checked against the page's static lists and never become
+  atoms; a workflow with residue, directly or through a callee, refuses to
+  start before its first step; workflows that read or write stored data run
+  only with `config :<app>, <Web>.BubbleWorkflows, data_access: true`
+  (resources have no authorization under `privacy: :omit`). The overlay
+  runtime moves to one hook (`<Web>.Bubble.runtime/1`; `overlay_keys/1`
+  stays as an alias) that fixes T5's latent issues: reopening an open
+  overlay no longer saves the focus twice, element steps target one
+  instance, and a modal's focus falls back past an opener hidden since.
+  mm-137: 635 of 2,275 frontend workflows generated whole (531 runnable),
+  1,152 at IR level. The Phoenix compile check adds the
+  `phoenix_frontend_workflows` and `hostile_workflows` fixtures, behavior
+  tests in the generated app and `mix wtf.task complete` of the workflow
+  tasks.
 - **HEEx emitter over the normalized frontend** (WTF-370, T5 of WTF-359).
   `BubbleEx.Target.Phoenix.render/2` with `frontend:` renders each Bubble
   page as an owned LiveView (module + template) and each reusable element

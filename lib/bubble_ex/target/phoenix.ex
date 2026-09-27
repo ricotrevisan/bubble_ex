@@ -102,6 +102,24 @@ defmodule BubbleEx.Target.Phoenix do
   traceability test fails for them with the fix. `frontend_report/2`
   counts it.
 
+  ## Frontend workflows (WTF-372)
+
+  With `frontend_workflows:` (`BubbleEx.Target.Elixir.FrontendWorkflows.map/3`
+  of the lowered page and reusable-element workflows) the pages run their
+  Bubble workflows, printed by `BubbleEx.Target.Phoenix.FrontendWorkflows`:
+  one owned `Workflows` module per page and per reusable element with
+  workflows, custom states or tracked inputs (WTF-359 Q5), the generated
+  runtime `<Web>.BubbleWorkflows` the LiveViews call (`mount`,
+  `handle_params`, `handle_event` for the page's own `bubble:*` events,
+  `handle_info`), elements wired with `phx-click` (JS commands for
+  element-only workflows, else the page's click event, checked against
+  the page's list), tracked inputs in their own `phx-change` form, custom
+  states and input values kept per reusable-element instance, and an owned
+  test per native workflow tagged with its plan subject. Workflows that
+  read or write stored data run only with an explicit opt-in
+  (`config :<app>, <Web>.BubbleWorkflows, data_access: true`): the
+  resources have no authorization (`privacy: :omit`).
+
   ## Options
 
     * `:name` - the display name; blank or absent means the Bubble app ID
@@ -120,12 +138,17 @@ defmodule BubbleEx.Target.Phoenix do
       `priv/static/images/bubble`; without it images keep their URLs
     * `:api_clients` - a `BubbleEx.Target.ApiClients.Spec` to render the
       API Connector clients of (see above); none by default
+    * `:frontend_workflows` - with `frontend:`, the page and
+      reusable-element workflows to wire into the pages
+      (`BubbleEx.Target.Elixir.FrontendWorkflows.Spec`, see "Frontend
+      workflows" above); none by default
   """
 
   alias BubbleEx.{CanonicalJson, Error}
   alias BubbleEx.Frontend.Json
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Target.ApiClients.Spec
+  alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec, as: FlowSpec
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
   alias BubbleEx.Target.Phoenix.{ApiClients, Manifest, Pages, Templates}
 
@@ -217,6 +240,7 @@ defmodule BubbleEx.Target.Phoenix do
           | {:module, String.t()}
           | {:app, String.t()}
           | {:api_clients, Spec.t() | nil}
+          | {:frontend_workflows, FlowSpec.t() | nil}
   @type files :: %{String.t() => binary()}
 
   @doc """
@@ -279,6 +303,7 @@ defmodule BubbleEx.Target.Phoenix do
          {:ok, user, email} <- user(project),
          :ok <- check_claims(project, clients),
          {:ok, frontend} <- frontend(opts),
+         :ok <- frontend_workflows(opts, frontend),
          ctx = Map.merge(ctx, %{user: user.module, email: email, api_clients: clients}),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
@@ -485,6 +510,15 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
+  defp frontend_workflows(opts, frontend) do
+    case Keyword.get(opts, :frontend_workflows) do
+      nil -> :ok
+      %FlowSpec{} when frontend != nil -> :ok
+      %FlowSpec{} -> invalid("frontend_workflows: needs the frontend: option")
+      _ -> invalid("frontend_workflows: must be a BubbleEx.Target.Elixir.FrontendWorkflows.Spec")
+    end
+  end
+
   defp pages(nil, ctx, _opts),
     do: %{
       routes: [],
@@ -501,7 +535,8 @@ defmodule BubbleEx.Target.Phoenix do
     Pages.render(frontend, ctx,
       names: Keyword.get(opts, :surface_names),
       expressions: Keyword.get(opts, :expressions, %{}),
-      assets: Keyword.get(opts, :assets, %{})
+      assets: Keyword.get(opts, :assets, %{}),
+      workflows: Keyword.get(opts, :frontend_workflows)
     )
   end
 

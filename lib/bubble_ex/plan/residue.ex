@@ -24,6 +24,11 @@ defmodule BubbleEx.Plan.Residue do
   | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
   | `:trigger_dropped` | workflow | `BubbleEx.Plan.build/5`: a dropped plugin's event triggered it and it runs other actions, so it needs a new trigger (`detail.plugin`) |
   | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
+  | `:api_connector_action` | action | `BubbleEx.Workflows.Backend`: an API Connector call in a backend workflow; it waits for the generated Req clients (`detail.call`) |
+  | `:unsupported_option` | workflow, action | `BubbleEx.Workflows.Backend`: an event or action member with no lowering (`detail.options`) |
+  | `:unavailable_input` | workflow, action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a value the generated page does not provide (a page's or cell's thing, a group's data, an element's built-in state; `detail.inputs`) |
+  | `:target_not_rendered` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: the element a step shows, hides, focuses, resets or calls into is not rendered by the generated page (in a runtime container's template, or not normalized) (`detail.element`) |
+  | `:backend_workflow` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a page scheduling a backend workflow; it waits for the backend workflow runtime (WTF-373) (`detail.workflow`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
 
   `index/2` and `frontend/2` are computed by `BubbleEx.Plan.build/5` itself;
@@ -45,7 +50,8 @@ defmodule BubbleEx.Plan.Residue do
               unsupported_event auth_action unresolved_reference dynamic_url oauth malformed_call
               runtime_container no_native_lowering trigger_not_normalized
               trigger_in_runtime_template style_condition
-              plugin_style trigger_dropped reads_dropped_plugin)a
+              plugin_style trigger_dropped reads_dropped_plugin api_connector_action
+              unsupported_option unavailable_input backend_workflow target_not_rendered)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded

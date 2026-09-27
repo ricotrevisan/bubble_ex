@@ -14,8 +14,9 @@
 # (test/support/target/ash/*.json), the Phoenix fixtures
 # (test/support/target/phoenix/*.json, e.g. API clients), the expression
 # fixture, every frozen fidelity case's payload (`fidelity_<case>`, with its
-# pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), two
-# frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`), plus
+# pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), three
+# frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`,
+# `hostile_workflows`), plus
 # `private_app` when BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An
 # app with a frontend renders its pages (WTF-370), with the bindings the
 # expression compiler lowers; an app with a Model its API Connector clients
@@ -29,8 +30,9 @@
 
 alias BubbleEx.Target.Phoenix
 
-# The app's frontend (pages, reusable elements, styles) and its compiled
-# bindings, when the app JSON has one (WTF-370).
+# The app's frontend (pages, reusable elements, styles), its compiled
+# bindings (WTF-370) and its page and reusable-element workflows (WTF-372),
+# when the app JSON has one.
 frontend = fn app, model, project ->
   case BubbleEx.Frontend.normalize(app) do
     {:ok, frontend} ->
@@ -40,7 +42,16 @@ frontend = fn app, model, project ->
           namespace: "PhxCheck"
         )
 
-      [frontend: frontend, expressions: expressions]
+      {:ok, index} = BubbleEx.Index.build(app, model: model)
+      {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+
+      {:ok, workflows} =
+        BubbleEx.Target.Elixir.FrontendWorkflows.map(lowered, project,
+          namespace: "PhxCheck",
+          frontend: frontend
+        )
+
+      [frontend: frontend, expressions: expressions, frontend_workflows: workflows]
 
     {:error, _} ->
       []
@@ -113,6 +124,19 @@ fixtures =
       |> File.read!()
       |> Jason.decode!()
       |> BubbleEx.Test.HostileIds.rename(~w(bptvorpv bptvorpw bptvorqc))
+      |> app_fixture.()
+    end,
+    # The frontend workflows fixture (WTF-372) with every page, element,
+    # workflow, action, parameter and return ID hostile: the workflow
+    # modules, markers, event lists, JS commands and tests must quote them.
+    "hostile_workflows" => fn ->
+      app =
+        "test/support/target/phoenix/frontend_workflows.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      app
+      |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
       |> app_fixture.()
     end,
     "decided_combined" => fn ->

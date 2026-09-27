@@ -46,6 +46,16 @@ defmodule BubbleEx.Db.OneInterpretationTest do
     "lib/bubble_ex/workflows/node.ex" => "classifies a JSON pointer's section (`user_types`)",
     "lib/bubble_ex/workflows/explanation.ex" =>
       "workflow action parameters' own `key`/`value` members, not fields",
+    "lib/bubble_ex/workflows/lowering.ex" =>
+      "workflow parameter definitions' own `value` (their type), return definitions' `display` (a caption), and change and return entries' own `value` members, not the data model",
+    "lib/bubble_ex/workflows/frontend.ex" =>
+      "page workflow action members (`value` of set-state and URL-parameter entries) and element custom states (`custom.<id>`), not the data model",
+    "lib/bubble_ex/target/elixir/frontend_workflows.ex" =>
+      "element custom states (`custom.<id>`), input value slots and the `default_val` option named in a diagnostic, not the data model",
+    "lib/bubble_ex/target/elixir/frontend_workflows/spec.ex" =>
+      "element custom states (`custom.<id>`), not the data model",
+    "lib/bubble_ex/target/phoenix/frontend_workflows.ex" =>
+      "the generated input-change event's own `value` member, not the data model",
     "lib/bubble_ex/index/plugins.ex" =>
       "installed plugin IDs and versions under `client_safe.plugins`, not API Connector types",
     "lib/bubble_ex/apps/parser.ex" =>

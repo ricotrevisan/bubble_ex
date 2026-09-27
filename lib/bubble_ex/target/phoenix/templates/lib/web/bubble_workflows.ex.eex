@@ -1,0 +1,801 @@
+defmodule <%= @web %>.BubbleWorkflows do
+  @moduledoc """
+  What the page and reusable-element workflows scaffolded from Bubble run
+  on (WTF-372): the LiveView glue the pages call (`mount/2`,
+  `handle_params/3`, `handle_event/4`, `handle_info/3`) and the step
+  helpers the generated bodies call (`<Page>Live.Workflows`,
+  `<%= @web %>.Reusables.<Name>.Workflows`).
+
+  ## Events
+
+  A browser can only ask the page to run what the page lists
+  (`__bubble__(:surface)` of its `Workflows` module and of the reusable
+  elements it renders, `__bubble__(:instances)`): a click (`bubble:click`)
+  or an input change (`bubble:change`) of an element the page renders in a
+  scope (reusable-element instance) it renders. Anything else is ignored.
+  Event parameters never become atoms, never name a workflow, a module or a
+  record: the page looks the element up in its own static lists and runs
+  the workflows listed there, with the values it keeps (current user,
+  custom states, input values, URL parameters). Input values are text,
+  numbers or yes/no, never records.
+
+  A click runs the workflows of the element clicked only (LiveView's
+  `phx-click`), in Bubble ID order; Bubble also runs those of a clickable
+  element around it (unverified). A workflow run in the browser (element
+  steps only) never reaches the server.
+
+  ## Running a workflow
+
+  A workflow starts only if it and every custom event it calls or
+  schedules, transitively, were lowered completely: a step bubble_ex did
+  not lower (`blocked` in its module's `__bubble__(:workflows)`) makes it
+  refuse **before its first step** and log an error. The same holds for
+  data access (below). Steps run in Bubble order; a step's "Only when"
+  skips it; a failing step ends the workflow (steps before it keep their
+  effects, as in Bubble). Custom states, input values, element steps and
+  navigation apply to the page when the event's workflows end.
+  "Terminate this workflow" ends it; a custom event's return values are
+  its caller's step result.
+
+  ## Data access (opt-in)
+
+  The Ash resources are generated with `privacy: :omit`: **they have no
+  authorization**, so a workflow that reads or writes stored data would do
+  it for anyone who can open the page. Such workflows (data steps,
+  relationship loads) run only when data access is enabled:
+
+      config :<%= @app %>, <%= @web %>.BubbleWorkflows, data_access: true
+
+  Without it they refuse to start and log an error. Data steps pass the
+  current user as the actor with `authorize?: true`, so policies you add
+  apply; none are generated.
+
+  ## Unverified Bubble behavior
+
+  To confirm by replay (WTF-358): "Reset relevant inputs" resets the inputs
+  of the triggering element's container; a condition-true workflow whose
+  "run this" is unset runs once per page load; a condition true when the
+  page loads fires; "Go to page" lets the workflow finish before the page
+  changes; workflows triggered together run one after the other.
+  """
+
+  require Logger
+
+  import Phoenix.Component, only: [assign: 3]
+
+  import Phoenix.LiveView,
+    only: [connected?: 1, push_event: 3, push_navigate: 2, push_patch: 2, redirect: 2]
+
+  alias <%= @web %>.Bubble
+
+  @max_rounds 10
+  @max_depth 100
+
+  defmodule Ctx do
+    @moduledoc """
+    The state a workflow runs with: the surface module and instance
+    `scope`, the actor, the start time, its arguments and step results, the
+    page's custom states, input values (and their `first` values) and URL,
+    and what it asks of the page (element steps `js`, `navigate`, delayed
+    `messages`).
+    """
+    defstruct [
+      :module,
+      :workflow,
+      :actor,
+      :now,
+      :returns,
+      :navigate,
+      scope: "",
+      path: "/",
+      args: %{},
+      steps: %{},
+      states: %{},
+      inputs: %{},
+      url: %{},
+      first: %{},
+      js: [],
+      messages: [],
+      depth: 0
+    ]
+
+    @type t :: %__MODULE__{}
+  end
+
+  # --- LiveView glue -------------------------------------------------------------------
+
+  @doc """
+  Assigns the page's custom states (defaults) and input values (first
+  values) for the page and every reusable-element instance it renders, and
+  once connected, schedules its page-loaded workflows. It loads no data.
+  """
+  def mount(socket, page) do
+    surfaces = surfaces(page)
+
+    states =
+      for {scope, module} <- surfaces,
+          {{element, state}, value} <- module.__bubble__(:surface).states,
+          into: %{},
+          do: {{scope, element, state}, value}
+
+    inputs =
+      for {scope, module} <- surfaces,
+          {element, {_type, value}} <- module.__bubble__(:surface).inputs,
+          into: %{},
+          do: {{scope, element}, value}
+
+    if connected?(socket) do
+      send(self(), {:bubble, :page_loaded})
+
+      for {scope, module} <- surfaces,
+          {id, seconds} <- module.__bubble__(:surface).intervals,
+          is_number(seconds) and seconds > 0,
+          do: :timer.send_interval(clamp(seconds, 100), {:bubble, :interval, scope, id})
+    end
+
+    socket
+    |> assign(:bubble_states, states)
+    |> assign(:bubble_inputs, inputs)
+    |> assign(:bubble_first_inputs, inputs)
+    |> assign(:bubble_url, %{})
+    |> assign(:bubble_path, "/")
+    |> assign(:bubble_conditions, %{})
+  end
+
+  @doc """
+  A disconnected LiveView socket with `page`'s states and inputs (no page
+  load, no timers), for tests: pass it to `handle_event/4` and
+  `handle_info/3`.
+  """
+  def socket(page, path \\ "/") do
+    %Phoenix.LiveView.Socket{}
+    |> mount(page)
+    |> handle_params(%{}, "http://localhost" <> path)
+  end
+
+  @doc "Keeps the URL's path and query parameters (text only)."
+  def handle_params(socket, params, uri) do
+    url = for {k, v} <- params, is_binary(k) and is_binary(v), into: %{}, do: {k, v}
+
+    socket
+    |> assign(:bubble_url, url)
+    |> assign(:bubble_path, URI.parse(uri).path || "/")
+  end
+
+  @doc "Runs the workflows of a click or an input change the page lists."
+  def handle_event(socket, page, "bubble:click", %{"scope" => scope, "element" => element})
+      when is_binary(scope) and is_binary(element) do
+    with {:ok, module} <- surface(page, scope),
+         [_ | _] = ids <- Map.get(module.__bubble__(:surface).clicks, element, []) do
+      {:noreply, socket |> run_event(page, module, scope, ids) |> settle(page)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
+    with %{"scope" => scope, "element" => element} when is_binary(scope) and is_binary(element) <-
+           params,
+         {:ok, module} <- surface(page, scope),
+         %{^element => {type, _first}} <- module.__bubble__(:surface).inputs,
+         {:ok, value} <- coerce(type, Map.get(params, "value")) do
+      ids = Map.get(module.__bubble__(:surface).changes, element, [])
+
+      socket =
+        assign(socket, :bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
+
+      {:noreply, socket |> run_event(page, module, scope, ids) |> settle(page)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
+
+  @doc "Page loaded, delayed custom events and \"do every\" workflows."
+  def handle_info(socket, page, {:bubble, :page_loaded}) do
+    socket =
+      Enum.reduce(surfaces(page), socket, fn {scope, module}, socket ->
+        run_event(socket, page, module, scope, module.__bubble__(:surface).loaded)
+      end)
+
+    {:noreply, settle(socket, page)}
+  end
+
+  def handle_info(socket, page, {:bubble, :run, scope, module, id, args}) do
+    if surface(page, scope) == {:ok, module},
+      do: {:noreply, socket |> run_event(page, module, scope, [id], args) |> settle(page)},
+      else: {:noreply, socket}
+  end
+
+  def handle_info(socket, page, {:bubble, :interval, scope, id}) do
+    case surface(page, scope) do
+      {:ok, module} -> {:noreply, socket |> run_event(page, module, scope, [id]) |> settle(page)}
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_info(socket, _page, _message), do: {:noreply, socket}
+
+  # The page itself (scope "") and the reusable-element instances it renders.
+  defp surfaces(page), do: [{"", page} | page.__bubble__(:instances)]
+
+  defp surface(page, ""), do: {:ok, page}
+
+  defp surface(page, scope) do
+    case List.keyfind(page.__bubble__(:instances), scope, 0) do
+      {^scope, module} -> {:ok, module}
+      nil -> :error
+    end
+  end
+
+  defp coerce(:text, value) when is_binary(value), do: {:ok, value}
+  defp coerce(:text, nil), do: {:ok, nil}
+  defp coerce(:boolean, value), do: {:ok, value == "true"}
+
+  defp coerce(:number, value) when is_binary(value) do
+    case String.trim(value) do
+      "" ->
+        {:ok, nil}
+
+      text ->
+        case Integer.parse(text) do
+          {n, ""} ->
+            {:ok, n}
+
+          _ ->
+            case Float.parse(text) do
+              {n, ""} -> {:ok, n}
+              _ -> {:ok, nil}
+            end
+        end
+    end
+  end
+
+  defp coerce(:number, nil), do: {:ok, nil}
+  defp coerce(_type, _value), do: :error
+
+  # --- running events --------------------------------------------------------------------
+
+  defp ctx(socket, module, scope) do
+    %Ctx{
+      module: module,
+      scope: scope,
+      actor: socket.assigns[:current_user],
+      now: DateTime.utc_now(),
+      states: socket.assigns.bubble_states,
+      inputs: socket.assigns.bubble_inputs,
+      first: socket.assigns.bubble_first_inputs,
+      url: socket.assigns.bubble_url,
+      path: socket.assigns.bubble_path
+    }
+  end
+
+  defp run_event(socket, _page, _module, _scope, [], _args), do: socket
+
+  defp run_event(socket, _page, module, scope, ids, args) do
+    ctx =
+      Enum.reduce(ids, ctx(socket, module, scope), fn id, ctx ->
+        {_status, ctx} = run(ctx, module, id, args, scope)
+        ctx
+      end)
+
+    apply_ctx(socket, ctx)
+  end
+
+  defp run_event(socket, page, module, scope, ids), do: run_event(socket, page, module, scope, ids, %{})
+
+  defp apply_ctx(socket, %Ctx{} = ctx) do
+    for {delay, message} <- Enum.reverse(ctx.messages),
+        do: Process.send_after(self(), message, delay)
+
+    socket =
+      socket
+      |> assign(:bubble_states, ctx.states)
+      |> assign(:bubble_inputs, ctx.inputs)
+
+    socket =
+      if ctx.js == [],
+        do: socket,
+        else: push_event(socket, "bubble:exec", %{ops: Enum.reverse(ctx.js)})
+
+    case ctx.navigate do
+      nil -> socket
+      {:patch, to, replace?} -> push_patch(socket, to: to, replace: replace?)
+      {:navigate, to, replace?} -> push_navigate(socket, to: to, replace: replace?)
+      {:redirect, to} -> redirect(socket, to: to)
+      {:external, url} -> redirect(socket, external: url)
+    end
+  end
+
+  # Condition-true workflows: each runs when its condition becomes true
+  # (once per page load for `:once`); their effects may make others true,
+  # so it repeats, at most @max_rounds times.
+  defp settle(socket, page, round \\ 0) do
+    seen = socket.assigns.bubble_conditions
+
+    {fire, seen} =
+      for {scope, module} <- surfaces(page),
+          {id, run_when} <- module.__bubble__(:surface).conditions,
+          reduce: {[], seen} do
+        {fire, seen} ->
+          key = {scope, id}
+          now = condition?(socket, module, scope, id)
+          before = Map.get(seen, key, %{now: false, ran: false})
+
+          if now and not before.now and not (run_when == :once and before.ran),
+            do: {[{scope, module, id} | fire], Map.put(seen, key, %{now: true, ran: true})},
+            else: {fire, Map.put(seen, key, %{before | now: now})}
+      end
+
+    socket = assign(socket, :bubble_conditions, seen)
+
+    cond do
+      fire == [] ->
+        socket
+
+      round >= @max_rounds ->
+        Logger.warning("bubble: condition-true workflows keep firing; stopped after #{@max_rounds} rounds")
+        socket
+
+      true ->
+        fire
+        |> Enum.reverse()
+        |> Enum.reduce(socket, fn {scope, module, id}, socket ->
+          run_event(socket, page, module, scope, [id])
+        end)
+        |> settle(page, round + 1)
+    end
+  end
+
+  defp condition?(socket, module, scope, id) do
+    with %{condition: fun} when is_atom(fun) and fun != nil <- module.__bubble__(:workflows)[id],
+         [] <- blocked(module, id, MapSet.new()),
+         true <- not data?(module, id, MapSet.new()) or data_access?() do
+      apply(module, fun, [ctx(socket, module, scope)]) == true
+    else
+      _ -> false
+    end
+  end
+
+  # --- running a workflow -------------------------------------------------------------------
+
+  @doc """
+  Runs workflow `id` of `module` in instance `scope` with `args` (a custom
+  event's parameters by ID). Returns `{status, ctx}`: `:done`, `:not_run`
+  (its condition was false), `:terminated` or `{:error, reason}`; `ctx`
+  carries its effects.
+  """
+  def run(%Ctx{} = ctx, module, id, args \\ %{}, scope \\ nil) do
+    scope = scope || ctx.scope
+
+    case module.__bubble__(:workflows)[id] do
+      nil ->
+        {{:error, {:unknown_workflow, id}}, ctx}
+
+      %{run: nil} ->
+        {{:error, {:runs_in_browser, id}}, ctx}
+
+      meta ->
+        cond do
+          (blocked = blocked(module, id, MapSet.new())) != [] ->
+            Logger.error(
+              "bubble workflow #{inspect(id)} not run: not lowered by bubble_ex: #{inspect(blocked)}"
+            )
+
+            {{:error, {:not_lowered, blocked}}, ctx}
+
+          data?(module, id, MapSet.new()) and not data_access?() ->
+            Logger.error(
+              "bubble workflow #{inspect(id)} not run: it reads or writes stored data and " <>
+                "data access is off (config :<%= @app %>, #{inspect(__MODULE__)}, data_access: true)"
+            )
+
+            {{:error, {:data_access_disabled, id}}, ctx}
+
+          ctx.depth >= @max_depth ->
+            {{:error, {:depth_limit, id}}, ctx}
+
+          true ->
+            child = %{
+              ctx
+              | module: module,
+                workflow: id,
+                scope: scope,
+                args: args,
+                steps: %{},
+                returns: nil,
+                depth: ctx.depth + 1
+            }
+
+            {status, child} = apply(module, meta.run, [child])
+            back = %{child | module: ctx.module, workflow: ctx.workflow, scope: ctx.scope}
+            {status, %{back | args: ctx.args, steps: ctx.steps, depth: ctx.depth}}
+        end
+    end
+  end
+
+  # What stops a workflow before it starts: its own steps bubble_ex did not
+  # lower and its callees', transitively.
+  defp blocked(module, id, seen) do
+    case module.__bubble__(:workflows)[id] do
+      nil ->
+        [{id, :unknown}]
+
+      meta ->
+        seen = MapSet.put(seen, {module, id})
+
+        own = Enum.map(meta.blocked, &{id, &1})
+
+        callees =
+          for {m, callee} <- meta.callees,
+              not MapSet.member?(seen, {m, callee}),
+              entry <- blocked(m, callee, seen),
+              do: entry
+
+        own ++ callees
+    end
+  end
+
+  defp data?(module, id, seen) do
+    case module.__bubble__(:workflows)[id] do
+      nil ->
+        false
+
+      meta ->
+        seen = MapSet.put(seen, {module, id})
+
+        meta.data or
+          Enum.any?(meta.callees, fn {m, callee} ->
+            not MapSet.member?(seen, {m, callee}) and data?(m, callee, seen)
+          end)
+    end
+  end
+
+  defp data_access?,
+    do: Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :data_access) == true
+
+  @doc """
+  Runs `steps` (functions of the context answering `{:cont, ctx}` or
+  `{:halt, status, ctx}`) when `condition` (nil, or a function of the
+  context) holds.
+  """
+  def steps(ctx, condition, steps) do
+    if condition == nil or condition.(ctx) == true do
+      Enum.reduce_while(steps, {:done, ctx}, fn step, {_status, ctx} ->
+        case step.(ctx) do
+          {:cont, ctx} -> {:cont, {:done, ctx}}
+          {:halt, status, ctx} -> {:halt, {status, ctx}}
+        end
+      end)
+    else
+      {:not_run, ctx}
+    end
+  end
+
+  @doc "A step whose condition is false."
+  def skip(ctx), do: {:cont, ctx}
+
+  @doc "A step bubble_ex did not lower: never reached (the workflow refuses to start)."
+  def not_lowered(ctx, step, type) do
+    Logger.error("bubble workflow #{inspect(ctx.workflow)}: step #{inspect(step)} (#{inspect(type)}) is not lowered")
+    {:halt, {:error, {:not_lowered, step, type}}, ctx}
+  end
+
+  # --- values ----------------------------------------------------------------------------
+
+  @doc "The scope of the instance `path` (Bubble IDs) below the workflow's."
+  def scope(ctx, path), do: Enum.reduce(path, ctx.scope, &Bubble.nest(&2, &1))
+
+  @doc "Custom state `state` of `element` (in the instance `path` below)."
+  def state(ctx, path, element, state), do: Map.get(ctx.states, {scope(ctx, path), element, state})
+
+  @doc "The value of input `element` (in the instance `path` below)."
+  def input(ctx, path, element), do: Map.get(ctx.inputs, {scope(ctx, path), element})
+
+  @doc "URL parameter `name`, as text."
+  def url(ctx, name), do: Map.get(ctx.url, name)
+
+  @doc "A custom event's parameter."
+  def param(ctx, id, loads), do: ctx.args |> Map.get(id) |> load(loads, ctx)
+
+  @doc "The result of an earlier step."
+  def step(ctx, action, loads), do: ctx.steps |> Map.get(action) |> load(loads, ctx)
+
+  @doc "The current user, with `loads`."
+  def actor(ctx, loads), do: load(ctx.actor, loads, ctx)
+
+  @doc "`value` with the relationship `loads` (paths of names) loaded, as the actor."
+  def load(value, [], _ctx), do: value
+  def load(nil, _loads, _ctx), do: nil
+
+  def load(value, loads, ctx) when is_struct(value) or is_list(value) do
+    case Ash.load(value, Enum.map(loads, &load_path/1), actor: ctx.actor, authorize?: true) do
+      {:ok, loaded} -> loaded
+      _ -> value
+    end
+  end
+
+  def load(value, _loads, _ctx), do: value
+
+  defp load_path([name]), do: name
+  defp load_path([name | rest]), do: [{name, load_path(rest)}]
+
+  # --- element and state steps --------------------------------------------------------------
+
+  @doc "Show / hide / toggle / focus / scroll to / reset an element (`nil`: the instance root)."
+  def element(ctx, op, path, element) do
+    {:cont, %{ctx | js: [%{op: op, to: Bubble.selector(scope(ctx, path), element)} | ctx.js]}}
+  end
+
+  @doc """
+  Reset inputs back to their first values: those of element `within`
+  (`inputs`, the ones the surface lists there), or with nil every input of
+  the instance or page, its nested instances' included.
+  """
+  def reset(ctx, path, within, inputs) do
+    scope = scope(ctx, path)
+    to = if within == nil and scope == "", do: "body", else: Bubble.selector(scope, within)
+
+    values =
+      if within == nil,
+        do:
+          Map.merge(
+            ctx.inputs,
+            Map.filter(ctx.first, fn {{s, _element}, _} -> within?(s, scope) end)
+          ),
+        else:
+          Enum.reduce(inputs, ctx.inputs, fn {element, first}, acc ->
+            Map.put(acc, {scope, element}, first)
+          end)
+
+    {:cont, %{ctx | inputs: values, js: [%{op: "reset", to: to} | ctx.js]}}
+  end
+
+  defp within?(_scope, ""), do: true
+  defp within?(scope, scope), do: true
+  defp within?(scope, outer), do: String.starts_with?(scope, outer <> "-")
+
+  @doc "Set state(s): `states` are `{path, element, state, value}`."
+  def set_state(ctx, step, states) do
+    values =
+      Enum.reduce(states, ctx.states, fn {path, element, state, value}, acc ->
+        Map.put(acc, {scope(ctx, path), element, state}, value)
+      end)
+
+    {:cont, put_step(%{ctx | states: values}, step, nil)}
+  end
+
+  # --- navigation -----------------------------------------------------------------------------
+
+  @doc """
+  Go to page `to` (a path, or `:current`) with `params` (`{key, value}`,
+  shown as text), keeping the current ones when `keep?`.
+  """
+  def navigate(ctx, to, params, keep?, replace?, new_tab?) do
+    path = if to == :current, do: ctx.path, else: to
+    base = if keep?, do: ctx.url, else: %{}
+
+    query =
+      Enum.reduce(params, base, fn {key, value}, acc ->
+        case <%= @module %>.Bubble.Runtime.text(value) do
+          "" -> Map.delete(acc, key)
+          text -> Map.put(acc, key, text)
+        end
+      end)
+
+    url = if query == %{}, do: path, else: path <> "?" <> URI.encode_query(query)
+
+    cond do
+      new_tab? -> {:cont, %{ctx | js: [%{op: "open", url: url} | ctx.js]}}
+      path == ctx.path -> {:cont, %{ctx | navigate: {:patch, url, replace?}}}
+      true -> {:cont, %{ctx | navigate: {:navigate, url, replace?}}}
+    end
+  end
+
+  @doc "Open an external website: an http(s) URL or a path of this site; anything else fails the step."
+  def open_url(ctx, step, url, new_tab?) do
+    case safe_url(url) do
+      nil ->
+        fail(ctx, step, {:unsafe_url, url})
+
+      {kind, url} ->
+        cond do
+          new_tab? -> {:cont, %{ctx | js: [%{op: "open", url: url} | ctx.js]}}
+          kind == :path -> {:cont, %{ctx | navigate: {:redirect, url}}}
+          true -> {:cont, %{ctx | navigate: {:external, url}}}
+        end
+    end
+  end
+
+  defp safe_url(url) when is_binary(url) do
+    uri = URI.parse(String.trim(url))
+
+    cond do
+      uri.scheme in ["http", "https"] and is_binary(uri.host) and uri.host != "" ->
+        {:external, URI.to_string(uri)}
+
+      uri.scheme == nil and uri.host == nil and is_binary(uri.path) and
+          String.starts_with?(uri.path, "/") and not String.starts_with?(uri.path, "//") ->
+        {:path, URI.to_string(uri)}
+
+      true ->
+        nil
+    end
+  end
+
+  defp safe_url(_url), do: nil
+
+  @doc "Refresh the page (a full reload)."
+  def refresh(ctx) do
+    to = if ctx.url == %{}, do: ctx.path, else: ctx.path <> "?" <> URI.encode_query(ctx.url)
+    {:cont, %{ctx | navigate: {:redirect, to}}}
+  end
+
+  @doc "Log the user out (the sign-out route)."
+  def log_out(ctx), do: {:cont, %{ctx | navigate: {:redirect, "/sign-out"}}}
+
+  # --- custom events ------------------------------------------------------------------------
+
+  @doc """
+  Trigger custom event `id` of `module` in instance `path` below, now, with
+  `args`; its return values are the step's result.
+  """
+  def call(ctx, step, module, id, path, args) do
+    case run(ctx, module, id, args, scope(ctx, path)) do
+      {{:error, reason}, after_call} ->
+        fail(%{after_call | returns: ctx.returns}, step, reason)
+
+      {_status, after_call} ->
+        {:cont, put_step(%{after_call | returns: ctx.returns}, step, after_call.returns)}
+    end
+  end
+
+  @doc "Schedule custom event `id` of `module` `delay` seconds from now (in this page)."
+  def schedule_custom(ctx, step, module, id, path, delay, args) do
+    ms = if is_number(delay) and delay > 0, do: clamp(delay, 0), else: 0
+    message = {:bubble, :run, scope(ctx, path), module, id, args}
+    {:cont, put_step(%{ctx | messages: [{ms, message} | ctx.messages]}, step, nil)}
+  end
+
+  # Seconds as milliseconds, at least `least` and at most the longest
+  # timer Erlang takes (about 49 days).
+  defp clamp(seconds, least),
+    do: seconds |> Kernel.*(1000) |> round() |> max(least) |> min(4_294_967_295)
+
+  @doc "Terminate this workflow, returning `returns` (a custom event's values)."
+  def terminate(ctx, returns), do: {:halt, :terminated, %{ctx | returns: returns}}
+
+  # --- data steps ---------------------------------------------------------------------------
+
+  @doc """
+  Create a new thing: `changes` are `{op, attribute, value}`; `stamps` the
+  attributes Bubble sets itself (`created`, `modified`, `creator`).
+  """
+  def create(ctx, step, resource, pk, stamps, changes) do
+    attrs =
+      %{}
+      |> apply_changes(nil, changes)
+      |> Map.put(pk, new_id())
+      |> stamp(stamps[:created], ctx.now)
+      |> stamp(stamps[:modified], ctx.now)
+      |> stamp(stamps[:creator], id(ctx.actor))
+
+    resource
+    |> Ash.create(attrs, opts(ctx))
+    |> continue(ctx, step)
+  end
+
+  @doc "Make changes to a thing (an empty thing is an error)."
+  def update(ctx, step, _resource, _stamps, nil, _changes), do: fail(ctx, step, :empty_thing)
+
+  def update(ctx, step, _resource, stamps, record, changes) do
+    record
+    |> Ash.update(update_attrs(ctx, stamps, record, changes), opts(ctx))
+    |> continue(ctx, step)
+  end
+
+  @doc "Make changes to a list of things."
+  def update_list(ctx, step, _resource, stamps, records, changes) do
+    records
+    |> List.wrap()
+    |> Enum.reduce_while({:ok, []}, fn record, {:ok, acc} ->
+      case Ash.update(record, update_attrs(ctx, stamps, record, changes), opts(ctx)) do
+        {:ok, updated} -> {:cont, {:ok, [updated | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, updated} -> continue({:ok, Enum.reverse(updated)}, ctx, step)
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  @doc "Delete a thing (an empty thing is an error)."
+  def delete(ctx, step, nil), do: fail(ctx, step, :empty_thing)
+
+  def delete(ctx, step, record) do
+    case Ash.destroy(record, opts(ctx)) do
+      :ok -> {:cont, put_step(ctx, step, nil)}
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  @doc "Delete a list of things."
+  def delete_list(ctx, step, records) do
+    records
+    |> List.wrap()
+    |> Enum.reduce_while({:cont, ctx}, fn record, acc ->
+      case delete(ctx, step, record) do
+        {:cont, _} -> {:cont, acc}
+        halt -> {:halt, halt}
+      end
+    end)
+  end
+
+  defp update_attrs(ctx, stamps, record, changes) do
+    %{}
+    |> apply_changes(record, changes)
+    |> stamp(stamps[:modified], ctx.now)
+  end
+
+  defp apply_changes(attrs, record, changes) do
+    Enum.reduce(changes, attrs, fn {op, attribute, value}, acc ->
+      current =
+        case Map.fetch(acc, attribute) do
+          {:ok, v} -> v
+          :error -> record && Map.get(record, attribute)
+        end
+
+      Map.put(acc, attribute, change(op, current, value))
+    end)
+  end
+
+  defp change(:set, _current, value), do: value
+  defp change(:set_list, _current, value), do: List.wrap(value)
+  defp change(:clear_list, _current, _value), do: []
+  defp change(:add, current, nil), do: current
+  defp change(:add, current, value), do: add(current || [], [value])
+  defp change(:add_list, current, value), do: add(current || [], List.wrap(value))
+  defp change(:remove, current, value), do: Enum.reject(current || [], &(&1 == value))
+
+  defp change(:remove_list, current, value),
+    do: Enum.reject(current || [], &(&1 in List.wrap(value)))
+
+  defp add(list, items),
+    do: Enum.reduce(items, list, fn item, acc -> if item in acc, do: acc, else: acc ++ [item] end)
+
+  defp stamp(attrs, nil, _value), do: attrs
+  defp stamp(attrs, attribute, value), do: Map.put_new(attrs, attribute, value)
+
+  defp opts(ctx), do: [actor: ctx.actor, authorize?: true]
+
+  @doc "A record's Bubble ID (a record, or an ID)."
+  def id(nil), do: nil
+  def id(%{id: id}), do: id
+  def id(id) when is_binary(id), do: id
+  def id(_), do: nil
+
+  @doc "The Bubble IDs of records."
+  def ids(nil), do: nil
+  def ids(list) when is_list(list), do: list |> Enum.map(&id/1) |> Enum.reject(&is_nil/1)
+  def ids(one), do: ids([one])
+
+  @doc "A new Bubble-style ID: milliseconds, `x`, 18 random digits."
+  def new_id do
+    ms = System.system_time(:millisecond)
+    random = :rand.uniform(899_999_999_999_999_999) + 100_000_000_000_000_000
+    "#{ms}x#{random}"
+  end
+
+  defp put_step(ctx, step, value), do: %{ctx | steps: Map.put(ctx.steps, step, value)}
+
+  defp continue({:ok, value}, ctx, step), do: {:cont, put_step(ctx, step, value)}
+  defp continue(:ok, ctx, step), do: {:cont, put_step(ctx, step, nil)}
+  defp continue({:error, reason}, ctx, step), do: fail(ctx, step, reason)
+
+  defp fail(ctx, step, reason) do
+    Logger.warning("bubble workflow #{inspect(ctx.workflow)}: step #{inspect(step)} failed: #{inspect(reason)}")
+    {:halt, {:error, {step, reason}}, ctx}
+  end
+end
