@@ -48,7 +48,7 @@ defmodule BubbleEx.Target.Ash.Project do
       create, shaped like `applied` plus `indexes`: an `add_indexes`
       decision's indexes (positions in its proposal) that have no Ash
       rendering (a geographic access, an index on a field no longer
-      stored), or nil for a hint whose whole transform is not applied yet.
+      stored, a list normalized to a join).
       Each deferred index has an `:ash_decision_deferred` warning. An
       `add_indexes` decision whose other indexes were created is in
       `applied` too

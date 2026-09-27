@@ -42,10 +42,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
     :membership_policy
   ]
 
-  # Transforms a later cut of Target.Ash will apply (WTF-352 §4.2): none
-  # since cut 3. A registered transform missing from `@supported` would be
-  # listed here with its cut.
-  @later %{}
+  # Since cut 3 every registered finding transform applies (WTF-352 §4.2):
+  # one missing from `@supported` is an "unknown transform" error (bubble_wtf's
+  # capability probe reads that as unsupported).
 
   @join_transforms [:normalize_list_to_join, :membership_policy]
   @join_bases [:single, :coupled, :unique_types]
@@ -100,7 +99,6 @@ defmodule BubbleEx.Target.Ash.Decisions do
          decisions = decisions |> Enum.reject(&(&1.transform in @not_schema)),
          decisions = Enum.sort_by(decisions, & &1.key),
          {:ok, checked} <- collect(decisions, &check(&1, ctx)),
-         {deferred, checked} = Enum.split_with(checked, &(elem(&1, 0) == :defer)),
          :ok <- one_per_field(checked),
          {:ok, joins} <- join_groups(checked),
          fields =
@@ -121,16 +119,12 @@ defmodule BubbleEx.Target.Ash.Decisions do
          joins: joins,
          indexes: indexes |> Map.values() |> Enum.group_by(& &1.type, & &1.indexes),
          applied: applied,
-         deferred:
-           Enum.sort_by(
-             Enum.map(deferred, &Map.put(record(elem(&1, 1)), :indexes, nil)) ++ index_deferred,
-             & &1.key
-           ),
+         deferred: Enum.sort_by(index_deferred, & &1.key),
          owners: for({:rename, a, _, _} <- checked, do: owner(a.params.slot, a.subject)),
          diagnostics:
            Enum.flat_map(fields, &field_diag(&1, ctx)) ++
              index_diags ++
-             rename_diags ++ Enum.map(deferred, &deferred_diag(elem(&1, 1), ctx))
+             rename_diags
        })
        |> Map.update!(:indexes, fn by_type ->
          Map.new(by_type, fn {t, lists} -> {t, List.flatten(lists)} end)
@@ -184,7 +178,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
     with :ok <- known(a),
          :ok <- finding_identity(a),
          :ok <- fresh(a) do
-      if a.transform in @supported, do: supported_finding(a, ctx), else: unsupported_finding(a)
+      supported_finding(a, ctx)
     end
   end
 
@@ -205,33 +199,13 @@ defmodule BubbleEx.Target.Ash.Decisions do
          do: transform(a, subject, field, ctx)
   end
 
-  # A hint nobody decided is deferred until a later cut applies its
-  # transform (reported, never silent); an owner's decision on an
-  # unsupported transform is an error.
-  defp unsupported_finding(%Applied{automatic: true} = a), do: {:ok, {:defer, a, a.subject, nil}}
-  defp unsupported_finding(a), do: supported(a)
-
   defp known(%Applied{transform: transform} = a) do
-    if transform in @supported or Map.has_key?(@later, transform),
+    if transform in @supported,
       do: :ok,
       else: error("unknown transform", %{key: a.key, transform: inspect(transform)})
   end
 
-  defp supported(%Applied{transform: transform}) when transform in @supported, do: :ok
-
-  defp supported(%Applied{transform: transform} = a) do
-    case Map.fetch(@later, transform) do
-      {:ok, cut} ->
-        error(
-          "Target.Ash does not apply #{transform} yet (#{cut} of WTF-352); leave it out " <>
-            "or record a reject",
-          %{key: a.key, transform: transform}
-        )
-
-      :error ->
-        error("unknown transform", %{key: a.key, transform: inspect(transform)})
-    end
-  end
+  defp supported(a), do: known(a)
 
   # The key, finding ID, kind, subject and transform agree.
   defp finding_identity(%Applied{finding_id: id} = a) when is_binary(id) do
@@ -1512,24 +1486,6 @@ defmodule BubbleEx.Target.Ash.Decisions do
         }
       )
     ]
-  end
-
-  defp deferred_diag(a, ctx) do
-    path =
-      case Map.fetch(ctx.types, a.subject[:type]) do
-        {:ok, type} -> type.path
-        :error -> ""
-      end
-
-    Diagnostic.new(
-      :ash_decision_deferred,
-      path,
-      "the #{a.transform} hint #{a.key} applies by default but Target.Ash does not apply " <>
-        "#{a.transform} yet (#{Map.fetch!(@later, a.transform)} of WTF-352); deferred",
-      target: :ash,
-      subject: a.subject,
-      details: %{key: a.key, transform: a.transform}
-    )
   end
 
   defp rename_diag(a, details, path) do

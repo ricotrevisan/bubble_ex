@@ -200,8 +200,7 @@ defmodule BubbleEx.Target.Ash do
       `basis_sha256`, or whose recorded `basis` differs from them (a stale
       decision: `applicable/2` never lists one)
     * a transform Target.Ash does not know (every registered finding
-      transform applies since cut 3; a hint nobody decided, `automatic`,
-      whose transform a later cut would apply is deferred, not an error)
+      transform applies since cut 3)
     * an `automatic` entry that is not an undecided hint
     * a subject missing from the Model or deleted, or a proposal that no
       longer fits it (not a number field, a derivation that is not a path
