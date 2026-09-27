@@ -99,6 +99,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a scheduling action's ignore-privacy option; not a bypass (the scheduled workflow's own setting decides)"},
     {:workflow_endpoint_not_served, :warning, :degraded, :target,
      "a workflow Bubble exposes as an API endpoint; not served by the Phoenix target while the project has no authorization (`privacy: :omit`) until the owner sets `serve_workflow_api: true`"},
+    {:workflow_trigger_sensitive_field, :warning, :degraded, :target,
+     "a database-trigger workflow reads a record's email or authentication data, which its job snapshot then stores in the job arguments"},
     {:workflow_endpoint_duplicate, :warning, :degraded, :target,
      "two exposed workflows share an endpoint name; the one with the lower Bubble ID serves it"},
 

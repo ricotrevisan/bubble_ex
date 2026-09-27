@@ -65,6 +65,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.{Naming, Project, Resource}
+  alias BubbleEx.Expression.IR
   alias BubbleEx.Target.Ash.Workflows.Spec
   alias BubbleEx.Target.Elixir, as: ElixirTarget
   alias BubbleEx.Workflows.Backend
@@ -133,7 +134,8 @@ defmodule BubbleEx.Target.Ash.Workflows do
       diagnostics =
         (backend.diagnostics ++
            Enum.flat_map(bound, & &1.diagnostics) ++
-           endpoint_diagnostics(bound, project))
+           endpoint_diagnostics(bound, project) ++
+           sensitive_trigger_diagnostics(triggers(bound, lookup), project))
         |> Diagnostic.normalize()
 
       {:ok,
@@ -401,6 +403,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
           }
         ),
       trigger: w.trigger_type,
+      trigger_fields: trigger_fields(w, ctx.lookup),
       scheduled?: :scheduled in w.invocation_modes,
       cycle: w.cycle,
       condition: condition,
@@ -761,13 +764,75 @@ defmodule BubbleEx.Target.Ash.Workflows do
             %{
               resource: module,
               data_type: type,
-              workflows: actions |> Enum.map(& &1.workflow) |> Enum.sort()
+              workflows: actions |> Enum.map(& &1.workflow) |> Enum.sort(),
+              fields: actions |> Enum.flat_map(& &1.trigger_fields) |> Enum.uniq() |> Enum.sort()
             }
           ]
       end
     end)
     |> Enum.sort_by(& &1.resource)
   end
+
+  @sensitive ~r/password|hashed|token|secret|confirm/i
+
+  # A trigger that reads the email or authentication data of a record puts
+  # it in the job's arguments (oban_jobs), where it stays until pruned.
+  defp sensitive_trigger_diagnostics(triggers, project) do
+    for t <- triggers,
+        resource = Enum.find(project.resources, &(&1.module == t.resource)),
+        a <- resource.attributes,
+        a.name in t.fields,
+        a.source[:field] == "email" or Regex.match?(@sensitive, a.name) do
+      Diagnostic.new(
+        :workflow_trigger_sensitive_field,
+        "",
+        "a database trigger on #{t.data_type} reads #{a.name}, so its jobs carry it " <>
+          "(oban_jobs.args) until they are pruned",
+        target: :ash,
+        subject: %{type: t.data_type},
+        details: %{attribute: a.name, workflows: t.workflows}
+      )
+    end
+  end
+
+  # The attributes a database-trigger workflow reads from "Thing now" or
+  # "Thing before change": the first field of every field chain rooted at
+  # the trigger's record in its compiled condition and steps (a reference
+  # is its ID attribute, which relationship loads go through). The job
+  # snapshots only these and the primary key, not the whole record.
+  defp trigger_fields(%Workflow{kind: :database_trigger} = w, lookup) do
+    [w.condition | Enum.flat_map(w.steps, &[&1.condition | nested(&1.args)])]
+    |> Enum.flat_map(fn
+      %Expr{ir: %IR{} = ir} -> trigger_reads(ir)
+      _ -> []
+    end)
+    |> Enum.flat_map(fn {type, field} ->
+      case get_in(lookup, [:types, type, :fields, field]) do
+        %{attribute: attribute} when is_binary(attribute) -> [attribute]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp trigger_fields(_w, _lookup), do: []
+
+  defp nested(%Expr{} = e), do: [e]
+  defp nested(%_{} = struct), do: struct |> Map.from_struct() |> nested()
+  defp nested(map) when is_map(map), do: map |> Map.values() |> Enum.flat_map(&nested/1)
+  defp nested(list) when is_list(list), do: Enum.flat_map(list, &nested/1)
+  defp nested(_), do: []
+
+  defp trigger_reads(%IR{
+         op: :field,
+         args: [%IR{op: :input, args: [:trigger_thing, _]}, type, field]
+       }),
+       do: [{type, field}]
+
+  defp trigger_reads(%IR{args: args}), do: Enum.flat_map(args, &trigger_reads/1)
+  defp trigger_reads(list) when is_list(list), do: Enum.flat_map(list, &trigger_reads/1)
+  defp trigger_reads(_), do: []
 
   # The attributes Bubble sets on its own when a workflow creates or
   # changes a record: Created Date, Modified Date and Created By.

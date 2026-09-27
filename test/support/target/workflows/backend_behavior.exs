@@ -102,6 +102,41 @@ defmodule PhxCheck.WorkflowsBehaviorTest do
     assert all_enqueued(worker: Scheduler) == []
   end
 
+  test "a job with a malformed budget fails closed", %{conn: conn, project: project} do
+    task = create_task(conn, project)
+
+    for budget <- [-1, "10", 1.5, nil] do
+      args = %{"workflow" => "wTick", "params" => %{"task" => task.id}, "budget" => budget}
+      # Its first step writes a Task, whose trigger needs a job.
+      assert {:error, _} = perform_job(Scheduler, args)
+    end
+
+    assert Ash.get!(PhxCheck.Task, task.id, authorize?: false).count == 1.0
+  end
+
+  test "a job's budget is capped at max_jobs", %{conn: conn, project: project} do
+    ids = for _ <- 1..3, do: create_task(conn, project).id
+    Enum.each(all_enqueued(worker: Scheduler), &PhxCheck.Repo.delete!/1)
+    configure(:max_jobs, 2)
+
+    args = %{"workflow" => "wFanOut", "params" => %{"tasks" => ids}, "budget" => 1_000_000_000}
+    assert {:error, _} = perform_job(Scheduler, args)
+    assert all_enqueued(worker: Scheduler) == []
+
+    configure(:max_jobs, 10_000)
+    assert {:ok, _} = Runtime.enqueue("wFanOut", %{"tasks" => ids})
+    [job] = all_enqueued(worker: Scheduler)
+    assert job.args["budget"] == 10_000
+    assert :ok = perform_job(Scheduler, job.args)
+  end
+
+  test "a trigger's job carries only the fields it reads", %{conn: conn, project: project} do
+    task = create_task(conn, project)
+    [job | _] = all_enqueued(worker: Scheduler, args: %{"workflow" => "wOnDone"})
+    assert job.args["trigger"]["now"] |> Map.keys() |> Enum.sort() == ["done", "id", "project_id"]
+    assert job.args["trigger"]["now"]["id"] == task.id
+  end
+
   test "the call budget bounds synchronous calls", %{conn: conn, project: project} do
     task = create_task(conn, project)
     configure(:max_calls, 0)

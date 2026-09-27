@@ -30,10 +30,11 @@ defmodule <%= @module %>.Workflows.Runtime do
       `/api/1.1/wf/<name>` (default `false`: every request answers 503).
       Turn it on only after adding policies that protect the data
     * `:max_jobs` - how many scheduled and trigger jobs one root run (an
-      API call, a user's write, a job scheduled from outside a workflow)
-      may cause in total, over every generation (default 10000). Each
-      job carries its share of the budget; a scheduling step or a write
-      whose triggers exceed it fails. Bubble has no such limit
+      API call, a user's write, a job enqueued with `enqueue/3`) may cause
+      in total, over every generation (default 10000). Each job carries
+      its share of the budget; a scheduling step or a write whose
+      triggers exceed it fails. A job with a missing or malformed budget
+      gets none. Bubble has no such limit
     * `:max_calls` - how many custom events one run may trigger
       synchronously in total (default 1000)
     * `:max_chain` - how many times a chain of scheduled workflows in a
@@ -49,7 +50,9 @@ defmodule <%= @module %>.Workflows.Runtime do
   deleting an empty thing is an error that ends the workflow; "Return data
   from API" ends the workflow; adding an item a list already holds keeps
   the list as it is; a database trigger fires on creation, change and
-  deletion; whether a trigger's own writes fire it again (here they do,
+  deletion (its job carries the record's ID and only the attributes the
+  trigger workflows read, "now" and "before the change": a trigger that
+  reads an email puts it in oban_jobs.args, diagnosed at generation); whether a trigger's own writes fire it again (here they do,
   within the job budget); the workflow API's error bodies; that a
   workflow without a GET/POST setting answers POST only.
   """
@@ -593,8 +596,29 @@ defmodule <%= @module %>.Workflows.Runtime do
     end
   end
 
-  defp job_budget(n) when is_integer(n) and n >= 0, do: n
-  defp job_budget(_), do: config(:max_jobs, 10_000)
+  # Fail closed: a missing or malformed budget (negative, text, a float)
+  # is none, so such a job can neither schedule nor write to a resource
+  # with triggers; a budget above :max_jobs is capped. Enqueue root jobs
+  # from your own code with enqueue/3.
+  defp job_budget(n) when is_integer(n) and n >= 0, do: min(n, config(:max_jobs, 10_000))
+  defp job_budget(_), do: 0
+
+  @doc """
+  Schedules the backend workflow `workflow` (Bubble ID) from outside any workflow (a root
+  run with the whole `:max_jobs` budget). Options: `:actor` and
+  `:scheduled_at`.
+  """
+  def enqueue(workflow, params, opts \\ []) do
+    %{
+      "workflow" => workflow,
+      "params" => dump(params),
+      "actor" => id(Keyword.get(opts, :actor)),
+      "chain" => 0,
+      "budget" => config(:max_jobs, 10_000)
+    }
+    |> Scheduler.new(Keyword.take(opts, [:scheduled_at]))
+    |> Oban.insert()
+  end
 
   # The actor who scheduled the job, read as the system: loading the
   # actor is not an access on the actor's behalf.
@@ -666,8 +690,15 @@ defmodule <%= @module %>.Workflows.Runtime do
     end)
   end
 
+  # Only the attributes the resource's trigger workflows read (their
+  # conditions and steps, as compiled) and the primary key: the job
+  # arguments (oban_jobs.args) never hold the rest of the record.
   defp snapshot(resource, %{__struct__: _} = record) do
-    for attribute <- Ash.Resource.Info.attributes(resource), into: %{} do
+    fields = registry(:trigger_fields, [resource])
+
+    for attribute <- Ash.Resource.Info.attributes(resource),
+        attribute.primary_key? or attribute.name in fields,
+        into: %{} do
       value = Map.get(record, attribute.name)
 
       dumped =

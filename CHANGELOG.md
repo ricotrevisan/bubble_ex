@@ -24,8 +24,13 @@ All notable changes to this project are documented here.
   with `workflows:`: one generic-action resource per backend folder in the
   app's domain, a generated `Workflows.Registry`, `Runtime`, Oban
   `Scheduler` (one attempt, as Bubble) and database-trigger outbox change
-  (a job inserted in the write's transaction with the record's values
-  before and after the change), the workflow API controller, and owned
+  (a job inserted in the write's transaction carrying the record's ID
+  and, before and after the change, **only the attributes the trigger
+  workflows read** in their compiled conditions and steps: the rest of
+  the record, including an email, never reaches `oban_jobs.args`; a
+  trigger that does read an email or authentication data gets a
+  `:workflow_trigger_sensitive_field` warning), the workflow API
+  controller, and owned
   bodies with `# bubble:workflow` / `# bubble:step` markers.
   **A workflow whose body, or any workflow it calls or schedules
   (transitively), has residue fails before its first step** (`blocked_by`),
@@ -47,7 +52,10 @@ All notable changes to this project are documented here.
   workflow's), sends `nosniff` and allowlisted content types; duplicate
   endpoint names are diagnosed. Fan-out is bounded: one root run's jobs
   (schedules and triggers, over all generations) share `:max_jobs`, carried
-  in job arguments, and synchronous custom-event calls share `:max_calls`;
+  in job arguments (fail closed: a missing or malformed budget is none,
+  and a budget is capped at `:max_jobs`; owned code enqueues root jobs
+  with `Runtime.enqueue/3`), and synchronous custom-event calls share
+  `:max_calls`;
   cycle chain and call depth limits remain. Whether Bubble lets a
   database trigger fire itself again through its own writes is an open
   replay question (WTF-358); here it does, within the job budget. The

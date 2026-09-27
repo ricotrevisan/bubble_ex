@@ -98,7 +98,15 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
 
   test "database triggers, stamps and cycles" do
     spec = spec(app())
-    assert spec.triggers == [%{resource: "Task", data_type: "task", workflows: ["wOnDone"]}]
+
+    assert spec.triggers == [
+             %{
+               resource: "Task",
+               data_type: "task",
+               workflows: ["wOnDone"],
+               fields: ["done", "project_id"]
+             }
+           ]
 
     assert spec.stamps["Task"] == %{
              created: "created_date",
@@ -183,6 +191,82 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
     assert action(spec(renamed, names: spec.names), "wClose").name == "create_task"
     assert action(spec(renamed), "wClose").name == "shut"
     assert spec.names |> Jason.encode!() |> Jason.decode!() == spec.names
+  end
+
+  test "blocking propagates through a call cycle, and only along calls" do
+    call = fn id, callee ->
+      %{"id" => id, "type" => "TriggerCustomEvent", "properties" => %{"custom_event" => callee}}
+    end
+
+    event = fn id, actions ->
+      %{
+        "id" => id,
+        "type" => "CustomEvent",
+        "properties" => %{"event_name" => id},
+        "actions" => actions
+      }
+    end
+
+    app =
+      update_in(app(), ["api"], fn api ->
+        Map.merge(api, %{
+          # cA <-> cB is a cycle; cB also schedules wExternal (residue).
+          "cA" => event.("cA", %{"0" => call.("aAB", "cB")}),
+          "cB" =>
+            event.("cB", %{
+              "0" => call.("aBA", "cA"),
+              "1" => %{
+                "id" => "aBX",
+                "type" => "ScheduleAPIEvent",
+                "properties" => %{"api_event" => "wExternal"}
+              }
+            }),
+          # cC calls into the cycle; cD <-> cE is a clean cycle.
+          "cC" => event.("cC", %{"0" => call.("aCA", "cA")}),
+          "cD" => event.("cD", %{"0" => call.("aDE", "cE")}),
+          "cE" => event.("cE", %{"0" => call.("aED", "cD")})
+        })
+      end)
+
+    spec = spec(app)
+
+    assert action(spec, "cA").blocked_by == ["workflow:cB"]
+    assert action(spec, "cB").blocked_by == ["workflow:cA", "workflow:wExternal"]
+    assert action(spec, "cC").blocked_by == ["workflow:cA"]
+    refute Enum.any?(~w(cA cB cC), &Spec.native?(action(spec, &1)))
+
+    assert action(spec, "cD").blocked_by == []
+    assert Spec.native?(action(spec, "cD")) and Spec.native?(action(spec, "cE"))
+  end
+
+  test "a trigger's job snapshot is limited to the fields its workflows read" do
+    assert [%{resource: "Task", fields: ["done", "project_id"]}] = spec(app()).triggers
+  end
+
+  test "a trigger reading an email is diagnosed" do
+    app =
+      put_in(app(), ["api", "wMail"], %{
+        "id" => "wMail",
+        "type" => "DatabaseTriggerEvent",
+        "properties" => %{
+          "data_trigger_type" => "user",
+          "condition" => %{
+            "type" => "CurrentDataItem",
+            "next" => %{
+              "type" => "Message",
+              "name" => "email",
+              "next" => %{"type" => "Message", "name" => "is_not_empty"}
+            }
+          }
+        },
+        "actions" => %{}
+      })
+
+    spec = spec(app)
+    assert %{fields: ["email"]} = Enum.find(spec.triggers, &(&1.data_type == "user"))
+
+    assert [%{subject: %{type: "user"}, details: %{attribute: "email"}}] =
+             Enum.filter(spec.diagnostics, &(&1.code == :workflow_trigger_sensitive_field))
   end
 
   test "the namespace is required and must be a module name" do

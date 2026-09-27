@@ -188,6 +188,11 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
         "#{inspect(t.data_type)} => #{ns}.#{t.resource}"
       end)
 
+    trigger_fields =
+      Enum.map_join(spec.triggers, ",\n", fn t ->
+        "#{ns}.#{t.resource} => [" <> Enum.map_join(t.fields, ", ", &atom/1) <> "]"
+      end)
+
     stamps =
       spec.stamps
       |> Enum.sort()
@@ -213,6 +218,9 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
        "resource", "nil"},
       {"trigger_resources", trigger_resources, "The resource of a trigger's Bubble data type.",
        "trigger_resource", "type", "nil"},
+      {"trigger_fields", trigger_fields,
+       "The attributes a trigger resource's job snapshots carry, besides the primary key.",
+       "trigger_fields", "resource", "[]"},
       {"stamps", stamps,
        "The attributes Bubble sets itself on a data resource (Created Date, Modified Date, Created By).",
        "stamps", "resource", "%{}"},
