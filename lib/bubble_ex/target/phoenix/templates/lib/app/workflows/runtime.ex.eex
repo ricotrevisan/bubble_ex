@@ -95,6 +95,7 @@ defmodule <%= @module %>.Workflows.Runtime do
         {:error, {:unknown_workflow, id}}
 
       w ->
+        # bubble:ignores_privacy scaffold:workflow_authorize
         bubble = %{
           authorize?: Keyword.get(opts, :authorize?),
           chain: Keyword.get(opts, :chain, 0),
@@ -131,6 +132,7 @@ defmodule <%= @module %>.Workflows.Runtime do
     bubble = Map.get(input.context, :bubble) || %{}
     w = registry(:workflow, [id])
 
+    # bubble:ignores_privacy scaffold:workflow_authorize
     %__MODULE__{
       workflow: id,
       actor: Map.get(context, :actor),
@@ -212,6 +214,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   defp get(_resource, %{__struct__: _} = record, _ctx), do: record
 
   defp get(resource, id, ctx) when is_binary(id) do
+    # bubble:ignores_privacy scaffold:workflow_authorize
     case Ash.get(resource, id, actor: ctx.actor, authorize?: ctx.authorize?, not_found_error?: false) do
       {:ok, record} -> record
       _ -> nil
@@ -232,6 +235,7 @@ defmodule <%= @module %>.Workflows.Runtime do
     do: Enum.map(value, &load(&1, loads, ctx))
 
   defp load(%{__struct__: _} = record, loads, ctx) do
+    # bubble:ignores_privacy scaffold:workflow_authorize
     case Ash.load(record, load_statement(loads), actor: ctx.actor, authorize?: ctx.authorize?) do
       {:ok, loaded} -> loaded
       {:error, _} -> record
@@ -418,6 +422,7 @@ defmodule <%= @module %>.Workflows.Runtime do
     end
   end
 
+  # bubble:ignores_privacy scaffold:workflow_authorize
   defp options(ctx, budget),
     do: [
       actor: ctx.actor,
@@ -522,6 +527,7 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   defp call_run(ctx, step, callee, params, calls, jobs) do
     callee
+    # bubble:ignores_privacy scaffold:workflow_authorize
     |> run(params,
       actor: ctx.actor,
       authorize?: ctx.authorize?,
@@ -625,6 +631,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   defp job_actor(nil), do: {:ok, nil}
 
   defp job_actor(id) do
+    # bubble:ignores_privacy scaffold:job_actor
     case Ash.get(<%= @module %>.Accounts.Resources.user(), id, authorize?: false, not_found_error?: false) do
       {:ok, user} -> {:ok, user}
       error -> error

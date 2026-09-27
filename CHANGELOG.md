@@ -11,29 +11,34 @@ All notable changes to this project are documented here.
   deterministically, that a generated project matches the Bubble model,
   and records every outcome as a structural (L0) `BubbleEx.Verify.Result`
   the cutover gates can read. **Structural, not behavioural**: every
-  summary says so (`Structural.statement/0`). `run/2`, at generation with
-  the model: `symbol_coverage` per category (data types, fields, option
-  sets, option values, pages, reusable elements, workflows, API Connector
-  calls), each symbol in one bucket (`generated`, `decision`, `residue`,
-  `task`, `diagnosed`, `excluded`, else `uncovered`, which fails), read
-  from the Ash project, the workflow and API client Specs, the rendered
-  surfaces and the plan (`Structural.Coverage`); `policy_coverage` (every
-  privacy rule compiled, denied or the `everyone` rule of an
-  `:unverified` project; `skipped` for `privacy: :omit`, since no policy
-  is generated); `bypass_inventory` (the lowering bypasses exactly the
-  backend workflows that ignore privacy rules in Bubble, and the rendered
-  bodies agree); `generated_unchanged` (`Manifest.check/3`) and
-  `deterministic` (a second rendering). `project/2`, and the new
-  `mix wtf.verify structural --app APP_ID` in the owner's repository
-  (advisory): the manifest, `mix compile --warnings-as-errors`, format and
-  Credo (`Target.Phoenix.Checks`), `mix ash.codegen --check`, and the
-  owned-code bypass inventory: every `authorize?: false` read from the
-  parsed code (`Structural.Bypasses`) needs `# bubble:ignores_privacy
-  <workflow id>` for a listed workflow unless its file is still as
-  scaffolded. What a run does not check is listed with why.
-  `scripts/phoenix_compile_check/structural.sh` runs the task end to end;
-  `test/support/verify/counts/structural.mm-137.json` is mm-137's counts
-  snapshot (private fixture).
+  summary says so, and lists what it did not check (`not_run`).
+  `run/2`, at generation with the model: `symbol_coverage` per category
+  (data types, fields, option sets and values, pages, reusables,
+  workflows, API calls), each symbol `generated` (emitted, and for the
+  data model found in the rendered source's AST), `decision`, `residue`
+  (not emitted, with an open non-generator task carrying its residue),
+  `diagnosed`, `excluded` or `uncovered`, which fails: a generator node or
+  an `:auto` task accounts for nothing, so page and reusable workflows,
+  which nothing generates yet, are uncovered (mm-137: 1179);
+  `policy_coverage` (`skipped` for `privacy: :omit`: blocked on WTF-356);
+  `bypass_inventory` (the lowering bypasses exactly Bubble's own "ignore
+  privacy rules" workflows; every bypass site in the rendered `lib/` is a
+  listed workflow body or an expected scaffold site; `skipped` when
+  bypasses are expected and no Spec is given); `generated_unchanged`;
+  `deterministic`. `project/2` and `mix wtf.verify structural --app
+  APP_ID` in the owner's repository (advisory): the manifest, compile,
+  lint (a known failure until WTF-416), `mix ash.codegen --check`, and the
+  owned-code bypass inventory. `Structural.Bypasses` reads the AST: every
+  `authorize?` not literally `true`, `Runtime.start(..., false)`, `bypass`
+  policies, `authorize :never`/`:when_requested`, `authorizers: []`, Repo
+  and `Ecto.Adapters.SQL` calls; each needs `# bubble:ignores_privacy`
+  with a listed workflow (inside its body), `scaffold:<purpose>` (a closed
+  vocabulary the generator now writes, counted per file in the new
+  generated `.wtf/bypasses.json`) or `decision:<key>` (an active owner
+  decision). `Verify.Result` diff entries may name `option_set` and
+  `page`. `scripts/phoenix_compile_check/structural.sh` runs the task end
+  to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
+  counts snapshot (private fixture).
 
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API

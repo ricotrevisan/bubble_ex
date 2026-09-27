@@ -183,6 +183,7 @@ defmodule MyApp.Board do
   end
 
   aggregates do
+    # bubble:ignores_privacy scaffold:derived_count
     count :card_count, [:cards_for_privacy],
       public?: true,
       authorize?: false,
@@ -418,6 +419,7 @@ defmodule MyApp.Card do
   end
 
   aggregates do
+    # bubble:ignores_privacy scaffold:derived_count
     count :board_card_count, [:board_for_privacy, :cards_for_privacy],
       public?: true,
       authorize?: false,
@@ -644,6 +646,7 @@ defmodule MyApp.Privacy do
   def load_actor(%{id: id}), do: load_actor(id)
 
   def load_actor(id) when is_binary(id) do
+    # bubble:ignores_privacy scaffold:load_actor
     case Ash.get(MyApp.User, id, load: actor_loads(), authorize?: false) do
       {:ok, actor} -> actor
       {:error, _} -> nil

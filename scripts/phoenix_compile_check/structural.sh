@@ -7,13 +7,13 @@
 # bubble_ex checkout with --root:
 #
 #   * a freshly generated project passes the manifest, compile,
-#     `mix ash.codegen --check` and the owned-code bypass inventory (lint
-#     is reported, see below), and the output says it is structural and
-#     advisory
+#     `mix ash.codegen --check` and the owned-code bypass inventory, lint
+#     fails only as the known WTF-416 failure, and the output says it is
+#     structural and advisory
 #   * a hand edit of a generated file fails generated_unchanged
 #   * an unmarked `authorize?: false` in owned code fails bypass_inventory;
-#     marked with `# bubble:ignores_privacy <workflow id>` of a workflow
-#     that ignores privacy rules in Bubble, it passes
+#     marked with `# bubble:ignores_privacy <workflow id>` inside the body
+#     of a workflow that ignores privacy rules in Bubble, it passes
 #   * a resource change without its migration fails migrations_in_sync
 #   * --out writes the results (Verify.Result JSON) and the summary
 #
@@ -39,9 +39,9 @@ mix run --no-compile scripts/phoenix_compile_check/render.exs "$scratch" "$fixtu
 verify() { mix wtf.verify structural --root "$scratch" --app "$app" "$@"; }
 fail() { echo "structural check failed: $*" >&2; exit 1; }
 
-# Every check but lint passes on a fresh project. lint is reported, not
-# asserted: the scaffolded and templated files are not yet
-# `mix format`-clean (found by this check; a follow-up of WTF-386).
+# Every check but lint passes on a fresh project. lint fails until
+# WTF-416 (the scaffolded and templated files are not yet `mix
+# format`-clean) and must be reported as that known failure.
 out="$(verify 2>&1 || true)"
 echo "$out"
 grep -q 'not behavioural' <<<"$out" || fail "the output does not say it is structural only"
@@ -49,6 +49,9 @@ grep -q 'advisory: not verified' <<<"$out" || fail "the output is not labelled a
 for check in generated_unchanged compiles migrations_in_sync bypass_inventory; do
   grep -q "^pass  structural.$check" <<<"$out" || fail "$check does not pass on a fresh project"
 done
+if grep -q '^fail  structural.lint' <<<"$out"; then
+  grep -q 'known failure: lint (WTF-416)' <<<"$out" || fail "lint fails without naming WTF-416"
+fi
 
 domain="$scratch/lib/phx_check/domain.ex"
 cp "$domain" "$scratch/domain.ex.orig"
@@ -71,16 +74,15 @@ ELIXIR
 if out="$(verify 2>&1)"; then rm -f "$owned"; fail "an unmarked bypass passed"; fi
 grep -q 'bypass_unlisted .*lib/phx_check/owned_bypass.ex:3' <<<"$out" || fail "the bypass is not reported"
 
-cat > "$owned" <<ELIXIR
-defmodule PhxCheck.OwnedBypass do
-  @moduledoc false
-  # bubble:ignores_privacy $listed
-  def read(query), do: Ash.read!(query, authorize?: false)
-end
-ELIXIR
-out="$(verify --out "$scratch/_structural" 2>&1 || true)"
 rm -f "$owned"
-grep -q '^pass  structural.bypass_inventory' <<<"$out" || fail "a marked bypass does not pass"
+
+# Marked with the listed workflow inside that workflow's own body, it passes.
+bodies="$(grep -rl "Runtime.start(input, context, \"$listed\", false)" "$scratch/lib")"
+cp "$bodies" "$scratch/bodies.orig"
+sed -i "/Runtime.start(input, context, \"$listed\", false)/a\\    # bubble:ignores_privacy $listed\\n    _ = [authorize?: false]" "$bodies"
+out="$(verify --out "$scratch/_structural" 2>&1 || true)"
+mv "$scratch/bodies.orig" "$bodies"
+grep -q '^pass  structural.bypass_inventory' <<<"$out" || { echo "$out"; fail "a marked bypass does not pass"; }
 [[ -f "$scratch/_structural/structural.bypass_inventory.json" ]] || fail "--out wrote no result"
 [[ -f "$scratch/_structural/structural.summary.json" ]] || fail "--out wrote no summary"
 rm -rf "$scratch/_structural"

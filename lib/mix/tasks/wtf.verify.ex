@@ -12,9 +12,15 @@ defmodule Mix.Tasks.Wtf.Verify do
   It checks that the generated files are unchanged
   (`.wtf/generated.json`), that the project compiles without warnings,
   passes format and Credo, that its migrations are in sync with its
-  resources (`mix ash.codegen --check`), and that every `authorize?:
-  false` in owned code is accounted for (`# bubble:ignores_privacy
-  <workflow id>` for a workflow that ignores privacy rules in Bubble).
+  resources (`mix ash.codegen --check`), and that every authorization
+  bypass in owned `lib/` code is accounted for
+  (`BubbleEx.Target.Phoenix.Structural.Bypasses`): a `# bubble:ignores_privacy
+  <token>` comment on or above it, where the token is a workflow that
+  ignores privacy rules in Bubble (inside that workflow's body), a
+  `scaffold:<purpose>` the generator wrote there (`.wtf/bypasses.json`),
+  or `decision:<key>` (not verifiable here: there is no decision store).
+  `lint` fails on fresh projects until WTF-416; it is reported as a known
+  failure.
   The checks that need the Bubble model (symbol and policy coverage,
   determinism) run at generation; the summary lists what did not run
   here and why.
@@ -70,8 +76,20 @@ defmodule Mix.Tasks.Wtf.Verify do
       do: Mix.shell().info(Structural.summary_json(report)),
       else: print(report)
 
-    unless Enum.all?(report.results, &(&1.status == :pass)),
-      do: Mix.raise("structural verification did not pass (advisory: not verified)")
+    raise_unless_passing(report)
+  end
+
+  defp raise_unless_passing(report) do
+    failing = for r <- report.results, r.status != :pass, do: r.check
+    known = for k <- Map.get(report, :known, []), do: "#{k.check}: #{k.issue}"
+    known_note = if known == [], do: "", else: "; known failures: #{Enum.join(known, ", ")}"
+
+    if failing != [],
+      do:
+        Mix.raise(
+          "structural verification did not pass: #{Enum.join(failing, ", ")}#{known_note} " <>
+            "(advisory: not verified)"
+        )
   end
 
   defp write(dir, report) do
@@ -99,6 +117,9 @@ defmodule Mix.Tasks.Wtf.Verify do
       if output = Map.get(report, :outputs, %{})[r.id],
         do: shell.info(output |> String.split("\n") |> Enum.map_join("\n", &("    | " <> &1)))
     end
+
+    for k <- Map.get(report, :known, []),
+        do: shell.info("\nknown failure: #{k.check} (#{k.issue}): #{k.reason}")
 
     shell.info("\nnot run here:")
     for %{check: c, reason: why} <- report.not_run, do: shell.info("  #{c}: #{why}")

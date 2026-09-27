@@ -10,18 +10,22 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   | bucket | meaning | read from |
   |--------|---------|-----------|
-  | `generated` | the generator emitted it | data types, fields, option sets and values: a resource, attribute, `belongs_to`, enum or enum value of the `BubbleEx.Target.Ash.Project` whose `source` is its Bubble ID; pages and reusables: `.wtf/surfaces.json` of the rendered files; backend workflows: a **native** action of the `BubbleEx.Target.Ash.Workflows.Spec` (its whole body, and its callees', generated); API calls: a call of the `BubbleEx.Target.ApiClients.Spec` |
-  | `decision` | an applied owner decision replaced or removed it | fields: a derived calculation, count aggregate or `has_many` standing for the field (`derive_*` decisions); workflows: a closed `delete_workflows` or plugin `drop` task of the plan |
-  | `residue` | the generator cannot lower it: agent work | backend workflows that are not native; pages, reusables, workflows and API calls whose plan task is open with residue (`BubbleEx.Plan.Residue`), API calls in the client Spec's residue |
-  | `task` | not generated, but a plan task covers it and its criteria verify it: agent work | the plan's tasks (frontend workflows have no generator yet, so they are all here or in `residue`) |
-  | `diagnosed` | the generator left it out and said why | a `:ash_malformed_omitted` or `:ash_duplicate_enum_value` diagnostic of the Project |
+  | `generated` | the generator emitted it | data types, fields, option sets and values: a resource, attribute, relationship, enum or enum value of the `BubbleEx.Target.Ash.Project` whose `source` is its Bubble ID **and**, with rendered files, the module and name in the rendered source (read from the AST); pages and reusables: `.wtf/surfaces.json` of the rendered files; backend workflows: a **native** action of the `BubbleEx.Target.Ash.Workflows.Spec` (its whole body, and its callees', generated); API calls: a call of the `BubbleEx.Target.ApiClients.Spec` |
+  | `decision` | an applied owner decision replaced or removed it | fields: a derived calculation, count aggregate or `has_many` standing for the field (`derive_*` decisions), rendered like a field; workflows: a closed `delete_workflows` or plugin `drop` task of the plan |
+  | `residue` | not emitted, and an **open** plan task that is not a generator node carries residue for it: agent work | the plan's tasks and their `BubbleEx.Plan.Residue` |
+  | `diagnosed` | the generator left it out and said why | a `:ash_malformed_omitted` or `:ash_duplicate_enum_value` diagnostic of the Project; a workflow on no page or reusable (`no_surface`) |
   | `excluded` | not part of the app to migrate | deleted in Bubble; mobile views and their workflows (the plan excludes them) |
-  | `uncovered` | none of the above: a structural failure | |
+  | `uncovered` | none of the above: a structural failure | why: `not_emitted` (its generator did not emit it), `no_generator` (a page or reusable workflow: nothing generates their bodies yet), `not_rendered` (in the Project, not in the rendered source) |
 
-  `task` and `residue` are accounted for, **not done**: the plan's
-  criteria (and later replay) verify that work. A parity exception does
-  not account for a symbol: structural checks accept no difference
-  (decision D4 on WTF-358).
+  A generator node of the plan (`generate:*`) or an `:auto` task accounts
+  for nothing: they say the generator will emit the symbol, which is
+  what is checked. `residue` is accounted for, **not done**. A parity
+  exception does not account for a symbol: structural checks accept no
+  difference (decision D4 on WTF-358).
+
+  The fields and values of a malformed data type or option set (kept raw
+  by the Model) cannot be listed: `counts/1` reports how many such parents
+  there are (`unreadable_parents`).
   """
 
   alias BubbleEx.Index
@@ -29,7 +33,6 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   alias BubbleEx.Model
   alias BubbleEx.Plan
   alias BubbleEx.Target.ApiClients.Spec, as: ApiSpec
-  alias BubbleEx.Target.Ash.Project
   alias BubbleEx.Target.Ash.Workflows.Spec, as: WorkflowSpec
 
   @categories [
@@ -42,7 +45,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
     :workflows,
     :api_calls
   ]
-  @buckets ~w(generated decision residue task diagnosed excluded uncovered)a
+  @buckets [:generated, :decision, :residue, :diagnosed, :excluded, :uncovered]
+  @declaring [:attribute, :belongs_to, :has_many, :calculate, :count]
 
   @typedoc "One accounted symbol: its index symbol ID, bucket, why, and Bubble-ID subjects."
   @type entry :: %{id: String.t(), bucket: atom(), why: atom() | nil, subjects: map()}
@@ -58,33 +62,43 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   @doc """
   Accounts every symbol of every category. `inputs` is the map given to
   `BubbleEx.Target.Phoenix.Structural.run/2`: `model`, `index`, `plan`,
-  `project`, and optionally `files`, `workflows` and `api_clients`.
+  `project`, and optionally `files`, `workflows` and `api_clients`. The
+  result has one entry list per category and `:unreadable`, the malformed
+  parents whose members cannot be listed.
   """
-  @spec account(map()) :: %{atom() => [entry()]}
+  @spec account(map()) :: map()
   def account(inputs) do
     plan = plan_facts(inputs.plan)
-    surfaces = surfaces(Map.get(inputs, :files))
+    files = Map.get(inputs, :files)
+    ctx = %{project: inputs.project, rendered: rendered(files, inputs.project)}
 
     %{
-      data_types: data_types(inputs.model, inputs.project),
-      fields: fields(inputs.model, inputs.project),
-      option_sets: option_sets(inputs.model, inputs.project),
-      option_values: option_values(inputs.model, inputs.project),
-      pages: surfaces(inputs.index, :page, surfaces, plan),
-      reusables: surfaces(inputs.index, :reusable, surfaces, plan),
+      data_types: data_types(inputs.model, ctx),
+      fields: fields(inputs.model, ctx),
+      option_sets: option_sets(inputs.model, ctx),
+      option_values: option_values(inputs.model, ctx),
+      pages: surfaces(inputs.index, :page, surfaces(files), plan),
+      reusables: surfaces(inputs.index, :reusable, surfaces(files), plan),
       workflows: workflows(inputs.index, Map.get(inputs, :workflows), plan),
-      api_calls: api_calls(inputs.index, Map.get(inputs, :api_clients), plan)
+      api_calls: api_calls(inputs.index, Map.get(inputs, :api_clients), plan),
+      unreadable: %{
+        fields: Enum.count(inputs.model.data_types, &(not is_nil(&1.raw))),
+        option_values: Enum.count(inputs.model.option_sets, &(not is_nil(&1.raw)))
+      }
     }
   end
 
   @doc """
-  Counts per category: every bucket (zero included), `total`, and
-  `reasons` (`why` frequencies of the entries outside `generated`).
-  Counts only: no names or IDs.
+  Counts per category: every bucket (zero included), `total`, `reasons`
+  (`bucket:why` frequencies outside `generated`) and, for fields and
+  option values, `unreadable_parents`. Counts only: no names or IDs.
   """
-  @spec counts(%{atom() => [entry()]}) :: map()
+  @spec counts(map()) :: map()
   def counts(accounted) do
-    Map.new(accounted, fn {category, entries} ->
+    unreadable = Map.get(accounted, :unreadable, %{})
+
+    Map.new(@categories, fn category ->
+      entries = Map.get(accounted, category, [])
       buckets = Map.new(@buckets, &{Atom.to_string(&1), 0})
 
       counts =
@@ -97,31 +111,105 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         |> Enum.reject(&(&1.bucket == :generated or is_nil(&1.why)))
         |> Enum.frequencies_by(&"#{&1.bucket}:#{&1.why}")
 
-      {Atom.to_string(category),
-       Map.merge(counts, %{"total" => length(entries), "reasons" => reasons})}
+      counts = Map.merge(counts, %{"total" => length(entries), "reasons" => reasons})
+
+      counts =
+        if Map.has_key?(unreadable, category),
+          do: Map.put(counts, "unreadable_parents", unreadable[category]),
+          else: counts
+
+      {Atom.to_string(category), counts}
     end)
   end
 
+  # --- the rendered source --------------------------------------------------------
+
+  # Module name -> the names it declares (attributes, relationships,
+  # calculations, aggregates) and its enum values, from the AST of the
+  # rendered lib/ files; nil without files.
+  defp rendered(files, _project) when is_map(files) do
+    namespace =
+      with json when is_binary(json) <- files[".wtf/generated.json"],
+           {:ok, %{"module" => module}} <- Jason.decode(json) do
+        module
+      end
+
+    modules =
+      for {path, source} <- files,
+          String.starts_with?(path, "lib/") and Path.extname(path) == ".ex",
+          {:ok, ast} <- [Code.string_to_quoted(source, emit_warnings: false)],
+          {name, declared} <- modules(ast),
+          into: %{},
+          do: {name, declared}
+
+    %{namespace: namespace, modules: modules}
+  end
+
+  defp rendered(_files, _project), do: nil
+
+  defp modules(ast) do
+    {_, found} =
+      Macro.prewalk(ast, [], fn
+        {:defmodule, _, [{:__aliases__, _, parts}, [do: body]]} = node, acc ->
+          {node, [{Enum.map_join(parts, ".", &to_string/1), declared(body)} | acc]}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    found
+  end
+
+  defp declared(body) do
+    {_, acc} =
+      Macro.prewalk(body, %{names: MapSet.new(), values: MapSet.new()}, fn
+        {fun, _, [name | _]} = node, acc when fun in @declaring and is_atom(name) ->
+          {node, %{acc | names: MapSet.put(acc.names, Atom.to_string(name))}}
+
+        {:use, _, [{:__aliases__, _, [:Ash, :Type, :Enum]}, opts]} = node, acc
+        when is_list(opts) ->
+          values = opts |> Keyword.get(:values, []) |> Enum.map(&enum_value/1)
+          {node, %{acc | values: MapSet.union(acc.values, MapSet.new(values))}}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    acc
+  end
+
+  defp enum_value({value, _opts}), do: to_string(value)
+  defp enum_value(value), do: to_string(value)
+
+  # A Project module (relative name) as rendered, or `:unchecked` without
+  # rendered files.
+  defp module(%{rendered: nil}, _relative), do: :unchecked
+
+  defp module(%{rendered: %{namespace: ns, modules: modules}}, relative),
+    do: Map.get(modules, "#{ns}.#{relative}")
+
   # --- data model -------------------------------------------------------------------
 
-  defp data_types(%Model{} = model, %Project{} = project) do
-    generated = MapSet.new(project.resources, &get_in(&1.source, [:type]))
+  defp data_types(%Model{} = model, ctx) do
+    resources = Map.new(ctx.project.resources, &{get_in(&1.source, [:type]), &1})
 
     for type <- model.data_types do
       subjects = %{type: type.id}
       id = Symbol.id(:data_type, type.id)
+      resource = resources[type.id]
 
       cond do
         type.deleted -> entry(id, :excluded, :deleted, subjects)
-        MapSet.member?(generated, type.id) -> entry(id, :generated, nil, subjects)
-        diagnosed?(project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
-        true -> entry(id, :uncovered, nil, subjects)
+        resource && module(ctx, resource.module) -> entry(id, :generated, nil, subjects)
+        resource -> entry(id, :uncovered, :not_rendered, subjects)
+        diagnosed?(ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
+        true -> entry(id, :uncovered, :not_emitted, subjects)
       end
     end
   end
 
-  defp fields(%Model{} = model, %Project{} = project) do
-    {stored, derived} = field_sources(project)
+  defp fields(%Model{} = model, ctx) do
+    {stored, derived} = field_sources(ctx.project)
 
     for type <- model.data_types,
         is_nil(type.raw),
@@ -133,26 +221,36 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       cond do
         type.deleted -> entry(id, :excluded, :type_deleted, subjects)
         field.deleted -> entry(id, :excluded, :deleted, subjects)
-        MapSet.member?(stored, key) -> entry(id, :generated, nil, subjects)
-        MapSet.member?(derived, key) -> entry(id, :decision, :derived, subjects)
-        diagnosed?(project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
-        true -> entry(id, :uncovered, nil, subjects)
+        items = stored[key] -> rendered_entry(id, :generated, nil, items, ctx, subjects)
+        items = derived[key] -> rendered_entry(id, :decision, :derived, items, ctx, subjects)
+        diagnosed?(ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
+        true -> entry(id, :uncovered, :not_emitted, subjects)
       end
     end
   end
 
-  # {type, field} of stored attributes and belongs_to relationships, and of
-  # what a decision derives in their place (calculations, aggregates,
-  # has_many).
+  # Every Project item standing for the field is declared in its rendered
+  # resource module.
+  defp rendered_entry(id, bucket, why, items, ctx, subjects) do
+    if Enum.all?(items, fn {module, name} -> declares?(module(ctx, module), name) end),
+      do: entry(id, bucket, why, subjects),
+      else: entry(id, :uncovered, :not_rendered, subjects)
+  end
+
+  defp declares?(:unchecked, _name), do: true
+  defp declares?(nil, _name), do: false
+  defp declares?(%{names: names}, name), do: MapSet.member?(names, name)
+
+  # {type, field} -> [{resource module, name}] of stored attributes and
+  # belongs_to relationships, and of what a decision derives in their
+  # place (calculations, aggregates, has_many).
   defp field_sources(project) do
     stored =
       for r <- project.resources,
-          item <-
-            r.attributes ++ Enum.filter(r.relationships, &(&1.kind == :belongs_to)),
+          item <- r.attributes ++ Enum.filter(r.relationships, &(&1.kind == :belongs_to)),
           key = source_key(item.source),
           key != nil,
-          into: MapSet.new(),
-          do: key
+          do: {key, {r.module, item.name}}
 
     derived =
       for r <- project.resources,
@@ -161,45 +259,47 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
               r.aggregates ++ Enum.filter(r.relationships, &(&1.kind == :has_many)),
           key = source_key(item.source),
           key != nil,
-          into: MapSet.new(),
-          do: key
+          do: {key, {r.module, item.name}}
 
-    {stored, derived}
+    {Enum.group_by(stored, &elem(&1, 0), &elem(&1, 1)),
+     Enum.group_by(derived, &elem(&1, 0), &elem(&1, 1))}
   end
 
   defp source_key(%{type: type, field: field}), do: {type, field}
   defp source_key(_), do: nil
 
-  defp option_sets(%Model{} = model, %Project{} = project) do
-    generated = MapSet.new(project.enums, & &1.source.option_set)
+  defp option_sets(%Model{} = model, ctx) do
+    enums = Map.new(ctx.project.enums, &{&1.source.option_set, &1})
 
     for set <- model.option_sets do
       subjects = %{option_set: set.id}
       id = Symbol.id(:option_set, set.id)
+      enum = enums[set.id]
 
       cond do
         set.deleted -> entry(id, :excluded, :deleted, subjects)
-        MapSet.member?(generated, set.id) -> entry(id, :generated, nil, subjects)
-        diagnosed?(project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
-        true -> entry(id, :uncovered, nil, subjects)
+        enum && module(ctx, enum.module) -> entry(id, :generated, nil, subjects)
+        enum -> entry(id, :uncovered, :not_rendered, subjects)
+        diagnosed?(ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
+        true -> entry(id, :uncovered, :not_emitted, subjects)
       end
     end
   end
 
-  defp option_values(%Model{} = model, %Project{} = project) do
+  defp option_values(%Model{} = model, ctx) do
     generated =
-      for enum <- project.enums,
+      for enum <- ctx.project.enums,
           v <- enum.values,
-          into: MapSet.new(),
-          do: {v.source.option_set, v.source.value}
+          into: %{},
+          do: {{v.source.option_set, v.source.value}, {enum.module, v.value}}
 
     duplicates =
       for %{code: :ash_duplicate_enum_value, subject: %{option_set: set}, details: details} <-
-            project.diagnostics,
+            ctx.project.diagnostics,
           into: MapSet.new(),
           do: {set, details[:value]}
 
-    known = %{generated: generated, duplicates: duplicates, project: project}
+    known = %{generated: generated, duplicates: duplicates, ctx: ctx}
 
     for set <- model.option_sets, is_nil(set.raw), value <- set.values do
       id = Symbol.id(:option_value, [set.id, value.key || value.id])
@@ -214,18 +314,23 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
     cond do
       set.deleted -> entry(id, :excluded, :option_set_deleted, subjects)
       value.deleted -> entry(id, :excluded, :deleted, subjects)
-      MapSet.member?(known.generated, key) -> entry(id, :generated, nil, subjects)
+      emitted = known.generated[key] -> value_entry(id, emitted, known.ctx, subjects)
       MapSet.member?(known.duplicates, key) -> entry(id, :diagnosed, :duplicate_key, subjects)
-      not is_nil(value.raw) -> diagnosed_or_uncovered(known.project, id, subjects)
-      true -> entry(id, :uncovered, nil, subjects)
+      diagnosed?(known.ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
+      true -> entry(id, :uncovered, :not_emitted, subjects)
     end
   end
 
-  defp diagnosed_or_uncovered(project, id, subjects) do
-    if diagnosed?(project, subjects),
-      do: entry(id, :diagnosed, :malformed, subjects),
-      else: entry(id, :uncovered, nil, subjects)
+  defp value_entry(id, {module, value}, ctx, subjects) do
+    case module(ctx, module) do
+      :unchecked -> entry(id, :generated, nil, subjects)
+      %{values: values} -> rendered_value(id, value in values, subjects)
+      nil -> entry(id, :uncovered, :not_rendered, subjects)
+    end
   end
+
+  defp rendered_value(id, true, subjects), do: entry(id, :generated, nil, subjects)
+  defp rendered_value(id, false, subjects), do: entry(id, :uncovered, :not_rendered, subjects)
 
   # A Project diagnostic saying the definition was left out.
   defp diagnosed?(project, subjects) do
@@ -239,7 +344,6 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   defp surfaces(%Index{} = index, kind, rendered, plan) do
     section = if kind == :page, do: "pages", else: "reusables"
     emitted = Map.get(rendered, section, %{})
-
     key = if kind == :page, do: :page, else: :element
 
     for symbol <- Index.symbols(index, kind) do
@@ -253,7 +357,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
           entry(symbol.id, :generated, nil, subjects)
 
         true ->
-          planned(symbol.id, subjects, plan)
+          planned(symbol.id, subjects, plan, :not_emitted)
       end
     end
   end
@@ -304,74 +408,89 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         entry(symbol.id, :excluded, :mobile_view, subjects)
 
       not MapSet.member?(known.surfaces, symbol.parent) ->
-        entry(symbol.id, :excluded, :no_surface, subjects)
+        entry(symbol.id, :diagnosed, :no_surface, subjects)
 
       true ->
-        planned(symbol.id, subjects, known.plan)
+        planned(symbol.id, subjects, known.plan, :no_generator)
     end
   end
 
   # A backend workflow the Spec lowered is generated when native (its
-  # whole body and its callees'), else residue.
+  # whole body and its callees'); otherwise the plan must hold its
+  # residue, or, when only its callees block it, theirs.
   defp backend_workflow(symbol, subjects, known) do
     case Map.fetch(known.actions, symbol.bubble_id) do
-      {:ok, true} -> entry(symbol.id, :generated, nil, subjects)
-      {:ok, false} -> entry(symbol.id, :residue, :not_native, subjects)
-      :error -> planned(symbol.id, subjects, known.plan)
+      {:ok, action} ->
+        if WorkflowSpec.native?(action),
+          do: entry(symbol.id, :generated, nil, subjects),
+          else: not_native(symbol.id, subjects, known, MapSet.new([symbol.id]))
+
+      :error ->
+        planned(symbol.id, subjects, known.plan, :not_emitted)
     end
   end
 
-  # Bubble workflow ID -> whether its action is native.
+  defp not_native(id, subjects, known, seen) do
+    case planned(id, subjects, known.plan, :not_native) do
+      %{bucket: :residue} = entry ->
+        entry
+
+      uncovered ->
+        blocked = Map.get(known.actions, bubble_id(id), %{}) |> Map.get(:blocked_by, [])
+
+        if blocked != [] and Enum.all?(blocked, &callee_accounted?(&1, known, seen)),
+          do: entry(id, :residue, :blocked_by_callee, subjects),
+          else: uncovered
+    end
+  end
+
+  # A callee blocking a workflow carries residue in an open task, or is
+  # itself only blocked by such callees (cycles count as unaccounted).
+  defp callee_accounted?("workflow:" <> _ = callee, known, seen) do
+    if MapSet.member?(seen, callee),
+      do: MapSet.member?(known.plan.residue_subjects, callee),
+      else:
+        match?(
+          %{bucket: :residue},
+          not_native(callee, %{}, known, MapSet.put(seen, callee))
+        )
+  end
+
+  defp callee_accounted?(_subject, _known, _seen), do: false
+
+  defp bubble_id("workflow:" <> id), do: id
+
+  # Bubble workflow ID -> its action.
   defp workflow_actions(%WorkflowSpec{} = spec),
-    do: Map.new(WorkflowSpec.actions(spec), &{&1.workflow, WorkflowSpec.native?(&1)})
+    do: Map.new(WorkflowSpec.actions(spec), &{&1.workflow, &1})
 
   defp workflow_actions(_), do: %{}
 
   # --- API calls ------------------------------------------------------------------------
 
   defp api_calls(%Index{} = index, spec, plan) do
-    {generated, residue} = api_spec(spec)
+    generated =
+      case spec do
+        %ApiSpec{} -> for g <- spec.groups, c <- g.calls, into: MapSet.new(), do: c.subject
+        _ -> MapSet.new()
+      end
 
     for symbol <- Index.symbols(index, :api_call) do
-      subjects = %{}
-
-      cond do
-        MapSet.member?(generated, symbol.id) -> entry(symbol.id, :generated, nil, subjects)
-        MapSet.member?(residue, symbol.id) -> entry(symbol.id, :residue, :not_generated, subjects)
-        true -> planned(symbol.id, subjects, plan)
-      end
+      if MapSet.member?(generated, symbol.id),
+        do: entry(symbol.id, :generated, nil, %{}),
+        else: planned(symbol.id, %{}, plan, :not_emitted)
     end
   end
 
-  defp api_spec(%ApiSpec{} = spec) do
-    generated = for g <- spec.groups, c <- g.calls, into: MapSet.new(), do: c.subject
-
-    residue =
-      for r <- spec.residue, into: MapSet.new(), do: Symbol.id(:api_call, [r.group, r.call])
-
-    {generated, residue}
-  end
-
-  defp api_spec(_), do: {MapSet.new(), MapSet.new()}
-
   # --- the plan ------------------------------------------------------------------------
 
-  # What the plan says about a symbol: `residue` when a task covering it is
-  # open with residue (or residue names it), `task` when a task covers it,
-  # else `uncovered`.
-  defp planned(id, subjects, plan) do
-    tasks = Map.get(plan.covering, id, [])
-
-    cond do
-      MapSet.member?(plan.residue, id) or
-          Enum.any?(tasks, &(&1.status == :open and &1.residue != [])) ->
-        entry(id, :residue, residue_reason(id, tasks, plan), subjects)
-
-      tasks != [] ->
-        entry(id, :task, tasks |> hd() |> Map.get(:kind), subjects)
-
-      true ->
-        entry(id, :uncovered, nil, subjects)
+  # A symbol no generator emitted is `residue` when an open plan task that
+  # is not a generator node covers it and carries residue, else
+  # `uncovered` for `why`.
+  defp planned(id, subjects, plan, why) do
+    case Enum.filter(Map.get(plan.covering, id, []), &(&1.residue != [])) do
+      [] -> entry(id, :uncovered, why, subjects)
+      tasks -> entry(id, :residue, residue_reason(id, tasks, plan), subjects)
     end
   end
 
@@ -383,21 +502,19 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       |> Enum.min(fn -> nil end)
   end
 
-  # Symbol -> covering tasks (acceptance, delivery and cutover tasks cover
-  # nothing: they review or release what others build; generator nodes
-  # come last); residue subjects and their first reason; workflows removed
-  # by closed decision tasks.
+  # Symbol -> the open tasks covering it that are not generator nodes,
+  # nor review, release or owner-decision tasks; residue subjects' first
+  # reason; workflows removed by closed decision tasks.
   defp plan_facts(%Plan{tasks: tasks}) do
-    ignored = [:acceptance, :delivery, :cutover, :data, :replay, :decision]
+    ignored = [:generate, :acceptance, :delivery, :cutover, :data, :replay, :decision]
+    open = Enum.filter(tasks, &(&1.status == :open and &1.kind not in ignored))
 
     covering =
-      tasks
-      |> Enum.reject(&(&1.kind in ignored))
-      |> Enum.sort_by(&if(&1.kind == :generate, do: 1, else: 0))
+      open
       |> Enum.flat_map(fn t -> Enum.map(t.subjects, &{&1, t}) end)
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
-    residue = tasks |> Enum.flat_map(& &1.residue) |> Enum.sort_by(& &1.reason)
+    residue = open |> Enum.flat_map(& &1.residue) |> Enum.sort_by(& &1.reason)
 
     removed =
       for %{status: :closed, kind: kind, subjects: subjects} <- tasks,
@@ -409,7 +526,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
     %{
       covering: covering,
-      residue: MapSet.new(residue, & &1.subject),
+      residue_subjects:
+        covering
+        |> Enum.filter(fn {_, ts} -> Enum.any?(ts, &(&1.residue != [])) end)
+        |> MapSet.new(&elem(&1, 0)),
       reasons: residue |> Enum.reverse() |> Map.new(&{&1.subject, &1.reason}),
       removed: removed
     }

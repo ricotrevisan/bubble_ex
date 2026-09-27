@@ -5,7 +5,8 @@
         "expected": 147,
         "lowered": 147,
         "sites": {
-          "authorize_false:scaffold": 14,
+          "authorize_false:scaffold": 2,
+          "authorize_unverifiable:scaffold": 6,
           "runtime_start:listed": 147
         }
       },
@@ -27,7 +28,6 @@
             "residue:not_generated": 5
           },
           "residue": 5,
-          "task": 0,
           "total": 203,
           "uncovered": 0
         },
@@ -40,7 +40,6 @@
             "excluded:deleted": 4
           },
           "residue": 0,
-          "task": 0,
           "total": 97,
           "uncovered": 0
         },
@@ -55,9 +54,9 @@
             "excluded:type_deleted": 36
           },
           "residue": 0,
-          "task": 0,
           "total": 1743,
-          "uncovered": 0
+          "uncovered": 0,
+          "unreadable_parents": 0
         },
         "option_sets": {
           "decision": 0,
@@ -68,7 +67,6 @@
             "excluded:deleted": 4
           },
           "residue": 0,
-          "task": 0,
           "total": 145,
           "uncovered": 0
         },
@@ -82,9 +80,9 @@
             "excluded:option_set_deleted": 14
           },
           "residue": 0,
-          "task": 0,
           "total": 694,
-          "uncovered": 0
+          "uncovered": 0,
+          "unreadable_parents": 0
         },
         "pages": {
           "decision": 0,
@@ -95,7 +93,6 @@
             "excluded:mobile_view": 1
           },
           "residue": 0,
-          "task": 0,
           "total": 31,
           "uncovered": 0
         },
@@ -106,7 +103,6 @@
           "generated": 127,
           "reasons": {},
           "residue": 0,
-          "task": 0,
           "total": 127,
           "uncovered": 0
         },
@@ -116,26 +112,26 @@
           "excluded": 0,
           "generated": 101,
           "reasons": {
-            "residue:auth_action": 16,
-            "residue:not_native": 534,
-            "residue:plugin_action": 377,
+            "residue:api_connector_action": 104,
+            "residue:auth_action": 17,
+            "residue:blocked_by_callee": 31,
+            "residue:plugin_action": 382,
             "residue:plugin_event": 258,
             "residue:trigger_in_runtime_template": 192,
-            "residue:uncompiled_expression": 246,
+            "residue:uncompiled_expression": 619,
             "residue:unresolved_reference": 4,
-            "residue:unsupported_action": 1,
+            "residue:unsupported_action": 9,
             "residue:unsupported_event": 2,
-            "task:auth": 9,
-            "task:cycle": 4,
-            "task:workflow": 1166
+            "residue:unsupported_option": 12,
+            "uncovered:no_generator": 1179
           },
           "residue": 1630,
-          "task": 1179,
           "total": 2910,
-          "uncovered": 0
+          "uncovered": 1179
         }
       }
     },
+    "known_failures": [],
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
@@ -164,7 +160,7 @@
       "structural.symbol_coverage.option_values": "pass",
       "structural.symbol_coverage.pages": "pass",
       "structural.symbol_coverage.reusables": "pass",
-      "structural.symbol_coverage.workflows": "pass"
+      "structural.symbol_coverage.workflows": "fail"
     }
   },
   "faithful": {
@@ -173,7 +169,8 @@
         "expected": 147,
         "lowered": 147,
         "sites": {
-          "authorize_false:scaffold": 14,
+          "authorize_false:scaffold": 2,
+          "authorize_unverifiable:scaffold": 6,
           "runtime_start:listed": 147
         }
       },
@@ -195,7 +192,6 @@
             "residue:not_generated": 5
           },
           "residue": 5,
-          "task": 0,
           "total": 203,
           "uncovered": 0
         },
@@ -208,7 +204,6 @@
             "excluded:deleted": 4
           },
           "residue": 0,
-          "task": 0,
           "total": 97,
           "uncovered": 0
         },
@@ -222,9 +217,9 @@
             "excluded:type_deleted": 36
           },
           "residue": 0,
-          "task": 0,
           "total": 1743,
-          "uncovered": 0
+          "uncovered": 0,
+          "unreadable_parents": 0
         },
         "option_sets": {
           "decision": 0,
@@ -235,7 +230,6 @@
             "excluded:deleted": 4
           },
           "residue": 0,
-          "task": 0,
           "total": 145,
           "uncovered": 0
         },
@@ -249,9 +243,9 @@
             "excluded:option_set_deleted": 14
           },
           "residue": 0,
-          "task": 0,
           "total": 694,
-          "uncovered": 0
+          "uncovered": 0,
+          "unreadable_parents": 0
         },
         "pages": {
           "decision": 0,
@@ -262,7 +256,6 @@
             "excluded:mobile_view": 1
           },
           "residue": 0,
-          "task": 0,
           "total": 31,
           "uncovered": 0
         },
@@ -273,7 +266,6 @@
           "generated": 127,
           "reasons": {},
           "residue": 0,
-          "task": 0,
           "total": 127,
           "uncovered": 0
         },
@@ -283,26 +275,26 @@
           "excluded": 0,
           "generated": 101,
           "reasons": {
-            "residue:auth_action": 16,
-            "residue:not_native": 534,
-            "residue:plugin_action": 377,
+            "residue:api_connector_action": 104,
+            "residue:auth_action": 17,
+            "residue:blocked_by_callee": 31,
+            "residue:plugin_action": 382,
             "residue:plugin_event": 258,
             "residue:trigger_in_runtime_template": 192,
-            "residue:uncompiled_expression": 246,
+            "residue:uncompiled_expression": 619,
             "residue:unresolved_reference": 4,
-            "residue:unsupported_action": 1,
+            "residue:unsupported_action": 9,
             "residue:unsupported_event": 2,
-            "task:auth": 9,
-            "task:cycle": 4,
-            "task:workflow": 1166
+            "residue:unsupported_option": 12,
+            "uncovered:no_generator": 1179
           },
           "residue": 1630,
-          "task": 1179,
           "total": 2910,
-          "uncovered": 0
+          "uncovered": 1179
         }
       }
     },
+    "known_failures": [],
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
@@ -331,7 +323,7 @@
       "structural.symbol_coverage.option_values": "pass",
       "structural.symbol_coverage.pages": "pass",
       "structural.symbol_coverage.reusables": "pass",
-      "structural.symbol_coverage.workflows": "pass"
+      "structural.symbol_coverage.workflows": "fail"
     }
   }
 }

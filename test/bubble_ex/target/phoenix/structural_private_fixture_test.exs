@@ -89,16 +89,18 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
   defp summary(ctx, applied, sha) do
     opts = [index: ctx.index, decisions_sha256: sha]
 
-    {:ok, plan} =
-      Plan.build(ctx.model, ctx.index, ctx.frontend, applied,
-        residue: ctx.residue,
-        decisions_sha256: sha
-      )
-
     {:ok, project} = Ash.map(ctx.model, applied, opts)
     {:ok, unverified} = Ash.map(ctx.model, applied, Keyword.put(opts, :privacy, :unverified))
     {:ok, backend} = Backend.build(ctx.app, ctx.model, ctx.index)
     {:ok, workflows} = Workflows.map(backend, project, namespace: "Private")
+
+    # The plan knows what the lowering left (Workflows.Spec.residue/1).
+    {:ok, plan} =
+      Plan.build(ctx.model, ctx.index, ctx.frontend, applied,
+        residue: ctx.residue ++ Workflows.Spec.residue(workflows),
+        decisions_sha256: sha
+      )
+
     {:ok, api_clients} = ApiClients.map(ctx.model)
 
     render = [
