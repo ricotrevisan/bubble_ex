@@ -5,6 +5,7 @@ defmodule <%= @web %>.UploadsTest do
   use <%= @web %>.ConnCase, async: false
 
   @moduletag :tmp_dir
+  @moduletag :capture_log
 
   alias <%= @web %>.Uploads
 
@@ -93,11 +94,13 @@ defmodule <%= @web %>.UploadsTest do
     sha2 = store(root, :public, "pixel.html", @png)
 
     for {sha, name} <- [{sha, "pixel.png"}, {sha2, "pixel.html"}] do
+      expected = if name == "pixel.png", do: "pixel.png", else: "pixel.html.png"
       conn = get(conn, "/uploads/#{sha}/#{name}")
       assert response(conn, 200) == @png
       assert_passive(conn)
       assert header(conn, "content-type") == "image/png"
-      assert header(conn, "content-disposition") == ~s(inline; filename="#{name}")
+      # Saved with its real type's extension.
+      assert header(conn, "content-disposition") == ~s(inline; filename="#{expected}")
       assert header(conn, "cache-control") =~ "immutable"
     end
   end
@@ -167,6 +170,17 @@ defmodule <%= @web %>.UploadsTest do
     assert build_conn() |> get("/uploads/private/#{other}/other.pdf") |> response(404)
   end
 
+  def raise_error(_actor, _file), do: raise("boom")
+
+  test "a failing or missing authorization function denies", %{conn: conn, root: root} do
+    sha = store(root, :private, "report.pdf", "%PDF-1.4 private")
+
+    for private <- [{__MODULE__, :raise_error}, {__MODULE__, :no_such_function}, {NoSuchModule, :allow}] do
+      configure(private: private)
+      assert conn |> get("/uploads/private/#{sha}/report.pdf") |> response(404), inspect(private)
+    end
+  end
+
   test "links: stored references only, on the separate origin when configured", %{
     conn: conn,
     root: root
@@ -189,7 +203,26 @@ defmodule <%= @web %>.UploadsTest do
     assert response(conn, 301)
     assert header(conn, "location") == "https://usercontent.example.test/uploads/#{sha}/pixel.png"
 
-    served = get(%{build_conn() | host: "usercontent.example.test"}, "/uploads/#{sha}/pixel.png")
-    assert response(served, 200) == @png
+    on_host = fn path -> get(%{build_conn() | host: "usercontent.example.test"}, path) end
+    assert on_host.("/uploads/#{sha}/pixel.png") |> response(200) == @png
+
+    # Nothing else runs on the uploads origin: not the app, not private files.
+    configure(private: {__MODULE__, :allow})
+    private = store(root, :private, "report.pdf", "%PDF-1.4 private")
+
+    for path <- ["/", "/sign-in", "/robots.txt", "/uploads/private/#{private}/report.pdf"] do
+      assert on_host.(path) |> response(404) == "Not Found", path
+    end
+  end
+
+  test "an invalid uploads_host fails closed", %{conn: conn, root: root} do
+    sha = store(root, :public, "pixel.png", @png)
+
+    for host <- ["usercontent.example.test", "http://usercontent.example.test", "https://", "https://h.test/path"] do
+      configure(uploads_host: host)
+      assert Uploads.url("#{@public_url}/#{sha}/pixel.png") == nil, host
+      assert conn |> get("/uploads/#{sha}/pixel.png") |> response(404), host
+      assert_raise ArgumentError, fn -> Uploads.validate!() end
+    end
   end
 end

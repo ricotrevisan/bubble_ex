@@ -14,6 +14,9 @@ defmodule <%= @web %>.Endpoint do
     websocket: [connect_info: [session: @session_options], max_frame_size: 1_000_000],
     longpoll: [connect_info: [session: @session_options]]
 
+  # On the separate uploads origin only public files are served (WTF-415).
+  plug <%= @web %>.UploadsHostGuard
+
   plug Plug.Static,
     at: "/",
     from: :<%= @app %>,

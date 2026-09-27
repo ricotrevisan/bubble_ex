@@ -60,7 +60,11 @@ and image fields through `<%= @web %>.Uploads.url/1`.
 **In production, serve public files from a separate origin:** set
 `UPLOADS_HOST` to a separate domain (ideally not a subdomain of the app's)
 that points at this app or a CDN in front of it; links use it, and file
-requests on the app's own host redirect there.
+requests on the app's own host redirect there. It must be `https://` and a
+host (the app refuses to boot otherwise). On that host only public files
+are served (`<%= @web %>.UploadsHostGuard`, first in the endpoint); the
+app compares it with the request's `Host`, so a proxy or CDN must forward
+the original `Host` header.
 
 **Private files are off** (404, no links): the resources have no
 authorization, and nothing yet says which record a private file belongs

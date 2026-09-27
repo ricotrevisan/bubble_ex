@@ -36,17 +36,26 @@ defmodule <%= @web %>.Uploads do
         public_url: "https://files.example.com",
         # Optional, PREFERRED IN PRODUCTION: a separate origin (ideally a
         # separate registrable domain, e.g. acme-usercontent.com, pointing
-        # at this app or at a CDN in front of it). Public links use it, and
-        # public files requested on any other host redirect there, so even
-        # a browser bug in the rules above cannot reach the app's cookies
-        # or origin.
+        # at this app or at a CDN in front of it): `https://` and a host,
+        # nothing else. Public links use it, and public files requested on
+        # any other host redirect there, so even a browser bug in the rules
+        # above cannot reach the app's cookies or origin. An invalid value
+        # fails closed: no public links, every public file answers 404.
         uploads_host: "https://acme-usercontent.com",
         # Private files: OFF by default. See below.
         private: false
 
   `config/runtime.exs` reads `UPLOADS_ROOT`, `UPLOADS_PUBLIC_URL` and
-  `UPLOADS_HOST`, and sets `private: false` (change it there: it
-  overrides `config/config.exs`).
+  `UPLOADS_HOST` (and refuses to boot with an invalid `UPLOADS_HOST`), and
+  sets `private: false` (change it there: it overrides
+  `config/config.exs`).
+
+  With `uploads_host`, the app compares it with the request's host
+  (`conn.host`): a proxy or CDN in front of the app must forward the
+  original `Host` header. `<%= @web %>.UploadsHostGuard` (plugged first in
+  the endpoint; add it to an endpoint scaffolded before WTF-415) answers
+  404 for everything but public files on that host, and private files are
+  never served there.
 
   ## Private files (off by default)
 
@@ -57,8 +66,8 @@ defmodule <%= @web %>.Uploads do
 
     * `private: {MyModule, :authorize}` - `MyModule.authorize(actor,
       %{sha256: sha, name: name})` must return `true` (the actor is the
-      signed-in user, or nil); anything else answers 404. This is the one
-      that can match Bubble's rules
+      signed-in user, or nil); anything else, a raise or a missing
+      function answers 404. This is the one that can match Bubble's rules
     * `private: :signed_in` - **any** signed-in user who has a file's link
       can read it. SHA-256 addresses are not guessable, but links leak
       (history, forwarding), and Bubble would have checked the record's
@@ -68,6 +77,8 @@ defmodule <%= @web %>.Uploads do
   cookie is needed), with the same headers as public ones, and
   `Cache-Control: private, no-store`.
   """
+
+  require Logger
 
   @app :<%= @app %>
   @prefix "/uploads"
@@ -92,7 +103,11 @@ defmodule <%= @web %>.Uploads do
   def url(reference, config) when is_binary(reference) do
     case parse(reference, config) do
       {:public, sha, name} ->
-        origin(config) <> "#{@prefix}/#{sha}/#{name}"
+        case origin(config) do
+          {:ok, origin} -> origin <> public_path(sha, name)
+          :none -> public_path(sha, name)
+          :invalid -> nil
+        end
 
       {:private, sha, name} ->
         if private?(config), do: "#{@prefix}/private/#{sha}/#{name}"
@@ -103,6 +118,10 @@ defmodule <%= @web %>.Uploads do
   end
 
   def url(_reference, _config), do: nil
+
+  @doc "The path of a public file."
+  @spec public_path(String.t(), String.t()) :: String.t()
+  def public_path(sha, name), do: "#{@prefix}/#{sha}/#{name}"
 
   @doc """
   A stored reference as `{:public | :private, sha256, name}`, or `:error`.
@@ -138,28 +157,62 @@ defmodule <%= @web %>.Uploads do
     end
   end
 
+  # `uploads_host`: {:ok, "https://host[:port]"}, :none, or :invalid (not
+  # https, no host, or a path, query, fragment or user info).
   defp origin(config) do
     case config[:uploads_host] do
-      host when is_binary(host) and host != "" -> String.trim_trailing(host, "/")
-      _ -> ""
+      nil ->
+        :none
+
+      "" ->
+        :none
+
+      value when is_binary(value) ->
+        case URI.parse(String.trim_trailing(value, "/")) do
+          %URI{scheme: "https", host: host, path: nil, query: nil, fragment: nil, userinfo: nil} =
+              uri
+          when is_binary(host) and host != "" ->
+            {:ok, URI.to_string(uri)}
+
+          _ ->
+            :invalid
+        end
+
+      _ ->
+        :invalid
     end
   end
 
   @doc """
-  The host public files must be requested on (`uploads_host`'s), or nil
-  when they are served on any host.
+  The host public files must be requested on (`uploads_host`'s), nil when
+  they are served on any host, or `:invalid` when `uploads_host` is not
+  `https://` and a host (then no public file is served).
   """
-  @spec uploads_host(keyword()) :: String.t() | nil
+  @spec uploads_host(keyword()) :: String.t() | nil | :invalid
   def uploads_host(config \\ config()) do
     case origin(config) do
-      "" -> nil
-      origin -> URI.parse(origin).host
+      {:ok, origin} -> URI.parse(origin).host
+      :none -> nil
+      :invalid -> :invalid
     end
   end
 
-  @doc "The public URL of a request path on `uploads_host`."
-  @spec on_uploads_host(String.t(), keyword()) :: String.t()
-  def on_uploads_host(path, config \\ config()), do: origin(config) <> path
+  @doc "Raises when `uploads_host` is set but invalid (see `uploads_host/1`)."
+  @spec validate!(keyword()) :: :ok
+  def validate!(config \\ config()) do
+    if origin(config) == :invalid,
+      do: raise(ArgumentError, "uploads_host must be https:// and a host, got: #{inspect(config[:uploads_host])}"),
+      else: :ok
+  end
+
+  @doc "The URL of a public file on `uploads_host` (nil without a valid one)."
+  @spec on_uploads_host(String.t(), String.t(), keyword()) :: String.t() | nil
+  def on_uploads_host(sha, name, config \\ config()) do
+    case origin(config) do
+      {:ok, origin} -> if valid?(sha, name), do: origin <> public_path(sha, name)
+      _ -> nil
+    end
+  end
 
   @doc "Whether private files are served at all (an explicit opt-in)."
   @spec private?(keyword()) :: boolean()
@@ -179,9 +232,22 @@ defmodule <%= @web %>.Uploads do
   def authorized?(actor, sha, name, config \\ config()) do
     case config[:private] do
       :signed_in -> actor != nil
-      {module, fun} when is_atom(module) and is_atom(fun) -> apply(module, fun, [actor, %{sha256: sha, name: name}]) == true
+      {module, fun} when is_atom(module) and is_atom(fun) -> authorize(module, fun, actor, sha, name)
       _ -> false
     end
+  end
+
+  # The owner's function; a raise, an exit or a missing function denies.
+  defp authorize(module, fun, actor, sha, name) do
+    apply(module, fun, [actor, %{sha256: sha, name: name}]) == true
+  rescue
+    error ->
+      Logger.error("private file authorization failed: #{Exception.message(error)}")
+      false
+  catch
+    kind, reason ->
+      Logger.error("private file authorization failed: #{inspect(kind)} #{inspect(reason)}")
+      false
   end
 
   @doc """
@@ -230,7 +296,7 @@ defmodule <%= @web %>.Uploads do
     [
       {"content-type", type},
       # `name` is a loader-safe name: nothing to quote or escape.
-      {"content-disposition", ~s(#{disposition}; filename="#{name}")},
+      {"content-disposition", ~s(#{disposition}; filename="#{file_name(disposition, type, name)}")},
       {"x-content-type-options", "nosniff"},
       {"content-security-policy", "sandbox; default-src 'none'"},
       {"referrer-policy", "no-referrer"},
@@ -238,6 +304,25 @@ defmodule <%= @web %>.Uploads do
       {"accept-ranges", "bytes"}
     ]
   end
+
+  # An inline image is saved with its real type's extension (a PNG named
+  # `photo.html` downloads as `photo.html.png`).
+  @extensions %{
+    "image/png" => [".png"],
+    "image/jpeg" => [".jpg", ".jpeg"],
+    "image/gif" => [".gif"],
+    "image/webp" => [".webp"]
+  }
+
+  defp file_name(:inline, type, name) do
+    extensions = Map.fetch!(@extensions, type)
+
+    if String.downcase(Path.extname(name)) in extensions,
+      do: name,
+      else: name <> hd(extensions)
+  end
+
+  defp file_name(:attachment, _type, name), do: name
 
   # Content-addressed: a public file never changes.
   defp cache_control(:public), do: "public, max-age=31536000, immutable"

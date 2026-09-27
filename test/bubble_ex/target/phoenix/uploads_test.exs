@@ -68,6 +68,20 @@ defmodule BubbleEx.Target.Phoenix.UploadsTest do
       assert uploads.content_type(head(name)) == {:inline, type}, name
     end
 
+    # An inline image is saved with its real type's extension.
+    disposition = fn name, type ->
+      {:inline, type}
+      |> uploads.headers(name, :public)
+      |> Map.new()
+      |> Map.fetch!("content-disposition")
+    end
+
+    assert disposition.("gif_polyglot.html", "image/gif") ==
+             ~s(inline; filename="gif_polyglot.html.gif")
+
+    assert disposition.("pixel.JPG", "image/jpeg") == ~s(inline; filename="pixel.JPG")
+    assert disposition.("pixel.png", "image/png") == ~s(inline; filename="pixel.png")
+
     assert uploads.content_type(head("doc.pdf")) == {:attachment, "application/pdf"}
     assert uploads.content_type("") == {:attachment, "application/octet-stream"}
   end
@@ -105,6 +119,54 @@ defmodule BubbleEx.Target.Phoenix.UploadsTest do
              public_url: @public_url,
              uploads_host: "https://usercontent.example.test/"
            ) == "https://usercontent.example.test/uploads/#{sha}/cv.pdf"
+  end
+
+  test "uploads_host must be https:// and a host, else nothing public is linked", %{
+    uploads: uploads
+  } do
+    sha = String.duplicate("ab", 32)
+    reference = "#{@public_url}/#{sha}/cv.pdf"
+
+    for host <- [
+          "https://u.example.test",
+          "https://u.example.test/",
+          "https://u.example.test:8443"
+        ] do
+      assert uploads.validate!(uploads_host: host) == :ok
+
+      assert uploads.url(reference, uploads_host: host) =~
+               ~r"^https://u\.example\.test(:8443)?/uploads/"
+
+      assert uploads.uploads_host(uploads_host: host) == "u.example.test"
+    end
+
+    for host <- [
+          "u.example.test",
+          "http://u.example.test",
+          "https://",
+          "https://u.test/x",
+          "https://a@u.test",
+          42
+        ] do
+      assert_raise ArgumentError, fn -> uploads.validate!(uploads_host: host) end
+      assert uploads.url(reference, uploads_host: host) == nil
+      assert uploads.uploads_host(uploads_host: host) == :invalid
+      assert uploads.on_uploads_host(sha, "cv.pdf", uploads_host: host) == nil
+    end
+
+    assert uploads.on_uploads_host("../x", "cv.pdf", uploads_host: "https://u.test") == nil
+  end
+
+  def boom(_actor, _file), do: raise("boom")
+
+  test "a failing or missing authorization function denies", %{uploads: uploads} do
+    sha = String.duplicate("ab", 32)
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      for private <- [{__MODULE__, :boom}, {__MODULE__, :missing}, {NoSuchModule, :allow}] do
+        refute uploads.authorized?(%{id: "u1"}, sha, "cv.pdf", private: private)
+      end
+    end)
   end
 
   test "private files are off unless the owner opts in", %{uploads: uploads} do
@@ -175,7 +237,11 @@ defmodule BubbleEx.Target.Phoenix.UploadsTest do
 
     routes = files["lib/uploads_check_web/bubble_routes.ex"]
     assert routes =~ ~s(get "/:sha/:name", UploadsController, :public)
-    assert routes =~ ~s(get "/:sha/:name", UploadsController, :private)
+    assert routes =~ ~s(get "/private/:sha/:name", UploadsController, :private)
+    # The session is read by the controller, only for enabled private files.
+    refute routes =~ "load_from_session"
+    assert files["lib/uploads_check_web/endpoint.ex"] =~ "plug UploadsCheckWeb.UploadsHostGuard"
+    assert files["config/runtime.exs"] =~ "UPLOADS_HOST must be https://"
     assert files["config/runtime.exs"] =~ "private: false"
     assert files["README.md"] =~ "**Private files are off**"
   end
@@ -196,9 +262,10 @@ defmodule BubbleEx.Target.Phoenix.UploadsTest do
       for {id, %{file?: true}} <- expressions,
           do: id |> String.split("/") |> List.last()
 
-    # An image field, a file field, and a dynamic text that is only an
-    # image field; not "https:" followed by one (it would break the link).
-    assert Enum.sort(shown) == ["bIM :: src", "bIT :: src", "bLK :: destination"]
+    # An image field, a file field, a dynamic text that is only an image
+    # field, and "https:" followed by one (the scheme is dropped: the link
+    # is the app's route). Not a text around a file.
+    assert Enum.sort(shown) == ["bIH :: src", "bIM :: src", "bIT :: src", "bLK :: destination"]
 
     for %{source: source} <- Map.values(expressions) do
       assert source =~ "ShopWeb.Uploads.url(get_in(current_user"
@@ -211,9 +278,17 @@ defmodule BubbleEx.Target.Phoenix.UploadsTest do
     assert template =~ ~r/<img data-bubble-id="bIM"[^>]* src=\{src_bim\(@current_user\)\}/
     assert template =~ ~r/<img data-bubble-id="bIT"[^>]* src=\{src_bit\(@current_user\)\}/
     assert template =~ ~r/<a data-bubble-id="bLK"[^>]* href=\{destination_blk\(@current_user\)\}/
-    refute template =~ ~r/<img data-bubble-id="bIH"[^>]* src=/
+    assert template =~ ~r/<img data-bubble-id="bIH"[^>]* src=\{src_bih\(@current_user\)\}/
 
     live = files["lib/shop_web/live/profile_live.ex"]
+
+    # File links stay nil when empty (no attribute), never "" or "https:".
+    for helper <- ~w(src_bih src_bim src_bit destination_blk) do
+      assert live =~
+               ~r/defp #{helper}\(current_user\) do\n    ShopWeb\.Uploads\.url\(get_in\(current_user, \[Access\.key\(:(avatar|resume)\)\]\)\)\n  end/
+    end
+
+    refute live =~ ~s("https:")
     assert live =~ "ShopWeb.Uploads.url(get_in(current_user, [Access.key(:avatar)]))"
     assert live =~ "ShopWeb.Uploads.url(get_in(current_user, [Access.key(:resume)]))"
   end

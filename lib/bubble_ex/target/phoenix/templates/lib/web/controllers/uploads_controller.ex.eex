@@ -10,18 +10,30 @@ defmodule <%= @web %>.UploadsController do
   """
   use <%= @web %>, :controller
 
+  require Logger
+
   alias <%= @web %>.Uploads
 
   def public(conn, %{"sha" => sha, "name" => name}) do
     config = Uploads.config()
 
     case Uploads.uploads_host(config) do
+      :invalid ->
+        Logger.error("#{inspect(Uploads)}: uploads_host is invalid; no public file is served")
+        not_found(conn)
+
       host when is_binary(host) and host != conn.host ->
         # Public files live on the separate origin only.
-        conn
-        |> put_resp_header("location", Uploads.on_uploads_host(conn.request_path, config))
-        |> put_resp_header("x-content-type-options", "nosniff")
-        |> send_resp(:moved_permanently, "")
+        case Uploads.on_uploads_host(sha, name, config) do
+          nil ->
+            not_found(conn)
+
+          url ->
+            conn
+            |> put_resp_header("location", url)
+            |> put_resp_header("x-content-type-options", "nosniff")
+            |> send_resp(:moved_permanently, "")
+        end
 
       _ ->
         serve(conn, :public, sha, name, config)
@@ -31,10 +43,18 @@ defmodule <%= @web %>.UploadsController do
   def private(conn, %{"sha" => sha, "name" => name}) do
     config = Uploads.config()
 
-    if Uploads.valid?(sha, name) and
-         Uploads.authorized?(conn.assigns[:current_user], sha, name, config),
-       do: serve(conn, :private, sha, name, config),
-       else: not_found(conn)
+    # Off by default: then the session is not even read. Never on the
+    # separate uploads origin.
+    if Uploads.private?(config) and Uploads.valid?(sha, name) and
+         Uploads.uploads_host(config) != conn.host do
+      conn = conn |> fetch_session() |> AshAuthentication.Phoenix.Plug.load_from_session([])
+
+      if Uploads.authorized?(conn.assigns[:current_user], sha, name, config),
+        do: serve(conn, :private, sha, name, config),
+        else: not_found(conn)
+    else
+      not_found(conn)
+    end
   end
 
   defp serve(conn, visibility, sha, name, config) do

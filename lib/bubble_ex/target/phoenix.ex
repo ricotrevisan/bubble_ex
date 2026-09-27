@@ -107,8 +107,11 @@ defmodule BubbleEx.Target.Phoenix do
   `application/pdf`) unless its bytes are a PNG, JPEG, GIF or WebP image
   (inline), always with `nosniff` and `Content-Security-Policy: sandbox;
   default-src 'none'`; content addresses only (no traversal, no
-  symlinks); single byte ranges. `uploads_host` (a separate origin) is
-  the preferred production setup. Private files
+  symlinks); single byte ranges. `uploads_host` (a separate origin,
+  `https://` and a host, validated at boot and failing closed) is the
+  preferred production setup; on it the generated
+  `<Web>.UploadsHostGuard` (first in the new endpoint) serves public
+  files only. Private files
   (`/uploads/private/<sha256>/<name>`) are **off** by default: with
   `privacy: :omit` nothing says who may read them, so the owner opts in
   with an authorization function (or `:signed_in`, weaker than Bubble).
@@ -697,6 +700,7 @@ defmodule BubbleEx.Target.Phoenix do
         "lib/web/controllers/workflow_api_controller.ex",
       # The migrated files (WTF-415), routed by the generated BubbleRoutes.
       (web <> "uploads.ex") => "lib/web/uploads.ex",
+      (web <> "uploads_host_guard.ex") => "lib/web/uploads_host_guard.ex",
       (web <> "controllers/uploads_controller.ex") => "lib/web/controllers/uploads_controller.ex",
       "test/#{ctx.app}_web/uploads_test.exs" => "test/uploads_test.exs"
     }

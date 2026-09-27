@@ -17,11 +17,14 @@ All notable changes to this project are documented here.
   `Content-Security-Policy: sandbox; default-src 'none'`; the name never
   decides the type. Content addresses only (SHA-256 and loader-safe name
   validated, regular files, no symlinks), single byte ranges, ETags. An
-  optional `uploads_host` puts public files on a separate origin (the
-  preferred production setup). Private files are off by default (404, no
+  optional `uploads_host` (`https://` and a host, validated at boot, fails
+  closed) puts public files on a separate origin (the preferred production
+  setup), where `<Web>.UploadsHostGuard` serves nothing else. Private files are off by default (404, no
   link) until the owner opts in with an authorization function or
-  `:signed_in`. Pages link file and image fields (and dynamic texts that
-  are only one) through `<Web>.Uploads.url/1`, never the stored URL
+  `:signed_in`; a raising or missing function denies, and the session is
+  not read while they are off. Pages link file and image fields (and
+  dynamic texts that are only one, optionally after `"https:"`) through
+  `<Web>.Uploads.url/1`, nil when empty, never the stored URL
   (`BubbleEx.Target.Elixir` `:file_url` option). A generated
   `<Web>.UploadsTest` checks hostile files, traversal and the private
   default.

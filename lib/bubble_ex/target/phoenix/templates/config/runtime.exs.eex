@@ -13,10 +13,23 @@ config :<%= @app %>, <%= @web %>.Endpoint,
 # storage root and public_url, and (preferred in production) a separate
 # origin for public files. Private files stay off until you opt in here
 # with `private: {MyModule, :authorize}` (see <%= @web %>.Uploads).
+uploads_host = System.get_env("UPLOADS_HOST")
+
+if uploads_host not in [nil, ""] do
+  case URI.parse(String.trim_trailing(uploads_host, "/")) do
+    %URI{scheme: "https", host: host, path: nil, query: nil, fragment: nil, userinfo: nil}
+    when is_binary(host) and host != "" ->
+      :ok
+
+    _ ->
+      raise "UPLOADS_HOST must be https:// and a host (e.g. https://acme-usercontent.com), got: #{inspect(uploads_host)}"
+  end
+end
+
 config :<%= @app %>, <%= @web %>.Uploads,
   root: System.get_env("UPLOADS_ROOT"),
   public_url: System.get_env("UPLOADS_PUBLIC_URL"),
-  uploads_host: System.get_env("UPLOADS_HOST"),
+  uploads_host: uploads_host,
   private: false
 
 if config_env() == :prod do
