@@ -87,7 +87,8 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   Nothing is deleted from a join table: a member removed from a list in
   Bubble since an earlier load keeps its row (WTF-414), and the loader
-  reports it (`join_members/4`, `:load_join_stale_member`).
+  reports it (`join_members/4`, `:load_join_stale_member`) and blocks the
+  real run before any writes.
   """
 
   @behaviour BubbleEx.Load.Target

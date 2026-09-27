@@ -330,8 +330,8 @@ defmodule BubbleEx.Target.Ash do
   back). Nothing is deleted from a join table: a member removed from a
   list since an earlier load keeps its row, and any access a rule grants
   through the list; the loader reports each (`:load_join_stale_member`,
-  warning). WTF-414 must land before a real cutover that loads more than
-  once.
+  error) in a dry run and blocks the real run before writes until WTF-414
+  implements pruning.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.

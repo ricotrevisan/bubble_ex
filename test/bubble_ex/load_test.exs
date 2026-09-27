@@ -451,7 +451,7 @@ defmodule BubbleEx.LoadTest do
       assert Memory.tables(f.target) == before
     end
 
-    test "a later export moves positions and never deletes rows (WTF-414 prunes)", %{tmp_dir: dir} do
+    test "a later export with removed join members is blocked before any writes", %{tmp_dir: dir} do
       f = setup_fixture(:cut3, dir)
       {:ok, _} = Load.run(f.export, f.model, f.target)
 
@@ -462,38 +462,34 @@ defmodule BubbleEx.LoadTest do
       rows = %{rows | "workspace" => [w1 | rest]}
       {:ok, delta_export} = F.export(:cut3, Path.join(dir, "delta"), rows)
 
-      # Bob's row stays: reported (IDs and counts only), as a warning
+      # Dry-run reports the revocation without writing anything.
+      before = Memory.tables(f.target)
       {:ok, dry} = Load.dry_run(delta_export, f.model, f.target)
+      assert :load_join_stale_member in dry.blocked
 
-      assert %{severity: :warning, details: %{count: 1, sample_ids: [w], not_listed_now: 1}} =
+      assert %{severity: :error, details: %{count: 1, sample_ids: [w], not_listed_now: 1}} =
                diag(dry, :load_join_stale_member, "workspace", "members_list_user")
 
       assert w == F.workspace1()
       refute diag(dry, :load_join_stale_member, "user", "workspaces_list_custom_workspace")
-      {:ok, delta} = Load.run(delta_export, f.model, f.target)
-      assert diag(delta, :load_join_stale_member, "workspace", "members_list_user")
 
-      # no other list has a member it no longer holds
-      refute Enum.any?(
-               delta.diagnostics,
-               &(&1.code == :load_join_stale_member and &1.subject.field != "members_list_user")
-             )
+      ledger_dir = Path.join(dir, "blocked-ledger")
 
-      pos = fn user ->
-        r =
-          Enum.find(
-            join_rows(f.target, "user_workspaces"),
-            &(&1["user_id"] == user and &1["workspace_id"] == F.workspace1())
-          )
+      assert {:error, %BubbleEx.Error{kind: :invalid_input, context: context}} =
+               Load.run(delta_export, f.model, f.target, ledger_dir: ledger_dir)
 
-        {r["workspaces_position"], r["members_position"]}
-      end
+      assert :load_join_stale_member in context.blocked
+      assert context.report.blocked == dry.blocked
+      assert diag(context.report, :load_join_stale_member, "workspace", "members_list_user")
+      assert Memory.tables(f.target) == before
+      refute File.exists?(ledger_dir)
 
-      # Carol's own Workspaces column is untouched
-      assert pos.(F.carol()) == {1, 0}
-      assert pos.(F.ada()) == {0, 1}
-      # not deleted, not changed
-      assert pos.(F.bob()) == {nil, 1}
+      # Bob still has a membership row in the old target, so a successful
+      # delta run must not certify that target as safe to serve.
+      assert Enum.any?(join_rows(f.target, "user_workspaces"), fn row ->
+               row["user_id"] == F.bob() and row["workspace_id"] == F.workspace1() and
+                 row["members_position"] == 1
+             end)
     end
 
     test "an interrupted load resumes its join rows from the ledger", %{tmp_dir: dir} do

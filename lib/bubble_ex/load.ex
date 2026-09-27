@@ -75,9 +75,9 @@ defmodule BubbleEx.Load do
       back). The rows upsert idempotently. Nothing is deleted: a member
       removed from a list in Bubble since an earlier load keeps its row,
       and with it any access a privacy rule grants through the list; each
-      such row is reported (`:load_join_stale_member`, a warning: the
-      owner's ID, counts). **WTF-414 (pruning by the ledger's written
-      pairs) must land before a real cutover** that loads more than once.
+      such row is reported (`:load_join_stale_member`, an error: the
+      owner's ID, counts). A dry run reports it; a real run is blocked
+      before any writes until WTF-414 implements pruning.
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -160,8 +160,10 @@ defmodule BubbleEx.Load do
        dangling references, drift, duplicate emails).
     4. Run with a `:ledger_dir` and the target storage, from the generated
        project (`query: &Repo.query/2`), against a staging database first.
-    5. At cutover, freeze writes in Bubble, export again and load the new
-       export into the same database: only what changed is written.
+    5. At cutover, freeze writes in Bubble and export again. Dry-run the
+       new export first: a removed normalized-list member blocks a real
+       load until WTF-414 implements pruning. Otherwise load into the same
+       database: only what changed is written.
 
     6. After the cutover, delete the export:
        `mix bubble.export.delete exports/mm-137` (`Export.delete/1`).
@@ -179,6 +181,7 @@ defmodule BubbleEx.Load do
     :load_schema_mismatch,
     :load_duplicate_email,
     :load_email_conflict,
+    :load_join_stale_member,
     :load_ambiguous_key
   ]
 
@@ -348,7 +351,7 @@ defmodule BubbleEx.Load do
   # Members a list held at an earlier load that it no longer holds: the
   # target's rows of the list for the exported owners that the export does
   # not give it. Nothing deletes them (WTF-414), and they keep any access
-  # a rule grants through the list, so each is reported
+  # a rule grants through the list, so each blocks a real run before writes
   # (`:load_join_stale_member`, the owner's ID). Not read when the schema
   # check failed.
   defp stale_members(joins, scan, {tmod, tconf}, schema, issues) do

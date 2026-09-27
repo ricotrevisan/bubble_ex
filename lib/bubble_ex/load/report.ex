@@ -3,9 +3,9 @@ defmodule BubbleEx.Load.Report do
   What a load (or a dry run) found and did (`BubbleEx.Load.run/4`).
 
     * `dry_run` - true when nothing was written
-    * `blocked` - the codes of the error diagnostics that stop a real run
-      (a schema mismatch, duplicate emails, an incomplete export without
-      `allow_partial: true`); `[]` when it may run
+    * `blocked` - the codes of diagnostics that stop a real run
+      (a schema mismatch, stale join membership, duplicate emails, an
+      incomplete export without `allow_partial: true`); `[]` when it may run
     * `run` - the ledger's run key (nil for a dry run)
     * `export_sha256`, `plan_sha256`, `target` - what was loaded, by what
       plan, into which database (its credential-free identity)
