@@ -102,7 +102,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   def plan(%Client{} = client, %Seed{} = seed, scenarios, opts \\ []) do
     with {:ok, runs} <- runs(opts),
          :ok <- validate(client, seed, scenarios, opts),
-         :ok <- validate_waiver(client, types(seed, scenarios), opts) do
+         :ok <- validate_waiver(client, types(seed, scenarios), opts),
+         :ok <- validate_persona_path(client, seed) do
       per_run = seeding_calls(seed, opts) + op_calls(client, seed, scenarios)
       types = types(seed, scenarios)
       kit = Keyword.get(opts, :kit, %Kit{})
@@ -202,6 +203,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
            reason: :invalid_exposure_waiver
          })}
     end
+  end
+
+  defp validate_persona_path(client, seed) do
+    if Enum.any?(seed.records, &(&1.type == "user")),
+      do: ExposureWaiver.validate_user_path(client.names),
+      else: :ok
   end
 
   # --- validation -------------------------------------------------------------------

@@ -100,19 +100,23 @@ Do not enable it for another app, branch, ID, host or type; never merge
 this replay branch into test/live. Revoke exposure after recording.
 
 Construct `%ExposureWaiver{owner_accepted: true, expires_at: expiry,
-types: ["user", ...]}` and pass `exposure_waiver: waiver` to **both**
+types: ["user", ...], paths: %{"user" => "user", ...}}` and pass
+`exposure_waiver: waiver` to **both**
 `Recorder.plan/4` and `Recorder.record/4`. `expiry` is a UTC `DateTime`
 after now but no more than seven days away. Use exact type descriptors
-(for example `"user"`, `"custom.task"`), not Data API paths; unknown or
-unrequested descriptors, invalid scope, absent acceptance and expired
-waivers fail before any write. Include `"user"` explicitly if personas
-need cleanup; accepting another type does **not** accept User. Only
+(for example `"user"`, `"custom.task"`) and bind every accepted descriptor
+in `paths` to its exact Data API path. Missing, extra or changed mappings,
+invalid scope, absent acceptance and expired waivers fail before any write.
+The `"user"` descriptor must map to Bubble's canonical `"user"` path even
+without a waiver when signing up personas. Include `"user"` explicitly if
+personas need cleanup; accepting another type does **not** accept User. Only
 `:exposed` and `:may_leak` probes for named types can be accepted. The
 anonymous probe still runs: its actual status, counts and field names
 remain in `report.preflight.checks`, with conspicuous warnings in
 `report.preflight.warnings`. Never treat accepted exposure as safe. The
-waiver is bound into the reviewed dry-run hash. Tokenless target
-verification and call/cleanup budgets are unchanged.
+waiver, including its descriptor-to-path map, is bound into the reviewed
+dry-run hash. Tokenless target verification and call/cleanup budgets are
+unchanged.
 
 - [ ] *(you confirm)* **Don't change any privacy rule.** The recording is
       only worth something if the branch's rules match the parent's. Don't

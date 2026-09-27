@@ -1202,7 +1202,8 @@ defmodule BubbleEx.Verify.ReplayTest do
       waiver = %ExposureWaiver{
         owner_accepted: true,
         expires_at: expires,
-        types: ~w(custom.workspace user)
+        types: ~w(custom.workspace user),
+        paths: %{"custom.workspace" => "workspace", "user" => "user"}
       }
 
       opts = [exposure_waiver: waiver, personas: true]
@@ -1242,7 +1243,11 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       assert {:ok, report} =
                Kit.preflight(scoped_client(), %Kit{}, ["custom.workspace"],
-                 exposure_waiver: %{waiver | types: ["custom.workspace"]}
+                 exposure_waiver: %{
+                   waiver
+                   | types: ["custom.workspace"],
+                     paths: %{"custom.workspace" => "workspace"}
+                 }
                )
 
       assert report.ok?
@@ -1264,7 +1269,8 @@ defmodule BubbleEx.Verify.ReplayTest do
       waiver = %ExposureWaiver{
         owner_accepted: true,
         expires_at: DateTime.add(DateTime.utc_now(), 3600),
-        types: ["user"]
+        types: ["user"],
+        paths: %{"user" => "user"}
       }
 
       for invalid <- [
@@ -1272,7 +1278,9 @@ defmodule BubbleEx.Verify.ReplayTest do
             %{waiver | expires_at: DateTime.add(DateTime.utc_now(), -1)},
             %{waiver | expires_at: DateTime.add(DateTime.utc_now(), 8 * 86_400)},
             %{waiver | types: ["other"]},
-            %{waiver | types: ["user", "custom.workspace"]}
+            %{waiver | types: ["user", "custom.workspace"]},
+            %{waiver | paths: %{}},
+            %{waiver | paths: %{"user" => "user", "custom.workspace" => "workspace"}}
           ] do
         assert {:error, %Error{context: %{reason: :invalid_exposure_waiver}}} =
                  Kit.preflight(c, %Kit{}, ["user"], exposure_waiver: invalid, personas: true)
@@ -1299,7 +1307,11 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:ok, report} =
                Kit.preflight(c, %Kit{}, ~w(custom.workspace user),
                  personas: true,
-                 exposure_waiver: %{waiver | types: ["custom.workspace"]}
+                 exposure_waiver: %{
+                   waiver
+                   | types: ["custom.workspace"],
+                     paths: %{"custom.workspace" => "workspace"}
+                 }
                )
 
       assert %{status: :missing} = Enum.find(report.checks, &(&1.check == :persona_cleanup))
@@ -1326,7 +1338,8 @@ defmodule BubbleEx.Verify.ReplayTest do
       waiver = %ExposureWaiver{
         owner_accepted: true,
         expires_at: DateTime.add(DateTime.utc_now(), 3600),
-        types: ["custom.workspace"]
+        types: ["custom.workspace"],
+        paths: %{"custom.workspace" => "workspace"}
       }
 
       opts = [exposure_waiver: waiver, ledger_dir: dir()]
@@ -1358,7 +1371,8 @@ defmodule BubbleEx.Verify.ReplayTest do
       waiver = %ExposureWaiver{
         owner_accepted: true,
         expires_at: DateTime.add(DateTime.utc_now(), 3600),
-        types: ["user"]
+        types: ["user"],
+        paths: %{"user" => "user"}
       }
 
       assert {:ok, plain} = Recorder.plan(c, seed, scenarios)
@@ -1368,13 +1382,100 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:error, %Error{context: %{reason: :plan_not_confirmed}}} =
                Recorder.record(c, seed, scenarios,
                  plan_sha256: plan.sha256,
-                 exposure_waiver: %{waiver | types: ["custom.task"]},
+                 exposure_waiver: %{
+                   waiver
+                   | types: ["custom.task"],
+                     paths: %{"custom.task" => "task"}
+                 },
                  ledger_dir: dir()
                )
 
       assert {:error, %Error{context: %{reason: :invalid_exposure_waiver}}} =
                Recorder.plan(c, seed, scenarios,
                  exposure_waiver: %{waiver | expires_at: DateTime.add(DateTime.utc_now(), -1)}
+               )
+
+      assert FakeBubble.log(fake) == []
+    end
+
+    test "a mismapped User cannot pass owner acceptance or persona cleanup" do
+      fake =
+        start_fake(
+          host: "beta.mocharymethod.com",
+          branch_id: "33kpg",
+          owner_records: [%{type: "workspace", fields: %{"Name" => "private"}}]
+        )
+
+      c = scoped_client()
+      bad = %{c | names: %{c.names | types: Map.put(c.names.types, "user", "workspace")}}
+
+      waiver = %ExposureWaiver{
+        owner_accepted: true,
+        expires_at: DateTime.add(DateTime.utc_now(), 3600),
+        types: ["user"],
+        paths: %{"user" => "user"}
+      }
+
+      assert {:error, %Error{context: %{reason: :invalid_exposure_waiver}}} =
+               Kit.preflight(bad, %Kit{}, ["user"], personas: true, exposure_waiver: waiver)
+
+      assert {:error, %Error{context: %{reason: :invalid_exposure_waiver}}} =
+               Recorder.plan(bad, seed(), [], exposure_waiver: waiver)
+
+      # Claiming the wrong path in the waiver must not make it a User endpoint.
+      wrong = %{waiver | paths: %{"user" => "workspace"}}
+
+      assert {:error, %Error{context: %{reason: :invalid_exposure_waiver}}} =
+               Recorder.plan(bad, seed(), [], exposure_waiver: wrong)
+
+      assert {:error, %Error{context: %{reason: :invalid_user_path}}} =
+               Kit.preflight(bad, %Kit{}, ["user"], personas: true)
+
+      assert {:ok, plan} = Recorder.plan(c, seed(), [])
+
+      assert {:error, %Error{context: %{reason: :invalid_user_path}}} =
+               Recorder.record(bad, seed(), [], plan_sha256: plan.sha256, ledger_dir: dir())
+
+      assert FakeBubble.log(fake) == []
+    end
+
+    test "the dry-run hash binds exact paths and refuses changed mappings before writes" do
+      fake = start_fake(host: "beta.mocharymethod.com", branch_id: "33kpg")
+      c = scoped_client()
+
+      waiver = %ExposureWaiver{
+        owner_accepted: true,
+        expires_at: DateTime.add(DateTime.utc_now(), 3600),
+        types: ["custom.workspace"],
+        paths: %{"custom.workspace" => "workspace"}
+      }
+
+      {:ok, s} =
+        Seed.new(
+          id: "workspace",
+          personas: %{},
+          records: [%{key: "ws", type: "custom.workspace", fields: %{}}]
+        )
+
+      assert {:ok, plan} = Recorder.plan(c, s, [], exposure_waiver: waiver)
+
+      changed = %{
+        c
+        | names: %{c.names | types: Map.put(c.names.types, "custom.workspace", "task")}
+      }
+
+      assert {:error, %Error{context: %{reason: :invalid_exposure_waiver}}} =
+               Recorder.record(changed, s, [],
+                 exposure_waiver: waiver,
+                 plan_sha256: plan.sha256,
+                 ledger_dir: dir()
+               )
+
+      assert {:error, %Error{context: %{reason: :plan_not_confirmed}}} =
+               Recorder.record(changed, s, [],
+                 exposure_waiver: %{waiver | paths: %{"custom.workspace" => "task"}},
+                 plan_sha256: plan.sha256,
+                 ledger_dir: dir()
                )
 
       assert FakeBubble.log(fake) == []

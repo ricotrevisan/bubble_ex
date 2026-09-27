@@ -105,6 +105,7 @@ defmodule BubbleEx.Verify.Replay.Kit do
           {:ok, report()} | {:error, Error.t()}
   def preflight(%Client{} = client, %__MODULE__{} = kit, types, opts \\ []) do
     with :ok <- validate_waiver(client, types, opts),
+         :ok <- validate_persona_path(client, opts),
          {:ok, schema} <- Client.verify(client, kit),
          {:ok, meta} <- Client.meta(client),
          {:ok, type_checks} <- type_checks(client, types, schema, opts) do
@@ -144,6 +145,12 @@ defmodule BubbleEx.Verify.Replay.Kit do
            reason: :invalid_exposure_waiver
          })}
     end
+  end
+
+  defp validate_persona_path(client, opts) do
+    if Keyword.get(opts, :personas, false),
+      do: ExposureWaiver.validate_user_path(client.names),
+      else: :ok
   end
 
   defp accepted_check?(%{check: :anonymous_exposure, status: status, waived: true})
