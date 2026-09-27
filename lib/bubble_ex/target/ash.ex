@@ -328,7 +328,10 @@ defmodule BubbleEx.Target.Ash do
   own column, so neither gains the other's members (`:load_join_asymmetric`,
   info, counts the members one list holds that the other does not list
   back). Nothing is deleted from a join table: a member removed from a
-  list since an earlier load keeps its row (WTF-414).
+  list since an earlier load keeps its row, and any access a rule grants
+  through the list; the loader reports each (`:load_join_stale_member`,
+  warning). WTF-414 must land before a real cutover that loads more than
+  once.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.

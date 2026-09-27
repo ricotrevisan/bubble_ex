@@ -92,6 +92,20 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
     end)
   end
 
+  @impl true
+  def join_members(%__MODULE__{agent: a}, join, side, owners) do
+    owner = if side.owner == :left, do: join.left.column, else: join.right.column
+    owners = MapSet.new(owners)
+
+    rows =
+      for {{l, r}, row} <- Agent.get(a, &Map.get(&1.tables, join.table, %{})),
+          row[side.column] != nil,
+          MapSet.member?(owners, row[owner]),
+          do: {l, r}
+
+    {:ok, Enum.sort(rows)}
+  end
+
   # Join tables, keyed by their two ID columns (WTF-352 cut 3): a list's
   # upsert sets only its own column of an existing row.
   @impl true

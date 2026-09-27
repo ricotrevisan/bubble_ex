@@ -10,7 +10,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
         "module": "AcmeImport",
         "inputs": {
           "bubble_ex_version": "0.3.0",
-          "project_schema_version": 6,
+          "project_schema_version": 7,
           "project_sha256": "…",
           "decisions_sha256": null,
           "applied_sha256": null,
@@ -21,7 +21,9 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
         "generated": {"lib/acme_import/invoice.ex": "<sha256>", …},
         "owned": {"mix.exs": "<sha256 as scaffolded>", …},
         "routes": {"router": "lib/acme_import_web/router.ex",
-                   "call": "bubble_routes", "pages": ["bTGYf", …]}
+                   "call": "bubble_routes", "pages": ["bTGYf", …]},
+        "extensions": {"repo": "lib/acme_import/repo.ex",
+                       "call": "RepoExtensions", "needed": ["pg_trgm"]}
       }
 
     * `inputs` - what the generated files are a function of:

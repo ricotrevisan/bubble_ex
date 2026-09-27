@@ -36,8 +36,8 @@
 #     mirrored lists sharing a table are written separately, so a member
 #     of one list is never added to the other; the interrupted and resumed
 #     load, the rerun and the delta sync compare them too, and a later
-#     export that drops members moves positions but deletes nothing
-#     (WTF-414 prunes)
+#     export that drops members moves positions, deletes nothing (WTF-414
+#     prunes) and reports each member no longer listed
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -641,7 +641,14 @@ loaded =
         [w1 | rest] = rows["workspace"]
         rows = %{rows | "workspace" => [Map.put(w1, "Members", [F.ada(), F.gone_user()]) | rest]}
         {:ok, dropped} = F.export(which, Path.join(dir, "dropped"), rows)
-        {:ok, _} = Load.run(dropped, model, target, [storage: storage] ++ base_opts)
+        {:ok, stale} = Load.run(dropped, model, target, [storage: storage] ++ base_opts)
+
+        LoadCheck.eq!(
+          fixture,
+          for(d <- stale.diagnostics, d.code == :load_join_stale_member, do: {d.subject.field, d.details.count, d.details.sample_ids}),
+          [{"members_list_user", 1, [F.workspace1()]}],
+          "the member no longer listed, reported from the PostgreSQL rows"
+        )
 
         LoadCheck.eq!(
           fixture,

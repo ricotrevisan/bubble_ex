@@ -293,6 +293,17 @@ defmodule BubbleEx.Load.Issues do
         details: d
       )
 
+  defp build(:load_join_stale_member, s, d),
+    do:
+      Diagnostic.new(
+        :load_join_stale_member,
+        "",
+        "#{d.count} members #{where(s)} held at an earlier load are no longer listed; their " <>
+          "rows stay (nothing is deleted until WTF-414) and keep the access they grant",
+        subject: s,
+        details: d
+      )
+
   defp build(:load_join_asymmetric, s, d),
     do:
       Diagnostic.new(

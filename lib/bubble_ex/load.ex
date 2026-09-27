@@ -73,8 +73,11 @@ defmodule BubbleEx.Load do
       one never becomes a member of the other (`:load_join_asymmetric`
       counts the members one list holds that the other does not list
       back). The rows upsert idempotently. Nothing is deleted: a member
-      removed from a list in Bubble since an earlier load keeps its row
-      (WTF-414 prunes by the ledger's written pairs).
+      removed from a list in Bubble since an earlier load keeps its row,
+      and with it any access a privacy rule grants through the list; each
+      such row is reported (`:load_join_stale_member`, a warning: the
+      owner's ID, counts). **WTF-414 (pruning by the ledger's written
+      pairs) must land before a real cutover** that loads more than once.
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -238,10 +241,11 @@ defmodule BubbleEx.Load do
          {:ok, schema_diags} <- tmod.check_schema(tconf, plan),
          opts = Keyword.put(opts, :app_hosts, app_hosts(export, opts)),
          scan = Scan.run(export, model, plan, opts),
-         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags) do
+         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags),
+         {joins, issues} = Joins.build(plan, scan, issues),
+         {:ok, issues} <- stale_members(joins, scan, {tmod, tconf}, schema_diags, issues) do
       issues = Scan.drift(%{scan | issues: issues}, plan, model)
       issues = auth_status(issues, scan, plan)
-      {joins, issues} = Joins.build(plan, scan, issues)
 
       state = %{
         export: export,
@@ -339,6 +343,42 @@ defmodule BubbleEx.Load do
     if Enum.any?(schema, &(&1.code == :load_schema_mismatch)),
       do: {:ok, scan.issues, []},
       else: emails(scan, plan, target)
+  end
+
+  # Members a list held at an earlier load that it no longer holds: the
+  # target's rows of the list for the exported owners that the export does
+  # not give it. Nothing deletes them (WTF-414), and they keep any access
+  # a rule grants through the list, so each is reported
+  # (`:load_join_stale_member`, the owner's ID). Not read when the schema
+  # check failed.
+  defp stale_members(joins, scan, {tmod, tconf}, schema, issues) do
+    if Enum.any?(schema, &(&1.code == :load_schema_mismatch)) do
+      {:ok, issues}
+    else
+      Enum.reduce_while(joins, {:ok, issues}, fn built, {:ok, issues} ->
+        owners = scan.ids |> Map.get(built.side.type, MapSet.new()) |> Enum.sort()
+        stored = tmod.join_members(tconf, built.join, built.side, owners)
+        stale_step(stored, built, issues)
+      end)
+    end
+  end
+
+  defp stale_step({:ok, stored}, built, issues),
+    do: {:cont, {:ok, add_stale(issues, built, stored)}}
+
+  defp stale_step({:error, _} = error, _built, _issues), do: {:halt, error}
+
+  defp add_stale(issues, built, stored) do
+    %{join: join, side: side, rows: rows} = built
+    loaded = MapSet.new(rows, &{&1[join.left.column], &1[join.right.column]})
+
+    for {l, r} = pair <- stored,
+        not MapSet.member?(loaded, pair),
+        reduce: issues do
+      issues ->
+        owner = if side.owner == :left, do: l, else: r
+        Issues.add(issues, :load_join_stale_member, side.type, side.field, owner, :not_listed_now)
+    end
   end
 
   defp fold(nil), do: nil

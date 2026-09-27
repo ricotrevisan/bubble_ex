@@ -86,7 +86,8 @@ defmodule BubbleEx.Target.Ash.Loader do
       RETURNING (xmax = 0)
 
   Nothing is deleted from a join table: a member removed from a list in
-  Bubble since an earlier load keeps its row (WTF-414).
+  Bubble since an earlier load keeps its row (WTF-414), and the loader
+  reports it (`join_members/4`, `:load_join_stale_member`).
   """
 
   @behaviour BubbleEx.Load.Target
@@ -592,6 +593,19 @@ defmodule BubbleEx.Target.Ash.Loader do
         "WHERE #{ident(table.key)} = ANY($1)"
 
     with {:ok, _} <- run(c, sql, [keys]), do: :ok
+  end
+
+  @impl true
+  def join_members(%__MODULE__{} = _c, %Plan.Join{}, _side, []), do: {:ok, []}
+
+  def join_members(%__MODULE__{} = c, %Plan.Join{} = join, side, owners) do
+    owner = if side.owner == :left, do: join.left.column, else: join.right.column
+
+    sql =
+      "SELECT #{ident(join.left.column)}, #{ident(join.right.column)} FROM #{qualified(c.schema, join)} " <>
+        "WHERE #{ident(side.column)} IS NOT NULL AND #{ident(owner)} = ANY($1)"
+
+    with {:ok, rows} <- run(c, sql, [owners]), do: {:ok, Enum.map(rows, fn [l, r] -> {l, r} end)}
   end
 
   @impl true

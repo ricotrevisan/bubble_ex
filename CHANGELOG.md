@@ -55,7 +55,10 @@ All notable changes to this project are documented here.
   kept and reported, each list setting only its own column (never
   another list's; `load_join_asymmetric` reports members not listed
   back), idempotent upserts and resumable batches in the ledger. Nothing
-  is deleted from a join table (pruning removed members is WTF-414).
+  is deleted from a join table: a member a list no longer holds keeps its
+  row (and any access it grants), reported per list from the target's rows
+  (`join_members/4`, `load_join_stale_member`, a warning with IDs and
+  counts); pruning is WTF-414, which must land before a real cutover.
   `scripts/ash_compile_check.sh` renders `decided_cut3` (and
   `private_cut3` with a private export), checks the join tables, their
   primary keys, that a list reads only its rows, loads and positions,

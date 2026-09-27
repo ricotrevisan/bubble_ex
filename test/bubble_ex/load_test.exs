@@ -385,6 +385,7 @@ defmodule BubbleEx.LoadTest do
       end
 
       {:ok, run} = Load.run(f.export, f.model, f.target)
+      refute Enum.any?(run.diagnostics, &(&1.code == :load_join_stale_member))
       assert run.joins[tasks] == %{rows: 3, inserted: 3, updated: 0, unchanged: 0, resumed: 0}
 
       assert join_rows(f.target, "project_tasks") ==
@@ -460,7 +461,23 @@ defmodule BubbleEx.LoadTest do
       w1 = Map.put(w1, "Members", [F.carol(), F.ada(), F.gone_user()])
       rows = %{rows | "workspace" => [w1 | rest]}
       {:ok, delta_export} = F.export(:cut3, Path.join(dir, "delta"), rows)
-      {:ok, _} = Load.run(delta_export, f.model, f.target)
+
+      # Bob's row stays: reported (IDs and counts only), as a warning
+      {:ok, dry} = Load.dry_run(delta_export, f.model, f.target)
+
+      assert %{severity: :warning, details: %{count: 1, sample_ids: [w], not_listed_now: 1}} =
+               diag(dry, :load_join_stale_member, "workspace", "members_list_user")
+
+      assert w == F.workspace1()
+      refute diag(dry, :load_join_stale_member, "user", "workspaces_list_custom_workspace")
+      {:ok, delta} = Load.run(delta_export, f.model, f.target)
+      assert diag(delta, :load_join_stale_member, "workspace", "members_list_user")
+
+      # no other list has a member it no longer holds
+      refute Enum.any?(
+               delta.diagnostics,
+               &(&1.code == :load_join_stale_member and &1.subject.field != "members_list_user")
+             )
 
       pos = fn user ->
         r =
