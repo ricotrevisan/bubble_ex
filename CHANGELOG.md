@@ -53,6 +53,11 @@ All notable changes to this project are documented here.
   authorization on as a member and an outsider, and requires two mutants
   without the join rows' policy or the many_to_many filters to leak;
   `load.exs` loads, resumes, reruns and prunes the joins in PostgreSQL.
+  Fixed on the way: the Repo `BubbleEx.Target.Phoenix` scaffolds now lists
+  the project's extensions (`pg_trgm` for the trigram indexes of applied
+  hints, cut 2); it listed only `ash-functions` and `citext`, so such a
+  project's migrations failed (the Repo is owned: add an extension a later
+  generation lists).
 
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
