@@ -54,6 +54,13 @@ defmodule BubbleEx.Target.Elixir do
 
   An option is its stored key; its label is the generated enum's
   `label/1` and an attribute its `attributes/1` entry.
+
+  With `:file_url` (a function name such as `"MyAppWeb.Uploads.url"`), a
+  shown file or image value (the expression's result, or a part of a
+  dynamic text) is passed through it: file fields hold storage
+  references, and the frontend must link to the app's safe file route,
+  never to the raw stored URL (WTF-415). A list of files maps each.
+  Conditions (`is empty`, comparisons) still read the stored value.
   """
 
   alias BubbleEx.{Diagnostic, Error}
@@ -74,6 +81,7 @@ defmodule BubbleEx.Target.Elixir do
           | {:namespace, String.t()}
           | {:subject, Diagnostic.subject()}
           | {:path, String.t() | list()}
+          | {:file_url, String.t() | nil}
 
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
                     is_email abs round to_text to_number)a
@@ -92,6 +100,8 @@ defmodule BubbleEx.Target.Elixir do
     * `:namespace` - root namespace of the generated modules, default
       `"MyApp"` (for enum modules)
     * `:subject` / `:path` - diagnostic subject and pointer
+    * `:file_url` - the function a shown file or image value goes through
+      (see the moduledoc); none by default
   """
   @spec compile(IR.t(), Project.t(), [option()]) :: {:ok, result()} | {:error, Error.t()}
   def compile(ir, project, opts \\ [])
@@ -109,13 +119,14 @@ defmodule BubbleEx.Target.Elixir do
       lookup: lookup(project),
       runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
       namespace: Keyword.get(opts, :namespace, "MyApp"),
+      file_url: Keyword.get(opts, :file_url),
       bindings: %{},
       loads: %{},
       used: MapSet.new(),
       unsupported: []
     }
 
-    {source, st} = value(ir, st)
+    {source, st} = ir |> value(st) |> shown_file(ir)
 
     if source == :error or st.unsupported != [] do
       %{source: nil, bindings: [], loads: %{}, runtime: [], diagnostics: diagnostics(st, opts)}
@@ -251,7 +262,7 @@ defmodule BubbleEx.Target.Elixir do
     {texts, st} =
       Enum.map_reduce(parts, st, fn
         %IR{op: :literal, args: [text]}, st when is_binary(text) -> {lit(text), st}
-        part, st -> part |> value(st) |> then(fn {p, st} -> text(p, st) end)
+        part, st -> part |> value(st) |> shown_file(part) |> then(fn {p, st} -> text(p, st) end)
       end)
 
     {all_ok("(" <> Enum.join(texts, " <> ") <> ")", texts), st}
@@ -433,6 +444,18 @@ defmodule BubbleEx.Target.Elixir do
   defp reads_actor?(%IR{args: args}), do: Enum.any?(args, &reads_actor?/1)
   defp reads_actor?(list) when is_list(list), do: Enum.any?(list, &reads_actor?/1)
   defp reads_actor?(_), do: false
+
+  # A shown file or image value goes through `:file_url` (WTF-415).
+  defp shown_file({:error, _} = result, _ir), do: result
+  defp shown_file({_, %{file_url: nil}} = result, _ir), do: result
+
+  defp shown_file({part, st}, %IR{type: type}) when type in ["file", "image"],
+    do: {"#{st.file_url}(#{part})", st}
+
+  defp shown_file({part, st}, %IR{type: type}) when type in ["list.file", "list.image"],
+    do: {"Enum.map(#{part} || [], &#{st.file_url}/1)", st}
+
+  defp shown_file(result, _ir), do: result
 
   defp text(:error, st), do: {:error, st}
   defp text(part, st), do: runtime(st, :text, [part])

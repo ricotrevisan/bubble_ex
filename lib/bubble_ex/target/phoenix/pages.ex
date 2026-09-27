@@ -182,15 +182,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "    {#{literal(r.id)}, #{source(r.path)}, #{r.module}}"
       end)
 
-    body =
+    pages_scope =
       if routes == [] do
-        "  defmacro bubble_routes, do: nil\n"
+        ""
       else
         lives = Enum.map_join(routes, "\n", &"          live #{source(&1.path)}, #{&1.module}")
 
         """
-          defmacro bubble_routes do
-            quote do
+
               scope "/" do
                 pipe_through :browser
 
@@ -199,10 +198,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         #{lives}
                 end
               end
-            end
-          end
         """
       end
+
+    # The migrated files (WTF-415): <Web>.UploadsController, generated. It
+    # reads the session itself, and only for private files once enabled.
+    body = """
+      defmacro bubble_routes do
+        quote do
+          scope "/uploads", #{ctx.web} do
+            get "/private/:sha/:name", UploadsController, :private
+            get "/:sha/:name", UploadsController, :public
+          end
+    #{pages_scope}    end
+      end
+    """
 
     """
     defmodule #{ctx.web}.BubbleRoutes do
@@ -218,6 +228,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       A router scaffolded before WTF-370 lacks that call: add it after the
       browser scope. `#{ctx.web}.BubbleSurfacesTest` fails for every page
       without its route and says so.
+
+      It also routes the migrated files (WTF-415, `#{ctx.web}.Uploads`):
+      `/uploads/<sha256>/<name>` and, off by default,
+      `/uploads/private/<sha256>/<name>`; `#{ctx.web}.UploadsTest` fails
+      when they are not routed.
       \"\"\"
 
       @pages [
@@ -227,7 +242,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       @doc "The pages: `{Bubble ID, path, LiveView}`."
       def pages, do: @pages
 
-      @doc "The page routes (browser pipeline, optional sign-in)."
+      @doc "The page routes (browser pipeline, optional sign-in) and the file routes."
     #{body}end
     """
     |> String.replace("@pages [\n\n  ]", "@pages []")
@@ -704,7 +719,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp emit(%Node{kind: :link} = node, ctx, acc) do
     {text, acc} = slot(node, "text", ctx, acc)
-    element("a", node, link_attrs(node, ctx), button_inner(node, text, ctx), ctx, acc)
+    {attrs, acc} = file_link_attrs(node, ctx, acc)
+    element("a", node, attrs, button_inner(node, text, ctx), ctx, acc)
   end
 
   defp emit(%Node{kind: :image} = node, ctx, acc), do: image(node, ctx, acc)
@@ -1532,7 +1548,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # from the page, see required_vars/2).
   defp binding_slot(node, name, binding, ctx, acc) do
     case ctx.expressions[binding.id] do
-      %{source: source, bindings: vars} ->
+      %{source: source, bindings: vars} = compiled ->
         helper = helper_name(name, node, acc)
         args = Enum.map(vars, & &1.var)
         reads = Enum.map(vars, &read_arg(&1, ctx))
@@ -1548,7 +1564,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         acc = %{
           acc
           | helpers: [
-              %{name: helper, args: args, source: source, node: node, slot: name}
+              %{
+                name: helper,
+                args: args,
+                source: source,
+                node: node,
+                slot: name,
+                raw?: Map.get(compiled, :raw?, false)
+              }
               | acc.helpers
             ],
             counts: Map.update!(acc.counts, "bindings_compiled", &(&1 + 1))
@@ -1674,7 +1697,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp image(node, ctx, acc) do
     alt = resolved(node, "alt") || node.attributes["alt"] || ""
-    attrs = [{"src", image_src(node, ctx)}, {"alt", alt}]
+
+    {src, acc} =
+      if file_binding?(node, "src", ctx),
+        do: file_slot(node, "src", ctx, acc),
+        else: {image_src(node, ctx), acc}
+
+    attrs = [{"src", src}, {"alt", alt}]
 
     sources =
       node
@@ -1812,6 +1841,63 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> Map.drop(["disabled", "asset_src", "asset_fragment", "icon_set", "href"])
     |> Enum.to_list()
     |> put_attr("href", link_href(node, ctx))
+  end
+
+  # A link to a file or image field goes to the app's safe file route
+  # (`<Web>.Uploads.url/1`, applied by the compiled binding; WTF-415),
+  # never to the stored URL. Other dynamic destinations are not compiled.
+  defp file_link_attrs(node, ctx, acc) do
+    if node.attributes["disabled"] != true and override(node, "destination", ctx) == nil and
+         file_binding?(node, "destination", ctx) do
+      {href, acc} = file_slot(node, "destination", ctx, acc)
+
+      attrs =
+        node
+        |> link_attrs(ctx)
+        |> put_attr("href", href)
+        |> put_attr("rel", "noopener noreferrer")
+
+      {attrs, acc}
+    else
+      {link_attrs(node, ctx), acc}
+    end
+  end
+
+  # A file binding's slot as an attribute value: the compiled link alone
+  # (`file` of the compiled binding, nil when empty), or a static value
+  # only when it is a safe URL.
+  defp file_slot(node, slot, ctx, acc) do
+    ctx = file_expression(node, slot, ctx)
+
+    case slot(node, slot, ctx, acc) do
+      {{:expr, _} = expr, acc} ->
+        {expr, acc}
+
+      {{:static, text}, acc} ->
+        {if(text != "" and Safety.safe_href?(text), do: text), acc}
+
+      {_, acc} ->
+        {nil, acc}
+    end
+  end
+
+  defp file_expression(node, slot, ctx) do
+    with %{id: id} <- node.bindings[slot],
+         %{file: %{source: source, bindings: bindings}} <- ctx.expressions[id] do
+      expression = %{source: source, bindings: bindings, raw?: true}
+      %{ctx | expressions: Map.put(ctx.expressions, id, expression)}
+    else
+      _ -> ctx
+    end
+  end
+
+  # A binding that shows one file or image value (`file?` of
+  # BubbleEx.Target.Elixir.Frontend.compile/5; see file_link_attrs/3).
+  defp file_binding?(node, slot, ctx) do
+    case node.bindings[slot] do
+      %{id: id} -> match?(%{file?: true}, ctx.expressions[id])
+      _ -> false
+    end
   end
 
   defp link_href(%Node{attributes: %{"disabled" => true}}, _ctx), do: nil
@@ -2503,8 +2589,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> IO.iodata_to_binary()
   end
 
-  defp helper_source(%{name: name, args: args, source: source, node: node, slot: slot}, base) do
-    body = if text?(source), do: source, else: "#{base.runtime}.text(#{source})"
+  defp helper_source(%{name: name, args: args, source: source, node: node, slot: slot} = h, base) do
+    # A file link (`raw?`) stays nil when empty: no attribute is rendered.
+    body =
+      if Map.get(h, :raw?) or text?(source),
+        do: source,
+        else: "#{base.runtime}.text(#{source})"
+
     params = Enum.join(args, ", ")
 
     """
@@ -2612,6 +2703,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           embed_templates: 1,
           embed_templates: 2,
           pipe_through: 1,
+          plug: 1,
+          get: 3,
           live: 2,
           live: 3,
           ash_authentication_live_session: 1,

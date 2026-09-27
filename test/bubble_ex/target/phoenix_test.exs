@@ -20,7 +20,11 @@ defmodule BubbleEx.Target.PhoenixTest do
     "lib/acme_import/types/json_value.ex",
     "lib/acme_import/user.ex",
     "lib/acme_import_web/bubble_routes.ex",
-    "lib/acme_import_web/controllers/workflow_api_controller.ex"
+    "lib/acme_import_web/controllers/uploads_controller.ex",
+    "lib/acme_import_web/controllers/workflow_api_controller.ex",
+    "lib/acme_import_web/uploads.ex",
+    "lib/acme_import_web/uploads_host_guard.ex",
+    "test/acme_import_web/uploads_test.exs"
   ]
 
   @owned [
