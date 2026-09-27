@@ -14,11 +14,9 @@ defmodule BubbleEx.Load.Report do
       and for a real run `inserted`, `updated`, `unchanged` (cumulative over
       the run's ledger) and `resumed` (rows this invocation skipped because
       the ledger had them)
-    * `joins` - per join table (by join ID, `BubbleEx.Load.Plan.Join`):
-      `rows` (one per list member, both lists' union for a shared join),
-      and for a real run `inserted`, `updated`, `unchanged`, `resumed` (as
-      for types) and `deleted` (rows of exported owners their lists no
-      longer hold)
+    * `joins` - per list of a join table (keyed `<join ID>/<type>/<field>`,
+      `BubbleEx.Load.Plan.Join`): `rows` (one per member), and for a real
+      run `inserted`, `updated`, `unchanged` and `resumed` (as for types)
     * `files` - `referenced` (distinct Bubble file URLs in file fields),
       `public`, `private`, `copied` (verified in the target storage, or
       would be for a dry run), `failed`

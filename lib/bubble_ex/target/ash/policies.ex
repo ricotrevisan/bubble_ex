@@ -408,6 +408,7 @@ defmodule BubbleEx.Target.Ash.Policies do
             source_attribute: Enum.find(r.attributes, & &1.primary_key?).name,
             destination_attribute: row.column,
             public?: false,
+            membership: row.side.marker,
             source: %{type: r.source.type, list: %{type: row.side.type, field: row.side.field}}
           }
 
@@ -431,43 +432,65 @@ defmodule BubbleEx.Target.Ash.Policies do
   # relationship), never listed. No policy authorizes writes.
   defp join_policies(%Resource{join: join} = r, resources) do
     by_type = Map.new(resources, &{&1.source.type, &1})
+    source = %{join: join.id}
+    used = MapSet.new(Enum.map(r.attributes, & &1.name) ++ Enum.map(r.relationships, & &1.name))
 
-    conditions =
-      for side <- join.sides do
+    # Per list: who may view it on its owner (a condition on the join row),
+    # as a private calculation `privacy_<list>` when it is neither always
+    # nor never.
+    {sides, used} =
+      Enum.map_reduce(join.sides, used, fn side, used ->
         owner = Map.fetch!(by_type, side.type)
         checks = Map.get(owner.privacy.relationship_checks, side.relationship, [])
         rel = if side.owner == :left, do: join.left.relationship, else: join.right.relationship
-        side_condition(gate_of(checks), rel)
+
+        case side_condition(gate_of(checks), rel) do
+          node when node in [:always, :never] ->
+            {{side, node, nil}, used}
+
+          node ->
+            {name, used} = Naming.claim("privacy_" <> side.relationship, used, :snake, :attribute)
+
+            calc = %Calculation{
+              name: name,
+              source: Map.put(source, :list, %{type: side.type, field: side.field}),
+              description:
+                "The actor may view #{side.type}.#{side.field} (the list) on the row's owner record",
+              expr: %Expr{resource: r.module, source: source, expr: node}
+            }
+
+            {{side, node, calc}, used}
+        end
+      end)
+
+    # A row is readable when it is a member of a list the actor may view
+    # on its owner: its membership column is set and that list's grants
+    # hold. Each list's membership column (its position) reads only for
+    # those who may view that list.
+    visible =
+      for {side, node, calc} <- sides, node != :never do
+        member = member_node(side.marker)
+        if node == :always, do: member, else: {:and, [member, {:ref, [], calc.name}]}
       end
 
-    source = %{join: join.id}
-
-    {checks, calculations} =
-      cond do
-        Enum.any?(conditions, &(&1 == :never)) ->
+    {row_checks, row_calcs} =
+      case visible do
+        [] ->
           {[deny()], []}
 
-        Enum.all?(conditions, &(&1 == :always)) ->
-          {[%PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}], []}
-
-        true ->
-          nodes = Enum.reject(conditions, &(&1 == :always))
-
-          used =
-            MapSet.new(Enum.map(r.attributes, & &1.name) ++ Enum.map(r.relationships, & &1.name))
-
+        nodes ->
           {name, _used} = Naming.claim("privacy_visible", used, :snake, :attribute)
 
           calc = %Calculation{
             name: name,
             source: source,
             description:
-              "The actor may view the list this row is a member of on its owner record " <>
-                "(every list, for a join two lists share)",
+              "The row is a member of a list the actor may view on its owner record " <>
+                "(its membership column is set)",
             expr: %Expr{
               resource: r.module,
               source: source,
-              expr: if(match?([_], nodes), do: hd(nodes), else: {:and, nodes})
+              expr: if(match?([_], nodes), do: hd(nodes), else: {:or, nodes})
             }
           }
 
@@ -475,24 +498,46 @@ defmodule BubbleEx.Target.Ash.Policies do
            [calc]}
       end
 
+    field_policies =
+      for {side, node, calc} <- sides do
+        checks =
+          case node do
+            :always ->
+              [%PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}]
+
+            :never ->
+              [deny()]
+
+            _ ->
+              [%PolicyCheck{kind: :authorize_if, test: {:calculation, calc.name}, source: source}]
+          end
+
+        %FieldPolicy{fields: [side.marker.column], checks: checks}
+      end
+
     %{
       r
       | actions: @write_defaults,
         extra_actions: [read_action()],
-        calculations: calculations,
+        calculations: for({_, _, %Calculation{} = c} <- sides, do: c) ++ row_calcs,
         relationships: Enum.map(r.relationships, &%{&1 | public?: false}),
+        field_policies: field_policies,
         policies: [
           keyed_policy(),
           %Policy{
             action: "read",
             permission: :view,
             description:
-              "Rows of the lists this join replaces: the actor may view the list on its owner",
-            checks: checks
+              "Rows of the lists this join replaces: a member of a list the actor may view " <>
+                "on its owner",
+            checks: row_checks
           }
         ]
     }
   end
+
+  defp member_node(%{column: c, kind: :position}), do: {:not, {:call, "is_nil", [{:ref, [], c}]}}
+  defp member_node(%{column: c, kind: :flag}), do: {:op, "==", {:ref, [], c}, {:value, true}}
 
   defp side_condition(nil, _rel), do: :always
   defp side_condition(:never, _rel), do: :never
@@ -689,6 +734,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         default_diags(ctx) ++
         denied_rules(type, denied, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
+        binding_dropped(type, others ++ List.wrap(default), fields) ++
         attachments_diag(type, privacy) ++
         data_api(type, privacy)
 
@@ -1136,6 +1182,42 @@ defmodule BubbleEx.Target.Ash.Policies do
         subject: %{type: type.id, rule: rule.id},
         details: %{fields: missing}
       )
+    end
+  end
+
+  # Fields a rule lets users auto-bind that a decision no longer stores
+  # (derived, or a list normalized to a join): not auto-bindable.
+  defp binding_dropped(type, rules, fields) do
+    derived =
+      for {id, item} <- fields, not match?(%Attribute{}, item), into: %{}, do: {id, item.name}
+
+    dropped =
+      for rule <- rules,
+          perms = rule.permissions,
+          perms != nil and perms.auto_binding == true,
+          f <- perms.binding_fields || [],
+          Map.has_key?(derived, f),
+          uniq: true,
+          do: f
+
+    if dropped == [] do
+      []
+    else
+      [
+        Diagnostic.new(
+          :ash_policy_auto_binding_dropped,
+          type.path <> "/privacy_role",
+          "#{type.id}: privacy rules let users auto-bind #{Enum.join(Enum.sort(dropped), ", ")}, " <>
+            "which an owner decision no longer stores (derived, or a list normalized to a " <>
+            "join); the :auto_bind action does not accept them",
+          target: :ash,
+          subject: %{type: type.id},
+          details: %{
+            fields: Enum.sort(dropped),
+            names: Enum.map(Enum.sort(dropped), &derived[&1])
+          }
+        )
+      ]
     end
   end
 

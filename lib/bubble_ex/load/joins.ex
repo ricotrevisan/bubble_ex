@@ -2,61 +2,60 @@ defmodule BubbleEx.Load.Joins do
   @moduledoc false
 
   # The rows of the plan's join tables (`BubbleEx.Load.Plan.Join`, WTF-352
-  # cut 3), from the list values the scan kept: one row per member of each
-  # list, keyed by the two record IDs, with the member's index (from 0) in
-  # each ordered list. Two mirrored lists share one join: a row is their
-  # union, and a member one list holds but the other does not list back is
-  # reported. Dangling IDs are kept (no foreign key; they load nothing
-  # through the relationship) and reported, like references (WTF-338); a
-  # member a list repeats is one row, at its first index, reported.
-  # Deterministic: rows sorted by the two IDs, so a resumed run batches
-  # them as the interrupted one did.
+  # cut 3), per list, from the list values the scan kept: one row per
+  # member, keyed by the two record IDs, with the list's membership column
+  # (the member's index, from 0, or true). Two mirrored lists sharing a
+  # join table are written separately, each setting only its own column:
+  # a member one list holds is never added to the other; one it does not
+  # list back is reported. Dangling IDs are kept (no foreign key; they
+  # load nothing through the relationship) and reported, like references
+  # (WTF-338); a member a list repeats is one row, at its first index,
+  # reported. Nothing is deleted. Deterministic: rows sorted by the two
+  # IDs, so a resumed run batches them as the interrupted one did.
 
   alias BubbleEx.Load.{Convert, Issues, Plan, Scan}
 
   @type built :: %{
+          key: String.t(),
           join: Plan.Join.t(),
-          rows: [map()],
-          owners: %{left: [String.t()], right: [String.t()]}
+          side: Plan.Join.side(),
+          rows: [map()]
         }
 
   @doc false
+  # One entry per list of every join, keyed `<join ID>/<type>/<field>` (the
+  # ledger's and the report's key).
   @spec build(Plan.t(), Scan.t(), Issues.t()) :: {[built()], Issues.t()}
   def build(%Plan{joins: joins}, %Scan{} = scan, issues) do
-    Enum.map_reduce(joins, issues, &join(&1, scan, &2))
+    {built, issues} =
+      Enum.flat_map_reduce(joins, issues, fn join, issues ->
+        {sides, issues} = Enum.map_reduce(join.sides, issues, &side(join, &1, scan, &2))
+        issues = asymmetry(sides, scan, issues)
+
+        built =
+          for {side, pairs} <- sides do
+            rows =
+              pairs
+              |> Enum.sort()
+              |> Enum.map(fn {{l, r}, index} ->
+                %{
+                  join.left.column => l,
+                  join.right.column => r,
+                  side.column => if(side.kind == :position, do: index, else: true)
+                }
+              end)
+
+            %{key: key(join, side), join: join, side: side, rows: rows}
+          end
+
+        {built, issues}
+      end)
+
+    {built, issues}
   end
 
-  defp join(%Plan.Join{} = join, scan, issues) do
-    {sides, issues} = Enum.map_reduce(join.sides, issues, &side(join, &1, scan, &2))
-    issues = asymmetry(join, sides, scan, issues)
-    positions = for %{position: p} <- join.sides, p != nil, do: p
-
-    rows =
-      sides
-      |> Enum.flat_map(fn {side, pairs} ->
-        for {pair, index} <- pairs, do: {pair, side.position, index}
-      end)
-      |> Enum.reduce(%{}, fn {{l, r}, position, index}, acc ->
-        row =
-          Map.get(acc, {l, r}, %{join.left.column => l, join.right.column => r})
-          |> put_position(position, index)
-
-        Map.put(acc, {l, r}, row)
-      end)
-      |> Enum.sort()
-      |> Enum.map(fn {_pair, row} -> Enum.reduce(positions, row, &Map.put_new(&2, &1, nil)) end)
-
-    owners =
-      Enum.reduce(join.sides, %{left: [], right: []}, fn side, acc ->
-        ids = scan.ids |> Map.get(side.type, MapSet.new()) |> Enum.sort()
-        Map.update!(acc, side.owner, &Enum.uniq(&1 ++ ids))
-      end)
-
-    {%{join: join, rows: rows, owners: owners}, issues}
-  end
-
-  defp put_position(row, nil, _index), do: row
-  defp put_position(row, column, index), do: Map.put(row, column, index)
+  @doc false
+  def key(join, side), do: "#{join.id}/#{side.type}/#{side.field}"
 
   # The `{pair, index}` members of one list, over its exported owners.
   defp side(join, side, scan, issues) do
@@ -117,10 +116,10 @@ defmodule BubbleEx.Load.Joins do
     do: {[], Issues.add(issues, :load_type_mismatch, side.type, side.field, id, :not_a_list)}
 
   # Mirrored lists: a member one list holds whose own list (exported) does
-  # not list the owner back. Both load (the join is their union).
-  defp asymmetry(_join, [_], _scan, issues), do: issues
+  # not list the owner back. Reported; the other list is not changed.
+  defp asymmetry([_], _scan, issues), do: issues
 
-  defp asymmetry(_join, [{a, a_pairs}, {b, b_pairs}], scan, issues) do
+  defp asymmetry([{a, a_pairs}, {b, b_pairs}], scan, issues) do
     issues = one_way(a, a_pairs, b, b_pairs, scan, issues)
     one_way(b, b_pairs, a, a_pairs, scan, issues)
   end

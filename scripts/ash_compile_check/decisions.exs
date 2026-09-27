@@ -44,16 +44,24 @@
 #   * every many_to_many loads its members from the join rows written for
 #     it, and nothing for a record with none; with a position column, the
 #     owner's join relationship sorted by position gives the list's order
+#   * a list reads only its own rows of a join table (a row written
+#     without the list's column is not a member)
 #   * with policies, the restrictive joins of the cut-3 fixture read with
-#     authorization on: an outsider sees none of a workspace's members
-#     (through the many_to_many or the join rows), none of the member's
-#     workspace rows (the mirrored list, public in Bubble: a shared join
-#     needs both lists' grants) and none of a project's tasks (whose rule
-#     tests the members, a join read through another); a member sees them.
-#     Its two mutants (render.exs) must leak: without the join rows' read
-#     policy the join rows (both lists') show to the outsider, and without
-#     the many_to_many filters the members and tasks too; a mutant that
-#     does not leak fails the check (it would pass vacuously)
+#     authorization on. One table holds Workspace's Members and User's
+#     Workspaces, asymmetrically: the Members list a member whose
+#     Workspaces do not list the workspace back, and a lister's Workspaces
+#     list it while the Members do not: the Member rule holds for the
+#     member only and the Listed rule ("Current User's Workspaces contains
+#     This Workspace") for the lister only (a union would widen both), the
+#     lister finds the workspace in searches and an outsider does not, and
+#     the members are the member alone. An outsider sees none of the
+#     members (the many_to_many, the join rows, the member's rows) nor of
+#     a project's tasks (whose rule tests the members, a join read through
+#     another). Two mutants (render.exs) must leak: without the join rows'
+#     policy the rows read from the member side show to the outsider, and
+#     without the many_to_many filters the members, tasks and their rows
+#     too; a mutant that does not leak fails the check (it would pass
+#     vacuously)
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos),
     not match?({:error, {:already_started, _}}, repo.start_link()),
@@ -124,8 +132,9 @@ defmodule DecisionsCheck do
     joins = Enum.flat_map(fixtures, & &1["joins"])
     if joins == [], do: raise("no join resource to check")
 
-    if not Enum.any?(Enum.flat_map(joins, & &1["sides"]), & &1["position"]),
-      do: raise("no ordered join to check")
+    for kind <- ["position", "flag"],
+        not Enum.any?(Enum.flat_map(joins, & &1["sides"]), &(&1["kind"] == kind)),
+        do: raise("no join list with a #{kind} to check")
 
     if Enum.any?(fixtures, &(&1["privacy"] == "unverified")) do
       variants = for f <- fixtures, p = f["join_privacy"], do: p["variant"]
@@ -198,20 +207,29 @@ defmodule DecisionsCheck do
     owner_column = String.to_atom(side["owner_column"])
     member_column = String.to_atom(side["member_column"])
 
+    marker = String.to_atom(side["marker"])
+    position? = side["kind"] == "position"
+
     for {id, position} <- Enum.with_index(ids) do
-      attrs = %{owner_column => Map.fetch!(o, pk), member_column => id}
-      attrs = if side["position"], do: Map.put(attrs, String.to_atom(side["position"]), position), else: attrs
-      create!(join, attrs)
+      create!(join, %{
+        owner_column => Map.fetch!(o, pk),
+        member_column => id,
+        marker => if(position?, do: position, else: true)
+      })
     end
+
+    # a row of the table that is not a member of this list (another
+    # list's, or written without the list's column) is not listed
+    stray = create!(member, %{member_pk => "stray-" <> tag})
+    create!(join, %{owner_column => Map.fetch!(o, pk), member_column => Map.fetch!(stray, member_pk)})
 
     rel = String.to_atom(side["relationship"])
     [o, lonely] = Ash.load!([o, lonely], [rel], authorize?: false)
     got = o |> Map.fetch!(rel) |> Enum.map(&Map.fetch!(&1, member_pk)) |> Enum.sort()
 
     ordered =
-      if side["position"] do
-        position = String.to_atom(side["position"])
-        rows = Ash.Query.sort(join, [{position, :asc}])
+      if position? do
+        rows = Ash.Query.sort(join, [{marker, :asc}])
 
         o
         |> Ash.load!([{String.to_atom(side["join_relationship"]), rows}], authorize?: false)
@@ -222,7 +240,8 @@ defmodule DecisionsCheck do
       end
 
     [
-      {got == Enum.sort(ids), "#{side["relationship"]} loads #{inspect(got)}, expected #{inspect(ids)}"},
+      {got == Enum.sort(ids),
+       "#{side["relationship"]} loads #{inspect(got)}, expected #{inspect(ids)} (not a row outside the list)"},
       {Map.fetch!(lonely, rel) == [], "#{side["relationship"]} loads #{inspect(Map.fetch!(lonely, rel))} for a record with no rows"},
       {ordered == ids, "the join rows sorted by position give #{inspect(ordered)}, expected #{inspect(ids)}"}
     ]
@@ -243,60 +262,76 @@ defmodule DecisionsCheck do
     m = p["membership"]
     workspaces = Module.concat([m["owner"]])
     [ws_pk] = Ash.Resource.Info.primary_key(workspaces)
-    tag = "privacy-" <> (if variant == "", do: "real", else: variant)
+    tag = "privacy-" <> if(variant == "", do: "real", else: variant)
+    a = &String.to_atom/1
 
     member = create!(users, %{user_pk => "member-" <> tag})
+    lister = create!(users, %{user_pk => "lister-" <> tag})
     outsider = create!(users, %{user_pk => "outsider-" <> tag})
     workspace = create!(workspaces, %{ws_pk => "workspace-" <> tag})
+    w = Map.fetch!(workspace, ws_pk)
+    mid = Map.fetch!(member, user_pk)
+    lid = Map.fetch!(lister, user_pk)
 
-    create!(Module.concat([m["join"]]), %{
-      String.to_atom(m["owner_column"]) => Map.fetch!(workspace, ws_pk),
-      String.to_atom(m["member_column"]) => Map.fetch!(member, user_pk)
-    })
+    # one table, two lists: the workspace's Members list the member, whose
+    # Workspaces do not list it back; the lister's Workspaces list it, and
+    # its Members do not list the lister
+    join = Module.concat([m["join"]])
+    create!(join, %{a.(m["workspace_column"]) => w, a.(m["user_column"]) => mid, a.(m["members_marker"]) => 0})
+    create!(join, %{a.(m["workspace_column"]) => w, a.(m["user_column"]) => lid, a.(m["workspaces_marker"]) => 0})
 
     n = p["nested"]
     projects = Module.concat([n["owner"]])
     tasks = Module.concat([n["member"]])
     [project_pk] = Ash.Resource.Info.primary_key(projects)
     [task_pk] = Ash.Resource.Info.primary_key(tasks)
-
-    project =
-      create!(projects, %{
-        project_pk => "project-" <> tag,
-        String.to_atom(n["workspace_attribute"]) => Map.fetch!(workspace, ws_pk)
-      })
-
+    project = create!(projects, %{project_pk => "project-" <> tag, a.(n["workspace_attribute"]) => w})
     task = create!(tasks, %{task_pk => "task-" <> tag})
+    t = Map.fetch!(task, task_pk)
 
     create!(Module.concat([n["join"]]), %{
-      String.to_atom(n["owner_column"]) => Map.fetch!(project, project_pk),
-      String.to_atom(n["member_column"]) => Map.fetch!(task, task_pk)
+      a.(n["owner_column"]) => Map.fetch!(project, project_pk),
+      a.(n["member_column"]) => t,
+      a.(n["marker"]) => 0
     })
 
-    # The IDs `record`'s relationship `rel` shows to `user` (`column`: of
-    # the join rows), with authorization on.
-    seen = fn user, record, rel, key ->
-      actor = privacy.load_actor(Map.fetch!(user, user_pk))
+    load = fn user -> privacy.load_actor(Map.fetch!(user, user_pk)) end
 
+    # The IDs `record`'s relationship `rel` shows to `user`, with
+    # authorization on (`key`: the ID read from each related record).
+    seen = fn user, record, rel, key ->
       record
-      |> Ash.load!([String.to_atom(rel)], actor: actor, authorize?: true)
-      |> Map.fetch!(String.to_atom(rel))
-      |> Enum.map(&Map.fetch!(&1, key))
+      |> Ash.load!([a.(rel)], actor: load.(user), authorize?: true)
+      |> Map.fetch!(a.(rel))
+      |> Enum.map(&Map.fetch!(&1, a.(key)))
       |> Enum.sort()
     end
 
-    w = Map.fetch!(workspace, ws_pk)
-    mid = Map.fetch!(member, user_pk)
-    t = Map.fetch!(task, task_pk)
-    m_col = String.to_atom(m["member_column"])
-    mirror_col = String.to_atom(m["mirror_member_column"])
-    t_col = String.to_atom(n["member_column"])
+    # A privacy rule's condition for `user` on the workspace (the rule's
+    # calculation, computed in PostgreSQL).
+    rule = fn user, calc ->
+      workspace
+      |> Ash.load!([a.(calc)], actor: load.(user), authorize?: false)
+      |> Map.fetch!(a.(calc))
+    end
 
-    # what an outsider sees: [] unless the variant removed what hides it
+    searched = fn user ->
+      workspaces
+      |> Ash.Query.for_read(:search, %{}, actor: load.(user))
+      |> Ash.Query.filter_input(%{Atom.to_string(ws_pk) => %{"eq" => w}})
+      |> Ash.read(actor: load.(user))
+      |> case do
+        {:ok, records} -> Enum.map(records, &Map.fetch!(&1, ws_pk))
+        {:error, %Ash.Error.Forbidden{}} -> []
+      end
+    end
+
+    # what an outsider sees: nothing, unless the variant removed what
+    # hides it
     leak = fn what, ids ->
       open =
         case {variant, what} do
-          {"open_join", read} when read in [:join_rows, :mirror] -> true
+          {"open_join", :rows} -> true
           {"open_all", _} -> true
           _ -> false
         end
@@ -304,149 +339,45 @@ defmodule DecisionsCheck do
       if open, do: ids, else: []
     end
 
+    member_col = m["user_column"]
+    ws_col = m["workspace_column"]
+    task_col = n["member_column"]
+    project_col = n["owner_column"]
+
     [
-      {seen.(outsider, workspace, m["relationship"], user_pk), leak.(:many_to_many, [mid]),
-       "the workspace's members, to an outsider"},
-      {seen.(outsider, workspace, m["join_relationship"], m_col), leak.(:join_rows, [mid]),
-       "the workspace's member rows, to an outsider"},
-      {seen.(outsider, member, m["mirror_join_relationship"], mirror_col), leak.(:mirror, [w]),
-       "the member's workspace rows (the mirrored list), to an outsider"},
-      # the destination's own read policy hides a workspace from an
-      # outsider, whatever the join shows
-      {seen.(outsider, member, m["mirror"], ws_pk), [],
-       "the member's workspaces (the mirrored list), to an outsider"},
-      {seen.(outsider, project, n["relationship"], task_pk), leak.(:many_to_many, [t]),
-       "the project's tasks, to an outsider"},
-      {seen.(outsider, project, n["join_relationship"], t_col), leak.(:join_rows, [t]),
-       "the project's task rows, to an outsider"},
-      {seen.(member, workspace, m["relationship"], user_pk), [mid], "the workspace's members, to a member"},
-      {seen.(member, workspace, m["join_relationship"], m_col), [mid], "the workspace's member rows, to a member"},
-      {seen.(member, member, m["mirror"], ws_pk), [w], "the member's workspaces, to the member"},
-      {seen.(member, member, m["mirror_join_relationship"], mirror_col), [w],
-       "the member's workspace rows, to the member"},
+      # the asymmetric shared join widens nothing: each rule reads its
+      # own list's rows (a union would make both true for both)
+      {rule.(member, m["member_rule"]), true, "the Member rule for the member"},
+      {rule.(lister, m["member_rule"]), false, "the Member rule for the lister (not in Members)"},
+      {rule.(member, m["listed_rule"]), false, "the Listed rule for the member (not in its Workspaces)"},
+      {rule.(lister, m["listed_rule"]), true, "the Listed rule for the lister (Current User's Workspaces contains This Workspace)"},
+      {rule.(outsider, m["member_rule"]) or rule.(outsider, m["listed_rule"]), false, "a rule for an outsider"},
+      {searched.(lister), [w], "the workspace in the lister's searches"},
+      {searched.(outsider), [], "the workspace in an outsider's searches"},
+      {seen.(member, workspace, m["members"], user_pk), [mid], "the workspace's members, to the member (not the lister)"},
+      {seen.(lister, lister, m["workspaces"], ws_pk), [w], "the lister's workspaces, to the lister"},
+      {seen.(member, member, m["workspaces"], ws_pk), [], "the member's workspaces (it lists none), to the member"},
+      # an outsider
+      {seen.(outsider, workspace, m["members"], user_pk), leak.(:many_to_many, [mid]), "the workspace's members, to an outsider"},
+      {seen.(outsider, workspace, m["members_join"], member_col), leak.(:many_to_many, [mid]), "the workspace's member rows, to an outsider"},
+      {seen.(outsider, member, m["member_rows"], ws_col), leak.(:rows, [w]), "the member's rows of Members, to an outsider"},
+      {seen.(outsider, project, n["relationship"], task_pk), leak.(:many_to_many, [t]), "the project's tasks, to an outsider"},
+      {seen.(outsider, project, n["join_relationship"], task_col), leak.(:many_to_many, [t]), "the project's task rows, to an outsider"},
+      {seen.(outsider, task, n["rows"], project_col), leak.(:rows, [Map.fetch!(project, project_pk)]), "the task's rows of Tasks, to an outsider"},
+      # a member
+      {seen.(member, member, m["member_rows"], ws_col), [w], "the member's rows of Members, to the member"},
       {seen.(member, project, n["relationship"], task_pk), [t], "the project's tasks, to a member"}
     ]
     |> Enum.reject(fn {got, expected, _} -> got == expected end)
     |> Enum.map(fn {got, expected, what} ->
-      "join privacy (#{tag}): #{what} are #{inspect(got)}, expected #{inspect(expected)}" <>
-        if(variant != "" and got == [] and expected != [],
+      "join privacy (#{tag}): #{what} is #{inspect(got)}, expected #{inspect(expected)}" <>
+        if(variant != "" and got in [[], false] and expected not in [[], false],
           do: " (the mutant does not leak: the check would pass vacuously)",
           else: ""
         )
     end)
   rescue
     error -> ["join privacy (#{p["variant"]}): #{Exception.message(error)}"]
-  end
-
-  defp columns(repo, %{"table" => table} = resource) do
-    %{rows: rows} =
-      repo.query!(
-        "SELECT column_name, udt_name FROM information_schema.columns " <>
-          "WHERE table_schema = 'public' AND table_name = $1",
-        [table]
-      )
-
-    actual = Map.new(rows, fn [name, udt] -> {name, udt} end)
-    stored = Enum.sort(resource["stored"])
-
-    shape =
-      if Enum.sort(Map.keys(actual)) == stored,
-        do: [],
-        else: [
-          "#{table}: columns #{inspect(Enum.sort(Map.keys(actual)))}, expected #{inspect(stored)}"
-        ]
-
-    types =
-      for {column, udt} <- resource["columns"], actual[column] != udt do
-        "#{table}.#{column}: #{inspect(actual[column])}, expected #{udt}"
-      end
-
-    shape ++ types
-  end
-
-  defp derived(d) do
-    resource = Module.concat([d["resource_module"] || raise("missing resource")])
-    destination = Module.concat([d["destination"]])
-    calc = String.to_atom(d["calculation"])
-    attribute = String.to_atom(d["attribute"])
-    fk = String.to_atom(d["source_attribute"])
-    [dest_pk] = Ash.Resource.Info.primary_key(destination)
-    [pk] = Ash.Resource.Info.primary_key(resource)
-    value = sample(Ash.Resource.Info.attribute(destination, attribute).type)
-
-    related =
-      destination
-      |> Ash.Changeset.for_create(:create, %{
-        dest_pk => "decided-" <> d["calculation"],
-        attribute => value
-      })
-      |> Ash.create!(authorize?: false)
-
-    linked =
-      resource
-      |> Ash.Changeset.for_create(:create, %{
-        pk => "linked-" <> d["calculation"],
-        fk => Map.fetch!(related, dest_pk)
-      })
-      |> Ash.create!(authorize?: false)
-
-    empty =
-      resource
-      |> Ash.Changeset.for_create(:create, %{pk => "empty-" <> d["calculation"]})
-      |> Ash.create!(authorize?: false)
-
-    loaded = Ash.load!([linked, empty], [calc], authorize?: false)
-
-    filtered =
-      resource
-      |> Ash.Query.do_filter([{calc, value}])
-      |> Ash.read!(authorize?: false)
-      |> Enum.map(&Map.fetch!(&1, pk))
-
-    ids = [Map.fetch!(linked, pk), Map.fetch!(empty, pk)]
-    ours = Ash.Query.do_filter(resource, [{pk, [in: ids]}])
-
-    sorted =
-      ours
-      |> Ash.Query.sort([{calc, :asc_nils_last}])
-      |> Ash.read!(authorize?: false)
-      |> Enum.map(&Map.fetch!(&1, pk))
-
-    sorted_input =
-      ours
-      |> Ash.Query.sort_input("-" <> d["calculation"])
-      |> Ash.read(authorize?: false)
-
-    # sort_input cannot reach through a private twin, nor a public
-    # relationship with privacy policies (unsortable)
-    through =
-      for rel <- Enum.uniq([d["relationship"], d["public_relationship"]]),
-          rel != nil,
-          d["relationship"] != d["public_relationship"],
-          match?(
-            {:ok, _},
-            ours
-            |> Ash.Query.sort_input("#{rel}.#{d["attribute"]}")
-            |> Ash.read(authorize?: false)
-          ),
-          do: rel
-
-    [
-      {sorted == ids, "sorts to #{inspect(sorted)}"},
-      {match?({:ok, [_, _]}, sorted_input) and
-         Enum.map(elem(sorted_input, 1), &Map.fetch!(&1, pk)) == Enum.reverse(ids),
-       "sort_input gives #{inspect(sorted_input |> elem(1) |> List.wrap() |> Enum.map(&(is_map(&1) && Map.get(&1, pk))))}"},
-      {through == [], "sort_input reaches through #{inspect(through)}"},
-      {Enum.map(loaded, &Map.fetch!(&1, calc)) == [value, nil],
-       "loads #{inspect(Enum.map(loaded, &Map.fetch!(&1, calc)))}"},
-      {filtered == [Map.fetch!(linked, pk)], "filters to #{inspect(filtered)}"}
-    ]
-    |> Enum.reject(&elem(&1, 0))
-    |> Enum.map(fn {_, what} ->
-      "#{inspect(resource)}.#{calc}: #{what}, expected #{inspect(value)}"
-    end)
-  rescue
-    error -> ["#{d["resource_module"]}.#{d["calculation"]}: #{Exception.message(error)}"]
   end
 
   # --- cut 2 (WTF-405) -------------------------------------------------------------

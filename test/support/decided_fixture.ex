@@ -45,6 +45,38 @@ defmodule BubbleEx.Test.DecidedFixture do
   @doc "The app JSON (of a decision set: the cut-2 sets have their own app)."
   def app(set \\ :refine)
   def app(set) when set in @cut2, do: @cut2_app |> File.read!() |> Jason.decode!()
+
+  # Cut 3: the cut-1 export with a Workspace rule testing the current
+  # user's Workspaces (a list the sets normalize): "Listed", Current User's
+  # Workspaces contains This Workspace, view all and search, and
+  # auto-binding the Members (which the sets normalize: no longer
+  # auto-bindable).
+  def app(set) when set in @cut3 do
+    rule = %{
+      "display" => "Listed",
+      "condition" => %{
+        "type" => "CurrentUser",
+        "next" => %{
+          "name" => "workspaces_list_custom_workspace",
+          "type" => "Message",
+          "next" => %{
+            "name" => "contains",
+            "type" => "Message",
+            "args" => %{"type" => "InjectedValue"}
+          }
+        }
+      },
+      "permissions" => %{
+        "view_all" => true,
+        "search_for" => true,
+        "auto_binding" => true,
+        "binding_fields" => ["members_list_user"]
+      }
+    }
+
+    put_in(app(:refine), ["user_types", "workspace", "privacy_role", "listed_"], rule)
+  end
+
   def app(_set), do: @app |> File.read!() |> Jason.decode!()
 
   @doc """

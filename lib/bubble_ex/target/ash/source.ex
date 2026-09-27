@@ -590,13 +590,22 @@ defmodule BubbleEx.Target.Ash.Source do
     has_many #{atom(r.name)}, #{module(r.destination, ctx)} do
       source_attribute #{atom(r.source_attribute)}
       destination_attribute #{atom(r.destination_attribute)}
-      public? #{literal(r.public?)}#{sortable(r.sortable?)}#{gate(r.gate)}
+      public? #{literal(r.public?)}#{sortable(r.sortable?)}#{filter(r.membership, r.gate)}
     end
     """
   end
 
+  # A many_to_many reads only its list's join rows: its join relationship
+  # is declared, filtered by the list's membership column (and gated like
+  # the many_to_many).
   defp relationship(%Relationship{kind: :many_to_many} = r, ctx) do
     """
+    has_many #{atom(r.join_relationship)}, #{module(r.through, ctx)} do
+      source_attribute #{atom(r.source_attribute)}
+      destination_attribute #{atom(r.source_attribute_on_join_resource)}
+      public? false#{filter(r.membership, r.gate)}
+    end
+
     many_to_many #{atom(r.name)}, #{module(r.destination, ctx)} do
       through #{module(r.through, ctx)}
       source_attribute #{atom(r.source_attribute)}
@@ -631,6 +640,19 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp gate({:visible_if, calcs}),
     do: "\nfilter expr(parent(" <> Enum.map_join(calcs, " or ", &identifier!/1) <> "))"
+
+  defp filter(nil, gate), do: gate(gate)
+  defp filter(_membership, :never), do: gate(:never)
+  defp filter(membership, nil), do: "\nfilter expr(" <> member(membership) <> ")"
+
+  defp filter(membership, {:visible_if, calcs}),
+    do:
+      "\nfilter expr(" <>
+        member(membership) <>
+        " and parent(" <> Enum.map_join(calcs, " or ", &identifier!/1) <> "))"
+
+  defp member(%{column: c, kind: :position}), do: "not is_nil(#{identifier!(c)})"
+  defp member(%{column: c, kind: :flag}), do: "#{identifier!(c)} == true"
 
   defp identities([]), do: ""
 

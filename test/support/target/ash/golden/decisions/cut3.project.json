@@ -95,14 +95,14 @@
     {
       "code": "ash_privacy_omitted",
       "details": {
-        "rules": 4,
+        "rules": 5,
         "types": [
           "project",
           "workspace"
         ],
         "unavailable": []
       },
-      "message": "privacy rules were not compiled (privacy: :omit): 4 rules on 2 data types; the generated resources have no authorization",
+      "message": "privacy rules were not compiled (privacy: :omit): 5 rules on 2 data types; the generated resources have no authorization",
       "outcome": "degraded",
       "path": "",
       "severity": "info",
@@ -128,9 +128,9 @@
       "code": "ash_decision_applied",
       "details": {
         "join": "join:20cb30e92a27dea0",
+        "join_table_with": [],
         "keep_order": true,
         "key": "finding:list_relationship:639085fbd2d9810b",
-        "shared_with": [],
         "transform": "normalize_list_to_join"
       },
       "message": "project.tasks_list_custom_task is a many_to_many of task through a join resource (owner decision finding:list_relationship:639085fbd2d9810b); the list is not stored; Bubble's order is kept in a position column",
@@ -147,14 +147,14 @@
       "code": "ash_decision_applied",
       "details": {
         "join": "join:ee286c67d73bb3ce",
-        "keep_order": false,
-        "key": "finding:list_relationship:1f3c654d5970dd53",
-        "shared_with": [
+        "join_table_with": [
           "field:user/favorites_list_custom_project"
         ],
+        "keep_order": false,
+        "key": "finding:list_relationship:1f3c654d5970dd53",
         "transform": "normalize_list_to_join"
       },
-      "message": "project.viewers_list_user is a many_to_many of user through a join resource (owner decision finding:list_relationship:1f3c654d5970dd53); the list is not stored; the join is shared with the mirrored list user.favorites_list_custom_project; Bubble's order is not kept",
+      "message": "project.viewers_list_user is a many_to_many of user through a join resource (owner decision finding:list_relationship:1f3c654d5970dd53); the list is not stored; the join table is shared with the mirrored list user.favorites_list_custom_project (each list keeps its own membership column); Bubble's order is not kept",
       "outcome": "degraded",
       "path": "/user_types/project/fields/viewers_list_user",
       "severity": "info",
@@ -168,14 +168,14 @@
       "code": "ash_decision_applied",
       "details": {
         "join": "join:ee286c67d73bb3ce",
-        "keep_order": true,
-        "key": "finding:list_relationship:aa3ba92c1799ff50",
-        "shared_with": [
+        "join_table_with": [
           "field:project/viewers_list_user"
         ],
+        "keep_order": true,
+        "key": "finding:list_relationship:aa3ba92c1799ff50",
         "transform": "normalize_list_to_join"
       },
-      "message": "user.favorites_list_custom_project is a many_to_many of project through a join resource (owner decision finding:list_relationship:aa3ba92c1799ff50); the list is not stored; the join is shared with the mirrored list project.viewers_list_user; Bubble's order is kept in a position column",
+      "message": "user.favorites_list_custom_project is a many_to_many of project through a join resource (owner decision finding:list_relationship:aa3ba92c1799ff50); the list is not stored; the join table is shared with the mirrored list project.viewers_list_user (each list keeps its own membership column); Bubble's order is kept in a position column",
       "outcome": "degraded",
       "path": "/user_types/user/fields/favorites_list_custom_project",
       "severity": "info",
@@ -189,14 +189,14 @@
       "code": "ash_decision_applied",
       "details": {
         "join": "join:74f33555b22af590",
-        "keep_order": true,
-        "key": "finding:list_relationship:b426fecd8cad673d",
-        "shared_with": [
+        "join_table_with": [
           "field:workspace/members_list_user"
         ],
+        "keep_order": true,
+        "key": "finding:list_relationship:b426fecd8cad673d",
         "transform": "normalize_list_to_join"
       },
-      "message": "user.workspaces_list_custom_workspace is a many_to_many of workspace through a join resource (owner decision finding:list_relationship:b426fecd8cad673d); the list is not stored; the join is shared with the mirrored list workspace.members_list_user; Bubble's order is kept in a position column",
+      "message": "user.workspaces_list_custom_workspace is a many_to_many of workspace through a join resource (owner decision finding:list_relationship:b426fecd8cad673d); the list is not stored; the join table is shared with the mirrored list workspace.members_list_user (each list keeps its own membership column); Bubble's order is kept in a position column",
       "outcome": "degraded",
       "path": "/user_types/user/fields/workspaces_list_custom_workspace",
       "severity": "info",
@@ -210,14 +210,14 @@
       "code": "ash_decision_applied",
       "details": {
         "join": "join:74f33555b22af590",
-        "keep_order": true,
-        "key": "finding:privacy_access_list:f86b7e1509c01453",
-        "shared_with": [
+        "join_table_with": [
           "field:user/workspaces_list_custom_workspace"
         ],
+        "keep_order": true,
+        "key": "finding:privacy_access_list:f86b7e1509c01453",
         "transform": "membership_policy"
       },
-      "message": "workspace.members_list_user is a many_to_many of user through a join resource (owner decision finding:privacy_access_list:f86b7e1509c01453); the list is not stored; the join is shared with the mirrored list user.workspaces_list_custom_workspace; Bubble's order is kept in a position column; privacy rules testing the list test membership in the join",
+      "message": "workspace.members_list_user is a many_to_many of user through a join resource (owner decision finding:privacy_access_list:f86b7e1509c01453); the list is not stored; the join table is shared with the mirrored list user.workspaces_list_custom_workspace (each list keeps its own membership column); Bubble's order is kept in a position column; privacy rules testing the list test membership in the join",
       "outcome": "degraded",
       "path": "/user_types/workspace/fields/members_list_user",
       "severity": "info",
@@ -321,7 +321,7 @@
       ],
       "bubble_name": null,
       "calculations": [],
-      "description": "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b); the list is not stored.",
+      "description": "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is set); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined.",
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
@@ -359,6 +359,10 @@
             "field": "tasks_list_custom_task",
             "join_relationship": "tasks_join",
             "key": "finding:list_relationship:639085fbd2d9810b",
+            "marker": {
+              "column": "position",
+              "kind": "position"
+            },
             "owner": "left",
             "position": "position",
             "relationship": "tasks",
@@ -384,6 +388,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "project",
           "public?": true,
           "sortable?": true,
@@ -405,6 +410,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "task",
           "public?": true,
           "sortable?": true,
@@ -528,7 +534,7 @@
       ],
       "bubble_name": null,
       "calculations": [],
-      "description": "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453); the lists are not stored. Both lists are one relation: a row lists each record in the other's list.",
+      "description": "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d; member when workspaces_position is set) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453; member when members_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined.",
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
@@ -566,6 +572,10 @@
             "field": "workspaces_list_custom_workspace",
             "join_relationship": "workspaces_join",
             "key": "finding:list_relationship:b426fecd8cad673d",
+            "marker": {
+              "column": "workspaces_position",
+              "kind": "position"
+            },
             "owner": "left",
             "position": "workspaces_position",
             "relationship": "workspaces",
@@ -576,6 +586,10 @@
             "field": "members_list_user",
             "join_relationship": "members_join",
             "key": "finding:privacy_access_list:f86b7e1509c01453",
+            "marker": {
+              "column": "members_position",
+              "kind": "position"
+            },
             "owner": "right",
             "position": "members_position",
             "relationship": "members",
@@ -601,6 +615,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "user",
           "public?": true,
           "sortable?": true,
@@ -622,6 +637,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "workspace",
           "public?": true,
           "sortable?": true,
@@ -716,6 +732,22 @@
           "column": null,
           "constraints": [],
           "default": null,
+          "name": "viewers_listed",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "type": "boolean",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
           "name": "favorites_position",
           "primary_key?": false,
           "public?": true,
@@ -729,7 +761,7 @@
       ],
       "bubble_name": null,
       "calculations": [],
-      "description": "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50); the lists are not stored. Both lists are one relation: a row lists each record in the other's list.",
+      "description": "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is set) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined.",
       "extra_actions": [],
       "field_policies": [],
       "identities": [],
@@ -767,6 +799,10 @@
             "field": "viewers_list_user",
             "join_relationship": "viewers_join",
             "key": "finding:list_relationship:1f3c654d5970dd53",
+            "marker": {
+              "column": "viewers_listed",
+              "kind": "flag"
+            },
             "owner": "left",
             "position": null,
             "relationship": "viewers",
@@ -777,6 +813,10 @@
             "field": "favorites_list_custom_project",
             "join_relationship": "favorites_join",
             "key": "finding:list_relationship:aa3ba92c1799ff50",
+            "marker": {
+              "column": "favorites_position",
+              "kind": "position"
+            },
             "owner": "right",
             "position": "favorites_position",
             "relationship": "favorites",
@@ -802,6 +842,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "project",
           "public?": true,
           "sortable?": true,
@@ -823,6 +864,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "user",
           "public?": true,
           "sortable?": true,
@@ -867,6 +909,7 @@
       "join:ee286c67d73bb3ce": {
         "attributes": {
           "left": "project_id",
+          "project/viewers_list_user": "viewers_listed",
           "right": "user_id",
           "user/favorites_list_custom_project": "favorites_position"
         },
@@ -1510,6 +1553,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": true,
@@ -1532,6 +1576,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "workspace",
           "public?": true,
           "sortable?": true,
@@ -1554,6 +1599,10 @@
           "gate": null,
           "join_relationship": "tasks_join",
           "kind": "many_to_many",
+          "membership": {
+            "column": "position",
+            "kind": "position"
+          },
           "name": "tasks",
           "public?": true,
           "sortable?": true,
@@ -1576,6 +1625,10 @@
           "gate": null,
           "join_relationship": "viewers_join",
           "kind": "many_to_many",
+          "membership": {
+            "column": "viewers_listed",
+            "kind": "flag"
+          },
           "name": "viewers",
           "public?": true,
           "sortable?": true,
@@ -1894,6 +1947,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": true,
@@ -1916,6 +1970,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "assignee",
           "public?": true,
           "sortable?": true,
@@ -1938,6 +1993,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "project",
           "public?": true,
           "sortable?": true,
@@ -2238,6 +2294,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": true,
@@ -2260,6 +2317,10 @@
           "gate": null,
           "join_relationship": "favorites_join",
           "kind": "many_to_many",
+          "membership": {
+            "column": "favorites_position",
+            "kind": "position"
+          },
           "name": "favorites",
           "public?": true,
           "sortable?": true,
@@ -2282,6 +2343,10 @@
           "gate": null,
           "join_relationship": "workspaces_join",
           "kind": "many_to_many",
+          "membership": {
+            "column": "workspaces_position",
+            "kind": "position"
+          },
           "name": "workspaces",
           "public?": true,
           "sortable?": true,
@@ -2519,6 +2584,7 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": true,
@@ -2541,6 +2607,10 @@
           "gate": null,
           "join_relationship": "members_join",
           "kind": "many_to_many",
+          "membership": {
+            "column": "members_position",
+            "kind": "position"
+          },
           "name": "members",
           "public?": true,
           "sortable?": true,

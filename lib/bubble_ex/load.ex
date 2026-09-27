@@ -65,15 +65,16 @@ defmodule BubbleEx.Load do
     * **Join tables** (`normalize_list_to_join`, `membership_policy`
       decisions; `BubbleEx.Load.Plan.Join`): a list normalized to a join
       loads as one row per member, after every data type's table, keyed by
-      the two record IDs, with the member's index in the list where the
-      order is kept. A repeated member is one row (`:load_join_duplicate`);
-      a dangling one is kept, like a reference (WTF-338), and reported. Two
-      mirrored lists sharing a join load as their union
-      (`:load_join_asymmetric` counts the members one list holds that the
-      other does not list back). The rows upsert idempotently; then the
-      rows of exported owners that their lists no longer hold are deleted
-      (a delta sync removes members); rows of owners the export does not
-      hold stay, like records.
+      the two record IDs, with the list's membership column set (the
+      member's index in the list, or true). A repeated member is one row
+      (`:load_join_duplicate`); a dangling one is kept, like a reference
+      (WTF-338), and reported. Two mirrored lists sharing a join table are
+      written separately, each setting only its own column, so a member of
+      one never becomes a member of the other (`:load_join_asymmetric`
+      counts the members one list holds that the other does not list
+      back). The rows upsert idempotently. Nothing is deleted: a member
+      removed from a list in Bubble since an earlier load keeps its row
+      (WTF-414 prunes by the ledger's written pairs).
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -407,7 +408,7 @@ defmodule BubbleEx.Load do
     {:ok, issues, nil} =
       convert_all(state, %{files: files}, fn _table, _rows, acc -> {:ok, acc} end)
 
-    report(state, issues, blocked, files_summary(state, files), nil, %{})
+    report(state, issues, blocked, files_summary(state, files), nil)
   end
 
   # The files a real run would copy: those the export fetched.
@@ -446,9 +447,9 @@ defmodule BubbleEx.Load do
         )
 
       with {:ok, issues, ledger} <- result,
-           {:ok, deleted, ledger} <- load_joins(state, ledger) do
+           {:ok, ledger} <- load_joins(state, ledger) do
         ledger = Ledger.complete(ledger)
-        {:ok, report(state, issues, [], files_summary(state, refs), ledger, deleted)}
+        {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
       else
         {:error, error, ledger} ->
           Ledger.close(ledger)
@@ -457,30 +458,26 @@ defmodule BubbleEx.Load do
     end
   end
 
-  # The join tables (after every data type's table): their rows upserted
-  # in batches recorded in the ledger under the join's ID, then the rows
-  # of exported owners their lists no longer hold deleted (idempotent, so
-  # a resumed run repeats it). Returns the deleted counts by join ID.
+  # The join tables (after every data type's table), one list at a time:
+  # its rows upserted in batches recorded in the ledger under
+  # `<join ID>/<type>/<field>`. Nothing is deleted (WTF-414).
   defp load_joins(state, ledger) do
     {tmod, tconf} = state.target
     size = Keyword.get(state.opts, :batch_size, 500)
 
-    Enum.reduce_while(state.joins, {:ok, %{}, ledger}, fn built, {:ok, deleted, ledger} ->
-      key = built.join.id
-      upsert = &tmod.upsert_join(tconf, built.join, &1)
+    Enum.reduce_while(state.joins, {:ok, ledger}, fn built, {:ok, ledger} ->
+      upsert = &tmod.upsert_join(tconf, built.join, built.side, &1)
 
-      written =
-        built.rows
-        |> Enum.with_index()
-        |> Enum.chunk_every(size)
-        |> Enum.reduce_while({:ok, ledger}, &write_batch(key, upsert, &1, &2))
+      built.rows
+      |> Enum.with_index()
+      |> Enum.chunk_every(size)
+      |> Enum.reduce_while({:ok, ledger}, &write_batch(built.key, upsert, &1, &2))
+      |> case do
+        {:ok, ledger} ->
+          {:cont, {:ok, Ledger.type_complete(ledger, built.key, length(built.rows))}}
 
-      with {:ok, ledger} <- written,
-           ledger = Ledger.type_complete(ledger, key, length(built.rows)),
-           {:ok, n} <- prune(tmod, tconf, built, ledger) do
-        {:cont, {:ok, Map.put(deleted, key, n), ledger}}
-      else
-        {:error, error, ledger} -> {:halt, {:error, error, ledger}}
+        error ->
+          {:halt, error}
       end
     end)
   end
@@ -489,14 +486,6 @@ defmodule BubbleEx.Load do
     case write(key, upsert, batch, ledger) do
       {:ok, ledger} -> {:cont, {:ok, ledger}}
       {:error, error} -> {:halt, {:error, error, ledger}}
-    end
-  end
-
-  defp prune(tmod, tconf, built, ledger) do
-    case tmod.prune_join(tconf, built.join, built.rows, built.owners) do
-      {:ok, n} -> {:ok, n}
-      {:error, %Error{} = error} -> {:error, error, ledger}
-      {:error, _} -> {:error, Error.new(:request_failed, "the target refused a prune"), ledger}
     end
   end
 
@@ -703,7 +692,7 @@ defmodule BubbleEx.Load do
     }
   end
 
-  defp report(state, issues, blocked, files, ledger, deleted) do
+  defp report(state, issues, blocked, files, ledger) do
     types =
       Map.new(state.plan.tables, fn t ->
         scanned = Map.get(state.scan.types, t.type, %{rows: 0, invalid: 0})
@@ -729,15 +718,7 @@ defmodule BubbleEx.Load do
       types: types,
       joins:
         Map.new(state.joins, fn built ->
-          key = built.join.id
-          base = %{rows: length(built.rows)}
-
-          written =
-            if match?(%Ledger{}, ledger),
-              do: Map.put(written(ledger, key), :deleted, Map.get(deleted, key, 0)),
-              else: %{}
-
-          {key, Map.merge(base, written)}
+          {built.key, Map.merge(%{rows: length(built.rows)}, written(ledger, built.key))}
         end),
       files: files,
       auth: auth_summary(state),

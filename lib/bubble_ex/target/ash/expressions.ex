@@ -32,7 +32,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `logged in` | `not is_nil(^actor(:id))` |
   | `list contains item` | `item in list` (lists of things are `{:array, :string}` of IDs, WTF-338) |
   | `list contains item`, `list is empty` on a list an owner decision derives as a `has_many` or normalizes to a join (`many_to_many`) | `exists(list, id == item)` (a record-side item read as `parent(...)`), `not exists(list, true)`; the list has no other use as a value |
-  | `Current User's list contains item` on a list normalized to a join, the item being the record or a record it references | `exists(<item>.<rows>, <owner column> == ^actor(:id))` through the member's private rows relationship to the join (with `privacy: :unverified`); `doesn't contain` is never granted (fail-safe) |
+  | `Current User's list contains item` on a list normalized to a join, the item being the record or a record it references | `exists(<item>.<rows>, <owner column> == ^actor(:id))` through the member's private rows relationship to the join (with `privacy: :unverified`); its `doesn't contain` does not compile (the rule is denied) |
   | `list doesn't contain item` | `is_nil(list) or is_nil(item) or not (item in list)` (an empty list contains nothing); an actor-side item must not be empty and an actor-side list needs a logged-in actor |
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
@@ -438,6 +438,11 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # that every actor-side operand must be non-empty.
   defp atom(ir, st, positive) do
     case atom_(ir, st) do
+      # (`doesn't contain` on the current user's list normalized to a
+      # join: not compiled, so the rule grants nothing)
+      {{_pos, {:unsupported, what}, _operands}, st} when not positive ->
+        unsupported(st, {what, nil})
+
       {{pos, neg, operands}, st} ->
         {guard(if(positive, do: pos, else: neg), operands), st}
 
@@ -577,9 +582,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # `Current User's list contains item`, the list normalized to a join: a
   # row of the join names the item's record as member and the user as
   # owner, `exists(<item>.<rows>, <owner column> == ^actor(:id))`, through
-  # the member's private rows relationship. The item is the rule's record
-  # or a record it references. Its negation would need the user's list
-  # itself: it is never granted (fail-safe).
+  # the member's private rows relationship (the rows of that list only).
+  # The item is the rule's record or a record it references. Its negation
+  # (`doesn't contain`) is not compiled (`:ash_expr_unsupported`): the rule
+  # is denied.
   defp actor_list_member(%IR{args: [_list, item]}, info, owner, st) do
     case member_path(item, info.member_type, st) do
       {:ok, rels, st} ->
@@ -592,7 +598,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
               {:call, "exists",
                [{:ref, rels, rows}, {:op, "==", {:ref, [], info.owner_column}, owner}]}
 
-            {{member, {:value, false}, [{owner, nil}]}, st}
+            {{member,
+              {:unsupported, "doesn't contain on the current user's list normalized to a join"},
+              [{owner, nil}]}, st}
         end
 
       error ->

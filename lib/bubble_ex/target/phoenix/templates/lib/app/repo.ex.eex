@@ -3,9 +3,9 @@ defmodule <%= @module %>.Repo do
 
   def installed_extensions do
     # Ash's SQL functions, citext for the case-insensitive User email, and
-    # what the generated indexes need (pg_trgm for trigram indexes). This
-    # file is yours: add an extension a later generation lists.
-    <%= inspect(["ash-functions", "citext" | @extensions]) %>
+    # what the generated indexes need (the generated RepoExtensions, e.g.
+    # pg_trgm for trigram indexes).
+    ["ash-functions", "citext"] ++ <%= @module %>.RepoExtensions.all()
   end
 
   # Nothing generated needs more than PostgreSQL 14 (CI tests on 16).

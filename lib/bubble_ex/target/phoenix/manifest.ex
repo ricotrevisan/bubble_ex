@@ -39,6 +39,11 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
     * `owned` - every owned file (path → SHA-256 as scaffolded): written
       once, then the owner's; never overwritten, so their hashes are
       informational (did the owner change the scaffold?)
+    * `extensions` - when the project needs PostgreSQL extensions (e.g.
+      `pg_trgm`): the owned Repo, the call to the generated
+      `RepoExtensions` it must make, and the extensions. `check/3` lists
+      them as `extensions_unlisted` when the Repo lacks the call
+      (scaffolded before WTF-406, or edited away): its migrations fail
     * `routes` - with Bubble pages (WTF-370): the owned router, the call to
       the generated routes it must make, and the pages (Bubble IDs) that
       call routes. `check/3` lists the pages as `unrouted` when the router
@@ -64,7 +69,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           missing: [String.t()],
           unchanged: [String.t()],
           stale: [String.t()],
-          unrouted: [String.t()]
+          unrouted: [String.t()],
+          extensions_unlisted: [String.t()]
         }
 
   @doc "The manifest's path in the project."
@@ -98,7 +104,18 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       "owned" => hashes(owned)
     }
     |> put_routes(ctx)
+    |> put_extensions(project, ctx)
   end
+
+  defp put_extensions(manifest, %Project{extensions: [_ | _] = extensions}, ctx) do
+    Map.put(manifest, "extensions", %{
+      "repo" => "lib/#{ctx.app}/repo.ex",
+      "call" => "RepoExtensions",
+      "needed" => extensions
+    })
+  end
+
+  defp put_extensions(manifest, _project, _ctx), do: manifest
 
   defp put_routes(manifest, %{routes: [_ | _] = routes} = ctx) do
     Map.put(manifest, "routes", %{
@@ -154,6 +171,11 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   present: a packager removes them (after checking them against the
   previous manifest). Otherwise `stale` is `[]`.
 
+  `extensions_unlisted` lists the PostgreSQL extensions the project needs
+  that the owned Repo neither installs through the generated
+  `RepoExtensions` nor names (see `extensions` above): its migrations fail
+  until it does.
+
   `unrouted` lists the Bubble pages (by Bubble ID) that have no route:
   the owned router exists but never calls the generated routes (see
   `routes` above). Such pages need their route before they are verified
@@ -184,7 +206,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
          missing: Map.get(by, :missing, []),
          unchanged: Map.get(by, :unchanged, []),
          stale: stale,
-         unrouted: unrouted(manifest, read)
+         unrouted: unrouted(manifest, read),
+         extensions_unlisted: extensions_unlisted(manifest, read)
        }}
     end
   end
@@ -201,6 +224,26 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   end
 
   defp unrouted(_manifest, _read), do: []
+
+  defp extensions_unlisted(
+         %{"extensions" => %{"repo" => repo, "call" => call, "needed" => needed}},
+         read
+       )
+       when is_binary(repo) and is_binary(call) and is_list(needed) do
+    case relative?(repo) && read.(repo) do
+      content when is_binary(content) ->
+        code = uncommented(content)
+
+        if String.contains?(code, call),
+          do: [],
+          else: Enum.reject(needed, &String.contains?(code, &1))
+
+      _ ->
+        []
+    end
+  end
+
+  defp extensions_unlisted(_manifest, _read), do: []
 
   # Elixir source without its `#` comments (a commented-out call is no
   # call). Approximate: a `#` inside a string also starts one here.

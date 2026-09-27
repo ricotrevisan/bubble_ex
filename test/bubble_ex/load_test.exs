@@ -254,30 +254,38 @@ defmodule BubbleEx.LoadTest do
 
   describe "join tables (WTF-406)" do
     # The :cut3 decisions: Project's Tasks a join of its own (order kept);
-    # Project's Viewers and User's Favorites one shared join (only
-    # Favorites' order kept); Workspace's Members (a membership join) and
-    # User's Workspaces one shared join (both orders kept).
+    # Project's Viewers (a flag) and User's Favorites (order kept) one
+    # table; Workspace's Members (a membership join) and User's Workspaces
+    # one table (both orders kept). Each list has its own column.
     defp join_rows(target, table) do
       target
       |> Memory.tables()
       |> Map.get(table, %{})
       |> Map.values()
-      |> Enum.map(&Map.delete(&1, :__key__))
       |> Enum.sort_by(&Enum.sort/1)
     end
 
-    defp join_id(project, table), do: Enum.find(project.joins, &(&1.table == table)).join.id
+    defp side_key(project, type, field) do
+      join =
+        Enum.find(project.joins, fn j ->
+          Enum.any?(j.join.sides, &(&1.type == type and &1.field == field))
+        end)
 
-    test "the lists load as join rows, idempotently, with positions and diagnostics",
+      "#{join.join.id}/#{type}/#{field}"
+    end
+
+    test "each list loads as its own rows, idempotently, never adding to the mirrored list",
          %{tmp_dir: dir} do
       f = setup_fixture(:cut3, dir)
       {:ok, project} = F.project(:cut3)
       {:ok, dry} = Load.dry_run(f.export, f.model, f.target)
 
-      tasks = join_id(project, "project_tasks")
-      members = join_id(project, "user_workspaces")
-      favorites = join_id(project, "favorite_project")
-      assert dry.joins == %{tasks => %{rows: 3}, members => %{rows: 5}, favorites => %{rows: 3}}
+      tasks = side_key(project, "project", "tasks_list_custom_task")
+      members = side_key(project, "workspace", "members_list_user")
+      workspaces = side_key(project, "user", "workspaces_list_custom_workspace")
+      assert dry.joins[tasks] == %{rows: 3}
+      assert dry.joins[members] == %{rows: 4}
+      assert dry.joins[workspaces] == %{rows: 3}
       assert Memory.tables(f.target) == %{}
 
       # a repeated member is one row; a dangling one is kept and reported
@@ -289,123 +297,109 @@ defmodule BubbleEx.LoadTest do
 
       assert diag(dry, :load_dangling_reference, "workspace", "members_list_user")
 
-      # members one side does not list back (the join holds both lists)
       for {type, field} <- [
             {"workspace", "members_list_user"},
             {"user", "workspaces_list_custom_workspace"},
             {"project", "viewers_list_user"},
             {"user", "favorites_list_custom_project"}
           ] do
-        assert diag(dry, :load_join_asymmetric, type, field).details.count == 1
+        assert %{severity: :info, details: %{count: 1}} =
+                 diag(dry, :load_join_asymmetric, type, field)
       end
 
       {:ok, run} = Load.run(f.export, f.model, f.target)
-
-      assert run.joins[tasks] == %{
-               rows: 3,
-               inserted: 3,
-               updated: 0,
-               unchanged: 0,
-               resumed: 0,
-               deleted: 0
-             }
+      assert run.joins[tasks] == %{rows: 3, inserted: 3, updated: 0, unchanged: 0, resumed: 0}
 
       assert join_rows(f.target, "project_tasks") ==
-               [
-                 %{"project_id" => F.initiative1(), "task_id" => F.gone_task(), "position" => 3},
-                 %{"project_id" => F.initiative1(), "task_id" => F.todo1(), "position" => 0},
-                 %{"project_id" => F.initiative1(), "task_id" => F.todo2(), "position" => 1}
-               ]
-               |> Enum.sort_by(&Enum.sort/1)
-
-      assert join_rows(f.target, "favorite_project") ==
-               [
-                 %{
-                   "project_id" => F.initiative1(),
-                   "user_id" => F.ada(),
-                   "favorites_position" => 0
-                 },
-                 %{
-                   "project_id" => F.initiative1(),
-                   "user_id" => F.bob(),
-                   "favorites_position" => nil
-                 },
-                 %{
-                   "project_id" => F.initiative2(),
-                   "user_id" => F.bob(),
-                   "favorites_position" => 0
-                 }
-               ]
-               |> Enum.sort_by(&Enum.sort/1)
-
-      ws = fn user, workspace, w, m ->
-        %{
-          "user_id" => user,
-          "workspace_id" => workspace,
-          "workspaces_position" => w,
-          "members_position" => m
-        }
-      end
-
-      assert join_rows(f.target, "user_workspaces") ==
                Enum.sort_by(
                  [
-                   ws.(F.ada(), F.workspace1(), 0, 0),
-                   ws.(F.bob(), F.workspace1(), nil, 1),
-                   ws.(F.gone_user(), F.workspace1(), nil, 2),
-                   ws.(F.carol(), F.workspace2(), 0, 0),
-                   ws.(F.carol(), F.workspace1(), 1, nil)
+                   %{
+                     "project_id" => F.initiative1(),
+                     "task_id" => F.gone_task(),
+                     "position" => 3
+                   },
+                   %{"project_id" => F.initiative1(), "task_id" => F.todo1(), "position" => 0},
+                   %{"project_id" => F.initiative1(), "task_id" => F.todo2(), "position" => 1}
                  ],
                  &Enum.sort/1
                )
 
-      # the owners' tables have no column for the lists
+      # Bob views Plan but his Favorites do not list it: no favorites column
+      fav = fn project, user ->
+        Enum.find(
+          join_rows(f.target, "favorite_project"),
+          &(&1["project_id"] == project and &1["user_id"] == user)
+        )
+      end
+
+      assert fav.(F.initiative1(), F.bob()) == %{
+               "project_id" => F.initiative1(),
+               "user_id" => F.bob(),
+               "viewers_listed" => true
+             }
+
+      assert fav.(F.initiative1(), F.ada()) ==
+               %{
+                 "project_id" => F.initiative1(),
+                 "user_id" => F.ada(),
+                 "viewers_listed" => true,
+                 "favorites_position" => 0
+               }
+
+      assert fav.(F.initiative2(), F.bob()) ==
+               %{"project_id" => F.initiative2(), "user_id" => F.bob(), "favorites_position" => 0}
+
+      ws = fn user, workspace ->
+        row =
+          Enum.find(
+            join_rows(f.target, "user_workspaces"),
+            &(&1["user_id"] == user and &1["workspace_id"] == workspace)
+          )
+
+        row && {row["workspaces_position"], row["members_position"]}
+      end
+
+      # Acme's Members list Bob, whose Workspaces do not: a member of one list only
+      assert ws.(F.bob(), F.workspace1()) == {nil, 1}
+      assert ws.(F.carol(), F.workspace1()) == {1, nil}
+      assert ws.(F.ada(), F.workspace1()) == {0, 0}
+      assert ws.(F.gone_user(), F.workspace1()) == {nil, 2}
+
       refute Map.has_key?(Memory.tables(f.target)["project"][F.initiative1()], "tasks")
 
       before = Memory.tables(f.target)
       {:ok, again} = Load.run(f.export, f.model, f.target)
-
-      assert again.joins[members] == %{
-               rows: 5,
-               inserted: 0,
-               updated: 0,
-               unchanged: 5,
-               resumed: 0,
-               deleted: 0
-             }
-
+      assert again.joins[members] == %{rows: 4, inserted: 0, updated: 0, unchanged: 4, resumed: 0}
       assert Memory.tables(f.target) == before
     end
 
-    test "a delta sync deletes the members removed and moves the positions", %{tmp_dir: dir} do
+    test "a later export moves positions and never deletes rows (WTF-414 prunes)", %{tmp_dir: dir} do
       f = setup_fixture(:cut3, dir)
-      {:ok, project} = F.project(:cut3)
       {:ok, _} = Load.run(f.export, f.model, f.target)
 
       rows = F.cut3_rows()
       [w1 | rest] = rows["workspace"]
-      # Bob leaves Acme (only its Members listed him); Carol joins it
+      # Bob leaves Acme's Members; Carol joins them
       w1 = Map.put(w1, "Members", [F.carol(), F.ada(), F.gone_user()])
-      [p1 | projects] = rows["project"]
-      p1 = Map.put(p1, "Tasks", [F.todo2()])
-      rows = %{rows | "workspace" => [w1 | rest], "project" => [p1 | projects]}
+      rows = %{rows | "workspace" => [w1 | rest]}
       {:ok, delta_export} = F.export(:cut3, Path.join(dir, "delta"), rows)
-      {:ok, delta} = Load.run(delta_export, f.model, f.target)
+      {:ok, _} = Load.run(delta_export, f.model, f.target)
 
-      assert delta.joins[join_id(project, "user_workspaces")].deleted == 1
-      assert delta.joins[join_id(project, "project_tasks")].deleted == 2
+      pos = fn user ->
+        r =
+          Enum.find(
+            join_rows(f.target, "user_workspaces"),
+            &(&1["user_id"] == user and &1["workspace_id"] == F.workspace1())
+          )
 
-      assert join_rows(f.target, "project_tasks") == [
-               %{"project_id" => F.initiative1(), "task_id" => F.todo2(), "position" => 0}
-             ]
+        {r["workspaces_position"], r["members_position"]}
+      end
 
-      members =
-        for r <- join_rows(f.target, "user_workspaces"),
-            r["workspace_id"] == F.workspace1(),
-            do: {r["user_id"], r["members_position"]}
-
-      assert Enum.sort(members) ==
-               Enum.sort([{F.carol(), 0}, {F.ada(), 1}, {F.gone_user(), 2}])
+      # Carol's own Workspaces column is untouched
+      assert pos.(F.carol()) == {1, 0}
+      assert pos.(F.ada()) == {0, 1}
+      # not deleted, not changed
+      assert pos.(F.bob()) == {nil, 1}
     end
 
     test "an interrupted load resumes its join rows from the ledger", %{tmp_dir: dir} do

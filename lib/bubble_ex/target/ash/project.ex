@@ -94,7 +94,8 @@ defmodule BubbleEx.Target.Ash.Project do
   `joins` names the join resources (keyed by the finding's join ID,
   `join:<hash of the list field IDs>`): the module, the table and the
   columns (`left` and `right`, the two record IDs, and a position column
-  per ordered list, keyed `<type>/<field>`).
+  per list, keyed `<type>/<field>`: its membership column, a position or
+  a flag).
 
       %{
         "version" => 1,
@@ -356,9 +357,11 @@ defmodule BubbleEx.Target.Ash.Resource do
       owner, relationship, position, key, transform}`: the owner type's
       list `field` holds, per row, the `owner` column's record (`:left` or
       `:right`) listing the other; `relationship` is the owner's
-      `many_to_many`, `position` the column holding the member's index in
-      the list (nil when the order is not kept) and `key` / `transform` the
-      decision
+      `many_to_many`, `join_relationship` its relationship to the rows,
+      `marker` `%{column, kind}` the column marking the list's rows (a
+      row may be a member of one list and not of the other), `position`
+      that column when it holds the member's index in the list (`kind`
+      `:position`; nil for a `:flag`) and `key` / `transform` the decision
     * `description` - text for the module's documentation, or nil
   """
 
@@ -780,6 +783,11 @@ defmodule BubbleEx.Target.Ash.Relationship do
       `many_to_many`: the join resource's relative module, its columns
       holding this record's and the member's IDs, and the name of this
       resource's relationship to the join rows (nil otherwise)
+    * `membership` - nil, or `%{column, kind}`: the join column marking the
+      rows that are members of the list this relationship reads (`kind`
+      `:position`, set to the member's index, or `:flag`, true). A
+      `many_to_many` reads only its list's rows (its join relationship is
+      rendered with `filter`); a private `has_many` to join rows likewise
     * `attribute_type` - the source attribute's type (`belongs_to` only)
     * `define_attribute?` - false: the source attribute is listed among the
       resource's attributes with its own constraints (`belongs_to` only)
@@ -811,6 +819,7 @@ defmodule BubbleEx.Target.Ash.Relationship do
     :source_attribute_on_join_resource,
     :destination_attribute_on_join_resource,
     :join_relationship,
+    :membership,
     destination_attribute: "id",
     attribute_type: :string,
     define_attribute?: false,
@@ -831,6 +840,7 @@ defmodule BubbleEx.Target.Ash.Relationship do
           source_attribute_on_join_resource: String.t() | nil,
           destination_attribute_on_join_resource: String.t() | nil,
           join_relationship: String.t() | nil,
+          membership: %{column: String.t(), kind: :position | :flag} | nil,
           attribute_type: BubbleEx.Target.Ash.Project.type(),
           define_attribute?: boolean(),
           allow_nil?: boolean(),

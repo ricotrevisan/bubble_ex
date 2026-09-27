@@ -58,14 +58,18 @@ defmodule BubbleEx.Target.Ash.Loader do
   keys (WTF-338), so tables load in any order. An error names the
   PostgreSQL error code and constraint, never a stored value.
 
-  A join table's rows upsert the same way on the two ID columns (updating
-  the positions), and `prune_join/4` then deletes the rows of the exported
-  owners that their lists no longer hold, in one statement:
+  A join table's rows upsert per list, on the two ID columns, setting only
+  that list's membership column (its position, or a flag), so a row of
+  one list never changes the other's:
 
-      DELETE FROM "public"."task_labels" AS t
-      WHERE (t."task_id" = ANY($1) OR t."label_id" = ANY($2))
-        AND NOT EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::"public"."task_labels", $3::text::jsonb) k
-                        WHERE k."task_id" = t."task_id" AND k."label_id" = t."label_id")
+      INSERT INTO "public"."user_workspaces" AS t ("user_id", "workspace_id", "members_position")
+      SELECT ... FROM jsonb_populate_recordset(NULL::"public"."user_workspaces", $1::text::jsonb)
+      ON CONFLICT ("user_id", "workspace_id") DO UPDATE SET "members_position" = EXCLUDED."members_position"
+      WHERE t."members_position" IS DISTINCT FROM EXCLUDED."members_position"
+      RETURNING (xmax = 0)
+
+  Nothing is deleted from a join table: a member removed from a list in
+  Bubble since an earlier load keeps its row (WTF-414).
   """
 
   @behaviour BubbleEx.Load.Target
@@ -158,7 +162,16 @@ defmodule BubbleEx.Target.Ash.Loader do
       table: r.table,
       left: Map.take(join.left, [:type, :column]),
       right: Map.take(join.right, [:type, :column]),
-      sides: Enum.map(join.sides, &Map.take(&1, [:type, :field, :owner, :position]))
+      sides:
+        Enum.map(join.sides, fn side ->
+          %{
+            type: side.type,
+            field: side.field,
+            owner: side.owner,
+            column: side.marker.column,
+            kind: side.marker.kind
+          }
+        end)
     }
   end
 
@@ -379,7 +392,7 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   # A join table checked like a data type's: its first list's owner is
   # the subject, the left ID the key (both IDs are NOT NULL: the primary
-  # key), the right ID text and the positions integers.
+  # key), the right ID text, the positions integers and the flags booleans.
   defp join_table(%Plan.Join{} = j) do
     [side | _] = j.sides
 
@@ -390,9 +403,12 @@ defmodule BubbleEx.Target.Ash.Loader do
       columns:
         [%Column{field: side.field, column: j.right.column, encoding: :text}] ++
           for(
-            %{position: p, field: f} <- j.sides,
-            p != nil,
-            do: %Column{field: f, column: p, encoding: :integer}
+            %{column: c, kind: kind, field: f} <- j.sides,
+            do: %Column{
+              field: f,
+              column: c,
+              encoding: if(kind == :position, do: :integer, else: :boolean)
+            }
           )
     }
   end
@@ -538,8 +554,8 @@ defmodule BubbleEx.Target.Ash.Loader do
   end
 
   @impl true
-  def upsert_join(%__MODULE__{} = c, %Plan.Join{} = join, rows) do
-    case run(c, join_upsert_sql(c.schema, join), [Jason.encode!(rows)]) do
+  def upsert_join(%__MODULE__{} = c, %Plan.Join{} = join, side, rows) do
+    case run(c, join_upsert_sql(c.schema, join, side), [Jason.encode!(rows)]) do
       {:ok, returned} ->
         inserted = Enum.count(returned, &(&1 == [true]))
         updated = length(returned) - inserted
@@ -550,52 +566,20 @@ defmodule BubbleEx.Target.Ash.Loader do
     end
   end
 
-  @impl true
-  def prune_join(%__MODULE__{} = c, %Plan.Join{} = join, keep, owners) do
-    target = qualified(c.schema, join)
-    l = ident(join.left.column)
-    r = ident(join.right.column)
-
-    sql =
-      "DELETE FROM #{target} AS t WHERE (t.#{l} = ANY($1) OR t.#{r} = ANY($2)) " <>
-        "AND NOT EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::#{target}, " <>
-        "$3::text::jsonb) k WHERE k.#{l} = t.#{l} AND k.#{r} = t.#{r}) RETURNING 1"
-
-    params = [Map.get(owners, :left, []), Map.get(owners, :right, []), Jason.encode!(keep)]
-
-    case run(c, sql, params) do
-      {:ok, deleted} -> {:ok, length(deleted)}
-      {:error, %Error{} = e} -> {:error, %{e | context: Map.put(e.context, :join, join.id)}}
-    end
-  end
-
   @doc false
-  # The upsert statement of a join table: keyed by its two ID columns,
-  # updating the positions.
-  @spec join_upsert_sql(String.t(), Plan.Join.t()) :: String.t()
-  def join_upsert_sql(schema, %Plan.Join{} = join) do
+  # The upsert statement of one list of a join table: keyed by its two ID
+  # columns, setting only the list's membership column.
+  @spec join_upsert_sql(String.t(), Plan.Join.t(), Plan.Join.side()) :: String.t()
+  def join_upsert_sql(schema, %Plan.Join{} = join, side) do
     target = qualified(schema, join)
     keys = Enum.map([join.left.column, join.right.column], &ident/1)
-    positions = for %{position: p} <- join.sides, p != nil, do: ident(p)
-    all = Enum.join(keys ++ positions, ", ")
-
-    conflict =
-      case positions do
-        [] ->
-          "ON CONFLICT (#{Enum.join(keys, ", ")}) DO NOTHING"
-
-        _ ->
-          set = Enum.map_join(positions, ", ", &"#{&1} = EXCLUDED.#{&1}")
-          mine = Enum.map_join(positions, ", ", &"t.#{&1}")
-          theirs = Enum.map_join(positions, ", ", &"EXCLUDED.#{&1}")
-
-          "ON CONFLICT (#{Enum.join(keys, ", ")}) DO UPDATE SET #{set} " <>
-            "WHERE ROW(#{mine}) IS DISTINCT FROM ROW(#{theirs})"
-      end
+    col = ident(side.column)
+    all = Enum.join(keys ++ [col], ", ")
 
     "INSERT INTO #{target} AS t (#{all}) " <>
       "SELECT #{all} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb) " <>
-      conflict <> " RETURNING (xmax = 0)"
+      "ON CONFLICT (#{Enum.join(keys, ", ")}) DO UPDATE SET #{col} = EXCLUDED.#{col} " <>
+      "WHERE t.#{col} IS DISTINCT FROM EXCLUDED.#{col} RETURNING (xmax = 0)"
   end
 
   defp qualified(schema, table), do: ident(schema) <> "." <> ident(table.table)

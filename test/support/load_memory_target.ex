@@ -89,28 +89,42 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
     end)
   end
 
-  # Join tables, keyed by their two ID columns (WTF-352 cut 3).
+  # Join tables, keyed by their two ID columns (WTF-352 cut 3): a list's
+  # upsert sets only its own column of an existing row.
   @impl true
-  def upsert_join(%__MODULE__{} = c, join, rows) do
+  def upsert_join(%__MODULE__{agent: a}, join, side, rows) do
     key = fn row -> {Map.fetch!(row, join.left.column), Map.fetch!(row, join.right.column)} end
-    keyed = Enum.map(rows, &Map.put(&1, :__key__, key.(&1)))
-    upsert(c, %{table: join.table, key: :__key__}, keyed)
-  end
-
-  @impl true
-  def prune_join(%__MODULE__{agent: a}, join, keep, owners) do
-    kept =
-      MapSet.new(keep, &{Map.fetch!(&1, join.left.column), Map.fetch!(&1, join.right.column)})
 
     Agent.get_and_update(a, fn state ->
-      rows = Map.get(state.tables, join.table, %{})
+      calls = state.calls + 1
 
-      {gone, rows} =
-        Map.split_with(rows, fn {{l, r} = pair, _row} ->
-          not MapSet.member?(kept, pair) and (l in owners.left or r in owners.right)
-        end)
+      if state.fail_on == calls do
+        {{:error, Error.new(:request_failed, "injected failure", %{reason: :injected})},
+         %{state | calls: calls}}
+      else
+        current = Map.get(state.tables, join.table, %{})
+        zero = %{inserted: 0, updated: 0, unchanged: 0}
 
-      {{:ok, map_size(gone)}, %{state | tables: Map.put(state.tables, join.table, rows)}}
+        {counts, current} =
+          Enum.reduce(rows, {zero, current}, fn row, {c, t} ->
+            k = key.(row)
+
+            case Map.fetch(t, k) do
+              :error ->
+                {%{c | inserted: c.inserted + 1}, Map.put(t, k, row)}
+
+              {:ok, old} ->
+                if old[side.column] == row[side.column],
+                  do: {%{c | unchanged: c.unchanged + 1}, t},
+                  else:
+                    {%{c | updated: c.updated + 1},
+                     Map.put(t, k, Map.put(old, side.column, row[side.column]))}
+            end
+          end)
+
+        {{:ok, counts},
+         %{state | calls: calls, tables: Map.put(state.tables, join.table, current)}}
+      end
     end)
   end
 

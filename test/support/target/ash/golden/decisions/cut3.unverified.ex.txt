@@ -216,6 +216,13 @@ defmodule MyApp.Project do
       filter expr(parent(privacy_rule_workspace_member))
     end
 
+    has_many :tasks_join, MyApp.ProjectTasks do
+      source_attribute :id
+      destination_attribute :project_id
+      public? false
+      filter expr(not is_nil(position) and parent(privacy_rule_workspace_member))
+    end
+
     many_to_many :tasks, MyApp.Task do
       through MyApp.ProjectTasks
       source_attribute :id
@@ -226,6 +233,13 @@ defmodule MyApp.Project do
       public? true
       sortable? false
       filter expr(parent(privacy_rule_workspace_member))
+    end
+
+    has_many :viewers_join, MyApp.FavoriteProject do
+      source_attribute :id
+      destination_attribute :project_id
+      public? false
+      filter expr(viewers_listed == true and parent(privacy_rule_workspace_member))
     end
 
     many_to_many :viewers, MyApp.User do
@@ -258,6 +272,13 @@ defmodule MyApp.Project do
       public? false
     end
 
+    has_many :tasks_for_privacy_join, MyApp.ProjectTasks do
+      source_attribute :id
+      destination_attribute :project_id
+      public? false
+      filter expr(not is_nil(position))
+    end
+
     many_to_many :tasks_for_privacy, MyApp.Task do
       through MyApp.ProjectTasks
       source_attribute :id
@@ -266,6 +287,13 @@ defmodule MyApp.Project do
       destination_attribute :id
       join_relationship :tasks_for_privacy_join
       public? false
+    end
+
+    has_many :viewers_for_privacy_join, MyApp.FavoriteProject do
+      source_attribute :id
+      destination_attribute :project_id
+      public? false
+      filter expr(viewers_listed == true)
     end
 
     many_to_many :viewers_for_privacy, MyApp.User do
@@ -282,6 +310,7 @@ defmodule MyApp.Project do
       source_attribute :id
       destination_attribute :project_id
       public? false
+      filter expr(not is_nil(favorites_position))
     end
   end
 
@@ -471,6 +500,7 @@ defmodule MyApp.Task do
       source_attribute :id
       destination_attribute :task_id
       public? false
+      filter expr(not is_nil(position))
     end
   end
 
@@ -610,6 +640,13 @@ defmodule MyApp.User do
       sortable? false
     end
 
+    has_many :favorites_join, MyApp.FavoriteProject do
+      source_attribute :id
+      destination_attribute :user_id
+      public? false
+      filter expr(not is_nil(favorites_position))
+    end
+
     many_to_many :favorites, MyApp.Project do
       through MyApp.FavoriteProject
       source_attribute :id
@@ -619,6 +656,13 @@ defmodule MyApp.User do
       join_relationship :favorites_join
       public? true
       sortable? false
+    end
+
+    has_many :workspaces_join, MyApp.UserWorkspaces do
+      source_attribute :id
+      destination_attribute :user_id
+      public? false
+      filter expr(not is_nil(workspaces_position))
     end
 
     many_to_many :workspaces, MyApp.Workspace do
@@ -636,12 +680,14 @@ defmodule MyApp.User do
       source_attribute :id
       destination_attribute :user_id
       public? false
+      filter expr(not is_nil(members_position))
     end
 
     has_many :project_viewers_rows, MyApp.FavoriteProject do
       source_attribute :id
       destination_attribute :user_id
       public? false
+      filter expr(viewers_listed == true)
     end
   end
 
@@ -766,7 +812,17 @@ defmodule MyApp.Workspace do
       allow_nil? true
       public? true
       sortable? false
-      filter expr(parent(privacy_rule_member))
+      filter expr(parent(privacy_rule_listed or privacy_rule_member))
+    end
+
+    has_many :members_join, MyApp.UserWorkspaces do
+      source_attribute :id
+      destination_attribute :workspace_id
+      public? false
+
+      filter expr(
+               not is_nil(members_position) and parent(privacy_rule_listed or privacy_rule_member)
+             )
     end
 
     many_to_many :members, MyApp.User do
@@ -778,7 +834,7 @@ defmodule MyApp.Workspace do
       join_relationship :members_join
       public? true
       sortable? false
-      filter expr(parent(privacy_rule_member))
+      filter expr(parent(privacy_rule_listed or privacy_rule_member))
     end
 
     belongs_to :creator_for_privacy, MyApp.User do
@@ -788,6 +844,13 @@ defmodule MyApp.Workspace do
       define_attribute? false
       allow_nil? true
       public? false
+    end
+
+    has_many :members_for_privacy_join, MyApp.UserWorkspaces do
+      source_attribute :id
+      destination_attribute :workspace_id
+      public? false
+      filter expr(not is_nil(members_position))
     end
 
     many_to_many :members_for_privacy, MyApp.User do
@@ -804,10 +867,19 @@ defmodule MyApp.Workspace do
       source_attribute :id
       destination_attribute :workspace_id
       public? false
+      filter expr(not is_nil(workspaces_position))
     end
   end
 
   calculations do
+    calculate :privacy_rule_listed,
+              :boolean,
+              expr(
+                not is_nil(^actor(:id)) and exists(user_workspaces_rows, user_id == ^actor(:id))
+              ),
+              public?: false,
+              description: "Bubble privacy rule \"Listed\" (listed_): its condition holds"
+
     calculate :privacy_rule_member,
               :boolean,
               expr(not is_nil(^actor(:id)) and exists(members_for_privacy, id == ^actor(:id))),
@@ -848,11 +920,13 @@ defmodule MyApp.Workspace do
 
     policy action(:read) do
       description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if expr(privacy_rule_listed)
       authorize_if expr(privacy_rule_member)
     end
 
     policy action(:search) do
       description "Searches: the user may find the record in searches"
+      authorize_if expr(privacy_rule_listed)
       authorize_if expr(privacy_rule_member)
     end
   end
@@ -861,13 +935,14 @@ defmodule MyApp.Workspace do
     private_fields :hide
 
     field_policy [:created_date, :modified_date, :creator_id, :slug, :name, :projects] do
+      authorize_if expr(privacy_rule_listed)
       authorize_if expr(privacy_rule_member)
     end
   end
 end
 
 defmodule MyApp.ProjectTasks do
-  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b); the list is not stored."
+  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is set); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource,
     domain: MyApp,
@@ -927,10 +1002,15 @@ defmodule MyApp.ProjectTasks do
   end
 
   calculations do
-    calculate :privacy_visible, :boolean, expr(project.privacy_rule_workspace_member),
+    calculate :privacy_tasks, :boolean, expr(project.privacy_rule_workspace_member),
       public?: false,
       description:
-        "The actor may view the list this row is a member of on its owner record (every list, for a join two lists share)"
+        "The actor may view project.tasks_list_custom_task (the list) on the row's owner record"
+
+    calculate :privacy_visible, :boolean, expr(not is_nil(position) and privacy_tasks),
+      public?: false,
+      description:
+        "The row is a member of a list the actor may view on its owner record (its membership column is set)"
   end
 
   actions do
@@ -961,14 +1041,22 @@ defmodule MyApp.ProjectTasks do
     end
 
     policy action(:read) do
-      description "Rows of the lists this join replaces: the actor may view the list on its owner"
+      description "Rows of the lists this join replaces: a member of a list the actor may view on its owner"
       authorize_if expr(privacy_visible)
+    end
+  end
+
+  field_policies do
+    private_fields :hide
+
+    field_policy [:position] do
+      authorize_if expr(privacy_tasks)
     end
   end
 end
 
 defmodule MyApp.UserWorkspaces do
-  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453); the lists are not stored. Both lists are one relation: a row lists each record in the other's list."
+  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d; member when workspaces_position is set) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453; member when members_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource,
     domain: MyApp,
@@ -1029,10 +1117,22 @@ defmodule MyApp.UserWorkspaces do
   end
 
   calculations do
-    calculate :privacy_visible, :boolean, expr(workspace.privacy_rule_member),
-      public?: false,
-      description:
-        "The actor may view the list this row is a member of on its owner record (every list, for a join two lists share)"
+    calculate :privacy_members,
+              :boolean,
+              expr(workspace.privacy_rule_listed or workspace.privacy_rule_member),
+              public?: false,
+              description:
+                "The actor may view workspace.members_list_user (the list) on the row's owner record"
+
+    calculate :privacy_visible,
+              :boolean,
+              expr(
+                not is_nil(workspaces_position) or
+                  (not is_nil(members_position) and privacy_members)
+              ),
+              public?: false,
+              description:
+                "The row is a member of a list the actor may view on its owner record (its membership column is set)"
   end
 
   actions do
@@ -1063,14 +1163,26 @@ defmodule MyApp.UserWorkspaces do
     end
 
     policy action(:read) do
-      description "Rows of the lists this join replaces: the actor may view the list on its owner"
+      description "Rows of the lists this join replaces: a member of a list the actor may view on its owner"
       authorize_if expr(privacy_visible)
+    end
+  end
+
+  field_policies do
+    private_fields :hide
+
+    field_policy [:workspaces_position] do
+      authorize_if always()
+    end
+
+    field_policy [:members_position] do
+      authorize_if expr(privacy_members)
     end
   end
 end
 
 defmodule MyApp.FavoriteProject do
-  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50); the lists are not stored. Both lists are one relation: a row lists each record in the other's list."
+  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is set) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource,
     domain: MyApp,
@@ -1106,6 +1218,7 @@ defmodule MyApp.FavoriteProject do
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
 
+    attribute :viewers_listed, :boolean, allow_nil?: true, writable?: true, public?: true
     attribute :favorites_position, :integer, allow_nil?: true, writable?: true, public?: true
   end
 
@@ -1130,10 +1243,19 @@ defmodule MyApp.FavoriteProject do
   end
 
   calculations do
-    calculate :privacy_visible, :boolean, expr(project.privacy_rule_workspace_member),
+    calculate :privacy_viewers, :boolean, expr(project.privacy_rule_workspace_member),
       public?: false,
       description:
-        "The actor may view the list this row is a member of on its owner record (every list, for a join two lists share)"
+        "The actor may view project.viewers_list_user (the list) on the row's owner record"
+
+    calculate :privacy_visible,
+              :boolean,
+              expr(
+                (viewers_listed == true and privacy_viewers) or not is_nil(favorites_position)
+              ),
+              public?: false,
+              description:
+                "The row is a member of a list the actor may view on its owner record (its membership column is set)"
   end
 
   actions do
@@ -1164,8 +1286,20 @@ defmodule MyApp.FavoriteProject do
     end
 
     policy action(:read) do
-      description "Rows of the lists this join replaces: the actor may view the list on its owner"
+      description "Rows of the lists this join replaces: a member of a list the actor may view on its owner"
       authorize_if expr(privacy_visible)
+    end
+  end
+
+  field_policies do
+    private_fields :hide
+
+    field_policy [:viewers_listed] do
+      authorize_if expr(privacy_viewers)
+    end
+
+    field_policy [:favorites_position] do
+      authorize_if always()
     end
   end
 end

@@ -223,23 +223,33 @@ defmodule BubbleEx.Target.Ash do
   | `derive_reverse_relationship` | B's list of A is dropped (no column) and becomes `has_many <list name>, A` from B's primary key to A's reference attribute. The finding's `rewrite_reads` (the reads of the list: expressions, workflows, privacy rules) are recorded in `project.applied` for the lowering (Plan, T6/T7). A privacy rule testing the list (`contains`, `is empty`) compiles to `exists(<has_many>, ...)` |
   | `add_indexes` (hint) | `postgres do custom_indexes` per access pattern, below. Applied by default (WTF-352 D4), or as the owner decided (`modify drop`) |
   | `normalize_list_to_join` | the list attribute is dropped (no column) and becomes `many_to_many <list name>, B` through a join resource (`project.joins`, "Joins" below), from this record's ID in its owner column to the member's in the other, with a `join_relationship` to the rows. A `derive_count` of the list is then a count aggregate over it |
-  | `membership_policy` | the same join, for a list of users that privacy rules test: a rule testing the list (`contains`, `is empty`, also through a reference) compiles to `exists(<many_to_many>, id == ^actor(:id))`, and one testing the current user's normalized list (`Current User's list contains This Thing`) to `exists(<rows>, <owner column> == ^actor(:id))` through the member's private rows relationship to the join (its `doesn't contain` is never granted) |
+  | `membership_policy` | the same join, for a list of users that privacy rules test: a rule testing the list (`contains`, `is empty`, also through a reference) compiles to `exists(<many_to_many>, id == ^actor(:id))`, and one testing the current user's normalized list (`Current User's list contains This Thing`) to `exists(<rows>, <owner column> == ^actor(:id))` through the member's private rows relationship to the join (only that list's rows); its `doesn't contain` does not compile (`:ash_expr_unsupported`), so the rule is denied |
 
   **Joins.** One join resource per join the findings name (`proposal.join`,
   whose ID hashes the list fields it replaces): a list of its own, or two
   lists mirroring each other (A's list of B and B's list of A) sharing one
-  join when both are decided; with only one decided, the join holds that
+  table when both are decided and a workflow maintains both (`basis:
+  :coupled`: evidence they are one relation). Lists paired only because
+  they are the only lists between their types (`:unique_types`) get a
+  table each. With one of a coupled pair decided, the table holds that
   list and the mirror stays stored (it joins the same table when it is
   decided later). The join resource (module `<Owner><List>`, or from
   `join_name`; its table the module in snake case) has the two record IDs
   as its primary key (`<left type>_id`, `<right type>_id`, the left one
   the owner of the join's first list), no database foreign key (WTF-338:
   a dangling ID loads nothing), a `belongs_to` to each, a btree index on
-  the right ID, and per list whose order is kept a position column
-  (`position`, or `<list name>_position` in a join two lists share)
-  holding the member's index in Bubble's list: `keep_order` defaults to
-  true (nothing is lost); a `modify keep_order: false` drops it. Read the
-  order through the owner's join relationship sorted by the position.
+  the right ID, and per list a membership column: a row is a member of
+  the list when it is set, so two lists sharing a table never mix
+  members (a row may be a member of one and not the other). It is a
+  position (`position`, or `<list name>_position` in a shared table),
+  the member's index in Bubble's list, when the order is kept
+  (`keep_order`, default true: nothing is lost), else a flag (`listed`,
+  `<list name>_listed`, true; `modify keep_order: false`). The owner's
+  `many_to_many` reads only its list's rows (its declared join
+  relationship is filtered by the column). Read the order through the
+  join relationship sorted by the position. A row the app writes must set
+  its list's column; rows written after the cutover have no Bubble
+  position, so their order among the list's members is not defined.
   The names are locked in the name map (`joins`, and the owners'
   `join_relationships`). A list normalized to a join cannot be renamed as
   an attribute; an index hint over it is deferred (the join's own index
@@ -248,16 +258,18 @@ defmodule BubbleEx.Target.Ash do
   With `privacy: :unverified` a join row reveals that its owner's list
   holds its member, so it is readable (`:read`, keyed like every
   resource's: through a relationship, never by listing; no `:search`) only
-  by an actor who may view the list on its owner: the checks of the list
-  field, as a private calculation `privacy_visible` reading the owner's
-  privacy calculations through the join's private `belongs_to`. A shared
-  join needs both lists' checks, since one row stands for both lists and
-  Bubble may have shown only one of them: never wider than Bubble,
-  possibly narrower (a public User list mirrored by a Workspace list only
-  members may view shows to the workspace's members only). The owner's
-  `many_to_many` is gated like the list it replaces (`filter`, with a
-  private twin the privacy calculations read through), and the members
-  keep their own read policies. No policy authorizes writes to a join.
+  by an actor who may view, on its owner, a list the row is a member of:
+  per list, a private calculation `privacy_<list>` with the list field's
+  checks (reading the owner's privacy calculations through the join's
+  private `belongs_to`), and `privacy_visible`, "a list's column is set
+  and its calculation holds", for any of the table's lists; each list's
+  column reads (field policy) only for those who may view that list.
+  The owner's `many_to_many` and its join relationship are gated like the
+  list they replace (`filter`, with a private twin the privacy
+  calculations read through), and the members keep their own read
+  policies. No policy authorizes writes to a join. A field the rules let
+  users auto-bind that a decision no longer stores is not in `:auto_bind`
+  (`:ash_policy_auto_binding_dropped`).
 
   **Indexes.** Each index of an `add_indexes` proposal is one of:
 
@@ -295,10 +307,12 @@ defmodule BubbleEx.Target.Ash do
   other lists and references keep dangling IDs (WTF-338). A list
   normalized to a join loads as the join's rows: one per member (a
   repeated member once, `:load_join_duplicate`; a dangling one kept and
-  reported), with its index in the position column, and for a shared join
-  the union of both lists (`:load_join_asymmetric` counts the members one
-  list holds that the other does not list back); a later export deletes
-  the rows of the exported owners that their lists no longer hold.
+  reported), with its list's membership column set (its index, or true);
+  two lists sharing a table are written separately, each setting only its
+  own column, so neither gains the other's members (`:load_join_asymmetric`,
+  info, counts the members one list holds that the other does not list
+  back). Nothing is deleted from a join table: a member removed from a
+  list since an earlier load keeps its row (WTF-414).
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.

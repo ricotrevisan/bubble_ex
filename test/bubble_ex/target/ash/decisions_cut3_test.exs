@@ -282,6 +282,29 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
              )
     end
 
+    test "lists paired without evidence (only lists between their types) get joins of their own" do
+      viewers = applied_of(:list_relationship, "project", "viewers_list_user")
+      favorites = applied_of(:list_relationship, "user", "favorites_list_custom_project")
+      unproven = &put_in(&1.proposal.join.basis, :unique_types)
+
+      {:ok, project} = map(model(), [unproven.(viewers), unproven.(favorites)])
+      a = join_of(project, "project", "viewers_list_user")
+      b = join_of(project, "user", "favorites_list_custom_project")
+      assert a != b
+      assert a.join.id == Joins.id(["field:project/viewers_list_user"])
+      assert b.join.id == Joins.id(["field:user/favorites_list_custom_project"])
+
+      # a coupled pair (a workflow maintains both) shares one table
+      {:ok, shared} = map(model(), [viewers, favorites])
+
+      assert join_of(shared, "project", "viewers_list_user") ==
+               join_of(shared, "user", "favorites_list_custom_project")
+
+      # a basis that does not fit the lists is an altered proposal
+      assert map(model(), [put_in(viewers.proposal.join.basis, :single)]) |> message() =~
+               "join does not fit"
+    end
+
     test "the normalized list cannot be renamed as an attribute" do
       {model, applied, _} =
         applicable([
@@ -301,7 +324,8 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
       assert %Relationship{kind: :many_to_many, name: "members", through: "UserWorkspaces"} =
                members
 
-      assert members.gate == {:visible_if, ["privacy_rule_member"]}
+      # the Members field: view_all by Member and (the cut-3 fixture) Listed
+      assert members.gate == {:visible_if, ["privacy_rule_listed", "privacy_rule_member"]}
 
       member =
         Enum.find(
@@ -323,17 +347,58 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
 
       # no rule is denied
       refute Enum.any?(project.diagnostics, &(&1.code == :ash_policy_rule_denied))
+
+      # the Listed rule auto-binds the Members, no longer a stored field
+      assert %{details: %{fields: ["members_list_user"]}} =
+               Enum.find(project.diagnostics, &(&1.code == :ash_policy_auto_binding_dropped))
+
+      refute Enum.any?(resource(project, "workspace").extra_actions, &(&1.name == "auto_bind"))
     end
 
-    test "join rows are readable only by an actor who may view the list on its owner" do
+    test "a join row is readable when it is a member of a list the actor may view" do
       project = project!(:cut3, privacy: :unverified)
 
-      # Workspace's Members (its Member rule) shares its join with User's
-      # Workspaces (public): a row needs both, so the Member rule
+      # Workspace's Members (its Member and Listed rules) shares its table
+      # with User's Workspaces (public): each list has its own membership
+      # column, and a row reads for the list(s) it is a member of
       join = join_of(project, "workspace", "members_list_user")
-      calc = Enum.find(join.calculations, &(&1.name == "privacy_visible"))
-      assert calc.expr.expr == {:ref, ["workspace"], "privacy_rule_member"}
       assert Enum.all?(join.relationships, &(not &1.public?))
+
+      assert Enum.map(join.join.sides, &{&1.type, &1.marker}) == [
+               {"user", %{column: "workspaces_position", kind: :position}},
+               {"workspace", %{column: "members_position", kind: :position}}
+             ]
+
+      members = Enum.find(join.calculations, &(&1.name == "privacy_members"))
+
+      assert members.expr.expr ==
+               {:or,
+                [
+                  {:ref, ["workspace"], "privacy_rule_listed"},
+                  {:ref, ["workspace"], "privacy_rule_member"}
+                ]}
+
+      visible = Enum.find(join.calculations, &(&1.name == "privacy_visible"))
+
+      assert visible.expr.expr ==
+               {:or,
+                [
+                  {:not, {:call, "is_nil", [{:ref, [], "workspaces_position"}]}},
+                  {:and,
+                   [
+                     {:not, {:call, "is_nil", [{:ref, [], "members_position"}]}},
+                     {:ref, [], "privacy_members"}
+                   ]}
+                ]}
+
+      # each list's column reads only for those who may view the list
+      assert [
+               %{fields: ["workspaces_position"], checks: [%PolicyCheck{test: :always}]},
+               %{
+                 fields: ["members_position"],
+                 checks: [%PolicyCheck{test: {:calculation, "privacy_members"}}]
+               }
+             ] = join.field_policies
 
       assert [
                %{permission: :keyed, checks: [%PolicyCheck{test: :keyed}]},
@@ -348,18 +413,66 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
       # Project's Tasks: its Workspace member rule
       tasks = join_of(project, "project", "tasks_list_custom_task")
 
-      assert Enum.find(tasks.calculations, &(&1.name == "privacy_visible")).expr.expr ==
+      assert Enum.find(tasks.calculations, &(&1.name == "privacy_tasks")).expr.expr ==
                {:ref, ["project"], "privacy_rule_workspace_member"}
 
-      # the private rows relationships the actor-side membership reads
-      assert Enum.any?(
-               resource(project, "workspace").privacy_relationships,
-               &(&1.name == "user_workspaces_rows" and &1.destination == "UserWorkspaces")
-             )
+      # the private rows relationships the actor-side membership reads,
+      # filtered to their list's rows
+      assert %{membership: %{column: "workspaces_position"}, destination: "UserWorkspaces"} =
+               Enum.find(
+                 resource(project, "workspace").privacy_relationships,
+                 &(&1.name == "user_workspaces_rows")
+               )
 
       {:ok, source} = Source.render(project)
       assert source =~ "authorize_if expr(privacy_visible)"
-      assert Project.privacy_summary(project)["calculations"] > 0
+
+      # a many_to_many reads only its list's rows, gated like the list
+      members_join =
+        Enum.find(resource(project, "workspace").relationships, &(&1.name == "members"))
+
+      assert members_join.membership == %{column: "members_position", kind: :position}
+
+      assert source =~
+               ~r/not is_nil\(members_position\) and\s+parent\(privacy_rule_listed or privacy_rule_member\)/
+
+      assert source =~ "join_relationship :members_join"
+    end
+
+    test "doesn't contain on the current user's normalized list is not compiled: denied" do
+      app = DecidedFixture.app(:membership)
+
+      app =
+        update_in(
+          app,
+          ["user_types", "workspace", "privacy_role", "listed_", "condition"],
+          fn c ->
+            put_in(c, ["next", "next", "name"], "not_contains")
+          end
+        )
+
+      {model, applied, _} =
+        applicable(
+          [
+            {:list_relationship, %{type: "user", field: "workspaces_list_custom_workspace"},
+             :accept, %{}}
+          ],
+          app
+        )
+
+      {:ok, project} = map(model, applied, privacy: :unverified)
+
+      assert Enum.any?(
+               project.diagnostics,
+               &(&1.code == :ash_expr_unsupported and
+                   inspect(&1.details) =~ "doesn't contain on the current user's list")
+             )
+
+      assert Enum.any?(
+               project.diagnostics,
+               &(&1.code == :ash_policy_rule_denied and
+                   &1.subject == %{type: "workspace", rule: "listed_"})
+             )
     end
 
     test "with privacy: :omit the joins have no policies" do

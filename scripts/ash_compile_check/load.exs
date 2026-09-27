@@ -28,11 +28,12 @@
 #     files: copied with verified SHA-256, private ones private (0600, a
 #     private reference), a failed one keeping its Bubble URL
 #   * join tables (cut 3, WTF-406): every list member is one row (a
-#     repeated one once, a dangling one kept), the two mirrored lists of a
-#     shared join are one set of rows with each list's positions, the
-#     interrupted and resumed load, the rerun and the delta sync compare
-#     them too, and a later export that drops members from the lists
-#     deletes their rows (and only theirs)
+#     repeated one once, a dangling one kept) with its list's column; two
+#     mirrored lists sharing a table are written separately, so a member
+#     of one list is never added to the other; the interrupted and resumed
+#     load, the rerun and the delta sync compare them too, and a later
+#     export that drops members moves positions but deletes nothing
+#     (WTF-414 prunes)
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -236,7 +237,7 @@ private_fixtures =
 
     {tables + length(plan.tables) + length(plan.joins),
      columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1))) +
-       Enum.sum(Enum.map(plan.joins, &(2 + Enum.count(&1.sides, fn s -> s.position end))))}
+       Enum.sum(Enum.map(plan.joins, &(2 + length(&1.sides))))}
   end)
 
 IO.puts(
@@ -567,10 +568,15 @@ loaded =
           "a list's rows: a repeated member once, a dangling one kept, positions"
         )
 
+        ws = fn snap ->
+          snap["user_workspaces"]
+          |> Enum.map(&{&1["user_id"], &1["workspace_id"], &1["workspaces_position"], &1["members_position"]})
+          |> Enum.sort()
+        end
+
         LoadCheck.eq!(
           fixture,
-          Enum.map(snapshot["user_workspaces"], &{&1["user_id"], &1["workspace_id"], &1["workspaces_position"], &1["members_position"]})
-          |> Enum.sort(),
+          ws.(snapshot),
           Enum.sort([
             {F.ada(), F.workspace1(), 0, 0},
             {F.bob(), F.workspace1(), nil, 1},
@@ -578,55 +584,32 @@ loaded =
             {F.carol(), F.workspace2(), 0, 0},
             {F.carol(), F.workspace1(), 1, nil}
           ]),
-          "a shared join: both lists' rows, each with its positions"
+          "a shared table: each list's own column, nothing added to the other list"
         )
 
-        # A later export drops Bob from Acme's members and a task from the
-        # project's list: their rows go, and only theirs.
+        # A later export drops Bob from Acme's members: positions move, no
+        # row is deleted and the other list's column is untouched.
         rows = F.cut3_rows()
-        [w1 | ws] = rows["workspace"]
-        [p | ps] = rows["project"]
-
-        rows = %{
-          rows
-          | "workspace" => [Map.put(w1, "Members", [F.ada(), F.gone_user()]) | ws],
-            "project" => [Map.put(p, "Tasks", [F.todo2(), F.gone_task()]) | ps]
-        }
-
+        [w1 | rest] = rows["workspace"]
+        rows = %{rows | "workspace" => [Map.put(w1, "Members", [F.ada(), F.gone_user()]) | rest]}
         {:ok, dropped} = F.export(which, Path.join(dir, "dropped"), rows)
-        {:ok, pruned} = Load.run(dropped, model, target, [storage: storage] ++ base_opts)
+        {:ok, _} = Load.run(dropped, model, target, [storage: storage] ++ base_opts)
 
         LoadCheck.eq!(
           fixture,
-          pruned.joins |> Map.values() |> Enum.map(& &1.deleted) |> Enum.sum(),
-          2,
-          "rows deleted by the delta"
-        )
-
-        after_prune = LoadCheck.snapshot(conn, plan)
-
-        LoadCheck.eq!(
-          fixture,
-          Enum.map(after_prune["project_tasks"], &{&1["task_id"], &1["position"]}) |> Enum.sort(),
-          Enum.sort([{F.todo2(), 0}, {F.gone_task(), 1}]),
-          "the project's rows after the delta"
-        )
-
-        LoadCheck.eq!(
-          fixture,
-          length(after_prune["user_workspaces"]),
-          4,
-          "the membership rows after the delta"
-        )
-
-        LoadCheck.eq!(
-          fixture,
-          after_prune["favorite_project"],
-          snapshot["favorite_project"],
-          "an untouched join after the delta"
+          ws.(LoadCheck.snapshot(conn, plan)),
+          Enum.sort([
+            {F.ada(), F.workspace1(), 0, 0},
+            {F.bob(), F.workspace1(), nil, 1},
+            {F.gone_user(), F.workspace1(), nil, 1},
+            {F.carol(), F.workspace2(), 0, 0},
+            {F.carol(), F.workspace1(), 1, nil}
+          ]),
+          "the membership rows after the delta (none deleted)"
         )
 
         # back to the fixture's state for loaded.exs
+        LoadCheck.truncate(conn, plan)
         {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
     end
 
@@ -678,9 +661,9 @@ checks = [
     id: F.workspace1(),
     expect: %{"name" => "Acme"},
     # members through the private twin (the public one is filtered by the
-    # actor's grants, and there is none): the rows whose user exists, Carol
-    # included (her Workspaces list Acme: the shared join is both lists)
-    relationships: %{"members_for_privacy" => Enum.sort([F.ada(), F.bob(), F.carol()])}
+    # actor's grants, and there is none): the Members rows whose user
+    # exists, not Carol (only her Workspaces list Acme)
+    relationships: %{"members_for_privacy" => Enum.sort([F.ada(), F.bob()])}
   },
   %{
     fixture: "cut3",

@@ -207,6 +207,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "an owner rename decision set a generated name; after the name lock only Elixir names change, and a renamed attribute keeps its column (`source:`)"},
 
     # --- target:ash — BubbleEx.Target.Ash privacy policies (WTF-356) ----------
+    {:ash_policy_auto_binding_dropped, :warning, :degraded, :target,
+     "a field privacy rules let users auto-bind that an owner decision no longer stores (a derived field, or a list normalized to a join); the `:auto_bind` action does not accept it, so the binding needs rewriting"},
     {:ash_privacy_omitted, :info, :degraded, :target,
      "privacy rules the source has (or may have) that were not compiled (`privacy: :omit`, the default); the generated resources have no authorization"},
     {:ash_policies_unverified, :warning, :degraded, :target,
@@ -277,8 +279,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a stored list replaced by a `has_many` (`derive_reverse_relationship`) that differs from the records pointing back; the `has_many` reads the latter"},
     {:load_join_duplicate, :info, :degraded, :load,
      "a list normalized to a join (`normalize_list_to_join`, `membership_policy`) that holds a member more than once; the join has one row per member, at its first position"},
-    {:load_join_asymmetric, :warning, :degraded, :load,
-     "a member of a list normalized to a join shared with its mirrored list, whose own (exported) list does not list the owner back; the join loads the union of both lists, so the member now lists it too"},
+    {:load_join_asymmetric, :info, :preserved, :load,
+     "a member of a list normalized to a join whose table the mirrored list shares, and whose own (exported) list does not list the owner back; each list keeps its own membership column, so nothing is added to the other list"},
     {:load_duplicate_email, :error, :unresolved, :load,
      "users whose trimmed emails are equal ignoring case; the target's unique email identity refuses them, so nothing is written"},
     {:load_invalid_email, :warning, :degraded, :load,

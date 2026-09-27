@@ -1,0 +1,11 @@
+defmodule <%= @module %>.RepoExtensions do
+  @moduledoc """
+  The PostgreSQL extensions the generated resources need (e.g. `pg_trgm`
+  for trigram indexes), from the Bubble app's decisions. Generated:
+  rewritten on every generation. `<%= @module %>.Repo.installed_extensions/0`
+  adds them.
+  """
+
+  @doc "The extensions, sorted."
+  def all, do: <%= inspect(@extensions) %>
+end

@@ -157,6 +157,13 @@ defmodule MyApp.Project do
       public? true
     end
 
+    has_many :tasks_join, MyApp.ProjectTasks do
+      source_attribute :id
+      destination_attribute :project_id
+      public? false
+      filter expr(not is_nil(position))
+    end
+
     many_to_many :tasks, MyApp.Task do
       through MyApp.ProjectTasks
       source_attribute :id
@@ -165,6 +172,13 @@ defmodule MyApp.Project do
       destination_attribute :id
       join_relationship :tasks_join
       public? true
+    end
+
+    has_many :viewers_join, MyApp.FavoriteProject do
+      source_attribute :id
+      destination_attribute :project_id
+      public? false
+      filter expr(viewers_listed == true)
     end
 
     many_to_many :viewers, MyApp.User do
@@ -358,6 +372,13 @@ defmodule MyApp.User do
       public? true
     end
 
+    has_many :favorites_join, MyApp.FavoriteProject do
+      source_attribute :id
+      destination_attribute :user_id
+      public? false
+      filter expr(not is_nil(favorites_position))
+    end
+
     many_to_many :favorites, MyApp.Project do
       through MyApp.FavoriteProject
       source_attribute :id
@@ -445,7 +466,7 @@ defmodule MyApp.Workspace do
 end
 
 defmodule MyApp.ProjectTasks do
-  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b); the list is not stored."
+  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is set); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
 
@@ -507,7 +528,7 @@ defmodule MyApp.ProjectTasks do
 end
 
 defmodule MyApp.FavoriteProject do
-  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50); the lists are not stored. Both lists are one relation: a row lists each record in the other's list."
+  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is set) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
 
@@ -540,6 +561,7 @@ defmodule MyApp.FavoriteProject do
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
 
+    attribute :viewers_listed, :boolean, allow_nil?: true, writable?: true, public?: true
     attribute :favorites_position, :integer, allow_nil?: true, writable?: true, public?: true
   end
 

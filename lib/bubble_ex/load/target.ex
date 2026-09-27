@@ -23,15 +23,12 @@ defmodule BubbleEx.Load.Target do
       export's emails against the target's unique identity before writing)
     * `clear/4` - sets a column to nil for the records with the given keys
       (the first phase of an email swap)
-    * `upsert_join/3` - writes one batch of rows of a join table
-      (`BubbleEx.Load.Plan.Join`): each row maps its two ID columns and its
-      position columns to values. An idempotent upsert on the two IDs (the
-      positions replaced), returning the counts like `upsert/3`
-    * `prune_join/4` - deletes the rows of a join table that are not in
-      `keep` (every row the export gives it) and whose left ID is one of
-      `owners.left` or right ID one of `owners.right` (the exported owners
-      of its lists): members removed from a list since an earlier load.
-      Returns the number deleted
+    * `upsert_join/4` - writes one batch of rows of one list of a join
+      table (`BubbleEx.Load.Plan.Join` and one of its sides): each row maps
+      the two ID columns and the list's membership column to values. An
+      idempotent upsert on the two IDs that sets only that list's column:
+      another list's column is never changed. Returns the counts like
+      `upsert/3`
 
   `BubbleEx.Target.Ash.Loader` is the Ash/PostgreSQL adapter.
   """
@@ -55,12 +52,6 @@ defmodule BubbleEx.Load.Target do
               {:ok, [{String.t(), term()}]} | {:error, Error.t()}
   @callback clear(config :: term(), Plan.Table.t(), column :: String.t(), [String.t()]) ::
               :ok | {:error, Error.t()}
-  @callback upsert_join(config :: term(), Plan.Join.t(), [map()]) ::
+  @callback upsert_join(config :: term(), Plan.Join.t(), Plan.Join.side(), [map()]) ::
               {:ok, counts()} | {:error, Error.t()}
-  @callback prune_join(
-              config :: term(),
-              Plan.Join.t(),
-              keep :: [map()],
-              owners :: %{left: [String.t()], right: [String.t()]}
-            ) :: {:ok, non_neg_integer()} | {:error, Error.t()}
 end

@@ -48,6 +48,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
   @later %{}
 
   @join_transforms [:normalize_list_to_join, :membership_policy]
+  @join_bases [:single, :coupled, :unique_types]
 
   # Field transforms: each drops or changes one field's attribute.
   @field_ops [:refine, :derive, :count, :text_ref, :reverse, :join]
@@ -623,15 +624,17 @@ defmodule BubbleEx.Target.Ash.Decisions do
   defp join_proposal(a, {type, f}, to, ctx) do
     own = Symbol.id(:field, [type, f])
 
-    with %{id: id, between: between, fields: [_ | _] = fields} <- a.proposal[:join] || :none,
+    with %{id: id, between: between, fields: [_ | _] = fields, basis: basis} <-
+           a.proposal[:join] || :none,
          true <- length(fields) <= 2 and Enum.all?(fields, &is_binary/1),
          true <- fields == fields |> Enum.uniq() |> Enum.sort(),
          true <- id == Joins.id(fields),
          true <- own in fields,
+         true <- basis in @join_bases and basis == :single == match?([_], fields),
          true <- between == Enum.sort(["data_type:" <> type, "data_type:" <> to]),
          {:ok, lists} <- join_lists(fields, ctx),
          true <- mirrored?(lists) do
-      {:ok, %{id: id, fields: fields, lists: lists}}
+      {:ok, shared_join(%{id: id, fields: fields, lists: lists}, basis, own, {type, f})}
     else
       _ ->
         error(
@@ -653,6 +656,21 @@ defmodule BubbleEx.Target.Ash.Decisions do
         _ -> {:error, :not_a_list}
       end
     end)
+  end
+
+  # Two lists share one join table only with evidence that they are one
+  # relation: a workflow maintains both (`:coupled`). Two lists paired only
+  # because they are the only lists between their types (`:unique_types`)
+  # may be different relations, so each gets a join of its own (the ID of
+  # its field alone). Sharing never mixes their members: each list keeps
+  # its own membership column.
+  defp shared_join(join, :coupled, _own, _subject), do: join
+
+  defp shared_join(%{fields: [_]} = join, _basis, _own, _subject), do: join
+
+  defp shared_join(join, _basis, own, {type, f}) do
+    list = Enum.find(join.lists, &(elem(&1, 0) == type and elem(&1, 1) == f))
+    %{id: Joins.id([own]), fields: [own], lists: [list]}
   end
 
   # Two lists share a join when each lists the other's owner type.
@@ -1393,7 +1411,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   defp field_diag({:join, {t, f}, a, data}, ctx) do
     join = Map.fetch!(ctx.joins, data.join.id)
-    others = for {lt, lf, _} <- data.join.lists, {lt, lf} != {t, f}, do: {lt, lf}
+    others = for {lt, lf, _} <- join.lists, {lt, lf} != {t, f}, do: {lt, lf}
 
     shared =
       case others do
@@ -1402,7 +1420,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
         [{pt, pf}] ->
           if Enum.any?(join.sides, &({&1.type, &1.field} == {pt, pf})),
-            do: "; the join is shared with the mirrored list #{pt}.#{pf}",
+            do:
+              "; the join table is shared with the mirrored list #{pt}.#{pf} (each list " <>
+                "keeps its own membership column)",
             else:
               "; the mirrored list #{pt}.#{pf} stays stored (no decision of the set " <>
                 "normalizes it)"
@@ -1430,7 +1450,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
           key: a.key,
           transform: a.transform,
           join: data.join.id,
-          shared_with: Enum.map(others, fn {pt, pf} -> Symbol.id(:field, [pt, pf]) end),
+          join_table_with: Enum.map(others, fn {pt, pf} -> Symbol.id(:field, [pt, pf]) end),
           keep_order: data.keep_order
         }
       )
@@ -1718,6 +1738,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
       source_attribute_on_join_resource: own.column,
       destination_attribute_on_join_resource: member.column,
       join_relationship: side.join_relationship,
+      membership: side.marker,
       source: %{type: resource.source.type, field: a.source.field}
     }
   end
@@ -1815,14 +1836,14 @@ defmodule BubbleEx.Target.Ash.Decisions do
     {lcol, used, attrs} = join_name(attrs, "left", id_base(Naming.underscore(left.module)), used)
     {rcol, used, attrs} = join_name(attrs, "right", id_base(right_base), used)
 
-    {positions, {used, attrs}} =
-      Enum.map_reduce(spec.sides, {used, attrs}, &position_column(&1, spec, by_type, &2))
+    {markers, {used, attrs}} =
+      Enum.map_reduce(spec.sides, {used, attrs}, &marker_column(&1, spec, by_type, &2))
 
     {lrel, used} = Naming.claim(relationship_base(lcol), used, :snake, :attribute)
     {rrel, _used} = Naming.claim(relationship_base(rcol), used, :snake, :attribute)
 
     {sides, names} =
-      Enum.map_reduce(positions, names, fn {side, position}, names ->
+      Enum.map_reduce(markers, names, fn {side, marker}, names ->
         owner = by_type[side.type]
         {jr, names} = join_relationship(owner, side.field, names)
 
@@ -1832,7 +1853,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
            owner: side.owner,
            relationship: attribute_of(owner, side.field).name,
            join_relationship: jr,
-           position: position,
+           marker: marker,
+           position: if(marker.kind == :position, do: marker.column),
            key: side.key,
            transform: side.transform
          }, names}
@@ -1874,9 +1896,12 @@ defmodule BubbleEx.Target.Ash.Decisions do
       attributes:
         [id_attribute.(lcol, lt), id_attribute.(rcol, rt)] ++
           for(
-            %{position: p} <- sides,
-            p != nil,
-            do: %Attribute{name: p, type: :integer, source: source}
+            %{marker: m} <- sides,
+            do: %Attribute{
+              name: m.column,
+              type: if(m.kind == :position, do: :integer, else: :boolean),
+              source: source
+            }
           ),
       relationships: [belongs_to.(lrel, lcol, left), belongs_to.(rrel, rcol, right)],
       indexes: [
@@ -1899,18 +1924,20 @@ defmodule BubbleEx.Target.Ash.Decisions do
     {join, {names, modules, tables}}
   end
 
-  # A list's position column, when its order is kept: `position`, or
-  # `<list name>_position` in a join two lists share.
-  defp position_column(%{keep_order: false} = side, _spec, _by_type, acc), do: {{side, nil}, acc}
+  # Each list's membership column: a row is a member of the list when it
+  # is set. Its position (`position`, or `<list name>_position` in a join
+  # two lists share: the member's index in Bubble's list) when the order
+  # is kept, else a flag (`listed`, `<list name>_listed`, true).
+  defp marker_column(side, spec, by_type, {used, attrs}) do
+    {kind, suffix} = if side.keep_order, do: {:position, "position"}, else: {:flag, "listed"}
 
-  defp position_column(side, spec, by_type, {used, attrs}) do
     base =
       if length(spec.lists) == 1,
-        do: "position",
-        else: cut(attribute_of(by_type[side.type], side.field).name, 40) <> "_position"
+        do: suffix,
+        else: cut(attribute_of(by_type[side.type], side.field).name, 40) <> "_" <> suffix
 
     {col, used, attrs} = join_name(attrs, "#{side.type}/#{side.field}", base, used)
-    {{side, col}, {used, attrs}}
+    {{side, %{column: col, kind: kind}}, {used, attrs}}
   end
 
   defp locked_or_claim(nil, base, used, style, scope), do: Naming.claim(base, used, style, scope)
@@ -1971,17 +1998,18 @@ defmodule BubbleEx.Target.Ash.Decisions do
     end
   end
 
-  defp join_description(spec, sides) do
+  defp join_description(_spec, sides) do
     lists =
-      Enum.map_join(sides, " and ", &"#{&1.type}.#{&1.field} (owner decision #{&1.key})")
+      Enum.map_join(sides, " and ", fn side ->
+        "#{side.type}.#{side.field} (owner decision #{side.key}; member when " <>
+          "#{side.marker.column} is set)"
+      end)
 
     what = if length(sides) == 2, do: "the lists are", else: "the list is"
 
-    "Join: one row per member of #{lists}; #{what} not stored." <>
-      if(length(spec.lists) == 2 and length(sides) == 2,
-        do: " Both lists are one relation: a row lists each record in the other's list.",
-        else: ""
-      )
+    "Join: one row per member of #{lists}; #{what} not stored. A row written by the " <>
+      "app must set the membership column of its list; rows written after the cutover " <>
+      "have no Bubble position, so their order among the list's members is not defined."
   end
 
   # --- indexes ---------------------------------------------------------------------

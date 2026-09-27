@@ -595,6 +595,7 @@ defmodule BubbleEx.Target.Phoenix do
       end
 
     templates = %{
+      (lib <> "repo_extensions.ex") => "lib/app/repo_extensions.ex",
       (lib <> "accounts/token.ex") => "lib/app/accounts/token.ex",
       (lib <> "accounts/resources.ex") => "lib/app/accounts/resources.ex",
       (web <> "controllers/workflow_api_controller.ex") =>

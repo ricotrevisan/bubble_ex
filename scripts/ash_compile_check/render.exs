@@ -170,7 +170,7 @@ open_joins = fn {:ok, project}, mode ->
           p -> p
         end)
 
-      %{j | policies: policies, calculations: []}
+      %{j | policies: policies, calculations: [], field_policies: []}
     end)
 
   resources =
@@ -423,24 +423,28 @@ decision_expectations =
             for side <- j.join.sides do
               owner = Map.fetch!(by_type, side.type)
               rel = Enum.find(owner.relationships, &(&1.name == side.relationship))
+              # (with policies, the ungated twin and its own join relationship)
+              twin = Enum.find(owner.relationships ++ owner.privacy_relationships, &(&1.name == twin_of.(owner, rel)))
 
               %{
                 owner: namespace <> "." <> owner.module,
-                relationship: twin_of.(owner, rel),
-                join_relationship: rel.join_relationship,
+                relationship: twin.name,
+                join_relationship: twin.join_relationship,
                 member: namespace <> "." <> rel.destination,
                 owner_column: rel.source_attribute_on_join_resource,
                 member_column: rel.destination_attribute_on_join_resource,
-                position: side.position
+                marker: side.marker.column,
+                kind: side.marker.kind
               }
             end
         }
       end
 
     # With policies, the cut-3 fixture's restrictive joins, read with
-    # authorization on by a member and an outsider (decisions.exs): the
-    # membership join of Workspace's Members (its Member rule tests it;
-    # shared with User's Workspaces, which Bubble shows to everyone) and
+    # authorization on (decisions.exs). Workspace's Members (a membership
+    # join: its Member rule tests it) shares its table with User's
+    # Workspaces (Bubble shows it to everyone; the Workspace's Listed rule
+    # tests the current user's list), each list with its own column; and
     # Project's Tasks (its rule tests the Workspace's Members: a join read
     # through another). `variant` says what the mutants must leak.
     join_privacy =
@@ -449,9 +453,24 @@ decision_expectations =
           Enum.find(by_type[type].relationships, &(&1.source[:field] == field))
         end
 
+        rows = fn member_type, owner_type, field ->
+          Enum.find_value(by_type[member_type].privacy_relationships, fn r ->
+            if r.source[:list] == %{type: owner_type, field: field}, do: r.name
+          end)
+        end
+
+        calc = fn type, rule ->
+          Enum.find_value(by_type[type].calculations, fn c ->
+            if c.source[:rule] == rule, do: c.name
+          end)
+        end
+
         members = m2m.("workspace", "members_list_user")
         workspaces = m2m.("user", "workspaces_list_custom_workspace")
         tasks = m2m.("project", "tasks_list_custom_task")
+        [members_side] = for j <- project.joins, s <- j.join.sides, s.field == "members_list_user", do: s
+        [workspaces_side] = for j <- project.joins, s <- j.join.sides, s.field == "workspaces_list_custom_workspace", do: s
+        [tasks_side] = for j <- project.joins, s <- j.join.sides, s.field == "tasks_list_custom_task", do: s
 
         workspace_attr =
           Enum.find_value(by_type["project"].attributes, fn a ->
@@ -464,13 +483,18 @@ decision_expectations =
           membership: %{
             join: namespace <> "." <> members.through,
             owner: namespace <> "." <> by_type["workspace"].module,
-            relationship: members.name,
-            join_relationship: members.join_relationship,
-            owner_column: members.source_attribute_on_join_resource,
-            member_column: members.destination_attribute_on_join_resource,
-            mirror: workspaces.name,
-            mirror_join_relationship: workspaces.join_relationship,
-            mirror_member_column: workspaces.destination_attribute_on_join_resource
+            user_column: members.destination_attribute_on_join_resource,
+            workspace_column: members.source_attribute_on_join_resource,
+            members_marker: members_side.marker.column,
+            workspaces_marker: workspaces_side.marker.column,
+            members: members.name,
+            members_join: members.join_relationship,
+            workspaces: workspaces.name,
+            # the user's rows of Workspace's Members, and the workspace's of
+            # User's Workspaces (private, only the list's rows)
+            member_rows: rows.("user", "workspace", "members_list_user"),
+            member_rule: calc.("workspace", "member_"),
+            listed_rule: calc.("workspace", "listed_")
           },
           nested: %{
             join: namespace <> "." <> tasks.through,
@@ -480,6 +504,8 @@ decision_expectations =
             join_relationship: tasks.join_relationship,
             owner_column: tasks.source_attribute_on_join_resource,
             member_column: tasks.destination_attribute_on_join_resource,
+            marker: tasks_side.marker.column,
+            rows: rows.("task", "project", "tasks_list_custom_task"),
             workspace_attribute: workspace_attr
           }
         }

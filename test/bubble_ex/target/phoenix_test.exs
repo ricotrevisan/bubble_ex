@@ -16,6 +16,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     "lib/acme_import/enums/status.ex",
     "lib/acme_import/invoice.ex",
     "lib/acme_import/invoice2.ex",
+    "lib/acme_import/repo_extensions.ex",
     "lib/acme_import/tag.ex",
     "lib/acme_import/types/json_value.ex",
     "lib/acme_import/user.ex",
@@ -116,7 +117,10 @@ defmodule BubbleEx.Target.PhoenixTest do
       for resource <- ~w(Invoice Invoice2 Tag User Accounts.Token),
           do: assert(domain =~ "resource AcmeImport.#{resource}")
 
-      assert files["lib/acme_import/repo.ex"] =~ ~s(["ash-functions", "citext"])
+      assert files["lib/acme_import/repo.ex"] =~
+               ~s{["ash-functions", "citext"] ++ AcmeImport.RepoExtensions.all()}
+
+      assert files["lib/acme_import/repo_extensions.ex"] =~ "def all, do: []"
       assert files["lib/acme_import/repo.ex"] =~ "%Version{major: 14"
       assert files["lib/acme_import/enums/status.ex"] =~ ~s({"open", [label: "Open"]})
     end
@@ -129,12 +133,30 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert Map.has_key?(manifest(files)["generated"], "lib/acme_import/project_tasks.ex")
       assert files["lib/acme_import/project.ex"] =~ "through AcmeImport.ProjectTasks"
 
-      # the cut-2 hints applied by default include a trigram index
+      # the cut-2 hints applied by default include a trigram index: the
+      # generated RepoExtensions lists pg_trgm, and a Repo scaffolded
+      # before it (no call) is reported
       {:ok, indexed} = BubbleEx.Test.DecidedFixture.project(:indexes)
       assert indexed.extensions == ["pg_trgm"]
+      files = render!(indexed)
+      assert files["lib/acme_import/repo_extensions.ex"] =~ ~s(def all, do: ["pg_trgm"])
+      manifest = files[".wtf/generated.json"]
+      assert {:ok, %{extensions_unlisted: []}} = Phoenix.check_manifest(manifest, files)
 
-      assert render!(indexed)["lib/acme_import/repo.ex"] =~
-               ~s(["ash-functions", "citext", "pg_trgm"])
+      old_repo =
+        String.replace(
+          files["lib/acme_import/repo.ex"],
+          " ++ AcmeImport.RepoExtensions.all()",
+          ""
+        )
+
+      assert {:ok, %{extensions_unlisted: ["pg_trgm"]}} =
+               Phoenix.check_manifest(manifest, %{files | "lib/acme_import/repo.ex" => old_repo})
+
+      named = String.replace(old_repo, ~s("citext"]), ~s("citext", "pg_trgm"]))
+
+      assert {:ok, %{extensions_unlisted: []}} =
+               Phoenix.check_manifest(manifest, %{files | "lib/acme_import/repo.ex" => named})
     end
 
     test "adds magic-link authentication to the User through an owned fragment" do

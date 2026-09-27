@@ -124,13 +124,14 @@ defmodule BubbleEx.Load.Plan.Join do
     * `table` - the target's table name
     * `left`, `right` - `%{type, column}`: the data type of each record ID
       and the column holding it; together the primary key
-    * `sides` - the lists it stores, `%{type, field, owner, position}`:
-      data type `type`'s list `field` holds, per row, the record of the
-      `owner` column (`:left` or `:right`) listing the other one;
-      `position` is the column of the member's index in the list (from 0),
-      or nil when the order is not kept. Two sides are two lists mirroring
-      each other: one row stands for both (the loader loads their union and
-      reports the members listed on one side only)
+    * `sides` - the lists it stores, `%{type, field, owner, column,
+      kind}`: data type `type`'s list `field` holds, per row, the record of
+      the `owner` column (`:left` or `:right`) listing the other one;
+      `column` marks the row as a member of that list (`kind` `:position`:
+      the member's index in the list, from 0; `:flag`: true). Two sides are
+      two lists mirroring each other: a row may be a member of one and not
+      the other, and a list's rows are written without touching the other
+      list's column
   """
 
   @enforce_keys [:id, :table, :left, :right, :sides]
@@ -141,7 +142,8 @@ defmodule BubbleEx.Load.Plan.Join do
           type: String.t(),
           field: String.t(),
           owner: :left | :right,
-          position: String.t() | nil
+          column: String.t(),
+          kind: :position | :flag
         }
   @type t :: %__MODULE__{
           id: String.t(),
