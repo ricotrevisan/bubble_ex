@@ -220,6 +220,13 @@ defmodule <%= @web %>.BubbleData do
 
   # --- reads -----------------------------------------------------------------------------
 
+  @doc "Loads a page expression's relationships with a database-side limit on every list."
+  def load_value(value, loads, ctx) do
+    if data_access?(),
+      do: Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), max_items()),
+      else: value
+  end
+
   @doc "A page's thing: the record whose unique ID is in the URL, read through Ash."
   def url_thing(ctx, resource) do
     case ctx.thing do
@@ -336,7 +343,8 @@ defmodule <%= @web %>.BubbleData do
   """
   def actor(ctx, path, loads) do
     ctx
-    |> BubbleWorkflows.actor(loads)
+    |> BubbleWorkflows.actor([])
+    |> load_value(loads, ctx)
     |> get_path(path)
   end
 

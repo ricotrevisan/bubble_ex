@@ -19,7 +19,11 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
         inputs: %{"query" => {:text, nil}},
         loaded: [],
         intervals: [],
-        clicks: %{"read" => ["observe"], "write" => ["write", "observe"]},
+        clicks: %{
+          "read" => ["observe"],
+          "write" => ["write", "observe"],
+          "final" => ["final_write"]
+        },
         changes: %{"query" => ["consume", "observe"]},
         conditions: [
           {"initial", :every_time},
@@ -56,6 +60,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
         "consume" => %{condition: nil, run: :consume, blocked: [], data: false},
         "observe" => %{condition: nil, run: :observe, blocked: [], data: true},
         "write" => %{condition: nil, run: :write, blocked: [], data: true},
+        "final_write" => %{condition: nil, run: :final_write, blocked: [], data: true},
         "noop" => %{condition: nil, run: :noop, blocked: [], data: false}
       }
 
@@ -70,7 +75,11 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       do: PhxCheckWeb.BubbleWorkflows.data(ctx, [], "task") |> then(&(&1 && &1.title))
 
     def initial(ctx), do: fire(ctx, :initial)
-    def updated(ctx), do: fire(ctx, :updated)
+
+    def updated(ctx) do
+      send(self(), {:updated_budget, ctx.backend.calls})
+      fire(ctx, :updated)
+    end
 
     def input_updated(ctx) do
       send(self(), {:condition_budget, ctx.backend.calls})
@@ -100,6 +109,11 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       |> Ash.update!(authorize?: false)
 
       {:done, ctx}
+    end
+
+    def final_write(ctx) do
+      {:cont, ctx} = PhxCheckWeb.BubbleWorkflows.call(ctx, "consume", __MODULE__, "noop", [], %{})
+      write(ctx)
     end
 
     def noop(ctx), do: {:done, ctx}
@@ -437,6 +451,56 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       })
 
     assert_received {:observed, "Bread", nil, _}
+  end
+
+  test "the last write settles on freshly loaded data with the same call budget" do
+    on()
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, ConditionPage)
+
+    socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        socket,
+        ConditionPage,
+        %{"bubble_thing" => @t1},
+        "http://localhost/task/#{@t1}"
+      )
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(socket, ConditionPage, {:bubble, :page_loaded})
+
+    assert_received {:condition_fired, :initial}
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:click", %{
+        "scope" => "",
+        "element" => "final"
+      })
+
+    assert_received {:condition_fired, :updated}
+    assert_received {:updated_budget, calls}
+    assert calls == Runtime.root(nil, nil).calls - 1
+
+    # A later PubSub refresh cannot fire the same edge with a fresh budget.
+    topic = PhxCheck.Bubble.Changes.topic("Task", @t1)
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(
+        socket,
+        ConditionPage,
+        {:bubble, :data_changed, topic}
+      )
+
+    assert_receive {:bubble, :data_refresh, ref}, 500
+
+    {:noreply, _socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(
+        socket,
+        ConditionPage,
+        {:bubble, :data_refresh, ref}
+      )
+
+    refute_received {:condition_fired, :updated}
   end
 
   test "input workflow waits for the debounced read and retains the shared budget" do

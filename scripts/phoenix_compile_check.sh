@@ -100,6 +100,14 @@ for fixture in $fixtures; do
         "$scratch" test/support/target/phoenix/frontend_workflows.json)
     fi
 
+    # Join-backed page reads and membership notifications (WTF-420).
+    if [[ "$fixture" == decided_cut3 ]]; then
+      cp "$root/test/support/target/phoenix/join_page_data_behavior.exs" \
+        test/join_page_data_behavior_test.exs
+      mix test test/join_page_data_behavior_test.exs
+      rm test/join_page_data_behavior_test.exs
+    fi
+
     # Page data (WTF-420): what the generated pages load, and never load.
     if [[ "$fixture" == phoenix_page_data ]]; then
       cp "$root/test/support/target/phoenix/page_data_behavior.exs" \

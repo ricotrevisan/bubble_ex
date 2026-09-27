@@ -63,7 +63,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     test = "test/#{ctx.app}_web/bubble_frontend_workflows_test.exs"
 
-    assigns = %{web: ctx.web, module: ctx.module, app: ctx.app}
+    assigns = %{web: ctx.web, module: ctx.module, app: ctx.app, join_topics: ctx.join_topics}
 
     %{
       owned: Map.put(owned, test, format(tests(spec, ctx))),
@@ -496,7 +496,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   # The variables the expressions read, bound from the context (each once,
   # with the union of the relationship loads its uses need).
-  defp prelude(exprs, cell_preloaded? \\ false) do
+  defp prelude(exprs, cell_preloaded? \\ false, page_data? \\ false) do
     exprs
     |> Enum.flat_map(& &1.bindings)
     |> Enum.group_by(& &1.var)
@@ -504,14 +504,16 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     |> Enum.map_join(fn {var, [b | _] = bs} ->
       loads = bs |> Enum.flat_map(& &1.loads) |> Enum.uniq() |> Enum.sort()
 
-      value =
-        if cell_preloaded? and match?({:cell, _}, b.bind),
-          do: "ctx.cell",
-          else: binding(b.bind, loads)
-
-      "  #{var} = #{value}\n"
+      "  #{var} = #{prelude_binding(b.bind, loads, cell_preloaded?, page_data?)}\n"
     end)
   end
+
+  defp prelude_binding({:cell, _}, _loads, true, _page_data?), do: "ctx.cell"
+
+  defp prelude_binding(bind, loads, _cell_preloaded?, true),
+    do: page_loaded(binding(bind, []), loads)
+
+  defp prelude_binding(bind, loads, _cell_preloaded?, false), do: binding(bind, loads)
 
   defp ctx_arg(exprs),
     do: if(Enum.flat_map(exprs, & &1.bindings) == [], do: "_ctx", else: "ctx")
@@ -540,19 +542,21 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # The page's data (WTF-420).
   defp binding({:data, k}, loads),
     do:
-      loaded(
+      page_loaded(
         "BubbleWorkflows.data(ctx, #{source(k.path)}, #{literal(k.element)})",
         loads
       )
 
-  defp binding({:cell, _rg}, loads), do: loaded("ctx.cell", loads)
+  defp binding({:cell, _rg}, loads), do: page_loaded("ctx.cell", loads)
   defp binding({:cell_index, _rg}, _loads), do: "ctx.cell_index"
 
   defp binding({:cell_data, g}, loads),
-    do: loaded("BubbleWorkflows.cell_data(ctx, #{literal(g)})", loads)
+    do: page_loaded("BubbleWorkflows.cell_data(ctx, #{literal(g)})", loads)
 
-  defp loaded(value, []), do: value
-  defp loaded(value, loads), do: "BubbleWorkflows.load(#{value}, #{loads_source(loads)}, ctx)"
+  defp page_loaded(value, []), do: value
+
+  defp page_loaded(value, loads),
+    do: "BubbleData.load_value(#{value}, #{loads_source(loads)}, ctx)"
 
   # Relationship paths as names (strings), as the backend's printer:
   # `Runtime.load/3` turns them into existing atoms.
@@ -627,7 +631,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         {:value, v} ->
           resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
 
-          "#{prelude([v], d.cell != nil)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+          "#{prelude([v], d.cell != nil, true)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
 
         {:query, q} ->
           query_source(q, d, ctx)
@@ -672,7 +676,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       end
 
     """
-    #{prelude(values)}#{pins}#{ctx.module}.#{q.resource}
+    #{prelude(values, false, true)}#{pins}#{ctx.module}.#{q.resource}
     |> Ash.Query.filter(#{Source.filter(q.filter)})
     #{sort}|> BubbleData.read(ctx, #{take}, #{inspect(d.page_size)})
     """

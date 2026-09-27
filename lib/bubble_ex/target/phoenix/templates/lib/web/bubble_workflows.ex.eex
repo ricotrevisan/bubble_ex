@@ -269,9 +269,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     if BubbleData.pending?(socket, ref) do
       run = socket.assigns[:bubble_pending_run] || start(socket, nil)
       socket = socket |> assign(:bubble_pending_run, nil) |> BubbleData.refresh(page, ref)
-      {socket, run} = run_events(socket, page, socket.assigns[:bubble_pending_events] || [], run, true)
+      pending = socket.assigns[:bubble_pending_events] || []
+      {socket, run} = run_events(socket, page, pending, run, true)
       socket = assign(socket, :bubble_pending_events, nil)
-      {socket, run} = settle(socket, page, run)
+      {socket, run} = settle_after_events(socket, page, pending, run)
       {:noreply, dispatch(socket, run)}
     else
       {:noreply, socket}
@@ -351,7 +352,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     case reload do
       :already_loaded ->
         {socket, run} = run_events(socket, page, runs, run, true)
-        {socket, run} = settle(socket, page, run)
+        {socket, run} = settle_after_events(socket, page, runs, run)
         dispatch(socket, run)
 
       :deferred ->
@@ -377,7 +378,7 @@ defmodule <%= @web %>.BubbleWorkflows do
           # No page data to re-read: keep input-only workflows and their
           # conditions responsive without a needless debounce timer.
           {socket, run} = run_events(socket, page, runs, run, true)
-          {socket, run} = settle(socket, page, run)
+          {socket, run} = settle_after_events(socket, page, runs, run)
           dispatch(socket, run)
         end
 
@@ -393,9 +394,21 @@ defmodule <%= @web %>.BubbleWorkflows do
           |> assign(:bubble_data_refresh, nil)
         socket = BubbleData.load(socket, page)
         {socket, run} = run_events(socket, page, pending, run, true)
-        {socket, run} = settle(socket, page, run)
+        {socket, run} = settle_after_events(socket, page, pending, run)
         dispatch(socket, run)
     end
+  end
+
+  # The final workflow may write the data a condition reads. Re-read before
+  # settling, not later via PubSub (which would start a fresh root budget).
+  defp settle_after_events(socket, page, runs, run) do
+    socket =
+      if BubbleData.data_access?() and Enum.any?(runs, fn {_, _, ids, _} -> ids != [] end) and
+           Enum.any?(surfaces(page), fn {_, module} -> BubbleData.sources(module) != [] end),
+        do: BubbleData.load(socket, page),
+        else: socket
+
+    settle(socket, page, run)
   end
 
   defp run_events(socket, page, runs, run, loaded?) do

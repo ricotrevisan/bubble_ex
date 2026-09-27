@@ -5,11 +5,34 @@ defmodule <%= @module %>.Bubble.Changes do
   `Ash.Notifier.PubSub` with this module as their `module`: a create,
   update or delete of a record of type `Type` is broadcast on
   `"bubble:Type"`, and an update or delete also on `"bubble:Type:<id>"`.
-  Only the topic travels (`{:bubble, :data_changed, topic}`), never the
-  record: a page that receives it reads again with its own actor.
+  A join row's create, update or destroy also publishes each affected
+  owner's record topic. Only the topic travels
+  (`{:bubble, :data_changed, topic}`), never the record: a page that
+  receives it reads again with its own actor.
   """
 
   @pubsub <%= @module %>.PubSub
+  @join_topics %{
+<%= for {resource, owners} <- @join_topics do %>    <%= @module %>.<%= resource %> => [<%= Enum.map_join(owners, ", ", fn {type, column} -> "{#{inspect(type)}, #{inspect(String.to_atom(column))}}" end) %>],
+<% end %>  }
+
+  use Ash.Notifier
+
+  @doc false
+  def notify(%Ash.Notifier.Notification{resource: resource, data: data, changeset: changeset}) do
+    topics =
+      for {type, column} <- Map.get(@join_topics, resource, []),
+          record <- [data, changeset && changeset.data],
+          is_map(record),
+          id = Map.get(record, column),
+          not is_nil(id),
+          do: topic(type, id)
+
+    topics |> Enum.uniq() |> Enum.each(&broadcast(&1, nil, nil))
+  end
+
+  # An update may move a row to another owner; refresh the old owner too.
+  def requires_original_data?(_, _), do: true
 
   @doc false
   # Called by Ash.Notifier.PubSub (`module`): the notification is dropped.

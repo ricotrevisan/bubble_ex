@@ -163,7 +163,10 @@ defmodule BubbleEx.PageDataTest do
       assert is_binary(page)
 
       assert page =~
-               ~s|BubbleWorkflows.load(BubbleWorkflows.data(ctx, [], "pHome"), [["tasks"]], ctx)|
+               ~s|BubbleData.load_value(BubbleWorkflows.data(ctx, [], "pHome"), [["tasks"]], ctx)|
+
+      assert files["lib/shop_web/bubble_data.ex"] =~
+               "Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), max_items())"
 
       assert page =~ "BubbleData.records("
       assert page =~ "Shop.Task"

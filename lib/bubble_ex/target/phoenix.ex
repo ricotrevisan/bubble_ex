@@ -360,6 +360,7 @@ defmodule BubbleEx.Target.Phoenix do
              api_clients: clients,
              workflows: workflows,
              data_resources: data_resources(Keyword.get(opts, :frontend_workflows)),
+             join_topics: join_topics(project),
              # the PostgreSQL extensions the project's indexes need
              # (`pg_trgm` for trigram indexes), in the scaffolded Repo
              extensions: project.extensions
@@ -743,6 +744,15 @@ defmodule BubbleEx.Target.Phoenix do
       {path, mark_generated(path, content, Map.has_key?(ash, path))}
     end)
     |> Map.merge(workflow_json)
+    |> then(fn files ->
+      if ctx.join_topics == [] do
+        files
+      else
+        path = "lib/#{ctx.app}/bubble/changes.ex"
+        content = Templates.render("lib/app/bubble/changes.ex", assigns)
+        Map.put(files, path, mark_generated(path, content, false))
+      end
+    end)
     |> Map.put(".wtf/names.json", pretty_json(project.names))
   end
 
@@ -788,28 +798,56 @@ defmodule BubbleEx.Target.Phoenix do
 
   defp data_resources(_), do: []
 
-  # `Ash.Notifier.PubSub` on each: a create, update or delete is published
-  # on the type's topic, an update or delete on the record's too, through
-  # `<Module>.Bubble.Changes` (topic names only, never the record).
+  # A join write changes the owner's list even though the owner record itself
+  # was not updated. Publish only the affected owner IDs, never join records.
+  defp join_topics(project) do
+    types = Map.new(project.resources, &{&1.source.type, &1.module})
+
+    for join <- project.joins do
+      owners =
+        for side <- join.join.sides,
+            endpoint = Map.fetch!(join.join, side.owner),
+            uniq: true,
+            do: {Map.fetch!(types, side.type), endpoint.column}
+
+      {join.module, owners}
+    end
+  end
+
+  # Page resources publish type and record topics through Ash.Notifier.PubSub.
+  # Join resources use Changes as a notifier to publish their owners' record
+  # topics; writing membership does not update the owner itself.
   defp data_extend(ctx) do
-    Map.new(ctx.data_resources, fn resource ->
-      topic = inspect(resource)
+    ctx.data_resources
+    |> Kernel.++(Enum.map(ctx.join_topics, &elem(&1, 0)))
+    |> Enum.uniq()
+    |> Map.new(&data_extension(&1, ctx))
+  end
 
-      dsl = """
-      pub_sub do
-        module #{ctx.module}.Bubble.Changes
-        prefix "bubble"
+  defp data_extension(resource, ctx) do
+    topic = inspect(resource)
 
-        publish_all :create, [#{topic}]
-        publish_all :update, [#{topic}]
-        publish_all :destroy, [#{topic}]
-        publish_all :update, [#{topic}, :_pkey]
-        publish_all :destroy, [#{topic}, :_pkey]
-      end
-      """
+    dsl = """
+    pub_sub do
+      module #{ctx.module}.Bubble.Changes
+      prefix "bubble"
 
-      {resource, %{notifiers: ["Ash.Notifier.PubSub"], dsl: dsl}}
-    end)
+      publish_all :create, [#{topic}]
+      publish_all :update, [#{topic}]
+      publish_all :destroy, [#{topic}]
+      publish_all :update, [#{topic}, :_pkey]
+      publish_all :destroy, [#{topic}, :_pkey]
+    end
+    """
+
+    notifiers =
+      if(resource in ctx.data_resources, do: ["Ash.Notifier.PubSub"], else: []) ++
+        if Enum.any?(ctx.join_topics, fn {join, _} -> join == resource end),
+          do: ["#{ctx.module}.Bubble.Changes"],
+          else: []
+
+    {resource,
+     %{notifiers: notifiers, dsl: if(resource in ctx.data_resources, do: dsl, else: "")}}
   end
 
   defp workflow_extend(nil), do: %{}

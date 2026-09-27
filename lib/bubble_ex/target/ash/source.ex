@@ -197,7 +197,7 @@ defmodule BubbleEx.Target.Ash.Source do
     do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Target.Ash.Project")}
 
   defp check_extend(extend, %Project{} = project) when is_map(extend) do
-    modules = MapSet.new(project.resources, & &1.module)
+    modules = MapSet.new(project.resources ++ project.joins, & &1.module)
 
     Enum.reduce_while(extend, :ok, fn entry, :ok ->
       case check_extension(entry, modules) do
