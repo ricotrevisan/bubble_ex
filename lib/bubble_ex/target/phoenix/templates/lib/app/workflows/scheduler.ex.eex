@@ -1,0 +1,15 @@
+defmodule <%= @module %>.Workflows.Scheduler do
+  @moduledoc """
+  The Oban worker of scheduled backend workflows ("Schedule API workflow",
+  database triggers). Job arguments: `workflow` (the Bubble ID), `params`
+  (JSON, things as their IDs), `actor` (the scheduling user's ID), `chain`
+  (how many scheduled workflows led to this one) and, for a database
+  trigger, `trigger` (the record's type, ID and values before the change).
+
+  One attempt: Bubble does not retry a scheduled workflow that fails.
+  """
+  use Oban.Worker, queue: :default, max_attempts: 1
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: args}), do: <%= @module %>.Workflows.Runtime.perform(args)
+end

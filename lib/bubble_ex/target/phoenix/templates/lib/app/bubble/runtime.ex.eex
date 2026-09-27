@@ -24,7 +24,8 @@ defmodule <%= @module %>.Bubble.Runtime do
   def text(x) when is_list(x), do: Enum.map_join(x, ", ", &text/1)
   def text(%{id: id}), do: to_string(id)
   def text(x) when is_binary(x), do: x
-  def text(x), do: to_string(x)
+  def text(x) when is_atom(x) or is_number(x), do: to_string(x)
+  def text(x), do: inspect(x)
 
   @doc "`is empty`."
   def empty?(x), do: x in [nil, "", []]
@@ -46,11 +47,18 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   defp order(%DateTime{} = a, %DateTime{} = b), do: DateTime.compare(a, b)
   defp order(%Date{} = a, %Date{} = b), do: Date.compare(a, b)
-  defp order(%Decimal{} = a, b), do: Decimal.compare(a, Decimal.new("#{b}"))
-  defp order(a, %Decimal{} = b), do: Decimal.compare(Decimal.new("#{a}"), b)
+  defp order(%Decimal{} = a, b), do: decimal_order(a, b)
+  defp order(a, %Decimal{} = b), do: decimal_order(a, b)
   defp order(a, b) when a > b, do: :gt
   defp order(a, b) when a < b, do: :lt
   defp order(_a, _b), do: :eq
+
+  # A value Decimal cannot read compares as neither larger nor smaller.
+  defp decimal_order(a, b) do
+    with {:ok, a} <- Decimal.cast(a), {:ok, b} <- Decimal.cast(b),
+         do: Decimal.compare(a, b),
+         else: (_ -> :eq)
+  end
 
   def add(a, b), do: arithmetic(a, b, &Kernel.+/2)
   def sub(a, b), do: arithmetic(a, b, &Kernel.-/2)
@@ -102,9 +110,20 @@ defmodule <%= @module %>.Bubble.Runtime do
   def replace(x, find, replacement, false) when is_binary(x) and is_binary(find),
     do: String.replace(x, find, text(replacement))
 
+  # The pattern may come from a caller: compiled and run in a separate
+  # process with a time limit, so a catastrophic pattern cannot hang the
+  # caller; on timeout or an invalid pattern the text is unchanged.
   def replace(x, find, replacement, true) when is_binary(x) and is_binary(find) do
-    case Regex.compile(find) do
-      {:ok, regex} -> Regex.replace(regex, x, text(replacement))
+    task =
+      Task.async(fn ->
+        case Regex.compile(find) do
+          {:ok, regex} -> Regex.replace(regex, x, text(replacement))
+          _ -> x
+        end
+      end)
+
+    case Task.yield(task, 200) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
       _ -> x
     end
   end
@@ -151,7 +170,8 @@ defmodule <%= @module %>.Bubble.Runtime do
   def format_boolean(_x, _yes, _no), do: nil
 
   # TODO(bubble:runtime) Bubble's calendar arithmetic (months, time zones).
-  def date_add(%DateTime{} = x, n, unit) when is_number(n) do
+  def date_add(%DateTime{} = x, n, unit)
+      when is_number(n) and unit in [:second, :minute, :hour, :day, :month, :year] do
     seconds = %{second: 1, minute: 60, hour: 3600, day: 86_400, month: 2_592_000, year: 31_536_000}
     DateTime.add(x, Kernel.round(n * seconds[unit]), :second)
   end

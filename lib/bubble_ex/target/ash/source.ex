@@ -112,7 +112,10 @@ defmodule BubbleEx.Target.Ash.Source do
     identity_field: 1,
     registration_enabled?: 1,
     require_interaction?: 1,
-    sender: 1
+    sender: 1,
+    # BubbleEx.Target.Phoenix's database-trigger change (WTF-373)
+    change: 1,
+    change: 2
   ]
 
   @header """
