@@ -47,6 +47,8 @@
     "enums": 141,
     "extensions": [],
     "indexes": {},
+    "join_sides": 0,
+    "joins": 0,
     "privacy": {
       "actor_loads": 2,
       "authorization_bypasses": 207,
@@ -81,6 +83,6 @@
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "f1b0d5631cd61b9ec46e2f78ef32a4704f9b40cf40f9a3a02b41df361283d908",
-  "schema_version": 5
+  "project_sha256": "ae2288ad63cb5b565150893d49aeb9329d82673bf59b883a9df38f48bbdc4fa6",
+  "schema_version": 6
 }

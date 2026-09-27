@@ -43,6 +43,8 @@
     "enums": 141,
     "extensions": [],
     "indexes": {},
+    "join_sides": 0,
+    "joins": 0,
     "privacy": {
       "actor_loads": 2,
       "authorization_bypasses": 207,
@@ -76,5 +78,5 @@
       "structured": 3
     }
   },
-  "schema_version": 5
+  "schema_version": 6
 }
