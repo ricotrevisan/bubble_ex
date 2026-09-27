@@ -12,6 +12,8 @@
 #   * lists of IDs in their order
 #   * enum values, typed-struct values
 #   * Types.JsonValue: an object, a number, a string and a list
+#   * join resources (WTF-406): their two ID columns, the primary key, hold
+#     IDs of records that do not exist (no foreign key)
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos) do
   {:ok, _} = repo.start_link()
@@ -38,8 +40,14 @@ defmodule RuntimeCheck do
   end
 
   defp check(resource) do
-    [pk] = Ash.Resource.Info.primary_key(resource)
-    refs = for r <- Ash.Resource.Info.relationships(resource), into: MapSet.new(), do: r.source_attribute
+    pks = Ash.Resource.Info.primary_key(resource)
+
+    refs =
+      for r <- Ash.Resource.Info.relationships(resource),
+          r.type == :belongs_to,
+          into: MapSet.new(),
+          do: r.source_attribute
+
     attributes = Ash.Resource.Info.attributes(resource)
 
     Enum.flat_map(0..3, fn i ->
@@ -47,8 +55,8 @@ defmodule RuntimeCheck do
         Map.new(attributes, fn a ->
           value =
             cond do
-              a.name == pk -> Enum.at(["  a b  ", "", "row 3", "row-4"], i)
               MapSet.member?(refs, a.name) -> "missing record #{i}"
+              a.name in pks -> Enum.at(["  a b  ", "", "row 3", "row-4"], i)
               true -> sample(a.type, a.constraints, i)
             end
 
@@ -60,7 +68,7 @@ defmodule RuntimeCheck do
         |> Ash.Changeset.for_create(:create, input)
         |> Ash.create!(authorize?: false)
 
-      read = Ash.get!(resource, Map.fetch!(input, pk), authorize?: false)
+      read = Ash.get!(resource, Map.take(input, pks), authorize?: false)
 
       for a <- attributes,
           {:ok, expected} = Ash.Type.cast_input(a.type, input[a.name], a.constraints),

@@ -70,9 +70,13 @@ environment (the same build; databases `ash_matrix_<fixture>`, Ecto sandbox),
 scores their observations as `Verify.Result`s
 (`scripts/ash_compile_check/matrix_results.exs`) and fails on any mismatch.
 With `BUBBLE_EX_PRIVATE_EXPORT`
-set it also checks a private app export, mapped as is and with every cut-2
-finding accepted and the index hints applied (`private_cut2`). CI runs it as the `ash-compile-check`
-job.
+set it also checks a private app export, mapped as is, with every cut-2
+finding accepted and the index hints applied (`private_cut2`), and with every
+cut-2 and cut-3 finding accepted (`private_cut3`: lists normalized to join
+resources). The decided fixtures include `decided_cut3` and, with policies,
+two mutants of it (`decided_cut3_open_join`, `decided_cut3_open_all`) that
+`decisions.exs` requires to leak, so the join privacy checks cannot pass
+vacuously. CI runs it as the `ash-compile-check` job.
 
 When changing `BubbleEx.Target.Phoenix` (or its templates under
 `lib/bubble_ex/target/phoenix/templates/`), also build its output:

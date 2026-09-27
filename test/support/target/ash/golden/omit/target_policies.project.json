@@ -56,6 +56,7 @@
   ],
   "enums": [],
   "extensions": [],
+  "joins": [],
   "names": {
     "enums": {},
     "external_types": {},
@@ -364,6 +365,7 @@
       "field_policies": [],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "Board",
       "policies": [],
@@ -377,7 +379,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -386,7 +390,9 @@
             "field": "Created By",
             "type": "board"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -395,7 +401,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "owner",
           "public?": true,
@@ -404,7 +412,9 @@
             "field": "owner_user",
             "type": "board"
           },
-          "source_attribute": "owner_id"
+          "source_attribute": "owner_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -701,6 +711,7 @@
       "field_policies": [],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "Doc",
       "policies": [],
@@ -714,7 +725,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -723,7 +736,9 @@
             "field": "Created By",
             "type": "doc"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -732,7 +747,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "owner",
           "public?": true,
@@ -741,7 +758,9 @@
             "field": "owner_user",
             "type": "doc"
           },
-          "source_attribute": "owner_id"
+          "source_attribute": "owner_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -914,6 +933,7 @@
       "field_policies": [],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "Memo",
       "policies": [],
@@ -927,7 +947,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -936,7 +958,9 @@
             "field": "Created By",
             "type": "memo"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1126,6 +1150,7 @@
       "field_policies": [],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "Note",
       "policies": [],
@@ -1139,7 +1164,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1148,7 +1175,9 @@
             "field": "Created By",
             "type": "note"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1350,6 +1379,7 @@
       "field_policies": [],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "Team",
       "policies": [],
@@ -1363,7 +1393,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1372,7 +1404,9 @@
             "field": "Created By",
             "type": "team"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -1381,7 +1415,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "lead",
           "public?": true,
@@ -1390,7 +1426,9 @@
             "field": "lead_user",
             "type": "team"
           },
-          "source_attribute": "lead_id"
+          "source_attribute": "lead_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1635,6 +1673,7 @@
       "field_policies": [],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "User",
       "policies": [],
@@ -1648,7 +1687,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1657,7 +1698,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -1666,7 +1709,9 @@
           "define_attribute?": false,
           "destination": "Team",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "team",
           "public?": true,
@@ -1675,7 +1720,9 @@
             "field": "team_custom_team",
             "type": "user"
           },
-          "source_attribute": "team_id"
+          "source_attribute": "team_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1685,7 +1732,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 5,
+  "schema_version": 6,
   "typed_structs": [],
   "types": []
 }

@@ -89,6 +89,31 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
     end)
   end
 
+  # Join tables, keyed by their two ID columns (WTF-352 cut 3).
+  @impl true
+  def upsert_join(%__MODULE__{} = c, join, rows) do
+    key = fn row -> {Map.fetch!(row, join.left.column), Map.fetch!(row, join.right.column)} end
+    keyed = Enum.map(rows, &Map.put(&1, :__key__, key.(&1)))
+    upsert(c, %{table: join.table, key: :__key__}, keyed)
+  end
+
+  @impl true
+  def prune_join(%__MODULE__{agent: a}, join, keep, owners) do
+    kept =
+      MapSet.new(keep, &{Map.fetch!(&1, join.left.column), Map.fetch!(&1, join.right.column)})
+
+    Agent.get_and_update(a, fn state ->
+      rows = Map.get(state.tables, join.table, %{})
+
+      {gone, rows} =
+        Map.split_with(rows, fn {{l, r} = pair, _row} ->
+          not MapSet.member?(kept, pair) and (l in owners.left or r in owners.right)
+        end)
+
+      {{:ok, map_size(gone)}, %{state | tables: Map.put(state.tables, join.table, rows)}}
+    end)
+  end
+
   # A unique email identity, as the Phoenix project has (ignoring case).
   defp commit(state, calls, table, current, counts) do
     if unique_emails?(current),

@@ -12,17 +12,25 @@ defmodule BubbleEx.Load.Plan do
       Bubble ID order
     * `auth` - `BubbleEx.Load.Plan.Auth`: where users' email and
       email-confirmed status go, or nil when the target maps no users
+    * `joins` - `BubbleEx.Load.Plan.Join`s: lists of things an owner
+      decision normalized to a join table (one row per member), in join
+      ID order
 
   `sha256/1` pins a plan: a loader ledger belongs to one plan.
   """
 
   alias BubbleEx.CanonicalJson
-  alias BubbleEx.Load.Plan.{Auth, Table}
+  alias BubbleEx.Load.Plan.{Auth, Join, Table}
 
   @enforce_keys [:target, :tables]
-  defstruct [:target, :auth, tables: []]
+  defstruct [:target, :auth, tables: [], joins: []]
 
-  @type t :: %__MODULE__{target: String.t(), tables: [Table.t()], auth: Auth.t() | nil}
+  @type t :: %__MODULE__{
+          target: String.t(),
+          tables: [Table.t()],
+          auth: Auth.t() | nil,
+          joins: [Join.t()]
+        }
 
   @typedoc """
   How a column stores a value (see `BubbleEx.Load.Convert`):
@@ -86,12 +94,14 @@ defmodule BubbleEx.Load.Plan.Table do
     * `skipped` - `%{field: id, reason: atom}` for fields deliberately not
       stored (e.g. `:deleted`), so their data is reported, not flagged as
       unknown
+    * `joined` - the list fields stored in a join table instead of a
+      column (`BubbleEx.Load.Plan.Join`)
   """
 
   alias BubbleEx.Load.Plan.{Column, Derived}
 
   @enforce_keys [:type, :table, :key]
-  defstruct [:type, :table, :key, columns: [], derived: [], skipped: []]
+  defstruct [:type, :table, :key, columns: [], derived: [], skipped: [], joined: []]
 
   @type t :: %__MODULE__{
           type: String.t(),
@@ -99,7 +109,46 @@ defmodule BubbleEx.Load.Plan.Table do
           key: String.t(),
           columns: [Column.t()],
           derived: [Derived.t()],
-          skipped: [%{field: String.t(), reason: atom()}]
+          skipped: [%{field: String.t(), reason: atom()}],
+          joined: [String.t()]
+        }
+end
+
+defmodule BubbleEx.Load.Plan.Join do
+  @moduledoc """
+  A join table (WTF-352 cut 3): lists of things an owner decision
+  normalized (`normalize_list_to_join`, `membership_policy`), one row per
+  member, keyed by the two record IDs.
+
+    * `id` - the join's ID (the finding's `join:<hash>`)
+    * `table` - the target's table name
+    * `left`, `right` - `%{type, column}`: the data type of each record ID
+      and the column holding it; together the primary key
+    * `sides` - the lists it stores, `%{type, field, owner, position}`:
+      data type `type`'s list `field` holds, per row, the record of the
+      `owner` column (`:left` or `:right`) listing the other one;
+      `position` is the column of the member's index in the list (from 0),
+      or nil when the order is not kept. Two sides are two lists mirroring
+      each other: one row stands for both (the loader loads their union and
+      reports the members listed on one side only)
+  """
+
+  @enforce_keys [:id, :table, :left, :right, :sides]
+  defstruct [:id, :table, :left, :right, :sides]
+
+  @type column :: %{type: String.t(), column: String.t()}
+  @type side :: %{
+          type: String.t(),
+          field: String.t(),
+          owner: :left | :right,
+          position: String.t() | nil
+        }
+  @type t :: %__MODULE__{
+          id: String.t(),
+          table: String.t(),
+          left: column(),
+          right: column(),
+          sides: [side()]
         }
 end
 

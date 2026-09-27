@@ -6,6 +6,54 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Target.Ash decisions, cut 3: joins and membership** (WTF-406, D-6 of
+  WTF-352). `BubbleEx.Target.Ash.map/3` applies `normalize_list_to_join`
+  and `membership_policy`: each decided list of things is dropped (no
+  column) and becomes a `many_to_many` of the same name through a join
+  resource (`project.joins`), one per join the findings name, shared by
+  two mirrored lists when both are decided (the other list stays stored
+  otherwise). A join resource has the two record IDs as its primary key,
+  no database foreign key (WTF-338), a btree index on the second ID and a
+  position column per list whose order is kept (`keep_order`, default
+  true; `modify keep_order: false` drops it; `join_name` names the join).
+  Its names are locked in the name map (`joins`, and the owners'
+  `join_relationships`). A `derive_count` of a normalized list is a count
+  aggregate; an index hint over it is deferred; renaming it as an
+  attribute is an error. With `privacy: :unverified`: a join row is
+  readable only through a relationship (keyed `:read`, no `:search`) and
+  only by an actor who may view the list on its owner (`privacy_visible`,
+  the list field's checks read from the owner's rule calculations through
+  the join's private `belongs_to`); a shared join needs both lists'
+  checks, so it can be narrower than Bubble, never wider; the owner's
+  `many_to_many` is gated like the list, with a private twin; rules
+  testing a normalized list (`contains`, `is empty`, also through a
+  reference) compile to `exists(<many_to_many>, id == ^actor(:id))`, and
+  rules testing the current user's normalized list (`Current User's list
+  contains This Thing`) to `exists(<rows>, <owner column> == ^actor(:id))`
+  through a private rows `has_many` on the member (its `doesn't contain`
+  is never granted), so accepting every cut-3 finding of a real app keeps
+  every rule compiling. Stale, altered or inconsistent entries are
+  `:invalid_input` (a join ID that is not the hash of its lists, a second
+  list that does not mirror the first, a list no longer a list, a
+  membership over a list that is not of users, two decisions naming one
+  join differently, invalid `keep_order`/`join_name`); a supported
+  transform with a subject missing from the Model still fails with
+  "subject is not in the Model" (bubble_wtf's capability probe). Project
+  `schema_version` 6 (`joins`, `Resource.join`, `many_to_many` fields on
+  `Relationship`); the existing goldens change only by these fields. The
+  data loader loads the join tables (`Load.Plan.Join`, `Table.joined`,
+  `Load.Joins`, the adapter's `upsert_join/3` and `prune_join/4`): one
+  row per member, repeated members once (`load_join_duplicate`), dangling
+  IDs kept and reported, a shared join as both lists' union
+  (`load_join_asymmetric`), idempotent upserts and resumable batches in
+  the ledger, and rows of exported owners their lists no longer hold
+  deleted. `scripts/ash_compile_check.sh` renders `decided_cut3` (and
+  `private_cut3` with a private export), checks the join tables, their
+  primary keys, loads and positions, reads the restrictive joins with
+  authorization on as a member and an outsider, and requires two mutants
+  without the join rows' policy or the many_to_many filters to leak;
+  `load.exs` loads, resumes, reruns and prunes the joins in PostgreSQL.
+
 - **Data and file loader** (WTF-357). `BubbleEx.Load` loads a Bubble
   export into a migrated target: `dry_run/4` reports per-type counts,
   schema mismatches, dangling references per field, type mismatches and

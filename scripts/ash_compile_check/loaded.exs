@@ -9,6 +9,8 @@
 #   * derived calculations and aggregates (owner decisions) compute the
 #     expected values from the loaded data: counts without deleted IDs, a
 #     count over a derived has_many, a field derived from a related record
+#   * many_to_many relationships through join tables (cut 3) load the
+#     members whose records exist
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos),
     not match?({:error, {:already_started, _}}, repo.start_link()),
@@ -50,7 +52,18 @@ for check <- checks do
     end)
     |> Enum.map(&String.to_existing_atom/1)
 
+  rels = Map.get(check, "relationships", %{})
+  loads = loads ++ Enum.map(Map.keys(rels), &String.to_existing_atom/1)
   record = Ash.get!(resource, check["id"], load: loads, authorize?: false)
+
+  for {rel, expected} <- rels do
+    related = Map.fetch!(record, String.to_existing_atom(rel))
+    [pk] = Ash.Resource.Info.primary_key(Ash.Resource.Info.relationship(resource, String.to_existing_atom(rel)).destination)
+    actual = related |> Enum.map(&Map.fetch!(&1, pk)) |> Enum.sort()
+
+    if actual != expected,
+      do: raise("loaded check: #{inspect(resource)} #{check["id"]}.#{rel}: expected #{inspect(expected)}, got #{inspect(actual)}")
+  end
 
   for {field, expected} <- check["expect"] do
     actual = record |> Map.get(String.to_existing_atom(field)) |> LoadedCheck.normalize()

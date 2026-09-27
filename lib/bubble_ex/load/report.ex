@@ -14,6 +14,11 @@ defmodule BubbleEx.Load.Report do
       and for a real run `inserted`, `updated`, `unchanged` (cumulative over
       the run's ledger) and `resumed` (rows this invocation skipped because
       the ledger had them)
+    * `joins` - per join table (by join ID, `BubbleEx.Load.Plan.Join`):
+      `rows` (one per list member, both lists' union for a shared join),
+      and for a real run `inserted`, `updated`, `unchanged`, `resumed` (as
+      for types) and `deleted` (rows of exported owners their lists no
+      longer hold)
     * `files` - `referenced` (distinct Bubble file URLs in file fields),
       `public`, `private`, `copied` (verified in the target storage, or
       would be for a dry run), `failed`
@@ -36,6 +41,7 @@ defmodule BubbleEx.Load.Report do
             plan_sha256: nil,
             target: nil,
             types: %{},
+            joins: %{},
             files: %{},
             auth: %{},
             diagnostics: []
@@ -48,6 +54,7 @@ defmodule BubbleEx.Load.Report do
           plan_sha256: String.t() | nil,
           target: String.t() | nil,
           types: %{String.t() => map()},
+          joins: %{String.t() => map()},
           files: map(),
           auth: map(),
           diagnostics: [Diagnostic.t()]

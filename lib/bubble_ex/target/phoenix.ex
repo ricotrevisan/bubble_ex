@@ -457,12 +457,12 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
-  defp check_claims(%Project{resources: resources}, clients) do
+  defp check_claims(%Project{resources: resources, joins: joins}, clients) do
     # The API clients' root module (WTF-374), when they are rendered.
     claimed = if clients, do: ["ApiClients" | @claimed_modules], else: @claimed_modules
 
     clashes =
-      for %Resource{} = r <- resources,
+      for %Resource{} = r <- resources ++ joins,
           r.module in claimed or r.table in @claimed_tables,
           do: "#{r.module} (table #{r.table})"
 

@@ -155,7 +155,8 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       expected =
         Enum.map(DecidedFixture.sets(), &"#{&1}.ex.txt") ++
           ~w(combined.project.json combined.unverified.ex.txt) ++
-          ~w(cut2.project.json cut2.unverified.ex.txt)
+          ~w(cut2.project.json cut2.unverified.ex.txt) ++
+          ~w(cut3.project.json cut3.unverified.ex.txt)
 
       assert @golden |> File.ls!() |> Enum.sort() == Enum.sort(expected)
     end
@@ -540,7 +541,9 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       {:ok, resolved} = Decision.resolve([accept], findings, index: index, now: now)
       applied = resolved |> Decision.applicable(findings) |> Enum.reject(& &1.automatic)
 
-      assert map(model, applied) |> message() =~ "does not apply normalize_list_to_join yet"
+      # since cut 3 (WTF-406) a list relationship applies too
+      assert {:ok, %{applied: [%{transform: :normalize_list_to_join}], joins: [_]}} =
+               map(model, applied)
     end
 
     test "one transform per field and unique keys" do

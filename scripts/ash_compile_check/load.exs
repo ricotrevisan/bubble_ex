@@ -4,9 +4,9 @@
 #
 #     MIX_ENV=test mix run scripts/ash_compile_check/load.exs <scratch dir>
 #
-# For three fixtures (BubbleEx.Test.LoadFixture: `field_types`, every
-# Bubble field kind; `cut2` and `combined`, the owner decision sets of
-# BubbleEx.Test.DecidedFixture), into the databases AshPostgres migrated
+# For four fixtures (BubbleEx.Test.LoadFixture: `field_types`, every
+# Bubble field kind; `cut2`, `combined` and `cut3`, the owner decision sets
+# of BubbleEx.Test.DecidedFixture), into the databases AshPostgres migrated
 # (ash_check_<fixture>, emptied first; invented data only):
 #
 #   * a dry run reports the per-type counts and the expected diagnostics
@@ -27,6 +27,12 @@
 #     microsecond precision, emails, integer/decimal refinements, and
 #     files: copied with verified SHA-256, private ones private (0600, a
 #     private reference), a failed one keeping its Bubble URL
+#   * join tables (cut 3, WTF-406): every list member is one row (a
+#     repeated one once, a dangling one kept), the two mirrored lists of a
+#     shared join are one set of rows with each list's positions, the
+#     interrupted and resumed load, the rerun and the delta sync compare
+#     them too, and a later export that drops members from the lists
+#     deletes their rows (and only theirs)
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -87,21 +93,28 @@ defmodule LoadCheck do
   end
 
   def truncate(conn, plan) do
-    tables = Enum.map_join(plan.tables, ", ", &~s("public"."#{&1.table}"))
+    tables =
+      Enum.map_join(plan.tables ++ plan.joins, ", ", &~s("public"."#{&1.table}"))
+
     Postgrex.query!(conn, "TRUNCATE #{tables}", [])
   end
 
-  # Every table as PostgreSQL's to_jsonb of each row, by primary key.
+  # Every table (and join table) as PostgreSQL's to_jsonb of each row, by
+  # primary key.
   def snapshot(conn, plan) do
-    Map.new(plan.tables, fn t ->
+    keys =
+      Enum.map(plan.tables, &{&1.table, ~s("#{&1.key}")}) ++
+        Enum.map(plan.joins, &{&1.table, ~s("#{&1.left.column}", "#{&1.right.column}")})
+
+    Map.new(keys, fn {table, order} ->
       %{rows: rows} =
         Postgrex.query!(
           conn,
-          "SELECT to_jsonb(t)::text FROM \"public\".\"#{t.table}\" t ORDER BY \"#{t.key}\"",
+          "SELECT to_jsonb(t)::text FROM \"public\".\"#{table}\" t ORDER BY #{order}",
           []
         )
 
-      {t.table, Enum.map(rows, fn [json] -> Jason.decode!(json) end)}
+      {table, Enum.map(rows, fn [json] -> Jason.decode!(json) end)}
     end)
   end
 
@@ -162,7 +175,7 @@ schema_fixtures =
       path <- pattern |> Path.wildcard() |> Enum.sort() do
     {prefix <> Path.basename(path, ".json"), faithful.(path |> File.read!() |> Jason.decode!())}
   end ++
-    for set <- [:combined, :locked, :count, :cut2] do
+    for set <- [:combined, :locked, :count, :cut2, :cut3] do
       {"decided_#{set}", decided.(set)}
     end
 
@@ -186,7 +199,19 @@ private_fixtures =
         {model, project}
       end
 
-      [{"private_app", faithful.(app)}, {"private_cut2", cut2}]
+      cut3 = fn ->
+        {:ok, model} = BubbleEx.Model.build(app)
+        {:ok, index} = BubbleEx.Index.build(app, model: model)
+        {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
+        {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
+
+        {:ok, project} =
+          BubbleEx.Target.Ash.map(model, applied, privacy: :unverified, decisions_sha256: sha)
+
+        {model, project}
+      end
+
+      [{"private_app", faithful.(app)}, {"private_cut2", cut2}, {"private_cut3", cut3}]
   end
 
 {tables, columns} =
@@ -209,8 +234,9 @@ private_fixtures =
         )
     end
 
-    {tables + length(plan.tables),
-     columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1)))}
+    {tables + length(plan.tables) + length(plan.joins),
+     columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1))) +
+       Enum.sum(Enum.map(plan.joins, &(2 + Enum.count(&1.sides, fn s -> s.position end))))}
   end)
 
 IO.puts(
@@ -223,7 +249,8 @@ IO.puts(
 fixtures = [
   {:field_types, "ash_check_field_types", "Fixtures.FieldTypes"},
   {:cut2, "ash_check_decided_cut2", "Fixtures.DecidedCut2"},
-  {:combined, "ash_check_decided_combined", "Fixtures.DecidedCombined"}
+  {:combined, "ash_check_decided_combined", "Fixtures.DecidedCombined"},
+  {:cut3, "ash_check_decided_cut3", "Fixtures.DecidedCut3"}
 ]
 
 # Diagnostics each fixture's data must produce ({code, type, field}).
@@ -259,6 +286,15 @@ expected_codes = %{
   combined: [
     {:load_derived_drift, "project", "sort_workspace_name_text"},
     {:load_type_mismatch, "project", "task_count_number"}
+  ],
+  cut3: [
+    {:load_join_duplicate, "project", "tasks_list_custom_task"},
+    {:load_dangling_reference, "project", "tasks_list_custom_task"},
+    {:load_dangling_reference, "workspace", "members_list_user"},
+    {:load_join_asymmetric, "workspace", "members_list_user"},
+    {:load_join_asymmetric, "user", "workspaces_list_custom_workspace"},
+    {:load_join_asymmetric, "project", "viewers_list_user"},
+    {:load_join_asymmetric, "user", "favorites_list_custom_project"}
   ]
 }
 
@@ -519,6 +555,79 @@ loaded =
         LoadCheck.eq!(fixture, p2["task_count"], nil, "a fraction in an integer column")
         t1 = LoadCheck.row(snapshot, "todo_item", F.todo1())
         LoadCheck.eq!(fixture, t1["points"], 1.25, "decimal refinement")
+
+      :cut3 ->
+        p1 = LoadCheck.row(snapshot, "project", F.initiative1())
+        LoadCheck.check!(fixture, not Map.has_key?(p1, "tasks"), "a joined list has no column")
+
+        LoadCheck.eq!(
+          fixture,
+          Enum.map(snapshot["project_tasks"], &{&1["task_id"], &1["position"]}) |> Enum.sort(),
+          Enum.sort([{F.todo1(), 0}, {F.todo2(), 1}, {F.gone_task(), 3}]),
+          "a list's rows: a repeated member once, a dangling one kept, positions"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          Enum.map(snapshot["user_workspaces"], &{&1["user_id"], &1["workspace_id"], &1["workspaces_position"], &1["members_position"]})
+          |> Enum.sort(),
+          Enum.sort([
+            {F.ada(), F.workspace1(), 0, 0},
+            {F.bob(), F.workspace1(), nil, 1},
+            {F.gone_user(), F.workspace1(), nil, 2},
+            {F.carol(), F.workspace2(), 0, 0},
+            {F.carol(), F.workspace1(), 1, nil}
+          ]),
+          "a shared join: both lists' rows, each with its positions"
+        )
+
+        # A later export drops Bob from Acme's members and a task from the
+        # project's list: their rows go, and only theirs.
+        rows = F.cut3_rows()
+        [w1 | ws] = rows["workspace"]
+        [p | ps] = rows["project"]
+
+        rows = %{
+          rows
+          | "workspace" => [Map.put(w1, "Members", [F.ada(), F.gone_user()]) | ws],
+            "project" => [Map.put(p, "Tasks", [F.todo2(), F.gone_task()]) | ps]
+        }
+
+        {:ok, dropped} = F.export(which, Path.join(dir, "dropped"), rows)
+        {:ok, pruned} = Load.run(dropped, model, target, [storage: storage] ++ base_opts)
+
+        LoadCheck.eq!(
+          fixture,
+          pruned.joins |> Map.values() |> Enum.map(& &1.deleted) |> Enum.sum(),
+          2,
+          "rows deleted by the delta"
+        )
+
+        after_prune = LoadCheck.snapshot(conn, plan)
+
+        LoadCheck.eq!(
+          fixture,
+          Enum.map(after_prune["project_tasks"], &{&1["task_id"], &1["position"]}) |> Enum.sort(),
+          Enum.sort([{F.todo2(), 0}, {F.gone_task(), 1}]),
+          "the project's rows after the delta"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          length(after_prune["user_workspaces"]),
+          4,
+          "the membership rows after the delta"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          after_prune["favorite_project"],
+          snapshot["favorite_project"],
+          "an untouched join after the delta"
+        )
+
+        # back to the fixture's state for loaded.exs
+        {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
     end
 
     GenServer.stop(conn)
@@ -562,6 +671,23 @@ checks = [
     resource: "Fixtures.DecidedCombined.Task",
     id: F.todo1(),
     expect: %{"points" => "1.25"}
+  },
+  %{
+    fixture: "cut3",
+    resource: "Fixtures.DecidedCut3.Workspace",
+    id: F.workspace1(),
+    expect: %{"name" => "Acme"},
+    # members through the private twin (the public one is filtered by the
+    # actor's grants, and there is none): the rows whose user exists, Carol
+    # included (her Workspaces list Acme: the shared join is both lists)
+    relationships: %{"members_for_privacy" => Enum.sort([F.ada(), F.bob(), F.carol()])}
+  },
+  %{
+    fixture: "cut3",
+    resource: "Fixtures.DecidedCut3.Project",
+    id: F.initiative1(),
+    expect: %{"title" => "Plan"},
+    relationships: %{"tasks_for_privacy" => Enum.sort([F.todo1(), F.todo2()])}
   },
   %{
     fixture: "field_types",

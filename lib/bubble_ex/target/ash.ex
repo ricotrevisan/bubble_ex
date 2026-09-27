@@ -158,7 +158,7 @@ defmodule BubbleEx.Target.Ash do
   Bubble does not rename generated code. See
   `BubbleEx.Target.Ash.Project` for the map's shape.
 
-  ## Decisions (WTF-352, cuts 1 and 2)
+  ## Decisions (WTF-352, cuts 1 to 3)
 
   `decisions` are the owner's decisions that apply to this snapshot,
   exactly as `BubbleEx.Decision.applicable/2` returns them:
@@ -186,19 +186,24 @@ defmodule BubbleEx.Target.Ash do
       and proposal disagree, that lacks the finding's `proposal_sha256` and
       `basis_sha256`, or whose recorded `basis` differs from them (a stale
       decision: `applicable/2` never lists one)
-    * an owner's decision on a transform Target.Ash does not apply yet
-      (`normalize_list_to_join`, `membership_policy`: cut 3). A hint
-      nobody decided (`automatic`) with such a transform would not be an
-      error but deferred; every hint's transform (`add_indexes`) is
-      applied since cut 2
+    * a transform Target.Ash does not know (every registered finding
+      transform applies since cut 3; a hint nobody decided, `automatic`,
+      whose transform a later cut would apply is deferred, not an error)
     * an `automatic` entry that is not an undecided hint
     * a subject missing from the Model or deleted, or a proposal that no
       longer fits it (not a number field, a derivation that is not a path
       of references to the source's type, a source of another type, a
       count of a field that is not a list, a text field no longer text, a
       reverse list whose reference no longer points back, an index over a
-      field that is gone or of another type): the Model is not the
-      snapshot the findings came from
+      field that is gone or of another type, a list no longer a list of a
+      mapped type, a join whose ID is not the hash of its lists, that does
+      not include the subject, whose second list does not mirror it or
+      that is between other types, a membership over a list that is not
+      of users): the Model is not the snapshot the findings came from, or
+      the entry was altered
+    * two decisions on one join describing it differently or naming it
+      differently (`join_name`), a `keep_order` that is not a boolean, an
+      invalid `join_name`, or a `membership_policy` with parameters
     * `text_to_reference` without a target type (the finding saw none or
       several: the owner picks one with `modify target_type`)
     * two transforms of one field (e.g. `derive_count` and
@@ -217,6 +222,42 @@ defmodule BubbleEx.Target.Ash do
   | `text_to_reference` | the text attribute keeps its name, column and type (`:string` IDs) and gains `references`; one ID gets a `belongs_to` (named after the attribute without `_id`, in the name map's `relationships`) with no database foreign key (WTF-338): a dangling ID loads nil. A list of texts stays an `{:array, :string}` of IDs, like a list of things |
   | `derive_reverse_relationship` | B's list of A is dropped (no column) and becomes `has_many <list name>, A` from B's primary key to A's reference attribute. The finding's `rewrite_reads` (the reads of the list: expressions, workflows, privacy rules) are recorded in `project.applied` for the lowering (Plan, T6/T7). A privacy rule testing the list (`contains`, `is empty`) compiles to `exists(<has_many>, ...)` |
   | `add_indexes` (hint) | `postgres do custom_indexes` per access pattern, below. Applied by default (WTF-352 D4), or as the owner decided (`modify drop`) |
+  | `normalize_list_to_join` | the list attribute is dropped (no column) and becomes `many_to_many <list name>, B` through a join resource (`project.joins`, "Joins" below), from this record's ID in its owner column to the member's in the other, with a `join_relationship` to the rows. A `derive_count` of the list is then a count aggregate over it |
+  | `membership_policy` | the same join, for a list of users that privacy rules test: a rule testing the list (`contains`, `is empty`, also through a reference) compiles to `exists(<many_to_many>, id == ^actor(:id))`, and one testing the current user's normalized list (`Current User's list contains This Thing`) to `exists(<rows>, <owner column> == ^actor(:id))` through the member's private rows relationship to the join (its `doesn't contain` is never granted) |
+
+  **Joins.** One join resource per join the findings name (`proposal.join`,
+  whose ID hashes the list fields it replaces): a list of its own, or two
+  lists mirroring each other (A's list of B and B's list of A) sharing one
+  join when both are decided; with only one decided, the join holds that
+  list and the mirror stays stored (it joins the same table when it is
+  decided later). The join resource (module `<Owner><List>`, or from
+  `join_name`; its table the module in snake case) has the two record IDs
+  as its primary key (`<left type>_id`, `<right type>_id`, the left one
+  the owner of the join's first list), no database foreign key (WTF-338:
+  a dangling ID loads nothing), a `belongs_to` to each, a btree index on
+  the right ID, and per list whose order is kept a position column
+  (`position`, or `<list name>_position` in a join two lists share)
+  holding the member's index in Bubble's list: `keep_order` defaults to
+  true (nothing is lost); a `modify keep_order: false` drops it. Read the
+  order through the owner's join relationship sorted by the position.
+  The names are locked in the name map (`joins`, and the owners'
+  `join_relationships`). A list normalized to a join cannot be renamed as
+  an attribute; an index hint over it is deferred (the join's own index
+  serves membership).
+
+  With `privacy: :unverified` a join row reveals that its owner's list
+  holds its member, so it is readable (`:read`, keyed like every
+  resource's: through a relationship, never by listing; no `:search`) only
+  by an actor who may view the list on its owner: the checks of the list
+  field, as a private calculation `privacy_visible` reading the owner's
+  privacy calculations through the join's private `belongs_to`. A shared
+  join needs both lists' checks, since one row stands for both lists and
+  Bubble may have shown only one of them: never wider than Bubble,
+  possibly narrower (a public User list mirrored by a Workspace list only
+  members may view shows to the workspace's members only). The owner's
+  `many_to_many` is gated like the list it replaces (`filter`, with a
+  private twin the privacy calculations read through), and the members
+  keep their own read policies. No policy authorizes writes to a join.
 
   **Indexes.** Each index of an `add_indexes` proposal is one of:
 
@@ -251,7 +292,13 @@ defmodule BubbleEx.Target.Ash do
   texts, the same per item. A list whose `derive_count` is its length
   loses the IDs of records the export does not hold, since Bubble's
   `:count` does not count deleted records (`:load_deleted_ids_dropped`);
-  other lists and references keep dangling IDs (WTF-338).
+  other lists and references keep dangling IDs (WTF-338). A list
+  normalized to a join loads as the join's rows: one per member (a
+  repeated member once, `:load_join_duplicate`; a dangling one kept and
+  reported), with its index in the position column, and for a shared join
+  the union of both lists (`:load_join_asymmetric` counts the members one
+  list holds that the other does not list back); a later export deletes
+  the rows of the exported owners that their lists no longer hold.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
@@ -493,7 +540,9 @@ defmodule BubbleEx.Target.Ash do
     ctx = Map.put(ctx, :enum_values, Map.new(enums, &{&1.source.option_set, values(&1)}))
 
     {resources, resource_diags, ctx} = map_all(types, ctx, &resource/2)
-    resources = Decisions.apply(resources, plan)
+    {joins, names} = Decisions.joins(resources, plan, ctx.names)
+    ctx = %{ctx | names: names}
+    {resources, joins} = Decisions.apply(resources, plan, joins)
     {externals, external_diags, ctx} = map_all(ctx.external_order, ctx, &external/2)
 
     typed_structs = structured(resources) ++ externals
@@ -510,6 +559,7 @@ defmodule BubbleEx.Target.Ash do
       applied: plan.applied,
       applied_sha256: applied_sha256(plan.applied, decisions_sha256),
       deferred: plan.deferred,
+      joins: joins,
       extensions: extensions(resources),
       decisions_sha256: decisions_sha256
     }
@@ -653,8 +703,17 @@ defmodule BubbleEx.Target.Ash do
     ids = Enum.map(items, & &1.id)
     check_unique!(locked, ids, "#{section} #{key}")
 
+    # A resource's module and table are never a join resource's (WTF-352
+    # cut 3), locked in the name map's `joins`.
+    joins =
+      if section == "resources",
+        do: for({_id, %{^key => name}} <- Map.get(ctx.names, "joins", %{}), do: name),
+        else: []
+
+    used = MapSet.new(Map.values(locked) ++ joins)
+
     {entries, _used} =
-      Enum.reduce(items, {entries, MapSet.new(Map.values(locked))}, fn item, {entries, used} ->
+      Enum.reduce(items, {entries, used}, fn item, {entries, used} ->
         if Map.has_key?(locked, item.id) do
           {entries, used}
         else
@@ -826,8 +885,11 @@ defmodule BubbleEx.Target.Ash do
     privacy = Map.values(Map.get(entry, "privacy_rules", %{}))
     privacy = privacy ++ Map.values(Map.get(entry, "privacy_relationships", %{}))
 
-    # A renamed attribute's column is never given to another attribute.
-    columns = Map.values(Map.get(entry, "columns", %{}))
+    # A renamed attribute's column is never given to another attribute,
+    # nor a many_to_many's relationship to its join rows.
+    columns =
+      Map.values(Map.get(entry, "columns", %{})) ++
+        Map.values(Map.get(entry, "join_relationships", %{}))
 
     %{
       locked: Map.new(locked),
@@ -1395,10 +1457,16 @@ defmodule BubbleEx.Target.Ash do
       {"relationships", :names, :attribute},
       {"privacy_rules", :names, :attribute},
       {"privacy_relationships", :names, :attribute},
-      {"columns", :names, :attribute}
+      {"columns", :names, :attribute},
+      {"join_relationships", :names, :attribute}
     ],
     "enums" => [{"module", :pascal, :none}, {"attributes", :names, :field}],
-    "external_types" => [{"module", :pascal, :none}, {"fields", :names, :field}]
+    "external_types" => [{"module", :pascal, :none}, {"fields", :names, :field}],
+    "joins" => [
+      {"module", :pascal, :module},
+      {"table", :snake, :table},
+      {"attributes", :names, :attribute}
+    ]
   }
 
   defp validate_names(names) when is_map(names) and not is_struct(names) do

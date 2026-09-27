@@ -3,168 +3,93 @@
   "applied": [
     {
       "automatic": false,
-      "basis_sha256": "04d623213fccb544221cbd98e46d4f8c1c0ddfae79b0e471b72f9c44fd6114d7",
-      "finding_id": "denormalized_field:10af1394be0ded99",
-      "key": "finding:denormalized_field:10af1394be0ded99",
+      "basis_sha256": "e7c096391158da18c874eb73817e5c1929ae86f22aa9715107b838a55dabcd2e",
+      "finding_id": "list_relationship:1f3c654d5970dd53",
+      "key": "finding:list_relationship:1f3c654d5970dd53",
+      "kind": "finding",
+      "params": {
+        "keep_order": false
+      },
+      "proposal_sha256": "f2c2465b65495800381ebddf1b325067c7908a2f46676d9e80b4b89fff8f51b4",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "viewers_list_user",
+        "type": "project"
+      },
+      "target": null,
+      "transform": "normalize_list_to_join"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "58050612cf66cdb8a6f1c219e7f6dc7eb5b092d2ca346991bdaa51dc943af4e9",
+      "finding_id": "list_relationship:639085fbd2d9810b",
+      "key": "finding:list_relationship:639085fbd2d9810b",
       "kind": "finding",
       "params": {},
-      "proposal_sha256": "4d3b4923cedc54bf9498257053e968c082eab85f2b29f457b752f4ce3f05eae3",
+      "proposal_sha256": "6d2779ec329fa53ce3677fe1884dd5d54986048bf32fd65821e65440f2aa2975",
       "rewrite_reads": [],
       "subject": {
-        "field": "workspace_created_date",
+        "field": "tasks_list_custom_task",
         "type": "project"
       },
       "target": null,
-      "transform": "derive_from_related"
+      "transform": "normalize_list_to_join"
     },
     {
       "automatic": false,
-      "basis_sha256": "f7db5b7c1959a42e3ba3068e101ddb07f9779ee5fb024d6959d7d0cc5feb963c",
-      "finding_id": "denormalized_field:68936c1f2538ef9c",
-      "key": "finding:denormalized_field:68936c1f2538ef9c",
+      "basis_sha256": "b3f0b8bc582c27a35a18ddad2117cd4e40a932cde193d13f0081e1d9b84e008a",
+      "finding_id": "list_relationship:aa3ba92c1799ff50",
+      "key": "finding:list_relationship:aa3ba92c1799ff50",
+      "kind": "finding",
+      "params": {
+        "join_name": "favorite_project"
+      },
+      "proposal_sha256": "f5d7cf51d68ec78475a1965a8eb1e217a81674d2bad0947495ffafd091544524",
+      "rewrite_reads": [],
+      "subject": {
+        "field": "favorites_list_custom_project",
+        "type": "user"
+      },
+      "target": null,
+      "transform": "normalize_list_to_join"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "4b10625510a37b632b8a10a828b95647cea7c48828de7a19b56ae04c3dfecffc",
+      "finding_id": "list_relationship:b426fecd8cad673d",
+      "key": "finding:list_relationship:b426fecd8cad673d",
       "kind": "finding",
       "params": {},
-      "proposal_sha256": "a1c0612cd90e0809a0c4a81c926905bb6ba5760f219e00787549c16835c79f15",
+      "proposal_sha256": "cd030211bb46bddbe28337b29aac19ae1dcbc7fcd32d679f0d3ac86c99d19b2a",
       "rewrite_reads": [],
       "subject": {
-        "field": "sort_workspace_name_text",
-        "type": "project"
+        "field": "workspaces_list_custom_workspace",
+        "type": "user"
       },
       "target": null,
-      "transform": "derive_from_related"
+      "transform": "normalize_list_to_join"
     },
     {
       "automatic": false,
-      "basis_sha256": "2f25e4e8c15941b9f59f2c0afe87f5859bbc04477a91cbc4bb626d1f225a9b60",
-      "finding_id": "number_type:568835fc8a7c3aac",
-      "key": "finding:number_type:568835fc8a7c3aac",
-      "kind": "finding",
-      "params": {
-        "to": "decimal"
-      },
-      "proposal_sha256": "eceb1833a5e052dd9c2407be8ad375357f7a94ae07b39fa232aabf14323c0827",
-      "rewrite_reads": [],
-      "subject": {
-        "field": "points_number",
-        "type": "task"
-      },
-      "target": null,
-      "transform": "refine_number_type"
-    },
-    {
-      "automatic": false,
-      "basis_sha256": "ab4f4d170a5f5ec211073f53cbfa663bdf27058c264753a08184fedf3cf07ca5",
-      "finding_id": "number_type:b12d14841a0cab43",
-      "key": "finding:number_type:b12d14841a0cab43",
+      "basis_sha256": "77f712c8444f90dc663182dd5261707d3d02a612c571c3f70bf0070dfcdfbfa5",
+      "finding_id": "privacy_access_list:f86b7e1509c01453",
+      "key": "finding:privacy_access_list:f86b7e1509c01453",
       "kind": "finding",
       "params": {},
-      "proposal_sha256": "1153376239bf57f7c1d877da01cea9d149d6b346a24a8d091e399d1ff9004052",
+      "proposal_sha256": "f923b3e723afc2153ed27ff7a32db62847bf544a7357a1295ff256ef2648115b",
       "rewrite_reads": [],
       "subject": {
-        "field": "task_count_number",
-        "type": "project"
+        "field": "members_list_user",
+        "type": "workspace"
       },
       "target": null,
-      "transform": "refine_number_type"
-    },
-    {
-      "automatic": false,
-      "basis_sha256": null,
-      "finding_id": null,
-      "key": "rename:0b4183e24fd597eb",
-      "kind": "rename",
-      "params": {
-        "name": "team_name",
-        "slot": "calculation"
-      },
-      "proposal_sha256": null,
-      "rewrite_reads": [],
-      "subject": {
-        "field": "sort_workspace_name_text",
-        "type": "project"
-      },
-      "target": "ash",
-      "transform": "rename"
-    },
-    {
-      "automatic": false,
-      "basis_sha256": null,
-      "finding_id": null,
-      "key": "rename:526d2eb31f82db23",
-      "kind": "rename",
-      "params": {
-        "name": "team",
-        "slot": "relationship"
-      },
-      "proposal_sha256": null,
-      "rewrite_reads": [],
-      "subject": {
-        "field": "workspace_custom_workspace",
-        "type": "project"
-      },
-      "target": "ash",
-      "transform": "rename"
-    },
-    {
-      "automatic": false,
-      "basis_sha256": null,
-      "finding_id": null,
-      "key": "rename:85d55659fe704595",
-      "kind": "rename",
-      "params": {
-        "name": "todo_item",
-        "slot": "table"
-      },
-      "proposal_sha256": null,
-      "rewrite_reads": [],
-      "subject": {
-        "type": "task"
-      },
-      "target": "ash",
-      "transform": "rename"
-    },
-    {
-      "automatic": false,
-      "basis_sha256": null,
-      "finding_id": null,
-      "key": "rename:994d0c9fa4fa4c5a",
-      "kind": "rename",
-      "params": {
-        "name": "headline",
-        "slot": "attribute"
-      },
-      "proposal_sha256": null,
-      "rewrite_reads": [],
-      "subject": {
-        "field": "title_text",
-        "type": "project"
-      },
-      "target": "ash",
-      "transform": "rename"
-    },
-    {
-      "automatic": false,
-      "basis_sha256": null,
-      "finding_id": null,
-      "key": "rename:fc12d0b83c794b43",
-      "kind": "rename",
-      "params": {
-        "name": "Initiative",
-        "slot": "module"
-      },
-      "proposal_sha256": null,
-      "rewrite_reads": [],
-      "subject": {
-        "type": "project"
-      },
-      "target": "ash",
-      "transform": "rename"
+      "transform": "membership_policy"
     }
   ],
-  "applied_sha256": "69065d7cf6424fe8862d763e09eb853e4e9e0a35759d948e6f90daff5155e588",
+  "applied_sha256": "b9e34a364f6bbb4439bef9d77ea51ef70634bae86bbd8dbfeb957e711ae91874",
   "authorization_bypasses": [],
   "bubble_id": "synthfindings",
-  "decisions_sha256": "8ca3bcf1dd1b516b963dea9848dbb289191d3585bd385a1f41074b7006e0e441",
+  "decisions_sha256": "5e9fc5d5b68b2d7cbe71c3c2e5d6c0555d6238c93e5a0afd7ed0c3f6816cd249",
   "deferred": [],
   "diagnostics": [
     {
@@ -185,22 +110,6 @@
       "subject": {}
     },
     {
-      "code": "ash_name_overridden",
-      "details": {
-        "key": "rename:fc12d0b83c794b43",
-        "name": "Initiative",
-        "slot": "module"
-      },
-      "message": "the module name is \"Initiative\" (owner decision rename:fc12d0b83c794b43)",
-      "outcome": "preserved",
-      "path": "/user_types/project",
-      "severity": "info",
-      "stage": "target:ash",
-      "subject": {
-        "type": "project"
-      }
-    },
-    {
       "code": "ash_deleted_omitted",
       "details": {
         "kind": "field"
@@ -218,151 +127,753 @@
     {
       "code": "ash_decision_applied",
       "details": {
-        "key": "finding:denormalized_field:68936c1f2538ef9c",
-        "source_field": "field:workspace/name_text",
-        "transform": "derive_from_related",
-        "via": [
-          "field:project/workspace_custom_workspace"
-        ]
+        "join": "join:20cb30e92a27dea0",
+        "keep_order": true,
+        "key": "finding:list_relationship:639085fbd2d9810b",
+        "shared_with": [],
+        "transform": "normalize_list_to_join"
       },
-      "message": "project.sort_workspace_name_text is a calculation over workspace.name_text (owner decision finding:denormalized_field:68936c1f2538ef9c); it is not stored and cannot be written",
+      "message": "project.tasks_list_custom_task is a many_to_many of task through a join resource (owner decision finding:list_relationship:639085fbd2d9810b); the list is not stored; Bubble's order is kept in a position column",
       "outcome": "degraded",
-      "path": "/user_types/project/fields/sort_workspace_name_text",
+      "path": "/user_types/project/fields/tasks_list_custom_task",
       "severity": "info",
       "stage": "target:ash",
       "subject": {
-        "field": "sort_workspace_name_text",
-        "type": "project"
-      }
-    },
-    {
-      "code": "ash_name_overridden",
-      "details": {
-        "key": "rename:0b4183e24fd597eb",
-        "name": "team_name",
-        "slot": "calculation"
-      },
-      "message": "the calculation name is \"team_name\" (owner decision rename:0b4183e24fd597eb)",
-      "outcome": "preserved",
-      "path": "/user_types/project/fields/sort_workspace_name_text",
-      "severity": "info",
-      "stage": "target:ash",
-      "subject": {
-        "field": "sort_workspace_name_text",
+        "field": "tasks_list_custom_task",
         "type": "project"
       }
     },
     {
       "code": "ash_decision_applied",
       "details": {
-        "key": "finding:number_type:b12d14841a0cab43",
-        "to": "integer",
-        "transform": "refine_number_type"
+        "join": "join:ee286c67d73bb3ce",
+        "keep_order": false,
+        "key": "finding:list_relationship:1f3c654d5970dd53",
+        "shared_with": [
+          "field:user/favorites_list_custom_project"
+        ],
+        "transform": "normalize_list_to_join"
       },
-      "message": "project.task_count_number is stored as integer (owner decision finding:number_type:b12d14841a0cab43); Bubble stores a float",
+      "message": "project.viewers_list_user is a many_to_many of user through a join resource (owner decision finding:list_relationship:1f3c654d5970dd53); the list is not stored; the join is shared with the mirrored list user.favorites_list_custom_project; Bubble's order is not kept",
       "outcome": "degraded",
-      "path": "/user_types/project/fields/task_count_number",
+      "path": "/user_types/project/fields/viewers_list_user",
       "severity": "info",
       "stage": "target:ash",
       "subject": {
-        "field": "task_count_number",
-        "type": "project"
-      }
-    },
-    {
-      "code": "ash_name_overridden",
-      "details": {
-        "key": "rename:994d0c9fa4fa4c5a",
-        "name": "headline",
-        "slot": "attribute"
-      },
-      "message": "the attribute name is \"headline\" (owner decision rename:994d0c9fa4fa4c5a)",
-      "outcome": "preserved",
-      "path": "/user_types/project/fields/title_text",
-      "severity": "info",
-      "stage": "target:ash",
-      "subject": {
-        "field": "title_text",
+        "field": "viewers_list_user",
         "type": "project"
       }
     },
     {
       "code": "ash_decision_applied",
       "details": {
-        "key": "finding:denormalized_field:10af1394be0ded99",
-        "source_field": "field:workspace/Created Date",
-        "transform": "derive_from_related",
-        "via": [
-          "field:project/workspace_custom_workspace"
-        ]
+        "join": "join:ee286c67d73bb3ce",
+        "keep_order": true,
+        "key": "finding:list_relationship:aa3ba92c1799ff50",
+        "shared_with": [
+          "field:project/viewers_list_user"
+        ],
+        "transform": "normalize_list_to_join"
       },
-      "message": "project.workspace_created_date is a calculation over workspace.Created Date (owner decision finding:denormalized_field:10af1394be0ded99); it is not stored and cannot be written",
+      "message": "user.favorites_list_custom_project is a many_to_many of project through a join resource (owner decision finding:list_relationship:aa3ba92c1799ff50); the list is not stored; the join is shared with the mirrored list project.viewers_list_user; Bubble's order is kept in a position column",
       "outcome": "degraded",
-      "path": "/user_types/project/fields/workspace_created_date",
+      "path": "/user_types/user/fields/favorites_list_custom_project",
       "severity": "info",
       "stage": "target:ash",
       "subject": {
-        "field": "workspace_created_date",
-        "type": "project"
-      }
-    },
-    {
-      "code": "ash_name_overridden",
-      "details": {
-        "key": "rename:526d2eb31f82db23",
-        "name": "team",
-        "slot": "relationship"
-      },
-      "message": "the relationship name is \"team\" (owner decision rename:526d2eb31f82db23)",
-      "outcome": "preserved",
-      "path": "/user_types/project/fields/workspace_custom_workspace",
-      "severity": "info",
-      "stage": "target:ash",
-      "subject": {
-        "field": "workspace_custom_workspace",
-        "type": "project"
-      }
-    },
-    {
-      "code": "ash_name_overridden",
-      "details": {
-        "key": "rename:85d55659fe704595",
-        "name": "todo_item",
-        "slot": "table"
-      },
-      "message": "the table name is \"todo_item\" (owner decision rename:85d55659fe704595)",
-      "outcome": "preserved",
-      "path": "/user_types/task",
-      "severity": "info",
-      "stage": "target:ash",
-      "subject": {
-        "type": "task"
+        "field": "favorites_list_custom_project",
+        "type": "user"
       }
     },
     {
       "code": "ash_decision_applied",
       "details": {
-        "key": "finding:number_type:568835fc8a7c3aac",
-        "to": "decimal",
-        "transform": "refine_number_type"
+        "join": "join:74f33555b22af590",
+        "keep_order": true,
+        "key": "finding:list_relationship:b426fecd8cad673d",
+        "shared_with": [
+          "field:workspace/members_list_user"
+        ],
+        "transform": "normalize_list_to_join"
       },
-      "message": "task.points_number is stored as decimal (owner decision finding:number_type:568835fc8a7c3aac); Bubble stores a float",
+      "message": "user.workspaces_list_custom_workspace is a many_to_many of workspace through a join resource (owner decision finding:list_relationship:b426fecd8cad673d); the list is not stored; the join is shared with the mirrored list workspace.members_list_user; Bubble's order is kept in a position column",
       "outcome": "degraded",
-      "path": "/user_types/task/fields/points_number",
+      "path": "/user_types/user/fields/workspaces_list_custom_workspace",
       "severity": "info",
       "stage": "target:ash",
       "subject": {
-        "field": "points_number",
-        "type": "task"
+        "field": "workspaces_list_custom_workspace",
+        "type": "user"
+      }
+    },
+    {
+      "code": "ash_decision_applied",
+      "details": {
+        "join": "join:74f33555b22af590",
+        "keep_order": true,
+        "key": "finding:privacy_access_list:f86b7e1509c01453",
+        "shared_with": [
+          "field:user/workspaces_list_custom_workspace"
+        ],
+        "transform": "membership_policy"
+      },
+      "message": "workspace.members_list_user is a many_to_many of user through a join resource (owner decision finding:privacy_access_list:f86b7e1509c01453); the list is not stored; the join is shared with the mirrored list user.workspaces_list_custom_workspace; Bubble's order is kept in a position column; privacy rules testing the list test membership in the join",
+      "outcome": "degraded",
+      "path": "/user_types/workspace/fields/members_list_user",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "members_list_user",
+        "type": "workspace"
       }
     }
   ],
   "enums": [],
   "extensions": [],
-  "joins": [],
+  "joins": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "project_id",
+          "primary_key?": true,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "project"
+          },
+          "source": {
+            "join": "join:20cb30e92a27dea0"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": false,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "task_id",
+          "primary_key?": true,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "task"
+          },
+          "source": {
+            "join": "join:20cb30e92a27dea0"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "position",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "join": "join:20cb30e92a27dea0"
+          },
+          "type": "integer",
+          "writable?": true
+        }
+      ],
+      "bubble_name": null,
+      "calculations": [],
+      "description": "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b); the list is not stored.",
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [
+        {
+          "columns": [
+            "task_id"
+          ],
+          "expression": null,
+          "fields": [
+            "task_id"
+          ],
+          "method": "btree",
+          "name": "project_tasks_task_id_index",
+          "source": {
+            "join": "join:20cb30e92a27dea0"
+          },
+          "using": null
+        }
+      ],
+      "join": {
+        "id": "join:20cb30e92a27dea0",
+        "left": {
+          "column": "project_id",
+          "relationship": "project",
+          "type": "project"
+        },
+        "right": {
+          "column": "task_id",
+          "relationship": "task",
+          "type": "task"
+        },
+        "sides": [
+          {
+            "field": "tasks_list_custom_task",
+            "join_relationship": "tasks_join",
+            "key": "finding:list_relationship:639085fbd2d9810b",
+            "owner": "left",
+            "position": "position",
+            "relationship": "tasks",
+            "transform": "normalize_list_to_join",
+            "type": "project"
+          }
+        ]
+      },
+      "migration_types": [],
+      "module": "ProjectTasks",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Project",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "name": "project",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "join": "join:20cb30e92a27dea0"
+          },
+          "source_attribute": "project_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Task",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "name": "task",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "join": "join:20cb30e92a27dea0"
+          },
+          "source_attribute": "task_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        }
+      ],
+      "source": {
+        "join": "join:20cb30e92a27dea0"
+      },
+      "synthesized": false,
+      "table": "project_tasks"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "user_id",
+          "primary_key?": true,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": false,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "workspace_id",
+          "primary_key?": true,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "workspace"
+          },
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "workspaces_position",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "type": "integer",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "members_position",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "type": "integer",
+          "writable?": true
+        }
+      ],
+      "bubble_name": null,
+      "calculations": [],
+      "description": "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453); the list is not stored. Both lists are one relation: a row lists each record in the other's list.",
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "expression": null,
+          "fields": [
+            "workspace_id"
+          ],
+          "method": "btree",
+          "name": "user_workspaces_workspace_id_index",
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "using": null
+        }
+      ],
+      "join": {
+        "id": "join:74f33555b22af590",
+        "left": {
+          "column": "user_id",
+          "relationship": "user",
+          "type": "user"
+        },
+        "right": {
+          "column": "workspace_id",
+          "relationship": "workspace",
+          "type": "workspace"
+        },
+        "sides": [
+          {
+            "field": "workspaces_list_custom_workspace",
+            "join_relationship": "workspaces_join",
+            "key": "finding:list_relationship:b426fecd8cad673d",
+            "owner": "left",
+            "position": "workspaces_position",
+            "relationship": "workspaces",
+            "transform": "normalize_list_to_join",
+            "type": "user"
+          },
+          {
+            "field": "members_list_user",
+            "join_relationship": "members_join",
+            "key": "finding:privacy_access_list:f86b7e1509c01453",
+            "owner": "right",
+            "position": "members_position",
+            "relationship": "members",
+            "transform": "membership_policy",
+            "type": "workspace"
+          }
+        ]
+      },
+      "migration_types": [],
+      "module": "UserWorkspaces",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "name": "user",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "source_attribute": "user_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Workspace",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "name": "workspace",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "join": "join:74f33555b22af590"
+          },
+          "source_attribute": "workspace_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        }
+      ],
+      "source": {
+        "join": "join:74f33555b22af590"
+      },
+      "synthesized": false,
+      "table": "user_workspaces"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "project_id",
+          "primary_key?": true,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "project"
+          },
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": false,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "user_id",
+          "primary_key?": true,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "favorites_position",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "type": "integer",
+          "writable?": true
+        }
+      ],
+      "bubble_name": null,
+      "calculations": [],
+      "description": "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50); the list is not stored. Both lists are one relation: a row lists each record in the other's list.",
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "expression": null,
+          "fields": [
+            "user_id"
+          ],
+          "method": "btree",
+          "name": "favorite_project_user_id_index",
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "using": null
+        }
+      ],
+      "join": {
+        "id": "join:ee286c67d73bb3ce",
+        "left": {
+          "column": "project_id",
+          "relationship": "project",
+          "type": "project"
+        },
+        "right": {
+          "column": "user_id",
+          "relationship": "user",
+          "type": "user"
+        },
+        "sides": [
+          {
+            "field": "viewers_list_user",
+            "join_relationship": "viewers_join",
+            "key": "finding:list_relationship:1f3c654d5970dd53",
+            "owner": "left",
+            "position": null,
+            "relationship": "viewers",
+            "transform": "normalize_list_to_join",
+            "type": "project"
+          },
+          {
+            "field": "favorites_list_custom_project",
+            "join_relationship": "favorites_join",
+            "key": "finding:list_relationship:aa3ba92c1799ff50",
+            "owner": "right",
+            "position": "favorites_position",
+            "relationship": "favorites",
+            "transform": "normalize_list_to_join",
+            "type": "user"
+          }
+        ]
+      },
+      "migration_types": [],
+      "module": "FavoriteProject",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Project",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "name": "project",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "source_attribute": "project_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "name": "user",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "join": "join:ee286c67d73bb3ce"
+          },
+          "source_attribute": "user_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        }
+      ],
+      "source": {
+        "join": "join:ee286c67d73bb3ce"
+      },
+      "synthesized": false,
+      "table": "favorite_project"
+    }
+  ],
   "names": {
     "enums": {},
     "external_types": {},
+    "joins": {
+      "join:20cb30e92a27dea0": {
+        "attributes": {
+          "left": "project_id",
+          "project/tasks_list_custom_task": "position",
+          "right": "task_id"
+        },
+        "module": "ProjectTasks",
+        "table": "project_tasks"
+      },
+      "join:74f33555b22af590": {
+        "attributes": {
+          "left": "user_id",
+          "right": "workspace_id",
+          "user/workspaces_list_custom_workspace": "workspaces_position",
+          "workspace/members_list_user": "members_position"
+        },
+        "module": "UserWorkspaces",
+        "table": "user_workspaces"
+      },
+      "join:ee286c67d73bb3ce": {
+        "attributes": {
+          "left": "project_id",
+          "right": "user_id",
+          "user/favorites_list_custom_project": "favorites_position"
+        },
+        "module": "FavoriteProject",
+        "table": "favorite_project"
+      }
+    },
     "resources": {
       "project": {
         "attributes": {
@@ -380,21 +891,25 @@
           "note_text": "note",
           "owner_id_text": "owner_id",
           "score_number": "score",
-          "sort_workspace_name_text": "team_name",
+          "sort_workspace_name_text": "sort_workspace_name",
           "summary_text": "summary",
           "task_count_number": "task_count",
           "tasks_list_custom_task": "tasks",
-          "title_text": "headline",
+          "title_text": "title",
           "viewers_list_user": "viewers",
           "workspace_created_date": "workspace_created",
-          "workspace_custom_workspace": "team_id"
+          "workspace_custom_workspace": "workspace_id"
         },
-        "module": "Initiative",
+        "join_relationships": {
+          "tasks_list_custom_task": "tasks_join",
+          "viewers_list_user": "viewers_join"
+        },
+        "module": "Project",
         "relationships": {
           "Created By": "creator",
-          "workspace_custom_workspace": "team"
+          "workspace_custom_workspace": "workspace"
         },
-        "table": "initiative"
+        "table": "project"
       },
       "task": {
         "attributes": {
@@ -416,7 +931,7 @@
           "assignee_user": "assignee",
           "project_custom_project": "project"
         },
-        "table": "todo_item"
+        "table": "task"
       },
       "user": {
         "attributes": {
@@ -431,6 +946,10 @@
           "pinned_tasks_list_custom_task": "pinned_tasks",
           "starred_tasks_list_custom_task": "starred_tasks",
           "workspaces_list_custom_workspace": "workspaces"
+        },
+        "join_relationships": {
+          "favorites_list_custom_project": "favorites_join",
+          "workspaces_list_custom_workspace": "workspaces_join"
         },
         "module": "User",
         "relationships": {
@@ -448,6 +967,9 @@
           "members_list_user": "members",
           "name_text": "name",
           "projects_list_custom_project": "projects"
+        },
+        "join_relationships": {
+          "members_list_user": "members_join"
         },
         "module": "Workspace",
         "relationships": {
@@ -836,6 +1358,32 @@
             ]
           ],
           "default": null,
+          "name": "sort_workspace_name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "sort_workspace_name_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
           "name": "summary",
           "primary_key?": false,
           "public?": true,
@@ -861,44 +1409,7 @@
             "field": "task_count_number",
             "type": "project"
           },
-          "type": "integer",
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "list.custom.task",
-          "column": null,
-          "constraints": [
-            [
-              "items",
-              [
-                [
-                  "trim?",
-                  false
-                ],
-                [
-                  "allow_empty?",
-                  true
-                ]
-              ]
-            ]
-          ],
-          "default": null,
-          "name": "tasks",
-          "primary_key?": false,
-          "public?": true,
-          "references": {
-            "cardinality": "many",
-            "target": "task"
-          },
-          "source": {
-            "field": "tasks_list_custom_task",
-            "type": "project"
-          },
-          "type": [
-            "array",
-            "string"
-          ],
+          "type": "float",
           "writable?": true
         },
         {
@@ -916,7 +1427,7 @@
             ]
           ],
           "default": null,
-          "name": "headline",
+          "name": "title",
           "primary_key?": false,
           "public?": true,
           "references": null,
@@ -929,39 +1440,19 @@
         },
         {
           "allow_nil?": true,
-          "bubble_type": "list.user",
+          "bubble_type": "date",
           "column": null,
-          "constraints": [
-            [
-              "items",
-              [
-                [
-                  "trim?",
-                  false
-                ],
-                [
-                  "allow_empty?",
-                  true
-                ]
-              ]
-            ]
-          ],
+          "constraints": [],
           "default": null,
-          "name": "viewers",
+          "name": "workspace_created",
           "primary_key?": false,
           "public?": true,
-          "references": {
-            "cardinality": "many",
-            "target": "user"
-          },
+          "references": null,
           "source": {
-            "field": "viewers_list_user",
+            "field": "workspace_created_date",
             "type": "project"
           },
-          "type": [
-            "array",
-            "string"
-          ],
+          "type": "utc_datetime_usec",
           "writable?": true
         },
         {
@@ -979,7 +1470,7 @@
             ]
           ],
           "default": null,
-          "name": "team_id",
+          "name": "workspace_id",
           "primary_key?": false,
           "public?": true,
           "references": {
@@ -995,75 +1486,7 @@
         }
       ],
       "bubble_name": "Project",
-      "calculations": [
-        {
-          "constraints": [
-            [
-              "trim?",
-              false
-            ],
-            [
-              "allow_empty?",
-              true
-            ]
-          ],
-          "description": "Derived from team.name (owner decision finding:denormalized_field:68936c1f2538ef9c); not stored",
-          "expr": {
-            "actor_loads": [],
-            "arguments": [],
-            "expr": [
-              "ref",
-              [
-                "team"
-              ],
-              "name"
-            ],
-            "resource": "Initiative",
-            "sort": [],
-            "source": {
-              "field": "sort_workspace_name_text",
-              "type": "project"
-            }
-          },
-          "kind": "derived",
-          "name": "team_name",
-          "public?": true,
-          "source": {
-            "field": "sort_workspace_name_text",
-            "type": "project"
-          },
-          "type": "string"
-        },
-        {
-          "constraints": [],
-          "description": "Derived from team.created_date (owner decision finding:denormalized_field:10af1394be0ded99); not stored",
-          "expr": {
-            "actor_loads": [],
-            "arguments": [],
-            "expr": [
-              "ref",
-              [
-                "team"
-              ],
-              "created_date"
-            ],
-            "resource": "Initiative",
-            "sort": [],
-            "source": {
-              "field": "workspace_created_date",
-              "type": "project"
-            }
-          },
-          "kind": "derived",
-          "name": "workspace_created",
-          "public?": true,
-          "source": {
-            "field": "workspace_created_date",
-            "type": "project"
-          },
-          "type": "utc_datetime_usec"
-        }
-      ],
+      "calculations": [],
       "description": null,
       "extra_actions": [],
       "field_policies": [],
@@ -1071,7 +1494,7 @@
       "indexes": [],
       "join": null,
       "migration_types": [],
-      "module": "Initiative",
+      "module": "Project",
       "policies": [],
       "privacy": null,
       "privacy_relationships": [],
@@ -1109,23 +1532,67 @@
           "gate": null,
           "join_relationship": null,
           "kind": "belongs_to",
-          "name": "team",
+          "name": "workspace",
           "public?": true,
           "sortable?": true,
           "source": {
             "field": "workspace_custom_workspace",
             "type": "project"
           },
-          "source_attribute": "team_id",
+          "source_attribute": "workspace_id",
           "source_attribute_on_join_resource": null,
           "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Task",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": "task_id",
+          "gate": null,
+          "join_relationship": "tasks_join",
+          "kind": "many_to_many",
+          "name": "tasks",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "tasks_list_custom_task",
+            "type": "project"
+          },
+          "source_attribute": "id",
+          "source_attribute_on_join_resource": "project_id",
+          "through": "ProjectTasks"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": "user_id",
+          "gate": null,
+          "join_relationship": "viewers_join",
+          "kind": "many_to_many",
+          "name": "viewers",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "viewers_list_user",
+            "type": "project"
+          },
+          "source_attribute": "id",
+          "source_attribute_on_join_resource": "project_id",
+          "through": "FavoriteProject"
         }
       ],
       "source": {
         "type": "project"
       },
       "synthesized": false,
-      "table": "initiative"
+      "table": "project"
     },
     {
       "actions": [
@@ -1317,7 +1784,7 @@
             "field": "points_number",
             "type": "task"
           },
-          "type": "decimal",
+          "type": "float",
           "writable?": true
         },
         {
@@ -1465,7 +1932,7 @@
           "attribute_type": "string",
           "db_reference": "ignore",
           "define_attribute?": false,
-          "destination": "Initiative",
+          "destination": "Project",
           "destination_attribute": "id",
           "destination_attribute_on_join_resource": null,
           "gate": null,
@@ -1487,7 +1954,7 @@
         "type": "task"
       },
       "synthesized": false,
-      "table": "todo_item"
+      "table": "task"
     },
     {
       "actions": [
@@ -1647,43 +2114,6 @@
         },
         {
           "allow_nil?": true,
-          "bubble_type": "list.custom.project",
-          "column": null,
-          "constraints": [
-            [
-              "items",
-              [
-                [
-                  "trim?",
-                  false
-                ],
-                [
-                  "allow_empty?",
-                  true
-                ]
-              ]
-            ]
-          ],
-          "default": null,
-          "name": "favorites",
-          "primary_key?": false,
-          "public?": true,
-          "references": {
-            "cardinality": "many",
-            "target": "project"
-          },
-          "source": {
-            "field": "favorites_list_custom_project",
-            "type": "user"
-          },
-          "type": [
-            "array",
-            "string"
-          ],
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
           "bubble_type": "text",
           "column": null,
           "constraints": [
@@ -1781,43 +2211,6 @@
             "string"
           ],
           "writable?": true
-        },
-        {
-          "allow_nil?": true,
-          "bubble_type": "list.custom.workspace",
-          "column": null,
-          "constraints": [
-            [
-              "items",
-              [
-                [
-                  "trim?",
-                  false
-                ],
-                [
-                  "allow_empty?",
-                  true
-                ]
-              ]
-            ]
-          ],
-          "default": null,
-          "name": "workspaces",
-          "primary_key?": false,
-          "public?": true,
-          "references": {
-            "cardinality": "many",
-            "target": "workspace"
-          },
-          "source": {
-            "field": "workspaces_list_custom_workspace",
-            "type": "user"
-          },
-          "type": [
-            "array",
-            "string"
-          ],
-          "writable?": true
         }
       ],
       "bubble_name": "User",
@@ -1855,6 +2248,50 @@
           "source_attribute": "creator_id",
           "source_attribute_on_join_resource": null,
           "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Project",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": "project_id",
+          "gate": null,
+          "join_relationship": "favorites_join",
+          "kind": "many_to_many",
+          "name": "favorites",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "favorites_list_custom_project",
+            "type": "user"
+          },
+          "source_attribute": "id",
+          "source_attribute_on_join_resource": "user_id",
+          "through": "FavoriteProject"
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Workspace",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": "workspace_id",
+          "gate": null,
+          "join_relationship": "workspaces_join",
+          "kind": "many_to_many",
+          "name": "workspaces",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "workspaces_list_custom_workspace",
+            "type": "user"
+          },
+          "source_attribute": "id",
+          "source_attribute_on_join_resource": "user_id",
+          "through": "UserWorkspaces"
         }
       ],
       "source": {
@@ -1995,43 +2432,6 @@
         },
         {
           "allow_nil?": true,
-          "bubble_type": "list.user",
-          "column": null,
-          "constraints": [
-            [
-              "items",
-              [
-                [
-                  "trim?",
-                  false
-                ],
-                [
-                  "allow_empty?",
-                  true
-                ]
-              ]
-            ]
-          ],
-          "default": null,
-          "name": "members",
-          "primary_key?": false,
-          "public?": true,
-          "references": {
-            "cardinality": "many",
-            "target": "user"
-          },
-          "source": {
-            "field": "members_list_user",
-            "type": "workspace"
-          },
-          "type": [
-            "array",
-            "string"
-          ],
-          "writable?": true
-        },
-        {
-          "allow_nil?": true,
           "bubble_type": "text",
           "column": null,
           "constraints": [
@@ -2129,6 +2529,28 @@
           "source_attribute": "creator_id",
           "source_attribute_on_join_resource": null,
           "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": "user_id",
+          "gate": null,
+          "join_relationship": "members_join",
+          "kind": "many_to_many",
+          "name": "members",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "members_list_user",
+            "type": "workspace"
+          },
+          "source_attribute": "id",
+          "source_attribute_on_join_resource": "workspace_id",
+          "through": "UserWorkspaces"
         }
       ],
       "source": {

@@ -3,7 +3,8 @@ defmodule BubbleEx.Load.Scan do
 
   # The loader's first pass over an export (`BubbleEx.Load`): row counts,
   # record IDs per type (for dangling references), the copy of each
-  # duplicated ID that loads, the values derived-field drift needs, users'
+  # duplicated ID that loads, the values derived-field drift and the join
+  # tables need, users'
   # emails, the Bubble files the rows reference, and the row- and
   # type-level issues. Holds values in memory only; nothing leaves the
   # process.
@@ -14,6 +15,8 @@ defmodule BubbleEx.Load.Scan do
 
   # Data API members of a row that are not fields.
   @not_fields ~w(_id _type authentication user_signed_up)
+
+  @type t :: %__MODULE__{}
 
   defstruct keys: %{},
             types: %{},
@@ -385,14 +388,17 @@ defmodule BubbleEx.Load.Scan do
 
   # --- derived fields ----------------------------------------------------------------------------
 
-  # The fields whose values drift needs, per type.
+  # The fields whose values drift and the join tables need, per type.
   defp needed(plan, model) do
+    joined = for j <- plan.joins, side <- j.sides, do: {side.type, side.field}
+
     plan.tables
     |> Enum.flat_map(fn table ->
       Enum.flat_map(table.derived, fn d ->
         [{table.type, d.field} | derivation_fields(d.derivation, table.type, model)]
       end)
     end)
+    |> Enum.concat(joined)
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Map.new(fn {t, fs} -> {t, Enum.uniq(fs)} end)
   end

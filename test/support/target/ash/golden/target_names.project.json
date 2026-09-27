@@ -127,6 +127,7 @@
     }
   ],
   "extensions": [],
+  "joins": [],
   "names": {
     "enums": {
       "tier": {
@@ -394,6 +395,7 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "DomainResource",
       "policies": [
@@ -472,7 +474,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -481,7 +485,9 @@
             "field": "Created By",
             "type": "domain"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1002,6 +1008,7 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "N3dGadget",
       "policies": [
@@ -1080,7 +1087,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1089,7 +1098,9 @@
             "field": "Created By",
             "type": "gadget"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -1098,7 +1109,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator_2",
           "public?": true,
@@ -1107,7 +1120,9 @@
             "field": "creator_user",
             "type": "gadget"
           },
-          "source_attribute": "creator_2_id"
+          "source_attribute": "creator_2_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -1116,7 +1131,9 @@
           "define_attribute?": false,
           "destination": "RepoResource",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "widget",
           "public?": true,
@@ -1125,7 +1142,9 @@
             "field": "widget_custom_repo",
             "type": "gadget"
           },
-          "source_attribute": "widget_id"
+          "source_attribute": "widget_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1307,6 +1326,7 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "RepoResource",
       "policies": [
@@ -1385,7 +1405,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1394,7 +1416,9 @@
             "field": "Created By",
             "type": "repo"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1601,6 +1625,7 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "User",
       "policies": [
@@ -1672,7 +1697,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator_for_privacy",
           "public?": false,
@@ -1681,7 +1708,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "relationships": [
@@ -1692,7 +1721,9 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": "never",
+          "join_relationship": null,
           "kind": "belongs_to",
           "name": "creator",
           "public?": true,
@@ -1701,7 +1732,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1711,7 +1744,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 5,
+  "schema_version": 6,
   "typed_structs": [],
   "types": []
 }

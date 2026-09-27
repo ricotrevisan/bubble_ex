@@ -186,7 +186,7 @@ defmodule BubbleEx.Diagnostic.Codes do
 
     # --- target:ash — BubbleEx.Target.Ash owner decisions (WTF-352, WTF-401) ---
     {:ash_decision_applied, :info, :degraded, :target,
-     "an owner decision (or a hint applied by default) changed the mapping: a number stored as an integer or decimal, a copied field or count derived as a calculation or aggregate, a text of IDs made a reference, a reverse list derived as a has_many, indexes added; the project departs from the source-faithful mapping on purpose"},
+     "an owner decision (or a hint applied by default) changed the mapping: a number stored as an integer or decimal, a copied field or count derived as a calculation or aggregate, a text of IDs made a reference, a reverse list derived as a has_many, a list of things normalized to a join resource (a many_to_many), indexes added; the project departs from the source-faithful mapping on purpose"},
     {:ash_decision_deferred, :warning, :unresolved, :target,
      "what applies by default but Target.Ash does not create: indexes with no Ash rendering (a geographic access, a field no longer stored), or a hint whose transform is not applied yet; listed in `project.deferred`"},
     {:ash_name_overridden, :info, :preserved, :target,
@@ -261,6 +261,10 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a stored value of a field derived by an owner decision (not loaded) that differs from the value derived from the loaded data"},
     {:load_reverse_list_drift, :warning, :degraded, :load,
      "a stored list replaced by a `has_many` (`derive_reverse_relationship`) that differs from the records pointing back; the `has_many` reads the latter"},
+    {:load_join_duplicate, :info, :degraded, :load,
+     "a list normalized to a join (`normalize_list_to_join`, `membership_policy`) that holds a member more than once; the join has one row per member, at its first position"},
+    {:load_join_asymmetric, :warning, :degraded, :load,
+     "a member of a list normalized to a join shared with its mirrored list, whose own (exported) list does not list the owner back; the join loads the union of both lists, so the member now lists it too"},
     {:load_duplicate_email, :error, :unresolved, :load,
      "users whose trimmed emails are equal ignoring case; the target's unique email identity refuses them, so nothing is written"},
     {:load_invalid_email, :warning, :degraded, :load,
