@@ -6,6 +6,35 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Structural verification pack** (WTF-386, V6 of WTF-358).
+  `BubbleEx.Target.Phoenix.Structural` checks, offline and
+  deterministically, that a generated project matches the Bubble model,
+  and records every outcome as a structural (L0) `BubbleEx.Verify.Result`
+  the cutover gates can read. **Structural, not behavioural**: every
+  summary says so (`Structural.statement/0`). `run/2`, at generation with
+  the model: `symbol_coverage` per category (data types, fields, option
+  sets, option values, pages, reusable elements, workflows, API Connector
+  calls), each symbol in one bucket (`generated`, `decision`, `residue`,
+  `task`, `diagnosed`, `excluded`, else `uncovered`, which fails), read
+  from the Ash project, the workflow and API client Specs, the rendered
+  surfaces and the plan (`Structural.Coverage`); `policy_coverage` (every
+  privacy rule compiled, denied or the `everyone` rule of an
+  `:unverified` project; `skipped` for `privacy: :omit`, since no policy
+  is generated); `bypass_inventory` (the lowering bypasses exactly the
+  backend workflows that ignore privacy rules in Bubble, and the rendered
+  bodies agree); `generated_unchanged` (`Manifest.check/3`) and
+  `deterministic` (a second rendering). `project/2`, and the new
+  `mix wtf.verify structural --app APP_ID` in the owner's repository
+  (advisory): the manifest, `mix compile --warnings-as-errors`, format and
+  Credo (`Target.Phoenix.Checks`), `mix ash.codegen --check`, and the
+  owned-code bypass inventory: every `authorize?: false` read from the
+  parsed code (`Structural.Bypasses`) needs `# bubble:ignores_privacy
+  <workflow id>` for a listed workflow unless its file is still as
+  scaffolded. What a run does not check is listed with why.
+  `scripts/phoenix_compile_check/structural.sh` runs the task end to end;
+  `test/support/verify/counts/structural.mm-137.json` is mm-137's counts
+  snapshot (private fixture).
+
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
   workflows, backend custom events, database triggers) to a stack-neutral

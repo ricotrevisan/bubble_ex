@@ -1,0 +1,337 @@
+{
+  "decided": {
+    "counts": {
+      "bypasses": {
+        "expected": 147,
+        "lowered": 147,
+        "sites": {
+          "authorize_false:scaffold": 14,
+          "runtime_start:listed": 147
+        }
+      },
+      "privacy_rules": {
+        "privacy": "omit",
+        "rules": 123,
+        "types": {
+          "none": 46,
+          "present": 47
+        }
+      },
+      "symbols": {
+        "api_calls": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 0,
+          "generated": 198,
+          "reasons": {
+            "residue:not_generated": 5
+          },
+          "residue": 5,
+          "task": 0,
+          "total": 203,
+          "uncovered": 0
+        },
+        "data_types": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 4,
+          "generated": 93,
+          "reasons": {
+            "excluded:deleted": 4
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 97,
+          "uncovered": 0
+        },
+        "fields": {
+          "decision": 1,
+          "diagnosed": 0,
+          "excluded": 50,
+          "generated": 1692,
+          "reasons": {
+            "decision:derived": 1,
+            "excluded:deleted": 14,
+            "excluded:type_deleted": 36
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 1743,
+          "uncovered": 0
+        },
+        "option_sets": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 4,
+          "generated": 141,
+          "reasons": {
+            "excluded:deleted": 4
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 145,
+          "uncovered": 0
+        },
+        "option_values": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 16,
+          "generated": 678,
+          "reasons": {
+            "excluded:deleted": 2,
+            "excluded:option_set_deleted": 14
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 694,
+          "uncovered": 0
+        },
+        "pages": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 1,
+          "generated": 30,
+          "reasons": {
+            "excluded:mobile_view": 1
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 31,
+          "uncovered": 0
+        },
+        "reusables": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 0,
+          "generated": 127,
+          "reasons": {},
+          "residue": 0,
+          "task": 0,
+          "total": 127,
+          "uncovered": 0
+        },
+        "workflows": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 0,
+          "generated": 101,
+          "reasons": {
+            "residue:auth_action": 16,
+            "residue:not_native": 534,
+            "residue:plugin_action": 377,
+            "residue:plugin_event": 258,
+            "residue:trigger_in_runtime_template": 192,
+            "residue:uncompiled_expression": 246,
+            "residue:unresolved_reference": 4,
+            "residue:unsupported_action": 1,
+            "residue:unsupported_event": 2,
+            "task:auth": 9,
+            "task:cycle": 4,
+            "task:workflow": 1166
+          },
+          "residue": 1630,
+          "task": 1179,
+          "total": 2910,
+          "uncovered": 0
+        }
+      }
+    },
+    "passing": false,
+    "policy_coverage_unverified": {
+      "counts": {
+        "compiled": 76,
+        "denied": 0,
+        "everyone": 47,
+        "privacy": "unverified",
+        "rules": 123,
+        "types": {
+          "none": 46,
+          "present": 47
+        },
+        "uncovered": 0
+      },
+      "status": "pass"
+    },
+    "results": {
+      "structural.bypass_inventory": "pass",
+      "structural.deterministic": "pass",
+      "structural.generated_unchanged": "pass",
+      "structural.policy_coverage": "skipped",
+      "structural.symbol_coverage.api_calls": "pass",
+      "structural.symbol_coverage.data_types": "pass",
+      "structural.symbol_coverage.fields": "pass",
+      "structural.symbol_coverage.option_sets": "pass",
+      "structural.symbol_coverage.option_values": "pass",
+      "structural.symbol_coverage.pages": "pass",
+      "structural.symbol_coverage.reusables": "pass",
+      "structural.symbol_coverage.workflows": "pass"
+    }
+  },
+  "faithful": {
+    "counts": {
+      "bypasses": {
+        "expected": 147,
+        "lowered": 147,
+        "sites": {
+          "authorize_false:scaffold": 14,
+          "runtime_start:listed": 147
+        }
+      },
+      "privacy_rules": {
+        "privacy": "omit",
+        "rules": 123,
+        "types": {
+          "none": 46,
+          "present": 47
+        }
+      },
+      "symbols": {
+        "api_calls": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 0,
+          "generated": 198,
+          "reasons": {
+            "residue:not_generated": 5
+          },
+          "residue": 5,
+          "task": 0,
+          "total": 203,
+          "uncovered": 0
+        },
+        "data_types": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 4,
+          "generated": 93,
+          "reasons": {
+            "excluded:deleted": 4
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 97,
+          "uncovered": 0
+        },
+        "fields": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 50,
+          "generated": 1693,
+          "reasons": {
+            "excluded:deleted": 14,
+            "excluded:type_deleted": 36
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 1743,
+          "uncovered": 0
+        },
+        "option_sets": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 4,
+          "generated": 141,
+          "reasons": {
+            "excluded:deleted": 4
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 145,
+          "uncovered": 0
+        },
+        "option_values": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 16,
+          "generated": 678,
+          "reasons": {
+            "excluded:deleted": 2,
+            "excluded:option_set_deleted": 14
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 694,
+          "uncovered": 0
+        },
+        "pages": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 1,
+          "generated": 30,
+          "reasons": {
+            "excluded:mobile_view": 1
+          },
+          "residue": 0,
+          "task": 0,
+          "total": 31,
+          "uncovered": 0
+        },
+        "reusables": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 0,
+          "generated": 127,
+          "reasons": {},
+          "residue": 0,
+          "task": 0,
+          "total": 127,
+          "uncovered": 0
+        },
+        "workflows": {
+          "decision": 0,
+          "diagnosed": 0,
+          "excluded": 0,
+          "generated": 101,
+          "reasons": {
+            "residue:auth_action": 16,
+            "residue:not_native": 534,
+            "residue:plugin_action": 377,
+            "residue:plugin_event": 258,
+            "residue:trigger_in_runtime_template": 192,
+            "residue:uncompiled_expression": 246,
+            "residue:unresolved_reference": 4,
+            "residue:unsupported_action": 1,
+            "residue:unsupported_event": 2,
+            "task:auth": 9,
+            "task:cycle": 4,
+            "task:workflow": 1166
+          },
+          "residue": 1630,
+          "task": 1179,
+          "total": 2910,
+          "uncovered": 0
+        }
+      }
+    },
+    "passing": false,
+    "policy_coverage_unverified": {
+      "counts": {
+        "compiled": 76,
+        "denied": 0,
+        "everyone": 47,
+        "privacy": "unverified",
+        "rules": 123,
+        "types": {
+          "none": 46,
+          "present": 47
+        },
+        "uncovered": 0
+      },
+      "status": "pass"
+    },
+    "results": {
+      "structural.bypass_inventory": "pass",
+      "structural.deterministic": "pass",
+      "structural.generated_unchanged": "pass",
+      "structural.policy_coverage": "skipped",
+      "structural.symbol_coverage.api_calls": "pass",
+      "structural.symbol_coverage.data_types": "pass",
+      "structural.symbol_coverage.fields": "pass",
+      "structural.symbol_coverage.option_sets": "pass",
+      "structural.symbol_coverage.option_values": "pass",
+      "structural.symbol_coverage.pages": "pass",
+      "structural.symbol_coverage.reusables": "pass",
+      "structural.symbol_coverage.workflows": "pass"
+    }
+  }
+}

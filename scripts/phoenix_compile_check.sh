@@ -19,7 +19,9 @@
 #     expr_app, its page and reusable surface tests run by their task CLI
 #     tags (`mix test --only bubble:page:<id>`)
 #   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
-#     complete/audit end to end on one generated project (WTF-375)
+#     complete/audit end to end on one generated project (WTF-375), and
+#     scripts/phoenix_compile_check/structural.sh: mix wtf.verify
+#     structural on one (WTF-386)
 #
 # Every fixture renders with the same module and app name, so the
 # dependencies compile once. The scratch project lives in
@@ -87,6 +89,10 @@ done
 # The task CLI (mix wtf.task) end to end on one generated project.
 cd "$root"
 scripts/phoenix_compile_check/task_cli.sh "$scratch"
+
+# The structural verification pack (mix wtf.verify structural) end to end.
+cd "$root"
+scripts/phoenix_compile_check/structural.sh "$scratch"
 
 if [[ -z "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
   echo "smoke tests skipped: set PHOENIX_COMPILE_CHECK_DB to a PostgreSQL URL"

@@ -52,6 +52,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "installed plugin IDs and versions under `client_safe.plugins`, not API Connector types",
     "lib/bubble_ex/apps/parser.ex" =>
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
+    "lib/bubble_ex/target/phoenix/structural/coverage.ex" =>
+      "the structural report's own category names (`:option_sets`); reads the Model's structs, no app JSON",
     "lib/bubble_ex/target/ash/matrix_tests.ex" =>
       "the observation format's own `value` member, written by the emitted tests; reads no app JSON",
     "lib/bubble_ex/verify/observation.ex" =>
