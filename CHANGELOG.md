@@ -1100,6 +1100,34 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **`generate:api_clients` no longer checks API calls the generator leaves
+  out** (WTF-412). Its `request_shape` criterion listed every API call,
+  including residue calls with no generated test, so
+  `mix wtf.task complete generate:api_clients` failed whenever one existed
+  (5 of 203 calls on mm-137). It now lists only the generated calls, and
+  the task carries the residue calls' residue (part of its
+  `source_sha256`, so a call turning residue re-verifies it). Residue
+  calls stay visible: a used one is an open `api_call` task (four on
+  mm-137, which were wrongly `auto` before), and those nothing kept uses
+  are the new `api_clients:residue` task (kind `:api_clients_residue`,
+  agent, open, one `attested` criterion; one on mm-137), after
+  `generate:api_clients` and before `replay:app`. The plan and the
+  generator now share one stack-neutral decision,
+  `BubbleEx.Model.ConnectorSupport.unsupported/2` (malformed call,
+  unsupported authentication such as OAuth, JWT or a custom token, unknown
+  method, unnamed parameter, the request template's `unsupported`
+  reasons): `Plan.Residue` gives every call it rejects one new
+  `:not_generated` entry with those reasons, and `BubbleEx.Target.ApiClients`
+  leaves exactly those calls out. The plan's own API call checks
+  (`:dynamic_url`, `:oauth`, `:malformed_call`) are gone: they missed JWT
+  and custom-token groups, unknown methods and unnamed parameters, and
+  marked a call with a malformed `types` registry (which is generated,
+  untyped) as residue. The three reasons still decode. Surfaces and workflows had no such check: their
+  generator tasks run no tagged tests, and their residue is already
+  surface and workflow task work. Plan coverage snapshots for mm-137 are
+  re-recorded (plan and plugins). `scripts/phoenix_compile_check/task_cli.sh`
+  completes `generate:api_clients` and `api_clients:residue` on
+  `phoenix_api_clients` (three residue calls).
 - **Cut-2 follow-ups** (WTF-410). A `derive_count` computed as a list
   length now says in its `ash_decision_applied` diagnostic that the loader
   must drop IDs of deleted records from the list, which Bubble's `:count`

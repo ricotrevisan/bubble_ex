@@ -293,6 +293,7 @@ defmodule BubbleEx.Load.Scan do
     Map.put(auth, id, %{
       email: normalized_email(email(row, fields)),
       confirmed: confirmed(row),
+      confirmed_at: confirmed_at(row, fields),
       providers: providers(row)
     })
   end
@@ -314,6 +315,21 @@ defmodule BubbleEx.Load.Scan do
     case get_in(row, ["authentication", "email", "email_confirmed"]) do
       b when is_boolean(b) -> b
       _ -> nil
+    end
+  end
+
+  @doc false
+  # When a user's email was confirmed (WTF-413). Bubble keeps a flag, not
+  # a time: a confirmed user's Created Date (stable, so reruns and delta
+  # syncs leave the user unchanged), `:undated` for a confirmed user
+  # without a readable one, else nil.
+  def confirmed_at(row, fields) do
+    with true <- confirmed(row),
+         {at, []} when is_binary(at) <- Convert.encode(:datetime, fields["Created Date"]) do
+      at
+    else
+      {_nil, _found} -> :undated
+      _unconfirmed -> nil
     end
   end
 

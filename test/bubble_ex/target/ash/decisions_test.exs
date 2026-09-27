@@ -660,7 +660,12 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       calcs = Enum.flat_map(project.resources, & &1.calculations)
       assert Enum.all?(calcs, &(&1.kind == :derived))
       {:ok, source} = Source.render(project)
-      refute source =~ ~r/Ash\.Policy|field_polic|public\?: false/
+      refute source =~ ~r/Ash\.Policy|field_polic/
+      # The only private attribute is the User's confirmed_at (WTF-413).
+      assert [_] = Regex.scan(~r/public\?: false/, source)
+
+      assert source =~
+               "attribute :confirmed_at, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: false"
     end
 
     test ":unverified guards a derived field like the field it replaces" do

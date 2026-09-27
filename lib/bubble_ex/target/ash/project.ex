@@ -126,7 +126,7 @@ defmodule BubbleEx.Target.Ash.Project do
   alias BubbleEx.{CanonicalJson, Diagnostic}
   alias BubbleEx.Target.Ash.{Bypass, CustomType, Resource, TypedStruct}
 
-  @schema_version 6
+  @schema_version 7
 
   @enforce_keys [:schema_version]
   defstruct [

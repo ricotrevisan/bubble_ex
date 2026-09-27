@@ -83,7 +83,19 @@ defmodule BubbleEx.Load do
     * **Users** (WTF-355) load without any password material: the email
       (the `email` field or the Data API's `authentication.email.email`),
       trimmed, and the email-confirmed status where the target has a
-      column for it (else reported; it stays in the export). Emails equal
+      column for it (else reported; it stays in the export). That column
+      is a timestamp, AshAuthentication's `confirmed_at` (WTF-413): Bubble
+      keeps only a flag (`authentication.email.email_confirmed`), so a
+      confirmed user gets their **Created Date**, a migrated value
+      (`:load_confirmed_at_migrated`, info), not a confirmation time; a
+      confirmed user without a readable Created Date loads unconfirmed
+      (nil, `:load_confirmed_at_undated`; a magic-link sign-in confirms
+      them). Unconfirmed users, and users without the flag, get nil. A nil
+      never clears a stored confirmation while the user's email is
+      unchanged (a confirmation made in the target, e.g. by a magic-link
+      sign-in, survives a delta sync); a user whose email changed takes
+      Bubble's status. The Created Date, unlike the load time, keeps
+      reruns idempotent. Emails equal
       ignoring case stop a real run (the target's identity is unique), and
       so does an exported email that the target gives a record the export
       does not hold (e.g. a user deleted in Bubble whose email a new
@@ -369,8 +381,19 @@ defmodule BubbleEx.Load do
 
   defp auth_status(issues, _scan, %Plan{auth: nil}), do: issues
 
-  defp auth_status(issues, _scan, %Plan{auth: %Plan.Auth{confirmed_column: c}}) when is_binary(c),
-    do: issues
+  defp auth_status(issues, scan, %Plan{auth: %Plan.Auth{type: t, confirmed_column: c}})
+       when is_binary(c) do
+    dated = Enum.count(scan.auth, fn {_id, a} -> is_binary(a.confirmed_at) end)
+
+    scan.auth
+    |> Enum.filter(fn {_id, a} -> a.confirmed_at == :undated end)
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.sort()
+    |> Enum.reduce(
+      Issues.add_count(issues, :load_confirmed_at_migrated, t, nil, dated),
+      &Issues.add(&2, :load_confirmed_at_undated, t, nil, &1, nil)
+    )
+  end
 
   defp auth_status(issues, scan, %Plan{auth: %Plan.Auth{type: t}}) do
     known = Enum.count(scan.auth, fn {_id, a} -> is_boolean(a.confirmed) end)
@@ -655,16 +678,14 @@ defmodule BubbleEx.Load do
 
     json = Map.new([{table.key, id} | pairs])
 
-    json =
-      case {auth?, state.plan.auth} do
-        {true, %Plan.Auth{confirmed_column: c}} when is_binary(c) ->
-          Map.put(json, c, Scan.confirmed(row))
+    case {auth?, state.plan.auth} do
+      {true, %Plan.Auth{confirmed_column: c}} when is_binary(c) ->
+        at = with :undated <- Scan.confirmed_at(row, values), do: nil
+        {Map.put(json, c, at), issues}
 
-        _ ->
-          json
-      end
-
-    {json, issues}
+      _ ->
+        {json, issues}
+    end
   end
 
   defp email(nil), do: {nil, []}

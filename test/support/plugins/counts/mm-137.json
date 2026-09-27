@@ -59,10 +59,10 @@
         "trigger_dropped": 227
       },
       "top_level": {
-        "auto": 134,
+        "auto": 131,
         "closed": 30,
-        "open": 286,
-        "total": 450
+        "open": 290,
+        "total": 451
       },
       "workflows_removed": 31
     },
@@ -81,10 +81,10 @@
         "plugin_event": 258
       },
       "top_level": {
-        "auto": 103,
+        "auto": 100,
         "closed": 0,
-        "open": 347,
-        "total": 450
+        "open": 351,
+        "total": 451
       },
       "workflows_removed": 0
     },
@@ -103,10 +103,10 @@
         "plugin_event": 258
       },
       "top_level": {
-        "auto": 103,
+        "auto": 100,
         "closed": 0,
-        "open": 377,
-        "total": 480
+        "open": 381,
+        "total": 481
       },
       "workflows_removed": 0
     }

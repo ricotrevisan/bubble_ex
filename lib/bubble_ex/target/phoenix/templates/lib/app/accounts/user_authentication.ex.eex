@@ -9,6 +9,15 @@ defmodule <%= @module %>.Accounts.UserAuthentication do
   Bubble). Registration is disabled: only stored users can sign in. The
   email attribute is a case-insensitive, trimmed string with a unique
   identity, both generated.
+
+  The User also has `confirmed_at` (`Resources.confirmed_at_field/0`), the
+  attribute AshAuthentication's confirmation add-on uses: the data loader
+  fills it from Bubble's email-confirmed flag, and a magic-link sign-in
+  sets it when it is nil (`AuthController.success/4`; the add-on's
+  `auto_confirm_actions` only acts on a registering sign-in). To send
+  confirmation emails, add the add-on here with
+  `confirmed_at_field Resources.confirmed_at_field()`, `monitor_fields
+  [Resources.email_field()]`, `require_interaction? true` and a sender.
   """
 
   use Spark.Dsl.Fragment, of: Ash.Resource, extensions: [AshAuthentication]

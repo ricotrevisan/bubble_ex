@@ -14,6 +14,9 @@
 #   * Types.JsonValue: an object, a number, a string and a list
 #   * join resources (WTF-406): their two ID columns, the primary key, hold
 #     IDs of records that do not exist (no foreign key)
+#
+# The User's private confirmed_at is left out (the create action does not
+# accept it); any other private attribute fails the check.
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos) do
   {:ok, _} = repo.start_link()
@@ -48,7 +51,18 @@ defmodule RuntimeCheck do
           into: MapSet.new(),
           do: r.source_attribute
 
-    attributes = Ash.Resource.Info.attributes(resource)
+    # The User's confirmed_at (WTF-413) is private (the create action does
+    # not accept it) and the data loader's to write (load.exs checks it).
+    # It must be the only private attribute: any other fails here.
+    {confirmed, attributes} =
+      resource
+      |> Ash.Resource.Info.attributes()
+      |> Enum.split_with(&(&1.name |> to_string() |> String.match?(~r/\Aconfirmed_at(_\d+)?\z/) and not &1.public?))
+
+    private = for a <- attributes, not a.public?, do: a.name
+
+    if private != [] or length(confirmed) > 1,
+      do: raise("#{inspect(resource)} has unexpected private attributes: #{inspect(private)}")
 
     Enum.flat_map(0..3, fn i ->
       input =

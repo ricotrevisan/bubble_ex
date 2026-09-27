@@ -10,7 +10,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
         "module": "AcmeImport",
         "inputs": {
           "bubble_ex_version": "0.3.0",
-          "project_schema_version": 4,
+          "project_schema_version": 6,
           "project_sha256": "…",
           "decisions_sha256": null,
           "applied_sha256": null,

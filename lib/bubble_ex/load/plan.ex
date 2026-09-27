@@ -231,9 +231,14 @@ defmodule BubbleEx.Load.Plan.Auth do
   @moduledoc """
   Where users go: `type` is the Bubble data type of users (`"user"`),
   `email_column` the column of their email (a Plan column of field
-  `email`), `confirmed_column` the column of their email-confirmed status
-  (a boolean), or nil when the target has none (the status is then
-  reported, and kept in the export).
+  `email`), `confirmed_column` the column of when their email was
+  confirmed (a timestamp, AshAuthentication's `confirmed_at`: the
+  loader writes a confirmed user's Created Date, else nil, which does not
+  clear a stored value while the email is unchanged; see
+  `BubbleEx.Load`, "Users"), or nil when the target has none (the status
+  is then reported, and kept in the export). The confirmed column maps no
+  Bubble field, so it is not one of the table's columns; the adapter
+  checks and writes it with them.
   """
 
   @enforce_keys [:type]

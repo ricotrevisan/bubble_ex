@@ -14,7 +14,9 @@ defmodule BubbleEx.Load.Target do
       `load_column_extra` for columns it does not write. It reads only
     * `upsert/3` - writes one batch of rows of a table: each row maps column
       names to JSON values (`BubbleEx.Load.Convert`), the key column always
-      present. Must be an idempotent upsert on the key: inserting new
+      present, and for users the plan's `Plan.Auth` `confirmed_column` when
+      it has one (`check_schema/2` checks that column too): a nil there
+      must not clear a stored value while the user's email is unchanged Must be an idempotent upsert on the key: inserting new
       records, replacing the plan's columns of existing ones, and leaving
       identical records untouched. Returns the counts. Must not report stored
       values in errors

@@ -52,6 +52,16 @@ defmodule BubbleEx.Target.ApiClientsTest do
            }
   end
 
+  test "leaves out exactly what Model.ConnectorSupport rejects (WTF-412)", ctx do
+    rejected =
+      for g <- ctx.model.connectors,
+          c <- g.calls,
+          (reasons = BubbleEx.Model.ConnectorSupport.unsupported(g, c)) != [],
+          do: {g.id, c.id, reasons}
+
+    assert rejected == Enum.map(ctx.spec.residue, &{&1.group, &1.call, &1.reasons})
+  end
+
   test "maps a call's URL, headers, body and response", %{spec: spec} do
     assert %Call{
              method: :post,

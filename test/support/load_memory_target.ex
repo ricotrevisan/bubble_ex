@@ -16,7 +16,9 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
 
   def start(project, opts \\ []) do
     {:ok, agent} =
-      Agent.start_link(fn -> %{tables: %{}, calls: 0, fail_on: Keyword.get(opts, :fail_on)} end)
+      Agent.start_link(fn ->
+        %{tables: %{}, calls: 0, fail_on: Keyword.get(opts, :fail_on), auth: auth(project)}
+      end)
 
     {__MODULE__, %__MODULE__{project: project, agent: agent}}
   end
@@ -82,7 +84,8 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
       else
         current = Map.get(state.tables, table.table, %{})
         zero = %{inserted: 0, updated: 0, unchanged: 0}
-        {counts, current} = Enum.reduce(rows, {zero, current}, &put(&1, &2, table.key))
+        keep = keep_confirmed(state, table)
+        {counts, current} = Enum.reduce(rows, {zero, current}, &put(&1, &2, table.key, keep))
 
         commit(state, calls, table, current, counts)
       end
@@ -144,8 +147,44 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
     length(emails) == length(Enum.uniq(emails))
   end
 
-  defp put(row, {c, t}, key) do
+  defp auth(project) do
+    case Enum.find(project.resources, &(&1.source.type == "user")) do
+      nil ->
+        nil
+
+      user ->
+        column = fn a -> a && (a.column || a.name) end
+
+        %{
+          type: "user",
+          email_column: column.(Enum.find(user.attributes, &(&1.source[:field] == "email"))),
+          confirmed_column:
+            column.(Enum.find(user.attributes, &(&1.source[:auth] == "confirmed_at")))
+        }
+    end
+  end
+
+  # As Target.Ash.Loader: a nil confirmed_at does not clear a stored one
+  # while the email is unchanged.
+  defp keep_confirmed(%{auth: %{type: type, confirmed_column: c, email_column: e}}, %{type: type})
+       when is_binary(c) and is_binary(e),
+       do: {c, e}
+
+  defp keep_confirmed(_state, _table), do: nil
+
+  defp put(row, {c, t}, key, keep) do
     id = Map.fetch!(row, key)
+
+    row =
+      case {keep, Map.fetch(t, id)} do
+        {{conf, email}, {:ok, old}} ->
+          if is_nil(row[conf]) and old[email] == row[email],
+            do: Map.put(row, conf, old[conf]),
+            else: row
+
+        _ ->
+          row
+      end
 
     case Map.fetch(t, id) do
       :error -> {%{c | inserted: c.inserted + 1}, Map.put(t, id, row)}

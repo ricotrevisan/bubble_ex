@@ -334,6 +334,28 @@ defmodule BubbleEx.Load.Issues do
         details: d
       )
 
+  defp build(:load_confirmed_at_migrated, s, d),
+    do:
+      Diagnostic.new(
+        :load_confirmed_at_migrated,
+        "",
+        "#{d.count} confirmed users of #{where(s)} get their Created Date as confirmed_at " <>
+          "(Bubble records no confirmation time)",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_confirmed_at_undated, s, d),
+    do:
+      Diagnostic.new(
+        :load_confirmed_at_undated,
+        "",
+        "#{d.count} confirmed users of #{where(s)} have no readable Created Date; " <>
+          "they load unconfirmed (confirmed_at nil) until they sign in with a magic link",
+        subject: s,
+        details: d
+      )
+
   defp build(:load_auth_provider_unmigrated, s, d),
     do:
       Diagnostic.new(

@@ -1,7 +1,7 @@
 {
   "counts": {
     "applied": {},
-    "attributes": 1693,
+    "attributes": 1694,
     "attributes_by_type": {
       "array enum": 19,
       "array float": 1,
@@ -12,7 +12,7 @@
       "json_value": 12,
       "string": 935,
       "typed_struct": 4,
-      "utc_datetime_usec": 278
+      "utc_datetime_usec": 279
     },
     "db_references": {
       "ignore": 386
@@ -78,5 +78,5 @@
       "structured": 3
     }
   },
-  "schema_version": 6
+  "schema_version": 7
 }

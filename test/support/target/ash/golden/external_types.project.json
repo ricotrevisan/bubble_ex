@@ -408,6 +408,7 @@
           "Modified Date": "modified_date",
           "Slug": "slug",
           "_id": "id",
+          "authentication.email.email_confirmed": "confirmed_at",
           "email": "email"
         },
         "module": "User",
@@ -1025,6 +1026,23 @@
           },
           "type": "string",
           "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "confirmed_at",
+          "primary_key?": false,
+          "public?": false,
+          "references": null,
+          "source": {
+            "auth": "confirmed_at",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
         }
       ],
       "bubble_name": "User",
@@ -1190,7 +1208,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 6,
+  "schema_version": 7,
   "typed_structs": [
     {
       "bubble_name": "Address",
