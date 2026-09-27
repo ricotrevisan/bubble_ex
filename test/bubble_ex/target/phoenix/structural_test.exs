@@ -381,6 +381,14 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       assert inputs.files["lib/acme_web/bubble_data.ex"] =~ "authorize?: true"
       refute inputs.files["lib/acme_web/bubble_data.ex"] =~ "authorize?: false"
     end
+
+    test "a failed ID-list read logs the error and falls back to an empty lookup" do
+      inputs = build(load("test/support/target/phoenix/page_data.json"))
+      loader = inputs.files["lib/acme_web/bubble_data.ex"]
+
+      assert loader =~
+               ~r/\{:error, error\} ->\s+failed\(Ash\.Query\.new\(resource\), error\)\s+%\{\}/
+    end
   end
 
   describe "bypass inventory at generation" do

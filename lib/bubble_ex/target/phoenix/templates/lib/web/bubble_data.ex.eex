@@ -304,7 +304,9 @@ defmodule <%= @web %>.BubbleData do
         |> Ash.read(actor: ctx.actor, authorize?: true)
         |> case do
           {:ok, records} -> Map.new(records, &{Map.get(&1, pk), &1})
-          {:error, error} -> failed(Ash.Query.new(resource), error) || %{}
+          {:error, error} ->
+            failed(Ash.Query.new(resource), error)
+            %{}
         end
       end
 
