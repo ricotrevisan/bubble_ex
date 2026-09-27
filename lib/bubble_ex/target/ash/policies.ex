@@ -439,29 +439,7 @@ defmodule BubbleEx.Target.Ash.Policies do
     # as a private calculation `privacy_<list>` when it is neither always
     # nor never.
     {sides, used} =
-      Enum.map_reduce(join.sides, used, fn side, used ->
-        owner = Map.fetch!(by_type, side.type)
-        checks = Map.get(owner.privacy.relationship_checks, side.relationship, [])
-        rel = if side.owner == :left, do: join.left.relationship, else: join.right.relationship
-
-        case side_condition(gate_of(checks), rel) do
-          node when node in [:always, :never] ->
-            {{side, node, nil}, used}
-
-          node ->
-            {name, used} = Naming.claim("privacy_" <> side.relationship, used, :snake, :attribute)
-
-            calc = %Calculation{
-              name: name,
-              source: Map.put(source, :list, %{type: side.type, field: side.field}),
-              description:
-                "The actor may view #{side.type}.#{side.field} (the list) on the row's owner record",
-              expr: %Expr{resource: r.module, source: source, expr: node}
-            }
-
-            {{side, node, calc}, used}
-        end
-      end)
+      Enum.map_reduce(join.sides, used, &side_calculation(&1, &2, r, by_type, source))
 
     # A row is readable when it is a member of a list the actor may view
     # on its owner: its membership column is set and that list's grants
@@ -499,21 +477,8 @@ defmodule BubbleEx.Target.Ash.Policies do
       end
 
     field_policies =
-      for {side, node, calc} <- sides do
-        checks =
-          case node do
-            :always ->
-              [%PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}]
-
-            :never ->
-              [deny()]
-
-            _ ->
-              [%PolicyCheck{kind: :authorize_if, test: {:calculation, calc.name}, source: source}]
-          end
-
-        %FieldPolicy{fields: [side.marker.column], checks: checks}
-      end
+      for {side, node, calc} <- sides,
+          do: %FieldPolicy{fields: [side.marker.column], checks: side_checks(node, calc, source)}
 
     %{
       r
@@ -522,18 +487,96 @@ defmodule BubbleEx.Target.Ash.Policies do
         calculations: for({_, _, %Calculation{} = c} <- sides, do: c) ++ row_calcs,
         relationships: Enum.map(r.relationships, &%{&1 | public?: false}),
         field_policies: field_policies,
-        policies: [
-          keyed_policy(),
-          %Policy{
-            action: "read",
-            permission: :view,
-            description:
-              "Rows of the lists this join replaces: a member of a list the actor may view " <>
-                "on its owner",
-            checks: row_checks
-          }
-        ]
+        policies:
+          [
+            keyed_policy(),
+            %Policy{
+              action: "read",
+              permission: :view,
+              description:
+                "Rows of the lists this join replaces: a member of a list the actor may view " <>
+                  "on its owner",
+              checks: row_checks
+            }
+          ] ++ Enum.flat_map(sides, &side_policies(&1, by_type, source))
     }
+  end
+
+  # Rows read through one list's relationships (the owner's join
+  # relationships, through which its many_to_many loads, and the member's
+  # rows relationship) are that list's rows: readable only when the actor
+  # may view that list on the owner, even if another list sharing the
+  # table shows the row.
+  defp side_policies({side, node, calc}, by_type, source) do
+    owner = Map.fetch!(by_type, side.type)
+
+    member_type =
+      Enum.find_value(owner.relationships, fn rel ->
+        if rel.kind == :many_to_many and rel.source.field == side.field, do: rel.destination
+      end)
+
+    member = Enum.find(Map.values(by_type), &(&1.module == member_type))
+
+    paths =
+      for rel <- owner.relationships ++ owner.privacy_relationships,
+          rel.kind == :many_to_many,
+          rel.source[:field] == side.field,
+          do: {owner.module, rel.join_relationship}
+
+    paths =
+      paths ++
+        for rel <- member.privacy_relationships,
+            rel.source[:list] == %{type: side.type, field: side.field},
+            do: {member.module, rel.name}
+
+    checks = side_checks(node, calc, source)
+
+    for {module, rel} <- Enum.sort(paths) do
+      %Policy{
+        action: "read",
+        accessing_from: {module, rel},
+        permission: :view,
+        description:
+          "Rows of #{side.type}.#{side.field} read through #{rel}: the actor may view the list",
+        checks: checks
+      }
+    end
+  end
+
+  defp side_checks(:always, _calc, _source),
+    do: [%PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}]
+
+  defp side_checks(:never, _calc, _source), do: [deny()]
+
+  defp side_checks(_node, calc, source),
+    do: [%PolicyCheck{kind: :authorize_if, test: {:calculation, calc.name}, source: source}]
+
+  # Who may view one list on the row's owner: `{side, node, calc}` with
+  # a private calculation `privacy_<list>` unless the node is `:always` or
+  # `:never`.
+  defp side_calculation(side, used, r, by_type, source) do
+    join = r.join
+    owner = Map.fetch!(by_type, side.type)
+    checks = Map.get(owner.privacy.relationship_checks, side.relationship, [])
+    rel = if side.owner == :left, do: join.left.relationship, else: join.right.relationship
+
+    case side_condition(gate_of(checks), rel) do
+      node when node in [:always, :never] ->
+        {{side, node, nil}, used}
+
+      node ->
+        {name, used} = Naming.claim("privacy_" <> side.relationship, used, :snake, :attribute)
+
+        calc = %Calculation{
+          name: name,
+          source: Map.put(source, :list, %{type: side.type, field: side.field}),
+          description:
+            "The actor may view #{side.type}.#{side.field} (the list) on the row's owner record",
+          expr: %Expr{resource: r.module, source: source, expr: node}
+        }
+
+        {{side, node, calc}, used}
+    end
   end
 
   defp member_node(%{column: c, kind: :position}), do: {:not, {:call, "is_nil", [{:ref, [], c}]}}

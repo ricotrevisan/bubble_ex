@@ -109,26 +109,26 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
         zero = %{inserted: 0, updated: 0, unchanged: 0}
 
         {counts, current} =
-          Enum.reduce(rows, {zero, current}, fn row, {c, t} ->
-            k = key.(row)
-
-            case Map.fetch(t, k) do
-              :error ->
-                {%{c | inserted: c.inserted + 1}, Map.put(t, k, row)}
-
-              {:ok, old} ->
-                if old[side.column] == row[side.column],
-                  do: {%{c | unchanged: c.unchanged + 1}, t},
-                  else:
-                    {%{c | updated: c.updated + 1},
-                     Map.put(t, k, Map.put(old, side.column, row[side.column]))}
-            end
-          end)
+          Enum.reduce(rows, {zero, current}, &put_member(&1, &2, key.(&1), side.column))
 
         {{:ok, counts},
          %{state | calls: calls, tables: Map.put(state.tables, join.table, current)}}
       end
     end)
+  end
+
+  # One list's row: inserted, or only the list's column updated.
+  defp put_member(row, {c, t}, k, column) do
+    case Map.fetch(t, k) do
+      :error ->
+        {%{c | inserted: c.inserted + 1}, Map.put(t, k, row)}
+
+      {:ok, %{^column => value}} when value == :erlang.map_get(column, row) ->
+        {%{c | unchanged: c.unchanged + 1}, t}
+
+      {:ok, old} ->
+        {%{c | updated: c.updated + 1}, Map.put(t, k, Map.put(old, column, row[column]))}
+    end
   end
 
   # A unique email identity, as the Phoenix project has (ignoring case).

@@ -58,8 +58,8 @@
 #     members (the many_to_many, the join rows, the member's rows) nor of
 #     a project's tasks (whose rule tests the members, a join read through
 #     another). Two mutants (render.exs) must leak: without the join rows'
-#     policy the rows read from the member side show to the outsider, and
-#     without the many_to_many filters the members, tasks and their rows
+#     policy (and the join relationships' check) the rows show to the
+#     outsider, and without the many_to_many filters the members and tasks
 #     too; a mutant that does not leak fails the check (it would pass
 #     vacuously)
 
@@ -303,7 +303,7 @@ defmodule DecisionsCheck do
       record
       |> Ash.load!([a.(rel)], actor: load.(user), authorize?: true)
       |> Map.fetch!(a.(rel))
-      |> Enum.map(&Map.fetch!(&1, a.(key)))
+      |> Enum.map(&Map.fetch!(&1, if(is_binary(key), do: a.(key), else: key)))
       |> Enum.sort()
     end
 
@@ -331,7 +331,7 @@ defmodule DecisionsCheck do
     leak = fn what, ids ->
       open =
         case {variant, what} do
-          {"open_join", :rows} -> true
+          {"open_join", read} when read in [:rows, :join_rows] -> true
           {"open_all", _} -> true
           _ -> false
         end
@@ -359,10 +359,10 @@ defmodule DecisionsCheck do
       {seen.(member, member, m["workspaces"], ws_pk), [], "the member's workspaces (it lists none), to the member"},
       # an outsider
       {seen.(outsider, workspace, m["members"], user_pk), leak.(:many_to_many, [mid]), "the workspace's members, to an outsider"},
-      {seen.(outsider, workspace, m["members_join"], member_col), leak.(:many_to_many, [mid]), "the workspace's member rows, to an outsider"},
+      {seen.(outsider, workspace, m["members_join"], member_col), leak.(:join_rows, [mid]), "the workspace's member rows, to an outsider"},
       {seen.(outsider, member, m["member_rows"], ws_col), leak.(:rows, [w]), "the member's rows of Members, to an outsider"},
       {seen.(outsider, project, n["relationship"], task_pk), leak.(:many_to_many, [t]), "the project's tasks, to an outsider"},
-      {seen.(outsider, project, n["join_relationship"], task_col), leak.(:many_to_many, [t]), "the project's task rows, to an outsider"},
+      {seen.(outsider, project, n["join_relationship"], task_col), leak.(:join_rows, [t]), "the project's task rows, to an outsider"},
       {seen.(outsider, task, n["rows"], project_col), leak.(:rows, [Map.fetch!(project, project_pk)]), "the task's rows of Tasks, to an outsider"},
       # a member
       {seen.(member, member, m["member_rows"], ws_col), [w], "the member's rows of Members, to the member"},
@@ -378,6 +378,117 @@ defmodule DecisionsCheck do
     end)
   rescue
     error -> ["join privacy (#{p["variant"]}): #{Exception.message(error)}"]
+  end
+
+  defp columns(repo, %{"table" => table} = resource) do
+    %{rows: rows} =
+      repo.query!(
+        "SELECT column_name, udt_name FROM information_schema.columns " <>
+          "WHERE table_schema = 'public' AND table_name = $1",
+        [table]
+      )
+
+    actual = Map.new(rows, fn [name, udt] -> {name, udt} end)
+    stored = Enum.sort(resource["stored"])
+
+    shape =
+      if Enum.sort(Map.keys(actual)) == stored,
+        do: [],
+        else: [
+          "#{table}: columns #{inspect(Enum.sort(Map.keys(actual)))}, expected #{inspect(stored)}"
+        ]
+
+    types =
+      for {column, udt} <- resource["columns"], actual[column] != udt do
+        "#{table}.#{column}: #{inspect(actual[column])}, expected #{udt}"
+      end
+
+    shape ++ types
+  end
+
+  defp derived(d) do
+    resource = Module.concat([d["resource_module"] || raise("missing resource")])
+    destination = Module.concat([d["destination"]])
+    calc = String.to_atom(d["calculation"])
+    attribute = String.to_atom(d["attribute"])
+    fk = String.to_atom(d["source_attribute"])
+    [dest_pk] = Ash.Resource.Info.primary_key(destination)
+    [pk] = Ash.Resource.Info.primary_key(resource)
+    value = sample(Ash.Resource.Info.attribute(destination, attribute).type)
+
+    related =
+      destination
+      |> Ash.Changeset.for_create(:create, %{
+        dest_pk => "decided-" <> d["calculation"],
+        attribute => value
+      })
+      |> Ash.create!(authorize?: false)
+
+    linked =
+      resource
+      |> Ash.Changeset.for_create(:create, %{
+        pk => "linked-" <> d["calculation"],
+        fk => Map.fetch!(related, dest_pk)
+      })
+      |> Ash.create!(authorize?: false)
+
+    empty =
+      resource
+      |> Ash.Changeset.for_create(:create, %{pk => "empty-" <> d["calculation"]})
+      |> Ash.create!(authorize?: false)
+
+    loaded = Ash.load!([linked, empty], [calc], authorize?: false)
+
+    filtered =
+      resource
+      |> Ash.Query.do_filter([{calc, value}])
+      |> Ash.read!(authorize?: false)
+      |> Enum.map(&Map.fetch!(&1, pk))
+
+    ids = [Map.fetch!(linked, pk), Map.fetch!(empty, pk)]
+    ours = Ash.Query.do_filter(resource, [{pk, [in: ids]}])
+
+    sorted =
+      ours
+      |> Ash.Query.sort([{calc, :asc_nils_last}])
+      |> Ash.read!(authorize?: false)
+      |> Enum.map(&Map.fetch!(&1, pk))
+
+    sorted_input =
+      ours
+      |> Ash.Query.sort_input("-" <> d["calculation"])
+      |> Ash.read(authorize?: false)
+
+    # sort_input cannot reach through a private twin, nor a public
+    # relationship with privacy policies (unsortable)
+    through =
+      for rel <- Enum.uniq([d["relationship"], d["public_relationship"]]),
+          rel != nil,
+          d["relationship"] != d["public_relationship"],
+          match?(
+            {:ok, _},
+            ours
+            |> Ash.Query.sort_input("#{rel}.#{d["attribute"]}")
+            |> Ash.read(authorize?: false)
+          ),
+          do: rel
+
+    [
+      {sorted == ids, "sorts to #{inspect(sorted)}"},
+      {match?({:ok, [_, _]}, sorted_input) and
+         Enum.map(elem(sorted_input, 1), &Map.fetch!(&1, pk)) == Enum.reverse(ids),
+       "sort_input gives #{inspect(sorted_input |> elem(1) |> List.wrap() |> Enum.map(&(is_map(&1) && Map.get(&1, pk))))}"},
+      {through == [], "sort_input reaches through #{inspect(through)}"},
+      {Enum.map(loaded, &Map.fetch!(&1, calc)) == [value, nil],
+       "loads #{inspect(Enum.map(loaded, &Map.fetch!(&1, calc)))}"},
+      {filtered == [Map.fetch!(linked, pk)], "filters to #{inspect(filtered)}"}
+    ]
+    |> Enum.reject(&elem(&1, 0))
+    |> Enum.map(fn {_, what} ->
+      "#{inspect(resource)}.#{calc}: #{what}, expected #{inspect(value)}"
+    end)
+  rescue
+    error -> ["#{d["resource_module"]}.#{d["calculation"]}: #{Exception.message(error)}"]
   end
 
   # --- cut 2 (WTF-405) -------------------------------------------------------------

@@ -605,6 +605,9 @@ defmodule BubbleEx.Target.Ash.Policy do
     * `changing` - attribute names: the policy applies only when the
       action changes one of them (`changing_attributes([...])`); nil for
       every call of the action
+    * `accessing_from` - nil, or `{relative module, relationship}`: the
+      policy applies only to reads through that relationship
+      (`accessing_from(Module, :relationship)`)
     * `description` - the policy's `description`
     * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
     * `permission` - the Bubble permission it enforces (`:view`,
@@ -615,11 +618,12 @@ defmodule BubbleEx.Target.Ash.Policy do
   alias BubbleEx.Target.Ash.PolicyCheck
 
   @enforce_keys [:action, :checks, :permission]
-  defstruct [:action, :changing, :description, :checks, :permission]
+  defstruct [:action, :changing, :accessing_from, :description, :checks, :permission]
 
   @type t :: %__MODULE__{
           action: String.t(),
           changing: [String.t()] | nil,
+          accessing_from: {String.t(), String.t()} | nil,
           description: String.t() | nil,
           checks: [PolicyCheck.t()],
           permission: atom()
@@ -840,7 +844,7 @@ defmodule BubbleEx.Target.Ash.Relationship do
           source_attribute_on_join_resource: String.t() | nil,
           destination_attribute_on_join_resource: String.t() | nil,
           join_relationship: String.t() | nil,
-          membership: %{column: String.t(), kind: :position | :flag} | nil,
+          membership: map() | nil,
           attribute_type: BubbleEx.Target.Ash.Project.type(),
           define_attribute?: boolean(),
           allow_nil?: boolean(),

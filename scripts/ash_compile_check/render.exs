@@ -28,8 +28,9 @@
 # `unverified`, two mutants of `decided_cut3` too, which decisions.exs
 # requires to leak (so its privacy checks cannot pass vacuously):
 # `decided_cut3_open_join` (the join resources' read policy authorizes
-# every row) and `decided_cut3_open_all` (also no filter on the
-# many_to_many relationships). Their expectations (derived fields are
+# every row, and the join relationships read every row of their list)
+# and `decided_cut3_open_all` (also no filter on the many_to_many
+# relationships). Their expectations (derived fields are
 # calculations or aggregates with no column, refined numbers are
 # bigint/numeric columns, kept columns exist, the counts, has_many, text
 # references and joins to check, the indexes and extensions to find, and
@@ -60,9 +61,11 @@ database_prefix = if privacy == :omit, do: "ash_omit_check_", else: "ash_check_"
 # What privacy: :omit must never render (see BubbleEx.Target.Ash, "Privacy
 # modes").
 # (Public calculations are fields derived by an owner decision; privacy
-# calculations are the private ones.)
+# calculations are the private ones. A many_to_many's join relationship is
+# private and filtered by its list's membership column, WTF-406: data, not
+# policy.)
 policy_source =
-  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr|public\?: false|authorize_if|forbid_if|NOT VERIFIED/
+  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr(?!\((not is_nil\(\w+\)|\w+ == true)\)\n)|authorize_if|forbid_if|NOT VERIFIED/
 
 defmodule PrivacyFilters do
   # `<namespace>.PrivacyFilters.all/0`: one entry per compiled privacy-rule
@@ -173,20 +176,23 @@ open_joins = fn {:ok, project}, mode ->
       %{j | policies: policies, calculations: [], field_policies: []}
     end)
 
+  # (the join relationships' filters read the join's calculations, gone
+  # with the policy: both mutants drop them; `:open_all` also the
+  # many_to_many filters)
   resources =
-    if mode == :open_all do
-      Enum.map(project.resources, fn r ->
-        rels =
-          Enum.map(r.relationships, fn
-            %{kind: :many_to_many} = rel -> %{rel | gate: nil}
-            rel -> rel
-          end)
+    Enum.map(project.resources, fn r ->
+      rels =
+        Enum.map(r.relationships, fn
+          %{kind: :many_to_many, membership: m} = rel ->
+            rel = %{rel | membership: Map.delete(m, :visible)}
+            if mode == :open_all, do: %{rel | gate: nil}, else: rel
 
-        %{r | relationships: rels}
-      end)
-    else
-      project.resources
-    end
+          rel ->
+            rel
+        end)
+
+      %{r | relationships: rels}
+    end)
 
   {:ok, %{project | joins: joins, resources: resources}}
 end

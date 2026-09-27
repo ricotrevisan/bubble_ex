@@ -775,6 +775,7 @@
       "module": "Shipment",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -788,6 +789,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -803,6 +805,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -1092,6 +1095,7 @@
       "module": "User",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1105,6 +1109,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1118,6 +1123,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [

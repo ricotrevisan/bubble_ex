@@ -389,6 +389,7 @@
       "module": "Draft",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -402,6 +403,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -422,6 +424,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -884,6 +887,7 @@
       "module": "Note",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -897,6 +901,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -912,6 +917,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -944,6 +950,7 @@
           "permission": "search_for"
         },
         {
+          "accessing_from": null,
           "action": "auto_bind",
           "changing": null,
           "checks": [
@@ -964,6 +971,7 @@
           "permission": "auto_binding"
         },
         {
+          "accessing_from": null,
           "action": "auto_bind",
           "changing": [
             "body"
@@ -986,6 +994,7 @@
           "permission": "auto_binding"
         },
         {
+          "accessing_from": null,
           "action": "auto_bind",
           "changing": [
             "secret"
@@ -1349,6 +1358,7 @@
       "module": "PublicPage",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1362,6 +1372,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1377,6 +1388,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -1686,6 +1698,7 @@
       "module": "User",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1699,6 +1712,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1714,6 +1728,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [

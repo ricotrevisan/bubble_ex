@@ -493,11 +493,14 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp policy(%Policy{} = policy, ctx) do
     condition =
-      case policy.changing do
-        nil ->
+      case {policy.changing, policy.accessing_from} do
+        {nil, nil} ->
           "action(#{atom(policy.action)})"
 
-        names ->
+        {nil, {module, rel}} ->
+          "[action(#{atom(policy.action)}), accessing_from(#{module(module, ctx)}, #{atom(rel)})]"
+
+        {names, _} ->
           "[action(#{atom(policy.action)}), changing_attributes([#{Enum.map_join(names, ", ", &atom/1)}])]"
       end
 
@@ -596,14 +599,14 @@ defmodule BubbleEx.Target.Ash.Source do
   end
 
   # A many_to_many reads only its list's join rows: its join relationship
-  # is declared, filtered by the list's membership column (and gated like
-  # the many_to_many).
+  # is declared, filtered by the list's membership column (the join
+  # resource's policies authorize the rows read through it).
   defp relationship(%Relationship{kind: :many_to_many} = r, ctx) do
     """
     has_many #{atom(r.join_relationship)}, #{module(r.through, ctx)} do
       source_attribute #{atom(r.source_attribute)}
       destination_attribute #{atom(r.source_attribute_on_join_resource)}
-      public? false#{filter(r.membership, r.gate)}
+      public? false#{filter(r.membership, nil)}
     end
 
     many_to_many #{atom(r.name)}, #{module(r.destination, ctx)} do

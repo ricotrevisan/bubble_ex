@@ -404,8 +404,10 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
                %{permission: :keyed, checks: [%PolicyCheck{test: :keyed}]},
                %{
                  permission: :view,
+                 accessing_from: nil,
                  checks: [%PolicyCheck{test: {:calculation, "privacy_visible"}}]
                }
+               | _
              ] = join.policies
 
       assert [%{name: "read", keyed?: true}] = join.extra_actions
@@ -433,8 +435,24 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
 
       assert members_join.membership == %{column: "members_position", kind: :position}
 
+      # its join relationship reads the list's rows, which the join's
+      # policies authorize for those who may view that list
+      assert source =~ "filter expr(not is_nil(members_position))"
+
       assert source =~
-               ~r/not is_nil\(members_position\) and\s+parent\(privacy_rule_listed or privacy_rule_member\)/
+               "policy [action(:read), accessing_from(MyApp.Workspace, :members_join)] do"
+
+      side =
+        Enum.filter(join.policies, &(&1.accessing_from != nil))
+        |> Enum.map(&{&1.accessing_from, &1.checks})
+
+      has = fn from, test ->
+        Enum.any?(side, &match?({^from, [%PolicyCheck{test: ^test}]}, &1))
+      end
+
+      assert has.({"Workspace", "members_join"}, {:calculation, "privacy_members"})
+      assert has.({"User", "workspace_members_rows"}, {:calculation, "privacy_members"})
+      assert has.({"User", "workspaces_join"}, :always)
 
       assert source =~ "join_relationship :members_join"
     end

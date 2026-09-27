@@ -33,25 +33,25 @@ defmodule BubbleEx.Load.Joins do
         issues = asymmetry(sides, scan, issues)
 
         built =
-          for {side, pairs} <- sides do
-            rows =
-              pairs
-              |> Enum.sort()
-              |> Enum.map(fn {{l, r}, index} ->
-                %{
-                  join.left.column => l,
-                  join.right.column => r,
-                  side.column => if(side.kind == :position, do: index, else: true)
-                }
-              end)
-
-            %{key: key(join, side), join: join, side: side, rows: rows}
-          end
+          for {side, pairs} <- sides,
+              do: %{key: key(join, side), join: join, side: side, rows: rows(join, side, pairs)}
 
         {built, issues}
       end)
 
     {built, issues}
+  end
+
+  defp rows(join, side, pairs) do
+    pairs
+    |> Enum.sort()
+    |> Enum.map(fn {{l, r}, index} ->
+      %{
+        join.left.column => l,
+        join.right.column => r,
+        side.column => if(side.kind == :position, do: index, else: true)
+      }
+    end)
   end
 
   @doc false

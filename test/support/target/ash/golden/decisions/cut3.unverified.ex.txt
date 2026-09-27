@@ -220,7 +220,7 @@ defmodule MyApp.Project do
       source_attribute :id
       destination_attribute :project_id
       public? false
-      filter expr(not is_nil(position) and parent(privacy_rule_workspace_member))
+      filter expr(not is_nil(position))
     end
 
     many_to_many :tasks, MyApp.Task do
@@ -239,7 +239,7 @@ defmodule MyApp.Project do
       source_attribute :id
       destination_attribute :project_id
       public? false
-      filter expr(viewers_listed == true and parent(privacy_rule_workspace_member))
+      filter expr(viewers_listed == true)
     end
 
     many_to_many :viewers, MyApp.User do
@@ -821,10 +821,7 @@ defmodule MyApp.Workspace do
       source_attribute :id
       destination_attribute :workspace_id
       public? false
-
-      filter expr(
-               not is_nil(members_position) and parent(privacy_rule_listed or privacy_rule_member)
-             )
+      filter expr(not is_nil(members_position))
     end
 
     many_to_many :members, MyApp.User do
@@ -1046,6 +1043,21 @@ defmodule MyApp.ProjectTasks do
       description "Rows of the lists this join replaces: a member of a list the actor may view on its owner"
       authorize_if expr(privacy_visible)
     end
+
+    policy [action(:read), accessing_from(MyApp.Project, :tasks_for_privacy_join)] do
+      description "Rows of project.tasks_list_custom_task read through tasks_for_privacy_join: the actor may view the list"
+      authorize_if expr(privacy_tasks)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Project, :tasks_join)] do
+      description "Rows of project.tasks_list_custom_task read through tasks_join: the actor may view the list"
+      authorize_if expr(privacy_tasks)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Task, :project_tasks_rows)] do
+      description "Rows of project.tasks_list_custom_task read through project_tasks_rows: the actor may view the list"
+      authorize_if expr(privacy_tasks)
+    end
   end
 
   field_policies do
@@ -1167,6 +1179,31 @@ defmodule MyApp.UserWorkspaces do
     policy action(:read) do
       description "Rows of the lists this join replaces: a member of a list the actor may view on its owner"
       authorize_if expr(privacy_visible)
+    end
+
+    policy [action(:read), accessing_from(MyApp.User, :workspaces_join)] do
+      description "Rows of user.workspaces_list_custom_workspace read through workspaces_join: the actor may view the list"
+      authorize_if always()
+    end
+
+    policy [action(:read), accessing_from(MyApp.Workspace, :user_workspaces_rows)] do
+      description "Rows of user.workspaces_list_custom_workspace read through user_workspaces_rows: the actor may view the list"
+      authorize_if always()
+    end
+
+    policy [action(:read), accessing_from(MyApp.User, :workspace_members_rows)] do
+      description "Rows of workspace.members_list_user read through workspace_members_rows: the actor may view the list"
+      authorize_if expr(privacy_members)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Workspace, :members_for_privacy_join)] do
+      description "Rows of workspace.members_list_user read through members_for_privacy_join: the actor may view the list"
+      authorize_if expr(privacy_members)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Workspace, :members_join)] do
+      description "Rows of workspace.members_list_user read through members_join: the actor may view the list"
+      authorize_if expr(privacy_members)
     end
   end
 
@@ -1290,6 +1327,31 @@ defmodule MyApp.FavoriteProject do
     policy action(:read) do
       description "Rows of the lists this join replaces: a member of a list the actor may view on its owner"
       authorize_if expr(privacy_visible)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Project, :viewers_for_privacy_join)] do
+      description "Rows of project.viewers_list_user read through viewers_for_privacy_join: the actor may view the list"
+      authorize_if expr(privacy_viewers)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Project, :viewers_join)] do
+      description "Rows of project.viewers_list_user read through viewers_join: the actor may view the list"
+      authorize_if expr(privacy_viewers)
+    end
+
+    policy [action(:read), accessing_from(MyApp.User, :project_viewers_rows)] do
+      description "Rows of project.viewers_list_user read through project_viewers_rows: the actor may view the list"
+      authorize_if expr(privacy_viewers)
+    end
+
+    policy [action(:read), accessing_from(MyApp.Project, :user_favorites_rows)] do
+      description "Rows of user.favorites_list_custom_project read through user_favorites_rows: the actor may view the list"
+      authorize_if always()
+    end
+
+    policy [action(:read), accessing_from(MyApp.User, :favorites_join)] do
+      description "Rows of user.favorites_list_custom_project read through favorites_join: the actor may view the list"
+      authorize_if always()
     end
   end
 
