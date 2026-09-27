@@ -1,0 +1,343 @@
+{
+  "_id": "page-data-fixture",
+  "element_definitions": {
+    "card": {
+      "id": "bCard",
+      "name": "Task card",
+      "type": "CustomDefinition",
+      "properties": {"group_type": "custom.task", "width": 300, "height": 40},
+      "elements": {
+        "bCardTitle": {
+          "id": "bCardTitle", "type": "Text",
+          "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px",
+            "text": {"type": "TextExpression", "entries": {"0": "Card: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "title_text"}}}}}
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "elements": {
+        "bFirstOpen": {
+          "elements": {
+            "bFirstTitle": {
+              "id": "bFirstTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "First open: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bFirstOpen",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "first_element",
+                "type": "Message"
+              },
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "done_boolean",
+                    "value": false
+                  }
+                },
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bList": {
+          "elements": {
+            "bCellProject": {
+              "id": "bCellProject",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 2,
+                "text": {
+                  "entries": {
+                    "0": "In: ",
+                    "1": {
+                      "next": {
+                        "name": "project_custom_project",
+                        "next": {
+                          "name": "name_text",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            },
+            "bCellGroup": {
+              "id": "bCellGroup", "type": "Group",
+              "properties": {"group_type": "custom.project", "order": 3, "width": 300, "height": 40,
+                "data_source": {"type": "CurrentDataItem", "next": {"type": "Message", "name": "project_custom_project"}}},
+              "elements": {
+                "bCellGroupName": {"id": "bCellGroupName", "type": "Text",
+                  "properties": {"order": 1, "width": 300, "height": 40,
+                    "text": {"type": "TextExpression", "entries": {"0": "Cell group: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "name_text"}}}}}
+                }
+              }
+            },
+            "bCellTitle": {
+              "id": "bCellTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Task: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bList",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "get_data",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bQuery"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
+                "descending": false,
+                "ignore_empty_constraints": true,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
+        "bCard1": {
+          "id": "bCard1", "type": "CustomElement",
+          "properties": {"custom_id": "bCard", "group_type": "custom.task", "order": 5, "width": 300, "height": 40,
+            "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": false}, "next": {"type": "Message", "name": "first_element"}}}
+        },
+        "bCard2": {
+          "id": "bCard2", "type": "CustomElement",
+          "properties": {"custom_id": "bCard", "group_type": "custom.task", "order": 6, "width": 300, "height": 40,
+            "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": true}, "next": {"type": "Message", "name": "first_element"}}}
+        },
+        "bOther": {
+          "id": "bOther",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Static"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bQuery": {
+          "id": "bQuery",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "placeholder": {
+              "entries": {
+                "0": "Search"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Input"
+        }
+      },
+      "id": "bHome",
+      "name": "index",
+      "properties": {
+        "title": "Tasks"
+      },
+      "type": "Page"
+    },
+    "task": {
+      "elements": {
+        "bProjGroup": {
+          "elements": {
+            "bProjName": {
+              "id": "bProjName",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Project: ",
+                    "1": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bProjGroup",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "project_custom_project",
+                "type": "Message"
+              },
+              "type": "CurrentPageItem"
+            },
+            "group_type": "custom.project",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bThingTitle": {
+          "id": "bThingTitle",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Title: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bTaskPage",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Task"
+      },
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "done_boolean": {
+          "display": "Done",
+          "value": "boolean"
+        },
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

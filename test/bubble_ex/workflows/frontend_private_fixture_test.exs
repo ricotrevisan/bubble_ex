@@ -43,11 +43,15 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
     {:ok, backend} =
       BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Private")
 
+    # The pages' data (WTF-420).
+    {:ok, page_data} = BubbleEx.PageData.build(app, model)
+
     {:ok, spec} =
       FrontendWorkflows.map(lowered, project,
         namespace: "Private",
         frontend: frontend,
-        backend: backend
+        backend: backend,
+        page_data: page_data
       )
 
     %{
@@ -58,16 +62,20 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
       frontend: frontend,
       lowered: lowered,
       backend: backend,
+      page_data: page_data,
       spec: spec
     }
   end
 
-  test "matches the recorded count snapshot", %{lowered: lowered, spec: spec} do
+  test "matches the recorded count snapshot", %{lowered: lowered, spec: spec, page_data: pd} do
     snapshot = System.get_env("BUBBLE_EX_FRONTEND_WORKFLOW_COUNTS") || @default_snapshot
 
     counts = %{
       "ir" => Frontend.coverage(lowered),
-      "generated" => FrontendWorkflows.coverage(spec)
+      "generated" => FrontendWorkflows.coverage(spec),
+      # WTF-420: the page data, IR level and generated.
+      "page_data_ir" => BubbleEx.PageData.coverage(pd),
+      "page_data_generated" => FrontendWorkflows.data_coverage(spec)
     }
 
     IO.puts(

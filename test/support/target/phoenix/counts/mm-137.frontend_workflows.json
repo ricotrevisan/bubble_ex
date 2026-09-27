@@ -3,15 +3,15 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 346,
+          "native": 366,
           "total": 1352
         },
         "condition_true": {
-          "native": 6,
+          "native": 7,
           "total": 101
         },
         "custom_event": {
-          "native": 167,
+          "native": 168,
           "total": 494
         },
         "do_every": {
@@ -49,15 +49,15 @@
       },
       "by_surface": {
         "page": {
-          "native": 170,
+          "native": 176,
           "total": 637
         },
         "reusable": {
-          "native": 361,
+          "native": 377,
           "total": 1638
         }
       },
-      "data": 14,
+      "data": 36,
       "residue_reasons": {
         "api_connector_action": 30,
         "auth_action": 14,
@@ -65,7 +65,7 @@
         "plugin_event": 258,
         "target_not_rendered": 1,
         "trigger_in_runtime_template": 192,
-        "unavailable_input": 1027,
+        "unavailable_input": 858,
         "uncompiled_expression": 783,
         "unresolved_reference": 44,
         "unsupported_action": 222,
@@ -73,40 +73,40 @@
         "unsupported_option": 77
       },
       "step_ops": {
-        "call": 427,
-        "call_reusable": 80,
-        "create": 15,
+        "call": 450,
+        "call_reusable": 86,
+        "create": 17,
         "delete": 3,
         "focus": 32,
         "hide": 150,
         "log_out": 4,
-        "navigate": 166,
-        "open_url": 16,
+        "navigate": 171,
+        "open_url": 17,
         "refresh": 5,
         "reset_group": 108,
         "reset_inputs": 56,
-        "schedule": 44,
+        "schedule": 58,
         "schedule_custom": 24,
         "scroll_to": 3,
-        "set_state": 247,
+        "set_state": 252,
         "show": 116,
         "terminate": 38,
         "toggle": 197,
-        "update": 50,
+        "update": 76,
         "update_current_user": 14
       },
       "steps": {
-        "native": 1795,
-        "residue": 2189,
+        "native": 1877,
+        "residue": 2107,
         "total": 3984
       },
       "workflows": {
         "client": 95,
-        "native": 531,
-        "native_own_body": 648,
-        "residue": 1744,
+        "native": 553,
+        "native_own_body": 702,
+        "residue": 1722,
         "total": 2275,
-        "wired": 361
+        "wired": 380
       }
     },
     "ir": {
@@ -212,6 +212,83 @@
         "native": 1152,
         "residue": 1123,
         "total": 2275
+      }
+    },
+    "page_data_generated": {
+      "by_kind": {
+        "group": {
+          "total": 1548,
+          "wired": 707
+        },
+        "instance": {
+          "total": 195,
+          "wired": 59
+        },
+        "list": {
+          "total": 234,
+          "wired": 36
+        },
+        "page_thing": {
+          "total": 3,
+          "wired": 3
+        }
+      },
+      "reads": {
+        "query": 4,
+        "url_thing": 3,
+        "value": 798
+      },
+      "residue_reasons": {
+        "page_data_in_cell": 62,
+        "unavailable_input": 841,
+        "uncompiled_expression": 272
+      },
+      "sources": {
+        "residue": 1175,
+        "total": 1980,
+        "wired": 805
+      }
+    },
+    "page_data_ir": {
+      "by_kind": {
+        "group": {
+          "native": 1457,
+          "total": 1548
+        },
+        "instance": {
+          "native": 183,
+          "total": 195
+        },
+        "list": {
+          "native": 125,
+          "total": 234
+        },
+        "page_thing": {
+          "native": 3,
+          "total": 3
+        }
+      },
+      "in_cell": {
+        "group": {
+          "native": 387,
+          "total": 407
+        },
+        "instance": {
+          "native": 56,
+          "total": 57
+        },
+        "list": {
+          "native": 6,
+          "total": 16
+        }
+      },
+      "residue_reasons": {
+        "uncompiled_expression": 212
+      },
+      "sources": {
+        "native": 1768,
+        "residue": 212,
+        "total": 1980
       }
     }
   }

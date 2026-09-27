@@ -250,6 +250,21 @@ defmodule <%= @module %>.Workflows.Runtime do
   def load(value, [], _ctx), do: value
   def load(nil, _loads, _ctx), do: nil
 
+  def load([], _loads, _ctx), do: []
+
+  def load([%{__struct__: resource} | _] = values, loads, ctx) do
+    # Load a result set together: one Ash.load per row is an N+1 query.
+    if Enum.all?(values, &match?(%{__struct__: ^resource}, &1)) do
+      # bubble:ignores_privacy scaffold:workflow_authorize
+      case Ash.load(values, load_statement(loads), actor: ctx.actor, authorize?: ctx.authorize?) do
+        {:ok, loaded} -> loaded
+        {:error, _} -> values
+      end
+    else
+      Enum.map(values, &load(&1, loads, ctx))
+    end
+  end
+
   def load(value, loads, ctx) when is_list(value),
     do: Enum.map(value, &load(&1, loads, ctx))
 
@@ -262,6 +277,43 @@ defmodule <%= @module %>.Workflows.Runtime do
   end
 
   def load(value, _loads, _ctx), do: value
+
+  @doc "Loads relationships for page data in one batch, bounding related lists."
+  def load_page(value, [], _ctx, _cap), do: value
+  def load_page(nil, _loads, _ctx, _cap), do: nil
+  def load_page([], _loads, _ctx, _cap), do: []
+
+  def load_page([%{__struct__: resource} | _] = values, loads, ctx, cap) do
+    if Enum.all?(values, &match?(%{__struct__: ^resource}, &1)) do
+      page_load(values, resource, loads, ctx, cap)
+    else
+      Enum.map(values, &load_page(&1, loads, ctx, cap))
+    end
+  end
+
+  def load_page(%{__struct__: resource} = value, loads, ctx, cap),
+    do: page_load(value, resource, loads, ctx, cap)
+
+  def load_page(value, _loads, _ctx, _cap), do: value
+
+  defp page_load(value, resource, loads, ctx, cap) do
+    statement = page_load_statement(resource, load_statement(loads), cap)
+
+    case Ash.load(value, statement, actor: ctx.actor, authorize?: true) do
+      {:ok, loaded} -> loaded
+      {:error, _} -> value
+    end
+  end
+
+  defp page_load_statement(resource, statement, cap) do
+    Enum.map(statement, fn {name, nested} ->
+      relationship = Ash.Resource.Info.relationship(resource, name)
+      query = Ash.Query.new(relationship.destination)
+      query = if relationship.cardinality == :many, do: Ash.Query.limit(query, cap), else: query
+      query = if nested == [], do: query, else: Ash.Query.load(query, page_load_statement(relationship.destination, nested, cap))
+      {name, query}
+    end)
+  end
 
   # [["project", "owner"], ["creator"]] -> [project: [owner: []], creator: []]
   defp load_statement(paths) do

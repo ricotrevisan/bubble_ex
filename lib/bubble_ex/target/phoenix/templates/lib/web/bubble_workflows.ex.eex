@@ -57,7 +57,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   budgets; a scheduled custom event continues the budgets of the run that
   scheduled it (shared among everything that run scheduled, one call per
   schedule), and a chain of them stops at `:max_chain`, so a
-  self-scheduling event ends. Its `authorize?: true` authorizes nothing
+  self-scheduling event ends. The condition-true workflows an event's
+  effects fire run within that event's budgets and chain, never fresh
+  ones, so a loop through a condition (a workflow that flips a state and
+  schedules one that flips it back) ends too. Its `authorize?: true` authorizes nothing
   until you add policies.
 
   A browser can trigger any workflow of an element the page lists, visible
@@ -84,6 +87,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   alias <%= @module %>.Workflows.Runtime
   alias <%= @web %>.Bubble
+  alias <%= @web %>.BubbleData
 
   @max_rounds 10
   @max_input_bytes Application.compile_env(:<%= @app %>, [__MODULE__, :max_input_bytes], 100_000)
@@ -97,6 +101,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     what it asks of the page (element steps `js`, `navigate`, delayed
     `messages`), and the backend runtime's context of the event (`backend`,
     `<%= @module %>.Workflows.Runtime.root/2`: its job and call budgets).
+    The page's data (WTF-420, `<%= @web %>.BubbleData`): what it loaded
+    (`data`), the unique ID of its thing from the URL (`thing`) and, while
+    a repeating group's cells are read, the current cell's thing and
+    1-based index (`cell`, `cell_index`).
     """
     defstruct [
       :module,
@@ -106,6 +114,9 @@ defmodule <%= @web %>.BubbleWorkflows do
       :returns,
       :navigate,
       :backend,
+      :thing,
+      :cell,
+      :cell_index,
       scope: "",
       path: "/",
       args: %{},
@@ -113,6 +124,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       states: %{},
       inputs: %{},
       url: %{},
+      data: %{},
       first: %{},
       js: [],
       messages: [],
@@ -127,7 +139,8 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   Assigns the page's custom states (defaults) and input values (first
   values) for the page and every reusable-element instance it renders, and
-  once connected, schedules its page-loaded workflows. It loads no data.
+  once connected, schedules its page-loaded workflows. It loads no data
+  (`handle_params/4` does, WTF-420).
   """
   def mount(socket, page) do
     surfaces = surfaces(page)
@@ -160,6 +173,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_url, %{})
     |> assign(:bubble_path, "/")
     |> assign(:bubble_conditions, %{})
+    |> assign(:bubble_data, %{})
+    |> assign(:bubble_thing, nil)
   end
 
   @doc """
@@ -175,11 +190,27 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc "Keeps the URL's path and query parameters (text only)."
   def handle_params(socket, params, uri) do
-    url = for {k, v} <- params, is_binary(k) and is_binary(v), into: %{}, do: {k, v}
+    url =
+      for {k, v} <- params,
+          is_binary(k) and is_binary(v) and k != "bubble_thing",
+          into: %{},
+          do: {k, v}
 
     socket
     |> assign(:bubble_url, url)
     |> assign(:bubble_path, URI.parse(uri).path || "/")
+  end
+
+  @doc """
+  As `handle_params/3`, then keeps the unique ID of the page's thing from
+  the URL path (a Bubble ID, else none) and loads the page's data
+  (`<%= @web %>.BubbleData`, WTF-420).
+  """
+  def handle_params(socket, page, params, uri) do
+    socket
+    |> handle_params(params, uri)
+    |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
+    |> BubbleData.load(page)
   end
 
   @doc "Runs the workflows of a click or an input change the page lists."
@@ -187,7 +218,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       when is_binary(scope) and is_binary(element) do
     with {:ok, module} <- surface(page, scope),
          [_ | _] = ids <- Map.get(module.__bubble__(:surface).clicks, element, []) do
-      {:noreply, socket |> run_event(page, module, scope, ids) |> settle(page)}
+      {:noreply, event(socket, page, [{module, scope, ids, %{}}])}
     else
       _ -> {:noreply, socket}
     end
@@ -204,7 +235,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       socket =
         assign(socket, :bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
 
-      {:noreply, socket |> run_event(page, module, scope, ids) |> settle(page)}
+      {:noreply, event(socket, page, [{module, scope, ids, %{}}], nil, :deferred)}
     else
       _ -> {:noreply, socket}
     end
@@ -214,31 +245,51 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc "Page loaded, delayed custom events and \"do every\" workflows."
   def handle_info(socket, page, {:bubble, :page_loaded}) do
-    socket =
-      Enum.reduce(surfaces(page), socket, fn {scope, module}, socket ->
-        run_event(socket, page, module, scope, module.__bubble__(:surface).loaded)
-      end)
+    runs =
+      for {scope, module} <- surfaces(page),
+          do: {module, scope, module.__bubble__(:surface).loaded, %{}}
 
-    {:noreply, settle(socket, page)}
+    # handle_params already loaded the data when no page-load workflow can
+    # change its constraints. Conditions still settle against that load.
+    reload = if Enum.all?(runs, fn {_, _, ids, _} -> ids == [] end), do: :already_loaded, else: :immediate
+    {:noreply, event(socket, page, runs, nil, reload)}
   end
 
   def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
     if surface(page, scope) == {:ok, module} and budget?(budget),
-      do: {:noreply, socket |> run_event(page, module, scope, [id], args, budget) |> settle(page)},
+      do: {:noreply, event(socket, page, [{module, scope, [id], args}], budget)},
       else: {:noreply, socket}
+  end
+
+  # Coalesce a burst of changes; ignore notifications for other pages' topics.
+  def handle_info(socket, _page, {:bubble, :data_changed, topic}) when is_binary(topic),
+    do: {:noreply, BubbleData.changed(socket, topic)}
+
+  def handle_info(socket, page, {:bubble, :data_refresh, ref}) do
+    if BubbleData.pending?(socket, ref) do
+      run = socket.assigns[:bubble_pending_run] || start(socket, nil)
+      socket = socket |> assign(:bubble_pending_run, nil) |> BubbleData.refresh(page, ref)
+      pending = socket.assigns[:bubble_pending_events] || []
+      {socket, run} = run_events(socket, page, pending, run, true)
+      socket = assign(socket, :bubble_pending_events, nil)
+      {socket, run} = settle_after_events(socket, page, pending, run)
+      {:noreply, dispatch(socket, run)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info(socket, page, {:bubble, :interval, scope, id}) do
     case surface(page, scope) do
-      {:ok, module} -> {:noreply, socket |> run_event(page, module, scope, [id]) |> settle(page)}
+      {:ok, module} -> {:noreply, event(socket, page, [{module, scope, [id], %{}}])}
       _ -> {:noreply, socket}
     end
   end
 
   def handle_info(socket, _page, _message), do: {:noreply, socket}
 
-  # The page itself (scope "") and the reusable-element instances it renders.
-  defp surfaces(page), do: [{"", page} | page.__bubble__(:instances)]
+  @doc "The page itself (scope \"\") and the reusable-element instances it renders."
+  def surfaces(page), do: [{"", page} | page.__bubble__(:instances)]
 
   defp surface(page, ""), do: {:ok, page}
 
@@ -287,20 +338,129 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # --- running events --------------------------------------------------------------------
 
-  # A browser event is a root run of the backend runtime (whole budgets); a
-  # scheduled custom event continues the budget of the run that scheduled it.
-  defp ctx(socket, module, scope, budget) do
+  # One event: a browser event (a click, an input change, page load, a "do
+  # every" tick) or a scheduled custom event, then the condition-true
+  # workflows its effects fire (settle/4), transitively. All of it is one
+  # run of the backend runtime: a browser event starts a root run (whole
+  # budgets, chain 0), a scheduled custom event continues the budget and
+  # chain of the run that scheduled it (WTF-421: the condition-true
+  # workflows it fires inherit them too, never fresh ones). What the run
+  # scheduled is sent when it ends, sharing what the run left.
+  defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do
+    run = start(socket, budget)
+
+    case reload do
+      :already_loaded ->
+        {socket, run} = run_events(socket, page, runs, run, true)
+        {socket, run} = settle_after_events(socket, page, runs, run)
+        dispatch(socket, run)
+
+      :deferred ->
+        # With page data, input workflows must read the latest input's
+        # sources, not the preceding render. Keep their shared run budget
+        # until the last keystroke's single debounced read.
+        if BubbleData.data_access?() and
+             Enum.any?(surfaces(page), fn {_, m} -> BubbleData.sources(m) != [] end) do
+          run = merge_pending(socket.assigns[:bubble_pending_run], run)
+
+          pending =
+            Enum.reduce(runs, socket.assigns[:bubble_pending_events] || [], fn
+              {module, scope, ids, _} = entry, acc ->
+                Enum.reject(acc, fn {m, s, i, _} -> {m, s, i} == {module, scope, ids} end) ++
+                  [entry]
+            end)
+
+          socket
+          |> assign(:bubble_pending_run, run)
+          |> assign(:bubble_pending_events, pending)
+          |> BubbleData.defer()
+        else
+          # No page data to re-read: keep input-only workflows and their
+          # conditions responsive without a needless debounce timer.
+          {socket, run} = run_events(socket, page, runs, run, true)
+          {socket, run} = settle_after_events(socket, page, runs, run)
+          dispatch(socket, run)
+        end
+
+      :immediate ->
+        # A click while an input read is pending flushes its workflows
+        # first with the latest inputs, on the same (bounded) run.
+        run = merge_pending(socket.assigns[:bubble_pending_run], run)
+        pending = (socket.assigns[:bubble_pending_events] || []) ++ runs
+        socket =
+          socket
+          |> assign(:bubble_pending_run, nil)
+          |> assign(:bubble_pending_events, nil)
+          |> assign(:bubble_data_refresh, nil)
+        socket = BubbleData.load(socket, page)
+        {socket, run} = run_events(socket, page, pending, run, true)
+        {socket, run} = settle_after_events(socket, page, pending, run)
+        dispatch(socket, run)
+    end
+  end
+
+  # The final workflow may write the data a condition reads. Re-read before
+  # settling, not later via PubSub (which would start a fresh root budget).
+  defp settle_after_events(socket, page, runs, run) do
+    socket =
+      if BubbleData.data_access?() and Enum.any?(runs, fn {_, _, ids, _} -> ids != [] end) and
+           Enum.any?(surfaces(page), fn {_, module} -> BubbleData.sources(module) != [] end),
+        do: BubbleData.load(socket, page),
+        else: socket
+
+    settle(socket, page, run)
+  end
+
+  defp run_events(socket, page, runs, run, loaded?) do
+    Enum.reduce(runs, {socket, run, loaded?}, fn {module, scope, ids, args}, acc ->
+      Enum.reduce(ids, acc, fn id, {socket, run, loaded?} ->
+        socket = if loaded?, do: socket, else: BubbleData.load(socket, page)
+        {socket, run} = run_event(socket, module, scope, [id], args, run)
+        {socket, run, false}
+      end)
+    end)
+    |> then(fn {socket, run, _} -> {socket, run} end)
+  end
+
+  defp merge_pending(nil, run), do: run
+
+  defp merge_pending(previous, run) do
+    %{run | jobs: min(previous.jobs, run.jobs), calls: min(previous.calls, run.calls),
+      chain: max(previous.chain, run.chain), messages: previous.messages ++ run.messages}
+  end
+
+  # The budgets of an event: a root run's, or the scheduling run's.
+  defp start(socket, budget) do
+    root = Runtime.root(nil, socket.assigns[:current_user])
+
+    case budget do
+      %{jobs: jobs, calls: calls, chain: chain} ->
+        %{jobs: jobs, calls: calls, chain: chain, messages: []}
+
+      nil ->
+        %{jobs: root.budget, calls: root.calls, chain: root.chain, messages: []}
+    end
+  end
+
+  # What the event scheduled, sent now: each scheduled custom event gets an
+  # equal share of what the event left, one link further down the chain,
+  # so the total never grows and a self-scheduling chain ends.
+  defp dispatch(socket, %{messages: []}), do: socket
+
+  defp dispatch(socket, run) do
+    n = length(run.messages)
+    budget = %{jobs: div(run.jobs, n), calls: div(run.calls, n), chain: run.chain + 1}
+
+    for {delay, scope, module, id, args} <- Enum.reverse(run.messages),
+        do: Process.send_after(self(), {:bubble, :run, scope, module, id, args, budget}, delay)
+
+    socket
+  end
+
+  defp ctx(socket, module, scope, run) do
     actor = socket.assigns[:current_user]
     root = Runtime.root(nil, actor)
-
-    backend =
-      case budget do
-        %{jobs: jobs, calls: calls, chain: chain} ->
-          %{root | budget: jobs, calls: calls, chain: chain}
-
-        nil ->
-          root
-      end
+    backend = %{root | budget: run.jobs, calls: run.calls, chain: run.chain}
 
     %Ctx{
       module: module,
@@ -312,36 +472,42 @@ defmodule <%= @web %>.BubbleWorkflows do
       inputs: socket.assigns.bubble_inputs,
       first: socket.assigns.bubble_first_inputs,
       url: socket.assigns.bubble_url,
-      path: socket.assigns.bubble_path
+      path: socket.assigns.bubble_path,
+      data: Map.get(socket.assigns, :bubble_data, %{}),
+      thing: Map.get(socket.assigns, :bubble_thing)
     }
   end
 
-  defp run_event(socket, _page, _module, _scope, [], _args, _budget), do: socket
+  @doc """
+  The context a page's data source runs with (`<%= @web %>.BubbleData`):
+  the page's state, what it loaded so far (`data`) and, in a repeating
+  group's cell, `{thing, index}`.
+  """
+  def data_ctx(socket, module, scope, data, cell \\ nil) do
+    ctx = ctx(socket, module, scope, start(socket, nil))
+    ctx = %{ctx | data: data}
 
-  defp run_event(socket, _page, module, scope, ids, args, budget) do
+    case cell do
+      {item, index} -> %{ctx | cell: item, cell_index: index}
+      nil -> ctx
+    end
+  end
+
+  # Runs workflows `ids` of `module` in `scope` with what is left of the
+  # event's budgets; returns the socket and the event's run, charged.
+  defp run_event(socket, module, scope, ids, args, run) do
     ctx =
-      Enum.reduce(ids, ctx(socket, module, scope, budget), fn id, ctx ->
+      Enum.reduce(ids, ctx(socket, module, scope, run), fn id, ctx ->
         {_status, ctx} = run(ctx, module, id, args, scope)
         ctx
       end)
 
-    apply_ctx(socket, ctx)
+    b = backend(ctx)
+    run = %{run | jobs: b.budget, calls: b.calls, messages: ctx.messages ++ run.messages}
+    {apply_ctx(socket, ctx), run}
   end
 
-  defp run_event(socket, page, module, scope, ids),
-    do: run_event(socket, page, module, scope, ids, %{}, nil)
-
   defp apply_ctx(socket, %Ctx{} = ctx) do
-    # What the run left of its budgets is shared by the custom events it
-    # scheduled: the total never grows, so a self-scheduling chain ends.
-    n = length(ctx.messages)
-    b = backend(ctx)
-
-    for {delay, scope, module, id, args} <- Enum.reverse(ctx.messages) do
-      budget = %{jobs: div(b.budget, n), calls: div(b.calls, n), chain: b.chain + 1}
-      Process.send_after(self(), {:bubble, :run, scope, module, id, args, budget}, delay)
-    end
-
     socket =
       socket
       |> assign(:bubble_states, ctx.states)
@@ -363,8 +529,9 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # Condition-true workflows: each runs when its condition becomes true
   # (once per page load for `:once`); their effects may make others true,
-  # so it repeats, at most @max_rounds times.
-  defp settle(socket, page, round \\ 0) do
+  # so it repeats, at most @max_rounds times. They run within the event's
+  # `run` (its budgets and chain), never a fresh root.
+  defp settle(socket, page, run, round \\ 0) do
     seen = socket.assigns.bubble_conditions
 
     {fire, seen} =
@@ -385,19 +552,23 @@ defmodule <%= @web %>.BubbleWorkflows do
 
     cond do
       fire == [] ->
-        socket
+        {socket, run}
 
       round >= @max_rounds ->
         Logger.warning("bubble: condition-true workflows keep firing; stopped after #{@max_rounds} rounds")
-        socket
+        {socket, run}
 
       true ->
-        fire
-        |> Enum.reverse()
-        |> Enum.reduce(socket, fn {scope, module, id}, socket ->
-          run_event(socket, page, module, scope, [id])
-        end)
-        |> settle(page, round + 1)
+        {socket, run} =
+          fire
+          |> Enum.reverse()
+          |> Enum.reduce({socket, run}, fn {scope, module, id}, {socket, run} ->
+            run_event(socket, module, scope, [id], %{}, run)
+          end)
+
+        # A fired workflow can change a source or its constraints. Keep the
+        # same run budgets while re-reading before the next condition check.
+        settle(BubbleData.load(socket, page), page, run, round + 1)
     end
   end
 
@@ -405,7 +576,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     with %{condition: fun, blocked: [], data: data} when is_atom(fun) and fun != nil <-
            module.__bubble__(:workflows)[id],
          true <- not data or data_access?() do
-      apply(module, fun, [ctx(socket, module, scope, nil)]) == true
+      apply(module, fun, [ctx(socket, module, scope, start(socket, nil))]) == true
     else
       _ -> false
     end
@@ -513,6 +684,16 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc "URL parameter `name`, as text."
   def url(ctx, name), do: Map.get(ctx.url, name)
+
+  @doc """
+  What element `element` (in the instance `path` below) holds of the
+  page's data (WTF-420): a page's, group's or instance's thing, a
+  repeating group's list.
+  """
+  def data(ctx, path, element), do: Map.get(ctx.data, {scope(ctx, path), element})
+
+  @doc "What group `element` holds in the current cell of a repeating group."
+  def cell_data(ctx, element), do: Map.get(ctx.data, {ctx.scope, element, ctx.cell_index})
 
   @doc "A custom event's parameter."
   def param(ctx, id, loads), do: ctx.args |> Map.get(id) |> load(loads, ctx)

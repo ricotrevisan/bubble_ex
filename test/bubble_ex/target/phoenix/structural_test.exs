@@ -34,6 +34,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
     {:ok, backend} = Backend.build(app, model, index)
     {:ok, workflows} = Workflows.map(backend, project, namespace: "Acme")
     {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+    # The pages' data (WTF-420): its loader adds no bypass.
+    {:ok, page_data} = BubbleEx.PageData.build(app, model)
 
     frontend_workflows =
       frontend &&
@@ -41,7 +43,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
           FrontendWorkflows.map(lowered, project,
             namespace: "Acme",
             frontend: frontend,
-            backend: workflows
+            backend: workflows,
+            page_data: page_data
           ),
           1
         )
@@ -400,6 +403,24 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
     end
   end
 
+  describe "page data (WTF-420)" do
+    test "the loader and data functions add no bypass site" do
+      inputs = build(load("test/support/target/phoenix/page_data.json"))
+      report = run!(inputs)
+      assert status(report, "structural.bypass_inventory") == :pass
+      assert inputs.files["lib/acme_web/bubble_data.ex"] =~ "authorize?: true"
+      refute inputs.files["lib/acme_web/bubble_data.ex"] =~ "authorize?: false"
+    end
+
+    test "a failed ID-list read logs the error and falls back to an empty lookup" do
+      inputs = build(load("test/support/target/phoenix/page_data.json"))
+      loader = inputs.files["lib/acme_web/bubble_data.ex"]
+
+      assert loader =~
+               ~r/\{:error, error\} ->\s+failed\(Ash\.Query\.new\(resource\), error\)\s+%\{\}/
+    end
+  end
+
   describe "bypass inventory at generation" do
     setup do
       %{inputs: build(load(@backend))}
@@ -415,7 +436,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                "lowered" => 1,
                "sites" => %{
                  "authorize_false:scaffold" => 2,
-                 "authorize_unverifiable:scaffold" => 6,
+                 "authorize_unverifiable:scaffold" => 7,
                  "runtime_start:listed" => 1
                }
              }

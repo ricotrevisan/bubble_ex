@@ -1,0 +1,407 @@
+defmodule <%= @web %>.BubbleData do
+  @moduledoc """
+  The data the pages scaffolded from Bubble show (WTF-420): a page's
+  "Type of content" (its thing, from the URL), the data sources of its
+  groups, repeating groups and reusable-element instances. The page's
+  `Workflows` module (and each reusable element's) lists them in
+  `__bubble__(:data)` with one function per source, in the order they read
+  each other; this module runs them, keeps what they return in the
+  page's `@bubble_data` and reloads it when a record they read changes.
+
+  ## Data access (opt-in)
+
+  The Ash resources are generated with `privacy: :omit`: **no resource has
+  an authorizer**, so every read would return every record to anyone who
+  can open the page. Pages load nothing unless the owner opts in, the
+  same switch as the workflows':
+
+      config :<%= @app %>, <%= @web %>.BubbleWorkflows, data_access: true
+
+  Every read goes through Ash with the current user as the actor and
+  `authorize?: true`, which restricts nothing until you add policies.
+
+  ## What a browser can choose
+
+  Nothing but the page's own state. A page reads only the sources its
+  module lists, with their filters fixed in the code; the browser supplies
+  input values, custom states and URL parameters (text, pinned into
+  filters as values) and, for a page with a type of content, the thing's
+  unique ID in the URL path, which must look like a Bubble ID and is read
+  through Ash like any other record. No event names a resource, a record
+  or a query, and nothing from the browser becomes an atom.
+
+  ## Bounds
+
+  A repeating group shows its first page (its rows times its columns); a
+  list with no page size, or a larger one, stops at `:max_items`
+  (`config :<%= @app %>, <%= @web %>.BubbleData, max_items: 100`). A
+  search's `count` is a count query. A list of things stored as IDs is
+  read by ID, at most the page size capped by `:max_items`.
+
+  ## Reactivity
+
+  When loaded (and connected), the page subscribes to one topic per data
+  type it searches (a record of that type created, changed or deleted)
+  and one per record it holds (`<%= @module %>.Bubble.Changes`, published
+  by the resources' `Ash.Notifier.PubSub`), and reloads its data when any
+  fires. Only a topic name travels, never a record: the page reads again
+  with its own actor. Its data also reloads after each event its
+  workflows handle (their states and inputs may be search constraints).
+
+  ## Unverified Bubble behavior
+
+  To confirm by replay (WTF-358): a page's thing is read from the URL path
+  segment after the page name (`/<page>/<unique id>`; Bubble also accepts
+  a slug, which is not read here); a search that does not state whether
+  it ignores empty constraints is not generated (see
+  `docs/page-data.md`); a repeating group's later pages are not loaded.
+  """
+
+  require Ash.Query
+  require Logger
+
+  import Phoenix.Component, only: [assign: 3]
+  import Phoenix.LiveView, only: [connected?: 1]
+
+  alias <%= @module %>.Bubble.Changes
+  alias <%= @module %>.Workflows.Runtime
+  alias <%= @web %>.BubbleWorkflows
+
+  @id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
+
+  @doc "Whether pages may read stored data (the workflows' opt-in)."
+  def data_access?,
+    do:
+      Keyword.get(Application.get_env(:<%= @app %>, BubbleWorkflows, []), :data_access) == true
+
+  @doc "The most items a list reads (`:max_items`, default 100)."
+  def max_items do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_items, 100) do
+      n when is_integer(n) and n > 0 -> n
+      _ -> 100
+    end
+  end
+
+  @doc """
+  The unique ID of a page's thing from the URL path parameter
+  (`bubble_thing`): a Bubble ID, else nil.
+  """
+  def thing_id(%{"bubble_thing" => id}, path)
+      when is_binary(id) and byte_size(id) <= 64 and is_binary(path) do
+    if List.last(String.split(path, "/", trim: true)) == id and Regex.match?(@id, id), do: id
+  end
+
+  def thing_id(_params, _path), do: nil
+
+  # --- loading --------------------------------------------------------------------------
+
+  @doc """
+  Loads the page's data into `@bubble_data` (nothing with data access
+  off) and, once connected, subscribes to the changes of what it read.
+  """
+  def load(socket, page) do
+    if data_access?() and connected?(socket) do
+      {data, topics} =
+        Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, MapSet.new()}, fn {scope, module},
+                                                                          acc ->
+          load_surface(socket, module, scope, acc)
+        end)
+
+      socket
+      |> assign(:bubble_data, data)
+      |> subscribe(topics)
+    else
+      if not data_access?() and connected?(socket) and
+           not Map.get(socket.assigns, :bubble_data_warned, false) and sources?(page) do
+        Logger.warning(
+          "bubble page data not loaded: data access is off " <>
+            "(config :<%= @app %>, #{inspect(BubbleWorkflows)}, data_access: true)"
+        )
+      end
+
+      socket
+      |> assign(:bubble_data, %{})
+      |> assign(:bubble_data_warned, not data_access?() and connected?(socket))
+    end
+  end
+
+  @doc "Coalesces change notifications into one read per burst, for subscribed topics only."
+  def changed(socket, topic) do
+    topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
+
+    if data_access?() and MapSet.member?(topics, topic) and
+         is_nil(socket.assigns[:bubble_data_refresh]), do: defer(socket, 25), else: socket
+  end
+
+  @doc "Debounces input-driven reads; only the latest input values are loaded."
+  def defer(socket, delay \\ 150) do
+    # A new input supersedes the old timer. Stale queued messages are
+    # ignored by pending?/2; notifications leave the pending timer alone.
+    ref = make_ref()
+    Process.send_after(self(), {:bubble, :data_refresh, ref}, delay)
+    assign(socket, :bubble_data_refresh, ref)
+  end
+
+  @doc "Whether this is the current (not superseded) refresh timer."
+  def pending?(socket, ref), do: not is_nil(ref) and socket.assigns[:bubble_data_refresh] == ref
+
+  @doc "Handles the pending refresh; stale timers do not read."
+  def refresh(socket, page, ref) do
+    if pending?(socket, ref) do
+      socket
+      |> assign(:bubble_data_refresh, nil)
+      |> load(page)
+    else
+      socket
+    end
+  end
+
+  defp sources?(page),
+    do: Enum.any?(BubbleWorkflows.surfaces(page), fn {_scope, m} -> sources(m) != [] end)
+
+  @doc "The data sources a surface module lists (none for a module scaffolded before WTF-420)."
+  def sources(module) do
+    module.__bubble__(:data)
+  rescue
+    FunctionClauseError -> []
+  end
+
+  defp load_surface(socket, module, scope, acc) do
+    {cells, own} = Enum.split_with(sources(module), & &1.cell)
+
+    acc =
+      Enum.reduce(own, acc, fn source, {data, topics} ->
+        ctx = BubbleWorkflows.data_ctx(socket, module, scope, data)
+        value = run(module, source, ctx)
+        key_scope = if source.instance, do: BubbleWorkflows.scope(ctx, [source.instance]), else: scope
+        {Map.put(data, {key_scope, source.element}, value), topics(topics, source, value)}
+      end)
+
+    # A group in a repeating group's cell holds a value per cell.
+    Enum.reduce(cells, acc, fn source, {data, topics} ->
+      items = data |> Map.get({scope, source.cell}) |> List.wrap()
+      items = Runtime.load_page(items, source.cell_loads, Runtime.root(nil, socket.assigns[:current_user]), min(max_items(), 100))
+
+      values =
+        for {item, i} <- Enum.with_index(items, 1) do
+          ctx = BubbleWorkflows.data_ctx(socket, module, scope, data, {item, i})
+          {i, run(module, %{source | loads: []}, ctx)}
+        end
+
+      # Load relationships across all cells together, not one query per cell.
+      loaded =
+        values
+        |> Enum.map(&elem(&1, 1))
+        |> Runtime.load_page(source.loads, Runtime.root(nil, socket.assigns[:current_user]), min(max_items(), 100))
+
+      Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
+      |> Enum.reduce({data, topics}, fn {i, value}, {data, topics} ->
+        {Map.put(data, {scope, source.element, i}, value), topics(topics, source, value)}
+      end)
+    end)
+  end
+
+  # One source: its function, then the relationships the page's bindings
+  # read through it. A source that fails reads nothing (logged).
+  defp run(_module, %{fun: nil}, _ctx), do: nil
+
+  defp run(module, source, ctx) do
+    module
+    |> apply(source.fun, [ctx])
+    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), min(max_items(), 100))
+  rescue
+    error ->
+      Logger.error(
+        "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
+      )
+
+      nil
+  end
+
+  # --- reads -----------------------------------------------------------------------------
+
+  @doc "Loads a page expression's relationships with a database-side limit on every list."
+  def load_value(value, loads, ctx) do
+    if data_access?(),
+      do: Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), max_items()),
+      else: value
+  end
+
+  @doc "A page's thing: the record whose unique ID is in the URL, read through Ash."
+  def url_thing(ctx, resource) do
+    case ctx.thing do
+      id when is_binary(id) -> get(resource, id, ctx)
+      _ -> nil
+    end
+  end
+
+  @doc """
+  A query's result: `take` is `:all` (at most the page size, capped at
+  `max_items/0`), `:first`, `{:item, n}`, `{:limit, n}` or `:count`.
+  """
+  def read(query, ctx, :count, _page_size) do
+    case Ash.count(query, actor: ctx.actor, authorize?: true) do
+      {:ok, n} -> n
+      {:error, error} -> failed(query, error)
+    end
+  end
+
+  def read(query, ctx, take, page_size) do
+    {offset, limit} =
+      case take do
+        :all -> {0, cap(page_size)}
+        :first -> {0, 1}
+        {:item, n} -> {n - 1, 1}
+        {:limit, n} -> {0, min(cap(page_size), n)}
+      end
+
+    query = query |> Ash.Query.offset(offset) |> Ash.Query.limit(limit)
+
+    case Ash.read(query, actor: ctx.actor, authorize?: true) do
+      {:ok, records} when take in [:first] or is_tuple(take) and elem(take, 0) == :item ->
+        List.first(records)
+
+      {:ok, records} ->
+        records
+
+      {:error, error} ->
+        failed(query, error)
+    end
+  end
+
+  defp cap(nil), do: max_items()
+  defp cap(n) when is_integer(n) and n > 0, do: min(n, max_items())
+  defp cap(_), do: max_items()
+
+  defp failed(query, error) do
+    Logger.error(
+      "bubble page data: a read of #{inspect(query.resource)} failed: " <>
+        Exception.format_banner(:error, Ash.Error.to_error_class(error))
+    )
+
+    nil
+  end
+
+  @doc """
+  A thing (or list of things) as records of `resource`: records pass,
+  Bubble IDs are read through Ash (a list at most its page size, capped by
+  `max_items/0`, in its order); anything else is the value itself.
+  """
+  def records(ctx, resource, value, list?, page_size \\ nil)
+  def records(_ctx, nil, value, true, page_size) when is_list(value),
+    do: Enum.take(value, cap(page_size))
+  def records(_ctx, nil, value, _list?, _page_size), do: value
+  def records(_ctx, _resource, nil, _list?, _page_size), do: nil
+
+  def records(ctx, resource, value, true, page_size) when is_list(value) do
+    value = Enum.take(value, cap(page_size))
+    ids = for id <- value, is_binary(id), do: id
+
+    found =
+      if ids == [] do
+        %{}
+      else
+        [pk] = Ash.Resource.Info.primary_key(resource)
+        filter = [{pk, [in: ids]}]
+
+        resource
+        |> Ash.Query.new()
+        |> Ash.Query.filter(^filter)
+        |> Ash.Query.limit(length(ids))
+        |> Ash.read(actor: ctx.actor, authorize?: true)
+        |> case do
+          {:ok, records} -> Map.new(records, &{Map.get(&1, pk), &1})
+          {:error, error} ->
+            failed(Ash.Query.new(resource), error)
+            %{}
+        end
+      end
+
+    value
+    |> Enum.map(fn
+      id when is_binary(id) -> Map.get(found, id)
+      record -> record
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  def records(ctx, resource, id, _list?, _page_size) when is_binary(id), do: get(resource, id, ctx)
+  def records(_ctx, _resource, value, _list?, _page_size), do: value
+
+  defp get(resource, id, ctx) do
+    if Regex.match?(@id, id) do
+      case Ash.get(resource, id, actor: ctx.actor, authorize?: true, not_found_error?: false) do
+        {:ok, record} -> record
+        {:error, error} -> failed(Ash.Query.new(resource), error)
+      end
+    end
+  end
+
+  @doc """
+  What a filter reads from the current user: the value at `path` (names),
+  after loading the relationships `loads`; nil when logged out.
+  """
+  def actor(ctx, path, loads) do
+    ctx
+    |> BubbleWorkflows.actor([])
+    |> load_value(loads, ctx)
+    |> get_path(path)
+  end
+
+  defp get_path(value, []), do: value
+  defp get_path(nil, _path), do: nil
+
+  defp get_path(value, [name | rest]) when is_map(value),
+    do: value |> Map.get(String.to_existing_atom(name)) |> get_path(rest)
+
+  defp get_path(_value, _path), do: nil
+
+  @doc "A pinned filter value: a thing as its ID, things as their IDs."
+  def pin(value, :one), do: Runtime.id(value)
+  def pin(value, :many), do: Runtime.ids(value)
+  def pin(value, _), do: value
+
+  # --- reactivity ------------------------------------------------------------------------
+
+  defp topics(topics, %{topic: nil}, _value), do: topics
+
+  defp topics(topics, %{topic: type} = source, value) do
+    topics = if source.read == :query, do: MapSet.put(topics, Changes.topic(type)), else: topics
+    record_topics(topics, value, source.loads)
+  end
+
+  defp record_topics(topics, values, loads) when is_list(values),
+    do: Enum.reduce(values, topics, &record_topics(&2, &1, loads))
+
+  defp record_topics(topics, %{__struct__: resource} = record, loads) do
+    type = resource |> Module.split() |> List.last()
+
+    topics =
+      case Ash.Resource.Info.primary_key(resource) do
+        [pk] -> MapSet.put(topics, Changes.topic(type, Map.get(record, pk)))
+        _ -> topics
+      end
+
+    Enum.reduce(loads, topics, fn [name | rest], acc ->
+      related = Map.get(record, String.to_existing_atom(name))
+      record_topics(acc, related, if(rest == [], do: [], else: [rest]))
+    end)
+  rescue
+    _ -> topics
+  end
+
+  defp record_topics(topics, _value, _loads), do: topics
+
+  defp subscribe(socket, topics) do
+    if connected?(socket) do
+      old = Map.get(socket.assigns, :bubble_topics, MapSet.new())
+
+      for topic <- MapSet.difference(topics, old), do: Changes.subscribe(topic)
+      for topic <- MapSet.difference(old, topics), do: Changes.unsubscribe(topic)
+
+      assign(socket, :bubble_topics, topics)
+    else
+      socket
+    end
+  end
+end

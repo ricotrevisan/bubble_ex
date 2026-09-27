@@ -46,12 +46,15 @@ frontend = fn app, model, project, backend ->
 
       {:ok, index} = BubbleEx.Index.build(app, model: model)
       {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+      # The pages' data sources (WTF-420).
+      {:ok, page_data} = BubbleEx.PageData.build(app, model)
 
       {:ok, workflows} =
         BubbleEx.Target.Elixir.FrontendWorkflows.map(lowered, project,
           namespace: "PhxCheck",
           frontend: frontend,
-          backend: backend
+          backend: backend,
+          page_data: page_data
         )
 
       [frontend: frontend, expressions: expressions, frontend_workflows: workflows]
@@ -163,6 +166,18 @@ fixtures =
       |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
       |> app_fixture.()
     end,
+    # The page data fixture (WTF-420) with every ID hostile: its routes,
+    # data functions, filters, template keys and tests must quote them.
+    "hostile_page_data" => fn ->
+      app =
+        "test/support/target/phoenix/page_data.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      app
+      |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
+      |> app_fixture.()
+    end,
     "decided_combined" => fn ->
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit)
       {:ok, project, []}
@@ -173,8 +188,26 @@ fixtures =
     end,
     # lists normalized to join resources (WTF-406)
     "decided_cut3" => fn ->
+      app = BubbleEx.Test.DecidedFixture.app(:cut3)
+      app = put_in(app, ["pages", "pgHome", "properties", "page_item_type"], "custom.project")
+
+      app =
+        put_in(app, ["pages", "pgHome", "elements", "rgJoinedTasks"], %{
+          "id" => "rgJoinedTasks",
+          "type" => "RepeatingGroup",
+          "properties" => %{
+            "group_type" => "custom.task",
+            "data_source" => %{
+              "type" => "CurrentPageItem",
+              "next" => %{"type" => "Message", "name" => "tasks_list_custom_task"}
+            }
+          }
+        })
+
+      {:ok, model} = BubbleEx.Model.build(app)
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: :omit)
-      {:ok, project, []}
+      backend = workflows.(app, model, project, true)
+      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
     end
   })
   |> Map.merge(
@@ -190,8 +223,12 @@ fixtures =
             app = BubbleEx.Test.SplitExport.load(path)
             {:ok, model} = BubbleEx.Model.build(app)
             {:ok, index} = BubbleEx.Index.build(app, model: model)
-            {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
-            {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
+
+            {:ok, %{findings: findings}} =
+              BubbleEx.Findings.analyze(app, model: model, index: index)
+
+            {_records, applied, sha} =
+              BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
 
             {:ok, project} =
               BubbleEx.Target.Ash.map(model, applied, privacy: :omit, decisions_sha256: sha)

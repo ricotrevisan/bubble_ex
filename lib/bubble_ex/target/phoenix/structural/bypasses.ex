@@ -94,7 +94,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
          "run/3" => 1,
          "start/4" => 1,
          "get/3" => 1,
-         "load/3" => 1,
+         "load/3" => 2,
          "options/2" => 1,
          "call_run/6" => 1
        }},

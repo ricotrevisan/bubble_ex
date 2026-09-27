@@ -132,7 +132,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert module =~ ~s("bIn" => {:text, nil})
     assert module =~ ~s("bNum" => {:number, 3})
     assert module =~ ~s|loaded: ["wLoad"]|
-    assert module =~ ~s|conditions: [{"wCond", :every_time}]|
+    assert module =~ ~s|conditions: [{"wCond", :every_time}, {"wFlip", :every_time}]|
     # Browser-run and disabled workflows are not in the click list.
     refute module =~ ~s("bBtnOpen" =>)
     assert module =~ ~s({"bInst1", ShopWeb.Reusables.Card.Workflows})
@@ -275,7 +275,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # characters and spaces are percent-encoded, not replaced.
     workflows = markers(files)
     # 21 page workflows and the backend workflow they schedule.
-    assert map_size(workflows) == 22
+    assert map_size(workflows) == 25
     assert Enum.all?(Map.values(workflows), &match?([_], &1))
 
     # The test tags are the plan's subjects, as data.

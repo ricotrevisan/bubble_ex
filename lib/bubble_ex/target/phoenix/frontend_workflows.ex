@@ -37,6 +37,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   Model or the lowering (see the boundary test).
   """
 
+  alias BubbleEx.Target.Ash.Source
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
   alias BubbleEx.Target.Phoenix.Templates
 
@@ -62,28 +63,35 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     test = "test/#{ctx.app}_web/bubble_frontend_workflows_test.exs"
 
+    assigns = %{web: ctx.web, module: ctx.module, app: ctx.app, join_topics: ctx.join_topics}
+
     %{
       owned: Map.put(owned, test, format(tests(spec, ctx))),
       generated: %{
         "lib/#{ctx.app}_web/bubble_workflows.ex" =>
-          format(
-            Templates.render("lib/web/bubble_workflows.ex", %{
-              web: ctx.web,
-              module: ctx.module,
-              app: ctx.app
-            })
-          )
+          format(Templates.render("lib/web/bubble_workflows.ex", assigns)),
+        # The page data (WTF-420).
+        "lib/#{ctx.app}_web/bubble_data.ex" =>
+          format(Templates.render("lib/web/bubble_data.ex", assigns)),
+        "lib/#{ctx.app}/bubble/changes.ex" =>
+          format(Templates.render("lib/app/bubble/changes.ex", assigns))
       }
     }
   end
 
   @doc "Whether a surface of `spec` needs a Workflows module."
   @spec module?(Spec.t(), String.t()) :: boolean()
-  def module?(%Spec{surfaces: surfaces}, id) do
+  def module?(%Spec{surfaces: surfaces} = spec, id) do
     case surfaces[id] do
-      %{kind: :page} -> true
-      %{workflows: w, states: s, inputs: i} -> w != [] or s != [] or map_size(i) > 0
-      nil -> false
+      %{kind: :page} ->
+        true
+
+      %{workflows: w, states: s, inputs: i} = surface ->
+        w != [] or s != [] or map_size(i) > 0 or Map.get(surface, :data, []) != [] or
+          MapSet.member?(spec.data_index.roots, id)
+
+      nil ->
+        false
     end
   end
 
@@ -107,7 +115,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     functions = Enum.map_join(workflows, "\n", &workflow_source(&1, s, spec, ctx))
 
+    data = Map.get(surface, :data, [])
+    data_functions = Enum.map_join(data, "\n", &data_source(&1, s, ctx))
+    data_metas = Enum.map_join(data, ",\n", &data_meta(&1, s))
+
     uses_js? = Enum.any?(workflows, & &1.client?)
+    queries? = Enum.any?(data, &match?(%{read: {:query, _}}, &1))
 
     """
     defmodule #{s.module} do
@@ -116,7 +129,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       alias #{ctx.module}.Workflows.Runtime, warn: false
       alias #{ctx.web}.BubbleWorkflows, warn: false
       alias #{ctx.web}.Bubble, warn: false
-    #{if uses_js?, do: "  alias Phoenix.LiveView.JS\n", else: ""}
+    #{if uses_js?, do: "  alias Phoenix.LiveView.JS\n", else: ""}#{if data != [], do: "  alias #{ctx.web}.BubbleData, warn: false\n", else: ""}#{if queries?, do: "\n  require Ash.Query\n", else: ""}
       @surface #{surface_map}
 
       @workflows %{
@@ -125,12 +138,19 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
       @instances [#{Enum.join(instances, ", ")}]
 
+      # The page data (WTF-420): the sources this surface loads, in order.
+      @data [
+    #{data_metas}
+      ]
+
       @doc false
       def __bubble__(:surface), do: @surface
       def __bubble__(:workflows), do: @workflows
       def __bubble__(:instances), do: @instances
+      def __bubble__(:data), do: @data
 
     #{functions}
+    #{data_functions}
     end
     """
   end
@@ -476,16 +496,24 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   # The variables the expressions read, bound from the context (each once,
   # with the union of the relationship loads its uses need).
-  defp prelude(exprs) do
+  defp prelude(exprs, cell_preloaded? \\ false, page_data? \\ false) do
     exprs
     |> Enum.flat_map(& &1.bindings)
     |> Enum.group_by(& &1.var)
     |> Enum.sort()
     |> Enum.map_join(fn {var, [b | _] = bs} ->
       loads = bs |> Enum.flat_map(& &1.loads) |> Enum.uniq() |> Enum.sort()
-      "  #{var} = #{binding(b.bind, loads)}\n"
+
+      "  #{var} = #{prelude_binding(b.bind, loads, cell_preloaded?, page_data?)}\n"
     end)
   end
+
+  defp prelude_binding({:cell, _}, _loads, true, _page_data?), do: "ctx.cell"
+
+  defp prelude_binding(bind, loads, _cell_preloaded?, true),
+    do: page_loaded(binding(bind, []), loads)
+
+  defp prelude_binding(bind, loads, _cell_preloaded?, false), do: binding(bind, loads)
 
   defp ctx_arg(exprs),
     do: if(Enum.flat_map(exprs, & &1.bindings) == [], do: "_ctx", else: "ctx")
@@ -511,9 +539,148 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp binding({:input, k}, _loads),
     do: "BubbleWorkflows.input(ctx, #{source(k.path)}, #{literal(k.element)})"
 
+  # The page's data (WTF-420).
+  defp binding({:data, k}, loads),
+    do:
+      page_loaded(
+        "BubbleWorkflows.data(ctx, #{source(k.path)}, #{literal(k.element)})",
+        loads
+      )
+
+  defp binding({:cell, _rg}, loads), do: page_loaded("ctx.cell", loads)
+  defp binding({:cell_index, _rg}, _loads), do: "ctx.cell_index"
+
+  defp binding({:cell_data, g}, loads),
+    do: page_loaded("BubbleWorkflows.cell_data(ctx, #{literal(g)})", loads)
+
+  defp page_loaded(value, []), do: value
+
+  defp page_loaded(value, loads),
+    do: "BubbleData.load_value(#{value}, #{loads_source(loads)}, ctx)"
+
   # Relationship paths as names (strings), as the backend's printer:
   # `Runtime.load/3` turns them into existing atoms.
   defp loads_source(loads), do: source(loads)
+
+  # --- page data (WTF-420) --------------------------------------------------------------------
+
+  # A source's entry in `__bubble__(:data)`: its element, function (nil
+  # when not loaded: `blocked` says why), how it reads, where a cell's
+  # value goes, the relationships the page's bindings read through it
+  # (`loads`, from the pages) and its change topic (its resource's name).
+  defp data_meta(d, s) do
+    fun = if d.residue == [], do: ":" <> data_fun(d), else: "nil"
+
+    loads = Map.get(Map.get(s, :loads, %{}), d.holder || d.element, [])
+    topic = if d.resource && d.residue == [], do: literal(d.resource), else: "nil"
+
+    "%{element: #{literal(data_key_element(d))}, fun: #{fun}, read: #{data_read_kind(d.read)}, " <>
+      "instance: #{data_instance(d)}, " <>
+      "cell: #{if d.cell, do: literal(d.cell), else: "nil"}, " <>
+      "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
+      "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}}"
+  end
+
+  defp data_read_kind(:url_thing), do: ":url_thing"
+  defp data_read_kind({:query, _}), do: ":query"
+  defp data_read_kind(_), do: ":value"
+
+  defp data_instance(%{kind: :instance, element: element}), do: literal(element)
+  defp data_instance(_), do: "nil"
+
+  defp cell_loads({:value, %{bindings: bindings}}),
+    do: for(%{bind: {:cell, _}, loads: paths} <- bindings, path <- paths, do: path) |> Enum.uniq()
+
+  defp cell_loads(_), do: []
+
+  # Where a source's value is kept: an instance's under its scope and
+  # reusable element (see `BubbleWorkflows.data/3`), the others under
+  # their element.
+  defp data_key_element(%{kind: :instance, holder: holder}) when is_binary(holder), do: holder
+  defp data_key_element(d), do: d.element
+
+  defp data_fun(d), do: "data_" <> fun_part(d.element)
+
+  defp fun_part(id) do
+    id
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "_")
+    |> String.trim("_")
+    |> then(&if(&1 == "", do: "x", else: &1))
+    |> Kernel.<>("_" <> short_hash(id))
+  end
+
+  defp short_hash(id),
+    do: :crypto.hash(:sha256, id) |> Base.encode16(case: :lower) |> binary_part(0, 8)
+
+  defp data_source(%{residue: [_ | _]} = d, _s, _ctx) do
+    reasons = d.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq() |> Enum.join(", ")
+
+    """
+    # bubble:data #{marker(d.element)}
+    # TODO(bubble:#{comment(d.symbol)}) not loaded: #{reasons}
+    """
+  end
+
+  defp data_source(d, _s, ctx) do
+    body =
+      case d.read do
+        :url_thing ->
+          "BubbleData.url_thing(ctx, #{ctx.module}.#{d.resource})"
+
+        {:value, v} ->
+          resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
+
+          "#{prelude([v], d.cell != nil, true)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+
+        {:query, q} ->
+          query_source(q, d, ctx)
+      end
+
+    arg = if String.contains?(body, "ctx"), do: "ctx", else: "_ctx"
+
+    """
+    # bubble:data #{marker(d.element)}
+    @doc false
+    def #{data_fun(d)}(#{arg}) do
+      #{body}
+    end
+    """
+  end
+
+  defp query_source(q, d, ctx) do
+    values = for %{value: %{bindings: _} = v} <- q.pins, do: v
+
+    pins =
+      Enum.map_join(q.pins, "", fn
+        %{var: var, value: {:actor, path}} ->
+          "#{var} = BubbleData.actor(ctx, #{source(path)}, #{source(q.actor_loads)})\n"
+
+        %{var: var, value: v, ref: ref} ->
+          "#{var} = BubbleData.pin((#{v.source}), #{inspect(ref)})\n"
+      end)
+
+    sort =
+      case q.sort do
+        [] ->
+          ""
+
+        sort ->
+          "|> Ash.Query.sort([#{Enum.map_join(sort, ", ", fn {a, dir} -> "{#{atom(a)}, #{inspect(dir)}}" end)}])\n"
+      end
+
+    take =
+      case q.take do
+        {kind, n} -> "{#{inspect(kind)}, #{n}}"
+        kind -> inspect(kind)
+      end
+
+    """
+    #{prelude(values, false, true)}#{pins}#{ctx.module}.#{q.resource}
+    |> Ash.Query.filter(#{Source.filter(q.filter)})
+    #{sort}|> BubbleData.read(ctx, #{take}, #{inspect(d.page_size)})
+    """
+  end
 
   defp interval_seconds(%{source: source, bindings: []}), do: {:source, source}
   defp interval_seconds(_), do: nil

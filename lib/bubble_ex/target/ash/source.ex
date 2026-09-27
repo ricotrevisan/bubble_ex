@@ -22,10 +22,11 @@ defmodule BubbleEx.Target.Ash.Source do
     * `:extend` - extra DSL for some resources, for a target that wraps
       the Ash layer in a framework (e.g. `BubbleEx.Target.Phoenix` adds
       its AshAuthentication fragment to the User): a map from a resource's
-      relative module to `%{extensions: [module], fragments: [module], dsl:
-      source}` (each key optional). The extensions and `Spark.Dsl.Fragment`s
-      are added to its `use Ash.Resource` and the DSL source is printed at
-      the end of the resource, verbatim. Default `%{}`
+      relative module to `%{extensions: [module], fragments: [module],
+      notifiers: [module], dsl: source}` (each key optional). The
+      extensions, `Spark.Dsl.Fragment`s and notifiers are added to its `use
+      Ash.Resource` and the DSL source is printed at the end of the
+      resource, verbatim. Default `%{}`
     * `:extra_resources` - fully qualified modules of resources defined
       elsewhere that the domain lists after the Project's, default `[]`
   """
@@ -119,7 +120,12 @@ defmodule BubbleEx.Target.Ash.Source do
     sender: 1,
     # BubbleEx.Target.Phoenix's database-trigger change (WTF-373)
     change: 1,
-    change: 2
+    change: 2,
+    # its page data notifications, Ash.Notifier.PubSub (WTF-420)
+    module: 1,
+    prefix: 1,
+    publish_all: 2,
+    publish_all: 3
   ]
 
   @header """
@@ -191,7 +197,7 @@ defmodule BubbleEx.Target.Ash.Source do
     do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Target.Ash.Project")}
 
   defp check_extend(extend, %Project{} = project) when is_map(extend) do
-    modules = MapSet.new(project.resources, & &1.module)
+    modules = MapSet.new(project.resources ++ project.joins, & &1.module)
 
     Enum.reduce_while(extend, :ok, fn entry, :ok ->
       case check_extension(entry, modules) do
@@ -207,9 +213,10 @@ defmodule BubbleEx.Target.Ash.Source do
   defp check_extension({module, %{} = entry}, modules) when is_binary(module) do
     extensions = Map.get(entry, :extensions, [])
     fragments = Map.get(entry, :fragments, [])
+    notifiers = Map.get(entry, :notifiers, [])
 
     cond do
-      Map.keys(entry) -- [:extensions, :fragments, :dsl] != [] or
+      Map.keys(entry) -- [:extensions, :fragments, :notifiers, :dsl] != [] or
           not is_binary(Map.get(entry, :dsl, "")) ->
         {:error, Error.new(:invalid_input, "invalid extend entry #{inspect({module, entry})}")}
 
@@ -218,7 +225,8 @@ defmodule BubbleEx.Target.Ash.Source do
 
       true ->
         with :ok <- check_aliases(:extend, extensions),
-             do: check_aliases(:extend, fragments)
+             :ok <- check_aliases(:extend, fragments),
+             do: check_aliases(:extend, notifiers)
     end
   end
 
@@ -384,7 +392,7 @@ defmodule BubbleEx.Target.Ash.Source do
   defp extensions(%Resource{module: module}, ctx) do
     entry = Map.get(ctx.extend, module, %{})
 
-    for key <- [:extensions, :fragments],
+    for key <- [:extensions, :fragments, :notifiers],
         modules = Map.get(entry, key, []),
         modules != [],
         into: "",
@@ -852,6 +860,15 @@ defmodule BubbleEx.Target.Ash.Source do
   @spec expr(Expr.t()) :: String.t()
   def expr(%Expr{expr: node}), do: "expr(" <> print(node, 0) <> ")"
 
+  @doc """
+  Prints a `BubbleEx.Target.Ash.Expr`'s expression alone, for
+  `Ash.Query.filter/2` (which takes it bare): e.g. `title == ^title`. A
+  `{:pin, var}` node prints as `^var`, a variable of the calling code
+  (WTF-420: page data queries bind their inputs that way).
+  """
+  @spec filter(Expr.t()) :: String.t()
+  def filter(%Expr{expr: node}), do: print(node, 0)
+
   # Elixir operator precedence, loosest first: `or`/`||`, `and`,
   # `==`/`!=`, ordering, `in`, `+`/`-`, `*`/`/`. A child binding looser than its
   # parent is parenthesized; `not` takes a parenthesized operand unless it
@@ -903,6 +920,7 @@ defmodule BubbleEx.Target.Ash.Source do
     do: "^actor([" <> Enum.map_join(path, ", ", &atom/1) <> "])"
 
   defp print({:arg, name}, _outer), do: "^arg(#{atom(name)})"
+  defp print({:pin, var}, _outer), do: "^" <> identifier!(var)
   defp print({:value, value}, _outer), do: literal(value)
 
   defp group(text, level, outer) when level < outer, do: "(" <> text <> ")"

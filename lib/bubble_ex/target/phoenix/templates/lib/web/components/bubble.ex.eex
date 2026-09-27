@@ -109,6 +109,28 @@ defmodule <%= @web %>.Bubble do
   def input(inputs, scope, element) when is_map(inputs), do: Map.get(inputs, {scope, element})
   def input(_inputs, _scope, _element), do: nil
 
+  @doc """
+  The page's data (WTF-420, `<%= @web %>.BubbleData`): what element
+  `element` of instance `scope` holds (a page's, group's or instance's
+  thing, a repeating group's list), or with `index`, what a group in
+  the `index`th cell of a repeating group holds. Nil when not loaded.
+  """
+  def data(data, scope, element) when is_map(data), do: Map.get(data, {scope, element})
+  def data(_data, _scope, _element), do: nil
+
+  def data(data, scope, element, index) when is_map(data),
+    do: Map.get(data, {scope, element, index})
+
+  def data(_data, _scope, _element, _index), do: nil
+
+  @doc "A repeating group's items with their 1-based index (none when not loaded)."
+  def cells(data, scope, element) do
+    case data(data, scope, element) do
+      list when is_list(list) -> Enum.with_index(list, 1)
+      _ -> []
+    end
+  end
+
   @doc "The page's hook: element steps, overlays and Escape. Render it once per page."
   def runtime(assigns) do
     ~H"""

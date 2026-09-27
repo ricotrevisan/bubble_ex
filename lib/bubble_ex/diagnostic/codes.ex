@@ -110,6 +110,10 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:frontend_workflow_disabled, :info, :preserved, :model,
      "a page or reusable-element workflow disabled in the Bubble editor: generated, never triggered"},
 
+    # --- :model — BubbleEx.PageData (WTF-420) --------------------------------
+    {:page_data_residue, :warning, :unresolved, :model,
+     "a page's type of content or an element's data source with no mechanical lowering (residue for agent work); the generated page does not load it"},
+
     # --- :model — BubbleEx.Index ---------------------------------------------
     {:index_unresolved_reference, :warning, :unresolved, :model,
      "a symbol-index reference to a definition absent from the supplied data, or a data action whose target data type cannot be resolved (its writes are not indexed)"},
