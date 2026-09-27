@@ -144,7 +144,11 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert helpers =~ "def show_overlay(js \\\\ %JS{}, id)"
       assert helpers =~ ~s(bubble:overlay-opened)
       # One Group Focus at a time; a Popup closes every Group Focus.
-      assert helpers =~ ~s|[data-overlay="group_focus"]:not(\#{target})|
+      assert helpers =~ ~s|document.querySelectorAll('[data-overlay="group_focus"]')|
+      assert helpers =~ "if (other !== el && !other.hidden) this.hide(other)"
+      # Through LiveView's JS commands: a later render keeps it open.
+      assert helpers =~ ~s|this.js().removeAttribute(el, "hidden")|
+      assert helpers =~ ~s|this.js().setAttribute(el, "hidden", "")|
     end
 
     test "a modal Popup is a named dialog that gives the focus back", %{
@@ -158,10 +162,14 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert popup =~ "data-bubble-escape={Bubble.dismiss_modal()}"
 
       helpers = files["lib/shop_web/components/bubble.ex"]
-      assert helpers =~ ~s|@modals MapSet.new(["bptvorpw"])|
-      assert helpers =~ "JS.push_focus(js)"
-      assert helpers =~ "JS.pop_focus(js)"
-      assert helpers =~ "|> JS.pop_focus()\n    |> JS.dispatch(\"bubble:overlay-closed\")"
+      # WTF-372: opening an open overlay does nothing, so its opener is the
+      # first one (T5 saved the focus again); an opener hidden since (in a
+      # Group Focus the Popup closed) gives way to what opened that one.
+      assert helpers =~ "if (!el.hidden) return"
+      assert helpers =~ "this.openers.set(el, document.activeElement)"
+      assert helpers =~ "const closed = opener.closest && opener.closest(OVERLAYS)"
+      assert helpers =~ "if (opener && isOpen(opener)) opener.focus()"
+      refute helpers =~ "push_focus"
     end
 
     test "Escape closes only the topmost open overlay; closed ones never listen", %{
@@ -179,9 +187,9 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert focus =~ "phx-click-away={Bubble.dismiss_overlay()}"
 
       helpers = files["lib/shop_web/components/bubble.ex"]
-      assert helpers =~ ~s|<script :type={Phoenix.LiveView.ColocatedHook} name=".OverlayKeys">|
-      assert helpers =~ ~s(phx-hook=".OverlayKeys")
-      assert helpers =~ ~s|window.addEventListener("bubble:overlay-opened", this.opened)|
+      assert helpers =~ ~s|<script :type={Phoenix.LiveView.ColocatedHook} name=".BubbleRuntime">|
+      assert helpers =~ ~s(phx-hook=".BubbleRuntime")
+      assert helpers =~ "def overlay_keys(assigns), do: runtime(assigns)"
       assert helpers =~ "this.stack = this.stack.filter(isOpen)"
       # An overlay inside a hidden or invisible ancestor is not open.
       assert helpers =~ "el.getClientRects().length > 0"
@@ -529,7 +537,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       # A page, a reusable, an instance inside a reusable (its `scope`
       # expression), a Text inside a reusable.
       {case_app("bpgwgmpz"), ~w(bpgwgmpz bpmvuzce bpcjyrzt bpcjyrzr)},
-      # A modal Popup (its DOM ID, the helpers' @modals) and a Group Focus.
+      # A modal Popup (its DOM ID) and a Group Focus.
       {case_app("bptvorpv"), ~w(bptvorpv bptvorpw bptvorqc)},
       # A compiled binding (its helper's comment).
       {app("test/support/expression/app.json"), ~w(bT2)}
@@ -587,8 +595,9 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
 
     {files, _, _} = render(HostileIds.rename(case_app("bptvorpv"), ~w(bptvorpw)))
 
-    assert files["lib/shop_web/components/bubble.ex"] =~
-             ~S|"bptvorpw\"\#\x7Braise \"injected\"\x7D a\nb*/--%>\x3C%= raise \"eex\" %>\x7D\x7B"|
+    # The helpers hold no Bubble ID (WTF-372: the runtime finds modals by
+    # their `aria-modal`).
+    refute files["lib/shop_web/components/bubble.ex"] =~ "bptvorpw"
 
     assert files["assets/css/bubble_residue.css"] =~
              ~S|[data-bubble-id="bptvorpw\"#{raise \"injected\"} a\a b*/--%><%= raise \"eex\" %>}{"]|

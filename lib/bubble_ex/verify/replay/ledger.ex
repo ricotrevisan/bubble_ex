@@ -58,6 +58,17 @@ defmodule BubbleEx.Verify.Replay.Ledger do
   A new ledger for run `run_id` on `target`. With `dir:`, its journal is
   created there (a journal that already exists is an error: run IDs are
   never reused).
+
+  **Owner-only.** A journal holds Bubble IDs and per-run sign-up emails.
+  `dir` is created (or, when it exists, set) to mode 0700 and checked
+  before any file is made: a directory that cannot be made owner-only, or
+  is still readable, writable or searchable by group or others, refuses
+  the run. The journal is then created with an exclusive open (so an
+  existing one is never reused or followed) inside that directory and set
+  to 0600 before its first byte is written; a failed `chmod` refuses the
+  run too. (Erlang opens files with the process umask, so 0600 is set
+  right after the exclusive create; the 0700 directory closes that window
+  to other users.)
   """
   @spec new(Target.t(), String.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def new(%Target{} = target, run_id, opts \\ []) when is_binary(run_id) do
@@ -76,8 +87,8 @@ defmodule BubbleEx.Verify.Replay.Ledger do
       dir ->
         path = Path.join(dir, run_id <> ".jsonl")
 
-        with :ok <- mkdir(dir),
-             :ok <- fresh(path),
+        with :ok <- private_dir(dir),
+             :ok <- create(path),
              ledger = %{ledger | path: path},
              :ok <-
                append(ledger, %{
@@ -94,18 +105,41 @@ defmodule BubbleEx.Verify.Replay.Ledger do
     end
   end
 
-  defp mkdir(dir) do
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      {:error, reason} -> write_error(reason)
+  defp private_dir(dir) do
+    with :ok <- ok_or_write_error(File.mkdir_p(dir)),
+         :ok <- ok_or_write_error(File.chmod(dir, 0o700)),
+         {:ok, %File.Stat{type: :directory, mode: mode}} <- File.lstat(dir),
+         0 <- Bitwise.band(mode, 0o077) do
+      :ok
+    else
+      {:error, %Error{}} = error ->
+        error
+
+      _ ->
+        {:error,
+         Error.new(:request_failed, "the replay ledger directory is not owner-only", %{
+           reason: :ledger_dir_not_private
+         })}
     end
   end
 
-  defp fresh(path) do
-    if File.exists?(path),
-      do: {:error, Error.new(:invalid_input, "a ledger journal already exists for this run")},
-      else: :ok
+  # Exclusive create (never an existing file or link), then owner-only.
+  defp create(path) do
+    case :file.open(String.to_charlist(path), [:write, :exclusive, :raw, :binary]) do
+      {:ok, io} ->
+        _ = :file.close(io)
+        ok_or_write_error(File.chmod(path, 0o600))
+
+      {:error, :eexist} ->
+        {:error, Error.new(:invalid_input, "a ledger journal already exists for this run")}
+
+      {:error, reason} ->
+        write_error(reason)
+    end
   end
+
+  defp ok_or_write_error(:ok), do: :ok
+  defp ok_or_write_error({:error, reason}), do: write_error(reason)
 
   @doc "Records the intent to create `key` (journaled before the call)."
   @spec intend(t(), String.t(), String.t(), String.t() | nil) ::

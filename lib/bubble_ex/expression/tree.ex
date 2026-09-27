@@ -33,6 +33,9 @@ defmodule BubbleEx.Expression.Tree do
       * `parent` - the Bubble ID of the enclosing element, page or reusable
       * `owner` - the Bubble ID of the enclosing page or reusable
       * `states` - custom states: state ID => type descriptor
+      * `defaults` - the custom states' default values as supplied
+        (`default_val`: a literal or an expression), for those that have
+        one
       * `params` - a reusable's parameters: parameter ID => type descriptor
       * `instance_of` - for a reusable instance, the reusable's Bubble ID
     """
@@ -46,6 +49,7 @@ defmodule BubbleEx.Expression.Tree do
       :owner,
       :instance_of,
       states: %{},
+      defaults: %{},
       params: %{}
     ]
 
@@ -59,6 +63,7 @@ defmodule BubbleEx.Expression.Tree do
             owner: String.t() | nil,
             instance_of: String.t() | nil,
             states: %{String.t() => String.t()},
+            defaults: %{String.t() => term()},
             params: %{String.t() => String.t()}
           }
   end
@@ -149,6 +154,7 @@ defmodule BubbleEx.Expression.Tree do
       content: content,
       owner: id,
       states: states(raw),
+      defaults: defaults(raw),
       params: params(props)
     }
 
@@ -181,6 +187,7 @@ defmodule BubbleEx.Expression.Tree do
       parent: parent,
       owner: owner,
       states: states(raw),
+      defaults: defaults(raw),
       instance_of: if(type == "CustomElement", do: text(props["custom_id"]))
     }
 
@@ -200,6 +207,20 @@ defmodule BubbleEx.Expression.Tree do
     case Map.get(raw, "custom_states") do
       states when is_map(states) ->
         for {id, %{"value" => type}} <- states, is_binary(type), into: %{}, do: {id, type}
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp defaults(raw) do
+    case Map.get(raw, "custom_states") do
+      states when is_map(states) ->
+        for {id, %{"value" => type} = state} <- states,
+            is_binary(type),
+            Map.has_key?(state, "default_val"),
+            into: %{},
+            do: {id, state["default_val"]}
 
       _ ->
         %{}

@@ -677,7 +677,28 @@ defmodule BubbleEx.Verify.Replay.Recorder do
         field = Names.field_id(names, type, key),
         field != nil,
         into: %{},
-        do: {field, Codec.decode(raw, field, Map.get(hints, field), ledger)}
+        do:
+          {field,
+           Names.from_api(
+             names,
+             type,
+             field,
+             Codec.decode(raw, field, api_hint(names, type, field, hints), ledger)
+           )}
+  end
+
+  # The seed value as Bubble answers it (an option by its display text).
+  defp api_hint(names, type, field, hints) do
+    case Map.get(hints, field) do
+      nil ->
+        nil
+
+      hint ->
+        case Names.to_api(names, type, field, hint) do
+          {:ok, api} -> api
+          {:error, _} -> hint
+        end
+    end
   end
 
   # --- assembly -------------------------------------------------------------------------

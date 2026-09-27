@@ -55,7 +55,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Target.Ash.Naming
-  alias BubbleEx.Target.Phoenix.{Tailwind, Templates}
+  alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec, as: FlowSpec
+  alias BubbleEx.Target.Phoenix.{FrontendWorkflows, Tailwind, Templates}
 
   @names_version 1
 
@@ -89,6 +90,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     names = plan(frontend, Keyword.get(opts, :names))
     tokens = token_utilities(frontend)
 
+    # Workflows run in pages: without any, nothing is wired (and the
+    # value runtime they call is not scaffolded).
+    flows =
+      case Keyword.get(opts, :workflows) do
+        %FlowSpec{} = spec when names.pages != [] -> spec
+        _ -> nil
+      end
+
     base = %{
       frontend: frontend,
       web: ctx.web,
@@ -99,19 +108,27 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       styles: Map.new(frontend.styles, &{&1.map_key, &1.class_name}),
       expressions: Keyword.get(opts, :expressions, %{}),
       assets: Keyword.get(opts, :assets, %{}),
-      overrides: overrides(frontend)
+      overrides: overrides(frontend),
+      flows: flows
     }
 
     base =
       base
       |> Map.put(:required, required_vars(frontend, base))
-      |> Map.put(:scoped, scoped(frontend))
+      |> Map.put(:scoped, scoped(frontend, flows))
 
     pages = Enum.map(names.pages, &page(&1, base))
     reusables = Enum.map(names.reusables, &reusable(&1, base))
     surfaces = pages ++ reusables
 
     owned = surfaces |> Enum.flat_map(& &1.files) |> Map.new()
+
+    flow_files =
+      if flows,
+        do: FrontendWorkflows.files(flows, flow_ctx(ctx, names, base)),
+        else: %{owned: %{}, generated: %{}}
+
+    owned = Map.merge(owned, flow_files.owned)
 
     routes =
       Enum.map(names.pages, fn p ->
@@ -127,6 +144,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         format(traceability_test(ctx, pages, reusables, base)),
       ".wtf/surfaces.json" => encode_names(names)
     }
+
+    generated = Map.merge(generated, flow_files.generated)
 
     # Downloaded images, served from priv/static/images/bubble (asset_url/1).
     generated =
@@ -459,7 +478,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp page(entry, base) do
     page = entry.node
     lowered = page |> Css.lower(selector: &selector/1) |> index_lowered()
-    ctx = Map.merge(base, %{surface: :page, entry: entry, lowered: lowered, stack: MapSet.new()})
+
+    ctx =
+      base
+      |> Map.merge(%{surface: :page, entry: entry, lowered: lowered, stack: MapSet.new()})
+      |> Map.merge(surface_flows(base, entry.id))
+
     {markup, acc} = emit(page, ctx, new_acc())
 
     module = "#{base.web}.#{entry.module}"
@@ -472,7 +496,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       files: [
         {dir <> entry.file <> ".ex", format(live_view_module(module, entry, acc, base))},
         {dir <> entry.file <> ".html.heex",
-         [markup, overlay_keys(page, base)] |> IO.iodata_to_binary() |> finish()}
+         [markup, if(base.flows, do: "\n<Bubble.runtime />", else: overlay_keys(page, base))]
+         |> IO.iodata_to_binary()
+         |> finish()}
       ]
     }
   end
@@ -486,17 +512,27 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> index_lowered()
 
     ctx =
-      Map.merge(base, %{
+      base
+      |> Map.merge(%{
         surface: :reusable,
         entry: entry,
         lowered: lowered,
         stack: MapSet.new([definition.map_key])
       })
+      |> Map.merge(surface_flows(base, entry.id))
 
     {children, acc} = children(definition, ctx, new_acc())
 
+    scope_root =
+      if base.flows && MapSet.member?(base.scoped, definition.map_key),
+        do: " data-bubble-scope={@scope}",
+        else: ""
+
     root = [
-      "<div class={@class} {@rest}>",
+      "<div class={@class}",
+      scope_root,
+      attrs_html(click_attrs(entry.id, "div", ctx)),
+      " {@rest}>",
       if(blank?(children), do: "", else: ["\n", indent(children, 1)]),
       "</div>\n"
     ]
@@ -716,7 +752,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp emit(%Node{kind: kind} = node, ctx, acc) when kind in [:input, :file_input, :slider] do
     {attrs, acc} = input_attrs(node, ctx, acc)
-    void("input", node, attrs, ctx, acc)
+    attrs = if kind == :input, do: tracked_attrs(attrs, node, ctx, acc), else: attrs
+
+    node
+    |> then(&void("input", &1, attrs, ctx, acc))
+    |> wrap_input(node, ctx)
   end
 
   defp emit(%Node{kind: :multiline_input} = node, ctx, acc) do
@@ -736,6 +776,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> put_attr("placeholder", slot_attr(placeholder))
       |> put_new_attr("aria-label", label)
       |> then(&if node.variant == :fit_height, do: put_attr(&1, "rows", "1"), else: &1)
+      |> tracked_attrs(node, ctx, acc)
 
     inner =
       case value do
@@ -743,7 +784,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {:expr, expr} -> ["{", expr, "}"]
       end
 
-    element("textarea", node, attrs, inner, ctx, acc)
+    "textarea"
+    |> element(node, attrs, inner, ctx, acc)
+    |> wrap_input(node, ctx)
   end
 
   defp emit(%Node{kind: :checkbox} = node, ctx, acc) do
@@ -759,6 +802,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           do: put_attr(attrs, "aria-label", node.name || "Checkbox"),
           else: attrs
       end)
+      |> tracked_attrs(node, ctx, acc)
 
     label_html =
       case label do
@@ -767,7 +811,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {:expr, expr} -> ["<span>{", expr, "}</span>"]
       end
 
-    element("label", node, [], ["<input", attrs_html(input), ">", label_html], ctx, acc)
+    "label"
+    |> element(node, [], ["<input", attrs_html(input), ">", label_html], ctx, acc)
+    |> wrap_input(node, ctx)
   end
 
   defp emit(%Node{kind: :dropdown} = node, ctx, acc) do
@@ -789,8 +835,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         nonblank(resolved(node, "placeholder")) || node.name || "Dropdown"
       )
       |> put_attr("style", Css.inline_control_font(node))
+      |> tracked_attrs(node, ctx, acc)
 
-    element("select", node, attrs, options, ctx, acc)
+    "select"
+    |> element(node, attrs, options, ctx, acc)
+    |> wrap_input(node, ctx)
   end
 
   defp emit(%Node{kind: :radio_buttons} = node, ctx, acc) do
@@ -912,6 +961,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       node.attributes
       |> Enum.to_list()
       |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(if acc.template, do: [], else: click_attrs(bid(node), "div", ctx))
       |> put_authored_id(node, ctx, acc)
 
     attrs = [{"data-bubble-id", bid(node)}, {"class", classes}] ++ sorted_attrs(own) ++ params
@@ -920,7 +970,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     acc = Enum.reduce(vars, acc, &need_var(&2, &1, ctx))
 
     attrs =
-      attrs ++ Enum.map(vars, &{&1, {:expr, "@" <> &1}}) ++ scope_attr(node, definition, ctx)
+      attrs ++
+        Enum.map(vars, &{&1, {:expr, "@" <> &1}}) ++
+        scope_attr(node, definition, ctx) ++ flow_attrs(definition, ctx)
 
     acc = %{acc | imports: MapSet.put(acc.imports, entry.module)}
     acc = add_expected(acc, definition, ctx)
@@ -940,6 +992,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp scope_attr(node, definition, ctx) do
     cond do
       not MapSet.member?(ctx.scoped, definition.map_key) -> []
+      ctx.flows && ctx.surface == :page -> [{"scope", nest("", bid(node))}]
+      ctx.flows -> [{"scope", {:expr, "Bubble.nest(@scope, " <> literal(bid(node)) <> ")"}}]
       ctx.surface == :page -> [{"scope", bid(node)}]
       true -> [{"scope", {:expr, ~s|"\#{@scope}-" <> | <> literal(bid(node))}}]
     end
@@ -1147,36 +1201,52 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     Map.new(frontend.reusables, fn definition ->
       vars =
-        definition |> vars_below(by_ref, base, MapSet.new([definition.map_key])) |> Enum.uniq()
+        definition
+        |> vars_below(surface_id(definition), by_ref, base, MapSet.new([definition.map_key]))
+        |> Enum.uniq()
 
       {definition.map_key, Enum.sort(vars)}
     end)
   end
 
-  defp vars_below(%Node{} = node, by_ref, base, seen) do
+  # (Values a surface keeps, custom states and inputs, are read from the
+  # page's maps instead: see read_arg/2.)
+  defp vars_below(%Node{} = node, surface, by_ref, base, seen) do
     own =
       for {_slot, %{kind: :value, id: id}} <- node.bindings,
           %{bindings: vars} <- [base.expressions[id]],
-          %{var: var} <- vars,
+          %{var: var} = binding <- vars,
+          not kept?(binding, surface, base),
           do: var
 
-    own ++ nested_vars(node, by_ref, base, seen)
+    own ++ nested_vars(node, surface, by_ref, base, seen)
   end
 
-  defp nested_vars(%Node{kind: :reusable_instance, definition_ref: ref}, by_ref, base, seen) do
+  defp nested_vars(
+         %Node{kind: :reusable_instance, definition_ref: ref},
+         _surface,
+         by_ref,
+         base,
+         seen
+       ) do
     case by_ref[ref] do
       %Node{} = d ->
         if MapSet.member?(seen, d.map_key),
           do: [],
-          else: vars_below(d, by_ref, base, MapSet.put(seen, d.map_key))
+          else: vars_below(d, surface_id(d), by_ref, base, MapSet.put(seen, d.map_key))
 
       _ ->
         []
     end
   end
 
-  defp nested_vars(%Node{children: children}, by_ref, base, seen),
-    do: Enum.flat_map(children, &vars_below(&1, by_ref, base, seen))
+  defp nested_vars(%Node{children: children}, surface, by_ref, base, seen),
+    do: Enum.flat_map(children, &vars_below(&1, surface, by_ref, base, seen))
+
+  defp kept?(%{input: input}, surface, %{flows: %FlowSpec{} = flows}),
+    do: FlowSpec.read(flows, surface, input) != nil
+
+  defp kept?(_binding, _surface, _base), do: false
 
   # --- elements -------------------------------------------------------------------
 
@@ -1215,10 +1285,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {classes, acc} = classes(node, styled, ctx, acc)
     acc = track(acc, node, Keyword.get(opts, :placeholder, false))
 
+    clicks = if acc.template, do: [], else: click_attrs(bid(node), tag, ctx)
+
     {rest, acc} =
       attrs
       |> Kernel.++(overlay_attrs(node))
       |> Kernel.++(overlay_dismissal(node, ctx))
+      |> Kernel.++(clicks)
       |> put_authored_id(node, ctx, acc)
 
     rest = sorted_attrs(rest)
@@ -1383,17 +1456,42 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # Reusables that render a modal Popup or an icon (themselves or nested):
   # elements with DOM IDs, so their components take a `scope`.
-  defp scoped(frontend) do
+  # With frontend workflows (WTF-372), a reusable with workflows, custom
+  # states or tracked inputs (itself or nested) is scoped too: its
+  # elements are addressed per instance.
+  defp scoped(frontend, flows) do
     by_ref =
       Enum.reduce(frontend.reusables, %{}, fn d, acc ->
         acc |> Map.put(d.map_key, d) |> Map.put(surface_id(d), d)
       end)
 
     for definition <- frontend.reusables,
-        modal?(definition, by_ref, MapSet.new([definition.map_key])),
+        modal?(definition, by_ref, MapSet.new([definition.map_key])) or
+          interactive?(definition, by_ref, MapSet.new([definition.map_key]), flows),
         into: MapSet.new(),
         do: definition.map_key
   end
+
+  defp interactive?(_node, _by_ref, _seen, nil), do: false
+
+  defp interactive?(%Node{kind: :reusable_definition} = d, by_ref, seen, flows) do
+    FrontendWorkflows.module?(flows, surface_id(d)) or
+      Enum.any?(d.children, &interactive?(&1, by_ref, seen, flows))
+  end
+
+  defp interactive?(%Node{kind: :reusable_instance, definition_ref: ref}, by_ref, seen, flows) do
+    case by_ref[ref] do
+      %Node{} = d ->
+        not MapSet.member?(seen, d.map_key) and
+          interactive?(d, by_ref, MapSet.put(seen, d.map_key), flows)
+
+      _ ->
+        false
+    end
+  end
+
+  defp interactive?(%Node{children: children}, by_ref, seen, flows),
+    do: Enum.any?(children, &interactive?(&1, by_ref, seen, flows))
 
   defp modal?(%Node{runtime: %{"overlay" => "popup", "modal" => true}}, _by_ref, _seen), do: true
 
@@ -1463,7 +1561,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       %{source: source, bindings: vars} ->
         helper = helper_name(name, node, acc)
         args = Enum.map(vars, & &1.var)
-        acc = Enum.reduce(args, acc, &need_var(&2, &1, ctx))
+        reads = Enum.map(vars, &read_arg(&1, ctx))
+
+        acc =
+          vars
+          |> Enum.zip(reads)
+          |> Enum.reduce(acc, fn
+            {%{var: var}, "@" <> _}, acc -> need_var(acc, var, ctx)
+            _, acc -> acc
+          end)
 
         acc = %{
           acc
@@ -1474,7 +1580,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             counts: Map.update!(acc.counts, "bindings_compiled", &(&1 + 1))
         }
 
-        call = helper <> "(" <> Enum.map_join(args, ", ", &("@" <> &1)) <> ")"
+        call = helper <> "(" <> Enum.join(reads, ", ") <> ")"
         {{:expr, call}, acc}
 
       _ ->
@@ -1958,6 +2064,275 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # --- frontend workflows (WTF-372) ---------------------------------------------------
+
+  # The click wiring and tracked inputs of surface `id` (none without
+  # workflows).
+  defp surface_flows(%{flows: nil}, _id), do: %{clicks: %{}, tracked: %{}}
+
+  defp surface_flows(%{flows: flows}, id) do
+    surface = flows.surfaces[id] || %{workflows: [], inputs: %{}}
+
+    clicks =
+      surface.workflows
+      |> Enum.filter(&(&1.kind == :click and is_binary(&1.element) and FlowSpec.wired?(&1)))
+      |> Enum.group_by(& &1.element)
+      |> Map.new(fn {element, workflows} ->
+        workflows = Enum.sort_by(workflows, & &1.workflow)
+
+        {element,
+         %{
+           client: for(w <- workflows, w.client?, do: w.fun),
+           server?: Enum.any?(workflows, &(not &1.client?))
+         }}
+      end)
+
+    %{clicks: clicks, tracked: surface.inputs}
+  end
+
+  # An element's `phx-click`: its browser-run workflows as JS commands,
+  # then (for the others) the page's own click event. An element that is
+  # not a control also answers Enter and is announced as a button.
+  defp click_attrs(id, tag, ctx) do
+    case ctx.clicks[id] do
+      nil ->
+        []
+
+      %{client: client, server?: server?} ->
+        scope = scope_var(ctx)
+
+        calls =
+          Enum.map(client, &"Workflows.#{&1}(#{scope})") ++
+            if(server?, do: ["Bubble.push(\"click\", #{scope}, #{literal(id)})"], else: [])
+
+        command = {:raw, "{" <> Enum.join(calls, " |> ") <> "}"}
+
+        if tag in ~w(button a input select textarea label),
+          do: [{"phx-click", command}],
+          else: [
+            {"phx-click", command},
+            {"phx-keydown", command},
+            {"phx-key", "Enter"},
+            {"role", "button"},
+            {"tabindex", "0"}
+          ]
+    end
+  end
+
+  defp scope_var(%{surface: :page}), do: ~s("")
+  defp scope_var(_ctx), do: "@scope"
+
+  # The page's state and input maps, passed down to a scoped component.
+  defp flow_attrs(definition, ctx) do
+    if ctx.flows && MapSet.member?(ctx.scoped, definition.map_key),
+      do: [
+        {"bubble_states", {:expr, "@bubble_states"}},
+        {"bubble_inputs", {:expr, "@bubble_inputs"}}
+      ],
+      else: []
+  end
+
+  # A compiled binding's argument: a custom state or an input value the
+  # page keeps, else the assign (or attribute) of its variable.
+  defp read_arg(%{var: var, input: input}, ctx) do
+    case ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input) do
+      {:state, k} ->
+        "Bubble.state(@bubble_states, #{key_scope(k.path, ctx)}, #{literal(k.element)}, " <>
+          "#{literal(k.state)})"
+
+      {:input, k} ->
+        "Bubble.input(@bubble_inputs, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
+
+      _ ->
+        "@" <> var
+    end
+  end
+
+  defp read_arg(%{var: var}, _ctx), do: "@" <> var
+
+  defp key_scope([], ctx), do: scope_var(ctx)
+  defp key_scope([id], %{surface: :page}), do: literal(nest("", id))
+  defp key_scope([id], _ctx), do: "Bubble.nest(@scope, #{literal(id)})"
+
+  # The scope of instance `id` inside `scope` (`<Web>.Bubble.nest/2`).
+  defp nest("", id), do: scope_segment(id)
+  defp nest(scope, id), do: scope <> "-" <> scope_segment(id)
+
+  defp scope_segment(id),
+    do: id |> to_string() |> String.replace("~", "~0") |> String.replace("-", "~1")
+
+  defp tracked?(node, ctx, acc),
+    do: not acc.template and Map.has_key?(Map.get(ctx, :tracked, %{}), bid(node))
+
+  # A tracked input is named for its form (a checkbox sends "true").
+  defp tracked_attrs(attrs, node, ctx, acc) do
+    cond do
+      not tracked?(node, ctx, acc) ->
+        attrs
+
+      node.kind == :checkbox ->
+        attrs |> put_attr("name", "bubble[value]") |> put_attr("value", "true")
+
+      true ->
+        put_attr(attrs, "name", "bubble[value]")
+    end
+  end
+
+  # A tracked input sits in its own form: every change reaches the page
+  # (`bubble:change`) with the element and its instance scope.
+  defp wrap_input({markup, acc}, node, ctx) do
+    if tracked?(node, ctx, acc) do
+      id = bid(node)
+
+      {form_id, scope} =
+        if ctx.surface == :page,
+          do: {~s( id="#{escape_attr("bubble-input-" <> id)}"), ~s( value="")},
+          else: {~s| id={"bubble-input-\#{@scope}-" <> #{literal(id)}}|, " value={@scope}"}
+
+      unchecked =
+        if ctx.tracked[id] == :boolean,
+          do: ~s(<input type="hidden" name="bubble[value]" value="false">),
+          else: ""
+
+      {[
+         "<form",
+         form_id,
+         ~s( phx-change="bubble:change" phx-submit="bubble:change" style="display: contents">),
+         ~s(<input type="hidden" name="bubble[element]" value="),
+         escape_attr(id),
+         ~s(">),
+         ~s(<input type="hidden" name="bubble[scope]"),
+         scope,
+         ">",
+         unchecked,
+         markup,
+         "</form>"
+       ], acc}
+    else
+      {markup, acc}
+    end
+  end
+
+  # What the workflow printer needs of the pages: per surface, its
+  # Workflows module and file, label, path, tracked inputs (first values
+  # and containers) and, for a page, the instances it renders.
+  defp flow_ctx(ctx, names, base) do
+    by_ref = names.reusable_by_ref
+
+    pages =
+      for entry <- names.pages, into: %{} do
+        {inputs, containers} = surface_inputs(entry.node, base.flows.surfaces[entry.id])
+
+        {entry.id,
+         %{
+           kind: :page,
+           module: "#{ctx.web}.#{entry.module}.Workflows",
+           file: "lib/#{ctx.app}_web/live/#{entry.file}/workflows.ex",
+           label: entry.label,
+           path: entry.path,
+           inputs: inputs,
+           containers: containers,
+           instances: instances(entry.node, "", by_ref, MapSet.new())
+         }}
+      end
+
+    reusables =
+      for entry <- names.reusables, into: %{} do
+        {inputs, containers} = surface_inputs(entry.node, base.flows.surfaces[entry.id])
+        module? = FrontendWorkflows.module?(base.flows, entry.id)
+
+        {entry.id,
+         %{
+           kind: :reusable,
+           module: if(module?, do: "#{ctx.web}.Reusables.#{entry.module}.Workflows"),
+           file: "lib/#{ctx.app}_web/components/reusables/#{entry.file}/workflows.ex",
+           label: entry.node.name || entry.id,
+           path: nil,
+           inputs: inputs,
+           containers: containers,
+           instances: []
+         }}
+      end
+
+    %{
+      web: ctx.web,
+      module: ctx.module,
+      app: ctx.app,
+      surfaces: Map.merge(pages, reusables)
+    }
+  end
+
+  # The reusable-element instances a page renders (not in runtime
+  # templates, not recursive): `{scope, reusable Bubble ID}`.
+  defp instances(%Node{children: children}, scope, by_ref, stack),
+    do: Enum.flat_map(children, &instance_scopes(&1, scope, by_ref, stack))
+
+  defp instance_scopes(%Node{kind: :reusable_instance} = node, scope, by_ref, stack) do
+    with %{node: definition, id: id} <- by_ref[node.definition_ref],
+         false <- MapSet.member?(stack, definition.map_key) do
+      inner = nest(scope, bid(node))
+      [{inner, id} | instances(definition, inner, by_ref, MapSet.put(stack, definition.map_key))]
+    else
+      _ -> []
+    end
+  end
+
+  defp instance_scopes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}, _, _, _),
+    do: []
+
+  defp instance_scopes(node, scope, by_ref, stack), do: instances(node, scope, by_ref, stack)
+
+  # The tracked inputs of a surface found in its tree: `{element => {type,
+  # first value}}` and `{element => [containers]}`.
+  defp surface_inputs(_root, nil), do: {%{}, %{}}
+
+  defp surface_inputs(root, %{inputs: tracked}) do
+    found = input_nodes(root.children, [], tracked)
+
+    {Map.new(found, fn {id, node, _} -> {id, {tracked[id], first_value(node, tracked[id])}} end),
+     Map.new(found, fn {id, _, containers} -> {id, containers} end)}
+  end
+
+  defp input_nodes(nodes, containers, tracked) do
+    Enum.flat_map(nodes, fn
+      %Node{kind: :reusable_instance} ->
+        []
+
+      %Node{kind: :placeholder, runtime: %{"boundary" => "container"}} ->
+        []
+
+      node ->
+        id = bid(node)
+        own = if Map.has_key?(tracked, id), do: [{id, node, containers}], else: []
+        own ++ input_nodes(node.children, [id | containers], tracked)
+    end)
+  end
+
+  defp first_value(node, :boolean), do: resolved(node, "checked") == true
+
+  defp first_value(node, :number) do
+    case resolved(node, "value") do
+      n when is_number(n) -> n
+      text when is_binary(text) -> parse_number(String.trim(text))
+      _ -> nil
+    end
+  end
+
+  defp first_value(node, :text) do
+    case resolved(node, "value") do
+      text when is_binary(text) and text != "" -> text
+      n when is_number(n) -> to_string(n)
+      _ -> nil
+    end
+  end
+
+  defp parse_number(text) do
+    case Float.parse(text) do
+      {n, ""} -> if n == trunc(n) and not String.contains?(text, "."), do: trunc(n), else: n
+      _ -> nil
+    end
+  end
+
   # --- markers --------------------------------------------------------------------
 
   defp mark(acc, node, note) do
@@ -2149,6 +2524,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     helpers = acc.helpers |> Enum.reverse() |> Enum.map(&helper_source(&1, base))
 
+    pipeline =
+      if base.flows, do: pipeline ++ ["|> BubbleWorkflows.mount(Workflows)"], else: pipeline
+
+    flows =
+      if base.flows,
+        do: [
+          "\n  @impl true\n",
+          "  def handle_params(params, uri, socket),\n",
+          "    do: {:noreply, BubbleWorkflows.handle_params(socket, params, uri)}\n",
+          "\n  @impl true\n",
+          "  def handle_event(\"bubble:\" <> _ = event, params, socket),\n",
+          "    do: BubbleWorkflows.handle_event(socket, Workflows, event, params)\n",
+          "\n  @impl true\n",
+          "  def handle_info(message, socket) when elem(message, 0) == :bubble,\n",
+          "    do: BubbleWorkflows.handle_info(socket, Workflows, message)\n",
+          "\n  def handle_info(_message, socket), do: {:noreply, socket}\n"
+        ],
+        else: []
+
     [
       "defmodule #{module} do\n",
       "  @moduledoc \"\"\"\n",
@@ -2160,6 +2554,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       "  \"\"\"\n",
       "  use #{base.web}, :live_view\n\n",
       "  alias #{base.web}.Bubble, warn: false\n",
+      if(base.flows,
+        do: "  alias #{base.web}.BubbleWorkflows\n  alias __MODULE__.Workflows\n",
+        else: ""
+      ),
       imports,
       "\n  @impl true\n",
       "  def mount(_params, _session, socket) do\n",
@@ -2168,6 +2566,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       Enum.join(pipeline, "\n     "),
       "}\n",
       "  end\n",
+      flows,
       helpers,
       "end\n"
     ]
@@ -2223,6 +2622,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Kernel.++(
         if MapSet.member?(base.scoped, entry.node.map_key), do: [{"scope", ~s("")}], else: []
       )
+      |> Kernel.++(
+        if base.flows && MapSet.member?(base.scoped, entry.node.map_key),
+          do: [{"bubble_states", "%{}"}, {"bubble_inputs", "%{}"}],
+          else: []
+      )
       |> Enum.uniq_by(&elem(&1, 0))
       |> Enum.sort()
       |> Enum.map_join("", fn {name, default} ->
@@ -2245,7 +2649,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       use #{base.web}, :html
 
       alias #{base.web}.Bubble, warn: false
-    #{imports}
+    #{workflows_alias(entry, base)}#{imports}
       embed_templates "#{entry.file}.html"
 
       attr :class, :any, default: nil
@@ -2256,6 +2660,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     """
     |> String.replace(~r/\n\n\n+/, "\n\n")
   end
+
+  defp workflows_alias(entry, %{flows: %FlowSpec{} = flows}) do
+    if FrontendWorkflows.module?(flows, entry.id),
+      do: "  alias __MODULE__.Workflows, warn: false\n",
+      else: ""
+  end
+
+  defp workflows_alias(_entry, _base), do: ""
 
   # Elixir source as `mix format` leaves it (with Phoenix's formatter
   # imports), so the owner's first format changes nothing.
@@ -2453,8 +2865,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           @tag bubble: #{literal("page:" <> entry.id)}
           test #{literal(name)}, %{conn: conn} do
             assert_routed(#{source(entry.path)}, #{ctx.web}.#{entry.module})
-            {:ok, view, _html} = live(conn, #{source(entry.path)})
-            assert missing(render(view), #{ids_literal(page.acc.ids)}) == []
+            {:ok, _view, html} = live(conn, #{source(entry.path)})
+            assert missing(html, #{ids_literal(page.acc.ids)}) == []
           end
         """
       end)

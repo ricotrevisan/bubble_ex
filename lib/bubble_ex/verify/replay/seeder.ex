@@ -231,6 +231,7 @@ defmodule BubbleEx.Verify.Replay.Seeder do
   defp body(names, record, fields, ledger) do
     Enum.reduce_while(fields, {:ok, %{}}, fn {field, value}, {:ok, acc} ->
       with {:ok, key} <- Names.field_key(names, record.type, field),
+           {:ok, value} <- Names.to_api(names, record.type, field, value),
            {:ok, json} <- Codec.encode(value, ledger) do
         {:cont, {:ok, Map.put(acc, key, json)}}
       else
