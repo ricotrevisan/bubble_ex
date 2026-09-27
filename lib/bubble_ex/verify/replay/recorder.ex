@@ -64,8 +64,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       `{:observed, run_id}`
     * `:runs` - at least 2 (default 2)
     * `:kit` - `BubbleEx.Verify.Replay.Kit` (workflow names)
-    * `:anonymous_cap`, `:anonymous_proof`, `:allow_unproven` - passed to
-      the preflight (`BubbleEx.Verify.Replay.Kit.preflight/4`)
+    * `:anonymous_cap`, `:anonymous_proof`, `:allow_unproven`,
+      `:exposure_waiver` - passed to the preflight (`BubbleEx.Verify.Replay.Kit.preflight/4`)
     * `:delete_after_seed` - seed keys to delete right after seeding
     * `:dependencies` - `%{{scenario ID, op ID} => [flag]}`
     * `:run_id` - prefix of the runs' IDs (lowercase letters, digits, `-`;
@@ -82,6 +82,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     Codec,
     CredentialScan,
     Differential,
+    ExposureWaiver,
     Kit,
     Ledger,
     Names,
@@ -100,7 +101,9 @@ defmodule BubbleEx.Verify.Replay.Recorder do
           | {:error, Error.t()}
   def plan(%Client{} = client, %Seed{} = seed, scenarios, opts \\ []) do
     with {:ok, runs} <- runs(opts),
-         :ok <- validate(client, seed, scenarios, opts) do
+         :ok <- validate(client, seed, scenarios, opts),
+         :ok <- validate_waiver(client, types(seed, scenarios), opts),
+         :ok <- validate_persona_path(client, seed) do
       per_run = seeding_calls(seed, opts) + op_calls(client, seed, scenarios)
       types = types(seed, scenarios)
       kit = Keyword.get(opts, :kit, %Kit{})
@@ -122,6 +125,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
                "proof" => opts |> Keyword.get(:anonymous_proof, %{}) |> Map.keys() |> Enum.sort(),
                "allow_unproven" => opts |> Keyword.get(:allow_unproven, []) |> Enum.sort()
              },
+             "exposure_waiver" => ExposureWaiver.input(opts[:exposure_waiver]),
              "delete_after_seed" => opts |> Keyword.get(:delete_after_seed, []) |> Enum.sort(),
              "max_calls" => client.max_calls
            }),
@@ -147,14 +151,20 @@ defmodule BubbleEx.Verify.Replay.Recorder do
              kit(opts),
              types(seed, scenarios),
              [personas: Enum.any?(seed.records, &(&1.type == "user"))] ++
-               Keyword.take(opts, [:anonymous_cap, :anonymous_proof, :allow_unproven])
+               Keyword.take(opts, [
+                 :anonymous_cap,
+                 :anonymous_proof,
+                 :allow_unproven,
+                 :exposure_waiver
+               ])
            ) do
       if preflight.ok? do
         {:ok, run(client, seed, scenarios, plan, run_id, preflight, opts)}
       else
         {:error,
          Error.new(:invalid_input, "the replay kit is not complete on the branch", %{
-           preflight: preflight.checks
+           preflight: preflight.checks,
+           warnings: preflight.warnings
          })}
       end
     end
@@ -172,6 +182,34 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     do: plan(client, seed, scenarios, opts)
 
   defp kit(opts), do: Keyword.get(opts, :kit, %Kit{})
+
+  defp validate_waiver(client, types, opts) do
+    case Keyword.get(opts, :exposure_waiver) do
+      nil ->
+        :ok
+
+      %ExposureWaiver{} = waiver ->
+        ExposureWaiver.validate(
+          waiver,
+          client.target,
+          client.names,
+          types,
+          DateTime.utc_now()
+        )
+
+      _ ->
+        {:error,
+         Error.new(:invalid_input, "invalid owner anonymous exposure waiver", %{
+           reason: :invalid_exposure_waiver
+         })}
+    end
+  end
+
+  defp validate_persona_path(client, seed) do
+    if Enum.any?(seed.records, &(&1.type == "user")),
+      do: ExposureWaiver.validate_user_path(client.names),
+      else: :ok
+  end
 
   # --- validation -------------------------------------------------------------------
 

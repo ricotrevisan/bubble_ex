@@ -61,6 +61,7 @@ defmodule BubbleEx.Test.FakeBubble do
       meta: Keyword.get(opts, :meta, true),
       meta_types: Keyword.get(opts, :meta_types),
       captions: Keyword.get(opts, :captions, true),
+      user_anonymous: Keyword.get(opts, :user_anonymous, false),
       marker: %{
         "branch" => Keyword.get(opts, :marker_branch, @branch),
         "nonce" => Keyword.get(opts, :marker_nonce, @nonce)
@@ -68,6 +69,7 @@ defmodule BubbleEx.Test.FakeBubble do
       impostor: Keyword.get(opts, :impostor, false),
       # Field defaults Bubble stores on creation (`%{type => %{field => value}}`).
       defaults: Keyword.get(opts, :defaults, %{}),
+      branch_id: Keyword.get(opts, :branch_id, @branch_id),
       host: Keyword.get(opts, :host, host()),
       # :lost_signup (create the user, answer 502), :odd_user_id,
       # :ignore_constraints, :leak (task titles echo the caller's credentials),
@@ -104,7 +106,7 @@ defmodule BubbleEx.Test.FakeBubble do
     }
 
     Agent.update(pid, &%{&1 | log: [entry | &1.log]})
-    prefix = "/version-#{@branch_id}/api/1.1/"
+    prefix = "/version-#{Agent.get(pid, & &1.branch_id)}/api/1.1/"
     served = Agent.get(pid, & &1.host)
 
     cond do
@@ -359,6 +361,7 @@ defmodule BubbleEx.Test.FakeBubble do
 
   defp visible?(_s, _r, :admin), do: true
   defp visible?(_s, %{type: "workspace"}, _viewer), do: true
+  defp visible?(%{user_anonymous: true}, %{type: "user"}, :none), do: true
   defp visible?(_s, %{type: "user"}, {:user, _id}), do: true
   defp visible?(_s, %{type: "user"}, _), do: false
 
