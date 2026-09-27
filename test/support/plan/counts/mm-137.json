@@ -7,6 +7,7 @@
       },
       "residue": {
         "auth_action": 21,
+        "dynamic_url": 1,
         "no_native_lowering": 516,
         "plugin_action": 620,
         "plugin_element": 717,
@@ -18,7 +19,8 @@
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
-        "unsupported_event": 2
+        "unsupported_event": 2,
+        "unsupported_request": 5
       },
       "tasks": {
         "acceptance": {
@@ -28,15 +30,21 @@
           "total": 157
         },
         "api_call": {
-          "auto": 97,
+          "auto": 93,
           "closed": 0,
-          "open": 0,
+          "open": 4,
           "total": 97
         },
-        "api_group": {
-          "auto": 21,
+        "api_clients_residue": {
+          "auto": 0,
           "closed": 0,
-          "open": 0,
+          "open": 1,
+          "total": 1
+        },
+        "api_group": {
+          "auto": 18,
+          "closed": 0,
+          "open": 3,
           "total": 21
         },
         "auth": {
@@ -137,10 +145,10 @@
         }
       },
       "top_level": {
-        "auto": 50,
+        "auto": 47,
         "closed": 1,
-        "open": 431,
-        "total": 482
+        "open": 435,
+        "total": 483
       },
       "units": {
         "actions": {
@@ -150,9 +158,9 @@
           "total": 5846
         },
         "api_calls": {
-          "generated": 97,
+          "generated": 93,
           "referenced": 97,
-          "residue": 0,
+          "residue": 4,
           "total": 203
         },
         "cycles": {
@@ -204,6 +212,7 @@
       },
       "residue": {
         "auth_action": 21,
+        "dynamic_url": 1,
         "no_native_lowering": 516,
         "plugin_action": 620,
         "plugin_element": 717,
@@ -215,7 +224,8 @@
         "uncompiled_expression": 2934,
         "unresolved_reference": 90,
         "unsupported_action": 5,
-        "unsupported_event": 2
+        "unsupported_event": 2,
+        "unsupported_request": 5
       },
       "tasks": {
         "acceptance": {
@@ -225,15 +235,21 @@
           "total": 157
         },
         "api_call": {
-          "auto": 97,
+          "auto": 93,
           "closed": 0,
-          "open": 0,
+          "open": 4,
           "total": 97
         },
-        "api_group": {
-          "auto": 21,
+        "api_clients_residue": {
+          "auto": 0,
           "closed": 0,
-          "open": 0,
+          "open": 1,
+          "total": 1
+        },
+        "api_group": {
+          "auto": 18,
+          "closed": 0,
+          "open": 3,
           "total": 21
         },
         "auth": {
@@ -328,10 +344,10 @@
         }
       },
       "top_level": {
-        "auto": 44,
+        "auto": 41,
         "closed": 0,
-        "open": 437,
-        "total": 481
+        "open": 441,
+        "total": 482
       },
       "units": {
         "actions": {
@@ -341,9 +357,9 @@
           "total": 5846
         },
         "api_calls": {
-          "generated": 97,
+          "generated": 93,
           "referenced": 97,
-          "residue": 0,
+          "residue": 4,
           "total": 203
         },
         "cycles": {
@@ -393,6 +409,7 @@
       },
       "residue": {
         "auth_action": 21,
+        "dynamic_url": 1,
         "no_native_lowering": 516,
         "plugin_action": 620,
         "plugin_element": 717,
@@ -404,7 +421,8 @@
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
-        "unsupported_event": 2
+        "unsupported_event": 2,
+        "unsupported_request": 5
       },
       "tasks": {
         "acceptance": {
@@ -414,15 +432,21 @@
           "total": 157
         },
         "api_call": {
-          "auto": 97,
+          "auto": 93,
           "closed": 0,
-          "open": 0,
+          "open": 4,
           "total": 97
         },
-        "api_group": {
-          "auto": 21,
+        "api_clients_residue": {
+          "auto": 0,
           "closed": 0,
-          "open": 0,
+          "open": 1,
+          "total": 1
+        },
+        "api_group": {
+          "auto": 18,
+          "closed": 0,
+          "open": 3,
           "total": 21
         },
         "auth": {
@@ -517,10 +541,10 @@
         }
       },
       "top_level": {
-        "auto": 50,
+        "auto": 47,
         "closed": 0,
-        "open": 431,
-        "total": 481
+        "open": 435,
+        "total": 482
       },
       "units": {
         "actions": {
@@ -530,9 +554,9 @@
           "total": 5846
         },
         "api_calls": {
-          "generated": 97,
+          "generated": 93,
           "referenced": 97,
-          "residue": 0,
+          "residue": 4,
           "total": 203
         },
         "cycles": {

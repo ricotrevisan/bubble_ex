@@ -128,6 +128,23 @@ defmodule BubbleEx.Target.ApiClients do
   def map(_model, _opts),
     do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Model")}
 
+  @doc """
+  The Spec's residue as `BubbleEx.Plan.Residue` entries (`:not_generated`,
+  with the generator's reasons as `detail.reasons`), for
+  `BubbleEx.Plan.build/5`'s `residue:` option: the plan then knows which
+  calls have generated request-shape tests (`generate:api_clients`'s
+  `request_shape`) and which are hand work.
+  """
+  @spec residue(Spec.t()) :: [%{subject: String.t(), reason: :not_generated, detail: map()}]
+  def residue(%Spec{residue: residue}) do
+    for %{group: group, call: call, reasons: reasons} <- residue,
+        do: %{
+          subject: Symbol.id(:api_call, [group, call]),
+          reason: :not_generated,
+          detail: %{reasons: reasons}
+        }
+  end
+
   # --- groups --------------------------------------------------------------------------
 
   defp group(%Connector{} = group, model, state) do

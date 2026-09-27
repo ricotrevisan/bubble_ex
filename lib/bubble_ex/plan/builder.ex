@@ -442,9 +442,24 @@ defmodule BubbleEx.Plan.Builder do
         kind: :generate,
         actor: :generator,
         status: :auto,
-        subjects: Enum.sort(subjects[group])
+        subjects: Enum.sort(subjects[group]),
+        residue: generate_residue(ctx, group)
       }
     end
+  end
+
+  # The API calls the generator leaves out: they have no generated
+  # request-shape test, so `generate:api_clients` lists them as residue
+  # (hashed with it) and its `request_shape` only the others.
+  defp generate_residue(ctx, "generate:api_clients"), do: residue_of(ctx, residue_calls(ctx))
+  defp generate_residue(_ctx, _group), do: []
+
+  # API call IDs with residue.
+  defp residue_calls(ctx) do
+    ctx.residue
+    |> Map.keys()
+    |> Enum.filter(&(String.starts_with?(&1, "api_call:") and Index.symbol(ctx.index, &1) != nil))
+    |> Enum.sort()
   end
 
   defp style_subjects(%{frontend: %Normalized{styles: styles}}),
@@ -612,9 +627,25 @@ defmodule BubbleEx.Plan.Builder do
     |> Enum.sort_by(&{&1.attrs[:index], &1.id})
   end
 
-  # API groups with a call used by a kept workflow or a surface.
+  # API groups with a call used by a kept workflow or a surface, and the
+  # residue calls nothing kept uses (`api_clients:residue`: their
+  # api_call tasks would be hand work for calls nobody needs).
   defp api_tasks(ctx) do
     used = used_calls(ctx)
+    unused_residue = Enum.reject(residue_calls(ctx), &Map.has_key?(used, &1))
+
+    residue_task =
+      if unused_residue != [],
+        do: [
+          %Task{
+            id: "api_clients:residue",
+            kind: :api_clients_residue,
+            actor: :agent,
+            subjects: unused_residue,
+            residue: residue_of(ctx, unused_residue)
+          }
+        ],
+        else: []
 
     ctx.model.connectors
     |> Enum.flat_map(fn group ->
@@ -631,6 +662,7 @@ defmodule BubbleEx.Plan.Builder do
         do: [],
         else: [api_group(group, gid) | Enum.map(calls, &api_call(ctx, gid, &1))]
     end)
+    |> Kernel.++(residue_task)
   end
 
   defp api_group(group, gid),
@@ -846,8 +878,8 @@ defmodule BubbleEx.Plan.Builder do
 
   # --- statuses ---------------------------------------------------------------
 
-  @always_open ~w(auth setup_secrets styles_residue plugin decision acceptance data replay delivery
-                  cutover)a
+  @always_open ~w(auth setup_secrets styles_residue api_clients_residue plugin decision acceptance
+                  data replay delivery cutover)a
 
   defp statuses(tasks) do
     children = tasks |> Map.values() |> Enum.filter(& &1.parent) |> Enum.group_by(& &1.parent)
@@ -915,8 +947,9 @@ defmodule BubbleEx.Plan.Builder do
   defp generate_target(_ctx, %Task{kind: kind}) when kind in [:backend, :cycle],
     do: "generate:workflow_entry_points"
 
-  defp generate_target(_ctx, %Task{kind: kind}) when kind in [:api_group, :setup_secrets],
-    do: "generate:api_clients"
+  defp generate_target(_ctx, %Task{kind: kind})
+       when kind in [:api_group, :api_clients_residue, :setup_secrets],
+       do: "generate:api_clients"
 
   defp generate_target(_ctx, %Task{kind: :auth}), do: "generate:policies"
   defp generate_target(_ctx, %Task{kind: :styles_residue}), do: "generate:styles"
@@ -940,6 +973,7 @@ defmodule BubbleEx.Plan.Builder do
             :backend,
             :cycle,
             :api_group,
+            :api_clients_residue,
             :auth,
             :styles_residue,
             :plugin,
@@ -972,7 +1006,8 @@ defmodule BubbleEx.Plan.Builder do
   end
 
   # Auth and style residue come before surfaces and workflow owners; API
-  # groups with private values after the secrets.
+  # groups (and the API residue task) with private values after the
+  # secrets.
   defp early_edges(tasks) do
     early = Enum.filter(["auth", "styles:residue"], &Map.has_key?(tasks, &1))
 
@@ -988,8 +1023,11 @@ defmodule BubbleEx.Plan.Builder do
         secret = MapSet.new(tasks["setup:secrets"].subjects)
 
         for t <- tasks |> Map.values() |> Enum.sort_by(& &1.id),
-            t.kind == :api_group,
-            Enum.any?([t.id | children_ids(tasks, t.id)], &MapSet.member?(secret, &1)),
+            t.kind in [:api_group, :api_clients_residue],
+            Enum.any?(
+              [t.id | children_ids(tasks, t.id) ++ residue_symbols(t)],
+              &MapSet.member?(secret, &1)
+            ),
             do: edge(t.id, "setup:secrets", :secrets)
       else
         []
@@ -999,6 +1037,13 @@ defmodule BubbleEx.Plan.Builder do
   end
 
   defp children_ids(tasks, id), do: for({cid, %Task{parent: ^id}} <- tasks, do: cid)
+
+  # The residue calls and their groups (a group's private values are its
+  # calls').
+  defp residue_symbols(%Task{kind: :api_clients_residue, subjects: calls}),
+    do: calls ++ (calls |> Enum.map(&api_group_of/1) |> Enum.uniq())
+
+  defp residue_symbols(_task), do: []
 
   # Parent ID -> sorted subtask IDs.
   defp children(tasks) do

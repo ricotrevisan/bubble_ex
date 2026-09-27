@@ -26,7 +26,7 @@ defmodule BubbleEx.Plan do
 
   | kind | one per | actor | status |
   |------|---------|-------|--------|
-  | `:generate` | generator output group: `schema`, `option_sets`, `policies`, `styles`, `api_clients`, `routes`, `surfaces`, `workflow_entry_points` | generator | auto |
+  | `:generate` | generator output group: `schema`, `option_sets`, `policies`, `styles`, `api_clients`, `routes`, `surfaces`, `workflow_entry_points` (`generate:api_clients` holds its residue API calls' residue; its `request_shape` lists only the generated calls) | generator | auto |
   | `:remove_writes`, `:delete_workflows` | applied finding (accepted, or a hint applied by default) that removes writes or workflows | generator | closed by the decision |
   | `:setup_secrets` | app, when an API Connector value is private | owner | open |
   | `:auth` | app; subjects are the log-in, sign-up and credential workflows | agent | open |
@@ -39,6 +39,7 @@ defmodule BubbleEx.Plan do
   | `:backend` | backend workflow folder (`backend:unfiled` for workflows in none) | agent | as surface |
   | `:cycle` | workflow call cycle with more than one member (`Index.cycles/1`), or reusables containing each other | agent | as surface |
   | `:api_group` / `:api_call` (subtask) | API Connector group / call used by kept code | agent | as surface / auto unless residue |
+  | `:api_clients_residue` | app, when an API call no kept code uses is residue (`api_clients:residue`; a used one is residue in its `api_call` task) | agent | open |
   | `:acceptance` | page or reusable | reviewer (not the implementer) | open |
   | `:data` | `data:dry_run`, `data:full_load` | loader | open |
   | `:replay` | `replay:app` | harness | open |
@@ -91,7 +92,8 @@ defmodule BubbleEx.Plan do
       entry points); every task on its group
     * `:early` - surfaces, fragments, backend folders and cycles on `auth`
       and `styles:residue`
-    * `:secrets` - an API group with a private value on `setup:secrets`
+    * `:secrets` - an API group (or `api_clients:residue`) with a private
+      value on `setup:secrets`
     * `:decision` - a workflow on the decision node removing its actions;
       a plugin task on its plugin's `decision:plugin/<id>` task; a task that
       lost a use to a plugin `drop` on the closed plugin task
@@ -216,7 +218,8 @@ defmodule BubbleEx.Plan do
 
     * `:residue` - more `BubbleEx.Plan.Residue` entries: from
       `Residue.expressions/4` and `Residue.styles/1` (they need the app
-      JSON) or from a target adapter
+      JSON) or from a target adapter (`BubbleEx.Target.ApiClients.residue/1`:
+      the API calls its generator leaves out)
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records, recorded in `inputs`
     * `:content` - `BubbleEx.Plan.Content.digests/4` of the same app, keyed

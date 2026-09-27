@@ -19,6 +19,8 @@ defmodule BubbleEx.Plan.Residue do
   | `:dynamic_url` | API call | `index/2`: its URL has no plain host |
   | `:oauth` | API call | `index/2`: its group authenticates users with OAuth |
   | `:malformed_call` | API call | `index/2`: the call or its types registry is not an object |
+  | `:unsupported_request` | API call | `index/2`: its request template does not describe the request (`BubbleEx.Model.ConnectorRequest`'s `unsupported`, as `detail.reasons`: a body that is not a JSON template, a file parameter, an unusable query, no URL, …) |
+  | `:not_generated` | API call | a target adapter (`BubbleEx.Target.ApiClients.residue/1`): its generator left the call out (`detail.reasons`, the generator's) |
   | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`); `:runtime_container` when it is a container whose normalized content is rendered at runtime (a dynamic Repeating Group, a Table) |
   | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain, so its event wiring cannot be generated yet (`detail.element`) |
   | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
@@ -48,7 +50,7 @@ defmodule BubbleEx.Plan.Residue do
               runtime_container no_native_lowering trigger_not_normalized
               trigger_in_runtime_template style_condition
               plugin_style trigger_dropped reads_dropped_plugin api_connector_action
-              unsupported_option)a
+              unsupported_option unsupported_request not_generated)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded
@@ -229,7 +231,7 @@ defmodule BubbleEx.Plan.Residue do
   Residue the index shows: plugin elements, actions and events, action and
   event types with no known lowering, auth actions, unresolved references
   and API calls that need hand work. `model` gives the API Connector
-  groups' authentication.
+  groups' authentication and each call's request template.
   """
   @spec index(Index.t(), Model.t()) :: [t()]
   def index(%Index{} = index, %Model{} = model) do
@@ -285,13 +287,26 @@ defmodule BubbleEx.Plan.Residue do
   defp api_calls(model) do
     for group <- model.connectors,
         call <- group.calls,
-        reason = call_reason(group, call),
-        do:
-          entry(
-            BubbleEx.Index.Symbol.id(:api_call, [group.id, call.id]),
-            reason,
-            %{}
-          )
+        id = BubbleEx.Index.Symbol.id(:api_call, [group.id, call.id]),
+        entry <- call_residue(id, group, call),
+        do: entry
+  end
+
+  defp call_residue(id, group, call) do
+    reason = call_reason(group, call)
+
+    # The Model's own statement that the template is incomplete: no
+    # generator can send the request from it.
+    unsupported =
+      case call do
+        %{raw: nil, request: %{unsupported: [_ | _] = reasons}} ->
+          [entry(id, :unsupported_request, %{reasons: reasons})]
+
+        _ ->
+          []
+      end
+
+    if(reason, do: [entry(id, reason, %{})], else: []) ++ unsupported
   end
 
   defp call_reason(_group, %{raw: raw}) when raw != nil, do: :malformed_call

@@ -52,6 +52,28 @@ defmodule BubbleEx.Target.ApiClientsTest do
            }
   end
 
+  test "its residue is plan residue (WTF-412)", %{spec: spec} do
+    assert ApiClients.residue(spec) == [
+             %{
+               subject: "api_call:gLegacy/cOauth",
+               reason: :not_generated,
+               detail: %{reasons: [:unsupported_auth]}
+             },
+             %{
+               subject: "api_call:gResidue/cDynamic",
+               reason: :not_generated,
+               detail: %{reasons: [:no_host]}
+             },
+             %{
+               subject: "api_call:gResidue/cRaw",
+               reason: :not_generated,
+               detail: %{reasons: [:raw_body]}
+             }
+           ]
+
+    assert Enum.all?(ApiClients.residue(spec), &(&1.reason in BubbleEx.Plan.Residue.reasons()))
+  end
+
   test "maps a call's URL, headers, body and response", %{spec: spec} do
     assert %Call{
              method: :post,

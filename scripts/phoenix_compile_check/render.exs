@@ -179,10 +179,18 @@ case System.argv() do
     app = app_json.(name)
     {:ok, model} = BubbleEx.Model.build(app)
     {:ok, index} = BubbleEx.Index.build(app, model: model)
-    {:ok, plan} = BubbleEx.Plan.build(model, index)
-    :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
-
     {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
+
+    # The API calls the generator left out (WTF-412): generate:api_clients
+    # checks only the generated ones.
+    residue =
+      case frontend_opts[:api_clients] do
+        nil -> []
+        spec -> BubbleEx.Target.ApiClients.residue(spec)
+      end
+
+    {:ok, plan} = BubbleEx.Plan.build(model, index, nil, [], residue: residue)
+    :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
     opts = [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
