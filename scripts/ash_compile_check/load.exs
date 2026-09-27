@@ -36,8 +36,9 @@
 #     mirrored lists sharing a table are written separately, so a member
 #     of one list is never added to the other; the interrupted and resumed
 #     load, the rerun and the delta sync compare them too, and a later
-#     export that drops members moves positions, deletes nothing (WTF-414
-#     prunes) and reports each member no longer listed
+#     export that reorders members succeeds; an export that drops one
+#     reports the stale membership and is blocked before writing (WTF-414
+#     must prune before a real cutover)
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -494,8 +495,15 @@ loaded =
     {:ok, synced} = Load.run(confirm_export, model, target, [storage: storage] ++ base_opts)
     LoadCheck.eq!(fixture, synced.types["user"].updated, 1, "confirmation sync: users updated")
     after_sync = LoadCheck.snapshot(conn, plan)
-    confirmed = &(LoadCheck.row(after_sync, "user", &1)["confirmed_at"])
-    LoadCheck.eq!(fixture, confirmed.(F.bob()), "2026-09-20T00:00:00", "bob keeps his confirmation")
+    confirmed = &LoadCheck.row(after_sync, "user", &1)["confirmed_at"]
+
+    LoadCheck.eq!(
+      fixture,
+      confirmed.(F.bob()),
+      "2026-09-20T00:00:00",
+      "bob keeps his confirmation"
+    )
+
     LoadCheck.eq!(fixture, confirmed.(F.carol()), nil, "carol, new email, takes Bubble's status")
     LoadCheck.eq!(fixture, confirmed.(F.ada()), "2024-01-01T10:00:00", "ada unchanged")
 
@@ -618,7 +626,10 @@ loaded =
 
         ws = fn snap ->
           snap["user_workspaces"]
-          |> Enum.map(&{&1["user_id"], &1["workspace_id"], &1["workspaces_position"], &1["members_position"]})
+          |> Enum.map(
+            &{&1["user_id"], &1["workspace_id"], &1["workspaces_position"],
+             &1["members_position"]}
+          )
           |> Enum.sort()
         end
 
@@ -635,33 +646,107 @@ loaded =
           "a shared table: each list's own column, nothing added to the other list"
         )
 
-        # A later export drops Bob from Acme's members: positions move, no
-        # row is deleted and the other list's column is untouched.
+        # A legitimate delta reorders Acme's members without removing any.
         rows = F.cut3_rows()
         [w1 | rest] = rows["workspace"]
-        rows = %{rows | "workspace" => [Map.put(w1, "Members", [F.ada(), F.gone_user()]) | rest]}
-        {:ok, dropped} = F.export(which, Path.join(dir, "dropped"), rows)
-        {:ok, stale} = Load.run(dropped, model, target, [storage: storage] ++ base_opts)
 
-        LoadCheck.eq!(
-          fixture,
-          for(d <- stale.diagnostics, d.code == :load_join_stale_member, do: {d.subject.field, d.details.count, d.details.sample_ids}),
-          [{"members_list_user", 1, [F.workspace1()]}],
-          "the member no longer listed, reported from the PostgreSQL rows"
-        )
+        reordered = %{
+          rows
+          | "workspace" => [Map.put(w1, "Members", [F.gone_user(), F.ada(), F.bob()]) | rest]
+        }
+
+        {:ok, reordered_export} = F.export(which, Path.join(dir, "reordered"), reordered)
+
+        {:ok, reordered_report} =
+          Load.run(reordered_export, model, target, [storage: storage] ++ base_opts)
+
+        LoadCheck.eq!(fixture, reordered_report.blocked, [], "member reorder is allowed")
 
         LoadCheck.eq!(
           fixture,
           ws.(LoadCheck.snapshot(conn, plan)),
           Enum.sort([
-            {F.ada(), F.workspace1(), 0, 0},
-            {F.bob(), F.workspace1(), nil, 1},
-            {F.gone_user(), F.workspace1(), nil, 1},
+            {F.ada(), F.workspace1(), 0, 1},
+            {F.bob(), F.workspace1(), nil, 2},
+            {F.gone_user(), F.workspace1(), nil, 0},
             {F.carol(), F.workspace2(), 0, 0},
             {F.carol(), F.workspace1(), 1, nil}
           ]),
-          "the membership rows after the delta (none deleted)"
+          "reordered membership keeps the other list's column"
         )
+
+        # Bob is absent in the next export. The stale row retains access;
+        # the whole load, including scalar changes, must fail before writes.
+        [w1 | rest] = reordered["workspace"]
+
+        dropped_rows = %{
+          reordered
+          | "workspace" => [
+              w1 |> Map.put("Members", [F.gone_user(), F.ada()]) |> Map.put("Name", "Changed")
+              | rest
+            ]
+        }
+
+        {:ok, dropped} = F.export(which, Path.join(dir, "dropped"), dropped_rows)
+        before_blocked = LoadCheck.snapshot(conn, plan)
+        {:ok, stale} = Load.dry_run(dropped, model, target, base_opts)
+
+        LoadCheck.eq!(
+          fixture,
+          stale.blocked,
+          [:load_join_stale_member],
+          "stale dry run is blocked"
+        )
+
+        stale_members = fn report ->
+          for d <- report.diagnostics,
+              d.code == :load_join_stale_member,
+              do: {d.subject.field, d.details.count, d.details.sample_ids}
+        end
+
+        LoadCheck.eq!(
+          fixture,
+          stale_members.(stale),
+          [{"members_list_user", 1, [F.workspace1()]}],
+          "the member no longer listed, reported from the PostgreSQL rows"
+        )
+
+        blocked_ledger = Path.join(dir, "blocked_ledger")
+
+        {:error, refused} =
+          Load.run(
+            dropped,
+            model,
+            target,
+            [storage: storage, ledger_dir: blocked_ledger, batch_size: 1] ++ base_opts
+          )
+
+        LoadCheck.eq!(fixture, refused.kind, :invalid_input, "stale run error")
+
+        LoadCheck.eq!(
+          fixture,
+          refused.context.blocked,
+          [:load_join_stale_member],
+          "stale run blocked"
+        )
+
+        LoadCheck.eq!(fixture, refused.context.report.run, nil, "no run started")
+
+        LoadCheck.eq!(
+          fixture,
+          stale_members.(refused.context.report),
+          stale_members.(stale),
+          "stale run report"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          LoadCheck.snapshot(conn, plan),
+          before_blocked,
+          "blocked run wrote no rows"
+        )
+
+        LoadCheck.check!(fixture, not File.exists?(blocked_ledger), "blocked run wrote a ledger")
 
         # back to the fixture's state for loaded.exs
         LoadCheck.truncate(conn, plan)
