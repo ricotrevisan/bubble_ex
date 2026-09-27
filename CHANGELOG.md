@@ -6,6 +6,37 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
+  `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every
+  page and reusable-element workflow, stack-neutrally: events (click, input
+  changed, page loaded, condition true, custom event, do every) and steps
+  (show/hide/toggle/focus/scroll, reset inputs/group, set state, go to
+  page, open URL, refresh, log out, the data operations, custom-event calls
+  and schedules, scheduled API workflows, terminate), values as Expression
+  IR; what does not lower is `Plan.Residue` with a
+  `:frontend_workflow_residue` diagnostic, never dropped. The step
+  vocabulary and value structs move to `BubbleEx.Workflows.Lowering`,
+  shared with (and now used by) the backend lowering.
+  `BubbleEx.Target.Elixir.FrontendWorkflows` binds it to LiveView (plain
+  `Spec`; `backend:` the backend workflows spec; `blocked_by` and the
+  coverage metric as the backend's). `Target.Phoenix.render/2` with
+  `frontend_workflows:` (and `workflows:`) prints owned `Workflows` modules
+  with step markers, the generated `<Web>.BubbleWorkflows` runtime,
+  `phx-click` wiring (JS commands for element-only workflows), a
+  `phx-change` form per tracked input, per-instance custom states and
+  inputs, and owned smoke tests tagged `bubble_smoke:`. Data steps and
+  scheduled API workflows run on the backend runtime
+  (`Workflows.Runtime.root/2`, its job and call budgets). Browser event
+  parameters are checked against the page's static lists and never become
+  atoms; a workflow blocked by residue (its own, a custom event's or a
+  scheduled backend workflow's) fails before its first step; data access
+  is an explicit opt-in (`privacy: :omit` authorizes nothing). The overlay
+  runtime moves to one hook (`<Web>.Bubble.runtime/1`, `overlay_keys/1`
+  kept) that fixes T5's latent issues: reopening an open overlay no longer
+  saves the focus twice, element steps target one instance, and a modal's
+  focus falls back past an opener hidden since. mm-137: 531 of 2,275
+  frontend workflows native (361 wired to a page trigger, 15.9%; 648 own
+  body), 1,152 at IR level.
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
   workflows, backend custom events, database triggers) to a stack-neutral
