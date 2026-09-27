@@ -1035,6 +1035,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Replay driver against a real Bubble branch** (WTF-385, V5 of
+  WTF-358). The first run on mm-137's replay branch found where the driver
+  disagreed with Bubble: Data API type paths keep dots, colons and emoji
+  (`00.thing`, `🎙️msgs`) and are now percent-encoded instead of refused;
+  the preflight reads `/meta` as Bubble writes it (`post` entries named by
+  `endpoint`, fields as `{id, display, type}` objects keyed by display name
+  under `app_data.use_captions_for_get`, `_id` as `unique ID`); option-set
+  values are sent and read by display text (`Replay.Names.to_api/4`,
+  `from_api/4`: Bubble refuses the stored key with 400 `INVALID_DATA`); a
+  `GET` answered 200 with only `_id` is a hidden record (Bubble does not
+  404 them); the sign-up and login workflows are required only for a seed
+  with users; ledger journals are owner-only (0600). `docs/replay-kit.md`
+  records the observed semantics and warns that Data API writes fire the
+  app's database triggers.
+
 - **`generate:api_clients` no longer checks API calls the generator leaves
   out** (WTF-412). Its `request_shape` criterion listed every API call,
   including residue calls with no generated test, so

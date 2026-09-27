@@ -13,6 +13,13 @@ defmodule BubbleEx.Verify.Replay.Names do
   `Slug`, `email`). V5 checks the guess against a real branch; `new/1`
   takes explicit maps when it is wrong. A type or field without a mapping is
   an error, never a guess at request time.
+
+  **Option values.** The Data API reads and writes an option-set value by
+  its **display text**, not its stored key (`db_value`): on mm-137 a
+  create with `"sent"` for a value displayed `Sent` was refused, `"Sent"`
+  accepted (WTF-385). `options` maps, per type and option field, each key
+  to its display text; `to_api/4` and `from_api/4` translate seed and
+  observed values. A field without a map passes values through.
   """
 
   alias BubbleEx.Error
@@ -21,10 +28,11 @@ defmodule BubbleEx.Verify.Replay.Names do
 
   @type t :: %__MODULE__{
           types: %{String.t() => String.t()},
-          fields: %{String.t() => %{String.t() => String.t()}}
+          fields: %{String.t() => %{String.t() => String.t()}},
+          options: %{String.t() => %{String.t() => %{String.t() => String.t()}}}
         }
 
-  defstruct types: %{}, fields: %{}
+  defstruct types: %{}, fields: %{}, options: %{}
 
   @doc """
   Explicit names: `types` maps type descriptors to Data API paths,
@@ -33,7 +41,12 @@ defmodule BubbleEx.Verify.Replay.Names do
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, Error.t()}
   def new(attrs) do
     attrs = Map.new(attrs)
-    names = %__MODULE__{types: Map.get(attrs, :types, %{}), fields: Map.get(attrs, :fields, %{})}
+
+    names = %__MODULE__{
+      types: Map.get(attrs, :types, %{}),
+      fields: Map.get(attrs, :fields, %{}),
+      options: Map.get(attrs, :options, %{})
+    }
 
     reversible? =
       Enum.all?(names.fields, fn {_type, map} ->
@@ -47,10 +60,23 @@ defmodule BubbleEx.Verify.Replay.Names do
 
   @doc "Names guessed from the Model's display names (see the moduledoc)."
   @spec from_model(Model.t()) :: {:ok, t()} | {:error, Error.t()}
-  def from_model(%Model{data_types: types}) do
+  def from_model(%Model{data_types: types} = model) do
     live = Enum.reject(types, & &1.deleted)
 
     new(
+      options:
+        Map.new(live, fn t ->
+          {Type.record(t.id),
+           for(
+             f <- t.fields,
+             not f.deleted,
+             match?(%Type{kind: :option}, f.type),
+             map = option_map(model, f.type.target),
+             map != nil,
+             into: %{},
+             do: {f.id, map}
+           )}
+        end),
       types: Map.new(live, &{Type.record(&1.id), path(&1.name || &1.id)}),
       fields:
         Map.new(live, fn t ->
@@ -63,6 +89,74 @@ defmodule BubbleEx.Verify.Replay.Names do
         end)
     )
   end
+
+  # key => display text, when every display text is distinct (reversible).
+  defp option_map(model, set_id) do
+    case Model.option_set(model, set_id) do
+      %{values: values} ->
+        map = for v <- values, not v.deleted, is_binary(v.name), into: %{}, do: {v.key, v.name}
+
+        if map |> Map.values() |> Enum.uniq() |> length() == map_size(map), do: map
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc "A seed value of `type`'s `field` in Data API form: option keys become display texts."
+  @spec to_api(t(), String.t(), String.t(), term()) :: {:ok, term()} | {:error, Error.t()}
+  def to_api(%__MODULE__{} = names, type, field, value),
+    do: translate(option_map(names, type, field), value, :to_api)
+
+  @doc "An observed value of `type`'s `field` back in seed form: display texts become keys."
+  @spec from_api(t(), String.t(), String.t(), term()) :: term()
+  def from_api(%__MODULE__{} = names, type, field, value) do
+    case option_map(names, type, field) do
+      nil ->
+        value
+
+      map ->
+        inverse = Map.new(map, fn {k, v} -> {v, k} end)
+
+        case translate(inverse, value, :from_api) do
+          {:ok, v} -> v
+          {:error, _} -> value
+        end
+    end
+  end
+
+  defp option_map(names, type, field), do: names.options |> Map.get(type, %{}) |> Map.get(field)
+
+  defp translate(nil, value, _dir), do: {:ok, value}
+
+  defp translate(map, {:option, v}, dir) do
+    case Map.fetch(map, v) do
+      {:ok, out} ->
+        {:ok, {:option, out}}
+
+      :error ->
+        {:error,
+         Error.new(:invalid_input, "option value has no display text in the model", %{
+           reason: :unknown_option,
+           direction: dir
+         })}
+    end
+  end
+
+  defp translate(map, {:list, items}, dir) do
+    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, acc} ->
+      case translate(map, item, dir) do
+        {:ok, v} -> {:cont, {:ok, [v | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, list} -> {:ok, {:list, Enum.reverse(list)}}
+      error -> error
+    end
+  end
+
+  defp translate(_map, value, _dir), do: {:ok, value}
 
   defp path(name), do: name |> String.downcase() |> String.replace(~r/\s+/, "")
 

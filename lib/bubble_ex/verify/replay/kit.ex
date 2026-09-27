@@ -23,8 +23,10 @@ defmodule BubbleEx.Verify.Replay.Kit do
        (`BubbleEx.Verify.Replay.Client.verify/2`): Bubble's `/meta` shape,
        then the marker's exact branch name and nonce. Anything else stops
        the preflight with `reason: :unverified_target`; no token was sent
-    2. the API metadata as admin: the signup and login workflows are
-       listed among the exposed workflows (`post`)
+    2. the API metadata as admin: with `personas: true`, the signup and
+       login workflows are listed among the exposed workflows (`post`,
+       whose entries Bubble names by `endpoint`). A seed without users
+       never calls them, so it does not need them
     3. per type under test, a Data API search constrained to an ID that
        cannot exist (`Client.probe/2`, so no record is read): the type is
        exposed
@@ -98,9 +100,11 @@ defmodule BubbleEx.Verify.Replay.Kit do
     with {:ok, schema} <- Client.verify(client, kit),
          {:ok, meta} <- Client.meta(client),
          {:ok, type_checks} <- type_checks(client, types, schema, opts) do
+      personas? = Keyword.get(opts, :personas, false)
+
       checks =
-        meta_checks(meta, kit) ++
-          type_checks ++ persona_checks(Keyword.get(opts, :personas, false), type_checks)
+        meta_checks(meta, kit, personas?) ++
+          type_checks ++ persona_checks(personas?, type_checks)
 
       {:ok,
        %{
@@ -138,11 +142,11 @@ defmodule BubbleEx.Verify.Replay.Kit do
 
   # --- metadata ----------------------------------------------------------------------
 
-  defp meta_checks(%{status: 200, body: body}, kit) when is_map(body) do
+  defp meta_checks(%{status: 200, body: body}, kit, personas?) when is_map(body) do
     workflows = listed(body["post"])
 
     [%{check: :branch_api, status: :ok}] ++
-      for name <- [kit.signup, kit.login] do
+      for name <- kit_workflows(kit, personas?) do
         status =
           cond do
             workflows == nil -> :unverified
@@ -154,15 +158,19 @@ defmodule BubbleEx.Verify.Replay.Kit do
       end
   end
 
-  defp meta_checks(%{status: status}, kit) do
+  defp meta_checks(%{status: status}, kit, personas?) do
     [%{check: :branch_api, status: :missing, http_status: status}] ++
-      for name <- [kit.signup, kit.login],
+      for name <- kit_workflows(kit, personas?),
           do: %{check: :workflow, workflow: name, status: :unverified}
   end
+
+  defp kit_workflows(kit, true), do: [kit.signup, kit.login]
+  defp kit_workflows(_kit, false), do: []
 
   defp listed(list) when is_list(list) do
     Enum.flat_map(list, fn
       name when is_binary(name) -> [name]
+      %{"endpoint" => name} when is_binary(name) -> [name]
       %{"name" => name} when is_binary(name) -> [name]
       _ -> []
     end)
@@ -173,8 +181,13 @@ defmodule BubbleEx.Verify.Replay.Kit do
 
   # Field names the metadata lists for a type (`types.<path>.fields`, a
   # list of names or `%{"key"|"name" => …}` objects, or an object keyed by
-  # name), or `:unknown`.
+  # name), or `:unknown`. Bubble lists `%{"id", "display", "type"}` objects,
+  # built-in fields included (`unique ID` is the Data API's `_id`); the
+  # Data API names fields by `display` when `app_data.use_captions_for_get`
+  # is true, by `id` otherwise.
   defp schema_fields(schema, path) do
+    key = if get_in(schema, ["app_data", "use_captions_for_get"]), do: "display", else: "id"
+
     case get_in(schema, ["types", path]) do
       %{"fields" => fields} when is_list(fields) ->
         names =
@@ -182,8 +195,10 @@ defmodule BubbleEx.Verify.Replay.Kit do
             name when is_binary(name) -> name
             %{"key" => name} when is_binary(name) -> name
             %{"name" => name} when is_binary(name) -> name
+            %{"id" => _} = field -> readable(field[key])
             _ -> :unreadable
           end)
+          |> Enum.map(&if(&1 in ["unique ID", "unique_id"], do: "_id", else: &1))
 
         if :unreadable in names, do: :unknown, else: {:ok, names}
 
@@ -194,6 +209,9 @@ defmodule BubbleEx.Verify.Replay.Kit do
         :unknown
     end
   end
+
+  defp readable(name) when is_binary(name), do: name
+  defp readable(_), do: :unreadable
 
   # --- types -------------------------------------------------------------------------
 

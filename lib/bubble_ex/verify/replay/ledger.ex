@@ -230,6 +230,9 @@ defmodule BubbleEx.Verify.Replay.Ledger do
 
     case :file.open(String.to_charlist(path), [:append, :raw, :binary]) do
       {:ok, io} ->
+        # Owner-only: the journal holds Bubble IDs and per-run sign-up emails.
+        _ = File.chmod(path, 0o600)
+
         result =
           with :ok <- :file.write(io, line),
                do: :file.sync(io)

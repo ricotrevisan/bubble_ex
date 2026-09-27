@@ -228,6 +228,38 @@ defmodule BubbleEx.Verify.ReplayTest do
 
   # --- the guard --------------------------------------------------------------------------
 
+  describe "Names" do
+    test "option values go to the Data API as display text and come back as keys" do
+      {:ok, names} =
+        Names.new(
+          types: %{"custom.ev" => "ev"},
+          fields: %{"custom.ev" => %{"status_os" => "Status"}},
+          options: %{"custom.ev" => %{"status_os" => %{"sent" => "Sent", "done" => "Done"}}}
+        )
+
+      assert {:ok, {:option, "Sent"}} =
+               Names.to_api(names, "custom.ev", "status_os", {:option, "sent"})
+
+      assert {:ok, {:list, [{:option, "Done"}, {:option, "Sent"}]}} =
+               Names.to_api(
+                 names,
+                 "custom.ev",
+                 "status_os",
+                 {:list, [{:option, "done"}, {:option, "sent"}]}
+               )
+
+      assert {:option, "sent"} =
+               Names.from_api(names, "custom.ev", "status_os", {:option, "Sent"})
+
+      assert {:error, %Error{context: %{reason: :unknown_option}}} =
+               Names.to_api(names, "custom.ev", "status_os", {:option, "nope"})
+
+      # Fields without an option map pass through.
+      assert {:ok, {:text, "x"}} = Names.to_api(names, "custom.ev", "other", {:text, "x"})
+      assert {:option, "Other"} = Names.from_api(names, "custom.ev", "other", {:option, "Other"})
+    end
+  end
+
   describe "Target" do
     test "accepts an app ID and a wtfreplay branch only" do
       for branch <- ~w(wtfreplay wtfreplay-2 wtfreplay_v5) do
@@ -388,9 +420,26 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:ok, root <> "/obj/task/1700x12"} == Target.data_url(t, "task", "1700x12")
       assert {:ok, root <> "/wf/wtf_replay_login"} == Target.workflow_url(t, "wtf_replay_login")
 
-      for bad <- ["../live", "task/../x", "Task", "", "task?x=1", "a%2Fb"] do
+      for bad <- [
+            "../live",
+            "task/../x",
+            "Task",
+            "",
+            "task?x=1",
+            "a%2Fb",
+            ".",
+            "..",
+            "a b",
+            "a#b"
+          ] do
         assert {:error, _} = Target.data_url(t, bad)
       end
+
+      # Bubble's type paths keep dots, colons and emoji (`/meta`'s `get`).
+      assert {:ok, root <> "/obj/00.thing-join"} == Target.data_url(t, "00.thing-join")
+      assert {:ok, root <> "/obj/%F0%9F%92%AC" <> "workspace"} == Target.data_url(t, "💬workspace")
+      assert {:ok, url} = Target.data_url(t, "🪄mq:answers", "1700x12")
+      assert :ok = Target.check_url(t, url)
 
       for id <- ["../1x2", "1x2/..", "abc", "1x2?", ""] do
         assert {:error, _} = Target.data_url(t, "task", id)
@@ -437,6 +486,15 @@ defmodule BubbleEx.Verify.ReplayTest do
   # --- client: budgets, backoff, redirects -------------------------------------------------
 
   describe "Client" do
+    test "a record answered with its ID only is hidden, as Bubble answers privacy-hidden records" do
+      start_fake()
+      c = client()
+      assert {:ok, id} = Client.create(c, "custom.task", %{"Title" => "t"}, :admin)
+      assert {:ok, {:found, %{"Title" => "t"}}} = Client.get(c, "custom.task", id, :admin)
+      # The fake's tasks are hidden from logged-out callers: 200 with `_id` only.
+      assert {:ok, :not_found} = Client.get(c, "custom.task", id, :none)
+    end
+
     test "stops at the call budget before sending" do
       fake = start_fake()
       c = client(max_calls: 2)
@@ -542,6 +600,14 @@ defmodule BubbleEx.Verify.ReplayTest do
   # --- ledger and cleanup --------------------------------------------------------------------
 
   describe "ledger" do
+    @tag :tmp_dir
+    test "the journal is readable by its owner only", %{tmp_dir: dir} do
+      {:ok, ledger} = Ledger.new(target(), "perm", dir: dir)
+      {:ok, _} = Ledger.intend(ledger, "k", "custom.task")
+      assert {:ok, %File.Stat{mode: mode}} = File.stat(ledger.path)
+      assert Bitwise.band(mode, 0o077) == 0
+    end
+
     test "only ledger records can be updated or deleted" do
       fake =
         start_fake(owner_records: [%{type: "task", fields: %{"Title" => "owner's own"}}])
@@ -998,7 +1064,9 @@ defmodule BubbleEx.Verify.ReplayTest do
       start_fake(exposed: ~w(task user))
 
       assert {:ok, report} =
-               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace user))
+               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace user),
+                 personas: true
+               )
 
       refute report.ok?
 
@@ -1007,6 +1075,18 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       assert %{status: :ok} = Enum.find(report.checks, &(&1[:workflow] == "wtf_replay_login"))
       assert :privacy_rules_unchanged_from_parent in report.manual
+    end
+
+    test "the sign-up and login workflows are needed only for a seed with users" do
+      start_fake(workflows: ~w(wtf_replay_marker))
+
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.task), personas: true)
+
+      assert %{status: :missing} =
+               Enum.find(report.checks, &(&1[:workflow] == "wtf_replay_signup"))
+
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.task))
+      refute Enum.any?(report.checks, &Map.has_key?(&1, :workflow))
     end
 
     test "the anonymous exposure probe refuses a type that shows a logged-out visitor fields" do
@@ -1082,6 +1162,53 @@ defmodule BubbleEx.Verify.ReplayTest do
                  )
 
         assert %{status: :ok, anonymous: :proven_hidden} = check.(report)
+      end
+    end
+
+    test "reads Bubble's metadata field objects, by display name or ID as the Data API keys them" do
+      # Bubble lists `%{id, display, type}` objects, built-in fields included,
+      # `_id` as `unique ID` (WTF-385).
+      builtin = fn names -> Enum.map(names, &%{"id" => &1, "display" => &1, "type" => "text"}) end
+
+      ids_only = %{
+        "workspace" => %{
+          "display" => "Workspace",
+          "fields" => builtin.(["unique ID", "Created Date", "Modified Date"])
+        }
+      }
+
+      with_name = %{
+        "workspace" => %{
+          "display" => "Workspace",
+          "fields" =>
+            builtin.(["unique ID", "Created Date"]) ++
+              [%{"id" => "name_text", "display" => "Name", "type" => "text"}]
+        }
+      }
+
+      check = fn ->
+        Enum.find(
+          elem(Kit.preflight(client(), %Kit{}, ~w(custom.workspace)), 1).checks,
+          &(&1[:check] == :anonymous_exposure)
+        )
+      end
+
+      for captions <- [true, false] do
+        start_fake(
+          owner_records: [%{type: "workspace", fields: %{}}],
+          meta_types: ids_only,
+          captions: captions
+        )
+
+        assert %{status: :ok, anonymous: :ids_only} = check.()
+
+        start_fake(
+          owner_records: [%{type: "workspace", fields: %{}}],
+          meta_types: with_name,
+          captions: captions
+        )
+
+        assert %{status: :may_leak} = check.()
       end
     end
 

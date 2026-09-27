@@ -304,7 +304,11 @@ defmodule BubbleEx.Verify.Replay.Client do
 
   @doc """
   Gets one record by Bubble ID as `auth`: `{:ok, {:found, fields}}` or
-  `{:ok, :not_found}` (404: missing, or hidden from `auth`).
+  `{:ok, :not_found}`: a 404 (missing), or a 200 whose record holds nothing
+  but `_id`. Bubble answers a record its privacy rules hide from the caller
+  that way, not with a 404 (observed on mm-137 for logged-out callers,
+  WTF-385); a readable record always carries its `Created Date` and
+  `Modified Date`.
   """
   @spec get(t(), String.t(), String.t(), auth()) ::
           {:ok, {:found, map()} | :not_found} | {:error, Error.t()}
@@ -313,7 +317,7 @@ defmodule BubbleEx.Verify.Replay.Client do
          {:ok, url} <- Target.data_url(c.target, path, id) do
       case request(c, :get, url, nil, auth, :read) do
         {:ok, %{status: 200, body: %{"response" => fields}}} when is_map(fields) ->
-          {:ok, {:found, fields}}
+          {:ok, found(fields)}
 
         {:ok, %{status: 404}} ->
           {:ok, :not_found}
@@ -323,6 +327,11 @@ defmodule BubbleEx.Verify.Replay.Client do
       end
     end
   end
+
+  # Bubble answers a record hidden from the caller with its ID only.
+  defp found(fields) when map_size(fields) == 1 and is_map_key(fields, "_id"), do: :not_found
+  defp found(fields) when map_size(fields) == 0, do: :not_found
+  defp found(fields), do: {:found, fields}
 
   @doc "Creates a record of `type` with Data API `body` as `auth`; returns its Bubble ID."
   @spec create(t(), String.t(), map(), auth()) :: {:ok, String.t()} | {:error, Error.t()}
