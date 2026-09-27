@@ -304,7 +304,20 @@ defmodule BubbleEx.Verify.Replay.Client do
 
   @doc """
   Gets one record by Bubble ID as `auth`: `{:ok, {:found, fields}}` or
-  `{:ok, :not_found}` (404: missing, or hidden from `auth`).
+  `{:ok, :not_found}`: a 404 (missing), or a 200 whose record holds nothing
+  but `_id`. Bubble answered a record its privacy rules hid from the caller
+  that way, not with a 404.
+
+  **Evidence is thin (WTF-385, listed as unverified on WTF-358).** This
+  rests on one observation: logged-out callers on three mm-137 types whose
+  rules grant nothing (no `view_all`, no `view_fields`, no search). Admin
+  reads of readable records carried `Created Date` and `Modified Date`.
+  Not yet observed: a rule granting search or `view_fields` without
+  `view_all`. Bubble may answer such a record ("findable, but no visible
+  field") with the same ID-only body, so `visible: false` here can merge
+  "hidden" with "findable but no field visible". A recording relying on
+  that difference needs a search op, or a replay that exercises such a
+  rule first.
   """
   @spec get(t(), String.t(), String.t(), auth()) ::
           {:ok, {:found, map()} | :not_found} | {:error, Error.t()}
@@ -313,7 +326,7 @@ defmodule BubbleEx.Verify.Replay.Client do
          {:ok, url} <- Target.data_url(c.target, path, id) do
       case request(c, :get, url, nil, auth, :read) do
         {:ok, %{status: 200, body: %{"response" => fields}}} when is_map(fields) ->
-          {:ok, {:found, fields}}
+          {:ok, found(fields)}
 
         {:ok, %{status: 404}} ->
           {:ok, :not_found}
@@ -323,6 +336,12 @@ defmodule BubbleEx.Verify.Replay.Client do
       end
     end
   end
+
+  # Bubble answered a record hidden from the caller with its ID only (one
+  # observation; see get/4 for what this may merge).
+  defp found(fields) when map_size(fields) == 1 and is_map_key(fields, "_id"), do: :not_found
+  defp found(fields) when map_size(fields) == 0, do: :not_found
+  defp found(fields), do: {:found, fields}
 
   @doc "Creates a record of `type` with Data API `body` as `auth`; returns its Bubble ID."
   @spec create(t(), String.t(), map(), auth()) :: {:ok, String.t()} | {:error, Error.t()}

@@ -18,8 +18,9 @@ All notable changes to this project are documented here.
   data model found in the rendered source's AST), `decision`, `residue`
   (not emitted, with an open non-generator task carrying its residue),
   `diagnosed`, `excluded` or `uncovered`, which fails: a generator node or
-  an `:auto` task accounts for nothing, so page and reusable workflows,
-  which nothing generates yet, are uncovered (mm-137: 1179);
+  an `:auto` task accounts for nothing; workflows count as generated when
+  native in the backend (`Target.Ash.Workflows`) or page
+  (`Target.Elixir.FrontendWorkflows`, input `frontend_workflows:`) Spec;
   `policy_coverage` (`skipped` for `privacy: :omit`: blocked on WTF-356);
   `bypass_inventory` (the lowering bypasses exactly Bubble's own "ignore
   privacy rules" workflows; every bypass site in the rendered `lib/` is a
@@ -40,6 +41,37 @@ All notable changes to this project are documented here.
   to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
   counts snapshot (private fixture).
 
+- **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
+  `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every
+  page and reusable-element workflow, stack-neutrally: events (click, input
+  changed, page loaded, condition true, custom event, do every) and steps
+  (show/hide/toggle/focus/scroll, reset inputs/group, set state, go to
+  page, open URL, refresh, log out, the data operations, custom-event calls
+  and schedules, scheduled API workflows, terminate), values as Expression
+  IR; what does not lower is `Plan.Residue` with a
+  `:frontend_workflow_residue` diagnostic, never dropped. The step
+  vocabulary and value structs move to `BubbleEx.Workflows.Lowering`,
+  shared with (and now used by) the backend lowering.
+  `BubbleEx.Target.Elixir.FrontendWorkflows` binds it to LiveView (plain
+  `Spec`; `backend:` the backend workflows spec; `blocked_by` and the
+  coverage metric as the backend's). `Target.Phoenix.render/2` with
+  `frontend_workflows:` (and `workflows:`) prints owned `Workflows` modules
+  with step markers, the generated `<Web>.BubbleWorkflows` runtime,
+  `phx-click` wiring (JS commands for element-only workflows), a
+  `phx-change` form per tracked input, per-instance custom states and
+  inputs, and owned smoke tests tagged `bubble_smoke:`. Data steps and
+  scheduled API workflows run on the backend runtime
+  (`Workflows.Runtime.root/2`, its job and call budgets). Browser event
+  parameters are checked against the page's static lists and never become
+  atoms; a workflow blocked by residue (its own, a custom event's or a
+  scheduled backend workflow's) fails before its first step; data access
+  is an explicit opt-in (`privacy: :omit` authorizes nothing). The overlay
+  runtime moves to one hook (`<Web>.Bubble.runtime/1`, `overlay_keys/1`
+  kept) that fixes T5's latent issues: reopening an open overlay no longer
+  saves the focus twice, element steps target one instance, and a modal's
+  focus falls back past an opener hidden since. mm-137: 531 of 2,275
+  frontend workflows native (361 wired to a page trigger, 15.9%; 648 own
+  body), 1,152 at IR level.
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
   workflows, backend custom events, database triggers) to a stack-neutral
@@ -1068,6 +1100,37 @@ All notable changes to this project are documented here.
   `mix bubble.export_frontend URL --mode snapshot -o DIR`.
 
 ### Fixed
+
+- **Replay driver against a real Bubble branch** (WTF-385, V5 of
+  WTF-358). The first run on mm-137's replay branch found where the driver
+  disagreed with Bubble:
+  - Data API type paths keep dots, colons and emoji (`00.thing`,
+    `🎙️msgs`) and are now percent-encoded instead of refused. A path must
+    equal its NFKC form and holds no separator look-alike (`／`, `．`,
+    `∕`), bidi or zero-width character (only the emoji joiner and variation
+    selector are kept).
+  - The preflight reads `/meta` as Bubble writes it: `post` entries named
+    by `endpoint`; fields as `{id, display, type}` objects keyed by display
+    name under `app_data.use_captions_for_get`; the built-in `id` `_id`
+    (displayed `unique ID`) as `_id`.
+  - Option-set values are sent and read by display text
+    (`Replay.Names.to_api/4`, `from_api/4`; Bubble refuses the stored key
+    with 400 `INVALID_DATA`). An option field with no reversible mapping
+    is an error to send, and an unknown display text is observed as a
+    mismatch (`{"unmapped_option": true}`), never as a key.
+  - A `GET` answered 200 with only `_id` is recorded as not visible. Bubble
+    does not 404 hidden records; this rests on one observation and may
+    merge "hidden" with "findable but no field visible" (unverified).
+  - The sign-up and login workflows are required only for a seed with
+    users.
+  - Ledger journals: the directory is made 0700 and checked before any
+    file is created (a directory that stays open to group or others
+    refuses the run); each journal is created with an exclusive open and
+    set to 0600 before its first write, and a failed `chmod` refuses the
+    run.
+
+  `docs/replay-kit.md` records the observed semantics and warns that Data
+  API writes fire the app's database triggers.
 
 - **`generate:api_clients` no longer checks API calls the generator leaves
   out** (WTF-412). Its `request_shape` criterion listed every API call,

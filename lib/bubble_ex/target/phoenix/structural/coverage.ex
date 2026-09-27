@@ -10,12 +10,12 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   | bucket | meaning | read from |
   |--------|---------|-----------|
-  | `generated` | the generator emitted it | data types, fields, option sets and values: a resource, attribute, relationship, enum or enum value of the `BubbleEx.Target.Ash.Project` whose `source` is its Bubble ID **and**, with rendered files, the module and name in the rendered source (read from the AST); pages and reusables: `.wtf/surfaces.json` of the rendered files; backend workflows: a **native** action of the `BubbleEx.Target.Ash.Workflows.Spec` (its whole body, and its callees', generated); API calls: a call of the `BubbleEx.Target.ApiClients.Spec` |
+  | `generated` | the generator emitted it | data types, fields, option sets and values: a resource, attribute, relationship, enum or enum value of the `BubbleEx.Target.Ash.Project` whose `source` is its Bubble ID **and**, with rendered files, the module and name in the rendered source (read from the AST); pages and reusables: `.wtf/surfaces.json` of the rendered files; workflows: a **native** workflow (its whole body, and its callees', generated) of the `BubbleEx.Target.Ash.Workflows.Spec` (backend) or the `BubbleEx.Target.Elixir.FrontendWorkflows.Spec` (pages and reusables); API calls: a call of the `BubbleEx.Target.ApiClients.Spec` |
   | `decision` | an applied owner decision replaced or removed it | fields: a derived calculation, count aggregate or `has_many` standing for the field (`derive_*` decisions), rendered like a field; workflows: a closed `delete_workflows` or plugin `drop` task of the plan |
   | `residue` | not emitted, and an **open** plan task that is not a generator node carries residue for it: agent work | the plan's tasks and their `BubbleEx.Plan.Residue` |
   | `diagnosed` | the generator left it out and said why | a `:ash_malformed_omitted` or `:ash_duplicate_enum_value` diagnostic of the Project; a workflow on no page or reusable (`no_surface`) |
   | `excluded` | not part of the app to migrate | deleted in Bubble; mobile views and their workflows (the plan excludes them) |
-  | `uncovered` | none of the above: a structural failure | why: `not_emitted` (its generator did not emit it), `no_generator` (a page or reusable workflow: nothing generates their bodies yet), `not_rendered` (in the Project, not in the rendered source) |
+  | `uncovered` | none of the above: a structural failure | why: `not_emitted` (its generator did not emit it), `not_rendered` (in the Project, not in the rendered source) |
 
   A generator node of the plan (`generate:*`) or an `:auto` task accounts
   for nothing: they say the generator will emit the symbol, which is
@@ -34,6 +34,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   alias BubbleEx.Plan
   alias BubbleEx.Target.ApiClients.Spec, as: ApiSpec
   alias BubbleEx.Target.Ash.Workflows.Spec, as: WorkflowSpec
+  alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec, as: FrontendSpec
 
   @categories [
     :data_types,
@@ -62,7 +63,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   @doc """
   Accounts every symbol of every category. `inputs` is the map given to
   `BubbleEx.Target.Phoenix.Structural.run/2`: `model`, `index`, `plan`,
-  `project`, and optionally `files`, `workflows` and `api_clients`. The
+  `project`, and optionally `files`, `workflows`, `frontend_workflows`
+  and `api_clients`. The
   result has one entry list per category and `:unreadable`, the malformed
   parents whose members cannot be listed.
   """
@@ -79,7 +81,13 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       option_values: option_values(inputs.model, ctx),
       pages: surfaces(inputs.index, :page, surfaces(files), plan),
       reusables: surfaces(inputs.index, :reusable, surfaces(files), plan),
-      workflows: workflows(inputs.index, Map.get(inputs, :workflows), plan),
+      workflows:
+        workflows(
+          inputs.index,
+          Map.get(inputs, :workflows),
+          Map.get(inputs, :frontend_workflows),
+          plan
+        ),
       api_calls: api_calls(inputs.index, Map.get(inputs, :api_clients), plan),
       unreadable: %{
         fields: Enum.count(inputs.model.data_types, &(not is_nil(&1.raw))),
@@ -377,7 +385,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   # --- workflows ------------------------------------------------------------------------
 
-  defp workflows(%Index{} = index, spec, plan) do
+  defp workflows(%Index{} = index, spec, frontend, plan) do
     surfaces =
       for s <- index.symbols,
           (s.kind == :page and s.attrs[:section] != "mobile_views") or s.kind == :reusable,
@@ -390,7 +398,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
           into: MapSet.new(),
           do: s.id
 
-    known = %{surfaces: surfaces, mobile: mobile, actions: workflow_actions(spec), plan: plan}
+    actions = Map.merge(workflow_actions(spec), frontend_actions(frontend))
+    known = %{surfaces: surfaces, mobile: mobile, actions: actions, plan: plan}
     Enum.map(Index.symbols(index, :workflow), &workflow(&1, known))
   end
 
@@ -402,7 +411,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         entry(symbol.id, :decision, why, subjects)
 
       symbol.attrs[:backend] == true ->
-        backend_workflow(symbol, subjects, known)
+        lowered_workflow(symbol, subjects, known, :not_emitted)
 
       MapSet.member?(known.mobile, symbol.parent) ->
         entry(symbol.id, :excluded, :mobile_view, subjects)
@@ -411,22 +420,25 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         entry(symbol.id, :diagnosed, :no_surface, subjects)
 
       true ->
-        planned(symbol.id, subjects, known.plan, :no_generator)
+        lowered_workflow(symbol, subjects, known, :not_emitted)
     end
   end
 
-  # A backend workflow the Spec lowered is generated when native (its
-  # whole body and its callees'); otherwise the plan must hold its
-  # residue, or, when only its callees block it, theirs.
-  defp backend_workflow(symbol, subjects, known) do
+  # A workflow a Spec lowered (backend: `Target.Ash.Workflows`; page and
+  # reusable: `Target.Elixir.FrontendWorkflows`) is generated when native
+  # (its whole body and its callees'); otherwise the plan must hold its
+  # residue, or, when only its callees block it, theirs. One no Spec
+  # lowered is uncovered (`missing`) unless the plan holds its residue.
+  defp lowered_workflow(symbol, subjects, known, missing) do
     case Map.fetch(known.actions, symbol.bubble_id) do
-      {:ok, action} ->
-        if WorkflowSpec.native?(action),
-          do: entry(symbol.id, :generated, nil, subjects),
-          else: not_native(symbol.id, subjects, known, MapSet.new([symbol.id]))
+      {:ok, %{native?: true}} ->
+        entry(symbol.id, :generated, nil, subjects)
+
+      {:ok, _} ->
+        not_native(symbol.id, subjects, known, MapSet.new([symbol.id]))
 
       :error ->
-        planned(symbol.id, subjects, known.plan, :not_emitted)
+        planned(symbol.id, subjects, known.plan, missing)
     end
   end
 
@@ -460,11 +472,25 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   defp bubble_id("workflow:" <> id), do: id
 
-  # Bubble workflow ID -> its action.
+  # Bubble workflow ID -> whether it is native, and what blocks it.
   defp workflow_actions(%WorkflowSpec{} = spec),
-    do: Map.new(WorkflowSpec.actions(spec), &{&1.workflow, &1})
+    do:
+      Map.new(
+        WorkflowSpec.actions(spec),
+        &{&1.workflow,
+         %{native?: WorkflowSpec.native?(&1), blocked_by: Map.get(&1, :blocked_by, [])}}
+      )
 
   defp workflow_actions(_), do: %{}
+
+  defp frontend_actions(%FrontendSpec{} = spec),
+    do:
+      Map.new(FrontendSpec.workflows(spec), fn w ->
+        blocked = Map.get(w, :blocked_by, [])
+        {w.workflow, %{native?: blocked == [] and w.residue == [], blocked_by: blocked}}
+      end)
+
+  defp frontend_actions(_), do: %{}
 
   # --- API calls ------------------------------------------------------------------------
 

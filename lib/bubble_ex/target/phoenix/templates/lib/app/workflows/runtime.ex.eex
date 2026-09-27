@@ -147,6 +147,24 @@ defmodule <%= @module %>.Workflows.Runtime do
     }
   end
 
+  @doc """
+  The context of a root run started outside any backend workflow: a page
+  event running frontend workflows (WTF-372, `<%= @web %>.BubbleWorkflows`),
+  as `actor`, with the whole `:max_jobs` and `:max_calls` budgets.
+  `authorize?` is `true`, which only matters once the resources have
+  policies.
+  """
+  @spec root(String.t() | nil, term()) :: t()
+  def root(workflow, actor) do
+    %__MODULE__{
+      workflow: workflow,
+      actor: actor,
+      now: DateTime.utc_now(),
+      budget: config(:max_jobs, 10_000),
+      calls: config(:max_calls, 1_000)
+    }
+  end
+
   defp authorize?(:inherit, nil), do: true
   defp authorize?(:inherit, inherited), do: inherited
   defp authorize?(own, _inherited), do: own
@@ -228,13 +246,14 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   defp get_all(_resource, _ids, _ctx), do: []
 
-  defp load(value, [], _ctx), do: value
-  defp load(nil, _loads, _ctx), do: nil
+  @doc "`value` (a record or a list) with relationship `loads` (paths of names) loaded."
+  def load(value, [], _ctx), do: value
+  def load(nil, _loads, _ctx), do: nil
 
-  defp load(value, loads, ctx) when is_list(value),
+  def load(value, loads, ctx) when is_list(value),
     do: Enum.map(value, &load(&1, loads, ctx))
 
-  defp load(%{__struct__: _} = record, loads, ctx) do
+  def load(%{__struct__: _} = record, loads, ctx) do
     # bubble:ignores_privacy scaffold:workflow_authorize
     case Ash.load(record, load_statement(loads), actor: ctx.actor, authorize?: ctx.authorize?) do
       {:ok, loaded} -> loaded
@@ -242,7 +261,7 @@ defmodule <%= @module %>.Workflows.Runtime do
     end
   end
 
-  defp load(value, _loads, _ctx), do: value
+  def load(value, _loads, _ctx), do: value
 
   # [["project", "owner"], ["creator"]] -> [project: [owner: []], creator: []]
   defp load_statement(paths) do

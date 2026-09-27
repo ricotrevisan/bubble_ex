@@ -17,7 +17,11 @@
 #     `mix wtf.task complete` of its api_call tasks, whose request_shape
 #     check runs the tests tagged with each call (request_shape.exs); for
 #     expr_app, its page and reusable surface tests run by their task CLI
-#     tags (`mix test --only bubble:page:<id>`)
+#     tags (`mix test --only bubble:page:<id>`); for
+#     phoenix_frontend_workflows, the workflows' behavior tests
+#     (test/support/target/phoenix/frontend_workflows_behavior.exs) and
+#     `mix wtf.task complete` of its workflow tasks (compiles, lint,
+#     step_order) with their tagged tests (frontend_workflows.exs)
 #   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
 #     complete/audit end to end on one generated project (WTF-375), and
 #     scripts/phoenix_compile_check/structural.sh: mix wtf.verify
@@ -82,6 +86,18 @@ for fixture in $fixtures; do
     if [[ "$fixture" == phoenix_api_clients ]]; then
       (cd "$root" && mix run --no-compile scripts/phoenix_compile_check/request_shape.exs \
         "$scratch" test/support/target/phoenix/api_clients.json)
+    fi
+
+    # Frontend workflows (WTF-372): their behavior in the generated app,
+    # then mix wtf.task completes the fixture's workflow tasks (compiles,
+    # lint, step_order) and runs their tagged tests.
+    if [[ "$fixture" == phoenix_frontend_workflows ]]; then
+      cp "$root/test/support/target/phoenix/frontend_workflows_behavior.exs" \
+        test/frontend_workflows_behavior_test.exs
+      mix test test/frontend_workflows_behavior_test.exs
+      rm test/frontend_workflows_behavior_test.exs
+      (cd "$root" && mix run --no-compile scripts/phoenix_compile_check/frontend_workflows.exs \
+        "$scratch" test/support/target/phoenix/frontend_workflows.json)
     fi
   fi
 done

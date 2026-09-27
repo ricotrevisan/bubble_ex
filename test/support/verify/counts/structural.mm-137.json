@@ -110,24 +110,24 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 101,
+          "generated": 632,
           "reasons": {
-            "residue:api_connector_action": 104,
-            "residue:auth_action": 17,
-            "residue:blocked_by_callee": 31,
-            "residue:plugin_action": 382,
+            "residue:api_connector_action": 127,
+            "residue:auth_action": 15,
+            "residue:blocked_by_callee": 147,
+            "residue:plugin_action": 333,
             "residue:plugin_event": 258,
             "residue:trigger_in_runtime_template": 192,
-            "residue:uncompiled_expression": 619,
-            "residue:unresolved_reference": 4,
-            "residue:unsupported_action": 9,
-            "residue:unsupported_event": 2,
-            "residue:unsupported_option": 12,
-            "uncovered:no_generator": 1179
+            "residue:unavailable_input": 429,
+            "residue:uncompiled_expression": 600,
+            "residue:unresolved_reference": 10,
+            "residue:unsupported_action": 92,
+            "residue:unsupported_event": 17,
+            "residue:unsupported_option": 58
           },
-          "residue": 1630,
+          "residue": 2278,
           "total": 2910,
-          "uncovered": 1179
+          "uncovered": 0
         }
       }
     },
@@ -160,7 +160,7 @@
       "structural.symbol_coverage.option_values": "pass",
       "structural.symbol_coverage.pages": "pass",
       "structural.symbol_coverage.reusables": "pass",
-      "structural.symbol_coverage.workflows": "fail"
+      "structural.symbol_coverage.workflows": "pass"
     }
   },
   "faithful": {
@@ -273,24 +273,24 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 101,
+          "generated": 632,
           "reasons": {
-            "residue:api_connector_action": 104,
-            "residue:auth_action": 17,
-            "residue:blocked_by_callee": 31,
-            "residue:plugin_action": 382,
+            "residue:api_connector_action": 127,
+            "residue:auth_action": 15,
+            "residue:blocked_by_callee": 147,
+            "residue:plugin_action": 333,
             "residue:plugin_event": 258,
             "residue:trigger_in_runtime_template": 192,
-            "residue:uncompiled_expression": 619,
-            "residue:unresolved_reference": 4,
-            "residue:unsupported_action": 9,
-            "residue:unsupported_event": 2,
-            "residue:unsupported_option": 12,
-            "uncovered:no_generator": 1179
+            "residue:unavailable_input": 429,
+            "residue:uncompiled_expression": 600,
+            "residue:unresolved_reference": 10,
+            "residue:unsupported_action": 92,
+            "residue:unsupported_event": 17,
+            "residue:unsupported_option": 58
           },
-          "residue": 1630,
+          "residue": 2278,
           "total": 2910,
-          "uncovered": 1179
+          "uncovered": 0
         }
       }
     },
@@ -323,7 +323,7 @@
       "structural.symbol_coverage.option_values": "pass",
       "structural.symbol_coverage.pages": "pass",
       "structural.symbol_coverage.reusables": "pass",
-      "structural.symbol_coverage.workflows": "fail"
+      "structural.symbol_coverage.workflows": "pass"
     }
   }
 }

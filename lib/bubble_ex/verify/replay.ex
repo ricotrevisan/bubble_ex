@@ -5,8 +5,9 @@ defmodule BubbleEx.Verify.Replay do
   version.
 
     * `app` - the Bubble app ID (the `<app>` of `<app>.bubbleapps.io`):
-      lowercase letters, digits and `-`. A custom domain is refused: it
-      serves live at its root, so the harness never takes one
+      lowercase letters, digits and `-`. A custom domain is not an app ID:
+      it serves live at its root, so it is only ever an owner-confirmed
+      `host` (below), under which the driver builds branch URLs
     * `branch` - a bare branch name starting with the replay prefix
       `wtfreplay` (e.g. `wtfreplay`, `wtfreplay-2`), lowercase letters,
       digits, `-` and `_`. It is an allowlist: `live`, `test`, their

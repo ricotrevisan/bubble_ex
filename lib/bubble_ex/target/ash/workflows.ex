@@ -69,7 +69,8 @@ defmodule BubbleEx.Target.Ash.Workflows do
   alias BubbleEx.Target.Ash.Workflows.Spec
   alias BubbleEx.Target.Elixir, as: ElixirTarget
   alias BubbleEx.Workflows.Backend
-  alias BubbleEx.Workflows.Backend.{Change, Expr, Step, Workflow}
+  alias BubbleEx.Workflows.Backend.{Step, Workflow}
+  alias BubbleEx.Workflows.Lowering.{Change, Expr}
 
   @names_version 1
 

@@ -37,10 +37,12 @@ defmodule BubbleEx.Workflows.Backend do
   | Terminate this workflow (`TerminateWorkflow`) | `:terminate` | `returns` |
   | Return data from API (`APIReturnData`) | `:return` | `values` (key/value pairs) or `text` and `content_type` |
 
-  A change (`BubbleEx.Workflows.Backend.Change`) sets a field or edits a
+  The step vocabulary, the data operations and the value structs are
+  shared with the frontend lowering (`BubbleEx.Workflows.Lowering`,
+  WTF-372). A change (`BubbleEx.Workflows.Lowering.Change`) sets a field or edits a
   list field (`:set`, `:add`, `:remove`, `:add_list`, `:remove_list`,
   `:set_list`, `:clear_list`). Every step may carry a `condition` ("Only
-  when"). Values are `BubbleEx.Workflows.Backend.Expr`s: an IR, or the
+  when"). Values are `BubbleEx.Workflows.Lowering.Expr`s: an IR, or the
   constructs that stopped it.
 
   ## Residue
@@ -85,13 +87,26 @@ defmodule BubbleEx.Workflows.Backend do
   Entry points (one per workflow) are always generated.
   """
 
-  alias BubbleEx.{Diagnostic, Error, Expression, Index, Model}
-  alias BubbleEx.Expression.{Compiler, Env, IR, Sites, Tree}
+  alias BubbleEx.{Diagnostic, Error, Index, Model}
+  alias BubbleEx.Expression.{Env, Sites, Tree}
   alias BubbleEx.Index.{Symbol, WorkflowAnalysis}
-  alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
-  alias BubbleEx.Workflows.Backend.{Change, Expr, Param, Return, Step, Workflow}
+  alias BubbleEx.Workflows.Backend.{Step, Workflow}
+  alias BubbleEx.Workflows.Lowering
+  alias BubbleEx.Workflows.Lowering.Param
   alias BubbleEx.Workflows.Source
+
+  import Lowering,
+    only: [
+      expr: 3,
+      expr_residue: 2,
+      exprs_of: 1,
+      data_type_key: 1,
+      ordered: 1,
+      map: 1,
+      text: 1,
+      type_text: 1
+    ]
 
   defstruct workflows: [], cycles: [], diagnostics: []
 
@@ -148,15 +163,6 @@ defmodule BubbleEx.Workflows.Backend do
     return: ~w(parameters_actions return_plain_text custom_text custom_content_type)
   }
 
-  @change_ops %{
-    "add" => :add,
-    "remove" => :remove,
-    "add_list" => :add_list,
-    "remove_list" => :remove_list,
-    "set_list" => :set_list,
-    "clear_list" => :clear_list
-  }
-
   @doc """
   Lowers the backend workflows of decoded app JSON. `model` and `index`
   must be built from the same app (`BubbleEx.Index.build(app, model:
@@ -181,8 +187,8 @@ defmodule BubbleEx.Workflows.Backend do
         {id, raw, ["api", key]}
       end
 
-    params = Map.new(entries, fn {id, raw, _} -> {id, parameters(raw)} end)
-    returns = Map.new(entries, fn {id, raw, _} -> {id, returns(raw)} end)
+    params = Map.new(entries, fn {id, raw, _} -> {id, Lowering.parameters(raw)} end)
+    returns = Map.new(entries, fn {id, raw, _} -> {id, Lowering.returns(raw)} end)
     cycles = cycles(index, Map.new(entries, &{elem(&1, 0), true}))
     in_cycle = for c <- cycles, w <- c.workflows, into: %{}, do: {w, c.id}
 
@@ -389,66 +395,6 @@ defmodule BubbleEx.Workflows.Backend do
   defp method("post"), do: :post
   defp method(_), do: nil
 
-  # --- parameters and returns --------------------------------------------------------
-
-  # API workflows define `{key, value (the type), is_list, optional,
-  # in_url}`; custom events `{param_id, param_name, btype_id, is_list,
-  # optional}`. Expressions reference a parameter by `param_id` (for API
-  # workflows the key when there is no `param_id`).
-  defp parameters(raw) do
-    raw
-    |> Source.value(~w(properties %p))
-    |> map()
-    |> Map.get("parameters")
-    |> ordered()
-    |> Enum.flat_map(fn {_, p} ->
-      p = map(p)
-      id = text(p["param_id"]) || text(p["key"])
-      base = text(p["btype_id"]) || text(p["value"])
-
-      if id do
-        [
-          %Param{
-            id: id,
-            key: text(p["key"]) || text(p["param_name"]) || id,
-            type: base && if(p["is_list"] == true, do: Type.listed(base), else: base),
-            optional?: p["optional"] == true,
-            in_url?: p["in_url"] == true
-          }
-        ]
-      else
-        []
-      end
-    end)
-  end
-
-  defp returns(raw) do
-    raw
-    |> Source.value(~w(properties %p))
-    |> map()
-    |> Map.get("return_types")
-    |> ordered()
-    |> Enum.flat_map(fn {_, r} ->
-      r = map(r)
-
-      case text(r["return_id"]) do
-        nil ->
-          []
-
-        id ->
-          base = text(r["btype_id"])
-
-          [
-            %Return{
-              id: id,
-              name: text(r["display"]) || id,
-              type: base && if(r["is_list"] == true, do: Type.listed(base), else: base)
-            }
-          ]
-      end
-    end)
-  end
-
   # --- steps -------------------------------------------------------------------------
 
   defp step(action, path, n, workflow, env, ctx) when is_map(action) do
@@ -470,7 +416,7 @@ defmodule BubbleEx.Workflows.Backend do
       path: Source.pointer(path)
     }
 
-    case type_residue(id, type, op) do
+    case if(op, do: [], else: Lowering.type_residue(id, type)) do
       [] ->
         {args, residue} = lower(op, props, ppath, id, env, ctx)
         options = unknown_members(op, props)
@@ -507,19 +453,6 @@ defmodule BubbleEx.Workflows.Backend do
     }
   end
 
-  defp type_residue(_id, _type, op) when op != nil, do: []
-
-  defp type_residue(id, "apiconnector2-" <> call, nil),
-    do: [Residue.entry(id, :api_connector_action, %{call: call})]
-
-  defp type_residue(id, type, nil) do
-    cond do
-      p = Residue.plugin(type) -> [Residue.entry(id, :plugin_action, %{plugin: p})]
-      type in Residue.auth_actions() -> [Residue.entry(id, :auth_action, %{type: type})]
-      true -> [Residue.entry(id, :unsupported_action, %{type: type_text(type)})]
-    end
-  end
-
   defp unknown_members(op, props) do
     known = ["condition" | Map.fetch!(@members, op)]
 
@@ -531,31 +464,9 @@ defmodule BubbleEx.Workflows.Backend do
 
   # --- operations --------------------------------------------------------------------
 
-  defp lower(:create, props, path, id, env, ctx) do
-    type = data_type_key(props["thing_type"]) || written_type(ctx, id)
-
-    changes(props["initial_values"], path ++ ["initial_values"], type, id, env, ctx)
-    |> with_type(type, id, %{})
-  end
-
-  defp lower(op, props, path, id, env, ctx) when op in [:update, :update_list] do
-    type = written_type(ctx, id)
-    target = expr(props["to_change"], path ++ ["to_change"], env)
-
-    changes(props["changes"], path ++ ["changes"], type, id, env, ctx)
-    |> with_type(type, id, %{target: target})
-  end
-
-  defp lower(:update_current_user, props, path, id, env, ctx) do
-    changes(props["changes"], path ++ ["changes"], "user", id, env, ctx)
-    |> with_type("user", id, %{})
-  end
-
-  defp lower(op, props, path, id, env, ctx) when op in [:delete, :delete_list] do
-    type = written_type(ctx, id)
-    target = expr(props["to_delete"], path ++ ["to_delete"], env)
-    with_type({[], []}, type, id, %{target: target})
-  end
+  defp lower(op, props, path, id, env, ctx)
+       when op in [:create, :update, :update_current_user, :update_list, :delete, :delete_list],
+       do: Lowering.data_args(op, props, path, id, env, ctx)
 
   defp lower(:schedule, props, path, id, env, ctx) do
     {callee, params, residue} = scheduled(props, path, id, env, ctx)
@@ -581,54 +492,30 @@ defmodule BubbleEx.Workflows.Backend do
 
   defp lower(:call, props, path, id, env, ctx) do
     callee = text(props["custom_event"])
-    callee_params = Map.get(ctx.params, callee)
 
     {params, residue} =
-      props["arguments"]
-      |> ordered()
-      |> Enum.map_reduce([], fn {k, arg}, residue ->
-        arg = map(arg)
-        param = text(arg["param_id"])
-        value = expr(arg["arg_value"], path ++ ["arguments", k, "arg_value"], env)
+      Lowering.call_params(
+        props["arguments"],
+        path ++ ["arguments"],
+        id,
+        env,
+        Map.get(ctx.params, callee)
+      )
 
-        if callee_params && Enum.any?(callee_params, &(&1.id == param)),
-          do: {%{param: param, value: value}, residue},
-          else:
-            {nil, [Residue.entry(id, :unresolved_reference, %{reference: "parameter"}) | residue]}
-      end)
-
-    residue =
-      if callee_params,
-        do: residue,
-        else: [Residue.entry(id, :unresolved_reference, %{reference: "workflow"}) | residue]
-
-    {%{workflow: callee, params: Enum.reject(params, &is_nil/1)}, Enum.uniq(residue)}
+    {%{workflow: callee, params: params}, residue}
   end
 
   defp lower(:terminate, props, path, id, env, ctx) do
-    known = Map.get(ctx.returns, ctx.workflow, [])
-
     {returns, residue} =
-      props["return_values"]
-      |> ordered()
-      |> Enum.map_reduce([], fn {k, r}, residue ->
-        r = map(r)
-        return = text(r["return_id"])
+      Lowering.terminate_returns(
+        props["return_values"],
+        path ++ ["return_values"],
+        id,
+        env,
+        Map.get(ctx.returns, ctx.workflow, [])
+      )
 
-        cond do
-          not Enum.any?(known, &(&1.id == return)) ->
-            {nil, [Residue.entry(id, :unresolved_reference, %{reference: "return"}) | residue]}
-
-          not Map.has_key?(r, "return_value") ->
-            {nil, residue}
-
-          true ->
-            value = expr(r["return_value"], path ++ ["return_values", k, "return_value"], env)
-            {%{return: return, value: value}, residue}
-        end
-      end)
-
-    {%{returns: Enum.reject(returns, &is_nil/1)}, Enum.uniq(residue)}
+    {%{returns: returns}, residue}
   end
 
   defp lower(:return, props, path, id, env, _ctx) do
@@ -663,14 +550,6 @@ defmodule BubbleEx.Workflows.Backend do
     end
   end
 
-  defp with_type({changes, residue}, nil, id, args),
-    do:
-      {Map.merge(args, %{data_type: nil, changes: changes}),
-       [Residue.entry(id, :unresolved_reference, %{reference: "data_type"}) | residue]}
-
-  defp with_type({changes, residue}, type, _id, args),
-    do: {Map.merge(args, %{data_type: type, changes: changes}), residue}
-
   defp scheduled(props, path, id, env, ctx) do
     callee = text(props["api_event"])
     callee_params = Map.get(ctx.params, callee)
@@ -699,130 +578,6 @@ defmodule BubbleEx.Workflows.Backend do
 
   # A diagnostic, not residue: see the moduledoc, "Privacy".
   defp privacy_option(props), do: props["ignore_privacy_rules"] == true
-
-  defp changes(entries, path, type, id, env, ctx) do
-    fields = fields(ctx.model, type)
-
-    entries
-    |> ordered()
-    |> Enum.map_reduce([], fn {k, entry}, residue ->
-      entry = map(entry)
-
-      change(
-        entry,
-        change_op(entry["action"]),
-        type,
-        fields,
-        path ++ [k, "value"],
-        id,
-        env,
-        residue
-      )
-    end)
-    |> then(fn {changes, residue} -> {Enum.reject(changes, &is_nil/1), Enum.uniq(residue)} end)
-  end
-
-  defp change(_entry, nil, _type, _fields, _path, id, _env, residue),
-    do: {nil, [Residue.entry(id, :unsupported_option, %{options: ["changes"]}) | residue]}
-
-  defp change(entry, op, type, fields, path, id, env, residue) do
-    field = text(entry["key"])
-
-    cond do
-      type != nil and not MapSet.member?(fields, field) ->
-        {nil, [Residue.entry(id, :unresolved_reference, %{reference: "field"}) | residue]}
-
-      op == :clear_list ->
-        {%Change{field: field, op: op, value: nil}, residue}
-
-      true ->
-        {%Change{field: field, op: op, value: expr(entry["value"], path, env)}, residue}
-    end
-  end
-
-  defp change_op(%{"type" => "Empty"}), do: :set
-  defp change_op(nil), do: :set
-  defp change_op(name) when is_binary(name), do: Map.get(@change_ops, name)
-  defp change_op(_), do: nil
-
-  defp fields(_model, nil), do: MapSet.new()
-
-  defp fields(model, type) do
-    case Model.data_type(model, type) do
-      nil ->
-        MapSet.new()
-
-      data_type ->
-        for f <- data_type.fields, not f.deleted, f.raw == nil, into: MapSet.new(), do: f.id
-    end
-  end
-
-  # The data type an action writes, as the index resolved it.
-  defp written_type(ctx, id) do
-    ctx.index
-    |> Index.references_from(id, [:writes_type])
-    |> Enum.map(fn %{to: "data_type:" <> type} -> type end)
-    |> Enum.uniq()
-    |> case do
-      [type] -> type
-      _ -> nil
-    end
-  end
-
-  # --- expressions -------------------------------------------------------------------
-
-  defp expr(nil, _path, _env), do: nil
-
-  defp expr(value, path, env) when is_map(value) do
-    pointer = Source.pointer(path)
-
-    with {:ok, %{ast: ast}} <- Expression.parse(value, schema: env.schema, path: path),
-         {:ok, %{ir: ir, diagnostics: diags}} <- Compiler.compile(ast, %{env | path: path}) do
-      if ir,
-        do: %Expr{path: pointer, ir: ir},
-        else: %Expr{path: pointer, constructs: Residue.constructs(diags)}
-    else
-      _ -> %Expr{path: pointer, constructs: ["parse_failed"]}
-    end
-  end
-
-  defp expr(value, path, _env) when is_binary(value),
-    do: %Expr{path: Source.pointer(path), ir: IR.node(:literal, [value], "text")}
-
-  defp expr(value, path, _env) when is_number(value),
-    do: %Expr{path: Source.pointer(path), ir: IR.node(:literal, [value], "number")}
-
-  defp expr(value, path, _env) when is_boolean(value),
-    do: %Expr{path: Source.pointer(path), ir: IR.node(:literal, [value], "boolean")}
-
-  defp expr(_value, path, _env), do: %Expr{path: Source.pointer(path), constructs: ["malformed"]}
-
-  defp exprs_of(args) do
-    Enum.flat_map(args, fn
-      {_k, %Expr{} = e} -> [e]
-      {_k, list} when is_list(list) -> Enum.flat_map(list, &nested_exprs/1)
-      _ -> []
-    end)
-  end
-
-  defp nested_exprs(%Change{value: value}), do: [value]
-  defp nested_exprs(%{value: value}), do: [value]
-  defp nested_exprs(_), do: []
-
-  defp expr_residue(id, exprs) do
-    case for(%Expr{ir: nil} = e <- exprs, do: e) do
-      [] ->
-        []
-
-      failed ->
-        [
-          Residue.entry(id, :uncompiled_expression, %{
-            expressions: length(failed),
-            constructs: failed |> Enum.flat_map(& &1.constructs) |> Enum.uniq() |> Enum.sort()
-          })
-        ]
-    end
-  end
 
   # --- cycles and diagnostics ---------------------------------------------------------
 
@@ -901,37 +656,6 @@ defmodule BubbleEx.Workflows.Backend do
   end
 
   # --- helpers ------------------------------------------------------------------------
-
-  defp data_type_key(value) when is_binary(value) do
-    case Type.reference(value) do
-      {:data_type, key} -> key
-      _ -> nil
-    end
-  end
-
-  defp data_type_key(_), do: nil
-
-  defp ordered(map) when is_map(map) do
-    entries = Enum.to_list(map)
-
-    if Enum.all?(entries, fn {k, _} -> match?({_, ""}, Integer.parse(k)) end),
-      do: Enum.sort_by(entries, fn {k, _} -> String.to_integer(k) end),
-      else: Enum.sort_by(entries, &elem(&1, 0))
-  end
-
-  defp ordered(list) when is_list(list),
-    do: list |> Enum.with_index() |> Enum.map(fn {v, i} -> {i, v} end)
-
-  defp ordered(_), do: []
-
-  defp map(value) when is_map(value), do: value
-  defp map(_), do: %{}
-
-  defp text(value) when is_binary(value) and value != "", do: value
-  defp text(_), do: nil
-
-  defp type_text(type) when is_binary(type), do: type
-  defp type_text(_), do: nil
 
   @doc false
   # The action classes of `BubbleEx.Index.WorkflowAnalysis`, for tests.

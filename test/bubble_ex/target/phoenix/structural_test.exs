@@ -8,6 +8,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
   alias BubbleEx.Decision.Resolved
   alias BubbleEx.Target.{ApiClients, Ash, Phoenix}
   alias BubbleEx.Target.Ash.Workflows
+  alias BubbleEx.Target.Elixir.FrontendWorkflows
   alias BubbleEx.Target.Phoenix.Structural
   alias BubbleEx.Target.Phoenix.Structural.Bypasses
   alias BubbleEx.Verify.Result
@@ -32,7 +33,23 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
     {:ok, project} = Ash.map(model, [], privacy: :omit)
     {:ok, backend} = Backend.build(app, model, index)
     {:ok, workflows} = Workflows.map(backend, project, namespace: "Acme")
-    residue = Workflows.Spec.residue(workflows)
+    {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+
+    frontend_workflows =
+      frontend &&
+        elem(
+          FrontendWorkflows.map(lowered, project,
+            namespace: "Acme",
+            frontend: frontend,
+            backend: workflows
+          ),
+          1
+        )
+
+    residue =
+      Workflows.Spec.residue(workflows) ++
+        if(frontend_workflows, do: FrontendWorkflows.Spec.residue(frontend_workflows), else: [])
+
     {:ok, plan} = Plan.build(model, index, frontend, [], residue: residue)
     {:ok, api_clients} = ApiClients.map(model)
 
@@ -42,13 +59,17 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       plan: plan,
       project: project,
       workflows: workflows,
+      frontend_workflows: frontend_workflows,
       api_clients: api_clients
     }
 
     if render? do
       opts =
         [name: "Acme", module: "Acme", workflows: workflows, api_clients: api_clients] ++
-          if(frontend, do: [frontend: frontend], else: [])
+          if(frontend,
+            do: [frontend: frontend, frontend_workflows: frontend_workflows],
+            else: []
+          )
 
       {:ok, files} = Phoenix.render(project, opts)
       {:ok, rerender} = Phoenix.render(project, opts)
@@ -74,42 +95,32 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       %{inputs: build(SampleHelper.load_json_sample("synthetic_plan_export"))}
     end
 
-    test "page workflows have no generator, so they are uncovered; the rest passes",
+    test "everything is generated or accounted for; policy coverage is blocked on WTF-356",
          %{inputs: inputs} do
       report = run!(inputs)
 
-      assert statuses(report) == %{
-               "structural.bypass_inventory" => :pass,
-               "structural.deterministic" => :pass,
-               "structural.generated_unchanged" => :pass,
-               "structural.policy_coverage" => :skipped,
-               "structural.symbol_coverage.api_calls" => :pass,
-               "structural.symbol_coverage.data_types" => :pass,
-               "structural.symbol_coverage.fields" => :pass,
-               "structural.symbol_coverage.option_sets" => :pass,
-               "structural.symbol_coverage.option_values" => :pass,
-               "structural.symbol_coverage.pages" => :pass,
-               "structural.symbol_coverage.reusables" => :pass,
-               "structural.symbol_coverage.workflows" => :fail
-             }
+      for {id, status} <- statuses(report),
+          do: assert(status == if(id =~ "policy_coverage", do: :skipped, else: :pass), id)
 
-      assert symbols(report, "workflows")["reasons"] == %{
-               "excluded:mobile_view" => 1,
-               "residue:auth_action" => 1,
-               "residue:plugin_action" => 1,
-               "uncovered:no_generator" => 5
-             }
+      assert symbols(report, "workflows")["generated"] == 8
+      assert symbols(report, "workflows")["residue"] == 4
+      assert result(report, "structural.policy_coverage").reason =~ "blocked on WTF-356"
+    end
+
+    test "without the page workflow Spec, page and reusable workflows are uncovered",
+         %{inputs: inputs} do
+      report = run!(%{inputs | frontend_workflows: nil})
+      assert status(report, "structural.symbol_coverage.workflows") == :fail
+      assert symbols(report, "workflows")["reasons"]["uncovered:not_emitted"] == 3
 
       assert %{
                op: "symbol_uncovered",
-               workflow: "wClick",
-               detail: "workflow:wClick (no_generator)"
+               workflow: "wLoopA",
+               detail: "workflow:wLoopA (not_emitted)"
              } in diff(
                report,
                "structural.symbol_coverage.workflows"
              )
-
-      assert result(report, "structural.policy_coverage").reason =~ "blocked on WTF-356"
     end
 
     test "results are structural Verify results that round-trip and name generator tasks",
@@ -144,7 +155,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       assert symbols(report, "pages")["reasons"] == %{"excluded:mobile_view" => 1}
       assert symbols(report, "reusables")["generated"] == 3
       assert symbols(report, "api_calls")["generated"] == 2
-      assert symbols(report, "workflows")["generated"] == 5
+      assert symbols(report, "workflows")["generated"] == 8
       assert symbols(report, "fields")["unreadable_parents"] == 0
     end
 
@@ -169,14 +180,17 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
     # H1: a symbol its generator did not emit is uncovered unless an open
     # task that is not a generator node carries its residue.
     test "without any generator output, what was not emitted is uncovered", %{inputs: inputs} do
-      inputs = %{inputs | files: nil, workflows: nil, api_clients: nil} |> Map.delete(:rerender)
+      inputs =
+        %{inputs | files: nil, workflows: nil, frontend_workflows: nil, api_clients: nil}
+        |> Map.delete(:rerender)
+
       report = run!(inputs)
 
       # pHome's surface task is open with residue; the reusables are not.
       assert symbols(report, "pages")["residue"] == 1
       assert symbols(report, "reusables")["reasons"] == %{"uncovered:not_emitted" => 3}
       assert symbols(report, "api_calls")["reasons"] == %{"uncovered:not_emitted" => 2}
-      assert symbols(report, "workflows")["reasons"]["uncovered:not_emitted"] == 5
+      assert symbols(report, "workflows")["reasons"]["uncovered:not_emitted"] == 8
 
       for category <- ~w(reusables api_calls workflows),
           do: assert(status(report, "structural.symbol_coverage.#{category}") == :fail)

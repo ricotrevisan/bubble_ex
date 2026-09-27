@@ -22,6 +22,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.{ApiClients, Ash, Phoenix}
   alias BubbleEx.Target.Ash.Workflows
+  alias BubbleEx.Target.Elixir.FrontendWorkflows
   alias BubbleEx.Target.Phoenix.Structural
   alias BubbleEx.Test.SplitExport
   alias BubbleEx.Workflows.Backend
@@ -94,10 +95,22 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
     {:ok, backend} = Backend.build(ctx.app, ctx.model, ctx.index)
     {:ok, workflows} = Workflows.map(backend, project, namespace: "Private")
 
-    # The plan knows what the lowering left (Workflows.Spec.residue/1).
+    {:ok, lowered} = BubbleEx.Workflows.Frontend.build(ctx.app, ctx.model, ctx.index)
+
+    {:ok, frontend_workflows} =
+      FrontendWorkflows.map(lowered, project,
+        namespace: "Private",
+        frontend: ctx.frontend,
+        backend: workflows
+      )
+
+    # The plan knows what the lowerings left.
     {:ok, plan} =
       Plan.build(ctx.model, ctx.index, ctx.frontend, applied,
-        residue: ctx.residue ++ Workflows.Spec.residue(workflows),
+        residue:
+          ctx.residue ++
+            Workflows.Spec.residue(workflows) ++
+            FrontendWorkflows.Spec.residue(frontend_workflows),
         decisions_sha256: sha
       )
 
@@ -108,6 +121,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
       module: "Private",
       frontend: ctx.frontend,
       workflows: workflows,
+      frontend_workflows: frontend_workflows,
       api_clients: api_clients
     ]
 
@@ -122,6 +136,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
       files: files,
       rerender: rerender,
       workflows: workflows,
+      frontend_workflows: frontend_workflows,
       api_clients: api_clients
     }
 

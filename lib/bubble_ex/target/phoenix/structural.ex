@@ -116,7 +116,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
     * `:model`, `:index`, `:plan` - the `BubbleEx.Model`, its
       `BubbleEx.Index` and the `BubbleEx.Plan` built from them (with the
       workflow Spec's residue, `BubbleEx.Target.Ash.Workflows.Spec.residue/1`,
-      so the plan knows what the lowering left)
+      and `BubbleEx.Target.Elixir.FrontendWorkflows.Spec.residue/1`, so the
+      plan knows what the lowerings and their bindings left)
     * `:project` - the `BubbleEx.Target.Ash.Project` that was rendered
       (`privacy: :omit`), or an `:unverified` one to check policy coverage
     * `:files` - the rendered file map (`BubbleEx.Target.Phoenix.render/2`);
@@ -125,7 +126,9 @@ defmodule BubbleEx.Target.Phoenix.Structural do
     * `:rerender` - a second rendering from the same inputs, for
       `deterministic`
     * `:workflows` - the `BubbleEx.Target.Ash.Workflows.Spec` rendered,
-      and `:api_clients` - the `BubbleEx.Target.ApiClients.Spec` rendered
+      `:frontend_workflows` - the `BubbleEx.Target.Elixir.FrontendWorkflows.Spec`
+      rendered (page and reusable workflows), and `:api_clients` - the
+      `BubbleEx.Target.ApiClients.Spec` rendered
 
   Options: `:app` (the Bubble app ID, required), `:now` (required),
   `:actor` (default `"bubble_ex"`), `:subject_build` (`%{git_sha,
