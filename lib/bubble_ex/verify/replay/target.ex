@@ -80,12 +80,14 @@ defmodule BubbleEx.Verify.Replay.Target do
   # A Data API type path as Bubble's `/meta` lists it: the type's display
   # name lowercased without spaces, so it may hold `.`, `:` or emoji
   # (`00.thing`, `🎙️msgs`). No separator, query, escape, whitespace,
-  # uppercase, math symbol (`∕`) or control, format, surrogate, private-use
-  # or unassigned character, and never a dot segment. The path must equal
+  # uppercase, math symbol (`∕`) or control, format, surrogate or
+  # private-use character, and never a dot segment. (Unassigned code points
+  # are not refused: older OTP Unicode tables count recent emoji as
+  # unassigned.) The path must equal
   # its NFKC form, so full-width look-alikes (`／`, `．`) are refused. The
   # only format characters kept are the ones emoji need: the zero-width
   # joiner (U+200D) and the emoji variation selector (U+FE0F).
-  @type_path ~r/\A[^\/\\?#%\s\p{Lu}\p{Sm}\p{Cc}\p{Cs}\p{Co}\p{Cn}]{1,128}\z/u
+  @type_path ~r/\A[^\/\\?#%\s\p{Lu}\p{Sm}\p{Cc}\p{Cs}\p{Co}]{1,128}\z/u
   @emoji_format ["\u200D", "\uFE0F"]
   @record_id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
   @token ~r/\A[\x21-\x7e]{8,512}\z/
