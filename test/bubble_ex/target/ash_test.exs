@@ -374,7 +374,66 @@ defmodule BubbleEx.Target.AshTest do
       assert [%{module: "User", synthesized: true} = user] = p.resources
 
       assert Enum.map(user.attributes, & &1.name) ==
-               ~w(id created_date modified_date creator_id slug email)
+               ~w(id created_date modified_date creator_id slug email confirmed_at)
+    end
+
+    test "the User gets AshAuthentication's confirmed_at, mapping no Bubble field (WTF-413)" do
+      p = project!(fixture("hostile_empty_app"))
+      [user] = p.resources
+      confirmed = Enum.find(user.attributes, &(&1.name == "confirmed_at"))
+
+      assert %{
+               type: :utc_datetime_usec,
+               allow_nil?: true,
+               writable?: true,
+               public?: false,
+               source: %{type: "user", auth: "confirmed_at"}
+             } = confirmed
+
+      refute Map.has_key?(confirmed.source, :field)
+
+      assert p.names["resources"]["user"]["attributes"]["authentication.email.email_confirmed"] ==
+               "confirmed_at"
+    end
+
+    test "a defined field named confirmed_at keeps a locked name; the attribute moves aside" do
+      app = %{
+        "user_types" => %{
+          "user" => %{
+            "display" => "User",
+            "fields" => %{
+              "confirmed_at_date" => %{"display" => "confirmed at", "value" => "date"}
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Model.build(app)
+
+      # Fresh: the built-in attribute claims the name first.
+      {:ok, fresh} = Ash.map(model)
+      [user] = fresh.resources
+      names = Map.new(user.attributes, &{&1.source[:field] || &1.source[:auth], &1.name})
+      assert names["confirmed_at"] == "confirmed_at"
+      assert names["confirmed_at_date"] == "confirmed_at_2"
+
+      # A name map from before WTF-413 gave the field the name: it keeps it.
+      locked = %{
+        "version" => 1,
+        "resources" => %{
+          "user" => %{
+            "module" => "User",
+            "table" => "user",
+            "attributes" => %{"confirmed_at_date" => "confirmed_at"}
+          }
+        }
+      }
+
+      {:ok, relocked} = Ash.map(model, [], names: locked)
+      [user] = relocked.resources
+      names = Map.new(user.attributes, &{&1.source[:field] || &1.source[:auth], &1.name})
+      assert names["confirmed_at_date"] == "confirmed_at"
+      assert names["confirmed_at"] == "confirmed_at_2"
     end
 
     test "defaults with no Ash equivalent are omitted and diagnosed" do

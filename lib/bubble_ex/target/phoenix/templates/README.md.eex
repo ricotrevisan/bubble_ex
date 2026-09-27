@@ -54,6 +54,13 @@ authentication configuration; tune it there.
 email for a minute) that emails the link, encrypted in the job's
 arguments. Throttle requests per IP at your proxy if you need to.
 
+The User's `confirmed_at` (AshAuthentication's confirmation attribute)
+says when the email was confirmed. Bubble keeps only a confirmed flag, so
+users loaded from Bubble with a confirmed email have their Created Date
+there, a migrated value; the others have nil. Signing in with a magic link
+proves the email: `AuthController.success/4` sets `confirmed_at` when it
+is nil.
+
 ## Configuration
 
 Production reads its secrets from the environment and refuses to boot

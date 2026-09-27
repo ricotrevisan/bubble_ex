@@ -167,6 +167,42 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert router =~ ~s(match :*, "/:__wf_name", WorkflowApiController, :dispatch)
     end
 
+    test "the User's confirmed_at: generated, and a magic-link sign-in sets it (WTF-413)" do
+      files = render!()
+
+      assert files["lib/acme_import/user.ex"] =~
+               "attribute :confirmed_at, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: false"
+
+      assert files["lib/acme_import/accounts/resources.ex"] =~
+               "def confirmed_at_field, do: :confirmed_at"
+
+      controller = files["lib/acme_import_web/controllers/auth_controller.ex"]
+      assert controller =~ "user = confirm_email(user, activity)"
+      # only a sign-in, with a user (the request phase has none)
+      assert controller =~ "defp confirm_email(%_{} = user, {:magic_link, :sign_in}) do"
+      assert controller =~ "def success(conn, {:magic_link, :request}, _user, _token) do"
+      assert controller =~ "Resources.confirmed_at_field()"
+
+      assert files["test/acme_import_web/smoke_test.exs"] =~
+               "signing in keeps a confirmed_at loaded from Bubble"
+
+      # A Project without it (mapped before WTF-413) is refused.
+      project = representative_project()
+
+      project = %{
+        project
+        | resources:
+            Enum.map(project.resources, fn r ->
+              %{r | attributes: Enum.reject(r.attributes, &(&1.source[:auth] == "confirmed_at"))}
+            end)
+      }
+
+      assert {:error, %BubbleEx.Error{kind: :invalid_input, message: message}} =
+               BubbleEx.Target.Phoenix.render(project, name: "Acme Import")
+
+      assert message =~ "confirmed_at"
+    end
+
     test "uses the User's email attribute, whatever its name" do
       project = representative_project()
 
