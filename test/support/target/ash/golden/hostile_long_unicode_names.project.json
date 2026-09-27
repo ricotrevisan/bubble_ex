@@ -85,6 +85,7 @@
     }
   ],
   "extensions": [],
+  "joins": [],
   "names": {
     "enums": {
       "ölçü": {
@@ -435,10 +436,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "VeryLongNameVeryLongNameVeryLongNameVery",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -452,6 +455,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -467,6 +471,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -513,8 +518,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -522,7 +530,9 @@
             "field": "Created By",
             "type": "tâche_ü"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -531,8 +541,11 @@
           "define_attribute?": false,
           "destination": "Resource",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "emoji_custom",
           "public?": true,
           "sortable?": false,
@@ -540,7 +553,9 @@
             "field": "emoji_🧪_custom_类型",
             "type": "tâche_ü"
           },
-          "source_attribute": "emoji_custom_id"
+          "source_attribute": "emoji_custom_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -764,10 +779,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "User",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -781,6 +798,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -794,6 +812,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -835,8 +854,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator_for_privacy",
           "public?": false,
           "sortable?": true,
@@ -844,7 +866,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "relationships": [
@@ -855,8 +879,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": "never",
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -864,7 +891,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1046,10 +1075,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "Resource",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1063,6 +1094,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1078,6 +1110,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -1124,8 +1157,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -1133,7 +1169,9 @@
             "field": "Created By",
             "type": "类型"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1143,7 +1181,7 @@
       "table": "resource"
     }
   ],
-  "schema_version": 6,
+  "schema_version": 7,
   "typed_structs": [],
   "types": []
 }

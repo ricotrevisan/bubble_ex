@@ -1,0 +1,20 @@
+defmodule <%= @module %>.RepoExtensions do
+  @moduledoc """
+  The PostgreSQL extensions the generated resources need (e.g. `pg_trgm`
+  for trigram indexes), from the Bubble app's decisions. Generated:
+  rewritten on every generation.
+
+  `<%= @module %>.Repo.installed_extensions/0` (owned) must add them:
+
+      ["ash-functions", "citext"] ++ <%= @module %>.RepoExtensions.all()
+
+  A Repo scaffolded before this module existed (bubble_ex before WTF-406)
+  does not call it and is never rewritten: add the call yourself, or the
+  migrations of the indexes that need these extensions fail.
+  `BubbleEx.Target.Phoenix.check_manifest/3` reports such a Repo
+  (`extensions_unlisted`).
+  """
+
+  @doc "The extensions, sorted."
+  def all, do: <%= inspect(@extensions) %>
+end

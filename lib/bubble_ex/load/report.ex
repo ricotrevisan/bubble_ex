@@ -3,9 +3,9 @@ defmodule BubbleEx.Load.Report do
   What a load (or a dry run) found and did (`BubbleEx.Load.run/4`).
 
     * `dry_run` - true when nothing was written
-    * `blocked` - the codes of the error diagnostics that stop a real run
-      (a schema mismatch, duplicate emails, an incomplete export without
-      `allow_partial: true`); `[]` when it may run
+    * `blocked` - the codes of diagnostics that stop a real run
+      (a schema mismatch, stale join membership, duplicate emails, an
+      incomplete export without `allow_partial: true`); `[]` when it may run
     * `run` - the ledger's run key (nil for a dry run)
     * `export_sha256`, `plan_sha256`, `target` - what was loaded, by what
       plan, into which database (its credential-free identity)
@@ -14,6 +14,9 @@ defmodule BubbleEx.Load.Report do
       and for a real run `inserted`, `updated`, `unchanged` (cumulative over
       the run's ledger) and `resumed` (rows this invocation skipped because
       the ledger had them)
+    * `joins` - per list of a join table (keyed `<join ID>/<type>/<field>`,
+      `BubbleEx.Load.Plan.Join`): `rows` (one per member), and for a real
+      run `inserted`, `updated`, `unchanged` and `resumed` (as for types)
     * `files` - `referenced` (distinct Bubble file URLs in file fields),
       `public`, `private`, `copied` (verified in the target storage, or
       would be for a dry run), `failed`
@@ -36,6 +39,7 @@ defmodule BubbleEx.Load.Report do
             plan_sha256: nil,
             target: nil,
             types: %{},
+            joins: %{},
             files: %{},
             auth: %{},
             diagnostics: []
@@ -48,6 +52,7 @@ defmodule BubbleEx.Load.Report do
           plan_sha256: String.t() | nil,
           target: String.t() | nil,
           types: %{String.t() => map()},
+          joins: %{String.t() => map()},
           files: map(),
           auth: map(),
           diagnostics: [Diagnostic.t()]

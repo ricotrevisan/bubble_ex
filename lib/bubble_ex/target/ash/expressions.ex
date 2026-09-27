@@ -31,7 +31,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | a yes/no value used as a condition | `x == true` |
   | `logged in` | `not is_nil(^actor(:id))` |
   | `list contains item` | `item in list` (lists of things are `{:array, :string}` of IDs, WTF-338) |
-  | `list contains item`, `list is empty` on a list an owner decision derives as a `has_many` | `exists(list, id == item)` (a record-side item read as `parent(...)`), `not exists(list, true)`; the list has no other use as a value |
+  | `list contains item`, `list is empty` on a list an owner decision derives as a `has_many` or normalizes to a join (`many_to_many`) | `exists(list, id == item)` (a record-side item read as `parent(...)`), `not exists(list, true)`; the list has no other use as a value |
+  | `Current User's list contains item` on a list normalized to a join, the item being the record or a record it references | `exists(<item>.<rows>, <owner column> == ^actor(:id))` through the member's private rows relationship to the join (with `privacy: :unverified`); its `doesn't contain` does not compile (the rule is denied) |
   | `list doesn't contain item` | `is_nil(list) or is_nil(item) or not (item in list)` (an empty list contains nothing); an actor-side item must not be empty and an actor-side list needs a logged-in actor |
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
@@ -227,6 +228,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # --- the Project's names ---------------------------------------------------------
 
   defp lookup(%Project{} = project) do
+    modules = Map.new(project.resources, &{&1.module, &1.source.type})
+
     types =
       Map.new(project.resources, fn resource ->
         belongs_to = Enum.filter(resource.relationships, &(&1.kind == :belongs_to))
@@ -255,21 +258,49 @@ defmodule BubbleEx.Target.Ash.Expressions do
             {g.source.field, %{attribute: g.name, relationship: nil, references: nil}}
           end
 
-        # A list derived as a has_many is tested through it (membership,
-        # emptiness); it has no value.
+        # A list derived as a has_many, or normalized to a join (a
+        # many_to_many), is tested through it (membership, emptiness); it
+        # has no value.
+        # A current user's list normalized to a join is tested through the
+        # member's private rows relationship (`actor_list`).
         fields =
-          for %{kind: :has_many} = r <- resource.relationships, into: fields do
-            {r.source.field,
-             %{attribute: nil, relationship: nil, references: nil, has_many: r.name}}
-          end
+          for %{kind: kind} = r <- resource.relationships,
+              kind in [:has_many, :many_to_many],
+              into: fields,
+              do: {r.source.field, list_entry(resource, r, pk, modules)}
 
-        {resource.source.type, %{module: resource.module, pk: pk && pk.name, fields: fields}}
+        # The member's rows of a join: `{owner type, list field}` => the
+        # private has_many to the join (BubbleEx.Target.Ash.Policies).
+        rows =
+          for %{source: %{list: %{type: t, field: f}}} = r <- resource.privacy_relationships,
+              into: %{},
+              do: {{t, f}, r.name}
+
+        {resource.source.type,
+         %{module: resource.module, pk: pk && pk.name, fields: fields, rows: rows}}
       end)
 
     enums =
       Map.new(project.enums, &{&1.source.option_set, MapSet.new(&1.values, fn v -> v.value end)})
 
     %{types: types, enums: enums}
+  end
+
+  # A list the relationship `r` replaces: tested through it; a
+  # many_to_many also through the member's rows when it is the current
+  # user's (`actor_list`).
+  defp list_entry(resource, r, pk, modules) do
+    entry = %{attribute: nil, relationship: nil, references: nil, has_many: r.name}
+
+    if r.kind == :many_to_many,
+      do:
+        Map.put(entry, :actor_list, %{
+          key: {resource.source.type, r.source.field},
+          owner_pk: pk && pk.name,
+          owner_column: r.source_attribute_on_join_resource,
+          member_type: Map.get(modules, r.destination)
+        }),
+      else: entry
   end
 
   # --- compiling -----------------------------------------------------------------------
@@ -407,6 +438,11 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # that every actor-side operand must be non-empty.
   defp atom(ir, st, positive) do
     case atom_(ir, st) do
+      # (`doesn't contain` on the current user's list normalized to a
+      # join: not compiled, so the rule grants nothing)
+      {{_pos, {:unsupported, what}, _operands}, st} when not positive ->
+        unsupported(st, {what, nil})
+
       {{pos, neg, operands}, st} ->
         {guard(if(positive, do: pos, else: neg), operands), st}
 
@@ -449,8 +485,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # list)` alone would be NULL.
   defp atom_(%IR{op: :member, args: [list, _item]} = ir, st) do
     case has_many(list, st) do
-      {:ok, ref, st} -> has_many_member(ir, ref, st)
-      :no -> member(ir, st)
+      {:ok, ref, st} ->
+        has_many_member(ir, ref, st)
+
+      :no ->
+        case actor_list(list, st) do
+          {:ok, info, owner, st} -> actor_list_member(ir, info, owner, st)
+          :no -> member(ir, st)
+        end
     end
   end
 
@@ -518,6 +560,78 @@ defmodule BubbleEx.Target.Ash.Expressions do
         {{member, absent, [{i, item.type}]}, st}
     end
   end
+
+  # The current user's list (or a record's the user references) that an
+  # owner decision normalized to a join: `{:ok, info, owner ID, st}`, else
+  # `:no`.
+  defp actor_list(%IR{op: :field} = list, st) do
+    case path(list, [], st, :actor_list) do
+      {{:actor_list, [], info}, st} ->
+        {:ok, info, {:actor, [info.owner_pk]}, st}
+
+      {{:actor_list, rels, info}, st} ->
+        {:ok, info, {:actor, rels ++ [info.owner_pk]}, %{st | loads: MapSet.put(st.loads, rels)}}
+
+      _ ->
+        :no
+    end
+  end
+
+  defp actor_list(_list, _st), do: :no
+
+  # `Current User's list contains item`, the list normalized to a join: a
+  # row of the join names the item's record as member and the user as
+  # owner, `exists(<item>.<rows>, <owner column> == ^actor(:id))`, through
+  # the member's private rows relationship (the rows of that list only).
+  # The item is the rule's record or a record it references. Its negation
+  # (`doesn't contain`) is not compiled (`:ash_expr_unsupported`): the rule
+  # is denied.
+  defp actor_list_member(%IR{args: [_list, item]}, info, owner, st) do
+    case member_path(item, info.member_type, st) do
+      {:ok, rels, st} ->
+        case get_in(st.lookup, [:types, info.member_type, :rows, info.key]) do
+          nil ->
+            unmapped(st, {"the join rows of the list", elem(info.key, 1)})
+
+          rows ->
+            member =
+              {:call, "exists",
+               [{:ref, rels, rows}, {:op, "==", {:ref, [], info.owner_column}, owner}]}
+
+            {{member,
+              {:unsupported, "doesn't contain on the current user's list normalized to a join"},
+              [{owner, nil}]}, st}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  # Relationship names from the rule's record to the record `item` is,
+  # when it is of `type`.
+  defp member_path(%IR{op: :this, args: [binder]}, type, st)
+       when binder in [:rule_record, :filter_item] do
+    if st.resource == type,
+      do: {:ok, [], st},
+      else: unsupported(st, {"membership of another type in a list normalized to a join", nil})
+  end
+
+  defp member_path(%IR{op: :field, type: item_type} = item, type, st) do
+    case {classify(item_type), path(item, [], st, :relationship)} do
+      {%Type{kind: :ref, cardinality: :one, target: ^type}, {{:related, rels, rel}, st}} ->
+        {:ok, rels ++ [rel], st}
+
+      {_, {:error, st}} ->
+        {:error, st}
+
+      {_, {_, st}} ->
+        unsupported(st, {"membership of a value in a list normalized to a join", nil})
+    end
+  end
+
+  defp member_path(_item, _type, st),
+    do: unsupported(st, {"membership of a value in a list normalized to a join", nil})
 
   # The primary key of the records a has_many lists.
   defp destination_pk(%IR{type: type}, _many, st) do
@@ -742,6 +856,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
       {:ok, rels, %{relationship: rel}} when mode == :relationship and is_binary(rel) ->
         {{:actor_related, rels ++ [rel]}, st}
+
+      {:ok, rels, %{actor_list: info}} when mode == :actor_list ->
+        {{:actor_list, rels, info}, st}
 
       {:ok, _rels, %{has_many: _}} ->
         unsupported(st, {"the current user's list derived as a has_many", nil})

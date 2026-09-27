@@ -210,13 +210,15 @@ defmodule BubbleEx.Diagnostic.Codes do
 
     # --- target:ash — BubbleEx.Target.Ash owner decisions (WTF-352, WTF-401) ---
     {:ash_decision_applied, :info, :degraded, :target,
-     "an owner decision (or a hint applied by default) changed the mapping: a number stored as an integer or decimal, a copied field or count derived as a calculation or aggregate, a text of IDs made a reference, a reverse list derived as a has_many, indexes added; the project departs from the source-faithful mapping on purpose"},
+     "an owner decision (or a hint applied by default) changed the mapping: a number stored as an integer or decimal, a copied field or count derived as a calculation or aggregate, a text of IDs made a reference, a reverse list derived as a has_many, a list of things normalized to a join resource (a many_to_many), indexes added; the project departs from the source-faithful mapping on purpose"},
     {:ash_decision_deferred, :warning, :unresolved, :target,
      "what applies by default but Target.Ash does not create: indexes with no Ash rendering (a geographic access, a field no longer stored), or a hint whose transform is not applied yet; listed in `project.deferred`"},
     {:ash_name_overridden, :info, :preserved, :target,
      "an owner rename decision set a generated name; after the name lock only Elixir names change, and a renamed attribute keeps its column (`source:`)"},
 
     # --- target:ash — BubbleEx.Target.Ash privacy policies (WTF-356) ----------
+    {:ash_policy_auto_binding_dropped, :warning, :degraded, :target,
+     "a field privacy rules let users auto-bind that an owner decision no longer stores (a derived field, or a list normalized to a join); the `:auto_bind` action does not accept it, so the binding needs rewriting"},
     {:ash_privacy_omitted, :info, :degraded, :target,
      "privacy rules the source has (or may have) that were not compiled (`privacy: :omit`, the default); the generated resources have no authorization"},
     {:ash_policies_unverified, :warning, :degraded, :target,
@@ -285,6 +287,12 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a stored value of a field derived by an owner decision (not loaded) that differs from the value derived from the loaded data"},
     {:load_reverse_list_drift, :warning, :degraded, :load,
      "a stored list replaced by a `has_many` (`derive_reverse_relationship`) that differs from the records pointing back; the `has_many` reads the latter"},
+    {:load_join_duplicate, :info, :degraded, :load,
+     "a list normalized to a join (`normalize_list_to_join`, `membership_policy`) that holds a member more than once; the join has one row per member, at its first position"},
+    {:load_join_stale_member, :error, :unresolved, :load,
+     "a member a list normalized to a join held at an earlier load and no longer holds in the export: its row stays (nothing is deleted until WTF-414) and keeps any access a privacy rule grants through the list; blocks a real load before writes"},
+    {:load_join_asymmetric, :info, :preserved, :load,
+     "a member of a list normalized to a join whose table the mirrored list shares, and whose own (exported) list does not list the owner back; each list keeps its own membership column, so nothing is added to the other list"},
     {:load_duplicate_email, :error, :unresolved, :load,
      "users whose trimmed emails are equal ignoring case; the target's unique email identity refuses them, so nothing is written"},
     {:load_invalid_email, :warning, :degraded, :load,

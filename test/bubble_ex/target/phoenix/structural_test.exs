@@ -93,6 +93,36 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
   defp statuses(report), do: Map.new(report.results, &{&1.id, &1.status})
   defp symbols(report, category), do: report.counts["symbols"][category]
 
+  test "cut3 normalized fields are rendered and covered" do
+    %{model: model, index: index, applied: applied} = BubbleEx.Test.DecidedFixture.build(:cut3)
+    {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3)
+    {:ok, plan} = Plan.build(model, index, nil, applied)
+    {:ok, files} = Phoenix.render(project, name: "Acme", module: "Acme")
+    report = run!(%{model: model, index: index, project: project, plan: plan, files: files})
+
+    assert status(report, "structural.symbol_coverage.fields") == :pass
+    assert symbols(report, "fields")["uncovered"] == 0
+
+    accounted =
+      Structural.Coverage.account(%{
+        model: model,
+        index: index,
+        project: project,
+        plan: plan,
+        files: files
+      })
+
+    for {type, field} <- [
+          {"project", "tasks_list_custom_task"},
+          {"project", "viewers_list_user"},
+          {"user", "favorites_list_custom_project"},
+          {"workspace", "members_list_user"}
+        ] do
+      assert %{bucket: :decision} =
+               Enum.find(accounted.fields, &(&1.subjects == %{type: type, field: field}))
+    end
+  end
+
   describe "run/2 on the plan sample" do
     setup do
       %{inputs: build(SampleHelper.load_json_sample("synthetic_plan_export"))}

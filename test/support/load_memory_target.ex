@@ -92,6 +92,63 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
     end)
   end
 
+  @impl true
+  def join_members(%__MODULE__{agent: a}, join, side, owners) do
+    owner = if side.owner == :left, do: join.left.column, else: join.right.column
+    owners = if owners == :all, do: :all, else: MapSet.new(owners)
+
+    rows =
+      for {{l, r}, row} <- Agent.get(a, &Map.get(&1.tables, join.table, %{})),
+          member?(row[side.column], side.kind),
+          owners == :all or MapSet.member?(owners, row[owner]),
+          do: {l, r}
+
+    {:ok, Enum.sort(rows)}
+  end
+
+  defp member?(true, :flag), do: true
+  defp member?(_, :flag), do: false
+  defp member?(value, :position), do: value != nil
+
+  # Join tables, keyed by their two ID columns (WTF-352 cut 3): a list's
+  # upsert sets only its own column of an existing row.
+  @impl true
+  def upsert_join(%__MODULE__{agent: a}, join, side, rows) do
+    key = fn row -> {Map.fetch!(row, join.left.column), Map.fetch!(row, join.right.column)} end
+
+    Agent.get_and_update(a, fn state ->
+      calls = state.calls + 1
+
+      if state.fail_on == calls do
+        {{:error, Error.new(:request_failed, "injected failure", %{reason: :injected})},
+         %{state | calls: calls}}
+      else
+        current = Map.get(state.tables, join.table, %{})
+        zero = %{inserted: 0, updated: 0, unchanged: 0}
+
+        {counts, current} =
+          Enum.reduce(rows, {zero, current}, &put_member(&1, &2, key.(&1), side.column))
+
+        {{:ok, counts},
+         %{state | calls: calls, tables: Map.put(state.tables, join.table, current)}}
+      end
+    end)
+  end
+
+  # One list's row: inserted, or only the list's column updated.
+  defp put_member(row, {c, t}, k, column) do
+    case Map.fetch(t, k) do
+      :error ->
+        {%{c | inserted: c.inserted + 1}, Map.put(t, k, row)}
+
+      {:ok, %{^column => value}} when value == :erlang.map_get(column, row) ->
+        {%{c | unchanged: c.unchanged + 1}, t}
+
+      {:ok, old} ->
+        {%{c | updated: c.updated + 1}, Map.put(t, k, Map.put(old, column, row[column]))}
+    end
+  end
+
   # A unique email identity, as the Phoenix project has (ignoring case).
   defp commit(state, calls, table, current, counts) do
     if unique_emails?(current),

@@ -71,6 +71,62 @@ defmodule BubbleEx.Target.ElixirTest do
     assert eval(result, element_state_bg1_get_group_data: nil) == "Title: "
   end
 
+  test "normalized list reads load the join relationship and preserve Bubble IDs" do
+    %{model: model} = BubbleEx.Test.DecidedFixture.build(:join)
+    {:ok, project} = BubbleEx.Test.DecidedFixture.project(:join)
+    env = BubbleEx.Expression.Env.new(model, this_type: "custom.project", this_binder: :page)
+    raw = chain(this(), [msg("tasks_list_custom_task")])
+    {:ok, %{ir: list}} = Compiler.compile(parse!(raw, env), env)
+    assert list.type == "list.custom.task"
+
+    {:ok, result} = Target.compile(list, project)
+
+    assert result.diagnostics == []
+    assert result.loads == %{"this" => [["tasks"]]}
+    assert eval(result, this: %{tasks: [%{id: "t1"}, %{id: "t2"}]}) == ["t1", "t2"]
+    assert eval(result, this: %{tasks: nil}) == []
+
+    {:ok, count} = Target.compile(IR.node(:count, [list], "number"), project)
+    assert count.loads == %{"this" => [["tasks"]]}
+    assert eval(count, this: %{tasks: [%{id: "t1"}]}) == 1
+
+    {:ok, member} =
+      Target.compile(
+        IR.node(:member, [list, IR.node(:literal, ["t2"], "custom.task")], "boolean"),
+        project
+      )
+
+    assert eval(member, this: %{tasks: [%{id: "t1"}, %{id: "t2"}]})
+  end
+
+  test "frontend binding consumes a normalized list without losing its load" do
+    app = BubbleEx.Test.DecidedFixture.app(:join)
+    %{model: model} = BubbleEx.Test.DecidedFixture.build(:join)
+    {:ok, project} = BubbleEx.Test.DecidedFixture.project(:join)
+
+    node = %BubbleEx.Frontend.Normalized.Node{
+      exporter_id: "page",
+      kind: :page,
+      map_key: "page",
+      source: %BubbleEx.Frontend.Normalized.Source{},
+      bindings: %{
+        "text" => %{
+          kind: :value,
+          id: "favorites",
+          payload: chain(cu(), [msg("favorites_list_custom_project")])
+        }
+      }
+    }
+
+    frontend = %BubbleEx.Frontend.Normalized{pages: [node], reusables: []}
+
+    {:ok, %{"favorites" => compiled}} =
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend)
+
+    assert compiled.loads == %{"current_user" => [["favorites"]]}
+    assert eval(compiled, current_user: %{favorites: [%{id: "p1"}]}) == ["p1"]
+  end
+
   test "arithmetic on an input's value", %{project: project} do
     result =
       compile(text(["Total: ", chain(el("bI1"), [msg("get_data"), msg("plus", 1)])]), project)

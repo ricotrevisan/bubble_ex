@@ -145,6 +145,11 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp lookup(project) do
+    primary_keys =
+      Map.new(project.resources, fn resource ->
+        {resource.module, Enum.find(resource.attributes, & &1.primary_key?).name}
+      end)
+
     types =
       Map.new(project.resources, fn resource ->
         belongs_to = Enum.filter(resource.relationships, &(&1.kind == :belongs_to))
@@ -160,6 +165,16 @@ defmodule BubbleEx.Target.Elixir do
                references: a.references
              }}
           end
+
+        fields =
+          Enum.reduce(resource.relationships, fields, fn
+            %{kind: :many_to_many, source: %{field: field}, name: name, destination: dest},
+            fields ->
+              Map.put(fields, field, %{relationship: name, list_id_key: primary_keys[dest]})
+
+            _, fields ->
+              fields
+          end)
 
         {resource.source.type, %{pk: pk && pk.name, fields: fields}}
       end)
@@ -528,12 +543,19 @@ defmodule BubbleEx.Target.Elixir do
     base_type = type_id(base.type)
 
     case keys(steps, base_type, mode, st) do
-      {:ok, [], _loads} ->
+      {:ok, [], _loads, _list_id_key} ->
         {var, st}
 
-      {:ok, keys, loads} ->
+      {:ok, keys, loads, list_id_key} ->
         st = if loads == [], do: st, else: add_load(st, var, loads)
-        {"get_in(#{var}, [" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "])", st}
+        path = "get_in(#{var}, [" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "])"
+
+        source =
+          if list_id_key,
+            do: "Enum.map(#{path} || [], &Map.get(&1, #{atom(list_id_key)}))",
+            else: path
+
+        {source, st}
 
       {:error, what} ->
         unsupported(st, what)
@@ -545,12 +567,12 @@ defmodule BubbleEx.Target.Elixir do
   # attribute (no load); in `:value` mode a reference is its relationship.
   defp keys([], type, :id, st) do
     case st.lookup.types[type] do
-      %{pk: pk} -> {:ok, [pk], []}
+      %{pk: pk} -> {:ok, [pk], [], nil}
       nil -> {:error, {"an unmapped data type", type}}
     end
   end
 
-  defp keys([], _type, :value, _st), do: {:ok, [], []}
+  defp keys([], _type, :value, _st), do: {:ok, [], [], nil}
 
   defp keys(steps, _type, mode, st) do
     {init, [{last_type, last_field}]} = Enum.split(steps, -1)
@@ -563,16 +585,26 @@ defmodule BubbleEx.Target.Elixir do
           else: info.attribute
 
       loads = if mode == :value and info.relationship, do: rels ++ [last], else: rels
-      {:ok, rels ++ [last], if(loads == [], do: [], else: [loads])}
+
+      {:ok, rels ++ [last], if(loads == [], do: [], else: [loads]),
+       if(mode == :value, do: info[:list_id_key])}
     end
   end
 
   defp relationships(steps, st) do
     Enum.reduce_while(steps, {:ok, []}, fn {type, field}, {:ok, rels} ->
       case field_info(type, field, st) do
-        {:ok, %{relationship: rel}} when is_binary(rel) -> {:cont, {:ok, rels ++ [rel]}}
-        {:ok, _} -> {:halt, {:error, {"a path through a list or value", "#{type}.#{field}"}}}
-        error -> {:halt, error}
+        {:ok, %{relationship: rel, list_id_key: _}} when is_binary(rel) ->
+          {:halt, {:error, {"a path through a list or value", "#{type}.#{field}"}}}
+
+        {:ok, %{relationship: rel}} when is_binary(rel) ->
+          {:cont, {:ok, rels ++ [rel]}}
+
+        {:ok, _} ->
+          {:halt, {:error, {"a path through a list or value", "#{type}.#{field}"}}}
+
+        error ->
+          {:halt, error}
       end
     end)
   end

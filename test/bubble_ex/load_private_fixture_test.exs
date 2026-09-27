@@ -34,9 +34,11 @@ defmodule BubbleEx.LoadPrivateFixtureTest do
     {:ok, index} = Index.build(app, model: model)
     {:ok, %{findings: findings}} = Findings.analyze(app, model: model, index: index)
     {_records, applied, sha} = DecidedFixture.accept_cut2(findings, [], index)
+    {_records, applied3, sha3} = DecidedFixture.accept_cut3(findings, [], index)
     {:ok, faithful} = Ash.map(model)
     {:ok, cut2} = Ash.map(model, applied, decisions_sha256: sha)
-    %{model: model, projects: [faithful: faithful, cut2: cut2]}
+    {:ok, cut3} = Ash.map(model, applied3, decisions_sha256: sha3)
+    %{model: model, projects: [faithful: faithful, cut2: cut2, cut3: cut3]}
   end
 
   defp plan(project, model) do
@@ -60,6 +62,7 @@ defmodule BubbleEx.LoadPrivateFixtureTest do
             not field.deleted and is_nil(field.raw) and field.id != "_id",
             field.id not in Enum.map(table.columns, & &1.field),
             field.id not in Enum.map(table.derived, & &1.field),
+            field.id not in table.joined,
             do: field.id
 
       assert uncovered == [], "#{name}: #{length(uncovered)} fields not covered"
@@ -72,8 +75,14 @@ defmodule BubbleEx.LoadPrivateFixtureTest do
           "#{plan.tables |> Enum.map(&length(&1.columns)) |> Enum.sum()} columns, " <>
           "derived #{inspect(counts)}, text references " <>
           "#{plan.tables |> Enum.flat_map(& &1.columns) |> Enum.count(& &1.text_ref)}, " <>
-          "counted lists #{plan.tables |> Enum.flat_map(& &1.columns) |> Enum.count(& &1.drop_dangling)}"
+          "counted lists #{plan.tables |> Enum.flat_map(& &1.columns) |> Enum.count(& &1.drop_dangling)}, " <>
+          "join tables #{length(plan.joins)} (#{plan.joins |> Enum.flat_map(& &1.sides) |> length()} lists)"
       )
+
+      # every joined list is one side of one join table
+      sides = for j <- plan.joins, s <- j.sides, do: {s.type, s.field}
+      joined = for t <- plan.tables, f <- t.joined, do: {t.type, f}
+      assert Enum.sort(sides) == Enum.sort(joined)
     end
   end
 

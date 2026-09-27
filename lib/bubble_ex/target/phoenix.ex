@@ -359,7 +359,10 @@ defmodule BubbleEx.Target.Phoenix do
              confirmed_at: confirmed_at,
              api_clients: clients,
              workflows: workflows,
-             data_resources: data_resources(Keyword.get(opts, :frontend_workflows))
+             data_resources: data_resources(Keyword.get(opts, :frontend_workflows)),
+             # the PostgreSQL extensions the project's indexes need
+             # (`pg_trgm` for trigram indexes), in the scaffolded Repo
+             extensions: project.extensions
            }),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
@@ -560,12 +563,12 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
-  defp check_claims(%Project{resources: resources}, clients) do
+  defp check_claims(%Project{resources: resources, joins: joins}, clients) do
     # The API clients' root module (WTF-374), when they are rendered.
     claimed = if clients, do: ["ApiClients" | @claimed_modules], else: @claimed_modules
 
     clashes =
-      for %Resource{} = r <- resources,
+      for %Resource{} = r <- resources ++ joins,
           r.module in claimed or r.table in @claimed_tables,
           do: "#{r.module} (table #{r.table})"
 
@@ -708,6 +711,7 @@ defmodule BubbleEx.Target.Phoenix do
       end
 
     templates = %{
+      (lib <> "repo_extensions.ex") => "lib/app/repo_extensions.ex",
       (lib <> "accounts/token.ex") => "lib/app/accounts/token.ex",
       (lib <> "accounts/resources.ex") => "lib/app/accounts/resources.ex",
       (web <> "controllers/workflow_api_controller.ex") =>

@@ -16,8 +16,9 @@
 # fixture, every frozen fidelity case's payload (`fidelity_<case>`, with its
 # pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), three
 # frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`,
-# `hostile_workflows`), plus
-# `private_app` when BUBBLE_EX_PRIVATE_EXPORT is set (never committed). An
+# `hostile_workflows`), plus `private_app` and `private_cut3` (every cut-2
+# and cut-3 finding accepted) when BUBBLE_EX_PRIVATE_EXPORT is set (never
+# committed). An
 # app with a frontend renders its pages (WTF-370), with the bindings the
 # expression compiler lowers; an app with a Model its API Connector clients
 # (WTF-374).
@@ -184,6 +185,11 @@ fixtures =
     "decided_locked" => fn ->
       {:ok, project} = BubbleEx.Test.DecidedFixture.locked_project(privacy: :omit)
       {:ok, project, []}
+    end,
+    # lists normalized to join resources (WTF-406)
+    "decided_cut3" => fn ->
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: :omit)
+      {:ok, project, []}
     end
   })
   |> Map.merge(
@@ -193,7 +199,20 @@ fixtures =
 
       path ->
         %{
-          "private_app" => fn -> path |> BubbleEx.Test.SplitExport.load() |> app_fixture.() end
+          "private_app" => fn -> path |> BubbleEx.Test.SplitExport.load() |> app_fixture.() end,
+          # every cut-2 and cut-3 finding accepted (WTF-406)
+          "private_cut3" => fn ->
+            app = BubbleEx.Test.SplitExport.load(path)
+            {:ok, model} = BubbleEx.Model.build(app)
+            {:ok, index} = BubbleEx.Index.build(app, model: model)
+            {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
+            {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
+
+            {:ok, project} =
+              BubbleEx.Target.Ash.map(model, applied, privacy: :omit, decisions_sha256: sha)
+
+            {:ok, project, []}
+          end
         }
     end
   )

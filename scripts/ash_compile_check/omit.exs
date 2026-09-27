@@ -24,13 +24,21 @@ failures =
     actions =
       resource |> Ash.Resource.Info.actions() |> Enum.map(&{&1.type, &1.name}) |> Enum.sort()
 
+    join_rels =
+      for r <- Ash.Resource.Info.relationships(resource),
+          r.type == :many_to_many,
+          into: MapSet.new(),
+          do: r.join_relationship
+
     problems = [
       {Ash.Resource.Info.authorizers(resource) != [], "has authorizers"},
       {Enum.any?(Ash.Resource.Info.calculations(resource), &(not &1.public?)),
        "has private calculations"},
+      # (a many_to_many's relationship to its join rows is private and
+      # filtered to its list's rows, WTF-406: data, not policy)
       {Enum.any?(
          Ash.Resource.Info.relationships(resource),
-         &(not &1.public? or not &1.sortable? or &1.filter)
+         &(not MapSet.member?(join_rels, &1.name) and (not &1.public? or not &1.sortable? or &1.filter))
        ), "has a private, unsortable or filtered relationship"},
       {actions != [create: :create, destroy: :destroy, read: :read, update: :update],
        "actions #{inspect(actions)}"},

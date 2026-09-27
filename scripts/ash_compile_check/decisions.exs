@@ -35,6 +35,33 @@
 #   * every index exists with its method (btree, GIN, GIN trigram
 #     `gin_trgm_ops`, GIN over the `to_tsvector` expression), and the
 #     extensions the fixture lists are installed
+#
+# and the cut-3 transforms (WTF-406):
+#
+#   * every join resource's table has exactly its columns (the two IDs,
+#     the positions) with the two IDs as its primary key, and the lists it
+#     replaces have no column
+#   * every many_to_many loads its members from the join rows written for
+#     it, and nothing for a record with none; with a position column, the
+#     owner's join relationship sorted by position gives the list's order
+#   * a list reads only its own rows of a join table (a row written
+#     without the list's column is not a member)
+#   * with policies, the restrictive joins of the cut-3 fixture read with
+#     authorization on. One table holds Workspace's Members and User's
+#     Workspaces, asymmetrically: the Members list a member whose
+#     Workspaces do not list the workspace back, and a lister's Workspaces
+#     list it while the Members do not: the Member rule holds for the
+#     member only and the Listed rule ("Current User's Workspaces contains
+#     This Workspace") for the lister only (a union would widen both), the
+#     lister finds the workspace in searches and an outsider does not, and
+#     the members are the member alone. An outsider sees none of the
+#     members (the many_to_many, the join rows, the member's rows) nor of
+#     a project's tasks (whose rule tests the members, a join read through
+#     another). Two mutants (render.exs) must leak: without the join rows'
+#     policy (and the join relationships' check) the rows show to the
+#     outsider, and without the many_to_many filters the members and tasks
+#     too; a mutant that does not leak fails the check (it would pass
+#     vacuously)
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos),
     not match?({:error, {:already_started, _}}, repo.start_link()),
@@ -50,8 +77,16 @@ defmodule DecisionsCheck do
         repo = Module.concat([fixture["repo"]])
 
         {n, failures} = acc
-        found = extensions(repo, fixture["extensions"])
-        acc = {n + 1, found ++ failures}
+
+        found =
+          extensions(repo, fixture["extensions"]) ++
+            Enum.flat_map(fixture["joins"], &join(repo, &1)) ++
+            join_privacy(fixture["join_privacy"])
+
+        checks =
+          1 + length(fixture["joins"]) + if(fixture["join_privacy"], do: 2, else: 0)
+
+        acc = {n + checks, found ++ failures}
 
         Enum.reduce(fixture["resources"], acc, fn resource, {n, failures} ->
           module = Module.concat([resource["resource"]])
@@ -94,6 +129,20 @@ defmodule DecisionsCheck do
         not Enum.any?(Enum.flat_map(resources, & &1["counts"]), &(&1["kind"] == kind)),
         do: raise("no #{kind} count to check")
 
+    joins = Enum.flat_map(fixtures, & &1["joins"])
+    if joins == [], do: raise("no join resource to check")
+
+    for kind <- ["position", "flag"],
+        not Enum.any?(Enum.flat_map(joins, & &1["sides"]), &(&1["kind"] == kind)),
+        do: raise("no join list with a #{kind} to check")
+
+    if Enum.any?(fixtures, &(&1["privacy"] == "unverified")) do
+      variants = for f <- fixtures, p = f["join_privacy"], do: p["variant"]
+
+      if Enum.sort(variants) != ["", "open_all", "open_join"],
+        do: raise("the join privacy checks need the cut-3 fixture and both mutants: #{inspect(variants)}")
+    end
+
     if failures != [] do
       Enum.each(failures, &IO.puts/1)
       raise "decisions check failed: #{length(failures)} failures"
@@ -105,8 +154,230 @@ defmodule DecisionsCheck do
       "decisions check passed: #{length(fixtures)} fixtures, #{checks} checks, " <>
         "#{length(derived)} derived calculations and #{count.("counts")} derived counts " <>
         "read back, #{count.("has_many")} has_many and #{count.("text_references")} text " <>
-        "references loaded, #{count.("indexes")} indexes found"
+        "references loaded, #{count.("indexes")} indexes found, #{length(joins)} join " <>
+        "resources with #{joins |> Enum.flat_map(& &1["sides"]) |> length()} lists loaded"
     )
+  end
+
+  # --- cut 3 (WTF-406) -------------------------------------------------------------
+
+  defp join(repo, %{"table" => table} = j) do
+    %{rows: rows} =
+      repo.query!(
+        "SELECT column_name FROM information_schema.columns " <>
+          "WHERE table_schema = 'public' AND table_name = $1",
+        [table]
+      )
+
+    columns = rows |> List.flatten() |> Enum.sort()
+
+    %{rows: keys} =
+      repo.query!(
+        "SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid " <>
+          "AND a.attnum = ANY(i.indkey) WHERE i.indrelid = $1::text::regclass AND i.indisprimary",
+        [~s("#{table}")]
+      )
+
+    keys = keys |> List.flatten() |> Enum.sort()
+
+    [
+      {columns == Enum.sort(j["columns"]), "columns #{inspect(columns)}, expected #{inspect(j["columns"])}"},
+      {keys == Enum.sort(j["keys"]), "primary key #{inspect(keys)}, expected #{inspect(j["keys"])}"}
+    ]
+    |> Enum.reject(&elem(&1, 0))
+    |> Enum.map(fn {_, what} -> "join #{table}: #{what}" end)
+    |> Enum.concat(Enum.flat_map(Enum.with_index(j["sides"]), &join_side(j, &1)))
+  rescue
+    error -> ["join #{j["table"]}: #{Exception.message(error)}"]
+  end
+
+  # Writes join rows for one list (authorization off) and loads them
+  # back: the members, in the list's order through the join relationship.
+  defp join_side(j, {side, i}) do
+    owner = Module.concat([side["owner"]])
+    member = Module.concat([side["member"]])
+    join = Module.concat([j["resource"]])
+    [pk] = Ash.Resource.Info.primary_key(owner)
+    [member_pk] = Ash.Resource.Info.primary_key(member)
+    tag = "#{j["table"]}-#{i}"
+    o = create!(owner, %{pk => "owner-" <> tag})
+    lonely = create!(owner, %{pk => "lonely-" <> tag})
+    # members in reverse ID order, so the position order is not the ID order
+    ids = for n <- [3, 2, 1], do: Map.fetch!(create!(member, %{member_pk => "member-#{n}-" <> tag}), member_pk)
+    owner_column = String.to_atom(side["owner_column"])
+    member_column = String.to_atom(side["member_column"])
+
+    marker = String.to_atom(side["marker"])
+    position? = side["kind"] == "position"
+
+    for {id, position} <- Enum.with_index(ids) do
+      create!(join, %{
+        owner_column => Map.fetch!(o, pk),
+        member_column => id,
+        marker => if(position?, do: position, else: true)
+      })
+    end
+
+    # a row of the table that is not a member of this list (another
+    # list's, or written without the list's column) is not listed
+    stray = create!(member, %{member_pk => "stray-" <> tag})
+    create!(join, %{owner_column => Map.fetch!(o, pk), member_column => Map.fetch!(stray, member_pk)})
+
+    rel = String.to_atom(side["relationship"])
+    [o, lonely] = Ash.load!([o, lonely], [rel], authorize?: false)
+    got = o |> Map.fetch!(rel) |> Enum.map(&Map.fetch!(&1, member_pk)) |> Enum.sort()
+
+    ordered =
+      if position? do
+        rows = Ash.Query.sort(join, [{marker, :asc}])
+
+        o
+        |> Ash.load!([{String.to_atom(side["join_relationship"]), rows}], authorize?: false)
+        |> Map.fetch!(String.to_atom(side["join_relationship"]))
+        |> Enum.map(&Map.fetch!(&1, member_column))
+      else
+        ids
+      end
+
+    [
+      {got == Enum.sort(ids),
+       "#{side["relationship"]} loads #{inspect(got)}, expected #{inspect(ids)} (not a row outside the list)"},
+      {Map.fetch!(lonely, rel) == [], "#{side["relationship"]} loads #{inspect(Map.fetch!(lonely, rel))} for a record with no rows"},
+      {ordered == ids, "the join rows sorted by position give #{inspect(ordered)}, expected #{inspect(ids)}"}
+    ]
+    |> Enum.reject(&elem(&1, 0))
+    |> Enum.map(fn {_, what} -> "#{inspect(owner)} (join #{j["table"]}): #{what}" end)
+  rescue
+    error -> ["join #{j["table"]} side #{i}: #{Exception.message(error)}"]
+  end
+
+  defp join_privacy(nil), do: []
+
+  # The restrictive joins with authorization on (see the header). Each
+  # read is compared with what the fixture's variant must show.
+  defp join_privacy(%{"variant" => variant, "actor" => actor} = p) do
+    privacy = Module.concat([actor])
+    users = privacy.actor_resource()
+    [user_pk] = Ash.Resource.Info.primary_key(users)
+    m = p["membership"]
+    workspaces = Module.concat([m["owner"]])
+    [ws_pk] = Ash.Resource.Info.primary_key(workspaces)
+    tag = "privacy-" <> if(variant == "", do: "real", else: variant)
+    a = &String.to_atom/1
+
+    member = create!(users, %{user_pk => "member-" <> tag})
+    lister = create!(users, %{user_pk => "lister-" <> tag})
+    outsider = create!(users, %{user_pk => "outsider-" <> tag})
+    workspace = create!(workspaces, %{ws_pk => "workspace-" <> tag})
+    w = Map.fetch!(workspace, ws_pk)
+    mid = Map.fetch!(member, user_pk)
+    lid = Map.fetch!(lister, user_pk)
+
+    # one table, two lists: the workspace's Members list the member, whose
+    # Workspaces do not list it back; the lister's Workspaces list it, and
+    # its Members do not list the lister
+    join = Module.concat([m["join"]])
+    create!(join, %{a.(m["workspace_column"]) => w, a.(m["user_column"]) => mid, a.(m["members_marker"]) => 0})
+    create!(join, %{a.(m["workspace_column"]) => w, a.(m["user_column"]) => lid, a.(m["workspaces_marker"]) => 0})
+
+    n = p["nested"]
+    projects = Module.concat([n["owner"]])
+    tasks = Module.concat([n["member"]])
+    [project_pk] = Ash.Resource.Info.primary_key(projects)
+    [task_pk] = Ash.Resource.Info.primary_key(tasks)
+    project = create!(projects, %{project_pk => "project-" <> tag, a.(n["workspace_attribute"]) => w})
+    task = create!(tasks, %{task_pk => "task-" <> tag})
+    t = Map.fetch!(task, task_pk)
+
+    create!(Module.concat([n["join"]]), %{
+      a.(n["owner_column"]) => Map.fetch!(project, project_pk),
+      a.(n["member_column"]) => t,
+      a.(n["marker"]) => 0
+    })
+
+    load = fn user -> privacy.load_actor(Map.fetch!(user, user_pk)) end
+
+    # The IDs `record`'s relationship `rel` shows to `user`, with
+    # authorization on (`key`: the ID read from each related record).
+    seen = fn user, record, rel, key ->
+      record
+      |> Ash.load!([a.(rel)], actor: load.(user), authorize?: true)
+      |> Map.fetch!(a.(rel))
+      |> Enum.map(&Map.fetch!(&1, if(is_binary(key), do: a.(key), else: key)))
+      |> Enum.sort()
+    end
+
+    # A privacy rule's condition for `user` on the workspace (the rule's
+    # calculation, computed in PostgreSQL).
+    rule = fn user, calc ->
+      workspace
+      |> Ash.load!([a.(calc)], actor: load.(user), authorize?: false)
+      |> Map.fetch!(a.(calc))
+    end
+
+    searched = fn user ->
+      workspaces
+      |> Ash.Query.for_read(:search, %{}, actor: load.(user))
+      |> Ash.Query.filter_input(%{Atom.to_string(ws_pk) => %{"eq" => w}})
+      |> Ash.read(actor: load.(user))
+      |> case do
+        {:ok, records} -> Enum.map(records, &Map.fetch!(&1, ws_pk))
+        {:error, %Ash.Error.Forbidden{}} -> []
+      end
+    end
+
+    # what an outsider sees: nothing, unless the variant removed what
+    # hides it
+    leak = fn what, ids ->
+      open =
+        case {variant, what} do
+          {"open_join", read} when read in [:rows, :join_rows] -> true
+          {"open_all", _} -> true
+          _ -> false
+        end
+
+      if open, do: ids, else: []
+    end
+
+    member_col = m["user_column"]
+    ws_col = m["workspace_column"]
+    task_col = n["member_column"]
+    project_col = n["owner_column"]
+
+    [
+      # the asymmetric shared join widens nothing: each rule reads its
+      # own list's rows (a union would make both true for both)
+      {rule.(member, m["member_rule"]), true, "the Member rule for the member"},
+      {rule.(lister, m["member_rule"]), false, "the Member rule for the lister (not in Members)"},
+      {rule.(member, m["listed_rule"]), false, "the Listed rule for the member (not in its Workspaces)"},
+      {rule.(lister, m["listed_rule"]), true, "the Listed rule for the lister (Current User's Workspaces contains This Workspace)"},
+      {rule.(outsider, m["member_rule"]) or rule.(outsider, m["listed_rule"]), false, "a rule for an outsider"},
+      {searched.(lister), [w], "the workspace in the lister's searches"},
+      {searched.(outsider), [], "the workspace in an outsider's searches"},
+      {seen.(member, workspace, m["members"], user_pk), [mid], "the workspace's members, to the member (not the lister)"},
+      {seen.(lister, lister, m["workspaces"], ws_pk), [w], "the lister's workspaces, to the lister"},
+      {seen.(member, member, m["workspaces"], ws_pk), [], "the member's workspaces (it lists none), to the member"},
+      # an outsider
+      {seen.(outsider, workspace, m["members"], user_pk), leak.(:many_to_many, [mid]), "the workspace's members, to an outsider"},
+      {seen.(outsider, workspace, m["members_join"], member_col), leak.(:join_rows, [mid]), "the workspace's member rows, to an outsider"},
+      {seen.(outsider, member, m["member_rows"], ws_col), leak.(:rows, [w]), "the member's rows of Members, to an outsider"},
+      {seen.(outsider, project, n["relationship"], task_pk), leak.(:many_to_many, [t]), "the project's tasks, to an outsider"},
+      {seen.(outsider, project, n["join_relationship"], task_col), leak.(:join_rows, [t]), "the project's task rows, to an outsider"},
+      {seen.(outsider, task, n["rows"], project_col), leak.(:rows, [Map.fetch!(project, project_pk)]), "the task's rows of Tasks, to an outsider"},
+      # a member
+      {seen.(member, member, m["member_rows"], ws_col), [w], "the member's rows of Members, to the member"},
+      {seen.(member, project, n["relationship"], task_pk), [t], "the project's tasks, to a member"}
+    ]
+    |> Enum.reject(fn {got, expected, _} -> got == expected end)
+    |> Enum.map(fn {got, expected, what} ->
+      "join privacy (#{tag}): #{what} is #{inspect(got)}, expected #{inspect(expected)}" <>
+        if(variant != "" and got in [[], false] and expected not in [[], false],
+          do: " (the mutant does not leak: the check would pass vacuously)",
+          else: ""
+        )
+    end)
+  rescue
+    error -> ["join privacy (#{p["variant"]}): #{Exception.message(error)}"]
   end
 
   defp columns(repo, %{"table" => table} = resource) do
@@ -296,18 +567,44 @@ defmodule DecisionsCheck do
           many = rel(owner, List.last(path))
           [dest_pk] = Ash.Resource.Info.primary_key(many.destination)
 
-          for i <- 1..2,
-              do:
-                create!(many.destination, %{
-                  dest_pk => "item-#{i}-" <> tag,
-                  many.destination_attribute => Map.fetch!(full, owner_pk)
-                })
+          case many.type do
+            # a list normalized to a join (WTF-406): members through join
+            # rows; a member of another owner is not counted
+            :many_to_many ->
+              for {i, of} <- [{1, full}, {2, full}, {3, none}] do
+                item = create!(many.destination, %{dest_pk => "item-#{i}-" <> tag})
 
-          # a record pointing elsewhere is not counted
-          create!(many.destination, %{
-            dest_pk => "stray-" <> tag,
-            many.destination_attribute => "elsewhere-" <> tag
-          })
+                # (every membership column set: the row is a member of
+                # the table's lists)
+                members =
+                  for a <- Ash.Resource.Info.attributes(many.through),
+                      not a.primary_key?,
+                      into: %{},
+                      do: {a.name, if(a.type == Ash.Type.Boolean, do: true, else: 0)}
+
+                create!(
+                  many.through,
+                  Map.merge(members, %{
+                    many.source_attribute_on_join_resource => Map.fetch!(of, owner_pk),
+                    many.destination_attribute_on_join_resource => Map.fetch!(item, dest_pk)
+                  })
+                )
+              end
+
+            _ ->
+              for i <- 1..2,
+                  do:
+                    create!(many.destination, %{
+                      dest_pk => "item-#{i}-" <> tag,
+                      many.destination_attribute => Map.fetch!(full, owner_pk)
+                    })
+
+              # a record pointing elsewhere is not counted
+              create!(many.destination, %{
+                dest_pk => "stray-" <> tag,
+                many.destination_attribute => "elsewhere-" <> tag
+              })
+          end
 
           2
       end
@@ -337,11 +634,21 @@ defmodule DecisionsCheck do
           "count" ->
             many = rel(owner, List.last(path))
 
-            many.destination
-            |> Ash.Query.do_filter([
-              {many.destination_attribute, Map.fetch!(owner_record, owner_pk)}
-            ])
-            |> Ash.count!(authorize?: false)
+            case many.type do
+              :many_to_many ->
+                many.through
+                |> Ash.Query.do_filter([
+                  {many.source_attribute_on_join_resource, Map.fetch!(owner_record, owner_pk)}
+                ])
+                |> Ash.count!(authorize?: false)
+
+              _ ->
+                many.destination
+                |> Ash.Query.do_filter([
+                  {many.destination_attribute, Map.fetch!(owner_record, owner_pk)}
+                ])
+                |> Ash.count!(authorize?: false)
+            end
         end
     end
 

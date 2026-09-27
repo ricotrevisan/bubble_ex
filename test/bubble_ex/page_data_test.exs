@@ -102,6 +102,73 @@ defmodule BubbleEx.PageDataTest do
   end
 
   describe "bound to Ash and LiveView" do
+    test "a normalized list page source loads through its decided join relationship" do
+      app = BubbleEx.Test.DecidedFixture.app(:join)
+
+      app =
+        put_in(app, ["pages", "pgHome", "elements", "rgJoinedTasks"], %{
+          "id" => "rgJoinedTasks",
+          "type" => "RepeatingGroup",
+          "properties" => %{
+            "group_type" => "custom.task",
+            "data_source" => %{
+              "type" => "CurrentPageItem",
+              "next" => %{"type" => "Message", "name" => "tasks_list_custom_task"}
+            }
+          }
+        })
+
+      app = put_in(app, ["pages", "pgHome", "properties", "page_item_type"], "custom.project")
+      %{applied: applied, decisions_sha256: sha} = BubbleEx.Test.DecidedFixture.build(:join)
+      {:ok, model} = Model.build(app)
+
+      {:ok, project} =
+        BubbleEx.Target.Ash.map(model, applied, privacy: :omit, decisions_sha256: sha)
+
+      {:ok, page_data} = PageData.build(app, model)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+      {:ok, lowered} = Frontend.build(app, model, index)
+
+      {:ok, spec} =
+        FrontendWorkflows.map(lowered, project,
+          namespace: "Shop",
+          frontend: frontend,
+          page_data: page_data
+        )
+
+      assert %{read: {:value, compiled}, residue: [], resource: "Task"} =
+               data(spec, "rgJoinedTasks")
+
+      assert compiled.source =~ "Enum.map(get_in(page_thing_phome, [Access.key(:tasks)])"
+      assert [%{bind: {:data, %{element: "pHome"}}, loads: [["tasks"]]}] = compiled.bindings
+      assert %{read: :url_thing, resource: "Project", residue: []} = data(spec, "pHome")
+
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          module: "Shop",
+          frontend: frontend,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      page =
+        Enum.find_value(files, fn {path, source} ->
+          if String.ends_with?(path, "/workflows.ex") and source =~ "rgJoinedTasks", do: source
+        end)
+
+      assert is_binary(page)
+
+      assert page =~
+               ~s|BubbleWorkflows.load(BubbleWorkflows.data(ctx, [], "pHome"), [["tasks"]], ctx)|
+
+      assert page =~ "BubbleData.records("
+      assert page =~ "Shop.Task"
+    end
+
     test "value-backed repeating groups pass their page size to the generated loader" do
       {spec, project, frontend, app, model} = spec(app())
 

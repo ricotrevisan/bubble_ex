@@ -48,10 +48,16 @@ defmodule BubbleEx.Target.Ash.Project do
       create, shaped like `applied` plus `indexes`: an `add_indexes`
       decision's indexes (positions in its proposal) that have no Ash
       rendering (a geographic access, an index on a field no longer
-      stored), or nil for a hint whose whole transform is not applied yet.
+      stored, a list normalized to a join).
       Each deferred index has an `:ash_decision_deferred` warning. An
       `add_indexes` decision whose other indexes were created is in
       `applied` too
+    * `joins` - join resources (`BubbleEx.Target.Ash.Resource`s with a
+      `join`), one per join an owner decision made (`normalize_list_to_join`,
+      `membership_policy`; see `BubbleEx.Target.Ash`, "Decisions"), sorted
+      by join ID: the rows of a list of things, one per member, between
+      the two types. The list's owners have a `many_to_many` relationship
+      through it
     * `extensions` - the PostgreSQL extensions the indexes need (`"pg_trgm"`
       for trigram indexes), sorted: the repo's `installed_extensions/0`
       must list them
@@ -81,7 +87,15 @@ defmodule BubbleEx.Target.Ash.Project do
 
   `columns` lists the attributes whose column is not their name: an
   attribute renamed after the name lock (an owner `rename` decision) keeps
-  its column, rendered as the attribute's `source:`.
+  its column, rendered as the attribute's `source:`. `join_relationships`
+  names the `many_to_many` relationships' own relationship to their join
+  resource, by list field.
+
+  `joins` names the join resources (keyed by the finding's join ID,
+  `join:<hash of the list field IDs>`): the module, the table and the
+  columns (`left` and `right`, the two record IDs, and a position column
+  per list, keyed `<type>/<field>`: its membership column, a position or
+  a flag).
 
       %{
         "version" => 1,
@@ -93,7 +107,15 @@ defmodule BubbleEx.Target.Ash.Project do
             "relationships" => %{"project_custom_project" => "project"},
             "privacy_rules" => %{"owner_" => "privacy_rule_owner"},
             "privacy_relationships" => %{"project_custom_project" => "project_for_privacy"},
-            "columns" => %{"title_text" => "name"}
+            "columns" => %{"title_text" => "name"},
+            "join_relationships" => %{"labels_list_custom_label" => "labels_join"}
+          }
+        },
+        "joins" => %{
+          "join:0123456789abcdef" => %{
+            "module" => "TaskLabels",
+            "table" => "task_labels",
+            "attributes" => %{"left" => "task_id", "right" => "label_id", "task/labels_list_custom_label" => "position"}
           }
         },
         "enums" => %{"status" => %{"module" => "Status", "attributes" => %{"color" => "color"}}},
@@ -104,7 +126,7 @@ defmodule BubbleEx.Target.Ash.Project do
   alias BubbleEx.{CanonicalJson, Diagnostic}
   alias BubbleEx.Target.Ash.{Bypass, CustomType, Resource, TypedStruct}
 
-  @schema_version 6
+  @schema_version 7
 
   @enforce_keys [:schema_version]
   defstruct [
@@ -122,6 +144,7 @@ defmodule BubbleEx.Target.Ash.Project do
     applied: [],
     applied_sha256: nil,
     deferred: [],
+    joins: [],
     extensions: [],
     decisions_sha256: nil,
     diagnostics: []
@@ -144,6 +167,7 @@ defmodule BubbleEx.Target.Ash.Project do
           applied: [map()],
           applied_sha256: String.t() | nil,
           deferred: [map()],
+          joins: [Resource.t()],
           extensions: [String.t()],
           decisions_sha256: String.t() | nil,
           diagnostics: [Diagnostic.t()]
@@ -184,7 +208,8 @@ defmodule BubbleEx.Target.Ash.Project do
   for generated modules), relationships by kind, database references (of
   `belongs_to` relationships) by mode, enums and their values, typed
   structs by source, derived calculations and aggregates, indexes by
-  method, extensions, applied and deferred decisions by transform, privacy
+  method, join resources and their rows' sides, extensions, applied and
+  deferred decisions by transform, privacy
   (see `privacy_summary/1`) and diagnostics by code.
   """
   @spec summary(t()) :: map()
@@ -213,6 +238,8 @@ defmodule BubbleEx.Target.Ash.Project do
       "derived_aggregates" => project.resources |> Enum.map(&length(&1.aggregates)) |> Enum.sum(),
       "indexes" =>
         frequencies(Enum.flat_map(project.resources, & &1.indexes), &Atom.to_string(&1.method)),
+      "joins" => length(project.joins),
+      "join_sides" => project.joins |> Enum.map(&length(&1.join.sides)) |> Enum.sum(),
       "extensions" => project.extensions,
       "applied" => frequencies(project.applied, &Atom.to_string(&1.transform)),
       "deferred" => frequencies(project.deferred, &Atom.to_string(&1.transform)),
@@ -234,7 +261,7 @@ defmodule BubbleEx.Target.Ash.Project do
   def privacy_summary(%__MODULE__{} = project) do
     # nil with privacy: :omit
     privacy = for r <- project.resources, r.privacy, do: r.privacy
-    policies = Enum.flat_map(project.resources, & &1.policies)
+    policies = Enum.flat_map(project.resources ++ project.joins, & &1.policies)
     field_policies = Enum.flat_map(project.resources, & &1.field_policies)
     checks = Enum.flat_map(policies ++ field_policies, & &1.checks)
 
@@ -248,7 +275,7 @@ defmodule BubbleEx.Target.Ash.Project do
       "field_policies" => length(field_policies),
       "checks" => frequencies(checks, &check_key/1),
       "calculations" =>
-        project.resources
+        (project.resources ++ project.joins)
         |> Enum.flat_map(& &1.calculations)
         |> Enum.count(&(&1.kind == :privacy)),
       "gated_relationships" =>
@@ -322,6 +349,19 @@ defmodule BubbleEx.Target.Ash.Resource do
       loads read through them (see `BubbleEx.Target.Ash`, "Privacy rules")
     * `privacy` - the `BubbleEx.Target.Ash.ResourcePrivacy` the policies
       were derived from
+    * `join` - nil, or for a join resource (in `Project.joins`, `source`
+      `%{join: join ID}`) what it joins: `%{id, left, right, sides}`, where
+      `left` and `right` are `%{type, column, relationship}` (the two
+      record IDs, together the primary key, and the private `belongs_to`
+      to each) and `sides` the list fields it replaces, `%{type, field,
+      owner, relationship, position, key, transform}`: the owner type's
+      list `field` holds, per row, the `owner` column's record (`:left` or
+      `:right`) listing the other; `relationship` is the owner's
+      `many_to_many`, `join_relationship` its relationship to the rows,
+      `marker` `%{column, kind}` the column marking the list's rows (a
+      row may be a member of one list and not of the other), `position`
+      that column when it holds the member's index in the list (`kind`
+      `:position`; nil for a `:flag`) and `key` / `transform` the decision
     * `description` - text for the module's documentation, or nil
   """
 
@@ -356,13 +396,14 @@ defmodule BubbleEx.Target.Ash.Resource do
     policies: [],
     field_policies: [],
     privacy_relationships: [],
-    privacy: nil
+    privacy: nil,
+    join: nil
   ]
 
   @type t :: %__MODULE__{
           module: String.t(),
           table: String.t(),
-          source: %{type: String.t()},
+          source: %{type: String.t()} | %{join: String.t()},
           bubble_name: String.t() | nil,
           description: String.t() | nil,
           synthesized: boolean(),
@@ -378,7 +419,8 @@ defmodule BubbleEx.Target.Ash.Resource do
           policies: [Policy.t()],
           field_policies: [FieldPolicy.t()],
           privacy_relationships: [Relationship.t()],
-          privacy: ResourcePrivacy.t() | nil
+          privacy: ResourcePrivacy.t() | nil,
+          join: map() | nil
         }
 end
 
@@ -563,6 +605,9 @@ defmodule BubbleEx.Target.Ash.Policy do
     * `changing` - attribute names: the policy applies only when the
       action changes one of them (`changing_attributes([...])`); nil for
       every call of the action
+    * `accessing_from` - nil, or `{relative module, relationship}`: the
+      policy applies only to reads through that relationship
+      (`accessing_from(Module, :relationship)`)
     * `description` - the policy's `description`
     * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
     * `permission` - the Bubble permission it enforces (`:view`,
@@ -573,11 +618,12 @@ defmodule BubbleEx.Target.Ash.Policy do
   alias BubbleEx.Target.Ash.PolicyCheck
 
   @enforce_keys [:action, :checks, :permission]
-  defstruct [:action, :changing, :description, :checks, :permission]
+  defstruct [:action, :changing, :accessing_from, :description, :checks, :permission]
 
   @type t :: %__MODULE__{
           action: String.t(),
           changing: [String.t()] | nil,
+          accessing_from: {String.t(), String.t()} | nil,
           description: String.t() | nil,
           checks: [PolicyCheck.t()],
           permission: atom()
@@ -725,14 +771,27 @@ end
 defmodule BubbleEx.Target.Ash.Relationship do
   @moduledoc """
   A relationship of a resource: `:belongs_to` (a reference, or a text field
-  of IDs made a reference by `text_to_reference`) or `:has_many` (a list
+  of IDs made a reference by `text_to_reference`), `:has_many` (a list
   derived from the other side's reference by `derive_reverse_relationship`,
-  named like the list attribute it replaces).
+  named like the list attribute it replaces) or `:many_to_many` (a list
+  normalized to a join resource by `normalize_list_to_join` or
+  `membership_policy`, named like the list attribute it replaces).
 
     * `name` - the relationship name; `destination` - relative module name
     * `source_attribute` / `destination_attribute` - attribute names (a
       `has_many` goes from this resource's primary key to the destination's
-      reference attribute)
+      reference attribute; a `many_to_many` from this resource's primary
+      key to the destination's)
+    * `through`, `source_attribute_on_join_resource`,
+      `destination_attribute_on_join_resource`, `join_relationship` - for a
+      `many_to_many`: the join resource's relative module, its columns
+      holding this record's and the member's IDs, and the name of this
+      resource's relationship to the join rows (nil otherwise)
+    * `membership` - nil, or `%{column, kind}`: the join column marking the
+      rows that are members of the list this relationship reads (`kind`
+      `:position`, set to the member's index, or `:flag`, true). A
+      `many_to_many` reads only its list's rows (its join relationship is
+      rendered with `filter`); a private `has_many` to join rows likewise
     * `attribute_type` - the source attribute's type (`belongs_to` only)
     * `define_attribute?` - false: the source attribute is listed among the
       resource's attributes with its own constraints (`belongs_to` only)
@@ -760,6 +819,11 @@ defmodule BubbleEx.Target.Ash.Relationship do
     :destination,
     :source_attribute,
     :source,
+    :through,
+    :source_attribute_on_join_resource,
+    :destination_attribute_on_join_resource,
+    :join_relationship,
+    :membership,
     destination_attribute: "id",
     attribute_type: :string,
     define_attribute?: false,
@@ -771,11 +835,16 @@ defmodule BubbleEx.Target.Ash.Relationship do
   ]
 
   @type t :: %__MODULE__{
-          kind: :belongs_to | :has_many,
+          kind: :belongs_to | :has_many | :many_to_many,
           name: String.t(),
           destination: String.t(),
           source_attribute: String.t(),
           destination_attribute: String.t(),
+          through: String.t() | nil,
+          source_attribute_on_join_resource: String.t() | nil,
+          destination_attribute_on_join_resource: String.t() | nil,
+          join_relationship: String.t() | nil,
+          membership: map() | nil,
           attribute_type: BubbleEx.Target.Ash.Project.type(),
           define_attribute?: boolean(),
           allow_nil?: boolean(),

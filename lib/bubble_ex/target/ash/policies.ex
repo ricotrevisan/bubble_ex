@@ -31,6 +31,7 @@ defmodule BubbleEx.Target.Ash.Policies do
     Attribute,
     Bypass,
     Calculation,
+    Expr,
     Expressions,
     FieldPolicy,
     Naming,
@@ -47,6 +48,7 @@ defmodule BubbleEx.Target.Ash.Policies do
   # the policies' diagnostics (with the rules' expression diagnostics).
   @spec apply(Project.t(), Model.t()) :: {Project.t(), [Diagnostic.t()]}
   def apply(%Project{} = project, %Model{} = model) do
+    project = member_rows(project)
     {:ok, compiled} = Expressions.privacy(model, project)
     by_rule = Map.new(compiled, &{{&1.type, &1.rule}, &1})
     types = Map.new(model.data_types, &{&1.id, &1})
@@ -60,6 +62,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       end)
 
     {resources, names} = gate(resources, names)
+    joins = Enum.map(project.joins, &join_policies(&1, resources))
 
     expression_diags =
       Enum.flat_map(compiled, & &1.diagnostics) ++ aggregate_diags(resources, types)
@@ -71,7 +74,14 @@ defmodule BubbleEx.Target.Ash.Policies do
       |> Enum.uniq()
       |> Enum.sort()
 
-    project = %{project | resources: resources, names: names, actor_loads: actor_loads}
+    project = %{
+      project
+      | resources: resources,
+        joins: joins,
+        names: names,
+        actor_loads: actor_loads
+    }
+
     diags = [unverified(project) | Enum.reverse(diags)] ++ expression_diags
     {project, List.flatten(diags)}
   end
@@ -192,7 +202,8 @@ defmodule BubbleEx.Target.Ash.Policies do
     used =
       MapSet.new(
         Enum.map(resource.attributes, & &1.name) ++
-          Enum.map(resource.relationships, & &1.name) ++
+          Enum.map(resource.relationships ++ resource.privacy_relationships, & &1.name) ++
+          join_relationships(resource) ++
           Enum.map(resource.calculations, & &1.name) ++
           Enum.map(resource.aggregates, & &1.name) ++
           Map.values(Map.get(entry, "privacy_relationships", %{}))
@@ -212,10 +223,11 @@ defmodule BubbleEx.Target.Ash.Policies do
     # The private twins stay sortable: `sort_input` cannot name a private
     # relationship, and a derived field (a public calculation guarded by
     # its own field policy) reads through them and must sort.
+    # (the twins, then the join rows relationships `member_rows/1` added)
     resource = %{
       resource
       | relationships: Enum.map(relationships, unsortable),
-        privacy_relationships: Enum.reverse(privacy)
+        privacy_relationships: Enum.reverse(privacy) ++ resource.privacy_relationships
     }
 
     {resource, entry, twins}
@@ -244,14 +256,31 @@ defmodule BubbleEx.Target.Ash.Policies do
       end
 
     twin = %{rel | name: name, public?: false, gate: nil}
+
+    # A many_to_many twin has its own relationship to the join rows.
+    {twin, used} =
+      case rel do
+        %Relationship{kind: :many_to_many} ->
+          {join, used} = Naming.claim(name <> "_join", used, :snake, :attribute)
+          {%{twin | join_relationship: join}, used}
+
+        _ ->
+          {twin, used}
+      end
+
     twins = Map.put(twins, {resource.module, rel.name}, name)
     {%{rel | gate: gate}, {[twin | privacy], entry, used, twins}}
   end
 
-  # A belongs_to follows its ID attribute's checks; a derived has_many
-  # follows those of the list it replaces.
-  defp relationship_checks(%Relationship{kind: :has_many} = rel, _checks, resource),
-    do: Map.get(resource.privacy.relationship_checks, rel.name, [])
+  defp join_relationships(resource) do
+    for %Relationship{join_relationship: name} <- resource.relationships, name, do: name
+  end
+
+  # A belongs_to follows its ID attribute's checks; a derived has_many and
+  # a many_to_many through a join follow those of the list they replace.
+  defp relationship_checks(%Relationship{kind: kind} = rel, _checks, resource)
+       when kind in [:has_many, :many_to_many],
+       do: Map.get(resource.privacy.relationship_checks, rel.name, [])
 
   defp relationship_checks(rel, checks, _resource), do: Map.get(checks, rel.source_attribute, [])
 
@@ -327,6 +356,242 @@ defmodule BubbleEx.Target.Ash.Policies do
     end
   end
 
+  # --- join resources (WTF-352 cut 3) -----------------------------------------------
+
+  # For every list normalized to a join, a private has_many on the
+  # member's resource to the join rows naming it as member
+  # (`<owner>_<list>_rows`, in `privacy_relationships` with source `%{type,
+  # list: %{type, field}}`): a rule testing the current user's normalized
+  # list reads it (`exists(rows, <owner column> == ^actor(:id))`,
+  # `BubbleEx.Target.Ash.Expressions`). Named in the member's attribute
+  # scope, not locked: only generated calculations use it.
+  defp member_rows(%Project{joins: []} = project), do: project
+
+  defp member_rows(%Project{} = project) do
+    by_type = Map.new(project.resources, &{&1.source.type, &1})
+
+    rows =
+      for j <- project.joins, side <- j.join.sides do
+        member = if side.owner == :left, do: j.join.right, else: j.join.left
+        {member.type, %{join: j, side: side, column: member.column}}
+      end
+
+    resources =
+      Enum.map(project.resources, fn r ->
+        entry = get_in(project.names, ["resources", r.source.type]) || %{}
+
+        rows
+        |> Enum.filter(&(elem(&1, 0) == r.source.type))
+        |> Enum.reduce(r, fn {_type, row}, r ->
+          owner = Map.fetch!(by_type, row.side.type)
+
+          used =
+            MapSet.union(
+              used_names(r, entry),
+              MapSet.new(Map.values(Map.get(entry, "privacy_relationships", %{})))
+            )
+
+          base =
+            Naming.base(
+              :snake,
+              Naming.underscore(owner.module) <> " " <> row.side.relationship,
+              nil,
+              "join"
+            ) <> "_rows"
+
+          {name, _used} = Naming.claim(base, used, :snake, :attribute)
+
+          rel = %Relationship{
+            kind: :has_many,
+            name: name,
+            destination: row.join.module,
+            source_attribute: Enum.find(r.attributes, & &1.primary_key?).name,
+            destination_attribute: row.column,
+            public?: false,
+            membership: row.side.marker,
+            source: %{type: r.source.type, list: %{type: row.side.type, field: row.side.field}}
+          }
+
+          %{r | privacy_relationships: r.privacy_relationships ++ [rel]}
+        end)
+      end)
+
+    %{project | resources: resources}
+  end
+
+  # A join resource's rows are the members of the lists it replaces
+  # (`normalize_list_to_join`, `membership_policy`). A row reveals that its
+  # owner's list holds its member, so it is readable only by an actor who
+  # may view that list on that owner: the checks of the list field (its
+  # many_to_many's `relationship_checks`, read through the join's private
+  # belongs_to to the owner). For a join both mirrored lists share, the
+  # actor must be able to view both (a row stands for both lists, and
+  # Bubble may have shown only one): never wider than Bubble, possibly
+  # narrower. Its `:read` is keyed like every resource's: rows are reached
+  # through a relationship (the many_to_many, or the owner's join
+  # relationship), never listed. No policy authorizes writes.
+  defp join_policies(%Resource{join: join} = r, resources) do
+    by_type = Map.new(resources, &{&1.source.type, &1})
+    source = %{join: join.id}
+    used = MapSet.new(Enum.map(r.attributes, & &1.name) ++ Enum.map(r.relationships, & &1.name))
+
+    # Per list: who may view it on its owner (a condition on the join row),
+    # as a private calculation `privacy_<list>` when it is neither always
+    # nor never.
+    {sides, used} =
+      Enum.map_reduce(join.sides, used, &side_calculation(&1, &2, r, by_type, source))
+
+    # A row is readable when it is a member of a list the actor may view
+    # on its owner: its membership column is set and that list's grants
+    # hold. Each list's membership column (its position) reads only for
+    # those who may view that list.
+    visible =
+      for {side, node, calc} <- sides, node != :never do
+        member = member_node(side.marker)
+        if node == :always, do: member, else: {:and, [member, {:ref, [], calc.name}]}
+      end
+
+    {row_checks, row_calcs} =
+      case visible do
+        [] ->
+          {[deny()], []}
+
+        nodes ->
+          {name, _used} = Naming.claim("privacy_visible", used, :snake, :attribute)
+
+          calc = %Calculation{
+            name: name,
+            source: source,
+            description:
+              "The row is a member of a list the actor may view on its owner record " <>
+                "(its membership column is set)",
+            expr: %Expr{
+              resource: r.module,
+              source: source,
+              expr: if(match?([_], nodes), do: hd(nodes), else: {:or, nodes})
+            }
+          }
+
+          {[%PolicyCheck{kind: :authorize_if, test: {:calculation, name}, source: source}],
+           [calc]}
+      end
+
+    field_policies =
+      for {side, node, calc} <- sides,
+          do: %FieldPolicy{fields: [side.marker.column], checks: side_checks(node, calc, source)}
+
+    %{
+      r
+      | actions: @write_defaults,
+        extra_actions: [read_action()],
+        calculations: for({_, _, %Calculation{} = c} <- sides, do: c) ++ row_calcs,
+        relationships: Enum.map(r.relationships, &%{&1 | public?: false}),
+        field_policies: field_policies,
+        policies:
+          [
+            keyed_policy(),
+            %Policy{
+              action: "read",
+              permission: :view,
+              description:
+                "Rows of the lists this join replaces: a member of a list the actor may view " <>
+                  "on its owner",
+              checks: row_checks
+            }
+          ] ++ Enum.flat_map(sides, &side_policies(&1, by_type, source))
+    }
+  end
+
+  # Rows read through one list's relationships (the owner's join
+  # relationships, through which its many_to_many loads, and the member's
+  # rows relationship) are that list's rows: readable only when the actor
+  # may view that list on the owner, even if another list sharing the
+  # table shows the row.
+  defp side_policies({side, node, calc}, by_type, source) do
+    owner = Map.fetch!(by_type, side.type)
+
+    member_type =
+      Enum.find_value(owner.relationships, fn rel ->
+        if rel.kind == :many_to_many and rel.source.field == side.field, do: rel.destination
+      end)
+
+    member = Enum.find(Map.values(by_type), &(&1.module == member_type))
+
+    paths =
+      for rel <- owner.relationships ++ owner.privacy_relationships,
+          rel.kind == :many_to_many,
+          rel.source[:field] == side.field,
+          do: {owner.module, rel.join_relationship}
+
+    paths =
+      paths ++
+        for rel <- member.privacy_relationships,
+            rel.source[:list] == %{type: side.type, field: side.field},
+            do: {member.module, rel.name}
+
+    checks = side_checks(node, calc, source)
+
+    for {module, rel} <- Enum.sort(paths) do
+      %Policy{
+        action: "read",
+        accessing_from: {module, rel},
+        permission: :view,
+        description:
+          "Rows of #{side.type}.#{side.field} read through #{rel}: the actor may view the list",
+        checks: checks
+      }
+    end
+  end
+
+  defp side_checks(:always, _calc, _source),
+    do: [%PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}]
+
+  defp side_checks(:never, _calc, _source), do: [deny()]
+
+  defp side_checks(_node, calc, source),
+    do: [%PolicyCheck{kind: :authorize_if, test: {:calculation, calc.name}, source: source}]
+
+  # Who may view one list on the row's owner: `{side, node, calc}` with
+  # a private calculation `privacy_<list>` unless the node is `:always` or
+  # `:never`.
+  defp side_calculation(side, used, r, by_type, source) do
+    join = r.join
+    owner = Map.fetch!(by_type, side.type)
+    checks = Map.get(owner.privacy.relationship_checks, side.relationship, [])
+    rel = if side.owner == :left, do: join.left.relationship, else: join.right.relationship
+
+    case side_condition(gate_of(checks), rel) do
+      node when node in [:always, :never] ->
+        {{side, node, nil}, used}
+
+      node ->
+        {name, used} = Naming.claim("privacy_" <> side.relationship, used, :snake, :attribute)
+
+        calc = %Calculation{
+          name: name,
+          source: Map.put(source, :list, %{type: side.type, field: side.field}),
+          description:
+            "The actor may view #{side.type}.#{side.field} (the list) on the row's owner record",
+          expr: %Expr{resource: r.module, source: source, expr: node}
+        }
+
+        {{side, node, calc}, used}
+    end
+  end
+
+  defp member_node(%{column: c, kind: :position}), do: {:not, {:call, "is_nil", [{:ref, [], c}]}}
+  defp member_node(%{column: c, kind: :flag}), do: {:op, "==", {:ref, [], c}, {:value, true}}
+
+  defp side_condition(nil, _rel), do: :always
+  defp side_condition(:never, _rel), do: :never
+
+  defp side_condition({:visible_if, calcs}, rel) do
+    case Enum.map(calcs, &{:ref, [rel], &1}) do
+      [one] -> one
+      many -> {:or, many}
+    end
+  end
+
   # --- one resource ----------------------------------------------------------------
 
   defp resource(resource, type, by_rule, project, entry) do
@@ -353,7 +618,9 @@ defmodule BubbleEx.Target.Ash.Policies do
     aggregates = for g <- resource.aggregates, do: {g.source.field, g}
 
     has_many =
-      for %Relationship{kind: :has_many} = r <- resource.relationships, do: {r.source.field, r}
+      for %Relationship{kind: kind} = r <- resource.relationships,
+          kind in [:has_many, :many_to_many],
+          do: {r.source.field, r}
 
     attributes ++ derived ++ aggregates ++ has_many
   end
@@ -510,6 +777,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         default_diags(ctx) ++
         denied_rules(type, denied, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
+        binding_dropped(type, others ++ List.wrap(default), fields) ++
         attachments_diag(type, privacy) ++
         data_api(type, privacy)
 
@@ -521,7 +789,8 @@ defmodule BubbleEx.Target.Ash.Policies do
   defp used_names(resource, entry) do
     MapSet.new(
       Enum.map(resource.attributes, & &1.name) ++
-        Enum.map(resource.relationships, & &1.name) ++
+        Enum.map(resource.relationships ++ resource.privacy_relationships, & &1.name) ++
+        join_relationships(resource) ++
         Enum.map(resource.calculations, & &1.name) ++
         Enum.map(resource.aggregates, & &1.name) ++
         Map.values(Map.get(entry, "privacy_rules", %{})) ++
@@ -956,6 +1225,42 @@ defmodule BubbleEx.Target.Ash.Policies do
         subject: %{type: type.id, rule: rule.id},
         details: %{fields: missing}
       )
+    end
+  end
+
+  # Fields a rule lets users auto-bind that a decision no longer stores
+  # (derived, or a list normalized to a join): not auto-bindable.
+  defp binding_dropped(type, rules, fields) do
+    derived =
+      for {id, item} <- fields, not match?(%Attribute{}, item), into: %{}, do: {id, item.name}
+
+    dropped =
+      for rule <- rules,
+          perms = rule.permissions,
+          perms != nil and perms.auto_binding == true,
+          f <- perms.binding_fields || [],
+          Map.has_key?(derived, f),
+          uniq: true,
+          do: f
+
+    if dropped == [] do
+      []
+    else
+      [
+        Diagnostic.new(
+          :ash_policy_auto_binding_dropped,
+          type.path <> "/privacy_role",
+          "#{type.id}: privacy rules let users auto-bind #{Enum.join(Enum.sort(dropped), ", ")}, " <>
+            "which an owner decision no longer stores (derived, or a list normalized to a " <>
+            "join); the :auto_bind action does not accept them",
+          target: :ash,
+          subject: %{type: type.id},
+          details: %{
+            fields: Enum.sort(dropped),
+            names: Enum.map(Enum.sort(dropped), &derived[&1])
+          }
+        )
+      ]
     end
   end
 

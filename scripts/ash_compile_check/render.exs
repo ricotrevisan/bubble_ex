@@ -19,16 +19,24 @@
 #     MIX_ENV=test mix run scripts/ash_compile_check/render.exs <scratch dir> [unverified|omit]
 #
 # The owner decision sets of BubbleEx.Test.DecidedFixture (WTF-401,
-# WTF-405) are rendered too: `decided_combined` (every cut-1 transform,
-# before the name lock), `decided_locked` (after it: renamed attributes
-# keep their columns through `source:`), `decided_count` (every count as
-# the length of a stored list) and `decided_cut2` (every cut-2 transform,
-# with the index hints applied by default). Their expectations (derived
-# fields are calculations or aggregates with no column, refined numbers
-# are bigint/numeric columns, kept columns exist, the counts, has_many and
-# text references to check, the indexes and extensions to find) are
-# written to decisions.json for decisions.exs. Each repo installs the
-# extensions its Project lists (`pg_trgm` for trigram indexes).
+# WTF-405, WTF-406) are rendered too: `decided_combined` (every cut-1
+# transform, before the name lock), `decided_locked` (after it: renamed
+# attributes keep their columns through `source:`), `decided_count` (every
+# count as the length of a stored list), `decided_cut2` (every cut-2
+# transform, with the index hints applied by default) and `decided_cut3`
+# (lists normalized to join resources, a membership join). With
+# `unverified`, two mutants of `decided_cut3` too, which decisions.exs
+# requires to leak (so its privacy checks cannot pass vacuously):
+# `decided_cut3_open_join` (the join resources' read policy authorizes
+# every row, and the join relationships read every row of their list)
+# and `decided_cut3_open_all` (also no filter on the many_to_many
+# relationships). Their expectations (derived fields are
+# calculations or aggregates with no column, refined numbers are
+# bigint/numeric columns, kept columns exist, the counts, has_many, text
+# references and joins to check, the indexes and extensions to find, and
+# the join privacy scenarios) are written to decisions.json for
+# decisions.exs. Each repo installs the extensions its Project lists
+# (`pg_trgm` for trigram indexes).
 #
 # With `unverified`, the privacy interpreter's verdicts on the expression
 # and policy expectation tables are written to interpreter_conditions.json
@@ -53,9 +61,11 @@ database_prefix = if privacy == :omit, do: "ash_omit_check_", else: "ash_check_"
 # What privacy: :omit must never render (see BubbleEx.Target.Ash, "Privacy
 # modes").
 # (Public calculations are fields derived by an owner decision; privacy
-# calculations are the private ones.)
+# calculations are the private ones. A many_to_many's join relationship is
+# private and filtered by its list's membership column, WTF-406: data, not
+# policy.)
 policy_source =
-  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr|public\?: false|authorize_if|forbid_if|NOT VERIFIED/
+  ~r/Ash\.Policy|policies do|field_polic|private_fields|_for_privacy|KeyedRead|\.Privacy\b|load_actor|actor_loads|sortable\?|filter expr(?!\((not is_nil\(\w+\)|\w+ == true)\)\n)|authorize_if|forbid_if|NOT VERIFIED/
 
 defmodule PrivacyFilters do
   # `<namespace>.PrivacyFilters.all/0`: one entry per compiled privacy-rule
@@ -143,8 +153,61 @@ decided = [
   {"Fixtures.DecidedCount", "decided_count",
    fn -> BubbleEx.Test.DecidedFixture.project(:count, privacy: privacy) end},
   {"Fixtures.DecidedCut2", "decided_cut2",
-   fn -> BubbleEx.Test.DecidedFixture.project(:cut2, privacy: privacy) end}
+   fn -> BubbleEx.Test.DecidedFixture.project(:cut2, privacy: privacy) end},
+  {"Fixtures.DecidedCut3", "decided_cut3",
+   fn -> BubbleEx.Test.DecidedFixture.project(:cut3, privacy: privacy) end}
 ]
+
+# A mutant of a Project with policies: the join resources' read policy
+# authorizes every row (`:open_join`), and also no many_to_many is
+# filtered by its owner's grants (`:open_all`). Test scaffolding only:
+# decisions.exs requires the mutants to leak what the real Project hides.
+open_joins = fn {:ok, project}, mode ->
+  always = %BubbleEx.Target.Ash.PolicyCheck{kind: :authorize_if, test: :always}
+
+  joins =
+    Enum.map(project.joins, fn j ->
+      policies =
+        Enum.map(j.policies, fn
+          %{permission: :view} = p -> %{p | checks: [always]}
+          p -> p
+        end)
+
+      %{j | policies: policies, calculations: [], field_policies: []}
+    end)
+
+  # (the join relationships' filters read the join's calculations, gone
+  # with the policy: both mutants drop them; `:open_all` also the
+  # many_to_many filters)
+  resources =
+    Enum.map(project.resources, fn r ->
+      rels =
+        Enum.map(r.relationships, fn
+          %{kind: :many_to_many, membership: m} = rel ->
+            rel = %{rel | membership: Map.delete(m, :visible)}
+            if mode == :open_all, do: %{rel | gate: nil}, else: rel
+
+          rel ->
+            rel
+        end)
+
+      %{r | relationships: rels}
+    end)
+
+  {:ok, %{project | joins: joins, resources: resources}}
+end
+
+decided =
+  if privacy == :unverified do
+    decided ++
+      for mode <- [:open_join, :open_all] do
+        {"Fixtures.DecidedCut3#{Macro.camelize(Atom.to_string(mode))}",
+         "decided_cut3_#{mode}",
+         fn -> open_joins.(BubbleEx.Test.DecidedFixture.project(:cut3, privacy: privacy), mode) end}
+      end
+  else
+    decided
+  end
 
 private_apps =
   case System.get_env("BUBBLE_EX_PRIVATE_EXPORT") do
@@ -166,11 +229,24 @@ private_cut2 = fn app ->
   end
 end
 
+# And `private_cut3`: every cut-2 and cut-3 finding accepted (lists
+# normalized to joins, membership joins; WTF-406).
+private_cut3 = fn app ->
+  fn ->
+    {:ok, model} = BubbleEx.Model.build(app)
+    {:ok, index} = BubbleEx.Index.build(app, model: model)
+    {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
+    {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
+    BubbleEx.Target.Ash.map(model, applied, privacy: privacy, decisions_sha256: sha)
+  end
+end
+
 private =
   Enum.flat_map(private_apps, fn {namespace, name, app} ->
     [
       {namespace, name, map_fixture.(app)},
-      {"Private.Cut2", "private_cut2", private_cut2.(app)}
+      {"Private.Cut2", "private_cut2", private_cut2.(app)},
+      {"Private.Cut3", "private_cut3", private_cut3.(app)}
     ]
   end)
 
@@ -254,8 +330,9 @@ end
 # What decisions.exs checks in the database of each decided fixture.
 decision_expectations =
   for {namespace, repo, name, project} <- rendered,
-      String.starts_with?(name, "decided_") or name == "private_cut2" do
+      String.starts_with?(name, "decided_") or name in ["private_cut2", "private_cut3"] do
     by_module = Map.new(project.resources, &{&1.module, &1})
+    by_type = Map.new(project.resources, &{&1.source.type, &1})
 
     resources =
       for r <- project.resources do
@@ -347,13 +424,117 @@ decision_expectations =
         }
       end
 
+    # Join resources (cut 3): the table's columns and primary key, and per
+    # list the owner's many_to_many (its private twin with policies: the
+    # public one is filtered by the actor's grants) and join relationship.
+    joins =
+      for j <- project.joins do
+        %{
+          resource: namespace <> "." <> j.module,
+          table: j.table,
+          columns: Enum.map(j.attributes, & &1.name),
+          keys: [j.join.left.column, j.join.right.column],
+          sides:
+            for side <- j.join.sides do
+              owner = Map.fetch!(by_type, side.type)
+              rel = Enum.find(owner.relationships, &(&1.name == side.relationship))
+              # (with policies, the ungated twin and its own join relationship)
+              twin = Enum.find(owner.relationships ++ owner.privacy_relationships, &(&1.name == twin_of.(owner, rel)))
+
+              %{
+                owner: namespace <> "." <> owner.module,
+                relationship: twin.name,
+                join_relationship: twin.join_relationship,
+                member: namespace <> "." <> rel.destination,
+                owner_column: rel.source_attribute_on_join_resource,
+                member_column: rel.destination_attribute_on_join_resource,
+                marker: side.marker.column,
+                kind: side.marker.kind
+              }
+            end
+        }
+      end
+
+    # With policies, the cut-3 fixture's restrictive joins, read with
+    # authorization on (decisions.exs). Workspace's Members (a membership
+    # join: its Member rule tests it) shares its table with User's
+    # Workspaces (Bubble shows it to everyone; the Workspace's Listed rule
+    # tests the current user's list), each list with its own column; and
+    # Project's Tasks (its rule tests the Workspace's Members: a join read
+    # through another). `variant` says what the mutants must leak.
+    join_privacy =
+      if privacy == :unverified and String.starts_with?(name, "decided_cut3") do
+        m2m = fn type, field ->
+          Enum.find(by_type[type].relationships, &(&1.source[:field] == field))
+        end
+
+        rows = fn member_type, owner_type, field ->
+          Enum.find_value(by_type[member_type].privacy_relationships, fn r ->
+            if r.source[:list] == %{type: owner_type, field: field}, do: r.name
+          end)
+        end
+
+        calc = fn type, rule ->
+          Enum.find_value(by_type[type].calculations, fn c ->
+            if c.source[:rule] == rule, do: c.name
+          end)
+        end
+
+        members = m2m.("workspace", "members_list_user")
+        workspaces = m2m.("user", "workspaces_list_custom_workspace")
+        tasks = m2m.("project", "tasks_list_custom_task")
+        [members_side] = for j <- project.joins, s <- j.join.sides, s.field == "members_list_user", do: s
+        [workspaces_side] = for j <- project.joins, s <- j.join.sides, s.field == "workspaces_list_custom_workspace", do: s
+        [tasks_side] = for j <- project.joins, s <- j.join.sides, s.field == "tasks_list_custom_task", do: s
+
+        workspace_attr =
+          Enum.find_value(by_type["project"].attributes, fn a ->
+            if a.source[:field] == "workspace_custom_workspace", do: a.name
+          end)
+
+        %{
+          variant: String.replace_prefix(name, "decided_cut3", "") |> String.trim_leading("_"),
+          actor: namespace <> ".Privacy",
+          membership: %{
+            join: namespace <> "." <> members.through,
+            owner: namespace <> "." <> by_type["workspace"].module,
+            user_column: members.destination_attribute_on_join_resource,
+            workspace_column: members.source_attribute_on_join_resource,
+            members_marker: members_side.marker.column,
+            workspaces_marker: workspaces_side.marker.column,
+            members: members.name,
+            members_join: members.join_relationship,
+            workspaces: workspaces.name,
+            # the user's rows of Workspace's Members, and the workspace's of
+            # User's Workspaces (private, only the list's rows)
+            member_rows: rows.("user", "workspace", "members_list_user"),
+            member_rule: calc.("workspace", "member_"),
+            listed_rule: calc.("workspace", "listed_")
+          },
+          nested: %{
+            join: namespace <> "." <> tasks.through,
+            owner: namespace <> "." <> by_type["project"].module,
+            member: namespace <> "." <> tasks.destination,
+            relationship: tasks.name,
+            join_relationship: tasks.join_relationship,
+            owner_column: tasks.source_attribute_on_join_resource,
+            member_column: tasks.destination_attribute_on_join_resource,
+            marker: tasks_side.marker.column,
+            rows: rows.("task", "project", "tasks_list_custom_task"),
+            workspace_attribute: workspace_attr
+          }
+        }
+      end
+
     %{
       namespace: namespace,
       repo: repo,
       name: name,
       privacy: privacy,
       extensions: project.extensions,
-      resources: resources
+      resources: resources,
+      joins: joins,
+      join_privacy: join_privacy
     }
   end
 

@@ -14,7 +14,9 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   # A cut-2 run (WTF-405) also accepts every finding whose transform is a
   # cut-2 one (derive_count, text_to_reference with a target type,
   # derive_reverse_relationship) and leaves the hints to apply by default;
-  # it prints its counts and commits nothing.
+  # it prints its counts and commits nothing. A cut-3 run (WTF-406) accepts
+  # every cut-2 and cut-3 finding (lists normalized to joins, membership
+  # joins) the same way.
   # It names private Bubble IDs, so it is never committed. The committed
   # snapshot holds only the Project's hash, the decision set's hash and
   # aggregate counts, never names or IDs. A changed hash or count means
@@ -131,6 +133,41 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       report(
         "cut 2, #{privacy}; #{length(decided)} decision records, " <>
           "#{untyped} text_to_reference without a target type left undecided",
+        project,
+        automatic
+      )
+    end
+  end
+
+  test "every cut-2 and cut-3 finding accepted maps and renders; no privacy rule is lost",
+       %{model: model, index: index, findings: findings, records: records, faithful: faithful} do
+    {decided, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, records, index)
+    {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
+    assert Resolved.blocking(resolved) == []
+    automatic = Enum.filter(applied, & &1.automatic)
+    joins = Enum.count(applied, &(&1.transform in [:normalize_list_to_join, :membership_policy]))
+    assert joins > 0
+
+    for privacy <- [:omit, :unverified] do
+      {:ok, project} =
+        Ash.map(model, applied, index: index, privacy: privacy, decisions_sha256: sha)
+
+      keys = MapSet.new(project.applied, & &1.key)
+      assert Enum.all?(applied, &(&1.automatic or MapSet.member?(keys, &1.key)))
+      {:ok, _source} = Source.render(project)
+
+      # a rule testing a list now normalized still compiles (through the
+      # join): never more rules denied than source-faithfully
+      if privacy == :unverified do
+        denied = fn p -> Project.privacy_summary(p)["rules"]["denied"] end
+        assert denied.(project) <= denied.(faithful)
+      end
+
+      summary = Project.summary(project)
+
+      report(
+        "cut 3, #{privacy}; #{length(decided)} decision records, #{joins} lists normalized " <>
+          "into #{summary["joins"]} joins",
         project,
         automatic
       )

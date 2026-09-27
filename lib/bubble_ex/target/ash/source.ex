@@ -67,6 +67,12 @@ defmodule BubbleEx.Target.Ash.Source do
     belongs_to: 3,
     has_many: 2,
     has_many: 3,
+    many_to_many: 2,
+    many_to_many: 3,
+    through: 1,
+    source_attribute_on_join_resource: 1,
+    destination_attribute_on_join_resource: 1,
+    join_relationship: 1,
     count: 2,
     count: 3,
     index: 1,
@@ -173,7 +179,7 @@ defmodule BubbleEx.Target.Ash.Source do
           Enum.map(project.enums, &enum(&1, ctx)) ++
           Enum.map(project.typed_structs, &typed_struct(&1, ctx)) ++
           keyed_read_module(project, ctx) ++
-          Enum.map(project.resources, &resource(&1, ctx)) ++
+          Enum.map(project.resources ++ project.joins, &resource(&1, ctx)) ++
           [domain_module(project, ctx)] ++ privacy_module(project, ctx)
 
       source = @header <> extensions_note(project) <> "\n" <> Enum.join(modules, "\n\n")
@@ -502,11 +508,14 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp policy(%Policy{} = policy, ctx) do
     condition =
-      case policy.changing do
-        nil ->
+      case {policy.changing, policy.accessing_from} do
+        {nil, nil} ->
           "action(#{atom(policy.action)})"
 
-        names ->
+        {nil, {module, rel}} ->
+          "[action(#{atom(policy.action)}), accessing_from(#{module(module, ctx)}, #{atom(rel)})]"
+
+        {names, _} ->
           "[action(#{atom(policy.action)}), changing_attributes([#{Enum.map_join(names, ", ", &atom/1)}])]"
       end
 
@@ -599,6 +608,29 @@ defmodule BubbleEx.Target.Ash.Source do
     has_many #{atom(r.name)}, #{module(r.destination, ctx)} do
       source_attribute #{atom(r.source_attribute)}
       destination_attribute #{atom(r.destination_attribute)}
+      public? #{literal(r.public?)}#{sortable(r.sortable?)}#{filter(r.membership, r.gate)}
+    end
+    """
+  end
+
+  # A many_to_many reads only its list's join rows: its join relationship
+  # is declared, filtered by the list's membership column (the join
+  # resource's policies authorize the rows read through it).
+  defp relationship(%Relationship{kind: :many_to_many} = r, ctx) do
+    """
+    has_many #{atom(r.join_relationship)}, #{module(r.through, ctx)} do
+      source_attribute #{atom(r.source_attribute)}
+      destination_attribute #{atom(r.source_attribute_on_join_resource)}
+      public? false#{filter(r.membership, nil)}
+    end
+
+    many_to_many #{atom(r.name)}, #{module(r.destination, ctx)} do
+      through #{module(r.through, ctx)}
+      source_attribute #{atom(r.source_attribute)}
+      source_attribute_on_join_resource #{atom(r.source_attribute_on_join_resource)}
+      destination_attribute_on_join_resource #{atom(r.destination_attribute_on_join_resource)}
+      destination_attribute #{atom(r.destination_attribute)}
+      join_relationship #{atom(r.join_relationship)}
       public? #{literal(r.public?)}#{sortable(r.sortable?)}#{gate(r.gate)}
     end
     """
@@ -627,6 +659,19 @@ defmodule BubbleEx.Target.Ash.Source do
   defp gate({:visible_if, calcs}),
     do: "\nfilter expr(parent(" <> Enum.map_join(calcs, " or ", &identifier!/1) <> "))"
 
+  defp filter(nil, gate), do: gate(gate)
+  defp filter(_membership, :never), do: gate(:never)
+  defp filter(membership, nil), do: "\nfilter expr(" <> member(membership) <> ")"
+
+  defp filter(membership, {:visible_if, calcs}),
+    do:
+      "\nfilter expr(" <>
+        member(membership) <>
+        " and parent(" <> Enum.map_join(calcs, " or ", &identifier!/1) <> "))"
+
+  defp member(%{column: c, kind: :position}), do: "not is_nil(#{identifier!(c)})"
+  defp member(%{column: c, kind: :flag}), do: "#{identifier!(c)} == true"
+
   defp identities([]), do: ""
 
   defp identities(identities) do
@@ -641,7 +686,8 @@ defmodule BubbleEx.Target.Ash.Source do
   defp domain_module(project, ctx) do
     resources =
       Enum.map_join(
-        Enum.map(project.resources, &module(&1.module, ctx)) ++ ctx.extra_resources,
+        Enum.map(project.resources ++ project.joins, &module(&1.module, ctx)) ++
+          ctx.extra_resources,
         "\n",
         &"resource #{&1}"
       )
@@ -661,7 +707,9 @@ defmodule BubbleEx.Target.Ash.Source do
   # aggregate, selects records by primary key at the top level (`id == x`,
   # `id in [...]`, and-ed with anything), or loads a relationship.
   defp keyed_read_module(project, ctx) do
-    if Enum.any?(project.resources, fn r -> Enum.any?(r.extra_actions, & &1.keyed?) end) do
+    if Enum.any?(project.resources ++ project.joins, fn r ->
+         Enum.any?(r.extra_actions, & &1.keyed?)
+       end) do
       [
         """
         defmodule #{ctx.namespace}.Privacy.KeyedRead do

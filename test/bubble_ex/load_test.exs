@@ -329,6 +329,264 @@ defmodule BubbleEx.LoadTest do
     end
   end
 
+  describe "join tables (WTF-406)" do
+    # The :cut3 decisions: Project's Tasks a join of its own (order kept);
+    # Project's Viewers (a flag) and User's Favorites (order kept) one
+    # table; Workspace's Members (a membership join) and User's Workspaces
+    # one table (both orders kept). Each list has its own column.
+    defp join_rows(target, table) do
+      target
+      |> Memory.tables()
+      |> Map.get(table, %{})
+      |> Map.values()
+      |> Enum.sort_by(&Enum.sort/1)
+    end
+
+    defp side_key(project, type, field) do
+      join =
+        Enum.find(project.joins, fn j ->
+          Enum.any?(j.join.sides, &(&1.type == type and &1.field == field))
+        end)
+
+      "#{join.join.id}/#{type}/#{field}"
+    end
+
+    test "each list loads as its own rows, idempotently, never adding to the mirrored list",
+         %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      {:ok, project} = F.project(:cut3)
+      {:ok, dry} = Load.dry_run(f.export, f.model, f.target)
+
+      tasks = side_key(project, "project", "tasks_list_custom_task")
+      members = side_key(project, "workspace", "members_list_user")
+      workspaces = side_key(project, "user", "workspaces_list_custom_workspace")
+      assert dry.joins[tasks] == %{rows: 3}
+      assert dry.joins[members] == %{rows: 4}
+      assert dry.joins[workspaces] == %{rows: 3}
+      assert Memory.tables(f.target) == %{}
+
+      # a repeated member is one row; a dangling one is kept and reported
+      assert diag(dry, :load_join_duplicate, "project", "tasks_list_custom_task").details.count ==
+               1
+
+      assert %{count: 1, missing: 1} =
+               diag(dry, :load_dangling_reference, "project", "tasks_list_custom_task").details
+
+      assert diag(dry, :load_dangling_reference, "workspace", "members_list_user")
+
+      for {type, field} <- [
+            {"workspace", "members_list_user"},
+            {"user", "workspaces_list_custom_workspace"},
+            {"project", "viewers_list_user"},
+            {"user", "favorites_list_custom_project"}
+          ] do
+        assert %{severity: :info, details: %{count: 1}} =
+                 diag(dry, :load_join_asymmetric, type, field)
+      end
+
+      {:ok, run} = Load.run(f.export, f.model, f.target)
+      refute Enum.any?(run.diagnostics, &(&1.code == :load_join_stale_member))
+      assert run.joins[tasks] == %{rows: 3, inserted: 3, updated: 0, unchanged: 0, resumed: 0}
+
+      assert join_rows(f.target, "project_tasks") ==
+               Enum.sort_by(
+                 [
+                   %{
+                     "project_id" => F.initiative1(),
+                     "task_id" => F.gone_task(),
+                     "position" => 3
+                   },
+                   %{"project_id" => F.initiative1(), "task_id" => F.todo1(), "position" => 0},
+                   %{"project_id" => F.initiative1(), "task_id" => F.todo2(), "position" => 1}
+                 ],
+                 &Enum.sort/1
+               )
+
+      # Bob views Plan but his Favorites do not list it: no favorites column
+      fav = fn project, user ->
+        Enum.find(
+          join_rows(f.target, "favorite_project"),
+          &(&1["project_id"] == project and &1["user_id"] == user)
+        )
+      end
+
+      assert fav.(F.initiative1(), F.bob()) == %{
+               "project_id" => F.initiative1(),
+               "user_id" => F.bob(),
+               "viewers_listed" => true
+             }
+
+      assert fav.(F.initiative1(), F.ada()) ==
+               %{
+                 "project_id" => F.initiative1(),
+                 "user_id" => F.ada(),
+                 "viewers_listed" => true,
+                 "favorites_position" => 0
+               }
+
+      assert fav.(F.initiative2(), F.bob()) ==
+               %{"project_id" => F.initiative2(), "user_id" => F.bob(), "favorites_position" => 0}
+
+      ws = fn user, workspace ->
+        row =
+          Enum.find(
+            join_rows(f.target, "user_workspaces"),
+            &(&1["user_id"] == user and &1["workspace_id"] == workspace)
+          )
+
+        row && {row["workspaces_position"], row["members_position"]}
+      end
+
+      # Acme's Members list Bob, whose Workspaces do not: a member of one list only
+      assert ws.(F.bob(), F.workspace1()) == {nil, 1}
+      assert ws.(F.carol(), F.workspace1()) == {1, nil}
+      assert ws.(F.ada(), F.workspace1()) == {0, 0}
+      assert ws.(F.gone_user(), F.workspace1()) == {nil, 2}
+
+      refute Map.has_key?(Memory.tables(f.target)["project"][F.initiative1()], "tasks")
+
+      before = Memory.tables(f.target)
+      {:ok, again} = Load.run(f.export, f.model, f.target)
+      assert again.joins[members] == %{rows: 4, inserted: 0, updated: 0, unchanged: 4, resumed: 0}
+      assert Memory.tables(f.target) == before
+    end
+
+    test "a later export with removed join members is blocked before any writes", %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      {:ok, _} = Load.run(f.export, f.model, f.target)
+
+      rows = F.cut3_rows()
+      [w1 | rest] = rows["workspace"]
+      # Bob leaves Acme's Members; Carol joins them
+      w1 = Map.put(w1, "Members", [F.carol(), F.ada(), F.gone_user()])
+      rows = %{rows | "workspace" => [w1 | rest]}
+      {:ok, delta_export} = F.export(:cut3, Path.join(dir, "delta"), rows)
+
+      # Dry-run reports the revocation without writing anything.
+      before = Memory.tables(f.target)
+      {:ok, dry} = Load.dry_run(delta_export, f.model, f.target)
+      assert :load_join_stale_member in dry.blocked
+
+      assert %{severity: :error, details: %{count: 1, sample_ids: [w], not_listed_now: 1}} =
+               diag(dry, :load_join_stale_member, "workspace", "members_list_user")
+
+      assert w == F.workspace1()
+      refute diag(dry, :load_join_stale_member, "user", "workspaces_list_custom_workspace")
+
+      ledger_dir = Path.join(dir, "blocked-ledger")
+
+      assert {:error, %BubbleEx.Error{kind: :invalid_input, context: context}} =
+               Load.run(delta_export, f.model, f.target, ledger_dir: ledger_dir)
+
+      assert :load_join_stale_member in context.blocked
+      assert context.report.blocked == dry.blocked
+      assert diag(context.report, :load_join_stale_member, "workspace", "members_list_user")
+      assert Memory.tables(f.target) == before
+      refute File.exists?(ledger_dir)
+
+      # Bob still has a membership row in the old target, so a successful
+      # delta run must not certify that target as safe to serve.
+      assert Enum.any?(join_rows(f.target, "user_workspaces"), fn row ->
+               row["user_id"] == F.bob() and row["workspace_id"] == F.workspace1() and
+                 row["members_position"] == 1
+             end)
+    end
+
+    test "a deleted owner in a complete delta blocks before writes, even with an existing ledger",
+         %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      ledger_dir = Path.join(dir, "ledger")
+      {:ok, _} = Load.run(f.export, f.model, f.target, ledger_dir: ledger_dir)
+      before = Memory.tables(f.target)
+      ledger_before = ledger_state(ledger_dir)
+
+      rows = F.cut3_rows()
+
+      rows = %{
+        rows
+        | "workspace" => Enum.reject(rows["workspace"], &(&1["_id"] == F.workspace1()))
+      }
+
+      {:ok, delta} = F.export(:cut3, Path.join(dir, "deleted-owner"), rows)
+
+      {:ok, dry} = Load.dry_run(delta, f.model, f.target)
+      assert :load_join_stale_member in dry.blocked
+
+      assert %{details: %{count: 3, sample_ids: [owner]}} =
+               diag(dry, :load_join_stale_member, "workspace", "members_list_user")
+
+      assert owner == F.workspace1()
+
+      assert {:error, %{context: %{blocked: blocked, report: report}}} =
+               Load.run(delta, f.model, f.target, ledger_dir: ledger_dir)
+
+      assert :load_join_stale_member in blocked
+      assert report.run == nil
+      assert Memory.tables(f.target) == before
+      assert ledger_state(ledger_dir) == ledger_before
+      refute Jason.encode!(Report.to_map(report)) =~ "Acme"
+    end
+
+    test "false flags are not members of a normalized list", %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      {:ok, _} = Load.run(f.export, f.model, f.target)
+      # The target can hold a join row whose boolean flag is false. It is
+      # not a viewer, unlike a non-nil position (including position zero).
+      Memory.put_rows(f.target, "favorite_project", %{
+        {F.initiative2(), F.ada()} => %{
+          "project_id" => F.initiative2(),
+          "user_id" => F.ada(),
+          "viewers_listed" => false
+        }
+      })
+
+      {:ok, dry} = Load.dry_run(f.export, f.model, f.target)
+      refute :load_join_stale_member in dry.blocked
+      assert {:ok, _} = Load.run(f.export, f.model, f.target)
+
+      Memory.put_rows(f.target, "favorite_project", %{
+        {F.initiative2(), F.ada()} => %{
+          "project_id" => F.initiative2(),
+          "user_id" => F.ada(),
+          "viewers_listed" => true
+        }
+      })
+
+      {:ok, stale} = Load.dry_run(f.export, f.model, f.target)
+      assert :load_join_stale_member in stale.blocked
+
+      assert %{details: %{count: 1, sample_ids: [id]}} =
+               diag(stale, :load_join_stale_member, "project", "viewers_list_user")
+
+      assert id == F.initiative2()
+    end
+
+    test "an interrupted load resumes its join rows from the ledger", %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      opts = [ledger_dir: Path.join(dir, "ledger"), batch_size: 1]
+      records = 2 + 2 + 2 + 3
+
+      # the 3rd join batch fails, after every data type's table
+      Memory.fail_on(f.target, records + 3)
+      assert {:error, _} = Load.run(f.export, f.model, f.target, opts)
+      Memory.fail_on(f.target, nil)
+      {:ok, resumed} = Load.run(f.export, f.model, f.target, opts)
+      assert resumed.joins |> Map.values() |> Enum.map(& &1.resumed) |> Enum.sum() == 2
+
+      clean = Memory.start(elem(F.project(:cut3), 1))
+      {:ok, _} = Load.run(f.export, f.model, clean)
+      assert Memory.tables(f.target) == Memory.tables(clean)
+    end
+
+    test "reports hold counts and IDs, never list values beyond IDs", %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      {:ok, dry} = Load.dry_run(f.export, f.model, f.target)
+      text = dry |> Report.to_map() |> Jason.encode!()
+      refute text =~ "Acme"
+      refute text =~ "Plan"
+    end
+  end
+
   describe "blocking" do
     test "duplicate emails stop a real run before any write", %{tmp_dir: dir} do
       rows = F.cut2_rows()
