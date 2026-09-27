@@ -366,7 +366,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     data? =
       Enum.any?(steps, &(&1.op in @data_ops)) or
-        Enum.any?([condition, interval | Enum.flat_map(steps, &Spec.step_values/1)], &loads?/1)
+        Enum.any?(
+          [condition, interval | Enum.flat_map(steps, &[&1.condition | Spec.step_values(&1)])],
+          &loads?/1
+        )
 
     %{
       workflow: w.bubble_id,

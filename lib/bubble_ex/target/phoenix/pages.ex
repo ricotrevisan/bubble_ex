@@ -2468,7 +2468,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           "    do: BubbleWorkflows.handle_event(socket, Workflows, event, params)\n",
           "\n  @impl true\n",
           "  def handle_info(message, socket) when elem(message, 0) == :bubble,\n",
-          "    do: BubbleWorkflows.handle_info(socket, Workflows, message)\n"
+          "    do: BubbleWorkflows.handle_info(socket, Workflows, message)\n",
+          "\n  def handle_info(_message, socket), do: {:noreply, socket}\n"
         ],
         else: []
 

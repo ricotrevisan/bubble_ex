@@ -349,6 +349,22 @@
           },
           "type": "Button"
         },
+        "bBtnRel": {
+          "id": "bBtnRel",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 20,
+            "text": {
+              "entries": {
+                "0": "Relationship"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
         "bBtnReset": {
           "id": "bBtnReset",
           "properties": {
@@ -990,6 +1006,122 @@
           },
           "type": "ButtonClicked"
         },
+        "wRel": {
+          "actions": {
+            "0": {
+              "id": "aRel1",
+              "properties": {
+                "initial_values": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "entries": {
+                        "0": "Parent"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                },
+                "thing_type": "custom.note"
+              },
+              "type": "NewThing"
+            },
+            "1": {
+              "id": "aRel2",
+              "properties": {
+                "initial_values": {
+                  "0": {
+                    "key": "parent_custom_note",
+                    "value": {
+                      "properties": {
+                        "action_id": "aRel1"
+                      },
+                      "type": "PreviousStep"
+                    }
+                  }
+                },
+                "thing_type": "custom.note"
+              },
+              "type": "NewThing"
+            },
+            "2": {
+              "id": "aRel3",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "parent_custom_note",
+                        "next": {
+                          "name": "title_text",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "action_id": "aRel2"
+                      },
+                      "type": "PreviousStep"
+                    }
+                  }
+                },
+                "condition": {
+                  "next": {
+                    "name": "parent_custom_note",
+                    "next": {
+                      "name": "title_text",
+                      "next": {
+                        "name": "is_not_empty",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aRel2"
+                  },
+                  "type": "PreviousStep"
+                },
+                "to_change": {
+                  "properties": {
+                    "action_id": "aRel2"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "ChangeThing"
+            },
+            "3": {
+              "id": "aRel4",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "parent_custom_note",
+                    "next": {
+                      "name": "title_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aRel2"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wRel",
+          "properties": {
+            "element_id": "bBtnRel"
+          },
+          "type": "ButtonClicked"
+        },
         "wReset": {
           "actions": {
             "0": {
@@ -1177,6 +1309,10 @@
         "done_boolean": {
           "display": "Done",
           "value": "boolean"
+        },
+        "parent_custom_note": {
+          "display": "Parent",
+          "value": "custom.note"
         },
         "title_text": {
           "display": "Title",

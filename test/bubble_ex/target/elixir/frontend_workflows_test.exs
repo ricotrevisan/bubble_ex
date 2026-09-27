@@ -150,6 +150,36 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     refute Spec.native?(workflow(spec, "wCallee"))
   end
 
+  test "a load in a step's condition alone makes the workflow a data workflow (review H1)" do
+    relation = %{
+      "type" => "CurrentUser",
+      "next" => %{
+        "type" => "Message",
+        "name" => "fav_custom_note",
+        "next" => %{
+          "type" => "Message",
+          "name" => "title_text",
+          "next" => %{"type" => "Message", "name" => "is_not_empty"}
+        }
+      }
+    }
+
+    spec =
+      app()
+      |> put_in(["user_types", "user", "fields", "fav_custom_note"], %{
+        "display" => "Favorite",
+        "value" => "custom.note"
+      })
+      |> edit("wNav", &put_in(&1, ["actions", "0", "properties", "condition"], relation))
+      |> spec()
+
+    w = workflow(spec, "wNav")
+    [%{condition: %{bindings: [%{loads: [["favorite"]]}]}}] = w.steps
+    assert w.data?
+    # A caller of a data custom event is a data workflow too.
+    refute workflow(spec, "wCall").data?
+  end
+
   test "what the page does not provide is residue, not a silent nil" do
     page_thing = %{"type" => "CurrentPageItem"}
 
@@ -212,15 +242,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     coverage = FrontendWorkflows.coverage(spec)
 
     assert coverage["workflows"] == %{
-             "total" => 20,
-             "native" => 17,
-             "native_own_body" => 18,
-             "wired" => 14,
+             "total" => 21,
+             "native" => 18,
+             "native_own_body" => 19,
+             "wired" => 15,
              "residue" => 3,
              "client" => 3
            }
 
-    assert coverage["data"] == 2
+    assert coverage["data"] == 3
     assert coverage["residue_reasons"] == %{"unsupported_action" => 2}
     assert coverage["by_surface"]["reusable"] == %{"total" => 3, "native" => 3}
   end

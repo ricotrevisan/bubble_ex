@@ -243,6 +243,14 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
 
   test "hostile IDs are quoted in generated source, never spliced in" do
     app = app()
+    # Two workflow IDs that differ only by a newline and a space.
+    app =
+      put_in(
+        app,
+        ["pages", "home", "workflows", "wUrl", "id"],
+        HostileIds.hostile("wNav") |> String.replace("\n", " ")
+      )
+
     ids = HostileIds.ids(app)
     %{files: files} = render(HostileIds.rename(app, ids))
 
@@ -262,6 +270,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       refute content =~ ~s("\#{raise), path
       refute content =~ ~r/<%(?!!-- TODO\(bubble:)/, path
     end
+
+    # Markers are one word each and never collide (review L4): control
+    # characters and spaces are percent-encoded, not replaced.
+    workflows = markers(files)
+    # 21 page workflows and the backend workflow they schedule.
+    assert map_size(workflows) == 22
+    assert Enum.all?(Map.values(workflows), &match?([_], &1))
 
     # The test tags are the plan's subjects, as data.
     {:ok, quoted} =

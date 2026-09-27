@@ -24,8 +24,8 @@ defmodule BubbleEx.Plan.Residue do
   | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
   | `:trigger_dropped` | workflow | `BubbleEx.Plan.build/5`: a dropped plugin's event triggered it and it runs other actions, so it needs a new trigger (`detail.plugin`) |
   | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
-  | `:api_connector_action` | action | `BubbleEx.Workflows.Backend`: an API Connector call in a backend workflow; it waits for the generated Req clients (`detail.call`) |
-  | `:unsupported_option` | workflow, action | `BubbleEx.Workflows.Backend`: an event or action member with no lowering (`detail.options`) |
+  | `:api_connector_action` | action | `BubbleEx.Workflows.Backend` and `BubbleEx.Workflows.Frontend` (through `BubbleEx.Workflows.Lowering`): an API Connector call in a backend or page workflow; it waits for the generated Req clients (`detail.call`) |
+  | `:unsupported_option` | workflow, action | `BubbleEx.Workflows.Backend`, `BubbleEx.Workflows.Frontend`: an event or action member with no lowering (`detail.options`) |
   | `:unavailable_input` | workflow, action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a value the generated page does not provide (a page's or cell's thing, a group's data, an element's built-in state; `detail.inputs`) |
   | `:target_not_rendered` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: the element a step shows, hides, focuses, resets or calls into is not rendered by the generated page (in a runtime container's template, or not normalized) (`detail.element`) |
   | `:backend_workflow` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a page scheduling a backend workflow when the backend workflows (WTF-373) are not bound (`detail.workflow`) |

@@ -115,6 +115,84 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     )
   end
 
+  test "relationship loads in a data step and a step condition (review H2)", %{conn: conn} do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+    {:ok, view, _html} = live(conn, "/")
+    assert click(view, "bBtnRel") =~ "Label: Parent"
+
+    notes = Ash.read!(PhxCheck.Note, authorize?: false)
+    assert Enum.count(notes, &(&1.title == "Parent")) == 2
+  end
+
+  test "with data access off, a load reads nothing, even if a flag is wrong (review H1)" do
+    alias PhxCheckWeb.BubbleWorkflows
+    note = Ash.Seed.seed!(PhxCheck.Note, %{id: "1700000000000x100000000000000009", title: "x"})
+    ctx = %BubbleWorkflows.Ctx{now: DateTime.utc_now()}
+    assert BubbleWorkflows.load(note, [["parent"]], ctx) == nil
+    assert BubbleWorkflows.load(note, [], ctx) == note
+
+    assert {:halt, {:error, :data_access_disabled}, _} =
+             BubbleWorkflows.backend(ctx, fn _run -> flunk("the backend step ran") end)
+  end
+
+  test "a scheduled custom event continues its run's budget; a self-scheduling chain ends" do
+    alias PhxCheckWeb.BubbleWorkflows
+    socket = BubbleWorkflows.socket(PhxCheckWeb.IndexLive.Workflows)
+
+    ctx = %BubbleWorkflows.Ctx{
+      now: DateTime.utc_now(),
+      backend: PhxCheck.Workflows.Runtime.root(nil, nil)
+    }
+
+    ctx = %{ctx | backend: %{ctx.backend | calls: 1}}
+
+    assert {:cont, ctx} =
+             BubbleWorkflows.schedule_custom(
+               ctx,
+               "s1",
+               PhxCheckWeb.IndexLive.Workflows,
+               "wEvt",
+               [],
+               0,
+               %{}
+             )
+
+    # The budget is spent: the next schedule fails instead of spinning.
+    assert {:halt, {:error, {"s2", {:call_budget_exhausted, "wEvt"}}}, _} =
+             BubbleWorkflows.schedule_custom(
+               ctx,
+               "s2",
+               PhxCheckWeb.IndexLive.Workflows,
+               "wEvt",
+               [],
+               0,
+               %{}
+             )
+
+    # An unsafe URL fails its step (backslashes, control characters).
+    for url <- ["/\\evil.example", "https://ok.example/\nx", "javascript:alert(1)"] do
+      assert {:halt, {:error, {"u", {:unsafe_url, _}}}, _} =
+               BubbleWorkflows.open_url(ctx, "u", url, false)
+    end
+
+    # A message without a well-formed budget is ignored.
+    assert {:noreply, ^socket} =
+             BubbleWorkflows.handle_info(
+               socket,
+               PhxCheckWeb.IndexLive.Workflows,
+               {:bubble, :run, "", PhxCheckWeb.IndexLive.Workflows, "wEvt", %{}, %{calls: -1}}
+             )
+  end
+
+  test "an oversized input value is ignored; stray messages do not crash the page", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    change(view, "bIn", String.duplicate("a", 100_001))
+    refute render(view) =~ "aaaa"
+    send(view.pid, :unexpected)
+    send(view.pid, {:bubble, :run, "", :nope, "x", %{}, nil})
+    assert render(view) =~ "Label: start"
+  end
+
   test "custom states are kept per reusable-element instance", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     click(view, "bCardInc", "bInst1")

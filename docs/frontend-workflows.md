@@ -143,13 +143,23 @@ effects, as in Bubble.
   (the backend's workflow API is off by default the same way). They run
   on the backend runtime with the current user as actor and `authorize?:
   true`, which authorizes nothing until the owner adds policies.
-* **Budgets fail closed.** A page event is a root run of the backend
+* **Budgets fail closed.** A browser event is a root run of the backend
   runtime (`Runtime.root/2`): its job budget (`:max_jobs`) bounds the jobs
   its schedules and trigger-firing writes cause, and its call budget
-  (`:max_calls`) the custom events it triggers, frontend ones included.
-* **What is not enforced.** A browser can trigger the workflows of any
-  element the page lists, whether or not it is visible at the time (Bubble
-  does not guarantee that either). Conditions are evaluated on the server.
+  (`:max_calls`) the custom events it triggers, frontend ones included. A
+  scheduled custom event costs one call and continues the budgets of the
+  run that scheduled it (shared among everything that run scheduled), and
+  a chain of them stops at `:max_chain`: a delay-0 self-schedule ends.
+* **What is not enforced.** Visibility is not part of the click
+  allowlist (a browser can trigger any listed element's workflows, visible
+  or not); server-side "Only when" conditions are.
+* **Inputs are capped.** A value above `:max_input_bytes` (default
+  100 KB) is ignored, and the scaffold's LiveView socket takes frames of at
+  most 1 MB.
+* **Data access fails closed twice.** A workflow is flagged as a data
+  workflow when any value, condition or step condition loads a
+  relationship, or it writes or schedules; independently, the runtime's
+  `load/3` and data steps read and write nothing with data access off.
 
 ## The overlay runtime (fixes latent T5 issues)
 
@@ -207,12 +217,14 @@ Counts only; the snapshot is
 | | total | native (own body) | native | wired |
 |-|------:|------:|-------:|------:|
 | workflows, IR level | 2,275 | 1,152 (50.6%) | | |
-| workflows, generated code | 2,275 | 648 (28.5%) | 531 (23.3%) | 361 |
+| workflows, generated code | 2,275 | 648 (28.5%) | 531 (23.3%) | 361 (15.9%) |
 | steps, IR level | 3,984 | 2,555 (64.1%) | | |
 | steps, generated code | 3,984 | 1,795 (45.1%) | | |
 
 *Native* here is the backend's definition (the workflow and everything it
-calls or schedules generated whole): 531 workflows start. By surface
+calls or schedules generated whole): 531 workflows start. *Wired* is what
+a page actually triggers: 361 (15.9%); the rest of the native ones are
+custom events (run when called) or disabled in the editor. By surface
 (native): pages 170/637, reusable elements 361/1,638. 95 native workflows
 run in the browser; 13 touch stored data or schedule backend workflows
 (they run only with the opt-in). 54 workflows are disabled in the editor.

@@ -51,9 +51,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   Without it they refuse to start and log an error. Data steps and
   schedules run on the backend workflow runtime
   (`<%= @module %>.Workflows.Runtime`, WTF-373) with the current user as
-  the actor: its stamps, job budget (`:max_jobs`, a page event is a root
-  run) and call budget (`:max_calls`, custom events included) apply. Its
-  `authorize?: true` authorizes nothing until you add policies.
+  the actor: its stamps, job budget (`:max_jobs`) and call budget
+  (`:max_calls`, custom events included) apply. A browser event (a click,
+  an input change, page load, a "do every" tick) is a root run with whole
+  budgets; a scheduled custom event continues the budgets of the run that
+  scheduled it (shared among everything that run scheduled, one call per
+  schedule), and a chain of them stops at `:max_chain`, so a
+  self-scheduling event ends. Its `authorize?: true` authorizes nothing
+  until you add policies.
+
+  A browser can trigger any workflow of an element the page lists, visible
+  or not: visibility is not part of the allowlist; "Only when" conditions
+  are evaluated on the server. An input value above `:max_input_bytes`
+  (`config :<%= @app %>, <%= @web %>.BubbleWorkflows`, default 100_000) is
+  ignored.
 
   ## Unverified Bubble behavior
 
@@ -75,6 +86,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   alias <%= @web %>.Bubble
 
   @max_rounds 10
+  @max_input_bytes Application.compile_env(:<%= @app %>, [__MODULE__, :max_input_bytes], 100_000)
   @max_depth 100
 
   defmodule Ctx do
@@ -210,9 +222,9 @@ defmodule <%= @web %>.BubbleWorkflows do
     {:noreply, settle(socket, page)}
   end
 
-  def handle_info(socket, page, {:bubble, :run, scope, module, id, args}) do
-    if surface(page, scope) == {:ok, module},
-      do: {:noreply, socket |> run_event(page, module, scope, [id], args) |> settle(page)},
+  def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
+    if surface(page, scope) == {:ok, module} and budget?(budget),
+      do: {:noreply, socket |> run_event(page, module, scope, [id], args, budget) |> settle(page)},
       else: {:noreply, socket}
   end
 
@@ -236,6 +248,16 @@ defmodule <%= @web %>.BubbleWorkflows do
       nil -> :error
     end
   end
+
+  defp budget?(%{jobs: j, calls: c, chain: n}),
+    do: is_integer(j) and j >= 0 and is_integer(c) and c >= 0 and is_integer(n) and n >= 0
+
+  defp budget?(_), do: false
+
+  # Input values are capped (`:max_input_bytes`, default 100_000): a larger
+  # one is ignored, as the input's change never happened.
+  defp coerce(_type, value) when is_binary(value) and byte_size(value) > @max_input_bytes,
+    do: :error
 
   defp coerce(:text, value) when is_binary(value), do: {:ok, value}
   defp coerce(:text, nil), do: {:ok, nil}
@@ -265,14 +287,26 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # --- running events --------------------------------------------------------------------
 
-  defp ctx(socket, module, scope) do
+  # A browser event is a root run of the backend runtime (whole budgets); a
+  # scheduled custom event continues the budget of the run that scheduled it.
+  defp ctx(socket, module, scope, budget) do
     actor = socket.assigns[:current_user]
+    root = Runtime.root(nil, actor)
+
+    backend =
+      case budget do
+        %{jobs: jobs, calls: calls, chain: chain} ->
+          %{root | budget: jobs, calls: calls, chain: chain}
+
+        nil ->
+          root
+      end
 
     %Ctx{
       module: module,
       scope: scope,
       actor: actor,
-      backend: Runtime.root(nil, actor),
+      backend: backend,
       now: DateTime.utc_now(),
       states: socket.assigns.bubble_states,
       inputs: socket.assigns.bubble_inputs,
@@ -282,11 +316,11 @@ defmodule <%= @web %>.BubbleWorkflows do
     }
   end
 
-  defp run_event(socket, _page, _module, _scope, [], _args), do: socket
+  defp run_event(socket, _page, _module, _scope, [], _args, _budget), do: socket
 
-  defp run_event(socket, _page, module, scope, ids, args) do
+  defp run_event(socket, _page, module, scope, ids, args, budget) do
     ctx =
-      Enum.reduce(ids, ctx(socket, module, scope), fn id, ctx ->
+      Enum.reduce(ids, ctx(socket, module, scope, budget), fn id, ctx ->
         {_status, ctx} = run(ctx, module, id, args, scope)
         ctx
       end)
@@ -294,11 +328,19 @@ defmodule <%= @web %>.BubbleWorkflows do
     apply_ctx(socket, ctx)
   end
 
-  defp run_event(socket, page, module, scope, ids), do: run_event(socket, page, module, scope, ids, %{})
+  defp run_event(socket, page, module, scope, ids),
+    do: run_event(socket, page, module, scope, ids, %{}, nil)
 
   defp apply_ctx(socket, %Ctx{} = ctx) do
-    for {delay, message} <- Enum.reverse(ctx.messages),
-        do: Process.send_after(self(), message, delay)
+    # What the run left of its budgets is shared by the custom events it
+    # scheduled: the total never grows, so a self-scheduling chain ends.
+    n = length(ctx.messages)
+    b = backend(ctx)
+
+    for {delay, scope, module, id, args} <- Enum.reverse(ctx.messages) do
+      budget = %{jobs: div(b.budget, n), calls: div(b.calls, n), chain: b.chain + 1}
+      Process.send_after(self(), {:bubble, :run, scope, module, id, args, budget}, delay)
+    end
 
     socket =
       socket
@@ -363,7 +405,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     with %{condition: fun, blocked: [], data: data} when is_atom(fun) and fun != nil <-
            module.__bubble__(:workflows)[id],
          true <- not data or data_access?() do
-      apply(module, fun, [ctx(socket, module, scope)]) == true
+      apply(module, fun, [ctx(socket, module, scope, nil)]) == true
     else
       _ -> false
     end
@@ -482,7 +524,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   def actor(ctx, loads), do: load(ctx.actor, loads, ctx)
 
   @doc "`value` with the relationship `loads` loaded (`Runtime.load/3`)."
-  def load(value, loads, ctx), do: Runtime.load(value, loads, backend(ctx))
+  #
+  # Fails closed: with data access off it reads nothing and answers nil
+  # (the workflow's `data` flag should have stopped it before; this is the
+  # second lock).
+  def load(value, [], _ctx), do: value
+
+  def load(value, loads, ctx) do
+    if data_access?() do
+      Runtime.load(value, loads, backend(ctx))
+    else
+      Logger.error("bubble workflow #{inspect(ctx.workflow)}: a load with data access off; nothing read")
+      nil
+    end
+  end
 
   defp backend(ctx), do: %{(ctx.backend || Runtime.root(ctx.workflow, ctx.actor)) | actor: ctx.actor}
 
@@ -573,10 +628,16 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
+  # Backslashes and control characters are refused outright (browsers read
+  # `/\\host` as `//host`), as LiveView's own redirect does.
   defp safe_url(url) when is_binary(url) do
-    uri = URI.parse(String.trim(url))
+    url = String.trim(url)
+    uri = URI.parse(url)
 
     cond do
+      String.contains?(url, "\\") or String.match?(url, ~r/[\x00-\x1f\x7f]/) ->
+        nil
+
       uri.scheme in ["http", "https"] and is_binary(uri.host) and uri.host != "" ->
         {:external, URI.to_string(uri)}
 
@@ -626,11 +687,33 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  @doc "Schedule custom event `id` of `module` `delay` seconds from now (in this page)."
+  @doc """
+  Schedule custom event `id` of `module` `delay` seconds from now (in this
+  page). It costs one call of the run's call budget and continues the run's
+  budgets (shared among what the run schedules); a chain of scheduled runs
+  stops at `:max_chain` (`<%= @module %>.Workflows` config, default 10000) or
+  when the budget is spent, so a self-scheduling event never spins forever.
+  """
   def schedule_custom(ctx, step, module, id, path, delay, args) do
-    ms = if is_number(delay) and delay > 0, do: clamp(delay, 0), else: 0
-    message = {:bubble, :run, scope(ctx, path), module, id, args}
-    {:cont, put_step(%{ctx | messages: [{ms, message} | ctx.messages]}, step, nil)}
+    b = backend(ctx)
+
+    cond do
+      b.calls < 1 ->
+        fail(ctx, step, {:call_budget_exhausted, id})
+
+      b.chain >= max_chain() ->
+        fail(ctx, step, {:chain_limit, id})
+
+      true ->
+        ms = if is_number(delay) and delay > 0, do: clamp(delay, 0), else: 0
+        entry = {ms, scope(ctx, path), module, id, args}
+        ctx = %{ctx | backend: %{b | calls: b.calls - 1}, messages: [entry | ctx.messages]}
+        {:cont, put_step(ctx, step, nil)}
+    end
+  end
+
+  defp max_chain do
+    Keyword.get(Application.get_env(:<%= @app %>, <%= @module %>.Workflows, []), :max_chain, 10_000)
   end
 
   # Seconds as milliseconds, at least `least` and at most the longest
@@ -650,6 +733,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   `delete_list/3`, `schedule/5` or `schedule_list/7`.
   """
   def backend(ctx, fun) do
+    if data_access?(), do: run_backend(ctx, fun), else: {:halt, {:error, :data_access_disabled}, ctx}
+  end
+
+  defp run_backend(ctx, fun) do
     b = %{backend(ctx) | workflow: ctx.workflow, now: ctx.now, steps: ctx.steps}
 
     case fun.(b) do

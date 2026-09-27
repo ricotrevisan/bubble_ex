@@ -202,13 +202,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp workflow_source(%{client?: true} = w, _s, _spec, _ctx) do
     steps =
       Enum.map_join(w.steps, "", fn step ->
-        "  # bubble:step #{step.index} #{comment(step.type)}\n" <>
+        "  # bubble:step #{step.index} #{marker(step.type)}\n" <>
           "  |> Bubble.#{client_op(step.op)}(#{scope_source(step.args.target.path, "scope")}, " <>
           "#{element_source(step.args.target.element)})\n"
       end)
 
     """
-    # bubble:workflow #{comment(symbol_part(w.symbol))}
+    # bubble:workflow #{marker(symbol_part(w.symbol))}
     @doc #{doc(w, "Runs in the browser: the element's `phx-click` calls it (no round trip).")}
     def #{w.fun}(js \\\\ %JS{}, scope) do
       js
@@ -237,7 +237,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       end
 
     """
-    # bubble:workflow #{comment(symbol_part(w.symbol))}
+    # bubble:workflow #{marker(symbol_part(w.symbol))}
     @doc #{doc(w, note)}
     def #{w.fun}(ctx) do
     #{event_todo}  BubbleWorkflows.steps(ctx, #{condition}, [#{steps}])
@@ -274,7 +274,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     """
 
-    # bubble:step #{step.index} #{comment(step.type || "unknown")}
+    # bubble:step #{step.index} #{marker(step.type || "unknown")}
     # TODO(bubble:#{comment(step.symbol)}) not lowered: #{reasons}
     defp #{w.fun}__step(#{step.index}, ctx),
       do: BubbleWorkflows.not_lowered(ctx, #{literal(step.bubble_id)}, #{literal(step.type || "")})
@@ -292,7 +292,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     """
 
-    # bubble:step #{step.index} #{comment(step.type)}
+    # bubble:step #{step.index} #{marker(step.type)}
     defp #{w.fun}__step(#{step.index}, ctx) do
     #{prelude(exprs)}#{body}
     end
@@ -511,11 +511,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp binding({:input, k}, _loads),
     do: "BubbleWorkflows.input(ctx, #{source(k.path)}, #{literal(k.element)})"
 
-  defp loads_source(loads),
-    do:
-      "[" <>
-        Enum.map_join(loads, ", ", &("[" <> Enum.map_join(&1, ", ", fn n -> atom(n) end) <> "]")) <>
-        "]"
+  # Relationship paths as names (strings), as the backend's printer:
+  # `Runtime.load/3` turns them into existing atoms.
+  defp loads_source(loads), do: source(loads)
 
   defp interval_seconds(%{source: source, bindings: []}), do: {:source, source}
   defp interval_seconds(_), do: nil
@@ -705,6 +703,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       do: ":" <> name,
       else: ":" <> source(name)
   end
+
+  # A `# bubble:workflow` / `# bubble:step` marker's word: printable ASCII
+  # stays, every other byte (and `%`) is percent-encoded, so two IDs never
+  # share a marker and a marker is one word.
+  defp marker(text),
+    do: text |> to_string() |> URI.encode(&(&1 in 0x21..0x7E and &1 != ?%))
 
   # Text for a `#` comment: one line.
   defp comment(text),

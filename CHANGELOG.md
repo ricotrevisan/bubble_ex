@@ -35,7 +35,8 @@ All notable changes to this project are documented here.
   kept) that fixes T5's latent issues: reopening an open overlay no longer
   saves the focus twice, element steps target one instance, and a modal's
   focus falls back past an opener hidden since. mm-137: 531 of 2,275
-  frontend workflows native (648 own body), 1,152 at IR level.
+  frontend workflows native (361 wired to a page trigger, 15.9%; 648 own
+  body), 1,152 at IR level.
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
   workflows, backend custom events, database triggers) to a stack-neutral
