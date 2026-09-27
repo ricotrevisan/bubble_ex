@@ -23,6 +23,7 @@ defmodule BubbleEx.Plan.Order do
     styles_residue: 2,
     plugin: 3,
     api_group: 4,
+    api_clients_residue: 4,
     fragment: 5,
     surface: 5,
     cycle: 5,
