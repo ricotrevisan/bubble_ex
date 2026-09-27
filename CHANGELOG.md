@@ -40,6 +40,28 @@ All notable changes to this project are documented here.
   `page`. `scripts/phoenix_compile_check/structural.sh` runs the task end
   to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
   counts snapshot (private fixture).
+- **Safe serving of migrated files** (WTF-415). The generated Phoenix app
+  serves the files the data loader copied at `/uploads/<sha256>/<name>`
+  (generated `<Web>.Uploads` and `<Web>.UploadsController`, routed by the
+  generated `<Web>.BubbleRoutes`, so existing apps get them on
+  regeneration). A Bubble file field can hold another app's hostile file,
+  so every file is an attachment of an inert type (`application/octet-stream`
+  or `application/pdf`) unless its magic bytes are PNG, JPEG, GIF or WebP
+  (inline), always with `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox; default-src 'none'`; the name never
+  decides the type. Content addresses only (SHA-256 and loader-safe name
+  validated, regular files, no symlinks), single byte ranges, ETags. An
+  optional `uploads_host` (`https://` and a host, validated at boot, fails
+  closed) puts public files on a separate origin (the preferred production
+  setup), where `<Web>.UploadsHostGuard` serves nothing else. Private files are off by default (404, no
+  link) until the owner opts in with an authorization function or
+  `:signed_in`; a raising or missing function denies, and the session is
+  not read while they are off. Pages link file and image fields (and
+  dynamic texts that are only one, optionally after `"https:"`) through
+  `<Web>.Uploads.url/1`, nil when empty, never the stored URL
+  (`BubbleEx.Target.Elixir` `:file_url` option). A generated
+  `<Web>.UploadsTest` checks hostile files, traversal and the private
+  default.
 
 - **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
   `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every
