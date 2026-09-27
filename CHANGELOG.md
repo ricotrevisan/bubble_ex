@@ -1037,18 +1037,34 @@ All notable changes to this project are documented here.
 
 - **Replay driver against a real Bubble branch** (WTF-385, V5 of
   WTF-358). The first run on mm-137's replay branch found where the driver
-  disagreed with Bubble: Data API type paths keep dots, colons and emoji
-  (`00.thing`, `🎙️msgs`) and are now percent-encoded instead of refused;
-  the preflight reads `/meta` as Bubble writes it (`post` entries named by
-  `endpoint`, fields as `{id, display, type}` objects keyed by display name
-  under `app_data.use_captions_for_get`, `_id` as `unique ID`); option-set
-  values are sent and read by display text (`Replay.Names.to_api/4`,
-  `from_api/4`: Bubble refuses the stored key with 400 `INVALID_DATA`); a
-  `GET` answered 200 with only `_id` is a hidden record (Bubble does not
-  404 them); the sign-up and login workflows are required only for a seed
-  with users; ledger journals are owner-only (0600). `docs/replay-kit.md`
-  records the observed semantics and warns that Data API writes fire the
-  app's database triggers.
+  disagreed with Bubble:
+  - Data API type paths keep dots, colons and emoji (`00.thing`,
+    `🎙️msgs`) and are now percent-encoded instead of refused. A path must
+    equal its NFKC form and holds no separator look-alike (`／`, `．`,
+    `∕`), bidi or zero-width character (only the emoji joiner and variation
+    selector are kept).
+  - The preflight reads `/meta` as Bubble writes it: `post` entries named
+    by `endpoint`; fields as `{id, display, type}` objects keyed by display
+    name under `app_data.use_captions_for_get`; the built-in `id` `_id`
+    (displayed `unique ID`) as `_id`.
+  - Option-set values are sent and read by display text
+    (`Replay.Names.to_api/4`, `from_api/4`; Bubble refuses the stored key
+    with 400 `INVALID_DATA`). An option field with no reversible mapping
+    is an error to send, and an unknown display text is observed as a
+    mismatch (`{"unmapped_option": true}`), never as a key.
+  - A `GET` answered 200 with only `_id` is recorded as not visible. Bubble
+    does not 404 hidden records; this rests on one observation and may
+    merge "hidden" with "findable but no field visible" (unverified).
+  - The sign-up and login workflows are required only for a seed with
+    users.
+  - Ledger journals: the directory is made 0700 and checked before any
+    file is created (a directory that stays open to group or others
+    refuses the run); each journal is created with an exclusive open and
+    set to 0600 before its first write, and a failed `chmod` refuses the
+    run.
+
+  `docs/replay-kit.md` records the observed semantics and warns that Data
+  API writes fire the app's database triggers.
 
 - **`generate:api_clients` no longer checks API calls the generator leaves
   out** (WTF-412). Its `request_shape` criterion listed every API call,

@@ -182,7 +182,8 @@ defmodule BubbleEx.Verify.Replay.Kit do
   # Field names the metadata lists for a type (`types.<path>.fields`, a
   # list of names or `%{"key"|"name" => …}` objects, or an object keyed by
   # name), or `:unknown`. Bubble lists `%{"id", "display", "type"}` objects,
-  # built-in fields included (`unique ID` is the Data API's `_id`); the
+  # built-in fields included (the built-in `id` "_id", displayed `unique
+  # ID`, is the Data API's `_id`); the
   # Data API names fields by `display` when `app_data.use_captions_for_get`
   # is true, by `id` otherwise.
   defp schema_fields(schema, path) do
@@ -195,10 +196,12 @@ defmodule BubbleEx.Verify.Replay.Kit do
             name when is_binary(name) -> name
             %{"key" => name} when is_binary(name) -> name
             %{"name" => name} when is_binary(name) -> name
+            # The built-in ID (`id` "_id", displayed `unique ID`) is `_id`
+            # in Data API answers, whatever key the metadata uses.
+            %{"id" => "_id"} -> "_id"
             %{"id" => _} = field -> readable(field[key])
             _ -> :unreadable
           end)
-          |> Enum.map(&if(&1 in ["unique ID", "unique_id"], do: "_id", else: &1))
 
         if :unreadable in names, do: :unknown, else: {:ok, names}
 

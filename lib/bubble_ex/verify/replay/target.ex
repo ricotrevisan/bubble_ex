@@ -79,9 +79,14 @@ defmodule BubbleEx.Verify.Replay.Target do
   @segment ~r/\A[a-z0-9][a-z0-9_-]{0,127}\z/
   # A Data API type path as Bubble's `/meta` lists it: the type's display
   # name lowercased without spaces, so it may hold `.`, `:` or emoji
-  # (`00.thing`, `🎙️msgs`). No separator, query, escape, whitespace or
-  # control character, and never a dot segment.
-  @type_path ~r/\A[^\/\\?#%\s\p{Cc}\p{Lu}]{1,128}\z/u
+  # (`00.thing`, `🎙️msgs`). No separator, query, escape, whitespace,
+  # uppercase, math symbol (`∕`) or control, format, surrogate, private-use
+  # or unassigned character, and never a dot segment. The path must equal
+  # its NFKC form, so full-width look-alikes (`／`, `．`) are refused. The
+  # only format characters kept are the ones emoji need: the zero-width
+  # joiner (U+200D) and the emoji variation selector (U+FE0F).
+  @type_path ~r/\A[^\/\\?#%\s\p{Lu}\p{Sm}\p{Cc}\p{Cs}\p{Co}\p{Cn}]{1,128}\z/u
+  @emoji_format ["\u200D", "\uFE0F"]
   @record_id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
   @token ~r/\A[\x21-\x7e]{8,512}\z/
   @nonce ~r/\A[A-Za-z0-9_-]{16,128}\z/
@@ -261,12 +266,21 @@ defmodule BubbleEx.Verify.Replay.Target do
     do: {:error, Error.new(:invalid_input, "invalid #{name}", %{reason: :invalid_segment})}
 
   defp type_path(path) when is_binary(path) do
-    if String.valid?(path) and path =~ @type_path and path not in [".", ".."],
-      do: :ok,
-      else: invalid_segment("Data API type path")
+    if String.valid?(path) and path =~ @type_path and path not in [".", ".."] and
+         String.normalize(path, :nfkc) == path and not format_char?(path),
+       do: :ok,
+       else: invalid_segment("Data API type path")
   end
 
   defp type_path(_path), do: invalid_segment("Data API type path")
+
+  # Format characters (\p{Cf}: bidi overrides, zero-width space, …) other
+  # than the two emoji sequences need.
+  defp format_char?(path) do
+    path
+    |> String.codepoints()
+    |> Enum.any?(&(&1 not in @emoji_format and &1 =~ ~r/\A\p{Cf}\z/u))
+  end
 
   defp invalid_segment(name),
     do: {:error, Error.new(:invalid_input, "invalid #{name}", %{reason: :invalid_segment})}

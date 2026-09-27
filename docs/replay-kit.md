@@ -155,7 +155,12 @@ No email reaches a real person.
   clears it (204, and the field is gone when read back).
 - A Data API create with the admin token sets `Created By`.
 - A record the privacy rules hide from the caller answers `GET` by ID with
-  200 and only `_id`, not 404; a search leaves it out.
+  200 and only `_id`, not 404; a search leaves it out. The driver records
+  that as not visible. This rests on one observation (logged-out callers,
+  rules that grant nothing): a rule granting search or some fields without
+  "view all" may produce the same ID-only answer, so "not visible" may
+  merge "hidden" with "findable but no field visible" (unverified; listed
+  on WTF-358).
 - A branch's Data API setting and type list are its own: exposing or
   hiding types on the replay branch leaves `test` unchanged.
 
@@ -165,7 +170,8 @@ No email reaches a real person.
    the target (app, branch name, branch ID, host) and estimates the number
    of calls. It makes no requests.
    Review the plan. The driver calls no workflow of your app, only the
-   kit's (database triggers still run: see step 2): scenarios that call app workflows are refused until they can
+   kit's (database triggers still run: see "Check the database triggers"
+   in section 2 of this checklist): scenarios that call app workflows are refused until they can
    be classified as replay-safe (V7).
 2. `Replay.Recorder.record/4` needs the plan's `sha256` and a
    `:ledger_dir`. It runs the preflight (refusing the run if the kit is

@@ -254,9 +254,37 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:error, %Error{context: %{reason: :unknown_option}}} =
                Names.to_api(names, "custom.ev", "status_os", {:option, "nope"})
 
-      # Fields without an option map pass through.
+      # Non-option values pass through.
       assert {:ok, {:text, "x"}} = Names.to_api(names, "custom.ev", "other", {:text, "x"})
-      assert {:option, "Other"} = Names.from_api(names, "custom.ev", "other", {:option, "Other"})
+
+      # An option with no mapping is an error to send, and a display text
+      # the model does not know is a mismatch, never passed on as a key.
+      assert {:error, %Error{context: %{reason: :unmapped_option_field}}} =
+               Names.to_api(names, "custom.ev", "other", {:option, "k"})
+
+      assert {:json, %{"unmapped_option" => true}} =
+               Names.from_api(names, "custom.ev", "status_os", {:option, "Unknown"})
+
+      assert {:json, %{"unmapped_option" => true}} =
+               Names.from_api(names, "custom.ev", "other", {:option, "Other"})
+
+      assert {:list, [{:option, "done"}, {:json, %{"unmapped_option" => true}}]} =
+               Names.from_api(
+                 names,
+                 "custom.ev",
+                 "status_os",
+                 {:list, [{:option, "Done"}, {:option, "?"}]}
+               )
+    end
+
+    test "an option field whose display texts repeat has no mapping, so sending it fails" do
+      {:ok, names} = Names.new(options: %{"custom.ev" => %{"dup_os" => :ambiguous}})
+
+      assert {:error, %Error{context: %{reason: :ambiguous_option_field}}} =
+               Names.to_api(names, "custom.ev", "dup_os", {:option, "a"})
+
+      assert {:json, %{"unmapped_option" => true}} =
+               Names.from_api(names, "custom.ev", "dup_os", {:option, "A"})
     end
   end
 
@@ -440,6 +468,30 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:ok, root <> "/obj/%F0%9F%92%AC" <> "workspace"} == Target.data_url(t, "💬workspace")
       assert {:ok, url} = Target.data_url(t, "🪄mq:answers", "1700x12")
       assert :ok = Target.check_url(t, url)
+      # Emoji sequences keep their joiner and variation selector.
+      assert {:ok, _} = Target.data_url(t, "\u{1F468}\u200D\u{1F469}x")
+      assert {:ok, _} = Target.data_url(t, "\u{1F399}\uFE0Fmsgs")
+
+      # Look-alikes of separators and dots, bidi overrides, zero-width and
+      # other invisible or non-NFKC characters are refused.
+      for bad <- [
+            "a\uFF0Fb",
+            "a\uFF0Eb",
+            "\uFF0E\uFF0E",
+            "a\u2215b",
+            "a\u2044b",
+            "a\u202Eb",
+            "a\u200Bb",
+            "a\u2060b",
+            "a\uFEFFb",
+            "\uFF41bc",
+            "a\u00A0b",
+            "a\u0000b",
+            "a\uE000b"
+          ] do
+        assert {:error, %Error{context: %{reason: :invalid_segment}}} = Target.data_url(t, bad),
+               "accepted #{inspect(bad)}"
+      end
 
       for id <- ["../1x2", "1x2/..", "abc", "1x2?", ""] do
         assert {:error, _} = Target.data_url(t, "task", id)
@@ -601,11 +653,46 @@ defmodule BubbleEx.Verify.ReplayTest do
 
   describe "ledger" do
     @tag :tmp_dir
-    test "the journal is readable by its owner only", %{tmp_dir: dir} do
+    test "the journal and its directory are owner-only", %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "ledgers/nested")
       {:ok, ledger} = Ledger.new(target(), "perm", dir: dir)
       {:ok, _} = Ledger.intend(ledger, "k", "custom.task")
       assert {:ok, %File.Stat{mode: mode}} = File.stat(ledger.path)
-      assert Bitwise.band(mode, 0o077) == 0
+      assert Bitwise.band(mode, 0o777) == 0o600
+      assert {:ok, %File.Stat{mode: dmode}} = File.stat(dir)
+      assert Bitwise.band(dmode, 0o777) == 0o700
+
+      # An existing, group-readable directory is made owner-only.
+      open = Path.join(tmp, "open")
+      File.mkdir_p!(open)
+      File.chmod!(open, 0o755)
+      assert {:ok, _} = Ledger.new(target(), "perm", dir: open)
+      assert {:ok, %File.Stat{mode: omode}} = File.stat(open)
+      assert Bitwise.band(omode, 0o777) == 0o700
+    end
+
+    @tag :tmp_dir
+    test "a journal is created exclusively: an existing file or link is never reused",
+         %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "ledgers")
+      assert {:ok, _} = Ledger.new(target(), "once", dir: dir)
+      assert {:error, %Error{message: message}} = Ledger.new(target(), "once", dir: dir)
+      assert message =~ "already exists"
+
+      elsewhere = Path.join(tmp, "elsewhere.jsonl")
+      File.write!(elsewhere, "")
+      :ok = File.ln_s(elsewhere, Path.join(dir, "link.jsonl"))
+      assert {:error, _} = Ledger.new(target(), "link", dir: dir)
+      assert File.read!(elsewhere) == ""
+    end
+
+    @tag :tmp_dir
+    test "a directory that cannot be made owner-only refuses the run", %{tmp_dir: tmp} do
+      file = Path.join(tmp, "file")
+      File.write!(file, "")
+
+      assert {:error, %Error{context: %{reason: :ledger_write_failed}}} =
+               Ledger.new(target(), "x", dir: Path.join(file, "sub"))
     end
 
     test "only ledger records can be updated or deleted" do
@@ -1169,11 +1256,12 @@ defmodule BubbleEx.Verify.ReplayTest do
       # Bubble lists `%{id, display, type}` objects, built-in fields included,
       # `_id` as `unique ID` (WTF-385).
       builtin = fn names -> Enum.map(names, &%{"id" => &1, "display" => &1, "type" => "text"}) end
+      unique_id = %{"id" => "_id", "display" => "unique ID", "type" => "text"}
 
       ids_only = %{
         "workspace" => %{
           "display" => "Workspace",
-          "fields" => builtin.(["unique ID", "Created Date", "Modified Date"])
+          "fields" => [unique_id | builtin.(["Created Date", "Modified Date"])]
         }
       }
 
@@ -1181,8 +1269,18 @@ defmodule BubbleEx.Verify.ReplayTest do
         "workspace" => %{
           "display" => "Workspace",
           "fields" =>
-            builtin.(["unique ID", "Created Date"]) ++
+            [unique_id | builtin.(["Created Date"])] ++
               [%{"id" => "name_text", "display" => "Name", "type" => "text"}]
+        }
+      }
+
+      # A field of the app displayed "unique ID" is a real field, not `_id`.
+      impostor = %{
+        "workspace" => %{
+          "display" => "Workspace",
+          "fields" =>
+            [unique_id | builtin.(["Created Date", "Modified Date"])] ++
+              [%{"id" => "unique_id_text", "display" => "unique ID", "type" => "text"}]
         }
       }
 
@@ -1205,6 +1303,14 @@ defmodule BubbleEx.Verify.ReplayTest do
         start_fake(
           owner_records: [%{type: "workspace", fields: %{}}],
           meta_types: with_name,
+          captions: captions
+        )
+
+        assert %{status: :may_leak} = check.()
+
+        start_fake(
+          owner_records: [%{type: "workspace", fields: %{}}],
+          meta_types: impostor,
           captions: captions
         )
 

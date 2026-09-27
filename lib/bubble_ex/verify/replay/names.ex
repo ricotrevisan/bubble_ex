@@ -19,7 +19,16 @@ defmodule BubbleEx.Verify.Replay.Names do
   create with `"sent"` for a value displayed `Sent` was refused, `"Sent"`
   accepted (WTF-385). `options` maps, per type and option field, each key
   to its display text; `to_api/4` and `from_api/4` translate seed and
-  observed values. A field without a map passes values through.
+  observed values. The translation is strict:
+
+    * sending an option value for a field with no map, or whose set's
+      display texts repeat (`:ambiguous`: no reversible map), is an error;
+      keys are never sent in place of display texts
+    * an observed display text the map does not know (or on a field with
+      no map) becomes `{:json, %{"unmapped_option" => true}}`, a mismatch
+      against any expected option, never a key
+
+  Values that are not options pass through.
   """
 
   alias BubbleEx.Error
@@ -71,10 +80,8 @@ defmodule BubbleEx.Verify.Replay.Names do
              f <- t.fields,
              not f.deleted,
              match?(%Type{kind: :option}, f.type),
-             map = option_map(model, f.type.target),
-             map != nil,
              into: %{},
-             do: {f.id, map}
+             do: {f.id, option_map(model, f.type.target) || :ambiguous}
            )}
         end),
       types: Map.new(live, &{Type.record(&1.id), path(&1.name || &1.id)}),
@@ -90,7 +97,8 @@ defmodule BubbleEx.Verify.Replay.Names do
     )
   end
 
-  # key => display text, when every display text is distinct (reversible).
+  # key => display text, when every display text is distinct (reversible);
+  # nil otherwise (the field is then `:ambiguous`).
   defp option_map(model, set_id) do
     case Model.option_set(model, set_id) do
       %{values: values} ->
@@ -105,29 +113,51 @@ defmodule BubbleEx.Verify.Replay.Names do
 
   @doc "A seed value of `type`'s `field` in Data API form: option keys become display texts."
   @spec to_api(t(), String.t(), String.t(), term()) :: {:ok, term()} | {:error, Error.t()}
-  def to_api(%__MODULE__{} = names, type, field, value),
-    do: translate(option_map(names, type, field), value, :to_api)
+  def to_api(%__MODULE__{} = names, type, field, value) do
+    case {option_map(names, type, field), options?(value)} do
+      {_, false} -> {:ok, value}
+      {map, true} when is_map(map) -> translate(map, value, :to_api)
+      {:ambiguous, true} -> unmapped(:ambiguous_option_field)
+      {nil, true} -> unmapped(:unmapped_option_field)
+    end
+  end
+
+  defp unmapped(reason),
+    do:
+      {:error,
+       Error.new(:invalid_input, "option field has no display-text mapping in the model", %{
+         reason: reason
+       })}
+
+  defp options?({:option, _}), do: true
+  defp options?({:list, items}), do: Enum.any?(items, &options?/1)
+  defp options?(_), do: false
+
+  @unmapped {:json, %{"unmapped_option" => true}}
 
   @doc "An observed value of `type`'s `field` back in seed form: display texts become keys."
   @spec from_api(t(), String.t(), String.t(), term()) :: term()
   def from_api(%__MODULE__{} = names, type, field, value) do
-    case option_map(names, type, field) do
-      nil ->
-        value
+    inverse =
+      case option_map(names, type, field) do
+        map when is_map(map) -> Map.new(map, fn {k, v} -> {v, k} end)
+        _ -> %{}
+      end
 
-      map ->
-        inverse = Map.new(map, fn {k, v} -> {v, k} end)
+    back(inverse, value)
+  end
 
-        case translate(inverse, value, :from_api) do
-          {:ok, v} -> v
-          {:error, _} -> value
-        end
+  defp back(inverse, {:option, v}) do
+    case Map.fetch(inverse, v) do
+      {:ok, key} -> {:option, key}
+      :error -> @unmapped
     end
   end
 
-  defp option_map(names, type, field), do: names.options |> Map.get(type, %{}) |> Map.get(field)
+  defp back(inverse, {:list, items}), do: {:list, Enum.map(items, &back(inverse, &1))}
+  defp back(_inverse, value), do: value
 
-  defp translate(nil, value, _dir), do: {:ok, value}
+  defp option_map(names, type, field), do: names.options |> Map.get(type, %{}) |> Map.get(field)
 
   defp translate(map, {:option, v}, dir) do
     case Map.fetch(map, v) do
