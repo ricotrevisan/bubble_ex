@@ -753,6 +753,24 @@ defmodule BubbleEx.Target.Ash.DecisionsCut3Test do
 
       assert message =~ "join and a resource"
 
+      # distinct joins cannot lock the same module or table, even when
+      # both names were supplied in the map before either was generated.
+      [other | _] = Enum.reject(first.joins, &(&1.join.id == join.join.id))
+
+      for key <- ["module", "table"] do
+        duplicate =
+          put_in(
+            first.names,
+            ["joins", other.join.id, key],
+            first.names["joins"][join.join.id][key]
+          )
+
+        assert {:error, %{kind: :invalid_input, message: message}} =
+                 Ash.map(model, applied, decisions_sha256: sha, names: duplicate)
+
+        assert message =~ "join"
+      end
+
       # a new resource never takes a locked join's module
       renamed = put_in(first.names, ["joins", join.join.id, "module"], "Workspace")
       renamed = update_in(renamed, ["resources"], &Map.delete(&1, "workspace"))

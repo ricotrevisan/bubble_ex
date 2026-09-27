@@ -1753,16 +1753,28 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   # A name map giving a join resource a resource's module or table.
   defp check_join_names!(entries, resource_entries) do
-    for key <- ["module", "table"],
-        {id, %{^key => name}} <- Enum.sort(entries),
-        Enum.any?(resource_entries, fn {_, entry} -> entry[key] == name end) do
-      throw(
-        {:name_conflict,
-         Error.new(:invalid_input, "the name map gives a join and a resource the #{key} name", %{
-           join: id,
-           name: name
-         })}
-      )
+    for key <- ["module", "table"], {id, %{^key => name}} <- Enum.sort(entries) do
+      conflict =
+        cond do
+          Enum.any?(resource_entries, fn {_, entry} -> entry[key] == name end) ->
+            "a join and a resource"
+
+          Enum.any?(entries, fn {other, entry} -> other != id and entry[key] == name end) ->
+            "two joins"
+
+          true ->
+            nil
+        end
+
+      if conflict do
+        throw(
+          {:name_conflict,
+           Error.new(:invalid_input, "the name map gives #{conflict} the #{key} name", %{
+             join: id,
+             name: name
+           })}
+        )
+      end
     end
   end
 
