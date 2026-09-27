@@ -52,7 +52,8 @@ end
 # from priv/static/images/bubble.
 with_case_assets = fn {:ok, project, opts}, case_dir ->
   files =
-    for asset <- Jason.decode!(File.read!(Path.join(case_dir, "case.json")))["public_assets"] || [],
+    for asset <-
+          Jason.decode!(File.read!(Path.join(case_dir, "case.json")))["public_assets"] || [],
         into: %{},
         do: {asset["url"], Path.join(case_dir, asset["path"])}
 
@@ -66,13 +67,29 @@ with_case_assets = fn {:ok, project, opts}, case_dir ->
   {:ok, project, Keyword.put(opts, :assets, assets)}
 end
 
+# The backend workflows of an app (WTF-373), bound to its project for the
+# PhxCheck module; nil when the app has none.
+workflows = fn app, model, project ->
+  with {:ok, index} <- BubbleEx.Index.build(app, model: model),
+       {:ok, backend} <- BubbleEx.Workflows.Backend.build(app, model, index),
+       [_ | _] <- backend.workflows,
+       {:ok, spec} <- BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "PhxCheck") do
+    spec
+  else
+    _ -> nil
+  end
+end
+
 # {project, render options} of an app JSON.
 app_fixture = fn app ->
   {:ok, model} = BubbleEx.Model.build(app)
   {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
   # The API client Spec of its API Connector calls (WTF-374).
   {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
-  {:ok, project, [api_clients: clients] ++ frontend.(app, model, project)}
+
+  {:ok, project,
+   [api_clients: clients, workflows: workflows.(app, model, project)] ++
+     frontend.(app, model, project)}
 end
 
 fixtures =
@@ -81,7 +98,8 @@ fixtures =
         {"test/support/target/ash/*.json", "target_"},
         {"test/support/target/phoenix/*.json", "phoenix_"},
         {"test/support/expression/*.json", "expr_"},
-        {"test/support/fidelity/cases/*/source/payload.json", "fidelity_"}
+        {"test/support/fidelity/cases/*/source/payload.json", "fidelity_"},
+        {"test/support/target/workflows/*.json", "workflows_"}
       ],
       path <- pattern |> Path.wildcard() |> Enum.sort(),
       into: %{} do
@@ -142,7 +160,8 @@ app_json = fn name ->
     {"test/support/model/", ""},
     {"test/support/target/ash/", "target_"},
     {"test/support/target/phoenix/", "phoenix_"},
-    {"test/support/expression/", "expr_"}
+    {"test/support/expression/", "expr_"},
+    {"test/support/target/workflows/", "workflows_"}
   ]
   |> Enum.find_value(fn {dir, prefix} ->
     path = dir <> String.replace_prefix(name, prefix, "") <> ".json"
@@ -190,7 +209,10 @@ case System.argv() do
 
   [dir, name] ->
     {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
-    opts = [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
+
+    opts =
+      [name: "Phx Check #{name}", module: "PhxCheck"] ++ frontend_opts
+
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 
@@ -205,6 +227,13 @@ case System.argv() do
     end
 
     File.cp!("scripts/phoenix_compile_check/mix.lock", Path.join(dir, "mix.lock"))
+
+    # Behavior tests of a workflow fixture's generated app (WTF-373).
+    behavior =
+      "test/support/target/workflows/#{String.replace_prefix(name, "workflows_", "")}_behavior.exs"
+
+    if String.starts_with?(name, "workflows_") and File.exists?(behavior),
+      do: File.cp!(behavior, Path.join(dir, "test/phx_check/workflows_behavior_test.exs"))
 
     {:ok, %{clean?: true, modified: [], missing: []}} =
       Phoenix.check_manifest(files[".wtf/generated.json"], dir)
@@ -225,14 +254,18 @@ case System.argv() do
         uri = URI.parse(url)
         [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
 
-        File.write!(Path.join(dir, "config/test.exs"), """
+        File.write!(
+          Path.join(dir, "config/test.exs"),
+          """
 
-        config :phx_check, PhxCheck.Repo,
-          hostname: #{inspect(uri.host)},
-          port: #{uri.port || 5432},
-          username: #{inspect(user)},
-          password: #{inspect(password)}
-        """, [:append])
+          config :phx_check, PhxCheck.Repo,
+            hostname: #{inspect(uri.host)},
+            port: #{uri.port || 5432},
+            username: #{inspect(user)},
+            password: #{inspect(password)}
+          """,
+          [:append]
+        )
     end
 
     generated = files[".wtf/generated.json"] |> Jason.decode!() |> Map.fetch!("generated")

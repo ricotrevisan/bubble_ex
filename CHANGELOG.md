@@ -6,6 +6,71 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Backend workflow lowering** (WTF-373, T7 of WTF-359).
+  `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
+  workflows, backend custom events, database triggers) to a stack-neutral
+  entry point and steps: create, change and delete things (and lists),
+  change the current user, schedule an API workflow (and on a list),
+  trigger a custom event, terminate with return values and return data
+  from the API, each value compiled to `Expression.IR`. Anything else is
+  residue (`Plan.Residue`, new reasons `:api_connector_action` and
+  `:unsupported_option`) with a `:workflow_residue` diagnostic: API
+  Connector calls (not yet wired to the WTF-374 clients), cancelling
+  scheduled workflows, email, files, plugin and auth actions, detected
+  request data (whose sample request, which can hold credentials, is never
+  read), request headers, unresolved callees, parameters and fields, and
+  uncompiled values. `Target.Ash.Workflows.map/3` binds it to Ash and Oban
+  (`Workflows.Spec`, plain data) and `Target.Phoenix.render/2` prints it
+  with `workflows:`: one generic-action resource per backend folder in the
+  app's domain, a generated `Workflows.Registry`, `Runtime`, Oban
+  `Scheduler` (one attempt, as Bubble) and database-trigger outbox change
+  (a job inserted in the write's transaction carrying the record's ID
+  and, before and after the change, **only the attributes the trigger
+  workflows read** in their compiled conditions and steps: the rest of
+  the record, including an email, never reaches `oban_jobs.args`; a
+  trigger that does read an email or authentication data gets a
+  `:workflow_trigger_sensitive_field` warning), the workflow API
+  controller, and owned
+  bodies with `# bubble:workflow` / `# bubble:step` markers.
+  **A workflow whose body, or any workflow it calls or schedules
+  (transitively), has residue fails before its first step** (`blocked_by`),
+  so no partial run commits. **Privacy, as it actually is:** every
+  generated data access passes the actor and `authorize?`, `false` only
+  for a workflow whose own "ignore privacy rules" is on (a
+  `:workflow_privacy_bypass` warning, `Registry.privacy_bypasses/0`);
+  custom events take their caller's. But the Phoenix target renders
+  `privacy: :omit` only, where no resource has an authorizer, so
+  `authorize?` and the actor restrict nothing and any caller could act on
+  other users' records. **The workflow API is therefore not served** until
+  the owner sets `serve_workflow_api: true` (503 until then; a
+  `:workflow_endpoint_not_served` warning per exposed workflow);
+  scheduled jobs and triggers run. Under `privacy: :unverified` no policy
+  authorizes writes, so generated writes are forbidden: how workflow
+  writes are authorized is an open owner decision. When served, the API
+  enforces each workflow's HTTP method (POST when unset; 405 otherwise),
+  routes the name as `/:__wf_name` (a body parameter `name` is the
+  workflow's), sends `nosniff` and allowlisted content types; duplicate
+  endpoint names are diagnosed. Fan-out is bounded: one root run's jobs
+  (schedules and triggers, over all generations) share `:max_jobs`, carried
+  in job arguments (fail closed: a missing or malformed budget is none,
+  and a budget is capped at `:max_jobs`; owned code enqueues root jobs
+  with `Runtime.enqueue/3`), and synchronous custom-event calls share
+  `:max_calls`;
+  cycle chain and call depth limits remain. Whether Bubble lets a
+  database trigger fire itself again through its own writes is an open
+  replay question (WTF-358); here it does, within the job budget. The
+  owned tests are smoke tests tagged `bubble_smoke`: they cannot fail on
+  behavior, so they do not satisfy the plan's `unit_test` check, which
+  needs a behavioral test tagged `bubble:`. The shared `Bubble.Runtime`
+  no longer raises on unreadable decimals, unknown date units or
+  non-text values, and runs caller-supplied regexes with a time limit.
+  Coverage is defined by `Backend.coverage/1` (IR level) and
+  `Workflows.Spec.coverage/1` (generated code, including callees); the
+  mm-137 counts are in `test/support/target/workflows/counts/mm-137.json`.
+  The Phoenix compile check renders the workflow fixtures (including
+  `hostile_ids`) and the private export with their workflows and runs
+  behavior tests on `workflows_backend`. `Expression.Sites.workflow_env/4`
+  is public.
 - **Data and file loader** (WTF-357). `BubbleEx.Load` loads a Bubble
   export into a migrated target: `dry_run/4` reports per-type counts,
   schema mismatches, dangling references per field, type mismatches and

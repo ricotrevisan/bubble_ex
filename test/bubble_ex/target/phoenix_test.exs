@@ -164,7 +164,7 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert router =~ "auth_routes AuthController, AcmeImport.Accounts.Resources.user()"
       assert router =~ "magic_sign_in_route(AcmeImport.Accounts.Resources.user(), :magic_link"
       assert router =~ ~s(scope "/api/1.1/wf", AcmeImportWeb)
-      assert router =~ ~s(match :*, "/:name", WorkflowApiController, :dispatch)
+      assert router =~ ~s(match :*, "/:__wf_name", WorkflowApiController, :dispatch)
     end
 
     test "the User's confirmed_at: generated, and a magic-link sign-in sets it (WTF-413)" do
