@@ -34,10 +34,14 @@ defmodule BubbleEx.Target.Ash.Loader do
   `text_to_reference` attributes are converted (`text_ref`); a list whose
   length a `derive_count` calculation counts drops dangling IDs; derived
   calculations, count aggregates and `has_many` relationships become
-  `BubbleEx.Load.Plan.Derived` entries (no column, drift reported). The
-  User resource's `email` attribute takes users' emails, and its
-  `confirmed_at` attribute (`BubbleEx.Target.Ash`, WTF-413; the attribute
-  whose source is `%{auth: "confirmed_at"}`) is the plan's
+  `BubbleEx.Load.Plan.Derived` entries (no column, drift reported); each
+  join resource (`project.joins`: a list normalized by
+  `normalize_list_to_join` or `membership_policy`) becomes a
+  `BubbleEx.Load.Plan.Join` (its table, the two ID columns and each
+  list's membership column), and its lists are the owners' `joined`
+  fields. The User resource's `email` attribute takes users' emails, and
+  its `confirmed_at` attribute (`BubbleEx.Target.Ash`, WTF-413; the
+  attribute whose source is `%{auth: "confirmed_at"}`) is the plan's
   `confirmed_column`: a confirmed user's Created Date, nil for the others
   (see `BubbleEx.Load`, "Users"). A Project without it (mapped before
   WTF-413) plans no `confirmed_column` and the loader reports the status
@@ -70,6 +74,21 @@ defmodule BubbleEx.Target.Ash.Loader do
   first (`BubbleEx.Load`), so they take Bubble's status. There are no foreign
   keys (WTF-338), so tables load in any order. An error names the
   PostgreSQL error code and constraint, never a stored value.
+
+  A join table's rows upsert per list, on the two ID columns, setting only
+  that list's membership column (its position, or a flag), so a row of
+  one list never changes the other's:
+
+      INSERT INTO "public"."user_workspaces" AS t ("user_id", "workspace_id", "members_position")
+      SELECT ... FROM jsonb_populate_recordset(NULL::"public"."user_workspaces", $1::text::jsonb)
+      ON CONFLICT ("user_id", "workspace_id") DO UPDATE SET "members_position" = EXCLUDED."members_position"
+      WHERE t."members_position" IS DISTINCT FROM EXCLUDED."members_position"
+      RETURNING (xmax = 0)
+
+  Nothing is deleted from a join table: a member removed from a list in
+  Bubble since an earlier load keeps its row (WTF-414), and the loader
+  reports it (`join_members/4`, `:load_join_stale_member`) and blocks the
+  real run before any writes.
   """
 
   @behaviour BubbleEx.Load.Target
@@ -104,7 +123,8 @@ defmodule BubbleEx.Target.Ash.Loader do
     ctx = %{project: project, model: model, by_module: by_module}
 
     tables = Enum.map(project.resources, &table(&1, ctx))
-    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth(project)}}
+    joins = Enum.map(project.joins, &join/1)
+    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth(project), joins: joins}}
   rescue
     e in [KeyError, MatchError, FunctionClauseError] ->
       {:error,
@@ -168,7 +188,28 @@ defmodule BubbleEx.Target.Ash.Loader do
       table: r.table,
       key: column_name(pk),
       columns: columns,
-      derived: derived(r, ctx)
+      derived: derived(r, ctx),
+      joined:
+        for(%Relationship{kind: :many_to_many} = rel <- r.relationships, do: rel.source.field)
+    }
+  end
+
+  defp join(%Resource{join: join} = r) do
+    %Plan.Join{
+      id: join.id,
+      table: r.table,
+      left: Map.take(join.left, [:type, :column]),
+      right: Map.take(join.right, [:type, :column]),
+      sides:
+        Enum.map(join.sides, fn side ->
+          %{
+            type: side.type,
+            field: side.field,
+            owner: side.owner,
+            column: side.marker.column,
+            kind: side.marker.kind
+          }
+        end)
     }
   end
 
@@ -294,6 +335,8 @@ defmodule BubbleEx.Target.Ash.Loader do
         case rel.kind do
           :belongs_to -> {:ref, rel.source.field}
           :has_many -> reverse_step(rel, ctx)
+          # a count over a join: the stored list's existing members
+          :many_to_many -> {:list, rel.source.field}
         end
 
       {step, destination}
@@ -367,7 +410,9 @@ defmodule BubbleEx.Target.Ash.Loader do
     WHERE table_schema = $1 AND table_name = ANY($2)
     """
 
-    with {:ok, rows} <- run(c, sql, [c.schema, Enum.map(tables, & &1.table)]) do
+    names = Enum.map(tables, & &1.table) ++ Enum.map(plan.joins, & &1.table)
+
+    with {:ok, rows} <- run(c, sql, [c.schema, names]) do
       actual =
         Enum.group_by(rows, &Enum.at(&1, 0), fn [_, col, udt, nullable] ->
           {col, {udt, nullable}}
@@ -377,13 +422,41 @@ defmodule BubbleEx.Target.Ash.Loader do
         Enum.flat_map(tables, fn table ->
           table = %{table | columns: table.columns ++ auth_columns(plan.auth, table)}
           table_diags(table, Map.get(actual, table.table))
-        end)
+        end) ++
+          Enum.flat_map(plan.joins, fn j ->
+            table_diags(join_table(j), Map.get(actual, j.table), [j.left.column, j.right.column])
+          end)
 
       {:ok, Diagnostic.normalize(diags)}
     end
   end
 
-  defp table_diags(table, nil) do
+  # A join table checked like a data type's: its first list's owner is
+  # the subject, the left ID the key (both IDs are NOT NULL: the primary
+  # key), the right ID text, the positions integers and the flags booleans.
+  defp join_table(%Plan.Join{} = j) do
+    [side | _] = j.sides
+
+    %Table{
+      type: side.type,
+      table: j.table,
+      key: j.left.column,
+      columns:
+        [%Column{field: side.field, column: j.right.column, encoding: :text}] ++
+          for(
+            %{column: c, kind: kind, field: f} <- j.sides,
+            do: %Column{
+              field: f,
+              column: c,
+              encoding: if(kind == :position, do: :integer, else: :boolean)
+            }
+          )
+    }
+  end
+
+  defp table_diags(table, columns, keys \\ nil)
+
+  defp table_diags(table, nil, _keys) do
     [
       Diagnostic.new(
         :load_schema_mismatch,
@@ -395,13 +468,14 @@ defmodule BubbleEx.Target.Ash.Loader do
     ]
   end
 
-  defp table_diags(table, columns) do
+  defp table_diags(table, columns, keys) do
     actual = Map.new(columns)
     key = %Column{field: "_id", column: table.key, encoding: :text}
+    keys = keys || [table.key]
 
     mismatches =
       for col <- [key | table.columns],
-          diag = column_diag(table, col, Map.get(actual, col.column), col.column == table.key),
+          diag = column_diag(table, col, Map.get(actual, col.column), col.column in keys),
           do: diag
 
     planned = MapSet.new([table.key | Enum.map(table.columns, & &1.column)])
@@ -520,6 +594,60 @@ defmodule BubbleEx.Target.Ash.Loader do
         "WHERE #{ident(table.key)} = ANY($1)"
 
     with {:ok, _} <- run(c, sql, [keys]), do: :ok
+  end
+
+  @impl true
+  def join_members(%__MODULE__{} = _c, %Plan.Join{}, _side, []), do: {:ok, []}
+
+  def join_members(%__MODULE__{} = c, %Plan.Join{} = join, side, owners) do
+    owner = if side.owner == :left, do: join.left.column, else: join.right.column
+
+    {filter, params} =
+      case owners do
+        :all -> {"", []}
+        ids -> {" AND #{ident(owner)} = ANY($1)", [ids]}
+      end
+
+    membership =
+      case side.kind do
+        :flag -> "#{ident(side.column)} = TRUE"
+        :position -> "#{ident(side.column)} IS NOT NULL"
+      end
+
+    sql =
+      "SELECT #{ident(join.left.column)}, #{ident(join.right.column)} FROM #{qualified(c.schema, join)} " <>
+        "WHERE #{membership}#{filter}"
+
+    with {:ok, rows} <- run(c, sql, params), do: {:ok, Enum.map(rows, fn [l, r] -> {l, r} end)}
+  end
+
+  @impl true
+  def upsert_join(%__MODULE__{} = c, %Plan.Join{} = join, side, rows) do
+    case run(c, join_upsert_sql(c.schema, join, side), [Jason.encode!(rows)]) do
+      {:ok, returned} ->
+        inserted = Enum.count(returned, &(&1 == [true]))
+        updated = length(returned) - inserted
+        {:ok, %{inserted: inserted, updated: updated, unchanged: length(rows) - length(returned)}}
+
+      {:error, %Error{} = e} ->
+        {:error, %{e | context: Map.put(e.context, :join, join.id)}}
+    end
+  end
+
+  @doc false
+  # The upsert statement of one list of a join table: keyed by its two ID
+  # columns, setting only the list's membership column.
+  @spec join_upsert_sql(String.t(), Plan.Join.t(), Plan.Join.side()) :: String.t()
+  def join_upsert_sql(schema, %Plan.Join{} = join, side) do
+    target = qualified(schema, join)
+    keys = Enum.map([join.left.column, join.right.column], &ident/1)
+    col = ident(side.column)
+    all = Enum.join(keys ++ [col], ", ")
+
+    "INSERT INTO #{target} AS t (#{all}) " <>
+      "SELECT #{all} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb) " <>
+      "ON CONFLICT (#{Enum.join(keys, ", ")}) DO UPDATE SET #{col} = EXCLUDED.#{col} " <>
+      "WHERE t.#{col} IS DISTINCT FROM EXCLUDED.#{col} RETURNING (xmax = 0)"
   end
 
   defp qualified(schema, table), do: ident(schema) <> "." <> ident(table.table)

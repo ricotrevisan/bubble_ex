@@ -283,6 +283,38 @@ defmodule BubbleEx.Load.Issues do
         details: d
       )
 
+  defp build(:load_join_duplicate, s, d),
+    do:
+      Diagnostic.new(
+        :load_join_duplicate,
+        "",
+        "#{d.count} lists of #{where(s)} repeat a member; the join holds it once",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_join_stale_member, s, d),
+    do:
+      Diagnostic.new(
+        :load_join_stale_member,
+        "",
+        "#{d.count} members #{where(s)} held at an earlier load are no longer listed; their " <>
+          "rows stay (nothing is deleted until WTF-414) and keep the access they grant",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_join_asymmetric, s, d),
+    do:
+      Diagnostic.new(
+        :load_join_asymmetric,
+        "",
+        "#{d.count} members of #{where(s)} do not list their owner back; the shared join " <>
+          "holds both lists",
+        subject: s,
+        details: d
+      )
+
   defp build(:load_duplicate_email, s, d),
     do:
       Diagnostic.new(

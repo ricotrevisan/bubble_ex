@@ -64,6 +64,7 @@
   ],
   "enums": [],
   "extensions": [],
+  "joins": [],
   "names": {
     "enums": {},
     "external_types": {},
@@ -343,10 +344,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "A",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -360,6 +363,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -375,6 +379,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -421,8 +426,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -430,7 +438,9 @@
             "field": "Created By",
             "type": "a"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -439,8 +449,11 @@
           "define_attribute?": false,
           "destination": "B",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "b",
           "public?": true,
           "sortable?": false,
@@ -448,7 +461,9 @@
             "field": "b_custom_b",
             "type": "a"
           },
-          "source_attribute": "b_id"
+          "source_attribute": "b_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -668,10 +683,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "B",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -685,6 +702,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -700,6 +718,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -746,8 +765,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -755,7 +777,9 @@
             "field": "Created By",
             "type": "b"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -967,10 +991,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "C",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -984,6 +1010,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -999,6 +1026,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -1045,8 +1073,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -1054,7 +1085,9 @@
             "field": "Created By",
             "type": "c"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         },
         {
           "allow_nil?": true,
@@ -1063,8 +1096,11 @@
           "define_attribute?": false,
           "destination": "A",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "a",
           "public?": true,
           "sortable?": false,
@@ -1072,7 +1108,9 @@
             "field": "a_custom_a",
             "type": "c"
           },
-          "source_attribute": "a_id"
+          "source_attribute": "a_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1296,10 +1334,12 @@
       ],
       "identities": [],
       "indexes": [],
+      "join": null,
       "migration_types": [],
       "module": "User",
       "policies": [
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1313,6 +1353,7 @@
           "permission": "keyed"
         },
         {
+          "accessing_from": null,
           "action": "read",
           "changing": null,
           "checks": [
@@ -1326,6 +1367,7 @@
           "permission": "view"
         },
         {
+          "accessing_from": null,
           "action": "search",
           "changing": null,
           "checks": [
@@ -1367,8 +1409,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": null,
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator_for_privacy",
           "public?": false,
           "sortable?": true,
@@ -1376,7 +1421,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "relationships": [
@@ -1387,8 +1434,11 @@
           "define_attribute?": false,
           "destination": "User",
           "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
           "gate": "never",
+          "join_relationship": null,
           "kind": "belongs_to",
+          "membership": null,
           "name": "creator",
           "public?": true,
           "sortable?": false,
@@ -1396,7 +1446,9 @@
             "field": "Created By",
             "type": "user"
           },
-          "source_attribute": "creator_id"
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
         }
       ],
       "source": {
@@ -1406,7 +1458,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 6,
+  "schema_version": 7,
   "typed_structs": [],
   "types": []
 }

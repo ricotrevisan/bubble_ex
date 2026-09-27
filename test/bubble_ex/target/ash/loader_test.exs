@@ -299,6 +299,30 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       refute_received {:query, _, _}
     end
 
+    test "join membership reads all owners and treats false flags as absent" do
+      join = Enum.find(plan(:cut3).joins, &(&1.table == "favorite_project"))
+      flag = Enum.find(join.sides, &(&1.kind == :flag))
+      position = Enum.find(join.sides, &(&1.kind == :position))
+      test = self()
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params})
+        {:ok, %{rows: [["1x1", "1x2"]]}}
+      end
+
+      {:ok, project} = F.project(:cut3)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, [{"1x1", "1x2"}]} = Loader.join_members(config, join, flag, :all)
+      assert_received {:query, flag_sql, []}
+      assert flag_sql =~ ~s(WHERE "viewers_listed" = TRUE)
+      refute flag_sql =~ "ANY($1)"
+
+      assert {:ok, [{"1x1", "1x2"}]} = Loader.join_members(config, join, position, :all)
+      assert_received {:query, position_sql, []}
+      assert position_sql =~ ~s(WHERE "favorites_position" IS NOT NULL)
+      refute position_sql =~ "ANY($1)"
+    end
+
     test "quotes identifiers" do
       table = %Plan.Table{type: "x", table: ~s(we"ird), key: "id", columns: []}
       assert Loader.upsert_sql("public", table) =~ ~s("we""ird")

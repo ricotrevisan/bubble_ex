@@ -4,9 +4,9 @@
 #
 #     MIX_ENV=test mix run scripts/ash_compile_check/load.exs <scratch dir>
 #
-# For three fixtures (BubbleEx.Test.LoadFixture: `field_types`, every
-# Bubble field kind; `cut2` and `combined`, the owner decision sets of
-# BubbleEx.Test.DecidedFixture), into the databases AshPostgres migrated
+# For four fixtures (BubbleEx.Test.LoadFixture: `field_types`, every
+# Bubble field kind; `cut2`, `combined` and `cut3`, the owner decision sets
+# of BubbleEx.Test.DecidedFixture), into the databases AshPostgres migrated
 # (ash_check_<fixture>, emptied first; invented data only):
 #
 #   * a dry run reports the per-type counts and the expected diagnostics
@@ -31,6 +31,14 @@
 #     for an unconfirmed one; stable across the rerun and the delta sync;
 #     a confirmation made in the target survives a delta sync while the
 #     email is unchanged, and yields to Bubble's status when it changed
+#   * join tables (cut 3, WTF-406): every list member is one row (a
+#     repeated one once, a dangling one kept) with its list's column; two
+#     mirrored lists sharing a table are written separately, so a member
+#     of one list is never added to the other; the interrupted and resumed
+#     load, the rerun and the delta sync compare them too, and a later
+#     export that reorders members succeeds; an export that drops one
+#     reports the stale membership and is blocked before writing (WTF-414
+#     must prune before a real cutover)
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -91,21 +99,28 @@ defmodule LoadCheck do
   end
 
   def truncate(conn, plan) do
-    tables = Enum.map_join(plan.tables, ", ", &~s("public"."#{&1.table}"))
+    tables =
+      Enum.map_join(plan.tables ++ plan.joins, ", ", &~s("public"."#{&1.table}"))
+
     Postgrex.query!(conn, "TRUNCATE #{tables}", [])
   end
 
-  # Every table as PostgreSQL's to_jsonb of each row, by primary key.
+  # Every table (and join table) as PostgreSQL's to_jsonb of each row, by
+  # primary key.
   def snapshot(conn, plan) do
-    Map.new(plan.tables, fn t ->
+    keys =
+      Enum.map(plan.tables, &{&1.table, ~s("#{&1.key}")}) ++
+        Enum.map(plan.joins, &{&1.table, ~s("#{&1.left.column}", "#{&1.right.column}")})
+
+    Map.new(keys, fn {table, order} ->
       %{rows: rows} =
         Postgrex.query!(
           conn,
-          "SELECT to_jsonb(t)::text FROM \"public\".\"#{t.table}\" t ORDER BY \"#{t.key}\"",
+          "SELECT to_jsonb(t)::text FROM \"public\".\"#{table}\" t ORDER BY #{order}",
           []
         )
 
-      {t.table, Enum.map(rows, fn [json] -> Jason.decode!(json) end)}
+      {table, Enum.map(rows, fn [json] -> Jason.decode!(json) end)}
     end)
   end
 
@@ -166,7 +181,7 @@ schema_fixtures =
       path <- pattern |> Path.wildcard() |> Enum.sort() do
     {prefix <> Path.basename(path, ".json"), faithful.(path |> File.read!() |> Jason.decode!())}
   end ++
-    for set <- [:combined, :locked, :count, :cut2] do
+    for set <- [:combined, :locked, :count, :cut2, :cut3] do
       {"decided_#{set}", decided.(set)}
     end
 
@@ -190,7 +205,19 @@ private_fixtures =
         {model, project}
       end
 
-      [{"private_app", faithful.(app)}, {"private_cut2", cut2}]
+      cut3 = fn ->
+        {:ok, model} = BubbleEx.Model.build(app)
+        {:ok, index} = BubbleEx.Index.build(app, model: model)
+        {:ok, %{findings: findings}} = BubbleEx.Findings.analyze(app, model: model, index: index)
+        {_records, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
+
+        {:ok, project} =
+          BubbleEx.Target.Ash.map(model, applied, privacy: :unverified, decisions_sha256: sha)
+
+        {model, project}
+      end
+
+      [{"private_app", faithful.(app)}, {"private_cut2", cut2}, {"private_cut3", cut3}]
   end
 
 {tables, columns} =
@@ -213,8 +240,9 @@ private_fixtures =
         )
     end
 
-    {tables + length(plan.tables),
-     columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1)))}
+    {tables + length(plan.tables) + length(plan.joins),
+     columns + Enum.sum(Enum.map(plan.tables, &(length(&1.columns) + 1))) +
+       Enum.sum(Enum.map(plan.joins, &(2 + length(&1.sides))))}
   end)
 
 IO.puts(
@@ -227,7 +255,8 @@ IO.puts(
 fixtures = [
   {:field_types, "ash_check_field_types", "Fixtures.FieldTypes"},
   {:cut2, "ash_check_decided_cut2", "Fixtures.DecidedCut2"},
-  {:combined, "ash_check_decided_combined", "Fixtures.DecidedCombined"}
+  {:combined, "ash_check_decided_combined", "Fixtures.DecidedCombined"},
+  {:cut3, "ash_check_decided_cut3", "Fixtures.DecidedCut3"}
 ]
 
 # Diagnostics each fixture's data must produce ({code, type, field}).
@@ -263,6 +292,15 @@ expected_codes = %{
   combined: [
     {:load_derived_drift, "project", "sort_workspace_name_text"},
     {:load_type_mismatch, "project", "task_count_number"}
+  ],
+  cut3: [
+    {:load_join_duplicate, "project", "tasks_list_custom_task"},
+    {:load_dangling_reference, "project", "tasks_list_custom_task"},
+    {:load_dangling_reference, "workspace", "members_list_user"},
+    {:load_join_asymmetric, "workspace", "members_list_user"},
+    {:load_join_asymmetric, "user", "workspaces_list_custom_workspace"},
+    {:load_join_asymmetric, "project", "viewers_list_user"},
+    {:load_join_asymmetric, "user", "favorites_list_custom_project"}
   ]
 }
 
@@ -457,8 +495,15 @@ loaded =
     {:ok, synced} = Load.run(confirm_export, model, target, [storage: storage] ++ base_opts)
     LoadCheck.eq!(fixture, synced.types["user"].updated, 1, "confirmation sync: users updated")
     after_sync = LoadCheck.snapshot(conn, plan)
-    confirmed = &(LoadCheck.row(after_sync, "user", &1)["confirmed_at"])
-    LoadCheck.eq!(fixture, confirmed.(F.bob()), "2026-09-20T00:00:00", "bob keeps his confirmation")
+    confirmed = &LoadCheck.row(after_sync, "user", &1)["confirmed_at"]
+
+    LoadCheck.eq!(
+      fixture,
+      confirmed.(F.bob()),
+      "2026-09-20T00:00:00",
+      "bob keeps his confirmation"
+    )
+
     LoadCheck.eq!(fixture, confirmed.(F.carol()), nil, "carol, new email, takes Bubble's status")
     LoadCheck.eq!(fixture, confirmed.(F.ada()), "2024-01-01T10:00:00", "ada unchanged")
 
@@ -567,6 +612,203 @@ loaded =
         LoadCheck.eq!(fixture, p2["task_count"], nil, "a fraction in an integer column")
         t1 = LoadCheck.row(snapshot, "todo_item", F.todo1())
         LoadCheck.eq!(fixture, t1["points"], 1.25, "decimal refinement")
+
+      :cut3 ->
+        p1 = LoadCheck.row(snapshot, "project", F.initiative1())
+        LoadCheck.check!(fixture, not Map.has_key?(p1, "tasks"), "a joined list has no column")
+
+        LoadCheck.eq!(
+          fixture,
+          Enum.map(snapshot["project_tasks"], &{&1["task_id"], &1["position"]}) |> Enum.sort(),
+          Enum.sort([{F.todo1(), 0}, {F.todo2(), 1}, {F.gone_task(), 3}]),
+          "a list's rows: a repeated member once, a dangling one kept, positions"
+        )
+
+        ws = fn snap ->
+          snap["user_workspaces"]
+          |> Enum.map(
+            &{&1["user_id"], &1["workspace_id"], &1["workspaces_position"],
+             &1["members_position"]}
+          )
+          |> Enum.sort()
+        end
+
+        LoadCheck.eq!(
+          fixture,
+          ws.(snapshot),
+          Enum.sort([
+            {F.ada(), F.workspace1(), 0, 0},
+            {F.bob(), F.workspace1(), nil, 1},
+            {F.gone_user(), F.workspace1(), nil, 2},
+            {F.carol(), F.workspace2(), 0, 0},
+            {F.carol(), F.workspace1(), 1, nil}
+          ]),
+          "a shared table: each list's own column, nothing added to the other list"
+        )
+
+        # A legitimate delta reorders Acme's members without removing any.
+        rows = F.cut3_rows()
+        [w1 | rest] = rows["workspace"]
+
+        reordered = %{
+          rows
+          | "workspace" => [Map.put(w1, "Members", [F.gone_user(), F.ada(), F.bob()]) | rest]
+        }
+
+        {:ok, reordered_export} = F.export(which, Path.join(dir, "reordered"), reordered)
+
+        {:ok, reordered_report} =
+          Load.run(reordered_export, model, target, [storage: storage] ++ base_opts)
+
+        LoadCheck.eq!(fixture, reordered_report.blocked, [], "member reorder is allowed")
+
+        LoadCheck.eq!(
+          fixture,
+          ws.(LoadCheck.snapshot(conn, plan)),
+          Enum.sort([
+            {F.ada(), F.workspace1(), 0, 1},
+            {F.bob(), F.workspace1(), nil, 2},
+            {F.gone_user(), F.workspace1(), nil, 0},
+            {F.carol(), F.workspace2(), 0, 0},
+            {F.carol(), F.workspace1(), 1, nil}
+          ]),
+          "reordered membership keeps the other list's column"
+        )
+
+        # A false flag is not a member, even though its join row exists.
+        Postgrex.query!(
+          conn,
+          ~s[INSERT INTO "public"."favorite_project" ("project_id", "user_id", "viewers_listed") VALUES ($1, $2, false)],
+          [F.initiative2(), F.ada()]
+        )
+
+        {:ok, false_flag} = Load.dry_run(reordered_export, model, target, base_opts)
+        LoadCheck.eq!(fixture, false_flag.blocked, [], "false flag is not a stale member")
+
+        Postgrex.query!(
+          conn,
+          ~s(DELETE FROM "public"."favorite_project" WHERE "project_id" = $1 AND "user_id" = $2),
+          [F.initiative2(), F.ada()]
+        )
+
+        # Bob is absent in the next export. The stale row retains access;
+        # the whole load, including scalar changes, must fail before writes.
+        [w1 | rest] = reordered["workspace"]
+
+        dropped_rows = %{
+          reordered
+          | "workspace" => [
+              w1 |> Map.put("Members", [F.gone_user(), F.ada()]) |> Map.put("Name", "Changed")
+              | rest
+            ]
+        }
+
+        {:ok, dropped} = F.export(which, Path.join(dir, "dropped"), dropped_rows)
+        before_blocked = LoadCheck.snapshot(conn, plan)
+        {:ok, stale} = Load.dry_run(dropped, model, target, base_opts)
+
+        LoadCheck.eq!(
+          fixture,
+          stale.blocked,
+          [:load_join_stale_member],
+          "stale dry run is blocked"
+        )
+
+        stale_members = fn report ->
+          for d <- report.diagnostics,
+              d.code == :load_join_stale_member,
+              do: {d.subject.field, d.details.count, d.details.sample_ids}
+        end
+
+        LoadCheck.eq!(
+          fixture,
+          stale_members.(stale),
+          [{"members_list_user", 1, [F.workspace1()]}],
+          "the member no longer listed, reported from the PostgreSQL rows"
+        )
+
+        blocked_ledger = Path.join(dir, "blocked_ledger")
+
+        {:error, refused} =
+          Load.run(
+            dropped,
+            model,
+            target,
+            [storage: storage, ledger_dir: blocked_ledger, batch_size: 1] ++ base_opts
+          )
+
+        LoadCheck.eq!(fixture, refused.kind, :invalid_input, "stale run error")
+
+        LoadCheck.eq!(
+          fixture,
+          refused.context.blocked,
+          [:load_join_stale_member],
+          "stale run blocked"
+        )
+
+        LoadCheck.eq!(fixture, refused.context.report.run, nil, "no run started")
+
+        LoadCheck.eq!(
+          fixture,
+          stale_members.(refused.context.report),
+          stale_members.(stale),
+          "stale run report"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          LoadCheck.snapshot(conn, plan),
+          before_blocked,
+          "blocked run wrote no rows"
+        )
+
+        LoadCheck.check!(fixture, not File.exists?(blocked_ledger), "blocked run wrote a ledger")
+
+        # A complete delta omitting Acme itself must also catch its rows.
+        deleted_owner = %{
+          reordered
+          | "workspace" => Enum.reject(reordered["workspace"], &(&1["_id"] == F.workspace1()))
+        }
+
+        {:ok, deleted_export} = F.export(which, Path.join(dir, "deleted_owner"), deleted_owner)
+        {:ok, missing} = Load.dry_run(deleted_export, model, target, base_opts)
+
+        LoadCheck.eq!(
+          fixture,
+          stale_members.(missing),
+          [{"members_list_user", 3, [F.workspace1()]}],
+          "missing owner is stale"
+        )
+
+        # The earlier completed run's ledger exists; refusing the delta must
+        # neither write rows nor create another ledger entry.
+        ledger_before = File.ls!(ledger) |> Enum.sort()
+        {:error, missing_run} = Load.run(deleted_export, model, target, opts)
+
+        LoadCheck.eq!(
+          fixture,
+          missing_run.context.blocked,
+          [:load_join_stale_member],
+          "missing owner blocked"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          LoadCheck.snapshot(conn, plan),
+          before_blocked,
+          "missing owner wrote no rows"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          File.ls!(ledger) |> Enum.sort(),
+          ledger_before,
+          "missing owner wrote no ledger"
+        )
+
+        # back to the fixture's state for loaded.exs
+        LoadCheck.truncate(conn, plan)
+        {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
     end
 
     GenServer.stop(conn)
@@ -622,6 +864,23 @@ checks = [
     resource: "Fixtures.DecidedCombined.Task",
     id: F.todo1(),
     expect: %{"points" => "1.25"}
+  },
+  %{
+    fixture: "cut3",
+    resource: "Fixtures.DecidedCut3.Workspace",
+    id: F.workspace1(),
+    expect: %{"name" => "Acme"},
+    # members through the private twin (the public one is filtered by the
+    # actor's grants, and there is none): the Members rows whose user
+    # exists, not Carol (only her Workspaces list Acme)
+    relationships: %{"members_for_privacy" => Enum.sort([F.ada(), F.bob()])}
+  },
+  %{
+    fixture: "cut3",
+    resource: "Fixtures.DecidedCut3.Project",
+    id: F.initiative1(),
+    expect: %{"title" => "Plan"},
+    relationships: %{"tasks_for_privacy" => Enum.sort([F.todo1(), F.todo2()])}
   },
   %{
     fixture: "field_types",

@@ -62,6 +62,23 @@ defmodule BubbleEx.Load do
       decision derives as its length (`derive_count`) loses the IDs of
       records the export does not hold, as Bubble's `:count` does not
       count them.
+    * **Join tables** (`normalize_list_to_join`, `membership_policy`
+      decisions; `BubbleEx.Load.Plan.Join`): a list normalized to a join
+      loads as one row per member, after every data type's table, keyed by
+      the two record IDs, with the list's membership column set (the
+      member's index in the list, or true). A repeated member is one row
+      (`:load_join_duplicate`); a dangling one is kept, like a reference
+      (WTF-338), and reported. Two mirrored lists sharing a join table are
+      written separately, each setting only its own column, so a member of
+      one never becomes a member of the other (`:load_join_asymmetric`
+      counts the members one list holds that the other does not list
+      back). The rows upsert idempotently. Nothing is deleted: a member
+      removed from a list in Bubble since an earlier load keeps its row,
+      and with it any access a privacy rule grants through the list; each
+      such row (including one whose owner was deleted in Bubble) is reported
+      (`:load_join_stale_member`, an error: the owner's ID, counts). A dry run
+      reports it; a real run is blocked before any writes until WTF-414
+      implements pruning.
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -144,8 +161,10 @@ defmodule BubbleEx.Load do
        dangling references, drift, duplicate emails).
     4. Run with a `:ledger_dir` and the target storage, from the generated
        project (`query: &Repo.query/2`), against a staging database first.
-    5. At cutover, freeze writes in Bubble, export again and load the new
-       export into the same database: only what changed is written.
+    5. At cutover, freeze writes in Bubble and export again. Dry-run the
+       new export first: a removed normalized-list member blocks a real
+       load until WTF-414 implements pruning. Otherwise load into the same
+       database: only what changed is written.
 
     6. After the cutover, delete the export:
        `mix bubble.export.delete exports/mm-137` (`Export.delete/1`).
@@ -157,12 +176,13 @@ defmodule BubbleEx.Load do
   """
 
   alias BubbleEx.{Diagnostic, Error, Model}
-  alias BubbleEx.Load.{Convert, Export, Files, Issues, Ledger, Plan, Report, Scan}
+  alias BubbleEx.Load.{Convert, Export, Files, Issues, Joins, Ledger, Plan, Report, Scan}
 
   @blocking [
     :load_schema_mismatch,
     :load_duplicate_email,
     :load_email_conflict,
+    :load_join_stale_member,
     :load_ambiguous_key
   ]
 
@@ -225,7 +245,9 @@ defmodule BubbleEx.Load do
          {:ok, schema_diags} <- tmod.check_schema(tconf, plan),
          opts = Keyword.put(opts, :app_hosts, app_hosts(export, opts)),
          scan = Scan.run(export, model, plan, opts),
-         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags) do
+         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags),
+         {joins, issues} = Joins.build(plan, scan, issues),
+         {:ok, issues} <- stale_members(joins, {tmod, tconf}, schema_diags, issues) do
       issues = Scan.drift(%{scan | issues: issues}, plan, model)
       issues = auth_status(issues, scan, plan)
 
@@ -240,6 +262,7 @@ defmodule BubbleEx.Load do
         identity: identity,
         schema: schema_diags,
         issues: issues,
+        joins: joins,
         clears: clears
       }
 
@@ -326,6 +349,42 @@ defmodule BubbleEx.Load do
       else: emails(scan, plan, target)
   end
 
+  # Members a list held at an earlier load that it no longer holds: the
+  # target's rows of the list that the export does not give it, including
+  # rows whose owner is absent from the complete delta export. Nothing deletes
+  # them (WTF-414), and they keep any access a rule grants through the list,
+  # so each blocks a real run before writes
+  # (`:load_join_stale_member`, the owner's ID). Not read when the schema
+  # check failed.
+  defp stale_members(joins, {tmod, tconf}, schema, issues) do
+    if Enum.any?(schema, &(&1.code == :load_schema_mismatch)) do
+      {:ok, issues}
+    else
+      Enum.reduce_while(joins, {:ok, issues}, fn built, {:ok, issues} ->
+        stored = tmod.join_members(tconf, built.join, built.side, :all)
+        stale_step(stored, built, issues)
+      end)
+    end
+  end
+
+  defp stale_step({:ok, stored}, built, issues),
+    do: {:cont, {:ok, add_stale(issues, built, stored)}}
+
+  defp stale_step({:error, _} = error, _built, _issues), do: {:halt, error}
+
+  defp add_stale(issues, built, stored) do
+    %{join: join, side: side, rows: rows} = built
+    loaded = MapSet.new(rows, &{&1[join.left.column], &1[join.right.column]})
+
+    for {l, r} = pair <- stored,
+        not MapSet.member?(loaded, pair),
+        reduce: issues do
+      issues ->
+        owner = if side.owner == :left, do: l, else: r
+        Issues.add(issues, :load_join_stale_member, side.type, side.field, owner, :not_listed_now)
+    end
+  end
+
   defp fold(nil), do: nil
   defp fold(email), do: email |> String.trim() |> String.downcase()
 
@@ -336,14 +395,20 @@ defmodule BubbleEx.Load do
     end
   end
 
-  # Every table and column of the plan names a live data type and field
-  # of the Model.
-  defp check_plan(%Plan{tables: tables}, model) do
+  # Every table, column and joined list of the plan names a live data
+  # type and field of the Model.
+  defp check_plan(%Plan{tables: tables} = plan, model) do
+    fields =
+      for(
+        t <- tables,
+        f <- [nil | Enum.map(t.columns, & &1.field) ++ Enum.map(t.derived, & &1.field)],
+        do: {t.type, f}
+      ) ++ for(j <- plan.joins, side <- j.sides, do: {side.type, side.field})
+
     missing =
-      for t <- tables,
-          f <- [nil | Enum.map(t.columns, & &1.field) ++ Enum.map(t.derived, & &1.field)],
-          not known?(model, t.type, f),
-          do: if(f, do: "#{t.type}.#{f}", else: t.type)
+      for {type, f} <- fields,
+          not known?(model, type, f),
+          do: if(f, do: "#{type}.#{f}", else: type)
 
     if missing == [],
       do: :ok,
@@ -436,25 +501,58 @@ defmodule BubbleEx.Load do
          ledger = if(Ledger.complete?(ledger), do: Ledger.restart(ledger), else: ledger),
          {:ok, refs, ledger} <- copy_files(state, ledger),
          :ok <- clear_emails(state) do
+      {tmod, tconf} = state.target
+
       result =
         convert_all(
           state,
           %{files: refs},
           fn table, batch, ledger ->
-            write(state, table, batch, ledger)
+            write(table.type, &tmod.upsert(tconf, table, &1), batch, ledger)
           end,
           ledger
         )
 
-      case result do
-        {:ok, issues, ledger} ->
-          ledger = Ledger.complete(ledger)
-          {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
-
+      with {:ok, issues, ledger} <- result,
+           {:ok, ledger} <- load_joins(state, ledger) do
+        ledger = Ledger.complete(ledger)
+        {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
+      else
         {:error, error, ledger} ->
           Ledger.close(ledger)
           {:error, error}
       end
+    end
+  end
+
+  # The join tables (after every data type's table), one list at a time:
+  # its rows upserted in batches recorded in the ledger under
+  # `<join ID>/<type>/<field>`. Nothing is deleted (WTF-414).
+  defp load_joins(state, ledger) do
+    {tmod, tconf} = state.target
+    size = Keyword.get(state.opts, :batch_size, 500)
+
+    Enum.reduce_while(state.joins, {:ok, ledger}, fn built, {:ok, ledger} ->
+      upsert = &tmod.upsert_join(tconf, built.join, built.side, &1)
+
+      built.rows
+      |> Enum.with_index()
+      |> Enum.chunk_every(size)
+      |> Enum.reduce_while({:ok, ledger}, &write_batch(built.key, upsert, &1, &2))
+      |> case do
+        {:ok, ledger} ->
+          {:cont, {:ok, Ledger.type_complete(ledger, built.key, length(built.rows))}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
+  end
+
+  defp write_batch(key, upsert, batch, {:ok, ledger}) do
+    case write(key, upsert, batch, ledger) do
+      {:ok, ledger} -> {:cont, {:ok, ledger}}
+      {:error, error} -> {:halt, {:error, error, ledger}}
     end
   end
 
@@ -507,9 +605,10 @@ defmodule BubbleEx.Load do
     end
   end
 
-  defp write(state, table, batch, ledger) do
-    {tmod, tconf} = state.target
-    done = Ledger.rows_done(ledger, table.type)
+  # Writes one batch of `{row, index}` of a table (or join table) keyed
+  # `key` in the ledger with `upsert`, skipping the rows the ledger has.
+  defp write(key, upsert, batch, ledger) do
+    done = Ledger.rows_done(ledger, key)
     {skip, todo} = Enum.split_with(batch, fn {_row, idx} -> idx < done end)
     last = batch |> List.last() |> elem(1)
 
@@ -519,20 +618,20 @@ defmodule BubbleEx.Load do
     result =
       if rows == [],
         do: {:ok, %{inserted: 0, updated: 0, unchanged: 0}},
-        else: tmod.upsert(tconf, table, rows)
+        else: upsert.(rows)
 
     case result do
       {:ok, counts} ->
         ledger =
-          if last + 1 > done, do: Ledger.batch(ledger, table.type, last + 1, counts), else: ledger
+          if last + 1 > done, do: Ledger.batch(ledger, key, last + 1, counts), else: ledger
 
-        {:ok, Ledger.resumed(ledger, table.type, resumed)}
+        {:ok, Ledger.resumed(ledger, key, resumed)}
 
       {:error, %Error{} = error} ->
         {:error, error}
 
       {:error, _} ->
-        {:error, Error.new(:request_failed, "the target refused a batch", %{type: table.type})}
+        {:error, Error.new(:request_failed, "the target refused a batch", %{type: key})}
     end
   end
 
@@ -682,6 +781,10 @@ defmodule BubbleEx.Load do
       plan_sha256: Plan.sha256(state.plan),
       target: state.identity,
       types: types,
+      joins:
+        Map.new(state.joins, fn built ->
+          {built.key, Map.merge(%{rows: length(built.rows)}, written(ledger, built.key))}
+        end),
       files: files,
       auth: auth_summary(state),
       diagnostics: Diagnostic.normalize(state.schema ++ Issues.diagnostics(issues))

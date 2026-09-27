@@ -6,6 +6,75 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Target.Ash decisions, cut 3: joins and membership** (WTF-406, D-6 of
+  WTF-352). `BubbleEx.Target.Ash.map/3` applies `normalize_list_to_join`
+  and `membership_policy`: each decided list of things is dropped (no
+  column) and becomes a `many_to_many` of the same name through a join
+  resource (`project.joins`), one per join the findings name. Two
+  mirrored lists share one table only with evidence they are one
+  relation (a workflow maintains both, `basis: :coupled`); lists paired
+  only as the only lists between their types get a table each. A join
+  resource has the two record IDs as its primary key, no database
+  foreign key (WTF-338), a btree index on the second ID and, per list, a
+  membership column: a position when the order is kept (`keep_order`,
+  default true) or a flag (`modify keep_order: false`); `join_name` names
+  the join. A row is a member of a list only when that list's column is
+  set, so lists sharing a table never mix members: each `many_to_many`
+  reads its own rows (a declared join relationship filtered by the
+  column). Names are locked in the name map (`joins`, and the owners'
+  `join_relationships`). A `derive_count` of a normalized list is a count
+  aggregate; an index hint over it is deferred; renaming it as an
+  attribute is an error. With `privacy: :unverified`: a join row is
+  readable only through a relationship (keyed `:read`, no `:search`) and
+  only by an actor who may view, on its owner, a list the row is a member
+  of (`privacy_<list>`, `privacy_visible`), each list's column only by
+  those who may view that list (field policies), and rows read through a
+  list's relationships only by those who may view that list (policies
+  scoped with `accessing_from`); the owner's `many_to_many` is gated like
+  the list, with a private twin; rules testing a normalized list (`contains`, `is
+  empty`, also through a reference) compile to `exists(<many_to_many>,
+  id == ^actor(:id))`, and rules testing the current user's normalized
+  list (`Current User's list contains This Thing`) to `exists(<rows>,
+  <owner column> == ^actor(:id))` through a private rows `has_many` on the
+  member, filtered to that list's rows; its `doesn't contain` does not
+  compile, so the rule is denied (`ash_expr_unsupported`). A field the
+  rules let users auto-bind that a decision no longer stores gets
+  `ash_policy_auto_binding_dropped`. Stale, altered or inconsistent
+  entries are `:invalid_input` (a join ID that is not the hash of its
+  lists, a basis that does not fit them, a second list that does not
+  mirror the first, a list no longer a list, a membership over a list
+  that is not of users, two decisions naming one join differently,
+  invalid `keep_order`/`join_name`); a supported transform with a subject
+  missing from the Model still fails with "subject is not in the Model"
+  (bubble_wtf's capability probe). Project `schema_version` 7 (`joins`,
+  `Resource.join`, the `many_to_many` and `membership` fields of
+  `Relationship`); the existing goldens change only by these fields. The
+  data loader loads the join tables (`Load.Plan.Join`, `Table.joined`,
+  `Load.Joins`, the adapter's `upsert_join/4`), per list: one row per
+  member, repeated members once (`load_join_duplicate`), dangling IDs
+  kept and reported, each list setting only its own column (never
+  another list's; `load_join_asymmetric` reports members not listed
+  back), idempotent upserts and resumable batches in the ledger. Nothing
+  is deleted from a join table: a member a list no longer holds keeps its
+  row (and any access it grants), reported per list from the target's rows
+  (`join_members/4`, `load_join_stale_member`, a warning with IDs and
+  counts); pruning is WTF-414, which must land before a real cutover.
+  `scripts/ash_compile_check.sh` renders `decided_cut3` (and
+  `private_cut3` with a private export), checks the join tables, their
+  primary keys, that a list reads only its rows, loads and positions,
+  and with authorization on an asymmetric shared table (a Members list
+  and a Workspaces list that do not list each other back: each rule,
+  including "Current User's Workspaces contains This Workspace", holds
+  only for its own list), a member, a lister and an outsider; two
+  mutants without the join rows' policy or the many_to_many filters must
+  leak; `load.exs` loads, resumes and reruns the joins in PostgreSQL and
+  checks a later export deletes nothing. Fixed on the way: the Repo
+  `BubbleEx.Target.Phoenix` scaffolds installs the project's extensions
+  (`pg_trgm` for the trigram indexes of applied hints, cut 2) through a
+  generated `RepoExtensions` module; it listed only `ash-functions` and
+  `citext`, so such a project's migrations failed. `check_manifest/3`
+  reports `extensions_unlisted` for an owned Repo scaffolded before it.
+
 - **Structural verification pack** (WTF-386, V6 of WTF-358).
   `BubbleEx.Target.Phoenix.Structural` checks, offline and
   deterministically, that a generated project matches the Bubble model,

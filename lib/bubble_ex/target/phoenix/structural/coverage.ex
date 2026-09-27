@@ -47,7 +47,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
     :api_calls
   ]
   @buckets [:generated, :decision, :residue, :diagnosed, :excluded, :uncovered]
-  @declaring [:attribute, :belongs_to, :has_many, :calculate, :count]
+  @declaring [:attribute, :belongs_to, :has_many, :many_to_many, :calculate, :count]
 
   @typedoc "One accounted symbol: its index symbol ID, bucket, why, and Bubble-ID subjects."
   @type entry :: %{id: String.t(), bucket: atom(), why: atom() | nil, subjects: map()}
@@ -251,7 +251,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   # {type, field} -> [{resource module, name}] of stored attributes and
   # belongs_to relationships, and of what a decision derives in their
-  # place (calculations, aggregates, has_many).
+  # place (calculations, aggregates, has_many, many_to_many).
   defp field_sources(project) do
     stored =
       for r <- project.resources,
@@ -264,7 +264,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       for r <- project.resources,
           item <-
             Enum.filter(r.calculations, &(&1.kind == :derived)) ++
-              r.aggregates ++ Enum.filter(r.relationships, &(&1.kind == :has_many)),
+              r.aggregates ++
+              Enum.filter(r.relationships, &(&1.kind in [:has_many, :many_to_many])),
           key = source_key(item.source),
           key != nil,
           do: {key, {r.module, item.name}}

@@ -12,6 +12,9 @@ defmodule BubbleEx.Test.LoadFixture do
   #     counts, text references, a derived has_many
   #   * :combined - its :combined set (cut 1): fields derived from related
   #     records, refined number types, renamed table and attributes
+  #   * :cut3 - its :cut3 set (WTF-406): lists normalized to join tables,
+  #     one of their own and two shared by mirrored lists (with members
+  #     one side does not list back, a repeated member and dangling IDs)
   #
   # Keys are field IDs for some fields and display names for others (the
   # loader accepts both); some values are deliberately wrong.
@@ -265,6 +268,58 @@ defmodule BubbleEx.Test.LoadFixture do
     }
   end
 
+  # --- :cut3 (joins and membership) -------------------------------------------------------------
+
+  def workspace2, do: id(52)
+  def todo2, do: id(72)
+  def gone_task, do: id(96)
+
+  def cut3_rows do
+    %{
+      "workspace" => [
+        %{
+          "_id" => workspace1(),
+          "Created Date" => "2024-07-01T00:00:00Z",
+          "Name" => "Acme",
+          # Bob does not list Acme back; Carol lists it but is not a member
+          "Members" => [ada(), bob(), gone_user()]
+        },
+        %{
+          "_id" => workspace2(),
+          "Created Date" => "2024-07-02T00:00:00Z",
+          "Name" => "Beta",
+          "members_list_user" => [carol()]
+        }
+      ],
+      "project" => [
+        %{
+          "_id" => initiative1(),
+          "Created Date" => "2024-07-03T00:00:00Z",
+          "Title" => "Plan",
+          "Workspace" => workspace1(),
+          "Tasks" => [todo1(), todo2(), todo1(), gone_task()],
+          "Viewers" => [bob(), ada()]
+        },
+        %{
+          "_id" => initiative2(),
+          "Created Date" => "2024-07-04T00:00:00Z",
+          "Title" => "Spare",
+          "Tasks" => []
+        }
+      ],
+      "task" => [
+        %{"_id" => todo1(), "Project" => initiative1(), "Title" => "Write"},
+        %{"_id" => todo2(), "Project" => initiative1(), "Title" => "Review"}
+      ],
+      "user" =>
+        users([
+          %{"Workspaces" => [workspace1()], "Favorites" => [initiative1()]},
+          %{"Workspaces" => [], "Favorites" => [initiative2()]},
+          %{"Workspaces" => [workspace2(), workspace1()]}
+        ])
+    }
+  end
+
   # --- exports ---------------------------------------------------------------------------------
 
   def app(:field_types),
@@ -272,6 +327,7 @@ defmodule BubbleEx.Test.LoadFixture do
 
   def app(:cut2), do: BubbleEx.Test.DecidedFixture.app(:cut2)
   def app(:combined), do: BubbleEx.Test.DecidedFixture.app(:combined)
+  def app(:cut3), do: BubbleEx.Test.DecidedFixture.app(:cut3)
 
   def model(which) do
     {:ok, model} = Model.build(app(which))
@@ -281,6 +337,7 @@ defmodule BubbleEx.Test.LoadFixture do
   def rows(:field_types), do: field_types_rows()
   def rows(:cut2), do: cut2_rows()
   def rows(:combined), do: combined_rows()
+  def rows(:cut3), do: cut3_rows()
 
   def files(:field_types), do: field_types_files()
   def files(_which), do: []

@@ -70,9 +70,16 @@ defmodule BubbleEx.Findings.Joins do
     end
   end
 
+  @doc false
+  # The ID of the join replacing the list fields `fields` (sorted field
+  # symbol IDs). `BubbleEx.Target.Ash` checks applied decisions against it.
+  @spec id([String.t()]) :: String.t()
+  def id(fields) when is_list(fields),
+    do: "join:" <> binary_part(CanonicalJson.sha256(fields), 0, 16)
+
   defp join(fields, from, to, basis) do
     %{
-      id: "join:" <> binary_part(CanonicalJson.sha256(fields), 0, 16),
+      id: id(fields),
       between: Enum.sort(["data_type:" <> from, "data_type:" <> to]),
       fields: fields,
       basis: basis

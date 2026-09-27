@@ -63,7 +63,9 @@ defmodule PolicySmoke do
           Code.ensure_loaded?(privacy),
           users = users(privacy),
           resource <- Ash.Domain.Info.resources(domain),
-          action <- [:get, :search],
+          # (a join resource, WTF-406, has no :search: its rows are
+          # reached through relationships only)
+          action <- [:get | if(Ash.Resource.Info.action(resource, :search), do: [:search], else: [])],
           actor <- [nil | users] do
         case smoke_read(resource, action, actor) do
           {:ok, _} -> :ok
@@ -91,8 +93,12 @@ defmodule PolicySmoke do
   defp smoke_read(resource, :search, actor), do: PolicyCheck.read(resource, :search, actor)
 
   defp smoke_read(resource, :get, actor) do
-    pk = PolicyCheck.pk(resource)
-    ids = resource |> Ash.read!(authorize?: false) |> Enum.map(&Map.fetch!(&1, pk))
+    pks = Ash.Resource.Info.primary_key(resource)
+
+    ids =
+      resource
+      |> Ash.read!(authorize?: false)
+      |> Enum.map(fn r -> if match?([_], pks), do: Map.fetch!(r, hd(pks)), else: Map.take(r, pks) end)
 
     Enum.reduce_while(ids, {:ok, []}, fn id, acc ->
       case Ash.get(resource, id, actor: actor) do

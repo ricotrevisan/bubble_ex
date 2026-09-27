@@ -2,10 +2,11 @@ defmodule BubbleEx.Target.Ash.Decisions do
   @moduledoc false
 
   # Owner decisions applied by `BubbleEx.Target.Ash.map/3` (WTF-352 §4,
-  # cuts 1 and 2). `plan/3` validates the applicable decisions against the
+  # cuts 1 to 3). `plan/3` validates the applicable decisions against the
   # Model and the name map and returns the name map with the rename
-  # overrides, the field transforms, the indexes, the `project.applied`
-  # and `project.deferred` records and the diagnostics; `apply/2` rewrites
+  # overrides, the field transforms, the joins, the indexes, the
+  # `project.applied` and `project.deferred` records and the diagnostics;
+  # `joins/3` names and builds the join resources and `apply/3` rewrites
   # the mapped resources (`text_to_reference` is mapped by
   # `BubbleEx.Target.Ash` itself, which names the new relationship). The
   # input contract and the semantics are documented in
@@ -14,9 +15,20 @@ defmodule BubbleEx.Target.Ash.Decisions do
   alias BubbleEx.{Decision, Diagnostic, Error, Finding, Model}
   alias BubbleEx.Decision.Applied
   alias BubbleEx.Finding.Kinds
+  alias BubbleEx.Findings.Joins
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Model.{ExternalType, Type}
-  alias BubbleEx.Target.Ash.{Aggregate, Calculation, Expr, Index, Naming, Relationship, Resource}
+
+  alias BubbleEx.Target.Ash.{
+    Aggregate,
+    Attribute,
+    Calculation,
+    Expr,
+    Index,
+    Naming,
+    Relationship,
+    Resource
+  }
 
   @supported [
     :refine_number_type,
@@ -25,17 +37,20 @@ defmodule BubbleEx.Target.Ash.Decisions do
     :derive_count,
     :text_to_reference,
     :derive_reverse_relationship,
-    :add_indexes
+    :add_indexes,
+    :normalize_list_to_join,
+    :membership_policy
   ]
 
-  # Transforms a later cut of Target.Ash will apply (WTF-352 §4.2).
-  @later %{
-    normalize_list_to_join: "cut 3",
-    membership_policy: "cut 3"
-  }
+  # Since cut 3 every registered finding transform applies (WTF-352 §4.2):
+  # one missing from `@supported` is an "unknown transform" error (bubble_wtf's
+  # capability probe reads that as unsupported).
+
+  @join_transforms [:normalize_list_to_join, :membership_policy]
+  @join_bases [:single, :coupled, :unique_types]
 
   # Field transforms: each drops or changes one field's attribute.
-  @field_ops [:refine, :derive, :count, :text_ref, :reverse]
+  @field_ops [:refine, :derive, :count, :text_ref, :reverse, :join]
 
   # Index methods per access pattern (`BubbleEx.Findings.SearchIndex`).
   @btree_access [:equality, :range, :sort]
@@ -50,7 +65,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
   @not_schema [:replace_plugin]
 
   # Resource name map members holding names in one attribute scope.
-  @resource_scope ~w(attributes relationships privacy_rules privacy_relationships)
+  @resource_scope ~w(attributes relationships privacy_rules privacy_relationships join_relationships)
+
+  @text [trim?: false, allow_empty?: true]
 
   # The generated `<namespace>.Privacy` module (privacy: :unverified).
   @generated_modules ~w(Privacy)
@@ -63,6 +80,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
           count: %{field_key() => map()},
           text_ref: %{field_key() => map()},
           reverse: %{field_key() => map()},
+          join: %{field_key() => map()},
+          joins: %{String.t() => map()},
           indexes: %{String.t() => [map()]},
           applied: [map()],
           deferred: [map()],
@@ -80,12 +99,12 @@ defmodule BubbleEx.Target.Ash.Decisions do
          decisions = decisions |> Enum.reject(&(&1.transform in @not_schema)),
          decisions = Enum.sort_by(decisions, & &1.key),
          {:ok, checked} <- collect(decisions, &check(&1, ctx)),
-         {deferred, checked} = Enum.split_with(checked, &(elem(&1, 0) == :defer)),
          :ok <- one_per_field(checked),
+         {:ok, joins} <- join_groups(checked),
          fields =
            for({op, a, subject, data} <- checked, op in @field_ops, do: {op, subject, a, data}),
          ops = Map.new(@field_ops, fn op -> {op, field_map(fields, op)} end),
-         ctx = Map.merge(ctx, ops),
+         ctx = ctx |> Map.merge(ops) |> Map.put(:joins, joins),
          :ok <- stored_sources(ctx),
          {:ok, indexes, index_deferred, index_diags} <- indexes(checked, ctx),
          {:ok, names, rename_diags} <- renames(checked, names, ctx) do
@@ -97,18 +116,15 @@ defmodule BubbleEx.Target.Ash.Decisions do
       {:ok,
        Map.merge(ops, %{
          names: names,
+         joins: joins,
          indexes: indexes |> Map.values() |> Enum.group_by(& &1.type, & &1.indexes),
          applied: applied,
-         deferred:
-           Enum.sort_by(
-             Enum.map(deferred, &Map.put(record(elem(&1, 1)), :indexes, nil)) ++ index_deferred,
-             & &1.key
-           ),
+         deferred: Enum.sort_by(index_deferred, & &1.key),
          owners: for({:rename, a, _, _} <- checked, do: owner(a.params.slot, a.subject)),
          diagnostics:
            Enum.flat_map(fields, &field_diag(&1, ctx)) ++
              index_diags ++
-             rename_diags ++ Enum.map(deferred, &deferred_diag(elem(&1, 1), ctx))
+             rename_diags
        })
        |> Map.update!(:indexes, fn by_type ->
          Map.new(by_type, fn {t, lists} -> {t, List.flatten(lists)} end)
@@ -162,7 +178,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
     with :ok <- known(a),
          :ok <- finding_identity(a),
          :ok <- fresh(a) do
-      if a.transform in @supported, do: supported_finding(a, ctx), else: unsupported_finding(a)
+      supported_finding(a, ctx)
     end
   end
 
@@ -183,33 +199,13 @@ defmodule BubbleEx.Target.Ash.Decisions do
          do: transform(a, subject, field, ctx)
   end
 
-  # A hint nobody decided is deferred until a later cut applies its
-  # transform (reported, never silent); an owner's decision on an
-  # unsupported transform is an error.
-  defp unsupported_finding(%Applied{automatic: true} = a), do: {:ok, {:defer, a, a.subject, nil}}
-  defp unsupported_finding(a), do: supported(a)
-
   defp known(%Applied{transform: transform} = a) do
-    if transform in @supported or Map.has_key?(@later, transform),
+    if transform in @supported,
       do: :ok,
       else: error("unknown transform", %{key: a.key, transform: inspect(transform)})
   end
 
-  defp supported(%Applied{transform: transform}) when transform in @supported, do: :ok
-
-  defp supported(%Applied{transform: transform} = a) do
-    case Map.fetch(@later, transform) do
-      {:ok, cut} ->
-        error(
-          "Target.Ash does not apply #{transform} yet (#{cut} of WTF-352); leave it out " <>
-            "or record a reject",
-          %{key: a.key, transform: transform}
-        )
-
-      :error ->
-        error("unknown transform", %{key: a.key, transform: inspect(transform)})
-    end
-  end
+  defp supported(a), do: known(a)
 
   # The key, finding ID, kind, subject and transform agree.
   defp finding_identity(%Applied{finding_id: id} = a) when is_binary(id) do
@@ -441,6 +437,22 @@ defmodule BubbleEx.Target.Ash.Decisions do
     end
   end
 
+  # normalize_list_to_join / membership_policy: a list of things of one
+  # mapped type becomes a join resource, one row per member, shared with
+  # the mirrored list when a decision of the set normalizes that one too.
+  # `membership_policy` is the same join for a list of users that privacy
+  # rules test; the rules then test membership in the join.
+  defp transform(%Applied{transform: t} = a, {type, _} = subject, field, ctx)
+       when t in @join_transforms do
+    with {:ok, to} <- join_list(a, field, ctx),
+         :ok <- join_types(a, type, to),
+         {:ok, join} <- join_proposal(a, subject, to, ctx),
+         {:ok, options} <- join_options(a) do
+      data = Map.merge(options, %{join: join, to: to, membership: t == :membership_policy})
+      {:ok, {:join, a, subject, data}}
+    end
+  end
+
   defp derivation(%Applied{proposal: %{derivation: %{via: [_ | _] = via, source_field: s}}} = a)
        when is_binary(s) do
     if Enum.all?(via, &is_binary/1), do: {:ok, via, s}, else: no_derivation(a)
@@ -540,6 +552,186 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
       _ ->
         error("the counted field is not a list; the decision is stale", %{key: a.key})
+    end
+  end
+
+  # --- joins (normalize_list_to_join, membership_policy) ----------------------------
+
+  # A stored list of a mapped data type (not a built-in field).
+  defp join_list(a, field, ctx) do
+    case field.type do
+      %Type{kind: :ref, cardinality: :many, target: to} when field.system == nil ->
+        if Map.has_key?(ctx.types, to), do: {:ok, to}, else: stale_join(a)
+
+      _ ->
+        stale_join(a)
+    end
+  end
+
+  defp stale_join(a),
+    do:
+      error(
+        "#{a.transform} needs a list of a mapped data type; the decision is stale",
+        %{key: a.key}
+      )
+
+  # The proposal's types are the field's: a list of `to` on `type` (of
+  # users for a membership).
+  defp join_types(%Applied{transform: :membership_policy} = a, _type, to) do
+    if to == "user" and a.proposal[:member_type] == "data_type:user",
+      do: :ok,
+      else: error("membership_policy needs a list of users; the decision is stale", %{key: a.key})
+  end
+
+  defp join_types(a, type, to) do
+    if a.proposal[:from_type] == "data_type:" <> type and
+         a.proposal[:to_type] == "data_type:" <> to,
+       do: :ok,
+       else:
+         error("the proposal's types are not the list's; the decision is stale", %{key: a.key})
+  end
+
+  # The join of the proposal: its ID is the hash of its list fields (one,
+  # or two lists mirroring each other), which include the subject, between
+  # the list's two types. Returns the lists as `{type, field, target}`, in
+  # the join's order.
+  defp join_proposal(a, {type, f}, to, ctx) do
+    own = Symbol.id(:field, [type, f])
+
+    with %{id: id, between: between, fields: [_ | _] = fields, basis: basis} <-
+           a.proposal[:join] || :none,
+         true <- length(fields) <= 2 and Enum.all?(fields, &is_binary/1),
+         true <- fields == fields |> Enum.uniq() |> Enum.sort(),
+         true <- id == Joins.id(fields),
+         true <- own in fields,
+         true <- basis in @join_bases and basis == :single == match?([_], fields),
+         true <- between == Enum.sort(["data_type:" <> type, "data_type:" <> to]),
+         {:ok, lists} <- join_lists(fields, ctx),
+         true <- mirrored?(lists) do
+      {:ok, shared_join(%{id: id, fields: fields, lists: lists}, basis, own, {type, f})}
+    else
+      _ ->
+        error(
+          "the proposal's join does not fit the Model (its ID, lists or types); the decision " <>
+            "is stale or was altered",
+          %{key: a.key}
+        )
+    end
+  end
+
+  defp join_lists(fields, ctx) do
+    collect(fields, fn symbol ->
+      with {:ok, {t, f}} <- Map.fetch(ctx.symbols, symbol),
+           %{system: nil, type: %Type{kind: :ref, cardinality: :many, target: to}} <-
+             ctx.fields[{t, f}],
+           true <- Map.has_key?(ctx.types, to) do
+        {:ok, {t, f, to}}
+      else
+        _ -> {:error, :not_a_list}
+      end
+    end)
+  end
+
+  # Two lists share one join table only with evidence that they are one
+  # relation: a workflow maintains both (`:coupled`). Two lists paired only
+  # because they are the only lists between their types (`:unique_types`)
+  # may be different relations, so each gets a join of its own (the ID of
+  # its field alone). Sharing never mixes their members: each list keeps
+  # its own membership column.
+  defp shared_join(join, :coupled, _own, _subject), do: join
+
+  defp shared_join(%{fields: [_]} = join, _basis, _own, _subject), do: join
+
+  defp shared_join(join, _basis, own, {type, f}) do
+    list = Enum.find(join.lists, &(elem(&1, 0) == type and elem(&1, 1) == f))
+    %{id: Joins.id([own]), fields: [own], lists: [list]}
+  end
+
+  # Two lists share a join when each lists the other's owner type.
+  defp mirrored?([_]), do: true
+  defp mirrored?([{t1, _, to1}, {t2, _, to2}]), do: t2 == to1 and to2 == t1
+
+  # `keep_order` (default true: Bubble's order is kept in a position
+  # column) and `join_name`, from a `modify`; a membership takes none.
+  defp join_options(%Applied{transform: :membership_policy} = a) do
+    if a.params == %{} and not Map.has_key?(a.proposal, :keep_order) and
+         not Map.has_key?(a.proposal, :join_name),
+       do: {:ok, %{keep_order: true, join_name: nil}},
+       else: error("membership_policy takes no parameters", %{key: a.key})
+  end
+
+  defp join_options(a) do
+    keep = Map.get(a.proposal, :keep_order, true)
+    name = a.proposal[:join_name]
+
+    cond do
+      not is_boolean(keep) ->
+        error("keep_order must be a boolean", %{key: a.key})
+
+      name != nil and
+          not (Naming.valid?(:snake, name) and name not in Naming.reserved(:table)) ->
+        error("invalid join_name", %{key: a.key, join_name: inspect(name, limit: 5)})
+
+      true ->
+        {:ok, %{keep_order: keep, join_name: name}}
+    end
+  end
+
+  # The joins of the set, by join ID: the decisions on the lists of one
+  # join agree on it and on its name; a list whose mirror no decision of
+  # the set normalizes keeps it stored.
+  defp join_groups(checked) do
+    checked
+    |> Enum.filter(&(elem(&1, 0) == :join))
+    |> Enum.group_by(fn {:join, _a, _subject, data} -> data.join.id end)
+    |> Enum.sort()
+    |> collect(fn {id, [{:join, _, _, first} | _] = group} ->
+      names =
+        group |> Enum.map(&elem(&1, 3).join_name) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+      cond do
+        Enum.any?(group, &(elem(&1, 3).join != first.join)) ->
+          error("two decisions describe one join differently; the decisions are stale", %{
+            join: id
+          })
+
+        length(names) > 1 ->
+          error("two decisions give one join different names", %{join: id, names: names})
+
+        true ->
+          {:ok,
+           {id,
+            %{
+              id: id,
+              lists: first.join.lists,
+              sides: join_sides(first, group),
+              name: List.first(names)
+            }}}
+      end
+    end)
+    |> case do
+      {:ok, joins} -> {:ok, Map.new(joins)}
+      error -> error
+    end
+  end
+
+  # The decided lists of a join, in the join's order: the first list's
+  # owner is the left record.
+  defp join_sides(first, group) do
+    decided = Map.new(group, fn {:join, a, subject, data} -> {subject, {a, data}} end)
+
+    for {{t, f, to}, i} <- Enum.with_index(first.join.lists),
+        {a, data} = Map.get(decided, {t, f}, {nil, nil}),
+        a != nil do
+      %{
+        type: t,
+        field: f,
+        to: to,
+        owner: if(i == 0, do: :left, else: :right),
+        key: a.key,
+        transform: a.transform,
+        keep_order: data.keep_order
+      }
     end
   end
 
@@ -648,6 +840,11 @@ defmodule BubbleEx.Target.Ash.Decisions do
     access = Enum.map(columns, & &1.access)
 
     cond do
+      Enum.any?(columns, &Map.has_key?(ctx.join, &1.field)) ->
+        {:defer,
+         "a list it covers is normalized to a join by a decision and has no column (the " <>
+           "join table's index serves membership)"}
+
       Enum.any?(columns, &MapSet.member?(derived, &1.field)) ->
         {:defer, "a field it covers is derived by a decision and has no column"}
 
@@ -716,8 +913,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   # A calculation reads stored values: a derived field's source is not
-  # derived itself (a count over a list derived as a has_many is an
-  # aggregate, the one supported combination).
+  # derived itself (a count over a list derived as a has_many or
+  # normalized to a join is an aggregate, the supported combinations).
   defp stored_sources(ctx) do
     derived = MapSet.new(Map.keys(ctx.derive) ++ Map.keys(ctx.count))
 
@@ -869,6 +1066,10 @@ defmodule BubbleEx.Target.Ash.Decisions do
         {:error, "the list is derived as a has_many by a decision; renaming it is not supported",
          %{}}
 
+      Map.has_key?(ctx.join, subject) ->
+        {:error, "the list is normalized to a join by a decision; renaming it is not supported",
+         %{}}
+
       true ->
         :ok
     end
@@ -931,8 +1132,11 @@ defmodule BubbleEx.Target.Ash.Decisions do
          "and a table has none", %{locked: locked}}
 
   defp free_in_section(names, section, id, key, name) do
+    # A resource's module and table are not a join resource's either.
+    joins = if section == "resources", do: Map.get(names, "joins", %{}), else: %{}
+
     taken =
-      Enum.find(Map.get(names, section, %{}), fn {other, entry} ->
+      Enum.find(Enum.concat(Map.get(names, section, %{}), joins), fn {other, entry} ->
         other != id and entry[key] == name
       end)
 
@@ -1042,7 +1246,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   defp flatten(names) do
-    for section <- ~w(resources enums external_types),
+    for section <- ~w(resources enums external_types joins),
         {id, entry} <- Map.get(names, section, %{}),
         {key, value} <- entry,
         {path, owner, name} <- members(section, id, key, value),
@@ -1112,7 +1316,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
   end
 
   defp field_diag({:count, {t, f}, a, %{via: via, source: {st, sf}}}, ctx) do
-    aggregate = Map.has_key?(ctx.reverse, {st, sf})
+    aggregate = Map.has_key?(ctx.reverse, {st, sf}) or Map.has_key?(ctx.join, {st, sf})
 
     # A length counts every stored ID; Bubble's :count hides deleted
     # records. The loader must drop them (WTF-357).
@@ -1179,6 +1383,54 @@ defmodule BubbleEx.Target.Ash.Decisions do
     ]
   end
 
+  defp field_diag({:join, {t, f}, a, data}, ctx) do
+    join = Map.fetch!(ctx.joins, data.join.id)
+    others = for {lt, lf, _} <- join.lists, {lt, lf} != {t, f}, do: {lt, lf}
+
+    shared =
+      case others do
+        [] ->
+          ""
+
+        [{pt, pf}] ->
+          if Enum.any?(join.sides, &({&1.type, &1.field} == {pt, pf})),
+            do:
+              "; the join table is shared with the mirrored list #{pt}.#{pf} (each list " <>
+                "keeps its own membership column)",
+            else:
+              "; the mirrored list #{pt}.#{pf} stays stored (no decision of the set " <>
+                "normalizes it)"
+      end
+
+    order =
+      if data.keep_order,
+        do: "; Bubble's order is kept in a position column",
+        else: "; Bubble's order is not kept"
+
+    membership =
+      if data.membership,
+        do: "; privacy rules testing the list test membership in the join",
+        else: ""
+
+    [
+      Diagnostic.new(
+        :ash_decision_applied,
+        ctx.fields[{t, f}].path,
+        "#{t}.#{f} is a many_to_many of #{data.to} through a join resource (owner decision " <>
+          "#{a.key}); the list is not stored" <> shared <> order <> membership,
+        target: :ash,
+        subject: %{type: t, field: f},
+        details: %{
+          key: a.key,
+          transform: a.transform,
+          join: data.join.id,
+          join_table_with: Enum.map(others, fn {pt, pf} -> Symbol.id(:field, [pt, pf]) end),
+          keep_order: data.keep_order
+        }
+      )
+    ]
+  end
+
   defp index_applied_diag(_a, [], _ctx), do: []
 
   defp index_applied_diag(a, made, ctx) do
@@ -1236,24 +1488,6 @@ defmodule BubbleEx.Target.Ash.Decisions do
     ]
   end
 
-  defp deferred_diag(a, ctx) do
-    path =
-      case Map.fetch(ctx.types, a.subject[:type]) do
-        {:ok, type} -> type.path
-        :error -> ""
-      end
-
-    Diagnostic.new(
-      :ash_decision_deferred,
-      path,
-      "the #{a.transform} hint #{a.key} applies by default but Target.Ash does not apply " <>
-        "#{a.transform} yet (#{Map.fetch!(@later, a.transform)} of WTF-352); deferred",
-      target: :ash,
-      subject: a.subject,
-      details: %{key: a.key, transform: a.transform}
-    )
-  end
-
   defp rename_diag(a, details, path) do
     column =
       if details[:column],
@@ -1276,17 +1510,26 @@ defmodule BubbleEx.Target.Ash.Decisions do
   @doc false
   # Refines number attributes; replaces derived attributes by calculations
   # (reading the related record, or counting a list), counts over a derived
-  # has_many by aggregates, and reverse lists by has_many relationships;
-  # then adds the indexes.
-  @spec apply([Resource.t()], plan()) :: [Resource.t()]
-  def apply(resources, plan) do
+  # has_many or a join by aggregates, reverse lists by has_many
+  # relationships and lists normalized to a join (`joins/3`) by
+  # many_to_many relationships through it; then adds the indexes, named
+  # uniquely over the resources and the join resources.
+  @spec apply([Resource.t()], plan(), [Resource.t()]) :: {[Resource.t()], [Resource.t()]}
+  def apply(resources, plan, joins) do
     resources = Enum.map(resources, &refine_resource(&1, plan.refine))
     by_type = Map.new(resources, &{&1.source.type, &1})
+
+    sides =
+      for j <- joins, side <- j.join.sides, into: %{}, do: {{side.type, side.field}, {j, side}}
+
+    plan = Map.put(plan, :sides, sides)
 
     resources
     |> Enum.map(&derive_resource(&1, plan, by_type))
     |> Enum.map(&index_resource(&1, Map.get(plan.indexes, &1.source.type, [])))
+    |> Enum.concat(joins)
     |> unique_index_names()
+    |> Enum.split(length(resources))
   end
 
   defp refine_resource(%Resource{} = resource, refine) do
@@ -1343,6 +1586,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
       Map.has_key?(plan.reverse, key) ->
         has_many(resource, a, plan.reverse[key], by_type)
 
+      Map.has_key?(plan.sides, key) ->
+        many_to_many(resource, a, plan.sides[key], by_type)
+
       true ->
         nil
     end
@@ -1387,7 +1633,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
     field = %{type: t, field: a.source.field}
     what = Enum.join(path ++ [list.name], ".")
 
-    if Map.has_key?(plan.reverse, d.source) do
+    if Map.has_key?(plan.reverse, d.source) or Map.has_key?(plan.join, d.source) do
       %Aggregate{
         name: a.name,
         path: path ++ [list.name],
@@ -1427,6 +1673,32 @@ defmodule BubbleEx.Target.Ash.Decisions do
     }
   end
 
+  # A list normalized to a join becomes `many_to_many <list name>, B`
+  # through the join resource: from this record's ID in its owner column to
+  # the member's ID in the other.
+  defp many_to_many(resource, a, {join, side}, by_type) do
+    {own, member} =
+      if side.owner == :left,
+        do: {join.join.left, join.join.right},
+        else: {join.join.right, join.join.left}
+
+    destination = by_type[member.type]
+
+    %Relationship{
+      kind: :many_to_many,
+      name: a.name,
+      destination: destination.module,
+      source_attribute: Enum.find(resource.attributes, & &1.primary_key?).name,
+      destination_attribute: Enum.find(destination.attributes, & &1.primary_key?).name,
+      through: join.module,
+      source_attribute_on_join_resource: own.column,
+      destination_attribute_on_join_resource: member.column,
+      join_relationship: side.join_relationship,
+      membership: side.marker,
+      source: %{type: resource.source.type, field: a.source.field}
+    }
+  end
+
   defp attribute_of(resource, field),
     do: Enum.find(resource.attributes, &(&1.source[:field] == field))
 
@@ -1438,6 +1710,274 @@ defmodule BubbleEx.Target.Ash.Decisions do
       target = Enum.find(Map.values(by_type), &(&1.module == rel.destination))
       {rel.name, target.source.type}
     end)
+  end
+
+  # --- join resources --------------------------------------------------------------
+
+  @doc false
+  # The join resources of the plan's joins (in join ID order), built from
+  # the mapped resources (their lists are still attributes) and named: the
+  # name map's `joins` entry (module, table and columns) and each owner's
+  # `join_relationships` hold the names, locked like every other. Returns
+  # them and the name map.
+  @spec joins([Resource.t()], plan(), map()) :: {[Resource.t()], map()}
+  def joins(_resources, %{joins: joins}, names) when map_size(joins) == 0, do: {[], names}
+
+  def joins(resources, plan, names) do
+    by_type = Map.new(resources, &{&1.source.type, &1})
+    entries = Map.get(names, "joins", %{})
+    resource_entries = Map.get(names, "resources", %{})
+
+    taken = fn section, key ->
+      for {_id, %{^key => name}} <- section, do: name
+    end
+
+    check_join_names!(entries, resource_entries)
+
+    modules =
+      MapSet.new(
+        taken.(resource_entries, "module") ++ taken.(entries, "module") ++ @generated_modules
+      )
+
+    tables = MapSet.new(taken.(resource_entries, "table") ++ taken.(entries, "table"))
+
+    {joins, {names, _modules, _tables}} =
+      plan.joins
+      |> Enum.sort()
+      |> Enum.map_reduce({names, modules, tables}, fn {_id, spec}, acc ->
+        join_resource(spec, by_type, acc)
+      end)
+
+    {joins, names}
+  end
+
+  # A name map giving a join resource a resource's module or table.
+  defp check_join_names!(entries, resource_entries) do
+    for key <- ["module", "table"], {id, %{^key => name}} <- Enum.sort(entries) do
+      conflict =
+        cond do
+          Enum.any?(resource_entries, fn {_, entry} -> entry[key] == name end) ->
+            "a join and a resource"
+
+          Enum.any?(entries, fn {other, entry} -> other != id and entry[key] == name end) ->
+            "two joins"
+
+          true ->
+            nil
+        end
+
+      if conflict do
+        throw(
+          {:name_conflict,
+           Error.new(:invalid_input, "the name map gives #{conflict} the #{key} name", %{
+             join: id,
+             name: name
+           })}
+        )
+      end
+    end
+  end
+
+  defp join_resource(spec, by_type, {names, modules, tables}) do
+    [{lt, lf, rt} | _] = spec.lists
+    left = by_type[lt]
+    right = by_type[rt]
+    list = attribute_of(left, lf).name
+    entry = get_in(names, ["joins", spec.id]) || %{}
+
+    module_base =
+      Naming.base(
+        :pascal,
+        spec.name || Naming.underscore(left.module) <> " " <> list,
+        nil,
+        "Join"
+      )
+
+    {module, modules} = locked_or_claim(entry["module"], module_base, modules, :pascal, :module)
+
+    table_base = spec.name || Naming.base(:snake, Naming.underscore(module), nil, "join")
+    {table, tables} = locked_or_claim(entry["table"], table_base, tables, :snake, :table)
+
+    attrs = Map.get(entry, "attributes", %{})
+    used = MapSet.new(Map.values(attrs))
+    right_base = if lt == rt, do: list, else: Naming.underscore(right.module)
+    {lcol, used, attrs} = join_name(attrs, "left", id_base(Naming.underscore(left.module)), used)
+    {rcol, used, attrs} = join_name(attrs, "right", id_base(right_base), used)
+
+    {markers, {used, attrs}} =
+      Enum.map_reduce(spec.sides, {used, attrs}, &marker_column(&1, spec, by_type, &2))
+
+    {lrel, used} = Naming.claim(relationship_base(lcol), used, :snake, :attribute)
+    {rrel, _used} = Naming.claim(relationship_base(rcol), used, :snake, :attribute)
+
+    {sides, names} =
+      Enum.map_reduce(markers, names, fn {side, marker}, names ->
+        owner = by_type[side.type]
+        {jr, names} = join_relationship(owner, side.field, names)
+
+        {%{
+           type: side.type,
+           field: side.field,
+           owner: side.owner,
+           relationship: attribute_of(owner, side.field).name,
+           join_relationship: jr,
+           marker: marker,
+           position: if(marker.kind == :position, do: marker.column),
+           key: side.key,
+           transform: side.transform
+         }, names}
+      end)
+
+    entry = %{"module" => module, "table" => table, "attributes" => attrs}
+    names = Map.update(names, "joins", %{spec.id => entry}, &Map.put(&1, spec.id, entry))
+    source = %{join: spec.id}
+    pk = fn r -> Enum.find(r.attributes, & &1.primary_key?).name end
+
+    id_attribute = fn name, type ->
+      %Attribute{
+        name: name,
+        type: :string,
+        constraints: @text,
+        primary_key?: true,
+        allow_nil?: false,
+        source: source,
+        references: %{target: type, cardinality: :one}
+      }
+    end
+
+    belongs_to = fn name, column, r ->
+      %Relationship{
+        kind: :belongs_to,
+        name: name,
+        destination: r.module,
+        source_attribute: column,
+        destination_attribute: pk.(r),
+        source: source
+      }
+    end
+
+    join = %Resource{
+      module: module,
+      table: table,
+      source: source,
+      description: join_description(spec, sides),
+      attributes:
+        [id_attribute.(lcol, lt), id_attribute.(rcol, rt)] ++
+          for(
+            %{marker: m} <- sides,
+            do: %Attribute{
+              name: m.column,
+              type: if(m.kind == :position, do: :integer, else: :boolean),
+              source: source
+            }
+          ),
+      relationships: [belongs_to.(lrel, lcol, left), belongs_to.(rrel, rcol, right)],
+      indexes: [
+        %Index{
+          name: index_name(table, [rcol], "index"),
+          method: :btree,
+          columns: [rcol],
+          fields: [rcol],
+          source: source
+        }
+      ],
+      join: %{
+        id: spec.id,
+        left: %{type: lt, column: lcol, relationship: lrel},
+        right: %{type: rt, column: rcol, relationship: rrel},
+        sides: sides
+      }
+    }
+
+    {join, {names, modules, tables}}
+  end
+
+  # Each list's membership column: a row is a member of the list when it
+  # is set. Its position (`position`, or `<list name>_position` in a join
+  # two lists share: the member's index in Bubble's list) when the order
+  # is kept, else a flag (`listed`, `<list name>_listed`, true).
+  defp marker_column(side, spec, by_type, {used, attrs}) do
+    {kind, suffix} = if side.keep_order, do: {:position, "position"}, else: {:flag, "listed"}
+
+    base =
+      if length(spec.lists) == 1,
+        do: suffix,
+        else: cut(attribute_of(by_type[side.type], side.field).name, 40) <> "_" <> suffix
+
+    {col, used, attrs} = join_name(attrs, "#{side.type}/#{side.field}", base, used)
+    {{side, %{column: col, kind: kind}}, {used, attrs}}
+  end
+
+  defp locked_or_claim(nil, base, used, style, scope), do: Naming.claim(base, used, style, scope)
+  defp locked_or_claim(name, _base, used, _style, _scope), do: {name, MapSet.put(used, name)}
+
+  # A join column's locked name, or a newly claimed one.
+  defp join_name(attrs, key, base, used) do
+    case Map.fetch(attrs, key) do
+      {:ok, name} ->
+        {name, used, attrs}
+
+      :error ->
+        {name, used} = Naming.claim(base, used, :snake, :attribute)
+        {name, used, Map.put(attrs, key, name)}
+    end
+  end
+
+  defp id_base(name), do: cut(name, 50) <> "_id"
+
+  # At most `n` bytes (names are ASCII), without a trailing underscore.
+  defp cut(name, n),
+    do: name |> binary_part(0, min(n, byte_size(name))) |> String.trim_trailing("_")
+
+  defp relationship_base(column) do
+    case String.replace_suffix(column, "_id", "") do
+      ^column -> column <> "_record"
+      "" -> "record"
+      base -> base
+    end
+  end
+
+  # The owner's relationship to the join rows of its list `field`: locked
+  # in its name map entry (`join_relationships`), or claimed in the
+  # resource's attribute scope.
+  defp join_relationship(owner, field, names) do
+    t = owner.source.type
+    entry = get_in(names, ["resources", t]) || %{}
+
+    case get_in(entry, ["join_relationships", field]) do
+      nil ->
+        used =
+          MapSet.new(
+            Enum.map(owner.attributes, & &1.name) ++
+              Enum.map(owner.relationships, & &1.name) ++
+              Enum.flat_map(
+                ~w(privacy_rules privacy_relationships columns join_relationships),
+                &Map.values(Map.get(entry, &1, %{}))
+              )
+          )
+
+        base = cut(attribute_of(owner, field).name, 45) <> "_join"
+        {name, _used} = Naming.claim(base, used, :snake, :attribute)
+        entry = put_member(entry, "join_relationships", field, name)
+        {name, put_in_resource(names, t, entry)}
+
+      name ->
+        {name, names}
+    end
+  end
+
+  defp join_description(_spec, sides) do
+    lists =
+      Enum.map_join(sides, " and ", fn side ->
+        "#{side.type}.#{side.field} (owner decision #{side.key}; member when " <>
+          "#{side.marker.column} is set)"
+      end)
+
+    what = if length(sides) == 2, do: "the lists are", else: "the list is"
+
+    "Join: one row per member of #{lists}; #{what} not stored. A row written by the " <>
+      "app must set the membership column of its list; rows written after the cutover " <>
+      "have no Bubble position, so their order among the list's members is not defined."
   end
 
   # --- indexes ---------------------------------------------------------------------
