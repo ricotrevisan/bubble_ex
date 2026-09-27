@@ -52,6 +52,11 @@ defmodule BubbleEx.Verify do
 
   A decoded result never counts by itself: only `Result.evaluate/3`,
   against the resolved decisions, says whether it passes.
+
+  The structural (L0) results of the Phoenix target come from its
+  structural verification pack, `BubbleEx.Target.Phoenix.Structural`
+  (WTF-386): symbol and policy coverage, the bypass inventory, the
+  manifest and determinism, compile, lint and migrations.
   """
 
   alias BubbleEx.Error

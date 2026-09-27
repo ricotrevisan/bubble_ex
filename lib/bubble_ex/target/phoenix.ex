@@ -195,6 +195,7 @@ defmodule BubbleEx.Target.Phoenix do
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
   alias BubbleEx.Target.Ash.Workflows.Spec, as: WorkflowSpec
   alias BubbleEx.Target.Phoenix.{ApiClients, Manifest, Pages, Templates}
+  alias BubbleEx.Target.Phoenix.Structural.Bypasses
   alias BubbleEx.Target.Phoenix.Workflows, as: WorkflowFiles
 
   @version Mix.Project.config()[:version]
@@ -374,6 +375,18 @@ defmodule BubbleEx.Target.Phoenix do
         )
 
       owned = ctx |> owned_files() |> Map.merge(pages.owned)
+
+      # Every authorization bypass the generator writes, per file and
+      # purpose (WTF-386): generated, so hash-checked.
+      generated =
+        Map.put(
+          generated,
+          Bypasses.path(),
+          generated
+          |> Map.merge(owned)
+          |> Map.filter(fn {path, _} -> String.starts_with?(path, "lib/") end)
+          |> Bypasses.allowlist_json()
+        )
 
       case Enum.filter(Map.keys(generated), &Map.has_key?(owned, &1)) do
         [] ->

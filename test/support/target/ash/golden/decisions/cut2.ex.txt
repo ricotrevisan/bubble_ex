@@ -102,6 +102,7 @@ defmodule MyApp.Board do
   end
 
   aggregates do
+    # bubble:ignores_privacy scaffold:derived_count
     count :card_count, [:cards],
       public?: true,
       authorize?: false,
@@ -239,6 +240,7 @@ defmodule MyApp.Card do
   end
 
   aggregates do
+    # bubble:ignores_privacy scaffold:derived_count
     count :board_card_count, [:board, :cards],
       public?: true,
       authorize?: false,

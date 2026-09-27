@@ -6,6 +6,43 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Structural verification pack** (WTF-386, V6 of WTF-358).
+  `BubbleEx.Target.Phoenix.Structural` checks, offline and
+  deterministically, that a generated project matches the Bubble model,
+  and records every outcome as a structural (L0) `BubbleEx.Verify.Result`
+  the cutover gates can read. **Structural, not behavioural**: every
+  summary says so, and lists what it did not check (`not_run`).
+  `run/2`, at generation with the model: `symbol_coverage` per category
+  (data types, fields, option sets and values, pages, reusables,
+  workflows, API calls), each symbol `generated` (emitted, and for the
+  data model found in the rendered source's AST), `decision`, `residue`
+  (not emitted, with an open non-generator task carrying its residue),
+  `diagnosed`, `excluded` or `uncovered`, which fails: a generator node or
+  an `:auto` task accounts for nothing; workflows count as generated when
+  native in the backend (`Target.Ash.Workflows`) or page
+  (`Target.Elixir.FrontendWorkflows`, input `frontend_workflows:`) Spec;
+  `policy_coverage` (`skipped` for `privacy: :omit`: blocked on WTF-356);
+  `bypass_inventory` (the lowering bypasses exactly Bubble's own "ignore
+  privacy rules" workflows; every bypass site in the rendered `lib/` is a
+  listed workflow body or an expected scaffold site; `skipped` when
+  bypasses are expected and no Spec is given); `generated_unchanged`;
+  `deterministic`. `project/2` and `mix wtf.verify structural --app
+  APP_ID` in the owner's repository (advisory): the manifest, compile,
+  lint (a known failure until WTF-416), `mix ash.codegen --check`, and the
+  owned-code bypass inventory. `Structural.Bypasses` reads the AST: every
+  `authorize?` not literally `true`, `Runtime.start(..., false)`, `bypass`
+  policies, `authorize :never`/`:when_requested`, `authorizers: []`, Repo
+  and `Ecto.Adapters.SQL` calls; each needs `# bubble:ignores_privacy`
+  with a listed workflow (inside its body), `scaffold:<purpose>` (a closed
+  vocabulary the generator now writes, counted per file in the new
+  generated `.wtf/bypasses.json` per file, enclosing function and site
+  kind) or `decision:<key>` (an active owner decision; hardening is
+  WTF-424). A missing page or reusable is always uncovered; a missing
+  workflow or API call is residue only through residue on itself or its
+  own actions. `Verify.Result` diff entries may name `option_set` and
+  `page`. `scripts/phoenix_compile_check/structural.sh` runs the task end
+  to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
+  counts snapshot (private fixture).
 - **Safe serving of migrated files** (WTF-415). The generated Phoenix app
   serves the files the data loader copied at `/uploads/<sha256>/<name>`
   (generated `<Web>.Uploads` and `<Web>.UploadsController`, routed by the
