@@ -16,9 +16,8 @@ defmodule BubbleEx.Plan.Residue do
   | `:unsupported_event` | workflow | `index/2`: an event type with no known wiring |
   | `:auth_action` | action | `index/2`: log in, sign up and credential actions, lowered by the auth task |
   | `:unresolved_reference` | action, element, workflow | `index/2`: an `:index_unresolved_reference` diagnostic (e.g. a data action whose target type is unknown) |
-  | `:dynamic_url` | API call | `index/2`: its URL has no plain host |
-  | `:oauth` | API call | `index/2`: its group authenticates users with OAuth |
-  | `:malformed_call` | API call | `index/2`: the call or its types registry is not an object |
+  | `:not_generated` | API call | `index/2`: `BubbleEx.Model.ConnectorSupport.unsupported/2`, the decision the API client generator (`BubbleEx.Target.ApiClients`) makes too, lists why it cannot be generated (`detail.reasons`: `:malformed_call`, `:unsupported_auth`, `:method`, `:unnamed_parameter`, or the request template's `unsupported` reasons) |
+  | `:dynamic_url`, `:oauth`, `:malformed_call` | API call | no longer produced (before WTF-412, `index/2`'s own API call checks, which could disagree with the generator); still decoded |
   | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`); `:runtime_container` when it is a container whose normalized content is rendered at runtime (a dynamic Repeating Group, a Table) |
   | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain, so its event wiring cannot be generated yet (`detail.element`) |
   | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
@@ -43,6 +42,7 @@ defmodule BubbleEx.Plan.Residue do
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Frontend.Payload
   alias BubbleEx.Index.WorkflowAnalysis
+  alias BubbleEx.Model.ConnectorSupport
 
   @type t :: %{subject: String.t(), reason: atom(), detail: map()}
 
@@ -51,7 +51,8 @@ defmodule BubbleEx.Plan.Residue do
               runtime_container no_native_lowering trigger_not_normalized
               trigger_in_runtime_template style_condition
               plugin_style trigger_dropped reads_dropped_plugin api_connector_action
-              unsupported_option unavailable_input backend_workflow target_not_rendered)a
+              unsupported_option not_generated unavailable_input backend_workflow
+              target_not_rendered)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded
@@ -231,8 +232,8 @@ defmodule BubbleEx.Plan.Residue do
   @doc """
   Residue the index shows: plugin elements, actions and events, action and
   event types with no known lowering, auth actions, unresolved references
-  and API calls that need hand work. `model` gives the API Connector
-  groups' authentication.
+  and API calls the generator cannot generate
+  (`BubbleEx.Model.ConnectorSupport.unsupported/2` of `model`'s calls).
   """
   @spec index(Index.t(), Model.t()) :: [t()]
   def index(%Index{} = index, %Model{} = model) do
@@ -285,27 +286,19 @@ defmodule BubbleEx.Plan.Residue do
         do: entry(from, :unresolved_reference, %{reference: kind})
   end
 
+  # The generator's own decision (WTF-412): the plan's API call residue
+  # is exactly the calls it leaves out.
   defp api_calls(model) do
     for group <- model.connectors,
         call <- group.calls,
-        reason = call_reason(group, call),
+        reasons = ConnectorSupport.unsupported(group, call),
+        reasons != [],
         do:
           entry(
             BubbleEx.Index.Symbol.id(:api_call, [group.id, call.id]),
-            reason,
-            %{}
+            :not_generated,
+            %{reasons: reasons}
           )
-  end
-
-  defp call_reason(_group, %{raw: raw}) when raw != nil, do: :malformed_call
-  defp call_reason(_group, %{types: :malformed}), do: :malformed_call
-
-  defp call_reason(group, call) do
-    cond do
-      is_binary(group.auth) and String.contains?(String.downcase(group.auth), "oauth") -> :oauth
-      call.host in [nil, ""] -> :dynamic_url
-      true -> nil
-    end
   end
 
   # --- frontend ---------------------------------------------------------------

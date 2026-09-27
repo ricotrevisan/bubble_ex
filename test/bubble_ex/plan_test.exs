@@ -5,6 +5,7 @@ defmodule BubbleEx.PlanTest do
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.{Node, Source}
   alias BubbleEx.Plan.{Criteria, Residue, Task}
+  alias BubbleEx.Target.ApiClients
   alias BubbleEx.Test.DecidedFixture
 
   # Invented app (test/support/samples/synthetic_plan_export.json): a home
@@ -838,6 +839,184 @@ defmodule BubbleEx.PlanTest do
 
       assert Residue.plugin("apiconnector2-grp.call") == nil
       assert Residue.plugin("Button") == nil
+    end
+  end
+
+  # WTF-412: the generator's residue calls have no generated request-shape
+  # test, so generate:api_clients must not list them; the plan and the
+  # generator share one decision (Model.ConnectorSupport).
+  describe "API call residue" do
+    @api_fixture "test/support/target/phoenix/api_clients.json"
+
+    setup do
+      app = @api_fixture |> File.read!() |> Jason.decode!()
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, spec} = ApiClients.map(model)
+      generated = for g <- spec.groups, c <- g.calls, do: c.subject
+      %{api_model: model, api_index: index, spec: spec, generated: Enum.sort(generated)}
+    end
+
+    defp request_shape(task),
+      do: Enum.find(task.criteria, &(&1.check == :request_shape)).args.calls
+
+    # The Spec's residue as plan entries, as a target adapter could pass them.
+    defp spec_residue(spec) do
+      for r <- spec.residue,
+          do: %{
+            subject: BubbleEx.Index.Symbol.id(:api_call, [r.group, r.call]),
+            reason: :not_generated,
+            detail: %{reasons: r.reasons}
+          }
+    end
+
+    defp api_connector(app, path, fun),
+      do: update_in(app, ["settings", "client_safe", "apiconnector2" | path], fun)
+
+    test "generate:api_clients checks only the generated calls, with or without residue:",
+         ctx do
+      residue = [
+        "api_call:gLegacy/cOauth",
+        "api_call:gResidue/cDynamic",
+        "api_call:gResidue/cRaw"
+      ]
+
+      for opts <- [[], [residue: spec_residue(ctx.spec)]] do
+        {:ok, plan} = Plan.build(ctx.api_model, ctx.api_index, nil, [], opts)
+        generate = task!(plan, "generate:api_clients")
+
+        assert Enum.sort(request_shape(generate)) == ctx.generated
+        assert generate.status == :auto
+        assert generate.residue == spec_residue(ctx.spec)
+        assert generate.residue |> Enum.map(& &1.subject) == residue
+
+        # Nothing uses them: they are one open, attestable residue task.
+        assert %Task{
+                 kind: :api_clients_residue,
+                 actor: :agent,
+                 status: :open,
+                 subjects: ^residue,
+                 criteria: [
+                   %{
+                     check: :attested,
+                     waiver: :allowed,
+                     args: %{about: :api_calls_residue, calls: ^residue}
+                   }
+                 ]
+               } = task!(plan, "api_clients:residue")
+
+        assert {"generate:api_clients", :generate} in deps(task!(plan, "api_clients:residue"))
+        assert {"api_clients:residue", :release} in deps(task!(plan, "replay:app"))
+        # Their groups have no private value.
+        refute {"setup:secrets", :secrets} in deps(task!(plan, "api_clients:residue"))
+
+        {:ok, decoded} = plan |> Plan.to_json() |> Plan.decode()
+        assert Plan.to_json(decoded) == Plan.to_json(plan)
+      end
+
+      # residue: adds nothing for API calls: the same plan, byte for byte,
+      # but for the recorded residue input.
+      {:ok, plain} = Plan.build(ctx.api_model, ctx.api_index)
+
+      {:ok, passed} =
+        Plan.build(ctx.api_model, ctx.api_index, nil, [], residue: spec_residue(ctx.spec))
+
+      assert Enum.map(plain.tasks, & &1.source_sha256) ==
+               Enum.map(passed.tasks, & &1.source_sha256)
+    end
+
+    test "plan and generator agree on every reason a call is left out", ctx do
+      app = @api_fixture |> File.read!() |> Jason.decode!()
+
+      mutations = [
+        jwt: &api_connector(&1, ["gPay"], fn g -> Map.put(g, "auth", "jwt") end),
+        custom_token:
+          &api_connector(&1, ["gTenants"], fn g -> Map.put(g, "auth", "custom_token") end),
+        unknown_method:
+          &api_connector(&1, ["gMail", "calls", "cSend"], fn c ->
+            Map.put(c, "method", "trace")
+          end),
+        unnamed_call_parameter:
+          &api_connector(&1, ["gPay", "calls", "cCustomer", "params", "p1"], fn p ->
+            Map.delete(p, "key")
+          end),
+        unnamed_shared_parameter:
+          &api_connector(&1, ["gPay", "shared_headers", "sh1"], fn p -> Map.delete(p, "key") end),
+        malformed_types:
+          &api_connector(&1, ["gPay", "calls", "cRefunds"], fn c ->
+            Map.put(c, "types", "not a registry")
+          end)
+      ]
+
+      for {name, mutate} <- mutations do
+        mutated = mutate.(app)
+        {:ok, model} = Model.build(mutated)
+        {:ok, index} = Index.build(mutated, model: model)
+        {:ok, spec} = ApiClients.map(model)
+        generated = for g <- spec.groups, c <- g.calls, do: c.subject
+
+        for opts <- [[], [residue: spec_residue(spec)]] do
+          {:ok, plan} = Plan.build(model, index, nil, [], opts)
+          generate = task!(plan, "generate:api_clients")
+
+          assert generate.residue == spec_residue(spec), "#{name}"
+          assert Enum.sort(request_shape(generate)) == Enum.sort(generated), "#{name}"
+        end
+
+        assert length(spec.residue) > length(ctx.spec.residue) or name == :malformed_types,
+               "#{name} left nothing more out"
+      end
+
+      # A malformed types registry leaves the response untyped, not the call out.
+      mutated = mutations[:malformed_types].(app)
+      {:ok, model} = Model.build(mutated)
+      {:ok, index} = Index.build(mutated, model: model)
+      {:ok, plan} = Plan.build(model, index)
+      assert "api_call:gPay/cRefunds" in request_shape(task!(plan, "generate:api_clients"))
+    end
+
+    test "a used residue call is its api_call task's work, not generate:api_clients'", ctx do
+      send = "api_call:grpMail/callSend"
+      unused = "api_call:grpMail/callUnused"
+      entry = fn id -> %{subject: id, reason: :not_generated, detail: %{reasons: [:method]}} end
+
+      {:ok, plan} =
+        Plan.build(ctx.model, ctx.index, nil, [], fragment_threshold: 2, residue: [entry.(send)])
+
+      assert %Task{status: :open, residue: [%{subject: ^send}]} = task!(plan, send)
+      assert %Task{status: :open} = task!(plan, "api_group:grpMail")
+      assert request_shape(task!(plan, "generate:api_clients")) == [unused]
+      refute Plan.task(plan, "api_clients:residue")
+
+      {:ok, plan} =
+        Plan.build(ctx.model, ctx.index, nil, [],
+          fragment_threshold: 2,
+          residue: [entry.(unused)]
+        )
+
+      assert request_shape(task!(plan, "generate:api_clients")) == [send]
+      assert %Task{subjects: [^unused]} = task!(plan, "api_clients:residue")
+      # grpMail's private header: the residue call needs the secrets too.
+      assert {"setup:secrets", :secrets} in deps(task!(plan, "api_clients:residue"))
+      assert %Task{status: :auto} = task!(plan, send)
+    end
+
+    test "a call turning residue re-verifies generate:api_clients", ctx do
+      entry = %{subject: "api_call:grpMail/callUnused", reason: :not_generated, detail: %{}}
+
+      {:ok, after_} =
+        Plan.build(ctx.model, ctx.index, nil, [], fragment_threshold: 2, residue: [entry])
+
+      {:ok, diff} = Plan.diff(ctx.plan, after_)
+
+      assert %{status: :changed, needs_reverify: true} =
+               Enum.find(diff.tasks, &(&1.task == "generate:api_clients"))
+
+      assert %{status: :added} = Enum.find(diff.tasks, &(&1.task == "api_clients:residue"))
+
+      # The other generators and the used call's tasks are unchanged.
+      for id <- ~w(generate:schema generate:surfaces api_group:grpMail api_call:grpMail/callSend),
+          do: assert(%{status: :unchanged} = Enum.find(diff.tasks, &(&1.task == id)), id)
     end
   end
 

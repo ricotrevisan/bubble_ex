@@ -62,7 +62,31 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
              } =
                Enum.find(card.derived, &(&1.field == "board_card_count_number"))
 
-      assert plan.auth == %Plan.Auth{type: "user", email_column: "email", confirmed_column: nil}
+      assert plan.auth == %Plan.Auth{
+               type: "user",
+               email_column: "email",
+               confirmed_column: "confirmed_at"
+             }
+
+      # The confirmed column maps no field: it is not a table column.
+      refute Enum.any?(Plan.table(plan, "user").columns, &(&1.column == "confirmed_at"))
+    end
+
+    test "a Project mapped before WTF-413 (no confirmed_at) plans no confirmed column" do
+      {:ok, project} = F.project(:cut2)
+
+      resources =
+        Enum.map(project.resources, fn r ->
+          %{r | attributes: Enum.reject(r.attributes, &(&1.source[:auth] == "confirmed_at"))}
+        end)
+
+      {Loader, config} =
+        Loader.target(%{project | resources: resources},
+          query: fn _, _ -> {:ok, %{rows: []}} end
+        )
+
+      assert {:ok, %Plan{auth: %Plan.Auth{confirmed_column: nil}}} =
+               Loader.plan(config, F.model(:cut2))
     end
 
     test "maps cut 1: related fields, refined numbers, renamed tables" do
@@ -124,7 +148,13 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
 
       query = fn sql, _params ->
         assert sql =~ "information_schema.columns"
-        {:ok, %{rows: rows ++ [["user", "confirmed_at", "timestamp", "YES"]]}}
+
+        {:ok,
+         %{
+           rows:
+             rows ++
+               [["user", "confirmed_at", "timestamptz", "YES"], ["user", "legacy", "bool", "YES"]]
+         }}
       end
 
       {:ok, project} = F.project(:cut2)
@@ -141,12 +171,45 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       assert {:load_schema_mismatch, %{type: "board"}, :table} in found
       assert {:load_schema_mismatch, %{type: "card", field: "points_number"}, :column} in found
       assert {:load_schema_mismatch, %{type: "card", field: "title_text"}, "int4"} in found
-      assert {:load_column_extra, %{type: "user"}, ["confirmed_at"]} in found
+      assert {:load_column_extra, %{type: "user"}, ["legacy"]} in found
       assert {:load_schema_mismatch, %{type: "card", field: "status_text"}, :not_null} in found
       assert {:load_schema_mismatch, %{type: "user", field: "email"}, :not_null} in found
       email = Enum.find(diags, &(&1.subject == %{type: "user", field: "email"}))
       assert email.message =~ "allow_nil? false"
       assert length(found) == 6
+    end
+
+    test "checks the users' confirmed_at column: present, a timestamp, nullable" do
+      plan = plan(:cut2)
+      {:ok, project} = F.project(:cut2)
+
+      rows = fn confirmed ->
+        for t <- plan.tables, c <- [%{column: t.key, encoding: :text} | t.columns] do
+          [t.table, c.column, udt(c.encoding), "YES"]
+        end ++ confirmed
+      end
+
+      check = fn confirmed ->
+        {Loader, config} =
+          Loader.target(project, query: fn _, _ -> {:ok, %{rows: rows.(confirmed)}} end)
+
+        {:ok, diags} = Loader.check_schema(config, plan)
+
+        Enum.map(
+          diags,
+          &{&1.code, &1.details[:column], &1.details[:missing] || &1.details[:actual]}
+        )
+      end
+
+      assert check.([["user", "confirmed_at", "timestamp", "YES"]]) == []
+
+      assert check.([]) == [{:load_schema_mismatch, "confirmed_at", :column}]
+
+      assert check.([["user", "confirmed_at", "bool", "YES"]]) ==
+               [{:load_schema_mismatch, "confirmed_at", "bool"}]
+
+      assert check.([["user", "confirmed_at", "timestamp", "NO"]]) ==
+               [{:load_schema_mismatch, "confirmed_at", :not_null}]
     end
 
     defp udt(:text), do: "text"
@@ -157,6 +220,38 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
   end
 
   describe "upsert" do
+    test "the users' confirmed_at: a nil keeps a stored value while the email is unchanged" do
+      table = Plan.table(plan(:cut2), "user")
+
+      keep =
+        ~s[CASE WHEN EXCLUDED."confirmed_at" IS NULL AND t."email" IS NOT DISTINCT FROM ] <>
+          ~s[EXCLUDED."email" THEN t."confirmed_at" ELSE EXCLUDED."confirmed_at" END]
+
+      test = self()
+
+      query = fn sql, _params ->
+        send(test, {:sql, sql})
+        {:ok, %{rows: []}}
+      end
+
+      {:ok, project} = F.project(:cut2)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, _} = Loader.upsert(config, table, [%{"id" => "x"}])
+      assert_received {:sql, sql}
+
+      assert sql =~ ~s[INSERT INTO "public"."user" AS t (] and sql =~ ~s("confirmed_at")
+      assert sql =~ ~s("confirmed_at" = ) <> keep
+      # the same expression in the change guard
+      [_, guard] = String.split(sql, "IS DISTINCT FROM ROW(")
+      assert guard =~ keep
+      assert sql =~ ~s("email" = EXCLUDED."email")
+
+      # other tables are unaffected
+      {:ok, _} = Loader.upsert(config, Plan.table(plan(:cut2), "card"), [%{"id" => "x"}])
+      assert_received {:sql, card}
+      refute card =~ "CASE"
+    end
+
     test "one statement per batch, idempotent, counting what changed" do
       table = Plan.table(plan(:cut2), "card")
       sql = Loader.upsert_sql("public", table)

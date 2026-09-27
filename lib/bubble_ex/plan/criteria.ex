@@ -17,7 +17,7 @@ defmodule BubbleEx.Plan.Criteria do
   | `:visual_parity` | screenshots match the Bubble snapshot within tolerance |
   | `:step_order` | one step marker per action of `args.workflow`, in the order of `args.steps` |
   | `:unit_test` | a test calls each listed workflow or flow with fixtures; re-run when a task in `args.rerun_after` (a non-blocking `:coordinate` dependency) closes |
-  | `:request_shape` | a test asserts each listed API call's method, URL, headers and body |
+  | `:request_shape` | a test asserts each listed API call's method, URL, headers and body (for `generate:api_clients`, the generated calls: its residue calls are hand work, in their `api_call` task or `api_clients:residue`) |
   | `:policy_matrix` | the privacy rules' allow and deny matrix holds |
   | `:replay` | recorded Bubble scenarios in `args.scope` replay identically |
   | `:data_counts` | the load's per-type counts match the export (`args.mode`: `:dry_run` or `:full`) |
@@ -64,12 +64,12 @@ defmodule BubbleEx.Plan.Criteria do
     end)
   end
 
-  defp checks_for(%Task{kind: :generate, id: id, subjects: subjects}, _facts) do
+  defp checks_for(%Task{kind: :generate, id: id, subjects: subjects} = t, _facts) do
     base = [{:generated_unchanged, %{}}, {:deterministic, %{}}, {:compiles, %{}}]
 
     case id do
       "generate:policies" -> base ++ [{:policy_matrix, %{rules: subjects}}]
-      "generate:api_clients" -> base ++ [{:request_shape, %{calls: calls(subjects)}}]
+      "generate:api_clients" -> base ++ [{:request_shape, %{calls: generated_calls(t)}}]
       _ -> base
     end
   end
@@ -91,6 +91,9 @@ defmodule BubbleEx.Plan.Criteria do
           {:visual_parity, %{styles: subjects}},
           {:attested, %{about: :styles_match}}
         ]
+
+  defp checks_for(%Task{kind: :api_clients_residue, subjects: subjects}, _facts),
+    do: [{:attested, %{about: :api_calls_residue, calls: subjects}}]
 
   defp checks_for(%Task{kind: :plugin, status: :closed, closed_by: key}, _facts),
     do: [{:decision_recorded, %{key: key}}]
@@ -172,6 +175,12 @@ defmodule BubbleEx.Plan.Criteria do
   defp code, do: [{:compiles, %{}}, {:lint, %{}}]
 
   defp calls(subjects), do: Enum.filter(subjects, &String.starts_with?(&1, "api_call:"))
+
+  # The calls the generator generated: its residue calls have no
+  # generated test (they are api_call or api_clients:residue work).
+  defp generated_calls(%Task{subjects: subjects, residue: residue}),
+    do: calls(subjects) -- Enum.map(residue, & &1.subject)
+
   defp element?(id), do: String.starts_with?(id, "element:")
   defp workflow?(id), do: String.starts_with?(id, "workflow:")
 end

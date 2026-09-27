@@ -39,7 +39,21 @@ defmodule BubbleEx.Target.Phoenix do
       User includes, so tuning it is not a hand edit; the sender stub
       enqueues an Oban job (unique per email a minute) holding the link
       encrypted. Owned code reaches the User through the generated
-      `<Module>.Accounts.Resources` (`user/0`, `email_field/0`)
+      `<Module>.Accounts.Resources` (`user/0`, `email_field/0`,
+      `confirmed_at_field/0`)
+    * the User's `confirmed_at` (WTF-413, mapped by `BubbleEx.Target.Ash`:
+      AshAuthentication's confirmation shape, filled by the data loader
+      with a confirmed Bubble user's Created Date). Signing in with a
+      magic link proves the email, so it counts as confirming it, as
+      AshAuthentication's confirmation add-on does with
+      `auto_confirm_actions [:sign_in_with_magic_link]`: that option only
+      acts on the registering (create) sign-in action, and registration
+      is disabled here (sign-in is a read), so the owned
+      `AuthController.success/4` sets `confirmed_at` on a magic-link
+      sign-in when it is nil and keeps a migrated one. The add-on itself
+      (a confirmation sender) is not generated; the fragment's
+      documentation says how to add it. Apps scaffolded before WTF-413
+      have the attribute (generated) but not the owned controller change
     * an endpoint, router (sign-in routes, `/api/1.1/wf/:name`), layouts
       and a home page styled with Tailwind v4 (`@theme` tokens in
       `assets/css/bubble.css`; no daisyUI, WTF-359 Q4)
@@ -307,7 +321,7 @@ defmodule BubbleEx.Target.Phoenix do
   def render(%Project{privacy: :omit} = project, opts) when is_list(opts) do
     with {:ok, ctx} <- context(project, opts),
          {:ok, clients} <- api_clients(opts),
-         {:ok, user, email} <- user(project),
+         {:ok, user, email, confirmed_at} <- user(project),
          :ok <- check_claims(project, clients),
          {:ok, frontend} <- frontend(opts),
          :ok <- frontend_workflows(opts, frontend),
@@ -316,6 +330,7 @@ defmodule BubbleEx.Target.Phoenix do
            Map.merge(ctx, %{
              user: user.module,
              email: email,
+             confirmed_at: confirmed_at,
              api_clients: clients,
              workflows: workflows
            }),
@@ -489,13 +504,20 @@ defmodule BubbleEx.Target.Phoenix do
       else: :ok
   end
 
-  # The User resource (Bubble's built-in user type) and its email attribute.
+  # The User resource (Bubble's built-in user type), its email attribute
+  # and its confirmed_at attribute (WTF-413).
   defp user(%Project{resources: resources}) do
     with %Resource{} = user <- Enum.find(resources, &(&1.source[:type] == "user")),
-         %{name: email} <- Enum.find(user.attributes, &(&1.source[:field] == "email")) do
-      {:ok, user, email}
+         %{name: email} <- Enum.find(user.attributes, &(&1.source[:field] == "email")),
+         %{name: confirmed_at} <-
+           Enum.find(user.attributes, &(&1.source[:auth] == "confirmed_at")) do
+      {:ok, user, email, confirmed_at}
     else
-      _ -> invalid("the project has no User resource with an email attribute")
+      _ ->
+        invalid(
+          "the project has no User resource with email and confirmed_at attributes " <>
+            "(map it again with BubbleEx.Target.Ash.map/3)"
+        )
     end
   end
 
