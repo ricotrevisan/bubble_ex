@@ -7,6 +7,7 @@ defmodule BubbleEx.Target.PhoenixTest do
   alias BubbleEx.Test.DecidedFixture
 
   @generated [
+    ".wtf/bypasses.json",
     ".wtf/names.json",
     "assets/css/bubble.css",
     "assets/css/bubble_residue.css",

@@ -42,6 +42,7 @@ defmodule <%= @web %>.AuthController do
       user
       |> Ash.Changeset.for_update(:update, %{})
       |> Ash.Changeset.force_change_attribute(field, DateTime.utc_now())
+      # bubble:ignores_privacy scaffold:confirm_email
       |> Ash.update!(authorize?: false)
     end
   end
