@@ -1,5 +1,20 @@
 {
   "_id": "page-data-fixture",
+  "element_definitions": {
+    "card": {
+      "id": "bCard",
+      "name": "Task card",
+      "type": "CustomDefinition",
+      "properties": {"group_type": "custom.task", "width": 300, "height": 40},
+      "elements": {
+        "bCardTitle": {
+          "id": "bCardTitle", "type": "Text",
+          "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px",
+            "text": {"type": "TextExpression", "entries": {"0": "Card: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "title_text"}}}}}
+        }
+      }
+    }
+  },
   "pages": {
     "index": {
       "elements": {
@@ -87,6 +102,17 @@
               },
               "type": "Text"
             },
+            "bCellGroup": {
+              "id": "bCellGroup", "type": "Group",
+              "properties": {"group_type": "custom.project", "order": 3, "width": 300, "height": 40,
+                "data_source": {"type": "CurrentDataItem", "next": {"type": "Message", "name": "project_custom_project"}}},
+              "elements": {
+                "bCellGroupName": {"id": "bCellGroupName", "type": "Text",
+                  "properties": {"order": 1, "width": 300, "height": 40,
+                    "text": {"type": "TextExpression", "entries": {"0": "Cell group: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "name_text"}}}}}
+                }
+              }
+            },
             "bCellTitle": {
               "id": "bCellTitle",
               "properties": {
@@ -147,6 +173,16 @@
             "width": 300
           },
           "type": "RepeatingGroup"
+        },
+        "bCard1": {
+          "id": "bCard1", "type": "CustomElement",
+          "properties": {"custom_id": "bCard", "group_type": "custom.task", "order": 5, "width": 300, "height": 40,
+            "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": false}, "next": {"type": "Message", "name": "first_element"}}}
+        },
+        "bCard2": {
+          "id": "bCard2", "type": "CustomElement",
+          "properties": {"custom_id": "bCard", "group_type": "custom.task", "order": 6, "width": 300, "height": 40,
+            "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": true}, "next": {"type": "Message", "name": "first_element"}}}
         },
         "bOther": {
           "id": "bOther",

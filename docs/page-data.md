@@ -119,11 +119,13 @@ The resources the pages read publish their changes through
 `Ash.Notifier.PubSub` to `<App>.Bubble.Changes`: every create, update or
 delete of a type on `bubble:<Type>`, every update or delete of a record
 also on `bubble:<Type>:<id>`. A connected page subscribes to the type of
-each search it ran and to each record it holds, and coalesces a burst of
-notifications on those topics into one re-read. Only the topic travels,
-never the record: the page reads again with its own actor. Data also reloads after each event its workflows
-handle (their states and inputs may be constraints). Writes that bypass
-Ash (raw SQL, `Ash.Seed`, the loader) publish nothing.
+each search it ran, each record it holds, and the related records its
+bindings preload. Notifications are coalesced into a re-read. Only the
+topic travels, never the record: the page reads again with its own actor.
+Clicks and workflow events re-read before evaluating data-driven conditions;
+input changes defer the re-read and condition evaluation for 150 ms after
+the last keystroke (while preserving the event's run budgets). Writes that
+bypass Ash (raw SQL, `Ash.Seed`, the loader) publish nothing.
 
 ## Residue fails loudly
 

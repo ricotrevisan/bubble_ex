@@ -66,7 +66,7 @@ defmodule BubbleEx.PageDataTest do
                {:page_thing, %{"page" => "bTaskPage"}}
              ]
 
-      assert PageData.coverage(pd)["sources"] == %{"total" => 4, "native" => 4, "residue" => 0}
+      assert PageData.coverage(pd)["sources"] == %{"total" => 7, "native" => 7, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -114,6 +114,8 @@ defmodule BubbleEx.PageDataTest do
       refute inspect(q.filter.expr) =~ ":arg"
 
       assert %{read: {:query, %{take: :first}}} = data(spec, "bFirstOpen")
+      assert %{kind: :instance, holder: "bCard", residue: []} = data(spec, "bCard1")
+      assert %{kind: :instance, holder: "bCard", residue: []} = data(spec, "bCard2")
 
       assert %{read: {:value, %{bindings: [%{bind: {:data, %{element: "bTaskPage"}}}]}}} =
                data(spec, "bProjGroup")
@@ -122,8 +124,8 @@ defmodule BubbleEx.PageDataTest do
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 4,
-               "wired" => 4,
+               "total" => 7,
+               "wired" => 7,
                "residue" => 0
              }
     end
@@ -168,7 +170,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 3
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 5
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -254,6 +256,18 @@ defmodule BubbleEx.PageDataTest do
       %{files: files}
     end
 
+    test "two reusable instances store data under their own nested scope", %{files: files} do
+      index = files["lib/shop_web/live/index_live/workflows.ex"]
+      template = files["lib/shop_web/components/reusables/task_card.html.heex"]
+      loader = files["lib/shop_web/bubble_data.ex"]
+
+      assert index =~ ~s(instance: "bCard1")
+      assert index =~ ~s(instance: "bCard2")
+      assert index =~ ~s(element: "bCard")
+      assert template =~ ~s|Bubble.data(@bubble_data, @scope, "bCard")|
+      assert loader =~ "BubbleWorkflows.scope(ctx, [source.instance])"
+    end
+
     test "routes, data functions, templates and change notifications", %{files: files} do
       assert files["lib/shop_web/bubble_routes.ex"] =~
                ~s(live "/task/:bubble_thing", ShopWeb.TaskLive)
@@ -265,6 +279,9 @@ defmodule BubbleEx.PageDataTest do
       assert index =~ "|> Ash.Query.filter("
       assert index =~ "|> BubbleData.read(ctx, :all, 3)"
       assert index =~ "require Ash.Query"
+      assert index =~ ~s(element: "bCellGroup")
+      assert index =~ ~s(cell_loads: [["project"]])
+      assert index =~ "= ctx.cell"
 
       template = files["lib/shop_web/live/index_live.html.heex"]
       assert template =~ ~s|<- Bubble.cells(@bubble_data, "", "bList")}|

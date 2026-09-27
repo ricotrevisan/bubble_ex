@@ -235,7 +235,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       socket =
         assign(socket, :bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
 
-      {:noreply, event(socket, page, [{module, scope, ids, %{}}])}
+      {:noreply, event(socket, page, [{module, scope, ids, %{}}], nil, :deferred)}
     else
       _ -> {:noreply, socket}
     end
@@ -249,7 +249,10 @@ defmodule <%= @web %>.BubbleWorkflows do
       for {scope, module} <- surfaces(page),
           do: {module, scope, module.__bubble__(:surface).loaded, %{}}
 
-    {:noreply, event(socket, page, runs)}
+    # handle_params already loaded the data when no page-load workflow can
+    # change its constraints. Conditions still settle against that load.
+    reload = if Enum.all?(runs, fn {_, _, ids, _} -> ids == [] end), do: :already_loaded, else: :immediate
+    {:noreply, event(socket, page, runs, nil, reload)}
   end
 
   def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
@@ -262,8 +265,16 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_info(socket, _page, {:bubble, :data_changed, topic}) when is_binary(topic),
     do: {:noreply, BubbleData.changed(socket, topic)}
 
-  def handle_info(socket, page, {:bubble, :data_refresh, ref}),
-    do: {:noreply, BubbleData.refresh(socket, page, ref)}
+  def handle_info(socket, page, {:bubble, :data_refresh, ref}) do
+    if BubbleData.pending?(socket, ref) do
+      run = socket.assigns[:bubble_pending_run] || start(socket, nil)
+      socket = socket |> assign(:bubble_pending_run, nil) |> BubbleData.refresh(page, ref)
+      {socket, run} = settle(socket, page, run)
+      {:noreply, dispatch(socket, run)}
+    else
+      {:noreply, socket}
+    end
+  end
 
   def handle_info(socket, page, {:bubble, :interval, scope, id}) do
     case surface(page, scope) do
@@ -332,7 +343,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # chain of the run that scheduled it (WTF-421: the condition-true
   # workflows it fires inherit them too, never fresh ones). What the run
   # scheduled is sent when it ends, sharing what the run left.
-  defp event(socket, page, runs, budget \\ nil) do
+  defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do
     run = start(socket, budget)
 
     {socket, run} =
@@ -340,12 +351,33 @@ defmodule <%= @web %>.BubbleWorkflows do
         run_event(socket, module, scope, ids, args, run)
       end)
 
-    {socket, run} = settle(socket, page, run)
+    case reload do
+      :already_loaded ->
+        {socket, run} = settle(socket, page, run)
+        dispatch(socket, run)
 
-    # The event's states and inputs may be search constraints (WTF-420).
-    socket
-    |> dispatch(run)
-    |> BubbleData.load(page)
+      :deferred ->
+        previous = socket.assigns[:bubble_pending_run]
+        run = merge_pending(previous, run)
+        socket |> assign(:bubble_pending_run, run) |> BubbleData.defer()
+
+      :immediate ->
+        # A click or timer while an input read is pending must not run with
+        # stale data or dispatch that input's scheduled work twice.
+        run = merge_pending(socket.assigns[:bubble_pending_run], run)
+        socket = socket |> assign(:bubble_pending_run, nil) |> assign(:bubble_data_refresh, nil)
+        # Conditions see the event's freshly loaded data, not the previous render.
+        socket = BubbleData.load(socket, page)
+        {socket, run} = settle(socket, page, run)
+        dispatch(socket, run)
+    end
+  end
+
+  defp merge_pending(nil, run), do: run
+
+  defp merge_pending(previous, run) do
+    %{run | jobs: min(previous.jobs, run.jobs), calls: min(previous.calls, run.calls),
+      chain: max(previous.chain, run.chain), messages: previous.messages ++ run.messages}
   end
 
   # The budgets of an event: a root run's, or the scheduling run's.
@@ -487,7 +519,9 @@ defmodule <%= @web %>.BubbleWorkflows do
             run_event(socket, module, scope, [id], %{}, run)
           end)
 
-        settle(socket, page, run, round + 1)
+        # A fired workflow can change a source or its constraints. Keep the
+        # same run budgets while re-reading before the next condition check.
+        settle(BubbleData.load(socket, page), page, run, round + 1)
     end
   end
 

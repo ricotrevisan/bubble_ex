@@ -130,18 +130,24 @@ defmodule <%= @web %>.BubbleData do
     topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
 
     if data_access?() and MapSet.member?(topics, topic) and
-         is_nil(socket.assigns[:bubble_data_refresh]) do
-      ref = make_ref()
-      Process.send_after(self(), {:bubble, :data_refresh, ref}, 25)
-      assign(socket, :bubble_data_refresh, ref)
-    else
-      socket
-    end
+         is_nil(socket.assigns[:bubble_data_refresh]), do: defer(socket, 25), else: socket
   end
+
+  @doc "Debounces input-driven reads; only the latest input values are loaded."
+  def defer(socket, delay \\ 150) do
+    # A new input supersedes the old timer. Stale queued messages are
+    # ignored by pending?/2; notifications leave the pending timer alone.
+    ref = make_ref()
+    Process.send_after(self(), {:bubble, :data_refresh, ref}, delay)
+    assign(socket, :bubble_data_refresh, ref)
+  end
+
+  @doc "Whether this is the current (not superseded) refresh timer."
+  def pending?(socket, ref), do: not is_nil(ref) and socket.assigns[:bubble_data_refresh] == ref
 
   @doc "Handles the pending refresh; stale timers do not read."
   def refresh(socket, page, ref) do
-    if socket.assigns[:bubble_data_refresh] == ref and not is_nil(ref) do
+    if pending?(socket, ref) do
       socket
       |> assign(:bubble_data_refresh, nil)
       |> load(page)
@@ -167,18 +173,29 @@ defmodule <%= @web %>.BubbleData do
       Enum.reduce(own, acc, fn source, {data, topics} ->
         ctx = BubbleWorkflows.data_ctx(socket, module, scope, data)
         value = run(module, source, ctx)
-        {Map.put(data, {scope, source.element}, value), topics(topics, source, value)}
+        key_scope = if source.instance, do: BubbleWorkflows.scope(ctx, [source.instance]), else: scope
+        {Map.put(data, {key_scope, source.element}, value), topics(topics, source, value)}
       end)
 
     # A group in a repeating group's cell holds a value per cell.
     Enum.reduce(cells, acc, fn source, {data, topics} ->
       items = data |> Map.get({scope, source.cell}) |> List.wrap()
+      items = Runtime.load_page(items, source.cell_loads, Runtime.root(nil, socket.assigns[:current_user]), min(max_items(), 100))
 
-      items
-      |> Enum.with_index(1)
-      |> Enum.reduce({data, topics}, fn {item, i}, {data, topics} ->
-        ctx = BubbleWorkflows.data_ctx(socket, module, scope, data, {item, i})
-        value = run(module, source, ctx)
+      values =
+        for {item, i} <- Enum.with_index(items, 1) do
+          ctx = BubbleWorkflows.data_ctx(socket, module, scope, data, {item, i})
+          {i, run(module, %{source | loads: []}, ctx)}
+        end
+
+      # Load relationships across all cells together, not one query per cell.
+      loaded =
+        values
+        |> Enum.map(&elem(&1, 1))
+        |> Runtime.load_page(source.loads, Runtime.root(nil, socket.assigns[:current_user]), min(max_items(), 100))
+
+      Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
+      |> Enum.reduce({data, topics}, fn {i, value}, {data, topics} ->
         {Map.put(data, {scope, source.element, i}, value), topics(topics, source, value)}
       end)
     end)
@@ -263,6 +280,7 @@ defmodule <%= @web %>.BubbleData do
   Bubble IDs are read through Ash (a list at most `max_items/0`, in its
   order); anything else is the value itself.
   """
+  def records(_ctx, nil, value, true) when is_list(value), do: Enum.take(value, max_items())
   def records(_ctx, nil, value, _list?), do: value
   def records(_ctx, _resource, nil, _list?), do: nil
 
@@ -337,22 +355,30 @@ defmodule <%= @web %>.BubbleData do
 
   defp topics(topics, %{topic: type} = source, value) do
     topics = if source.read == :query, do: MapSet.put(topics, Changes.topic(type)), else: topics
+    record_topics(topics, value, source.loads)
+  end
 
-    value
-    |> List.wrap()
-    |> Enum.reduce(topics, fn
-      %{__struct__: resource} = record, acc ->
-        case Ash.Resource.Info.primary_key(resource) do
-          [pk] -> MapSet.put(acc, Changes.topic(type, Map.get(record, pk)))
-          _ -> acc
-        end
+  defp record_topics(topics, values, loads) when is_list(values),
+    do: Enum.reduce(values, topics, &record_topics(&2, &1, loads))
 
-      _, acc ->
-        acc
+  defp record_topics(topics, %{__struct__: resource} = record, loads) do
+    type = resource |> Module.split() |> List.last()
+
+    topics =
+      case Ash.Resource.Info.primary_key(resource) do
+        [pk] -> MapSet.put(topics, Changes.topic(type, Map.get(record, pk)))
+        _ -> topics
+      end
+
+    Enum.reduce(loads, topics, fn [name | rest], acc ->
+      related = Map.get(record, String.to_existing_atom(name))
+      record_topics(acc, related, if(rest == [], do: [], else: [rest]))
     end)
   rescue
     _ -> topics
   end
+
+  defp record_topics(topics, _value, _loads), do: topics
 
   defp subscribe(socket, topics) do
     if connected?(socket) do

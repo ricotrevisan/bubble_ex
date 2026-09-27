@@ -81,13 +81,14 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   @doc "Whether a surface of `spec` needs a Workflows module."
   @spec module?(Spec.t(), String.t()) :: boolean()
-  def module?(%Spec{surfaces: surfaces}, id) do
+  def module?(%Spec{surfaces: surfaces} = spec, id) do
     case surfaces[id] do
       %{kind: :page} ->
         true
 
       %{workflows: w, states: s, inputs: i} = surface ->
-        w != [] or s != [] or map_size(i) > 0 or Map.get(surface, :data, []) != []
+        w != [] or s != [] or map_size(i) > 0 or Map.get(surface, :data, []) != [] or
+          MapSet.member?(spec.data_index.roots, id)
 
       nil ->
         false
@@ -495,14 +496,20 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   # The variables the expressions read, bound from the context (each once,
   # with the union of the relationship loads its uses need).
-  defp prelude(exprs) do
+  defp prelude(exprs, cell_preloaded? \\ false) do
     exprs
     |> Enum.flat_map(& &1.bindings)
     |> Enum.group_by(& &1.var)
     |> Enum.sort()
     |> Enum.map_join(fn {var, [b | _] = bs} ->
       loads = bs |> Enum.flat_map(& &1.loads) |> Enum.uniq() |> Enum.sort()
-      "  #{var} = #{binding(b.bind, loads)}\n"
+
+      value =
+        if cell_preloaded? and match?({:cell, _}, b.bind),
+          do: "ctx.cell",
+          else: binding(b.bind, loads)
+
+      "  #{var} = #{value}\n"
     end)
   end
 
@@ -560,22 +567,27 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_meta(d, s) do
     fun = if d.residue == [], do: ":" <> data_fun(d), else: "nil"
 
-    read =
-      case d.read do
-        :url_thing -> ":url_thing"
-        {:query, _} -> ":query"
-        _ -> ":value"
-      end
-
     loads = Map.get(Map.get(s, :loads, %{}), d.holder || d.element, [])
-
     topic = if d.resource && d.residue == [], do: literal(d.resource), else: "nil"
 
-    "%{element: #{literal(data_key_element(d))}, fun: #{fun}, read: #{read}, " <>
+    "%{element: #{literal(data_key_element(d))}, fun: #{fun}, read: #{data_read_kind(d.read)}, " <>
+      "instance: #{data_instance(d)}, " <>
       "cell: #{if d.cell, do: literal(d.cell), else: "nil"}, " <>
-      "loads: #{source(loads)}, topic: #{topic}, " <>
+      "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}}"
   end
+
+  defp data_read_kind(:url_thing), do: ":url_thing"
+  defp data_read_kind({:query, _}), do: ":query"
+  defp data_read_kind(_), do: ":value"
+
+  defp data_instance(%{kind: :instance, element: element}), do: literal(element)
+  defp data_instance(_), do: "nil"
+
+  defp cell_loads({:value, %{bindings: bindings}}),
+    do: for(%{bind: {:cell, _}, loads: paths} <- bindings, path <- paths, do: path) |> Enum.uniq()
+
+  defp cell_loads(_), do: []
 
   # Where a source's value is kept: an instance's under its scope and
   # reusable element (see `BubbleWorkflows.data/3`), the others under
@@ -614,7 +626,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
         {:value, v} ->
           resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
-          "#{prelude([v])}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?})"
+
+          "#{prelude([v], d.cell != nil)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?})"
 
         {:query, q} ->
           query_source(q, d, ctx)
