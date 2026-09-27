@@ -39,7 +39,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   element itself) names an element to show, hide, focus…
   """
 
-  defstruct namespace: nil, surfaces: %{}, elements: %{}, diagnostics: []
+  defstruct namespace: nil,
+            surfaces: %{},
+            elements: %{},
+            diagnostics: [],
+            data_index: %{elements: %{}, roots: MapSet.new()}
 
   @type t :: %__MODULE__{}
 
@@ -139,8 +143,31 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   "state" => state}}`) is stored when read in `surface`: `{:state, key}`,
   `{:input, key}` or nil when the page does not keep it.
   """
-  @spec read(t(), String.t(), term()) :: {:state | :input, map()} | nil
-  def read(%__MODULE__{} = spec, surface, {:element_state, %{"element" => e, "state" => s}})
+  @spec read(t(), String.t(), term(), String.t() | nil) :: {atom(), term()} | nil
+  def read(spec, surface, input, cell \\ nil)
+
+  def read(%__MODULE__{} = spec, surface, {:element_state, %{"state" => s}} = input, cell)
+      when s in ["get_group_data", "get_list_data"] do
+    case data_read(spec.data_index, surface, cell, input) do
+      {:ok, bind} -> bind
+      {:error, _} -> nil
+    end
+  end
+
+  def read(%__MODULE__{} = spec, surface, {kind, _} = input, cell)
+      when kind in [:page_thing, :cell_thing, :cell_index] do
+    case data_read(spec.data_index, surface, cell, input) do
+      {:ok, bind} -> bind
+      {:error, _} -> nil
+    end
+  end
+
+  def read(
+        %__MODULE__{} = spec,
+        surface,
+        {:element_state, %{"element" => e, "state" => s}},
+        _cell
+      )
       when is_binary(e) and is_binary(s) do
     case {spec.elements[e], s} do
       {%{surface: ^surface} = el, "custom." <> _} ->
@@ -156,7 +183,117 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     end
   end
 
-  def read(_spec, _surface, _input), do: nil
+  def read(_spec, _surface, _input, _cell), do: nil
+
+  @doc """
+  How the page's data (WTF-420) supplies `input` read in `surface`,
+  inside the cell of the repeating group `cell` (or nil), given the index
+  of the sources it loads (`data_index`: `%{elements: %{element =>
+  %{kind, surface, cell, holder}}, roots: reusable elements an instance
+  gives their thing to}`): `{:ok, bind}` or `{:error, kind}` (the input's
+  kind, for `:unavailable_input` residue).
+
+    * `{:data, %{path, element}}` - a page's thing, a group's thing, a
+      repeating group's list, an instance's thing (stored under its
+      reusable element, one level down) or the surface's own reusable
+      element's thing (what its instance gives it, possibly nothing)
+    * `{:cell, rg}`, `{:cell_index, rg}` - the current cell's thing and
+      index, in the cell of `rg`
+    * `{:cell_data, group}` - a group's thing computed in the current cell
+  """
+  @spec data_read(map(), String.t(), String.t() | nil, term()) ::
+          {:ok, term()} | {:error, String.t()}
+  def data_read(index, surface, _cell, {:page_thing, %{"page" => page}}) do
+    case index.elements[page] do
+      %{kind: :page_thing, surface: ^surface} -> {:ok, {:data, %{path: [], element: page}}}
+      _ -> {:error, "page_thing"}
+    end
+  end
+
+  def data_read(index, surface, cell, {:element_state, %{"element" => e, "state" => state}})
+      when state in ["get_group_data", "get_list_data"] do
+    case {index.elements[e], state} do
+      {nil, "get_group_data"} when e == surface ->
+        if MapSet.member?(index.roots, e),
+          do: {:ok, {:data, %{path: [], element: e}}},
+          else: {:error, "element_state:" <> state}
+
+      {%{kind: :instance, surface: ^surface, cell: nil, holder: holder}, "get_group_data"}
+      when is_binary(holder) ->
+        {:ok, {:data, %{path: [e], element: holder}}}
+
+      {%{kind: kind, surface: ^surface, cell: nil}, _} when kind in [:group, :list] ->
+        if kind == :list == (state == "get_list_data"),
+          do: {:ok, {:data, %{path: [], element: e}}},
+          else: {:error, "element_state:" <> state}
+
+      {%{kind: :group, surface: ^surface, cell: ^cell}, "get_group_data"} when is_binary(cell) ->
+        {:ok, {:cell_data, e}}
+
+      _ ->
+        {:error, "element_state:" <> state}
+    end
+  end
+
+  def data_read(index, surface, cell, {kind, %{"element" => rg}})
+      when kind in [:cell_thing, :cell_index] and is_binary(cell) and rg == cell do
+    case index.elements[rg] do
+      %{kind: :list, surface: ^surface, cell: nil} ->
+        {:ok, if(kind == :cell_thing, do: {:cell, rg}, else: {:cell_index, rg})}
+
+      _ ->
+        {:error, Atom.to_string(kind)}
+    end
+  end
+
+  def data_read(_index, _surface, _cell, {kind, _ref}) when is_atom(kind),
+    do: {:error, Atom.to_string(kind)}
+
+  def data_read(_index, _surface, _cell, _input), do: {:error, "unknown"}
+
+  @doc "The data sources the page loads for surface `id` (WTF-420), in order."
+  @spec data(t(), String.t()) :: [map()]
+  def data(%__MODULE__{surfaces: surfaces}, id) do
+    case surfaces[id] do
+      %{data: data} -> data
+      _ -> []
+    end
+  end
+
+  @doc """
+  Generated-code coverage of the page's data sources (WTF-420), with
+  string keys: `"sources"` (`total`; `wired`: loaded by the generated
+  page, with no residue, neither the lowering's nor this target's, and
+  every source it reads loaded too; `residue`), `"by_kind"` (`{total,
+  wired}` per kind), `"reads"` (wired sources per read: `url_thing`,
+  `query`, `value`) and `"residue_reasons"`.
+  """
+  @spec data_coverage(t()) :: map()
+  def data_coverage(%__MODULE__{surfaces: surfaces}) do
+    sources = surfaces |> Enum.sort() |> Enum.flat_map(fn {_id, s} -> Map.get(s, :data, []) end)
+    wired = Enum.filter(sources, &(&1.residue == []))
+
+    %{
+      "sources" => %{
+        "total" => length(sources),
+        "wired" => length(wired),
+        "residue" => length(sources) - length(wired)
+      },
+      "by_kind" =>
+        sources
+        |> Enum.group_by(&Atom.to_string(&1.kind))
+        |> Map.new(fn {k, ss} ->
+          {k, %{"total" => length(ss), "wired" => Enum.count(ss, &(&1.residue == []))}}
+        end),
+      "reads" =>
+        Enum.frequencies_by(wired, fn
+          %{read: :url_thing} -> "url_thing"
+          %{read: {kind, _}} -> Atom.to_string(kind)
+        end),
+      "residue_reasons" =>
+        sources |> Enum.flat_map(& &1.residue) |> Enum.frequencies_by(&Atom.to_string(&1.reason))
+    }
+  end
 
   @doc """
   The storage key of state `state` of element `id` (its entry `element`

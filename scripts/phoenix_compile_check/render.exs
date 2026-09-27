@@ -45,12 +45,15 @@ frontend = fn app, model, project, backend ->
 
       {:ok, index} = BubbleEx.Index.build(app, model: model)
       {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+      # The pages' data sources (WTF-420).
+      {:ok, page_data} = BubbleEx.PageData.build(app, model)
 
       {:ok, workflows} =
         BubbleEx.Target.Elixir.FrontendWorkflows.map(lowered, project,
           namespace: "PhxCheck",
           frontend: frontend,
-          backend: backend
+          backend: backend,
+          page_data: page_data
         )
 
       [frontend: frontend, expressions: expressions, frontend_workflows: workflows]
@@ -155,6 +158,18 @@ fixtures =
     "hostile_workflows" => fn ->
       app =
         "test/support/target/phoenix/frontend_workflows.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      app
+      |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
+      |> app_fixture.()
+    end,
+    # The page data fixture (WTF-420) with every ID hostile: its routes,
+    # data functions, filters, template keys and tests must quote them.
+    "hostile_page_data" => fn ->
+      app =
+        "test/support/target/phoenix/page_data.json"
         |> File.read!()
         |> Jason.decode!()
 

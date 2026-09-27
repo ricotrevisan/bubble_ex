@@ -97,6 +97,14 @@ for fixture in $fixtures; do
       (cd "$root" && mix run --no-compile scripts/phoenix_compile_check/frontend_workflows.exs \
         "$scratch" test/support/target/phoenix/frontend_workflows.json)
     fi
+
+    # Page data (WTF-420): what the generated pages load, and never load.
+    if [[ "$fixture" == phoenix_page_data ]]; then
+      cp "$root/test/support/target/phoenix/page_data_behavior.exs" \
+        test/page_data_behavior_test.exs
+      mix test test/page_data_behavior_test.exs
+      rm test/page_data_behavior_test.exs
+    fi
   fi
 done
 

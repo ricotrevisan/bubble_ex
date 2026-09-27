@@ -48,7 +48,10 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
       ~r{^lib/bubble_ex/target/ash/workflows\.ex$},
       ~r{^lib/bubble_ex/workflows/},
       # The frontend workflows binding (WTF-372).
-      ~r{^lib/bubble_ex/target/elixir/frontend_workflows\.ex$}
+      ~r{^lib/bubble_ex/target/elixir/frontend_workflows\.ex$},
+      # The page data lowering and binding (WTF-420).
+      ~r{^lib/bubble_ex/page_data(\.ex$|/)},
+      ~r{^lib/bubble_ex/target/elixir/frontend_workflows/data\.ex$}
     ]
   end
 

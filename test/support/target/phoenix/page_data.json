@@ -1,0 +1,307 @@
+{
+  "_id": "page-data-fixture",
+  "pages": {
+    "index": {
+      "elements": {
+        "bFirstOpen": {
+          "elements": {
+            "bFirstTitle": {
+              "id": "bFirstTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "First open: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bFirstOpen",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "first_element",
+                "type": "Message"
+              },
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "done_boolean",
+                    "value": false
+                  }
+                },
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bList": {
+          "elements": {
+            "bCellProject": {
+              "id": "bCellProject",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 2,
+                "text": {
+                  "entries": {
+                    "0": "In: ",
+                    "1": {
+                      "next": {
+                        "name": "project_custom_project",
+                        "next": {
+                          "name": "name_text",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            },
+            "bCellTitle": {
+              "id": "bCellTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Task: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bList",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "get_data",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bQuery"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
+                "descending": false,
+                "ignore_empty_constraints": true,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
+        "bOther": {
+          "id": "bOther",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Static"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bQuery": {
+          "id": "bQuery",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "placeholder": {
+              "entries": {
+                "0": "Search"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Input"
+        }
+      },
+      "id": "bHome",
+      "name": "index",
+      "properties": {
+        "title": "Tasks"
+      },
+      "type": "Page"
+    },
+    "task": {
+      "elements": {
+        "bProjGroup": {
+          "elements": {
+            "bProjName": {
+              "id": "bProjName",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Project: ",
+                    "1": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bProjGroup",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "project_custom_project",
+                "type": "Message"
+              },
+              "type": "CurrentPageItem"
+            },
+            "group_type": "custom.project",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bThingTitle": {
+          "id": "bThingTitle",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Title: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bTaskPage",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Task"
+      },
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "done_boolean": {
+          "display": "Done",
+          "value": "boolean"
+        },
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

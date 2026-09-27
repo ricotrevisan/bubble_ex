@@ -257,6 +257,11 @@
           "display": "Count",
           "value": "number"
         },
+        "flip_": {
+          "default_val": false,
+          "display": "Flip",
+          "value": "boolean"
+        },
         "label_": {
           "default_val": "start",
           "display": "Label",
@@ -266,6 +271,11 @@
           "default_val": false,
           "display": "Loaded",
           "value": "boolean"
+        },
+        "spins_": {
+          "default_val": 0,
+          "display": "Spins",
+          "value": "number"
         }
       },
       "elements": {
@@ -310,6 +320,22 @@
             "text": {
               "entries": {
                 "0": "Save"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnFlip": {
+          "id": "bBtnFlip",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 21,
+            "text": {
+              "entries": {
+                "0": "Flip"
               },
               "type": "TextExpression"
             },
@@ -653,6 +679,32 @@
             "width": 200
           },
           "type": "Popup"
+        },
+        "bSpins": {
+          "id": "bSpins",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 22,
+            "text": {
+              "entries": {
+                "0": "Spins: ",
+                "1": {
+                  "next": {
+                    "name": "custom.spins_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
         }
       },
       "id": "bHome",
@@ -930,6 +982,64 @@
           },
           "type": "CustomEvent"
         },
+        "wFlip": {
+          "actions": {
+            "0": {
+              "id": "aFlip1",
+              "properties": {
+                "custom_state": "custom.flip_",
+                "element_id": "bHome",
+                "value": false
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aFlip2",
+              "properties": {
+                "custom_event": "wRearm",
+                "delay": 0
+              },
+              "type": "ScheduleCustom"
+            }
+          },
+          "id": "wFlip",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "custom.flip_",
+                "next": {
+                  "name": "is_true",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bHome"
+              },
+              "type": "GetElement"
+            },
+            "run_when": "every_time"
+          },
+          "type": "ConditionTrue"
+        },
+        "wFlipStart": {
+          "actions": {
+            "0": {
+              "id": "aFlipStart1",
+              "properties": {
+                "custom_state": "custom.flip_",
+                "element_id": "bHome",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wFlipStart",
+          "properties": {
+            "element_id": "bBtnFlip"
+          },
+          "type": "ButtonClicked"
+        },
         "wLoad": {
           "actions": {
             "0": {
@@ -1005,6 +1115,47 @@
             "workflow_disabled": true
           },
           "type": "ButtonClicked"
+        },
+        "wRearm": {
+          "actions": {
+            "0": {
+              "id": "aRearm1",
+              "properties": {
+                "custom_state": "custom.spins_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "custom.spins_",
+                    "next": {
+                      "args": 1,
+                      "name": "plus",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aRearm2",
+              "properties": {
+                "custom_state": "custom.flip_",
+                "element_id": "bHome",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wRearm",
+          "properties": {
+            "event_name": "re-arm"
+          },
+          "type": "CustomEvent"
         },
         "wRel": {
           "actions": {

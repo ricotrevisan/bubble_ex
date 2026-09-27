@@ -71,7 +71,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   alias BubbleEx.Target.Ash.{Naming, Project, Resource}
   alias BubbleEx.Target.Ash.Workflows.Spec, as: BackendSpec
   alias BubbleEx.Target.Elixir, as: ElixirTarget
-  alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
+  alias BubbleEx.Target.Elixir.FrontendWorkflows.{Data, Spec}
   alias BubbleEx.Workflows.Frontend
   alias BubbleEx.Workflows.Frontend.{Step, Workflow}
   alias BubbleEx.Workflows.Lowering.{Change, Expr}
@@ -118,6 +118,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       (`BubbleEx.Target.Ash.Workflows.Spec`, WTF-373): a page scheduling
       one of them schedules its job; without it, scheduling is
       `:backend_workflow` residue
+    * `:page_data` - the page data (`BubbleEx.PageData`, WTF-420): the
+      page loads its data sources (`BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
+      and its workflows read what it loads; without it, they are
+      `:unavailable_input` residue
   """
   @spec map(Frontend.t(), Project.t(), keyword()) :: {:ok, Spec.t()} | {:error, Error.t()}
   def map(lowered, project, opts \\ [])
@@ -171,6 +175,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       ctx = Map.put(ctx, :states, states)
       ctx = Map.put(ctx, :view, %Spec{elements: elements, surfaces: surfaces_view(ctx)})
 
+      # The page's data (WTF-420): its sources are bound against every
+      # source that lowered, then only what loads is read by the rest.
+      page_data = Keyword.get(opts, :page_data)
+      optimistic = Data.index(page_data)
+
+      data =
+        Data.bind(page_data, set_data(ctx, optimistic), %{
+          compile: &compile/3,
+          bind: &bind/2
+        })
+
+      ctx = set_data(ctx, Data.wired_index(data))
+
       bound =
         lowered.workflows
         |> Enum.group_by(&bubble(&1.surface))
@@ -188,14 +205,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
              kind: kind,
              workflows: Enum.map(workflows, &Map.delete(&1, :diagnostics)),
              states: Enum.filter(states, &(elements[&1.element].surface == id)),
-             inputs: Map.get(inputs, id, %{})
+             inputs: Map.get(inputs, id, %{}),
+             data: Map.get(data, id, [])
            }}
         end)
 
       diagnostics =
         (lowered.diagnostics ++
            state_diags ++
-           Enum.flat_map(Map.values(bound), &Enum.flat_map(&1, fn w -> w.diagnostics end)))
+           Enum.flat_map(Map.values(bound), &Enum.flat_map(&1, fn w -> w.diagnostics end)) ++
+           data_diagnostics(data, page_data))
         |> Diagnostic.normalize()
 
       {:ok,
@@ -203,7 +222,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
          namespace: namespace,
          surfaces: surfaces,
          elements: elements,
-         diagnostics: diagnostics
+         diagnostics: diagnostics,
+         data_index: ctx.data
        }}
     end
   end
@@ -218,6 +238,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   @doc "Generated-code coverage. See `Spec.coverage/1`."
   defdelegate coverage(spec), to: Spec
+
+  @doc "Generated-code coverage of the page data (WTF-420). See `Spec.data_coverage/1`."
+  defdelegate data_coverage(spec), to: Spec
 
   @doc "Every residue entry of a spec, sorted. See `Spec.residue/1`."
   defdelegate residue(spec), to: Spec
@@ -364,11 +387,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     native? = residue == [] and Enum.all?(steps, &(&1.residue == []))
     client? = native? and client?(w, steps)
 
+    # Reading the page's data (WTF-420) reads stored data too.
     data? =
       Enum.any?(steps, &(&1.op in @data_ops)) or
         Enum.any?(
           [condition, interval | Enum.flat_map(steps, &[&1.condition | Spec.step_values(&1)])],
-          &loads?/1
+          &(loads?(&1) or reads_data?(&1))
         )
 
     %{
@@ -604,6 +628,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp loads?(nil), do: false
   defp loads?(%{bindings: bindings}), do: Enum.any?(bindings, &(&1.loads != []))
+
+  defp reads_data?(nil), do: false
+
+  defp reads_data?(%{bindings: bindings}),
+    do: Enum.any?(bindings, &match?({kind, _} when kind in [:data, :cell, :cell_data], &1.bind))
 
   defp args(op, %{element: element}, id, ctx)
        when op in [:show, :hide, :toggle, :focus, :scroll_to, :reset_group] do
@@ -871,7 +900,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       ElixirTarget.compile(ir, ctx.project,
         runtime: ctx.runtime,
         namespace: ctx.namespace,
-        subject: %{workflow: ctx.workflow.bubble_id},
+        subject: if(ctx.workflow.bubble_id, do: %{workflow: ctx.workflow.bubble_id}, else: %{}),
         path: path
       )
 
@@ -940,6 +969,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({:page_data, %{"name" => "Current Date/Time"}}, _ctx), do: {:ok, :now}
 
+  # The page's data (WTF-420): a page's or cell's thing, a group's data, a
+  # repeating group's list.
+  defp bind({:element_state, %{"state" => s}} = input, ctx)
+       when s in ["get_group_data", "get_list_data"],
+       do: Data.read(ctx.data, ctx.surface, Map.get(ctx, :cell), input)
+
+  defp bind({kind, _ref} = input, ctx) when kind in [:page_thing, :cell_thing, :cell_index],
+    do: Data.read(ctx.data, ctx.surface, Map.get(ctx, :cell), input)
+
   defp bind({:element_state, %{"element" => e, "state" => s}} = input, ctx)
        when is_binary(e) and is_binary(s) do
     case Spec.read(ctx.view, ctx.surface, input) do
@@ -960,6 +998,36 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     if Regex.match?(~r/\A[a-z_]+\z/, state),
       do: "element_state:" <> state,
       else: "element_state"
+  end
+
+  defp set_data(ctx, index),
+    do: ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
+
+  # A diagnostic per residue entry the binding added to a data source (the
+  # lowering's have theirs).
+  defp data_diagnostics(data, page_data) do
+    own =
+      case page_data do
+        %{sources: sources} -> MapSet.new(Enum.flat_map(sources, & &1.residue))
+        _ -> MapSet.new()
+      end
+
+    for {_surface, sources} <- data,
+        source <- sources,
+        entry <- source.residue,
+        not MapSet.member?(own, entry) do
+      Diagnostic.new(
+        :page_data_residue,
+        "",
+        "#{entry.subject}'s data source is not lowered for Phoenix (#{entry.reason}); " <>
+          "the page does not load it",
+        details: %{
+          subject: entry.subject,
+          reason: Atom.to_string(entry.reason),
+          detail: entry.detail
+        }
+      )
+    end
   end
 
   defp surfaces_view(ctx) do

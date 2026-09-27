@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Page data** (WTF-420; see `docs/page-data.md`). `BubbleEx.PageData`
+  lowers, stack-neutrally, a page's "Type of content" and the data
+  sources of groups, repeating groups (with their page size) and
+  reusable-element instances to Expression IR, with `:page_data_residue`
+  diagnostics for what does not lower. `FrontendWorkflows.map/3` takes
+  `page_data:` and binds them: searches (constraints, sort, `first item`,
+  `item #`, `items until #`, `count`) become Ash queries whose inputs are
+  pinned values computed from the page's state, other sources Elixir
+  values, the page's thing a record read from the URL path
+  (`/<page>/:bubble_thing`, Bubble IDs only). The generated
+  `<Web>.BubbleData` loads them into `@bubble_data`, in dependency order,
+  through Ash with the actor, bounded (a repeating group's first page;
+  `:max_items`, default 100), **only with the existing `data_access:
+  true` opt-in** (the resources have no authorizer under `privacy:
+  :omit`); repeating groups render their template per item, text and
+  image bindings read the data, workflows read it too (as data
+  workflows). Reactivity: the resources the pages read publish through
+  `Ash.Notifier.PubSub` to `<App>.Bubble.Changes` (topic names only, per
+  type and per record) and the pages reload. A source that is not loaded,
+  and a binding that reads one, is a `TODO(bubble:<id>)` marker, never an
+  empty value; new residue reason `:page_data_in_cell`. mm-137: 805 of
+  1,980 sources loaded; frontend workflows 553 native (was 531), 380
+  wired (was 361), unavailable inputs 858 (was 1,027).
+  `Target.Ash.Source.filter/1` prints a bare filter with `{:pin, var}`
+  nodes; `:extend` takes `notifiers:`.
+
 - **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
   `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every
   page and reusable-element workflow, stack-neutrally: events (click, input
@@ -720,6 +746,16 @@ All notable changes to this project are documented here.
   identical on every fixture and on mm-137; `source_sha256` still hashes
   the app input. Finding IDs and proposal hashes
   are unchanged on the private mm-137 export.
+
+### Fixed
+
+- **A condition-true loop no longer escapes the budgets** (WTF-421). The
+  condition-true workflows an event fires inherit its budgets and chain
+  (they started a fresh root run before), and what the event schedules is
+  sent when they end, sharing what is left: "when flip is yes: set flip
+  to no; schedule re-arm in 0s" now stops within `:max_calls` instead of
+  running about 900 times a second. Regression test in the generated
+  app's behavior tests.
 
 ### Changed (breaking)
 

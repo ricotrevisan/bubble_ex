@@ -27,6 +27,7 @@ defmodule BubbleEx.Target.Ash.Expr do
   | `{:ref, ["project"], "title"}` | `project.title` (relationship path, then attribute) |
   | `{:actor, ["current_role", "workspace_id"]}` | `^actor([:current_role, :workspace_id])` (`^actor(:id)` for one) |
   | `{:arg, "name"}` | `^arg(:name)` |
+  | `{:pin, "name"}` | `^name`: a variable of the code around the filter (`BubbleEx.Target.Ash.Source.filter/1`) |
   | `{:value, term}` | the literal |
   | `{:op, "==", left, right}` | `left == right` (also `!=`, `>`, `<`, `>=`, `<=`, `in`, `+`, `-`, `*`, `/`, and `\|\|`: the left value, or the right one when it is nil) |
   | `{:and, [a, b]}` / `{:or, [a, b]}` | `a and b` / `a or b` |
@@ -41,6 +42,7 @@ defmodule BubbleEx.Target.Ash.Expr do
           {:ref, [String.t()], String.t()}
           | {:actor, [String.t()]}
           | {:arg, String.t()}
+          | {:pin, String.t()}
           | {:value, term()}
           | {:op, String.t(), node_(), node_()}
           | {:and, [node_()]}

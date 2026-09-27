@@ -109,11 +109,17 @@ down (`<Web>.Bubble.nest/2`); an instance's root carries
 or an input value read the page's maps too, so they update when a workflow
 sets them.
 
+With `page_data:` (WTF-420, `docs/page-data.md`), the page's thing, a
+group's or reusable instance's thing and a repeating group's list are
+what the page loads, and workflows read them; a workflow that does is a
+data workflow (it runs only with the data-access opt-in).
+
 Anything the generated page does not keep is `:unavailable_input` residue,
-never a silent empty value: a page's or a cell's thing, a group's data, a
-reusable element's parameters, an element's built-in states (`is visible`,
-`is hovered`), other page data, the value of an input the page does not
-track (a placeholder, a date input, one whose first value is dynamic).
+never a silent empty value: data the page does not load, a cell's thing
+(workflows in a cell's template are not wired yet), a reusable element's
+parameters, an element's built-in states (`is visible`, `is hovered`),
+other page data, the value of an input the page does not track (a
+placeholder, a date input, one whose first value is dynamic).
 
 ## Refusing to run, never a partial run
 
@@ -150,6 +156,11 @@ effects, as in Bubble.
   scheduled custom event costs one call and continues the budgets of the
   run that scheduled it (shared among everything that run scheduled), and
   a chain of them stops at `:max_chain`: a delay-0 self-schedule ends.
+  The condition-true workflows an event's effects fire run within that
+  event's budgets and chain, never fresh ones (WTF-421), so a loop through
+  a condition ("when flip is yes: set flip to no; schedule re-arm", where
+  re-arm sets flip back) ends too; what an event schedules is sent when
+  it (and the condition-true runs it fired) ends, sharing what it left.
 * **What is not enforced.** Visibility is not part of the click
   allowlist (a browser can trigger any listed element's workflows, visible
   or not); server-side "Only when" conditions are.
@@ -210,6 +221,11 @@ mobile views):
   workflow can have several).
 
 ### mm-137 (test version), 2026-09-27
+
+With page data (WTF-420): 553 native (24.3%), 380 wired (16.7%), 702 own
+body, 1,877 native steps, 858 unavailable inputs; see
+`docs/page-data.md` for the before/after table. The counts below are
+before it (WTF-372).
 
 Counts only; the snapshot is
 `test/support/target/phoenix/counts/mm-137.frontend_workflows.json`.

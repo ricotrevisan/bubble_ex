@@ -184,6 +184,46 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
              )
   end
 
+  # WTF-421: "when flip is yes: set flip to no; schedule re-arm in 0s",
+  # where re-arm sets flip back to yes. The condition-true runs inherit the
+  # budget and chain of the run that fired them, so the loop spends one
+  # call per round and ends; before, each got a fresh root budget and it
+  # spun forever (about 900 runs a second).
+  test "a condition-true loop through a scheduled custom event ends (WTF-421)", %{conn: conn} do
+    Application.put_env(:phx_check, PhxCheck.Workflows, max_calls: 25)
+    on_exit(fn -> Application.delete_env(:phx_check, PhxCheck.Workflows) end)
+
+    {:ok, view, _html} = live(conn, "/")
+    click(view, "bBtnFlip")
+
+    spins = settled_spins(view, nil, 200)
+    assert spins > 1 and spins <= 25
+
+    # Nothing is left running: the count stays where it stopped.
+    Process.sleep(100)
+    assert spins(view) == spins
+    assert Process.alive?(view.pid)
+  end
+
+  defp spins(view) do
+    [_, n] =
+      Regex.run(~r/Spins: (\d+)/, view |> element(~s([data-bubble-id="bSpins"])) |> render())
+
+    String.to_integer(n)
+  end
+
+  # The spin count once it stops changing (a round is a 0 ms message).
+  defp settled_spins(_view, _last, 0), do: flunk("the loop did not end")
+
+  defp settled_spins(view, last, tries) do
+    Process.sleep(20)
+
+    case spins(view) do
+      ^last -> last
+      n -> settled_spins(view, n, tries - 1)
+    end
+  end
+
   test "an oversized input value is ignored; stray messages do not crash the page", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     change(view, "bIn", String.duplicate("a", 100_001))
@@ -255,19 +295,25 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
 
   test "the browser cannot trigger anything the page does not list", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
-    atoms = :erlang.system_info(:atom_count)
 
     # An element or scope the page does not render, a workflow's own ID,
     # a disabled or browser-run workflow's element, an untracked input,
-    # a value that is not text, an unknown event.
-    click(view, "bBtnState", "bInst9")
-    click(view, "no-such-element-#{System.unique_integer()}")
-    click(view, "wState")
-    click(view, "bBtnOpen")
-    change(view, "bLabel", "x")
-    change(view, "bIn", %{"nested" => "x"})
-    render_click(view, "bubble:anything", %{"workflow" => "wData"})
-    render_click(view, "bubble:click", %{"element" => ["bBtnState"]})
+    # a value that is not text, an unknown event. Run once first: loading
+    # code (the page data loader, WTF-420) creates atoms of its own.
+    hostile = fn ->
+      click(view, "bBtnState", "bInst9")
+      click(view, "no-such-element-#{System.unique_integer()}")
+      click(view, "wState")
+      click(view, "bBtnOpen")
+      change(view, "bLabel", "x")
+      change(view, "bIn", %{"nested" => "x"})
+      render_click(view, "bubble:anything", %{"workflow" => "wData#{System.unique_integer()}"})
+      render_click(view, "bubble:click", %{"element" => ["bBtnState"]})
+    end
+
+    hostile.()
+    atoms = :erlang.system_info(:atom_count)
+    hostile.()
 
     assert label(view) =~ "Label: start"
     assert Process.alive?(view.pid)

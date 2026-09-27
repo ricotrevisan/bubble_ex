@@ -332,7 +332,8 @@ defmodule BubbleEx.Target.Phoenix do
              email: email,
              confirmed_at: confirmed_at,
              api_clients: clients,
-             workflows: workflows
+             workflows: workflows,
+             data_resources: data_resources(Keyword.get(opts, :frontend_workflows))
            }),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
@@ -641,11 +642,11 @@ defmodule BubbleEx.Target.Phoenix do
       # The authentication configuration is an owned fragment; resources
       # with database-trigger workflows get the trigger change.
       extend:
-        Map.merge(
+        merge_extend([
           workflow_extend(ctx.workflows),
-          %{user.module => %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}},
-          fn _module, triggers, auth -> Map.merge(triggers, auth) end
-        ),
+          data_extend(ctx),
+          %{user.module => %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}}
+        ]),
       extra_resources: [ctx.module <> ".Accounts.Token" | workflow_resources(ctx.workflows)]
     )
   end
@@ -714,6 +715,55 @@ defmodule BubbleEx.Target.Phoenix do
 
   defp workflow_files(other, _ctx),
     do: invalid("expected a BubbleEx.Target.Ash.Workflows.Spec, got #{inspect(other)}")
+
+  # Extensions for the same resource combine: their modules are listed
+  # together and their DSL printed one after the other.
+  defp merge_extend(extends) do
+    Enum.reduce(extends, %{}, fn extend, acc ->
+      Map.merge(acc, extend, fn _module, a, b -> Map.merge(a, b, &merge_extension/3) end)
+    end)
+  end
+
+  defp merge_extension(:dsl, a, b), do: a <> "\n" <> b
+  defp merge_extension(_key, a, b), do: Enum.uniq(a ++ b)
+
+  # --- page data (WTF-420) ----------------------------------------------------------
+
+  # The resources the pages' data reads (relative modules): they publish
+  # their changes so the pages reload.
+  defp data_resources(%FlowSpec{surfaces: surfaces}) do
+    for {_id, s} <- surfaces,
+        d <- Map.get(s, :data, []),
+        d.residue == [] and is_binary(d.resource),
+        uniq: true,
+        do: d.resource
+  end
+
+  defp data_resources(_), do: []
+
+  # `Ash.Notifier.PubSub` on each: a create, update or delete is published
+  # on the type's topic, an update or delete on the record's too, through
+  # `<Module>.Bubble.Changes` (topic names only, never the record).
+  defp data_extend(ctx) do
+    Map.new(ctx.data_resources, fn resource ->
+      topic = inspect(resource)
+
+      dsl = """
+      pub_sub do
+        module #{ctx.module}.Bubble.Changes
+        prefix "bubble"
+
+        publish_all :create, [#{topic}]
+        publish_all :update, [#{topic}]
+        publish_all :destroy, [#{topic}]
+        publish_all :update, [#{topic}, :_pkey]
+        publish_all :destroy, [#{topic}, :_pkey]
+      end
+      """
+
+      {resource, %{notifiers: ["Ash.Notifier.PubSub"], dsl: dsl}}
+    end)
+  end
 
   defp workflow_extend(nil), do: %{}
   defp workflow_extend(%{extend: extend}), do: extend

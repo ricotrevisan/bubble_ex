@@ -1,0 +1,30 @@
+defmodule <%= @module %>.Bubble.Changes do
+  @moduledoc """
+  Change notifications for the pages' data (WTF-420,
+  `<%= @web %>.BubbleData`). The resources the pages read publish through
+  `Ash.Notifier.PubSub` with this module as their `module`: a create,
+  update or delete of a record of type `Type` is broadcast on
+  `"bubble:Type"`, and an update or delete also on `"bubble:Type:<id>"`.
+  Only the topic travels (`{:bubble, :data_changed, topic}`), never the
+  record: a page that receives it reads again with its own actor.
+  """
+
+  @pubsub <%= @module %>.PubSub
+
+  @doc false
+  # Called by Ash.Notifier.PubSub (`module`): the notification is dropped.
+  def broadcast(topic, _event, _notification) when is_binary(topic),
+    do: Phoenix.PubSub.broadcast(@pubsub, topic, {:bubble, :data_changed, topic})
+
+  @doc "The topic of every change of a data type (its resource's name)."
+  def topic(type), do: "bubble:" <> type
+
+  @doc "The topic of one record's changes."
+  def topic(type, id), do: "bubble:" <> type <> ":" <> to_string(id)
+
+  @doc false
+  def subscribe(topic), do: Phoenix.PubSub.subscribe(@pubsub, topic)
+
+  @doc false
+  def unsubscribe(topic), do: Phoenix.PubSub.unsubscribe(@pubsub, topic)
+end
