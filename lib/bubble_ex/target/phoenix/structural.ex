@@ -93,8 +93,6 @@ defmodule BubbleEx.Target.Phoenix.Structural do
              "`# bubble:workflow` comment in owned code passes for a workflow body, and a " <>
              "decision:<key> marker accepts any active owner decision (WTF-424)"}
 
-  @lint_issue "WTF-416"
-
   @typedoc """
   A run: its results, its counts (aggregates only), the checks it did not
   run and why, and the failures known to have an open issue. `project/2`
@@ -182,7 +180,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
              "bypasses" => bypass_counts
            },
            not_run: not_run(not_run),
-           known: known(results)
+           known: []
          }}
       end
     end
@@ -258,7 +256,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
                   "hash-checked by generated_unchanged; their bypasses are checked at generation"}
                ] ++ decisions ++ @unbound ++ [@unseen]
              ),
-           known: known(results)
+           known: []
          }}
       end
     end
@@ -753,27 +751,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
     }
   end
 
-  # Fresh projects are not `mix format`-clean yet (WTF-416): the failure
-  # stays a failure, named as known.
-  defp lint_result(ctx) do
-    spec = checks_result("lint", :lint, "lint", ctx)
-
-    Map.update!(spec, :diff, fn diff ->
-      Enum.map(
-        diff,
-        &Map.update!(&1, :detail, fn d -> "#{d} (known failure: #{@lint_issue})" end)
-      )
-    end)
-  end
-
-  defp known(results) do
-    for %{check: "lint", status: :fail} <- results,
-        do: %{
-          check: "lint",
-          issue: @lint_issue,
-          reason: "generated and scaffolded files are not mix format-clean yet"
-        }
-  end
+  defp lint_result(ctx), do: checks_result("lint", :lint, "lint", ctx)
 
   defp migrations_result(ctx) do
     args = ~w(ash.codegen --check)

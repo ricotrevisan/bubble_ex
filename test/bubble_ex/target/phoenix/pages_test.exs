@@ -39,7 +39,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert live =~ "defmodule ShopWeb.BubbleexComplexDemoLive do"
       assert live =~ "use ShopWeb, :live_view"
       template = files["lib/shop_web/live/bubbleex_complex_demo_live.html.heex"]
-      assert template =~ ~s(<main data-bubble-id="bpgwgmpz")
+      assert template =~ ~r/<main\s+data-bubble-id="bpgwgmpz"/
 
       # The owned router calls the generated routes, which hold the pages.
       assert files["lib/shop_web/router.ex"] =~ "ShopWeb.BubbleRoutes.bubble_routes()"
@@ -73,7 +73,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
         |> Enum.map_join(&elem(&1, 1))
 
       for id <- ids, do: assert(components =~ ~s(data-bubble-id="#{id}"), id)
-      assert template =~ "<.bubbleex_complex_card data-bubble-id="
+      assert template =~ ~r/<\.bubbleex_complex_card\s+data-bubble-id=/
     end
 
     test "reusables are function components with embedded templates", %{files: files} do
@@ -135,7 +135,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     end
 
     test "follow the runtime model", %{files: files, template: template} do
-      assert template =~ ~r/<\.focus_wrap id="bubble-overlay-bptvorpw"[^>]* hidden/
+      assert template =~ ~r/<\.focus_wrap\s+id="bubble-overlay-bptvorpw"[^>]*\s+hidden/
       assert template =~ ~s(data-overlay="popup")
       assert template =~ ~s(aria-modal="true")
       assert template =~ ~s(data-overlay="group_focus")
@@ -155,7 +155,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       files: files,
       template: template
     } do
-      [popup] = Regex.run(~r/<\.focus_wrap id="bubble-overlay-bptvorpw"[^>]*>/, template)
+      [popup] = Regex.run(~r/<\.focus_wrap\s+id="bubble-overlay-bptvorpw"[^>]*>/, template)
       assert popup =~ ~s(role="dialog")
       # Its Bubble name (it has no heading).
       assert popup =~ ~s(aria-label="Overlay__Popup")
@@ -183,7 +183,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert length(String.split(template, "<Bubble.overlay_keys />")) == 2
 
       # The Group Focus is not modal: it keeps the focus where it is.
-      [focus] = Regex.run(~r/<div data-bubble-id="bptvorqc"[^>]*>/, template)
+      [focus] = Regex.run(~r/<div\s+data-bubble-id="bptvorqc"[^>]*>/, template)
       assert focus =~ "phx-click-away={Bubble.dismiss_overlay()}"
 
       helpers = files["lib/shop_web/components/bubble.ex"]
@@ -213,7 +213,11 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     assert live =~ "defp text_bt2(element_state_bi1_get_data) do"
     assert live =~ "|> assign(:element_state_bi1_get_data, nil)"
     assert live =~ "|> assign(:items_br1, [])"
-    assert template =~ "{text_bt2(@element_state_bi1_get_data)}"
+    # The formatter must not turn indentation into visible text in a
+    # whitespace-pre-wrap Bubble Text element.
+    assert template =~
+             ~r/<p\b[^>]*data-bubble-id="bT2"[^>]*>\{text_bt2\(@element_state_bi1_get_data\)\}<\/p>/s
+
     assert template =~ "<%!-- TODO(bubble:bT5) text: dynamic value not compiled --%>"
     assert template =~ "<div :for={_item <- @items_br1}>"
 
@@ -497,17 +501,17 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       page: page,
       card: card
     } do
-      assert card =~ ~s(<a data-bubble-id="link")
+      assert card =~ ~r/<a\s+data-bubble-id="link"/
       assert card =~ "href={@destination_link}"
       assert files["lib/shop_web/components/reusables/card.ex"] =~ "attr :destination_link, :any"
 
-      assert page =~ ~S|destination_link={"https://example.test/one?a=1&b=\x7B2\x7D"}|
+      assert page =~ ~S|destination_link={to_string("https://example.test/one?a=1&b=\x7B2\x7D")}|
       assert page =~ ~s|destination_link={~p"/other"}|
       refute page =~ "javascript"
 
       # Printed whole: a truncated literal ("…" <> ...) would not compile.
       long = "https://example.test/" <> String.duplicate("a", 5000)
-      assert page =~ ~s(destination_link={"#{long}"})
+      assert page =~ ~s("#{long}")
       refute page =~ "..."
       [two] = Regex.run(~r/<\.card data-bubble-id="two"[^>]*>/, page)
       refute two =~ "destination_link"
@@ -523,8 +527,12 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       refute card =~ "{@text_label}"
 
       # BBCode as HTML, braces and markup escaped, line breaks as <br>.
-      assert page =~ "<:text_label><strong>One</strong> &lbrace;@x&rbrace;</:text_label>"
-      assert page =~ "<:text_label>Two<br>&lt;script&gt;bad()&lt;/script&gt;</:text_label>"
+      assert page =~
+               "<:text_label phx-no-format><strong>One</strong> &lbrace;@x&rbrace;</:text_label>"
+
+      assert page =~
+               "<:text_label phx-no-format>Two<br>&lt;script&gt;bad()&lt;/script&gt;</:text_label>"
+
       refute page =~ "<script>"
       refute page =~ "raw("
     end

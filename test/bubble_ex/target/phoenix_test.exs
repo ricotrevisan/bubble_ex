@@ -95,6 +95,21 @@ defmodule BubbleEx.Target.PhoenixTest do
       refute Enum.any?(Map.keys(files), &String.contains?(&1, "snapshot"))
     end
 
+    test "fresh output is formatter-clean and the manifest hashes the formatted bytes" do
+      files = render!()
+
+      for {path, content} <- files, Path.extname(path) in [".ex", ".exs"] do
+        assert content == Phoenix.Formatter.format(path, content), path
+      end
+
+      for {path, content} <- files, String.ends_with?(path, ".heex") do
+        assert content == Phoenix.Formatter.format(path, content), path
+      end
+
+      assert {:ok, %{clean?: true, modified: []}} =
+               Phoenix.check_manifest(files[".wtf/generated.json"], files)
+    end
+
     test "every generated Elixir file parses" do
       for {path, content} <- render!(), Path.extname(path) in [".ex", ".exs"] do
         assert {:ok, _} = Code.string_to_quoted(content), "#{path} does not parse"

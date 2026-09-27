@@ -260,7 +260,7 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert echo.("bInst1") =~ "Note: hi"
 
     click(view, "bBtnReset")
-    assert echo.("bInst1") =~ "Note: </p>"
+    assert echo.("bInst1") =~ ~r/Note:\s*<\/p>/
     assert echo.("bInst2") =~ "Note: there"
 
     assert_push_event(view, "bubble:exec", %{
