@@ -1,0 +1,228 @@
+defmodule <%= @web %>.UploadsTest do
+  # The migrated files (WTF-415, <%= @web %>.Uploads): hostile files are
+  # never served as active content, paths are content addresses only, and
+  # private files are off until the owner opts in.
+  use <%= @web %>.ConnCase, async: false
+
+  @moduletag :tmp_dir
+  @moduletag :capture_log
+
+  alias <%= @web %>.Uploads
+
+  @config_key {:<%= @app %>, Uploads}
+  @public_url "https://files.example.test"
+
+  # A 1x1 PNG.
+  @png Base.decode64!(
+         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+       )
+
+  # Files another Bubble app could have put in a file field.
+  @hostile %{
+    "evil.html" => "<!doctype html><script>alert(document.cookie)</script>",
+    "evil.svg" =>
+      ~s[<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>],
+    "evil.xml" =>
+      ~s[<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>],
+    "evil.js" => "alert(document.cookie)",
+    # HTML named as an image: the name never decides the type.
+    "photo.png" => "<html><script>alert(1)</script></html>",
+    "evil.htm" => "<script>alert(1)</script>"
+  }
+
+  setup %{tmp_dir: root} do
+    {app, key} = @config_key
+    previous = Application.get_env(app, key)
+    Application.put_env(app, key, root: root, public_url: @public_url)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(app, key, previous),
+        else: Application.delete_env(app, key)
+    end)
+
+    %{root: root}
+  end
+
+  defp store(root, visibility, name, bytes) do
+    sha = :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
+    dir = Path.join([root, Atom.to_string(visibility), sha])
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, name), bytes)
+    sha
+  end
+
+  defp configure(extra) do
+    {app, key} = @config_key
+    Application.put_env(app, key, Keyword.merge(Application.get_env(app, key), extra))
+  end
+
+  defp header(conn, key), do: conn |> get_resp_header(key) |> List.first()
+
+  defp assert_passive(conn) do
+    assert header(conn, "x-content-type-options") == "nosniff"
+    assert header(conn, "content-security-policy") == "sandbox; default-src 'none'"
+    conn
+  end
+
+  test "the file routes are routed (<%= @web %>.BubbleRoutes.bubble_routes/0)" do
+    for path <- ["/uploads/#{String.duplicate("a", 64)}/f.png", "/uploads/private/#{String.duplicate("a", 64)}/f.png"] do
+      assert %{plug: <%= @web %>.UploadsController} =
+               Phoenix.Router.route_info(<%= @web %>.Router, "GET", path, "localhost"),
+             "#{path} is not routed: the router must call <%= @web %>.BubbleRoutes.bubble_routes() once"
+    end
+  end
+
+  test "hostile files are attachments of an inert type, whatever their name", %{
+    conn: conn,
+    root: root
+  } do
+    for {name, bytes} <- @hostile do
+      sha = store(root, :public, name, bytes)
+      conn = get(conn, Uploads.url("#{@public_url}/#{sha}/#{name}"))
+
+      assert response(conn, 200) == bytes, name
+      assert_passive(conn)
+      assert header(conn, "content-type") == "application/octet-stream", name
+      assert header(conn, "content-disposition") == ~s(attachment; filename="#{name}"), name
+    end
+  end
+
+  test "a PNG, recognized by its bytes, is shown inline", %{conn: conn, root: root} do
+    sha = store(root, :public, "pixel.png", @png)
+    # Its name does not matter either.
+    sha2 = store(root, :public, "pixel.html", @png)
+
+    for {sha, name} <- [{sha, "pixel.png"}, {sha2, "pixel.html"}] do
+      expected = if name == "pixel.png", do: "pixel.png", else: "pixel.html.png"
+      conn = get(conn, "/uploads/#{sha}/#{name}")
+      assert response(conn, 200) == @png
+      assert_passive(conn)
+      assert header(conn, "content-type") == "image/png"
+      # Saved with its real type's extension.
+      assert header(conn, "content-disposition") == ~s(inline; filename="#{expected}")
+      assert header(conn, "cache-control") =~ "immutable"
+    end
+  end
+
+  test "byte ranges and revalidation", %{conn: conn, root: root} do
+    sha = store(root, :public, "evil.html", @hostile["evil.html"])
+    path = "/uploads/#{sha}/evil.html"
+
+    partial = conn |> put_req_header("range", "bytes=0-4") |> get(path)
+    assert response(partial, 206) == "<!doc"
+    assert header(partial, "content-range") =~ ~r"^bytes 0-4/\d+$"
+    assert_passive(partial)
+
+    assert conn |> put_req_header("range", "bytes=9999-") |> get(path) |> response(416)
+    assert conn |> put_req_header("if-none-match", ~s("#{sha}")) |> get(path) |> response(304)
+  end
+
+  test "only content addresses are served: no traversal, no symlinks", %{conn: conn, root: root} do
+    sha = store(root, :public, "pixel.png", @png)
+    File.write!(Path.join(root, "secret.txt"), "secret")
+    File.ln_s!(Path.join(root, "secret.txt"), Path.join([root, "public", sha, "link.txt"]))
+
+    for path <- [
+          "/uploads/#{sha}/..%2F..%2Fsecret.txt",
+          "/uploads/#{sha}/%2E%2E",
+          "/uploads/#{sha}/.hidden",
+          "/uploads/#{sha}/link.txt",
+          "/uploads/#{String.upcase(sha)}/pixel.png",
+          "/uploads/#{binary_part(sha, 0, 63)}/pixel.png",
+          "/uploads/..%2F..%2F/secret.txt",
+          "/uploads/#{sha}/missing.png"
+        ] do
+      conn = get(conn, path)
+      assert response(conn, 404) == "Not Found", path
+      assert header(conn, "x-content-type-options") == "nosniff"
+    end
+  end
+
+  test "private files are off by default", %{conn: conn, root: root} do
+    sha = store(root, :private, "report.pdf", "%PDF-1.4 private")
+
+    assert Uploads.url("private/#{sha}/report.pdf") == nil
+    assert conn |> get("/uploads/private/#{sha}/report.pdf") |> response(404)
+    # Not reachable through the public route either.
+    assert conn |> get("/uploads/#{sha}/report.pdf") |> response(404)
+
+    # :signed_in still needs a signed-in user.
+    configure(private: :signed_in)
+    assert Uploads.url("private/#{sha}/report.pdf") == "/uploads/private/#{sha}/report.pdf"
+    assert conn |> get("/uploads/private/#{sha}/report.pdf") |> response(404)
+  end
+
+  def allow(_actor, %{name: name}), do: name == "report.pdf"
+
+  test "an owner's authorization function decides private files", %{conn: conn, root: root} do
+    sha = store(root, :private, "report.pdf", "%PDF-1.4 private")
+    other = store(root, :private, "other.pdf", "%PDF-1.4 other")
+    configure(private: {__MODULE__, :allow})
+
+    conn = get(conn, "/uploads/private/#{sha}/report.pdf")
+    assert response(conn, 200) == "%PDF-1.4 private"
+    assert_passive(conn)
+    assert header(conn, "content-type") == "application/pdf"
+    assert header(conn, "content-disposition") == ~s(attachment; filename="report.pdf")
+    assert header(conn, "cache-control") == "private, no-store"
+
+    assert build_conn() |> get("/uploads/private/#{other}/other.pdf") |> response(404)
+  end
+
+  def raise_error(_actor, _file), do: raise("boom")
+
+  test "a failing or missing authorization function denies", %{conn: conn, root: root} do
+    sha = store(root, :private, "report.pdf", "%PDF-1.4 private")
+
+    for private <- [{__MODULE__, :raise_error}, {__MODULE__, :no_such_function}, {NoSuchModule, :allow}] do
+      configure(private: private)
+      assert conn |> get("/uploads/private/#{sha}/report.pdf") |> response(404), inspect(private)
+    end
+  end
+
+  test "links: stored references only, on the separate origin when configured", %{
+    conn: conn,
+    root: root
+  } do
+    sha = store(root, :public, "pixel.png", @png)
+
+    assert Uploads.url("#{@public_url}/#{sha}/pixel.png") == "/uploads/#{sha}/pixel.png"
+    assert Uploads.url("https://evil.example/#{sha}/pixel.png") == nil
+    assert Uploads.url("//s3.amazonaws.com/appforest_uf/f1/evil.html") == nil
+    assert Uploads.url("javascript:alert(1)") == nil
+    assert Uploads.url(nil) == nil
+
+    configure(uploads_host: "https://usercontent.example.test")
+
+    assert Uploads.url("#{@public_url}/#{sha}/pixel.png") ==
+             "https://usercontent.example.test/uploads/#{sha}/pixel.png"
+
+    # Requested on the app's host, a public file redirects to that origin.
+    conn = get(conn, "/uploads/#{sha}/pixel.png")
+    assert response(conn, 301)
+    assert header(conn, "location") == "https://usercontent.example.test/uploads/#{sha}/pixel.png"
+
+    on_host = fn path -> get(%{build_conn() | host: "usercontent.example.test"}, path) end
+    assert on_host.("/uploads/#{sha}/pixel.png") |> response(200) == @png
+
+    # Nothing else runs on the uploads origin: not the app, not private files.
+    configure(private: {__MODULE__, :allow})
+    private = store(root, :private, "report.pdf", "%PDF-1.4 private")
+
+    for path <- ["/", "/sign-in", "/robots.txt", "/uploads/private/#{private}/report.pdf"] do
+      assert on_host.(path) |> response(404) == "Not Found", path
+    end
+  end
+
+  test "an invalid uploads_host fails closed", %{conn: conn, root: root} do
+    sha = store(root, :public, "pixel.png", @png)
+
+    for host <- ["usercontent.example.test", "http://usercontent.example.test", "https://", "https://h.test/path"] do
+      configure(uploads_host: host)
+      assert Uploads.url("#{@public_url}/#{sha}/pixel.png") == nil, host
+      assert conn |> get("/uploads/#{sha}/pixel.png") |> response(404), host
+      assert_raise ArgumentError, fn -> Uploads.validate!() end
+    end
+  end
+end

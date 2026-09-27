@@ -1,0 +1,123 @@
+{
+  "_id": "uploads-fixture",
+  "api": {},
+  "element_definitions": {},
+  "option_sets": {},
+  "pages": {
+    "profile": {
+      "elements": {
+        "bIH": {
+          "id": "bIH",
+          "properties": {
+            "image": {
+              "entries": {
+                "0": "https:",
+                "1": {
+                  "next": {
+                    "name": "avatar_image",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Image"
+        },
+        "bIM": {
+          "id": "bIM",
+          "properties": {
+            "image": {
+              "next": {
+                "name": "avatar_image",
+                "type": "Message"
+              },
+              "type": "CurrentUser"
+            }
+          },
+          "type": "Image"
+        },
+        "bIT": {
+          "id": "bIT",
+          "properties": {
+            "image": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "avatar_image",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Image"
+        },
+        "bLK": {
+          "id": "bLK",
+          "properties": {
+            "destination": {
+              "next": {
+                "name": "resume_file",
+                "type": "Message"
+              },
+              "type": "CurrentUser"
+            },
+            "text": {
+              "entries": {
+                "0": "Resume"
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Link"
+        },
+        "bTX": {
+          "id": "bTX",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": "File: ",
+                "1": {
+                  "next": {
+                    "name": "resume_file",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bPU",
+      "name": "profile",
+      "properties": {},
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "avatar_image": {
+          "display": "Avatar",
+          "value": "image"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "resume_file": {
+          "display": "Resume",
+          "value": "file"
+        }
+      }
+    }
+  }
+}
