@@ -58,7 +58,7 @@ defmodule BubbleEx.LoadTest do
                confirmed: 2,
                unconfirmed: 1,
                unknown: 0,
-               confirmed_column: false
+               confirmed_column: true
              }
 
       assert Memory.tables(f.target) == %{}
@@ -77,10 +77,14 @@ defmodule BubbleEx.LoadTest do
             {:load_derived_drift, "board", "card_count_number"},
             {:load_derived_drift, "card", "board_card_count_number"},
             {:load_reverse_list_drift, "board", "cards_list_custom_card"},
-            {:load_auth_status_unmapped, "user", nil},
+            {:load_confirmed_at_migrated, "user", nil},
             {:load_auth_provider_unmigrated, "user", nil}
           ],
           do: assert(MapSet.member?(codes, code), inspect(code))
+
+      # The target has a confirmed_at column (WTF-413).
+      refute MapSet.member?(codes, {:load_auth_status_unmapped, "user", nil})
+      assert diag(report, :load_confirmed_at_migrated, "user").details.count == 2
 
       # Stored copies that agree with the derived value are not drift.
       refute MapSet.member?(codes, {:load_derived_drift, "card", "board_watcher_count_number"})
@@ -154,6 +158,41 @@ defmodule BubbleEx.LoadTest do
       users = Memory.tables(f.target)["user"]
       assert users[F.ada()]["email"] == "Ada@Example.test"
       assert users[F.bob()]["email"] == "bob@example.test"
+    end
+
+    test "confirmed users get their Created Date as confirmed_at, others nil (WTF-413)", %{
+      tmp_dir: dir
+    } do
+      # Carol is confirmed but has no Created Date; a fourth user has no
+      # confirmed flag at all.
+      rows =
+        F.cut2_rows()
+        |> Map.update!("user", fn [ada, bob, carol] ->
+          [
+            ada,
+            bob,
+            Map.delete(carol, "Created Date"),
+            %{"_id" => F.id(4), "Created Date" => "2024-01-04T10:00:00Z"}
+          ]
+        end)
+
+      f = setup_fixture(:cut2, dir, rows)
+      {:ok, report} = Load.run(f.export, f.model, f.target)
+      users = Memory.tables(f.target)["user"]
+
+      assert users[F.ada()]["confirmed_at"] == "2024-01-01T10:00:00.000000Z"
+      assert users[F.bob()]["confirmed_at"] == nil
+      # The export's creation time, reported.
+      assert users[F.carol()]["confirmed_at"] == "2026-09-26T00:00:00.000000Z"
+      assert users[F.id(4)]["confirmed_at"] == nil
+
+      undated = diag(report, :load_confirmed_at_undated, "user")
+      assert undated.details.count == 1 and undated.details.sample_ids == [F.carol()]
+      assert diag(report, :load_confirmed_at_migrated, "user").details.count == 2
+
+      # Stable: a rerun leaves every user unchanged.
+      {:ok, rerun} = Load.run(f.export, f.model, f.target)
+      assert rerun.types["user"].updated == 0 and rerun.types["user"].inserted == 0
     end
 
     test "derive_count lists lose deleted IDs; other references keep them", %{tmp_dir: dir} do
@@ -414,6 +453,41 @@ defmodule BubbleEx.LoadTest do
       users = Memory.tables(f.target)["user"]
       assert users[F.ada()]["email"] == "Ada@Example.test"
       assert users[F.bob()]["email"] == "bob@example.test"
+    end
+
+    test "confirmed users get their Created Date as confirmed_at, others nil (WTF-413)", %{
+      tmp_dir: dir
+    } do
+      # Carol is confirmed but has no Created Date; a fourth user has no
+      # confirmed flag at all.
+      rows =
+        F.cut2_rows()
+        |> Map.update!("user", fn [ada, bob, carol] ->
+          [
+            ada,
+            bob,
+            Map.delete(carol, "Created Date"),
+            %{"_id" => F.id(4), "Created Date" => "2024-01-04T10:00:00Z"}
+          ]
+        end)
+
+      f = setup_fixture(:cut2, dir, rows)
+      {:ok, report} = Load.run(f.export, f.model, f.target)
+      users = Memory.tables(f.target)["user"]
+
+      assert users[F.ada()]["confirmed_at"] == "2024-01-01T10:00:00.000000Z"
+      assert users[F.bob()]["confirmed_at"] == nil
+      # The export's creation time, reported.
+      assert users[F.carol()]["confirmed_at"] == "2026-09-26T00:00:00.000000Z"
+      assert users[F.id(4)]["confirmed_at"] == nil
+
+      undated = diag(report, :load_confirmed_at_undated, "user")
+      assert undated.details.count == 1 and undated.details.sample_ids == [F.carol()]
+      assert diag(report, :load_confirmed_at_migrated, "user").details.count == 2
+
+      # Stable: a rerun leaves every user unchanged.
+      {:ok, rerun} = Load.run(f.export, f.model, f.target)
+      assert rerun.types["user"].updated == 0 and rerun.types["user"].inserted == 0
     end
   end
 

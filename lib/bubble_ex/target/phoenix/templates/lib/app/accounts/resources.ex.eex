@@ -1,7 +1,7 @@
 defmodule <%= @module %>.Accounts.Resources do
   @moduledoc """
-  Stable names for owned code: the User resource and its email attribute,
-  whatever the name map calls them.
+  Stable names for owned code: the User resource, its email attribute and
+  its `confirmed_at` attribute, whatever the name map calls them.
   """
 
   @doc "The User resource (Bubble's built-in user type)."
@@ -9,4 +9,13 @@ defmodule <%= @module %>.Accounts.Resources do
 
   @doc "The User's email attribute."
   def email_field, do: :<%= @email %>
+
+  @doc """
+  The User's email-confirmed timestamp (AshAuthentication's
+  `confirmed_at_field`), nil while unconfirmed. Users loaded from Bubble
+  have their Created Date there when Bubble had their email confirmed
+  (Bubble keeps no confirmation time); a magic-link sign-in sets it when
+  it is nil.
+  """
+  def confirmed_at_field, do: :<%= @confirmed_at %>
 end

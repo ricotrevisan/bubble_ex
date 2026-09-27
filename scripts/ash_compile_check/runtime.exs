@@ -12,6 +12,9 @@
 #   * lists of IDs in their order
 #   * enum values, typed-struct values
 #   * Types.JsonValue: an object, a number, a string and a list
+#
+# Private attributes (the User's confirmed_at) are not accepted by the
+# create action and are left out.
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos) do
   {:ok, _} = repo.start_link()
@@ -40,7 +43,10 @@ defmodule RuntimeCheck do
   defp check(resource) do
     [pk] = Ash.Resource.Info.primary_key(resource)
     refs = for r <- Ash.Resource.Info.relationships(resource), into: MapSet.new(), do: r.source_attribute
-    attributes = Ash.Resource.Info.attributes(resource)
+    # The public attributes: the create action accepts them (`accept :*`).
+    # The only private one, the User's confirmed_at (WTF-413), is the data
+    # loader's to write (scripts/ash_compile_check/load.exs checks it).
+    attributes = Ash.Resource.Info.public_attributes(resource)
 
     Enum.flat_map(0..3, fn i ->
       input =

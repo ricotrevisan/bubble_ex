@@ -2,7 +2,10 @@ defmodule <%= @web %>.AuthController do
   use <%= @web %>, :controller
   use AshAuthentication.Phoenix.Controller
 
-  def success(conn, _activity, user, _token) do
+  alias <%= @module %>.Accounts.Resources
+
+  def success(conn, activity, user, _token) do
+    user = confirm_email(user, activity)
     return_to = get_session(conn, :return_to) || ~p"/"
 
     conn
@@ -17,6 +20,25 @@ defmodule <%= @web %>.AuthController do
     |> put_flash(:error, "That sign-in link is invalid or has expired.")
     |> redirect(to: ~p"/sign-in")
   end
+
+  # A magic link reached the user's inbox, so signing in with it confirms
+  # the email (as AshAuthentication's confirmation add-on does with
+  # `auto_confirm_actions`). A confirmed_at already set (e.g. loaded from
+  # Bubble) is kept.
+  defp confirm_email(user, {:magic_link, _phase}) do
+    field = Resources.confirmed_at_field()
+
+    if Map.fetch!(user, field) do
+      user
+    else
+      user
+      |> Ash.Changeset.for_update(:update, %{})
+      |> Ash.Changeset.force_change_attribute(field, DateTime.utc_now())
+      |> Ash.update!(authorize?: false)
+    end
+  end
+
+  defp confirm_email(user, _activity), do: user
 
   def sign_out(conn, _params) do
     return_to = get_session(conn, :return_to) || ~p"/"

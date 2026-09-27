@@ -1,6 +1,6 @@
 defmodule <%= @web %>.SmokeTest do
   # Scaffolded by bubble_ex: the endpoint boots, the workflow API answers
-  # and a stored user signs in with a magic link.
+  # and a stored user signs in with a magic link, which confirms the email.
   use <%= @web %>.ConnCase, async: true
   use Oban.Testing, repo: <%= @module %>.Repo
 
@@ -20,10 +20,24 @@ defmodule <%= @web %>.SmokeTest do
   end
 
   describe "magic-link sign-in" do
+    @owner "1700000000000x100000000000000001"
+    @migrated "1700000000000x100000000000000002"
+    @confirmed_at ~U[2024-01-01 10:00:00.000000Z]
+
     setup do
       Ash.Seed.seed!(
         Resources.user(),
-        Map.new([{:id, "1700000000000x100000000000000001"}, {Resources.email_field(), "Owner@Example.com"}])
+        Map.new([{:id, @owner}, {Resources.email_field(), "Owner@Example.com"}])
+      )
+
+      # A user loaded from Bubble with a confirmed email.
+      Ash.Seed.seed!(
+        Resources.user(),
+        Map.new([
+          {:id, @migrated},
+          {Resources.email_field(), "migrated@example.com"},
+          {Resources.confirmed_at_field(), @confirmed_at}
+        ])
       )
 
       :ok
@@ -41,15 +55,29 @@ defmodule <%= @web %>.SmokeTest do
 
       assert :ok = perform_job(MagicLinkEmail, args)
       assert_received {:email, %{to: [{_, "owner@example.com"}], text_body: body}}
-      [url] = Regex.run(~r{https?://\S+}, body)
-      token = url |> URI.parse() |> Map.fetch!(:path) |> Path.basename()
+      token = token(body)
 
+      assert confirmed_at(@owner) == nil
       conn = post(conn, "/auth/user/magic_link", %{"token" => token})
       assert redirected_to(conn) == ~p"/"
+
+      # Signing in with the link confirms the email.
+      assert %DateTime{} = confirmed_at(@owner)
 
       # A link works once.
       replay = post(build_conn(), "/auth/user/magic_link", %{"token" => token})
       assert redirected_to(replay) == ~p"/sign-in"
+    end
+
+    test "signing in keeps a confirmed_at loaded from Bubble", %{conn: conn} do
+      assert :ok = request_link("migrated@example.com")
+      assert [%{args: args}] = all_enqueued(worker: MagicLinkEmail)
+      assert :ok = perform_job(MagicLinkEmail, args)
+      assert_received {:email, %{text_body: body}}
+
+      conn = post(conn, "/auth/user/magic_link", %{"token" => token(body)})
+      assert redirected_to(conn) == ~p"/"
+      assert confirmed_at(@migrated) == @confirmed_at
     end
 
     test "repeated requests for one email send one link a minute" do
@@ -62,6 +90,17 @@ defmodule <%= @web %>.SmokeTest do
       assert :ok = request_link("nobody@example.com")
       assert [] = all_enqueued(worker: MagicLinkEmail)
     end
+  end
+
+  defp token(body) do
+    [url] = Regex.run(~r{https?://\S+}, body)
+    url |> URI.parse() |> Map.fetch!(:path) |> Path.basename()
+  end
+
+  defp confirmed_at(id) do
+    Resources.user()
+    |> Ash.get!(id, authorize?: false)
+    |> Map.fetch!(Resources.confirmed_at_field())
   end
 
   defp request_link(email) do

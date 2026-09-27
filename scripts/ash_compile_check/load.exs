@@ -27,6 +27,8 @@
 #     microsecond precision, emails, integer/decimal refinements, and
 #     files: copied with verified SHA-256, private ones private (0600, a
 #     private reference), a failed one keeping its Bubble URL
+#   * users' confirmed_at (WTF-413): a confirmed user's Created Date, nil
+#     for an unconfirmed one; stable across the rerun and the delta sync
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -241,7 +243,7 @@ expected_codes = %{
     {:load_file_url_in_text, "task", "notes_list_text"},
     {:load_dangling_reference, "task", "subtasks_list_custom_task"},
     {:load_dangling_reference, "task", "owner_user"},
-    {:load_auth_status_unmapped, "user", nil},
+    {:load_confirmed_at_migrated, "user", nil},
     {:load_auth_provider_unmigrated, "user", nil}
   ],
   cut2: [
@@ -418,6 +420,18 @@ loaded =
     bob = LoadCheck.row(snapshot, "user", F.bob())
     LoadCheck.eq!(fixture, bob["email"], "bob@example.test", "bob's email (from authentication)")
 
+    # confirmed_at (WTF-413): Bubble's confirmed flag, as the Created Date.
+    carol = LoadCheck.row(snapshot, "user", F.carol())
+    LoadCheck.eq!(fixture, user["confirmed_at"], "2024-01-01T10:00:00", "ada's confirmed_at")
+    LoadCheck.eq!(fixture, bob["confirmed_at"], nil, "bob's confirmed_at (unconfirmed)")
+    LoadCheck.eq!(fixture, carol["confirmed_at"], "2024-01-03T10:00:00", "carol's confirmed_at")
+
+    LoadCheck.check!(
+      fixture,
+      not MapSet.member?(codes, {:load_auth_status_unmapped, "user", nil}),
+      "the confirmed status is mapped"
+    )
+
     case which do
       :field_types ->
         t = LoadCheck.row(snapshot, "task", F.task1())
@@ -550,6 +564,18 @@ checks = [
     resource: "Fixtures.DecidedCut2.Card",
     id: F.card1(),
     expect: %{"board_watcher_count" => 1, "board_card_count" => 2, "tags" => ["a", "b"]}
+  },
+  %{
+    fixture: "cut2",
+    resource: "Fixtures.DecidedCut2.User",
+    id: F.ada(),
+    expect: %{"confirmed_at" => "2024-01-01T10:00:00.000000Z"}
+  },
+  %{
+    fixture: "cut2",
+    resource: "Fixtures.DecidedCut2.User",
+    id: F.bob(),
+    expect: %{"confirmed_at" => nil}
   },
   %{
     fixture: "combined",

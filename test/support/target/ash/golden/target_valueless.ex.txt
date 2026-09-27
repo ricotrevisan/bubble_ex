@@ -211,6 +211,8 @@ defmodule MyApp.User do
       writable?: true,
       public?: true,
       constraints: [trim?: false, allow_empty?: true]
+
+    attribute :confirmed_at, :utc_datetime_usec, allow_nil?: true, writable?: true, public?: false
   end
 
   relationships do

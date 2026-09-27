@@ -35,8 +35,13 @@ defmodule BubbleEx.Target.Ash.Loader do
   length a `derive_count` calculation counts drops dangling IDs; derived
   calculations, count aggregates and `has_many` relationships become
   `BubbleEx.Load.Plan.Derived` entries (no column, drift reported). The
-  User resource's `email` attribute takes users' emails; the project has
-  no column for the email-confirmed status (reported by the loader).
+  User resource's `email` attribute takes users' emails, and its
+  `confirmed_at` attribute (`BubbleEx.Target.Ash`, WTF-413; the attribute
+  whose source is `%{auth: "confirmed_at"}`) is the plan's
+  `confirmed_column`: a confirmed user's Created Date, nil for the others
+  (see `BubbleEx.Load`, "Users"). A Project without it (mapped before
+  WTF-413) plans no `confirmed_column` and the loader reports the status
+  as unmapped.
 
   ## Writes
 
@@ -87,18 +92,7 @@ defmodule BubbleEx.Target.Ash.Loader do
     ctx = %{project: project, model: model, by_module: by_module}
 
     tables = Enum.map(project.resources, &table(&1, ctx))
-
-    auth =
-      case Enum.find(project.resources, &(&1.source.type == "user")) do
-        %Resource{} = user ->
-          email = Enum.find(user.attributes, &(&1.source[:field] == "email"))
-          %Auth{type: "user", email_column: email && column_name(email), confirmed_column: nil}
-
-        nil ->
-          nil
-      end
-
-    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth}}
+    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth(project)}}
   rescue
     e in [KeyError, MatchError, FunctionClauseError] ->
       {:error,
@@ -107,13 +101,43 @@ defmodule BubbleEx.Target.Ash.Loader do
        })}
   end
 
+  defp auth(%Project{} = project) do
+    case Enum.find(project.resources, &(&1.source.type == "user")) do
+      %Resource{} = user ->
+        email = Enum.find(user.attributes, &(&1.source[:field] == "email"))
+        confirmed = confirmed_at(user)
+
+        %Auth{
+          type: "user",
+          email_column: email && column_name(email),
+          confirmed_column: confirmed && column_name(confirmed)
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  # The User's `confirmed_at` attribute (it maps no Bubble field).
+  defp confirmed_at(%Resource{} = user),
+    do: Enum.find(user.attributes, &(&1.source[:auth] == "confirmed_at"))
+
+  # The column users' confirmed timestamp goes to, for `table` (the users'
+  # table only), as a plan column the schema check and the upsert handle
+  # like the others. It maps no field, so it is not in the table's columns.
+  defp auth_columns(%Auth{type: type, confirmed_column: column}, %Table{type: type})
+       when is_binary(column),
+       do: [%Column{field: "authentication", column: column, encoding: :datetime}]
+
+  defp auth_columns(_auth, _table), do: []
+
   defp table(%Resource{} = r, ctx) do
     type = r.source.type
     pk = Enum.find(r.attributes, & &1.primary_key?)
     counted = counted_lists(r, ctx)
 
     columns =
-      for %Attribute{primary_key?: false} = a <- r.attributes do
+      for %Attribute{primary_key?: false, source: %{field: _}} = a <- r.attributes do
         field = a.source.field
 
         %Column{
@@ -324,7 +348,7 @@ defmodule BubbleEx.Target.Ash.Loader do
   # --- schema -----------------------------------------------------------------------------
 
   @impl true
-  def check_schema(%__MODULE__{} = c, %Plan{tables: tables}) do
+  def check_schema(%__MODULE__{} = c, %Plan{tables: tables} = plan) do
     sql = """
     SELECT table_name, column_name, udt_name, is_nullable
     FROM information_schema.columns
@@ -337,8 +361,13 @@ defmodule BubbleEx.Target.Ash.Loader do
           {col, {udt, nullable}}
         end)
 
-      {:ok,
-       Diagnostic.normalize(Enum.flat_map(tables, &table_diags(&1, Map.get(actual, &1.table))))}
+      diags =
+        Enum.flat_map(tables, fn table ->
+          table = %{table | columns: table.columns ++ auth_columns(plan.auth, table)}
+          table_diags(table, Map.get(actual, table.table))
+        end)
+
+      {:ok, Diagnostic.normalize(diags)}
     end
   end
 
@@ -446,7 +475,8 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   @impl true
   def upsert(%__MODULE__{} = c, %Table{} = table, rows) do
-    sql = upsert_sql(c.schema, table)
+    columns = table.columns ++ auth_columns(auth(c.project), table)
+    sql = upsert_sql(c.schema, %{table | columns: columns})
 
     case run(c, sql, [Jason.encode!(rows)]) do
       {:ok, returned} ->

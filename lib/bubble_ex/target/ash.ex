@@ -35,12 +35,25 @@ defmodule BubbleEx.Target.Ash do
   | recursive API types | the edge closing a cycle becomes `Types.JsonValue`, diagnosed |
   | Created Date, Modified Date, Slug (and User's email) | writable attributes `created_date`, `modified_date`, `slug`, `email` |
   | Created By | `belongs_to :creator` (User) with a writable `creator_id` |
+  | User's email-confirmed status (`authentication.email.email_confirmed`, no field) | a private, nullable `:utc_datetime_usec` `confirmed_at`, AshAuthentication's confirmation shape (see below) |
   | deleted type, field, option set, value or attribute | omitted, diagnosed (info) |
   | nullability | every attribute allows nil (except the primary key) |
   | defaults | text, number (as a float), yes/no, file, a fixed ISO 8601 date and an option key are kept; others (lists, references, mismatched values) are omitted and diagnosed |
 
   Bubble's built-in User is always a resource: when the source does not
   define it, the Model's synthesized User (built-in fields only) is used.
+
+  **`confirmed_at`** (WTF-413). The User also gets the attribute
+  AshAuthentication's confirmation add-on keeps (`confirmed_at_field`,
+  default `:confirmed_at`: `:utc_datetime_usec`, `allow_nil? true`,
+  `writable? true`), private (`public? false`, as the add-on builds it),
+  so the default `create`/`update` actions do not accept it. It maps no
+  Bubble field (its source is `%{type: "user", auth: "confirmed_at"}`);
+  the name map keys it `"authentication.email.email_confirmed"`, and a
+  defined field already holding the name pushes it to `confirmed_at_2`.
+  The data loader (`BubbleEx.Target.Ash.Loader`) fills it from Bubble's
+  email-confirmed flag; with policies (`:unverified`) it has no field
+  policy and so is hidden from actors (`private_fields :hide`).
 
   ## Privacy modes
 
@@ -751,7 +764,7 @@ defmodule BubbleEx.Target.Ash do
   end
 
   defp resource(%DataType{} = type, ctx) do
-    fields = type.system_fields ++ type.fields
+    fields = type.system_fields ++ confirmation(type) ++ type.fields
     entry = get_in(ctx.names, ["resources", type.id])
     scope = scope(entry)
     check_unique!(scope.locked, scope_ids(fields), "attributes of #{type.id}")
@@ -838,6 +851,17 @@ defmodule BubbleEx.Target.Ash do
   defp scope_ids(fields),
     do: Enum.flat_map(fields, &[{:attribute, &1.id}, {:relationship, &1.id}])
 
+  # The User's `confirmed_at` (WTF-413): when the user's email was
+  # confirmed, AshAuthentication style (the confirmation add-on's
+  # `confirmed_at_field`: a nullable `:utc_datetime_usec`). Bubble keeps a
+  # confirmed flag (`authentication.email.email_confirmed`), no field, so
+  # the attribute maps none: it is keyed by that path in the name map and
+  # claimed after the built-in fields, before the defined ones.
+  @confirmed_at_id "authentication.email.email_confirmed"
+
+  defp confirmation(%DataType{id: "user"}), do: [%{id: @confirmed_at_id, confirmation: true}]
+  defp confirmation(%DataType{}), do: []
+
   # The Bubble `_id` is the primary key; every record has one.
   defp primary_key(attributes, type, ctx) do
     if Enum.any?(attributes, & &1.primary_key?) do
@@ -857,6 +881,20 @@ defmodule BubbleEx.Target.Ash do
       source: source,
       bubble_type: bubble_type
     }
+  end
+
+  defp field_item(%{confirmation: true, id: id}, type, _ctx, {diags, used, entry}) do
+    {name, used, entry} = name_for(entry, "attributes", id, "confirmed_at", used, :none)
+
+    attribute = %Attribute{
+      name: name,
+      type: :utc_datetime_usec,
+      public?: false,
+      source: %{type: type.id, auth: "confirmed_at"},
+      column: column(entry, id, name)
+    }
+
+    {[{:attribute, attribute}], {diags, used, entry}}
   end
 
   defp field_item(%Field{} = field, type, _ctx, {diags, used, entry})
