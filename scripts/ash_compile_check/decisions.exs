@@ -525,18 +525,33 @@ defmodule DecisionsCheck do
           many = rel(owner, List.last(path))
           [dest_pk] = Ash.Resource.Info.primary_key(many.destination)
 
-          for i <- 1..2,
-              do:
-                create!(many.destination, %{
-                  dest_pk => "item-#{i}-" <> tag,
-                  many.destination_attribute => Map.fetch!(full, owner_pk)
-                })
+          case many.type do
+            # a list normalized to a join (WTF-406): members through join
+            # rows; a member of another owner is not counted
+            :many_to_many ->
+              for {i, of} <- [{1, full}, {2, full}, {3, none}] do
+                item = create!(many.destination, %{dest_pk => "item-#{i}-" <> tag})
 
-          # a record pointing elsewhere is not counted
-          create!(many.destination, %{
-            dest_pk => "stray-" <> tag,
-            many.destination_attribute => "elsewhere-" <> tag
-          })
+                create!(many.through, %{
+                  many.source_attribute_on_join_resource => Map.fetch!(of, owner_pk),
+                  many.destination_attribute_on_join_resource => Map.fetch!(item, dest_pk)
+                })
+              end
+
+            _ ->
+              for i <- 1..2,
+                  do:
+                    create!(many.destination, %{
+                      dest_pk => "item-#{i}-" <> tag,
+                      many.destination_attribute => Map.fetch!(full, owner_pk)
+                    })
+
+              # a record pointing elsewhere is not counted
+              create!(many.destination, %{
+                dest_pk => "stray-" <> tag,
+                many.destination_attribute => "elsewhere-" <> tag
+              })
+          end
 
           2
       end
@@ -566,11 +581,21 @@ defmodule DecisionsCheck do
           "count" ->
             many = rel(owner, List.last(path))
 
-            many.destination
-            |> Ash.Query.do_filter([
-              {many.destination_attribute, Map.fetch!(owner_record, owner_pk)}
-            ])
-            |> Ash.count!(authorize?: false)
+            case many.type do
+              :many_to_many ->
+                many.through
+                |> Ash.Query.do_filter([
+                  {many.source_attribute_on_join_resource, Map.fetch!(owner_record, owner_pk)}
+                ])
+                |> Ash.count!(authorize?: false)
+
+              _ ->
+                many.destination
+                |> Ash.Query.do_filter([
+                  {many.destination_attribute, Map.fetch!(owner_record, owner_pk)}
+                ])
+                |> Ash.count!(authorize?: false)
+            end
         end
     end
 

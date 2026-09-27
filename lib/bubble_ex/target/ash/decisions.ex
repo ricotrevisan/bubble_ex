@@ -1975,7 +1975,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
     lists =
       Enum.map_join(sides, " and ", &"#{&1.type}.#{&1.field} (owner decision #{&1.key})")
 
-    "Join: one row per member of #{lists}; the list is not stored." <>
+    what = if length(sides) == 2, do: "the lists are", else: "the list is"
+
+    "Join: one row per member of #{lists}; #{what} not stored." <>
       if(length(spec.lists) == 2 and length(sides) == 2,
         do: " Both lists are one relation: a row lists each record in the other's list.",
         else: ""

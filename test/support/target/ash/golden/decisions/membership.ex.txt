@@ -441,7 +441,7 @@ defmodule MyApp.Workspace do
 end
 
 defmodule MyApp.UserWorkspaces do
-  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453); the list is not stored. Both lists are one relation: a row lists each record in the other's list."
+  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453); the lists are not stored. Both lists are one relation: a row lists each record in the other's list."
 
   use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
 
