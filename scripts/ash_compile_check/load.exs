@@ -28,7 +28,9 @@
 #     files: copied with verified SHA-256, private ones private (0600, a
 #     private reference), a failed one keeping its Bubble URL
 #   * users' confirmed_at (WTF-413): a confirmed user's Created Date, nil
-#     for an unconfirmed one; stable across the rerun and the delta sync
+#     for an unconfirmed one; stable across the rerun and the delta sync;
+#     a confirmation made in the target survives a delta sync while the
+#     email is unchanged, and yields to Bubble's status when it changed
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -431,6 +433,38 @@ loaded =
       not MapSet.member?(codes, {:load_auth_status_unmapped, "user", nil}),
       "the confirmed status is mapped"
     )
+
+    # Bob (unconfirmed in Bubble) and Carol confirm in the target (a
+    # magic-link sign-in); a delta sync changes Carol's email and unconfirms
+    # her. Bob keeps his confirmation (email unchanged), Carol takes Bubble's.
+    Postgrex.query!(
+      conn,
+      ~s[UPDATE "public"."user" SET confirmed_at = '2026-09-20T00:00:00Z' WHERE id = ANY($1)],
+      [[F.bob(), F.carol()]]
+    )
+
+    confirm_rows =
+      Map.update!(F.rows(which), "user", fn [ada, bob, carol] ->
+        carol =
+          carol
+          |> put_in(["authentication", "email", "email"], "carol2@example.test")
+          |> put_in(["authentication", "email", "email_confirmed"], false)
+
+        [ada, bob, carol]
+      end)
+
+    {:ok, confirm_export} = F.export(which, Path.join(dir, "confirm"), confirm_rows)
+    {:ok, synced} = Load.run(confirm_export, model, target, [storage: storage] ++ base_opts)
+    LoadCheck.eq!(fixture, synced.types["user"].updated, 1, "confirmation sync: users updated")
+    after_sync = LoadCheck.snapshot(conn, plan)
+    confirmed = &(LoadCheck.row(after_sync, "user", &1)["confirmed_at"])
+    LoadCheck.eq!(fixture, confirmed.(F.bob()), "2026-09-20T00:00:00", "bob keeps his confirmation")
+    LoadCheck.eq!(fixture, confirmed.(F.carol()), nil, "carol, new email, takes Bubble's status")
+    LoadCheck.eq!(fixture, confirmed.(F.ada()), "2024-01-01T10:00:00", "ada unchanged")
+
+    # Back to the export's state for what follows.
+    LoadCheck.truncate(conn, plan)
+    {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
 
     case which do
       :field_types ->

@@ -55,7 +55,19 @@ defmodule BubbleEx.Target.Ash.Loader do
       RETURNING (xmax = 0)
 
   so a batch is atomic, an identical record is not rewritten, and the
-  counts come back (inserted, updated, unchanged). There are no foreign
+  counts come back (inserted, updated, unchanged). The users' confirmed
+  column (WTF-413) is the exception to "the row replaces the columns": a
+  nil does not clear a stored confirmation while the user's email is
+  unchanged,
+
+      "confirmed_at" = CASE WHEN EXCLUDED."confirmed_at" IS NULL
+        AND t."email" IS NOT DISTINCT FROM EXCLUDED."email"
+        THEN t."confirmed_at" ELSE EXCLUDED."confirmed_at" END
+
+  (the same expression in the `IS DISTINCT FROM` guard), so a delta sync
+  keeps a confirmation made in the target (a magic-link sign-in) of a
+  user Bubble has unconfirmed. A user whose email changed had it cleared
+  first (`BubbleEx.Load`), so they take Bubble's status. There are no foreign
   keys (WTF-338), so tables load in any order. An error names the
   PostgreSQL error code and constraint, never a stored value.
   """
@@ -475,8 +487,9 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   @impl true
   def upsert(%__MODULE__{} = c, %Table{} = table, rows) do
-    columns = table.columns ++ auth_columns(auth(c.project), table)
-    sql = upsert_sql(c.schema, %{table | columns: columns})
+    auth = auth(c.project)
+    columns = table.columns ++ auth_columns(auth, table)
+    sql = upsert_sql(c.schema, %{table | columns: columns}, keep_confirmed(auth, table))
 
     case run(c, sql, [Jason.encode!(rows)]) do
       {:ok, returned} ->
@@ -513,11 +526,14 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   @doc false
   # The upsert statement of a table (see the moduledoc).
-  @spec upsert_sql(String.t(), Table.t()) :: String.t()
-  def upsert_sql(schema, %Table{} = table) do
+  # `keep` is `{confirmed_column, email_column}` for the users' table:
+  # see the moduledoc.
+  @spec upsert_sql(String.t(), Table.t(), {String.t(), String.t()} | nil) :: String.t()
+  def upsert_sql(schema, %Table{} = table, keep \\ nil) do
     target = ident(schema) <> "." <> ident(table.table)
     key = ident(table.key)
-    others = Enum.map(table.columns, &ident(&1.column))
+    columns = Enum.map(table.columns, & &1.column)
+    others = Enum.map(columns, &ident/1)
     all = Enum.join([key | others], ", ")
 
     conflict =
@@ -526,9 +542,10 @@ defmodule BubbleEx.Target.Ash.Loader do
           "ON CONFLICT (#{key}) DO NOTHING"
 
         _ ->
-          set = Enum.map_join(others, ", ", &"#{&1} = EXCLUDED.#{&1}")
+          new = Enum.map(columns, &new_value(&1, keep))
+          set = Enum.map_join(Enum.zip(others, new), ", ", fn {c, v} -> "#{c} = #{v}" end)
           mine = Enum.map_join(others, ", ", &"t.#{&1}")
-          theirs = Enum.map_join(others, ", ", &"EXCLUDED.#{&1}")
+          theirs = Enum.join(new, ", ")
 
           "ON CONFLICT (#{key}) DO UPDATE SET #{set} " <>
             "WHERE ROW(#{mine}) IS DISTINCT FROM ROW(#{theirs})"
@@ -538,6 +555,22 @@ defmodule BubbleEx.Target.Ash.Loader do
       "SELECT #{all} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb) " <>
       conflict <> " RETURNING (xmax = 0)"
   end
+
+  # The users' confirmed column: see the moduledoc.
+  defp keep_confirmed(%Auth{type: type, confirmed_column: c, email_column: e}, %Table{type: type})
+       when is_binary(c) and is_binary(e),
+       do: {c, e}
+
+  defp keep_confirmed(_auth, _table), do: nil
+
+  defp new_value(column, {column, email}) do
+    {c, e} = {ident(column), ident(email)}
+
+    "CASE WHEN EXCLUDED.#{c} IS NULL AND t.#{e} IS NOT DISTINCT FROM EXCLUDED.#{e} " <>
+      "THEN t.#{c} ELSE EXCLUDED.#{c} END"
+  end
+
+  defp new_value(column, _keep), do: "EXCLUDED." <> ident(column)
 
   defp ident(name), do: ~s("#{String.replace(name, ~s("), ~s(""))}")
 

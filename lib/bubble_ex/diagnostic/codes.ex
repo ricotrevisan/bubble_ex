@@ -270,7 +270,7 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:load_confirmed_at_migrated, :info, :degraded, :load,
      "confirmed users: Bubble keeps a confirmed flag, not when the email was confirmed, so their `confirmed_at` is their Created Date (a migrated value, not a confirmation time)"},
     {:load_confirmed_at_undated, :warning, :degraded, :load,
-     "confirmed users without a readable Created Date; their `confirmed_at` is the export's creation time"},
+     "users Bubble has confirmed but without a readable Created Date; loaded unconfirmed (`confirmed_at` nil) until they sign in with a magic link"},
     {:load_auth_provider_unmigrated, :warning, :unresolved, :load,
      "users with a sign-in method other than email (a social login); v1 signs users in by magic link to their email only"},
     {:load_file_failed, :warning, :unresolved, :load,

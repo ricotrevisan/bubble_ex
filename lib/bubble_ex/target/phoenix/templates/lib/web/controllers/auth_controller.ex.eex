@@ -4,6 +4,14 @@ defmodule <%= @web %>.AuthController do
 
   alias <%= @module %>.Accounts.Resources
 
+  # A magic link was requested (the form posted without JavaScript): no
+  # user signs in yet, and whether the email is known is not revealed.
+  def success(conn, {:magic_link, :request}, _user, _token) do
+    conn
+    |> put_flash(:info, "If that email has an account, a sign-in link is on its way.")
+    |> redirect(to: ~p"/sign-in")
+  end
+
   def success(conn, activity, user, _token) do
     user = confirm_email(user, activity)
     return_to = get_session(conn, :return_to) || ~p"/"
@@ -25,7 +33,7 @@ defmodule <%= @web %>.AuthController do
   # the email (as AshAuthentication's confirmation add-on does with
   # `auto_confirm_actions`). A confirmed_at already set (e.g. loaded from
   # Bubble) is kept.
-  defp confirm_email(user, {:magic_link, _phase}) do
+  defp confirm_email(%_{} = user, {:magic_link, :sign_in}) do
     field = Resources.confirmed_at_field()
 
     if Map.fetch!(user, field) do

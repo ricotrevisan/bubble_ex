@@ -178,7 +178,9 @@ defmodule BubbleEx.Target.PhoenixTest do
 
       controller = files["lib/acme_import_web/controllers/auth_controller.ex"]
       assert controller =~ "user = confirm_email(user, activity)"
-      assert controller =~ "defp confirm_email(user, {:magic_link, _phase}) do"
+      # only a sign-in, with a user (the request phase has none)
+      assert controller =~ "defp confirm_email(%_{} = user, {:magic_link, :sign_in}) do"
+      assert controller =~ "def success(conn, {:magic_link, :request}, _user, _token) do"
       assert controller =~ "Resources.confirmed_at_field()"
 
       assert files["test/acme_import_web/smoke_test.exs"] =~

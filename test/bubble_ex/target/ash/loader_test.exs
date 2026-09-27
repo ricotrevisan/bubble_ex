@@ -220,6 +220,38 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
   end
 
   describe "upsert" do
+    test "the users' confirmed_at: a nil keeps a stored value while the email is unchanged" do
+      table = Plan.table(plan(:cut2), "user")
+
+      keep =
+        ~s[CASE WHEN EXCLUDED."confirmed_at" IS NULL AND t."email" IS NOT DISTINCT FROM ] <>
+          ~s[EXCLUDED."email" THEN t."confirmed_at" ELSE EXCLUDED."confirmed_at" END]
+
+      test = self()
+
+      query = fn sql, _params ->
+        send(test, {:sql, sql})
+        {:ok, %{rows: []}}
+      end
+
+      {:ok, project} = F.project(:cut2)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, _} = Loader.upsert(config, table, [%{"id" => "x"}])
+      assert_received {:sql, sql}
+
+      assert sql =~ ~s[INSERT INTO "public"."user" AS t (] and sql =~ ~s("confirmed_at")
+      assert sql =~ ~s("confirmed_at" = ) <> keep
+      # the same expression in the change guard
+      [_, guard] = String.split(sql, "IS DISTINCT FROM ROW(")
+      assert guard =~ keep
+      assert sql =~ ~s("email" = EXCLUDED."email")
+
+      # other tables are unaffected
+      {:ok, _} = Loader.upsert(config, Plan.table(plan(:cut2), "card"), [%{"id" => "x"}])
+      assert_received {:sql, card}
+      refute card =~ "CASE"
+    end
+
     test "one statement per batch, idempotent, counting what changed" do
       table = Plan.table(plan(:cut2), "card")
       sql = Loader.upsert_sql("public", table)

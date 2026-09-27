@@ -330,7 +330,7 @@ defmodule BubbleEx.Load.Issues do
         :load_confirmed_at_undated,
         "",
         "#{d.count} confirmed users of #{where(s)} have no readable Created Date; " <>
-          "confirmed_at is the export's creation time",
+          "they load unconfirmed (confirmed_at nil) until they sign in with a magic link",
         subject: s,
         details: d
       )

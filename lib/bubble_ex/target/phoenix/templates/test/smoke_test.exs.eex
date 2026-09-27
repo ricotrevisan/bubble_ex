@@ -80,6 +80,15 @@ defmodule <%= @web %>.SmokeTest do
       assert confirmed_at(@migrated) == @confirmed_at
     end
 
+    test "requesting a link through the sign-in form redirects and sends it", %{conn: conn} do
+      for email <- ["owner@example.com", "nobody@example.com"] do
+        conn = post(conn, "/auth/user/magic_link/request", %{"user" => %{"email" => email}})
+        assert redirected_to(conn) == ~p"/sign-in"
+      end
+
+      assert [%{args: %{"email" => "owner@example.com"}}] = all_enqueued(worker: MagicLinkEmail)
+    end
+
     test "repeated requests for one email send one link a minute" do
       assert :ok = request_link("owner@example.com")
       assert :ok = request_link("OWNER@example.com")

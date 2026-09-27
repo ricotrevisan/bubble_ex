@@ -74,12 +74,15 @@ defmodule BubbleEx.Load do
       is a timestamp, AshAuthentication's `confirmed_at` (WTF-413): Bubble
       keeps only a flag (`authentication.email.email_confirmed`), so a
       confirmed user gets their **Created Date**, a migrated value
-      (`:load_confirmed_at_migrated`, info), not a confirmation time; the
-      export's creation time when the Created Date is missing
-      (`:load_confirmed_at_undated`). Unconfirmed users, and users without
-      the flag, get nil, so a load (a delta sync too) resets a
-      confirmation made in the target to Bubble's. The Created Date,
-      unlike the load time, keeps reruns idempotent. Emails equal
+      (`:load_confirmed_at_migrated`, info), not a confirmation time; a
+      confirmed user without a readable Created Date loads unconfirmed
+      (nil, `:load_confirmed_at_undated`; a magic-link sign-in confirms
+      them). Unconfirmed users, and users without the flag, get nil. A nil
+      never clears a stored confirmation while the user's email is
+      unchanged (a confirmation made in the target, e.g. by a magic-link
+      sign-in, survives a delta sync); a user whose email changed takes
+      Bubble's status. The Created Date, unlike the load time, keeps
+      reruns idempotent. Emails equal
       ignoring case stop a real run (the target's identity is unique), and
       so does an exported email that the target gives a record the export
       does not hold (e.g. a user deleted in Bubble whose email a new
@@ -359,8 +362,16 @@ defmodule BubbleEx.Load do
 
   defp auth_status(issues, scan, %Plan{auth: %Plan.Auth{type: t, confirmed_column: c}})
        when is_binary(c) do
-    confirmed = Enum.count(scan.auth, fn {_id, a} -> a.confirmed == true end)
-    Issues.add_count(issues, :load_confirmed_at_migrated, t, nil, confirmed)
+    dated = Enum.count(scan.auth, fn {_id, a} -> is_binary(a.confirmed_at) end)
+
+    scan.auth
+    |> Enum.filter(fn {_id, a} -> a.confirmed_at == :undated end)
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.sort()
+    |> Enum.reduce(
+      Issues.add_count(issues, :load_confirmed_at_migrated, t, nil, dated),
+      &Issues.add(&2, :load_confirmed_at_undated, t, nil, &1, nil)
+    )
   end
 
   defp auth_status(issues, scan, %Plan{auth: %Plan.Auth{type: t}}) do
@@ -614,32 +625,12 @@ defmodule BubbleEx.Load do
 
     case {auth?, state.plan.auth} do
       {true, %Plan.Auth{confirmed_column: c}} when is_binary(c) ->
-        {at, issues} = confirmed_at(row, values, state.export, table.type, issues)
+        at = with :undated <- Scan.confirmed_at(row, values), do: nil
         {Map.put(json, c, at), issues}
 
       _ ->
         {json, issues}
     end
-  end
-
-  # When a user's email was confirmed (WTF-413): Bubble keeps a flag, not a
-  # time, so a confirmed user gets the record's Created Date (stable, so a
-  # rerun or a delta sync leaves the user unchanged), or the export's
-  # creation time when the Created Date is missing or unreadable.
-  # Unconfirmed users, and users without the flag, get nil.
-  defp confirmed_at(row, values, export, type, issues) do
-    with true <- Scan.confirmed(row),
-         {at, []} when is_binary(at) <- Convert.encode(:datetime, values["Created Date"]) do
-      {at, issues}
-    else
-      {_nil, _found} -> undated(export, type, row["_id"], issues)
-      _unconfirmed -> {nil, issues}
-    end
-  end
-
-  defp undated(export, type, id, issues) do
-    {at, _} = Convert.encode(:datetime, export.manifest["created_at"])
-    {at, Issues.add(issues, :load_confirmed_at_undated, type, nil, id, nil)}
   end
 
   defp email(nil), do: {nil, []}
