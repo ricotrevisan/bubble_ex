@@ -17,12 +17,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
   A workflow: `%{workflow, symbol, name, surface, kind, element, run_when,
   interval, disabled?, client?, params, condition, steps, residue, data?,
-  callees}`. `client?` is a workflow run in the browser as JS commands (a
+  callees, blocked_by}`. `client?` is a workflow run in the browser as JS commands (a
   click whose steps all show, hide, toggle, focus or scroll to elements,
   with no condition); `data?` one that reads or writes stored data;
   `callees` the custom events it calls or schedules (`%{surface,
   workflow}`); `residue` its own and its steps' (the lowering's and this
-  binding's). A step: `%{index, bubble_id, symbol, type, op, condition,
+  binding's); `blocked_by`, as in `BubbleEx.Target.Ash.Workflows.Spec`,
+  its own residue subjects and the blocked (or unknown) workflows it calls
+  or schedules directly (custom events and backend workflows): a workflow
+  with any fails before its first step. `data?` is transitive: it or a
+  custom event it calls reads or writes stored data. A step: `%{index, bubble_id, symbol, type, op, condition,
   args, residue}`.
 
   A compiled value is `%{source, bindings}`, each binding `%{var, bind,
@@ -89,34 +93,21 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       end)
   end
 
-  @doc "Whether a workflow has no residue: its whole body is generated."
+  @doc """
+  Whether a workflow is native: its whole body is generated with no
+  residue, and so is every workflow it calls or schedules, transitively
+  (`blocked_by` is empty), as `BubbleEx.Target.Ash.Workflows.Spec.native?/1`.
+  The runtime starts only native workflows.
+  """
   @spec native?(map()) :: boolean()
-  def native?(workflow), do: own_residue(workflow) == []
+  def native?(workflow),
+    do: own_residue(workflow) == [] and Map.get(workflow, :blocked_by, []) == []
+
+  @doc "Whether a workflow's own body has no residue (its callees may)."
+  @spec native_own_body?(map()) :: boolean()
+  def native_own_body?(workflow), do: own_residue(workflow) == []
 
   defp own_residue(w), do: w.residue ++ Enum.flat_map(w.steps, & &1.residue)
-
-  @doc """
-  Whether a workflow runs: native, and so is every custom event it calls
-  or schedules, transitively (the generated runtime refuses to start a
-  workflow otherwise, before any step runs).
-  """
-  @spec runnable?(t(), map()) :: boolean()
-  def runnable?(spec, workflow), do: reach(spec, workflow, MapSet.new([key(workflow)]))
-
-  defp reach(spec, w, seen) do
-    native?(w) and
-      Enum.all?(w.callees, fn %{surface: s, workflow: id} ->
-        callee = workflow(spec, s, id)
-
-        cond do
-          MapSet.member?(seen, {s, id}) -> true
-          callee == nil -> false
-          true -> reach(spec, callee, MapSet.put(seen, {s, id}))
-        end
-      end)
-  end
-
-  defp key(w), do: {w.surface, w.workflow}
 
   @doc "The compiled values of a bound step's arguments (not its condition)."
   @spec step_values(map()) :: [map()]
@@ -129,6 +120,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
   defp values(op, args) when op in [:delete, :delete_list], do: [args[:target]]
   defp values(:open_url, args), do: [args[:url]]
+
+  defp values(op, args) when op in [:schedule, :schedule_list],
+    do: [args[:at], args[:list], args[:interval] | Enum.map(args[:params] || [], & &1.value)]
 
   defp values(:schedule_custom, args),
     do: [args[:delay] | Enum.map(args[:params] || [], & &1.value)]
@@ -191,18 +185,21 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   end
 
   @doc """
-  Generated-code coverage, with string keys. The metric:
+  Generated-code coverage, with string keys. The metric (the backend's,
+  `BubbleEx.Target.Ash.Workflows.Spec.coverage/1`, plus what pages add):
 
     * `"workflows"` - page and reusable-element workflows; `"native"` the
-      ones whose **whole body** is generated with no residue (neither the
-      lowering's, see `BubbleEx.Workflows.Frontend.coverage/1`, nor this
-      binding's: an IR that does not compile to Elixir, a value the
-      generated page does not provide, a step this target does not run
-      yet); `"runnable"` the native ones whose called custom events are
-      native too, transitively (the generated runtime starts only those);
-      `"wired"` the runnable ones the page triggers (not disabled in the
-      editor, and not a custom event, which runs only when called);
-      `"residue"` the rest; `"client"` the ones run in the browser
+      ones whose **whole body** is generated, and whose every callee (a
+      custom event it calls or schedules, a backend workflow it schedules,
+      transitively) is too, with no residue (neither the lowering's, see
+      `BubbleEx.Workflows.Frontend.coverage/1`, nor this binding's: an IR
+      that does not compile to Elixir, a value the generated page does not
+      provide, a step this target does not run yet): the runtime starts
+      only these; `"native_own_body"` the ones whose own body has no
+      residue, callees aside; `"wired"` the native ones the page triggers
+      (not disabled in the editor, and not a custom event, which runs only
+      when called); `"client"` the native ones run in the browser;
+      `"residue"` the rest (total - native)
     * `"steps"` - their actions; `"native"` the ones generated with no
       residue
     * `"by_kind"` - `{total, native}` workflows per event kind;
@@ -217,14 +214,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     workflows = workflows(spec)
     steps = Enum.flat_map(workflows, & &1.steps)
     native = Enum.filter(workflows, &native?/1)
-    runnable = Enum.filter(native, &runnable?(spec, &1))
 
     %{
       "workflows" => %{
         "total" => length(workflows),
         "native" => length(native),
-        "runnable" => length(runnable),
-        "wired" => Enum.count(runnable, &(not &1.disabled? and &1.kind != :custom_event)),
+        "native_own_body" => Enum.count(workflows, &native_own_body?/1),
+        "wired" => Enum.count(native, &(not &1.disabled? and &1.kind != :custom_event)),
         "residue" => length(workflows) - length(native),
         "client" => Enum.count(native, & &1.client?)
       },

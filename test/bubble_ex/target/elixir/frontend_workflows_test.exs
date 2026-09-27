@@ -13,13 +13,24 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
 
   defp app, do: @fixture |> File.read!() |> Jason.decode!()
 
-  defp spec(app) do
+  defp spec(app, backend? \\ true) do
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
     {:ok, frontend} = BubbleEx.Frontend.normalize(app)
     {:ok, lowered} = Frontend.build(app, model, index)
-    {:ok, spec} = FrontendWorkflows.map(lowered, project, namespace: "Shop", frontend: frontend)
+    {:ok, backend_lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
+
+    {:ok, backend} =
+      BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Shop")
+
+    {:ok, spec} =
+      FrontendWorkflows.map(lowered, project,
+        namespace: "Shop",
+        frontend: frontend,
+        backend: if(backend?, do: backend)
+      )
+
     spec
   end
 
@@ -119,7 +130,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
              )
   end
 
-  test "browser-run, data and runnable workflows", %{spec: spec} do
+  test "browser-run, data and native workflows", %{spec: spec} do
     assert workflow(spec, "wOpen").client?
     assert workflow(spec, "wClose").client?
     assert workflow(spec, "wCardOpen").client?
@@ -131,10 +142,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     assert workflow(spec, "wData").data?
     refute workflow(spec, "wState").data?
 
-    assert Spec.runnable?(spec, workflow(spec, "wCall"))
-    # Native itself, but its custom event is not.
-    assert Spec.native?(workflow(spec, "wCallee"))
-    refute Spec.runnable?(spec, workflow(spec, "wCallee"))
+    assert Spec.native?(workflow(spec, "wCall"))
+    # Its own body is native, but its custom event is not: blocked, as the
+    # backend's blocked_by.
+    assert Spec.native_own_body?(workflow(spec, "wCallee"))
+    assert workflow(spec, "wCallee").blocked_by == ["workflow:wEvtResidue"]
+    refute Spec.native?(workflow(spec, "wCallee"))
   end
 
   test "what the page does not provide is residue, not a silent nil" do
@@ -175,42 +188,39 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     assert Enum.any?(reasons.("wNav"), &match?({:unresolved_reference, _}, &1))
   end
 
-  test "scheduling a backend workflow waits for the backend runtime" do
-    app =
-      app()
-      |> put_in(["api"], %{
-        "wApi" => %{
-          "id" => "wApi",
-          "type" => "APIEvent",
-          "properties" => %{"wf_name" => "api"},
-          "actions" => %{}
-        }
-      })
-      |> edit("wNav", fn w ->
-        put_in(w, ["actions", "0"], %{
-          "id" => "aNav1",
-          "type" => "ScheduleAPIEvent",
-          "properties" => %{"api_event" => "wApi"}
-        })
-      end)
+  test "scheduling a backend workflow runs on the backend runtime; without it, it waits" do
+    assert [%{args: %{backend: "wApiNote", params: [%{param: "note"}]}}] =
+             app() |> spec() |> workflow("wSchedule") |> Map.fetch!(:steps)
 
-    assert [%{reason: :backend_workflow, detail: %{workflow: "workflow:wApi"}}] =
-             app |> spec() |> workflow("wNav") |> residue()
+    assert %{data?: true, blocked_by: []} = app() |> spec() |> workflow("wSchedule")
+
+    assert [%{reason: :backend_workflow, detail: %{workflow: "workflow:wApiNote"}}] =
+             app() |> spec(false) |> workflow("wSchedule") |> residue()
+
+    # A scheduled backend workflow that is not lowered blocks the page's.
+    blocked =
+      app()
+      |> put_in(["api", "wApiNote", "actions", "0", "type"], "SendEmail")
+      |> spec()
+      |> workflow("wSchedule")
+
+    assert blocked.blocked_by == ["workflow:wApiNote"]
+    refute Spec.native?(blocked)
   end
 
   test "coverage measures generated code", %{spec: spec} do
     coverage = FrontendWorkflows.coverage(spec)
 
     assert coverage["workflows"] == %{
-             "total" => 19,
+             "total" => 20,
              "native" => 17,
-             "runnable" => 16,
-             "wired" => 13,
-             "residue" => 2,
+             "native_own_body" => 18,
+             "wired" => 14,
+             "residue" => 3,
              "client" => 3
            }
 
-    assert coverage["data"] == 1
+    assert coverage["data"] == 2
     assert coverage["residue_reasons"] == %{"unsupported_action" => 2}
     assert coverage["by_surface"]["reusable"] == %{"total" => 3, "native" => 3}
   end

@@ -70,6 +70,10 @@ defmodule BubbleEx.MixProject do
       {:mock, "~> 0.3", only: :test},
       {:meck, "~> 1.2", only: :test, override: true},
       {:plug, "~> 1.14", only: :test},
+      # The data loader's end-to-end check writes to PostgreSQL
+      # (scripts/ash_compile_check/load.exs); the library itself takes a
+      # query function (e.g. the generated app's `Repo.query/2`).
+      {:postgrex, "== 0.22.4", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # usage_rules is a dev-only helper for consulting docs and rules

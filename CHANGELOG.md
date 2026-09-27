@@ -9,38 +9,155 @@ All notable changes to this project are documented here.
 - **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
   `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every
   page and reusable-element workflow, stack-neutrally: events (click, input
-  changed, page loaded, condition true, custom event, do every), steps in a
-  closed vocabulary shared with the backend lowering
-  (`BubbleEx.Workflows.Lowering`: show/hide/toggle/focus/scroll, reset
-  inputs/group, set state, go to page, open URL, refresh, log out, the data
-  operations, custom-event calls and schedules, terminate), values as
-  Expression IR; unsupported events, actions, options and expressions are
-  `Plan.Residue` entries with a `:frontend_workflow_residue` diagnostic,
-  never dropped. `BubbleEx.Target.Elixir.FrontendWorkflows` binds them to
-  LiveView (plain-data `Spec`: Elixir source, where every read comes from,
-  what a page tracks, browser-run and data workflows, target residue:
-  `:unavailable_input`, `:target_not_rendered`, `:backend_workflow`).
-  `BubbleEx.Target.Phoenix.render/2` with `frontend_workflows:` prints one
-  owned `Workflows` module per page and per interactive reusable element
-  (WTF-359 Q5, `# bubble:workflow`/`# bubble:step` markers), the generated
-  `<Web>.BubbleWorkflows` runtime, `phx-click` wiring (JS commands for
-  element-only workflows), a `phx-change` form per tracked input, custom
-  states and input values per reusable-element instance, and an owned test
-  per native workflow tagged with its plan subject. Browser event
+  changed, page loaded, condition true, custom event, do every) and steps
+  (show/hide/toggle/focus/scroll, reset inputs/group, set state, go to
+  page, open URL, refresh, log out, the data operations, custom-event calls
+  and schedules, scheduled API workflows, terminate), values as Expression
+  IR; what does not lower is `Plan.Residue` with a
+  `:frontend_workflow_residue` diagnostic, never dropped. The step
+  vocabulary and value structs move to `BubbleEx.Workflows.Lowering`,
+  shared with (and now used by) the backend lowering.
+  `BubbleEx.Target.Elixir.FrontendWorkflows` binds it to LiveView (plain
+  `Spec`; `backend:` the backend workflows spec; `blocked_by` and the
+  coverage metric as the backend's). `Target.Phoenix.render/2` with
+  `frontend_workflows:` (and `workflows:`) prints owned `Workflows` modules
+  with step markers, the generated `<Web>.BubbleWorkflows` runtime,
+  `phx-click` wiring (JS commands for element-only workflows), a
+  `phx-change` form per tracked input, per-instance custom states and
+  inputs, and owned smoke tests tagged `bubble_smoke:`. Data steps and
+  scheduled API workflows run on the backend runtime
+  (`Workflows.Runtime.root/2`, its job and call budgets). Browser event
   parameters are checked against the page's static lists and never become
-  atoms; a workflow with residue, directly or through a callee, refuses to
-  start before its first step; workflows that read or write stored data run
-  only with `config :<app>, <Web>.BubbleWorkflows, data_access: true`
-  (resources have no authorization under `privacy: :omit`). The overlay
-  runtime moves to one hook (`<Web>.Bubble.runtime/1`; `overlay_keys/1`
-  stays as an alias) that fixes T5's latent issues: reopening an open
-  overlay no longer saves the focus twice, element steps target one
-  instance, and a modal's focus falls back past an opener hidden since.
-  mm-137: 635 of 2,275 frontend workflows generated whole (531 runnable),
-  1,152 at IR level. The Phoenix compile check adds the
-  `phoenix_frontend_workflows` and `hostile_workflows` fixtures, behavior
-  tests in the generated app and `mix wtf.task complete` of the workflow
-  tasks.
+  atoms; a workflow blocked by residue (its own, a custom event's or a
+  scheduled backend workflow's) fails before its first step; data access
+  is an explicit opt-in (`privacy: :omit` authorizes nothing). The overlay
+  runtime moves to one hook (`<Web>.Bubble.runtime/1`, `overlay_keys/1`
+  kept) that fixes T5's latent issues: reopening an open overlay no longer
+  saves the focus twice, element steps target one instance, and a modal's
+  focus falls back past an opener hidden since. mm-137: 531 of 2,275
+  frontend workflows native (648 own body), 1,152 at IR level.
+- **Backend workflow lowering** (WTF-373, T7 of WTF-359).
+  `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
+  workflows, backend custom events, database triggers) to a stack-neutral
+  entry point and steps: create, change and delete things (and lists),
+  change the current user, schedule an API workflow (and on a list),
+  trigger a custom event, terminate with return values and return data
+  from the API, each value compiled to `Expression.IR`. Anything else is
+  residue (`Plan.Residue`, new reasons `:api_connector_action` and
+  `:unsupported_option`) with a `:workflow_residue` diagnostic: API
+  Connector calls (not yet wired to the WTF-374 clients), cancelling
+  scheduled workflows, email, files, plugin and auth actions, detected
+  request data (whose sample request, which can hold credentials, is never
+  read), request headers, unresolved callees, parameters and fields, and
+  uncompiled values. `Target.Ash.Workflows.map/3` binds it to Ash and Oban
+  (`Workflows.Spec`, plain data) and `Target.Phoenix.render/2` prints it
+  with `workflows:`: one generic-action resource per backend folder in the
+  app's domain, a generated `Workflows.Registry`, `Runtime`, Oban
+  `Scheduler` (one attempt, as Bubble) and database-trigger outbox change
+  (a job inserted in the write's transaction carrying the record's ID
+  and, before and after the change, **only the attributes the trigger
+  workflows read** in their compiled conditions and steps: the rest of
+  the record, including an email, never reaches `oban_jobs.args`; a
+  trigger that does read an email or authentication data gets a
+  `:workflow_trigger_sensitive_field` warning), the workflow API
+  controller, and owned
+  bodies with `# bubble:workflow` / `# bubble:step` markers.
+  **A workflow whose body, or any workflow it calls or schedules
+  (transitively), has residue fails before its first step** (`blocked_by`),
+  so no partial run commits. **Privacy, as it actually is:** every
+  generated data access passes the actor and `authorize?`, `false` only
+  for a workflow whose own "ignore privacy rules" is on (a
+  `:workflow_privacy_bypass` warning, `Registry.privacy_bypasses/0`);
+  custom events take their caller's. But the Phoenix target renders
+  `privacy: :omit` only, where no resource has an authorizer, so
+  `authorize?` and the actor restrict nothing and any caller could act on
+  other users' records. **The workflow API is therefore not served** until
+  the owner sets `serve_workflow_api: true` (503 until then; a
+  `:workflow_endpoint_not_served` warning per exposed workflow);
+  scheduled jobs and triggers run. Under `privacy: :unverified` no policy
+  authorizes writes, so generated writes are forbidden: how workflow
+  writes are authorized is an open owner decision. When served, the API
+  enforces each workflow's HTTP method (POST when unset; 405 otherwise),
+  routes the name as `/:__wf_name` (a body parameter `name` is the
+  workflow's), sends `nosniff` and allowlisted content types; duplicate
+  endpoint names are diagnosed. Fan-out is bounded: one root run's jobs
+  (schedules and triggers, over all generations) share `:max_jobs`, carried
+  in job arguments (fail closed: a missing or malformed budget is none,
+  and a budget is capped at `:max_jobs`; owned code enqueues root jobs
+  with `Runtime.enqueue/3`), and synchronous custom-event calls share
+  `:max_calls`;
+  cycle chain and call depth limits remain. Whether Bubble lets a
+  database trigger fire itself again through its own writes is an open
+  replay question (WTF-358); here it does, within the job budget. The
+  owned tests are smoke tests tagged `bubble_smoke`: they cannot fail on
+  behavior, so they do not satisfy the plan's `unit_test` check, which
+  needs a behavioral test tagged `bubble:`. The shared `Bubble.Runtime`
+  no longer raises on unreadable decimals, unknown date units or
+  non-text values, and runs caller-supplied regexes with a time limit.
+  Coverage is defined by `Backend.coverage/1` (IR level) and
+  `Workflows.Spec.coverage/1` (generated code, including callees); the
+  mm-137 counts are in `test/support/target/workflows/counts/mm-137.json`.
+  The Phoenix compile check renders the workflow fixtures (including
+  `hostile_ids`) and the private export with their workflows and runs
+  behavior tests on `workflows_backend`. `Expression.Sites.workflow_env/4`
+  is public.
+- **Data and file loader** (WTF-357). `BubbleEx.Load` loads a Bubble
+  export into a migrated target: `dry_run/4` reports per-type counts,
+  schema mismatches, dangling references per field, type mismatches and
+  drift of derived fields without writing anything; `run/4` copies files
+  and upserts rows in batches, idempotently (a rerun changes nothing; a
+  new export is a delta sync) and resumably (a ledger per export, plan and
+  target). Stack-neutral: the target adapter gives a `Load.Plan` (Bubble
+  IDs, tables, columns, encodings, derivations) through the
+  `Load.Target` behaviour; `BubbleEx.Target.Ash.Loader` is the
+  Ash/PostgreSQL adapter (schema check against `information_schema`, one
+  `jsonb_populate_recordset` upsert per batch through the app's
+  `Repo.query/2`). Semantics: the Bubble `_id` is the primary key (format
+  checked); lists load as arrays; references keep dangling IDs (WTF-338),
+  counted per field; `text_to_reference` values are trimmed and checked;
+  `derive_count` lists lose IDs of deleted records; derived fields
+  (`derive_*`, `has_many`) are not loaded and their drift is reported;
+  users load without password material, with their trimmed email
+  (duplicate emails block the run) and their email-confirmed status
+  reported, as the project has no column for it; file and image fields
+  get the target storage's references after a copy verified by SHA-256
+  (`Load.Storage`, `Storage.Local`), private (`/fileupload/`) files stay
+  private, failures keep the Bubble URL. Everything that does not fit is
+  a diagnostic of the new `:load` stage (counts and sample record IDs,
+  never stored values). `Load.DataApi` makes the export read-only from
+  the Data API (GET only; the admin token from an option or the
+  environment, sent only to the app's host and redacted; resumable
+  cursor paging; files fetched with checksums). Tested offline with
+  fixtures and a fake Data API; `scripts/ash_compile_check.sh` loads the
+  fixtures into PostgreSQL (dry run, interrupted and resumed run, rerun,
+  delta sync), reads them back through Ash, and checks the plan's column
+  types against every fixture database. `postgrex` is a test-only
+  dependency. Review hardening before merge: a file that fails, raises
+  or times out fails alone and each copied file is in the ledger at once;
+  the ledger is an append-only, `fsync`ed journal with periodic snapshots
+  (linear, crash-safe), keyed also by the storage and the `:keys` map;
+  exported emails are checked against the target's (`load_email_conflict`
+  blocks; changed emails are cleared first, so swaps load); keys naming
+  no field (`load_unmapped_key`) or several (`load_ambiguous_key`) block a
+  real run unless allowed or mapped with `:keys`; only Bubble's storage
+  hosts count as Bubble files; copied files should be served from a
+  separate origin (documented; the generated Phoenix project serves no
+  uploads yet); the exporter streams files to disk, hashing as it goes,
+  under a configurable cap; NUL characters are stripped and reported;
+  the schema check also flags NOT NULL columns; the token is a
+  `Load.Secret` that never inspects to its value. `HTTP.request/5` takes a
+  `sink:` for streamed bodies. Known limitation: an email changing only
+  in case is not cleared first. Second review: `Export.delete/1` refuses
+  symbolic links and deletes only the export's own regular files,
+  removing directories only when empty and listing what it leaves; the
+  ledger journal carries sequence numbers (a snapshot's events are never
+  replayed twice), is compacted on open (nothing is appended after a torn
+  line) and the directory is synced after a snapshot; the exporter sweeps
+  partial downloads and gives each file task a margin beyond its HTTP
+  deadline (`:file_timeout`, default one hour); a NOT NULL email explains
+  how to proceed, and the docs say to keep the app closed and rerun
+  until a load completes (email clearing is not transactional).
+
 - **HEEx emitter over the normalized frontend** (WTF-370, T5 of WTF-359).
   `BubbleEx.Target.Phoenix.render/2` with `frontend:` renders each Bubble
   page as an owned LiveView (module + template) and each reusable element

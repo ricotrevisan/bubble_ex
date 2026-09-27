@@ -23,12 +23,15 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     * the **generated** runtime `<Web>.BubbleWorkflows` (see its
       moduledoc: event allowlist, data-access opt-in, unverified Bubble
       behavior)
-    * an **owned** test per native workflow, tagged `bubble:
-      "workflow:<id>"` (the plan's subject), in
-      `test/<app>_web/bubble_workflows_test.exs`: a click or page-loaded
-      workflow through its page (`render_click/3` of the page's own event,
-      or mounting it), any other through the runtime; each checks that it
-      runs from an empty page without raising
+    * an **owned** smoke test per native workflow (it and every workflow it
+      calls or schedules generated whole), in
+      `test/<app>_web/bubble_frontend_workflows_test.exs`: a clicked or
+      input-changed workflow through its page's own event (a disconnected
+      socket, `<Web>.BubbleWorkflows.socket/2`), any other through the
+      runtime; each checks that it runs from a fresh page without raising.
+      Like the backend's, they cannot fail on behavior, so they are tagged
+      `bubble_smoke: "workflow:<id>"` (the plan's subject) and do not
+      satisfy a `unit_test` check
 
   Only prints: it reads the spec and what the pages computed, never the
   Model or the lowering (see the boundary test).
@@ -57,7 +60,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         {s.file, format(surface_module(id, s, spec, ctx))}
       end
 
-    test = "test/#{ctx.app}_web/bubble_workflows_test.exs"
+    test = "test/#{ctx.app}_web/bubble_frontend_workflows_test.exs"
 
     %{
       owned: Map.put(owned, test, format(tests(spec, ctx))),
@@ -93,7 +96,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     metas =
       Enum.map_join(workflows, ",\n", fn w ->
-        "#{literal(w.workflow)} => #{meta_source(w, ctx)}"
+        "#{literal(w.workflow)} => #{meta_source(w)}"
       end)
 
     instances =
@@ -110,6 +113,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     defmodule #{s.module} do
       @moduledoc #{literal(moduledoc(s))}
 
+      alias #{ctx.module}.Workflows.Runtime, warn: false
       alias #{ctx.web}.BubbleWorkflows, warn: false
       alias #{ctx.web}.Bubble, warn: false
     #{if uses_js?, do: "  alias Phoenix.LiveView.JS\n", else: ""}
@@ -183,32 +187,14 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "run until you implement it and remove it from `blocked`."
   end
 
-  defp meta_source(w, ctx) do
-    blocked =
-      (w.residue ++ Enum.flat_map(w.steps, & &1.residue))
-      |> Enum.map(&{&1.subject, &1.reason})
-      |> Enum.uniq()
-
-    callees =
-      for %{surface: s, workflow: id} <- w.callees do
-        module = ctx.modules[s] || "nil"
-        "{#{module}, #{literal(id)}}"
-      end
-
+  defp meta_source(w) do
     run = if w.client?, do: "nil", else: ":" <> w.fun
 
     condition =
       if w.kind == :condition_true and w.condition, do: ":#{w.fun}__condition", else: "nil"
 
-    "%{run: #{run}, condition: #{condition}, blocked: #{blocked_source(blocked)}, " <>
-      "data: #{w.data?}, callees: [#{Enum.join(callees, ", ")}]}"
-  end
-
-  defp blocked_source(entries) do
-    "[" <>
-      Enum.map_join(entries, ", ", fn {subject, reason} ->
-        "{#{literal(subject)}, #{inspect(reason)}}"
-      end) <> "]"
+    "%{run: #{run}, condition: #{condition}, blocked: #{source(Map.get(w, :blocked_by, []))}, " <>
+      "data: #{w.data?}}"
   end
 
   # --- workflow functions -------------------------------------------------------------------
@@ -369,28 +355,50 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp op(:create, args, id, env),
     do:
-      "BubbleWorkflows.create(ctx, #{id}, #{resource(args, env.spec)}, #{atom(args.pk)}, " <>
-        "#{stamps(args.stamps)}, #{changes(args.changes)})"
+      backend("Runtime.create(run, #{id}, #{resource(args, env.spec)}, #{changes(args.changes)})")
 
   defp op(:update, args, id, env),
     do:
-      "BubbleWorkflows.update(ctx, #{id}, #{resource(args, env.spec)}, #{stamps(args.stamps)}, " <>
-        "#{src(args.target)}, #{changes(args.changes)})"
+      backend(
+        "Runtime.update(run, #{id}, #{resource(args, env.spec)}, #{src(args.target)}, " <>
+          "#{changes(args.changes)})"
+      )
 
   defp op(:update_current_user, args, id, env),
     do:
-      "BubbleWorkflows.update(ctx, #{id}, #{resource(args, env.spec)}, #{stamps(args.stamps)}, " <>
-        "BubbleWorkflows.actor(ctx, []), #{changes(args.changes)})"
+      backend(
+        "Runtime.update(run, #{id}, #{resource(args, env.spec)}, Runtime.actor(run, []), " <>
+          "#{changes(args.changes)})"
+      )
 
   defp op(:update_list, args, id, env),
     do:
-      "BubbleWorkflows.update_list(ctx, #{id}, #{resource(args, env.spec)}, " <>
-        "#{stamps(args.stamps)}, #{src(args.target)}, #{changes(args.changes)})"
+      backend(
+        "Runtime.update_list(run, #{id}, #{resource(args, env.spec)}, #{src(args.target)}, " <>
+          "#{changes(args.changes)})"
+      )
 
-  defp op(:delete, args, id, _env), do: "BubbleWorkflows.delete(ctx, #{id}, #{src(args.target)})"
+  defp op(:delete, args, id, _env), do: backend("Runtime.delete(run, #{id}, #{src(args.target)})")
 
   defp op(:delete_list, args, id, _env),
-    do: "BubbleWorkflows.delete_list(ctx, #{id}, #{src(args.target)})"
+    do: backend("Runtime.delete_list(run, #{id}, #{src(args.target)})")
+
+  defp op(:schedule, args, id, _env),
+    do:
+      backend(
+        "Runtime.schedule(run, #{id}, #{literal(args.backend)}, #{src(args.at)}, " <>
+          "#{keyed(args.params, :param)})"
+      )
+
+  defp op(:schedule_list, args, id, _env),
+    do:
+      backend(
+        "Runtime.schedule_list(run, #{id}, #{literal(args.backend)}, #{src(args.at)}, " <>
+          "#{src(args.list)}, #{src(args.interval)}, #{keyed(args.params, :param)})"
+      )
+
+  # A step run on the backend workflow runtime (WTF-373).
+  defp backend(call), do: "BubbleWorkflows.backend(ctx, fn run -> #{call} end)"
 
   # A whole instance or page resets from the page's first values; an
   # element's inputs are listed.
@@ -441,13 +449,6 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp resource(args, spec), do: "#{spec.namespace}.#{args.resource}"
 
-  defp stamps(stamps) do
-    "%{" <>
-      Enum.map_join([:created, :modified, :creator], ", ", fn k ->
-        "#{k}: #{if stamps[k], do: atom(stamps[k]), else: "nil"}"
-      end) <> "}"
-  end
-
   defp changes(changes) do
     "[" <>
       Enum.map_join(changes, ", ", fn c ->
@@ -456,12 +457,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   end
 
   defp change_value(%{op: :clear_list}), do: "nil"
-  defp change_value(%{ref: :one, value: v}), do: "BubbleWorkflows.id(#{src(v)})"
+  defp change_value(%{ref: :one, value: v}), do: "Runtime.id(#{src(v)})"
 
   defp change_value(%{ref: :many, op: op, value: v}) when op in [:add, :remove],
-    do: "BubbleWorkflows.id(#{src(v)})"
+    do: "Runtime.id(#{src(v)})"
 
-  defp change_value(%{ref: :many, value: v}), do: "BubbleWorkflows.ids(#{src(v)})"
+  defp change_value(%{ref: :many, value: v}), do: "Runtime.ids(#{src(v)})"
   defp change_value(%{value: v}), do: src(v)
 
   defp keyed(entries, key) do
@@ -570,15 +571,16 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       |> Enum.map(&test_source(&1, spec, renders, ctx))
 
     """
-    defmodule #{ctx.web}.BubbleWorkflowsTest do
-      # One test per workflow scaffolded from Bubble whose steps were all
-      # lowered (WTF-372), tagged `bubble: "workflow:<Bubble ID>"` for the
-      # task CLI (`mix wtf.task`): it runs from a fresh page without
-      # raising. A clicked or input-changed workflow runs through its page's
-      # event (checked against the page's own list), any other through
-      # #{ctx.web}.BubbleWorkflows. Data access stays off (the default), so
-      # a workflow that reads or writes stored data must refuse to start,
-      # as must one calling a custom event that was not lowered.
+    defmodule #{ctx.web}.BubbleFrontendWorkflowsTest do
+      # One smoke test per native workflow scaffolded from Bubble (WTF-372:
+      # it and every workflow it calls or schedules were lowered whole): it
+      # runs from a fresh page without raising. A clicked or input-changed
+      # workflow runs through its page's event (checked against the page's
+      # own list), any other through #{ctx.web}.BubbleWorkflows. Data
+      # access stays off (the default), so a workflow that reads or writes
+      # stored data must refuse to start. They cannot fail on behavior, so
+      # they are tagged `bubble_smoke: "workflow:<Bubble ID>"`, as the
+      # backend workflows' smoke tests (WTF-373), not `bubble:`.
       # Scaffolded by bubble_ex; this file is yours.
       use #{ctx.module}.DataCase, async: true
 
@@ -597,7 +599,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     input = w.element && get_in(ctx.surfaces, [w.surface, Access.key(:inputs), w.element])
 
     """
-      @tag bubble: #{literal(w.symbol)}
+      @tag bubble_smoke: #{literal(w.symbol)}
       test #{literal(name)} do
     #{test_body(test_kind(w, page, input), w, %{module: module, page: page, scope: scope, input: input, spec: spec})}  end
     """
@@ -656,11 +658,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp test_body(:run, w, t) do
     expected =
-      cond do
-        not Spec.runnable?(t.spec, w) -> "{{:error, {:not_lowered, _}}, %Ctx{}}"
-        w.data? -> "{{:error, {:data_access_disabled, _}}, %Ctx{}}"
-        true -> "{_status, %Ctx{}}"
-      end
+      if w.data?,
+        do: "{{:error, {:data_access_disabled, _}}, %Ctx{}}",
+        else: "{_status, %Ctx{}}"
 
     """
         ctx = %Ctx{module: #{t.module}, now: DateTime.utc_now()}

@@ -90,6 +90,20 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:workflow_uninterpreted_field, :info, :preserved, :parse,
      "a workflow node member kept in `raw` without semantic interpretation"},
 
+    # --- :model — BubbleEx.Workflows.Backend (WTF-373) ------------------------
+    {:workflow_residue, :warning, :unresolved, :model,
+     "a backend workflow event or step with no mechanical lowering (residue for agent work)"},
+    {:workflow_privacy_bypass, :warning, :degraded, :model,
+     "a backend workflow set to ignore privacy rules: lowered with authorization bypassed (`authorize?: false`)"},
+    {:workflow_action_privacy_option, :info, :preserved, :model,
+     "a scheduling action's ignore-privacy option; not a bypass (the scheduled workflow's own setting decides)"},
+    {:workflow_endpoint_not_served, :warning, :degraded, :target,
+     "a workflow Bubble exposes as an API endpoint; not served by the Phoenix target while the project has no authorization (`privacy: :omit`) until the owner sets `serve_workflow_api: true`"},
+    {:workflow_trigger_sensitive_field, :warning, :degraded, :target,
+     "a database-trigger workflow reads a record's email or authentication data, which its job snapshot then stores in the job arguments"},
+    {:workflow_endpoint_duplicate, :warning, :degraded, :target,
+     "two exposed workflows share an endpoint name; the one with the lower Bubble ID serves it"},
+
     # --- :model — BubbleEx.Workflows.Frontend (WTF-372) -----------------------
     {:frontend_workflow_residue, :warning, :unresolved, :model,
      "a page or reusable-element workflow event or step with no mechanical lowering (residue for agent work)"},
@@ -220,7 +234,69 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:ash_policy_aggregates_unguarded, :warning, :degraded, :target,
      "a data type with fields some users may not view; Ash field policies do not apply to aggregates (count, min, max, sum, ...) over them, so generated code must not aggregate them for those users"},
     {:ash_policy_bypass_required, :info, :degraded, :target,
-     "a workflow that runs ignoring privacy rules; lowered, its reads need an explicit authorization bypass (`authorize?: false`)"}
+     "a workflow that runs ignoring privacy rules; lowered, its reads need an explicit authorization bypass (`authorize?: false`)"},
+
+    # --- :load — BubbleEx.Load, the data loader (WTF-357) ----------------------
+    # Aggregated per data type and field: `details` carries the count and at
+    # most a few sample record IDs, never a stored value.
+    {:load_export_partial, :error, :unresolved, :load,
+     "the export is incomplete (a data type failed to export or was not exported); the loader refuses it unless `allow_partial: true`"},
+    {:load_schema_mismatch, :error, :unresolved, :load,
+     "the target database lacks a table or column the load plan writes, or its column type differs; nothing is written"},
+    {:load_column_extra, :info, :preserved, :load,
+     "a target column the load plan does not write (e.g. added by owned code); left untouched"},
+    {:load_type_unmapped, :warning, :unresolved, :load,
+     "exported rows of a data type the target does not map (deleted or unknown); not loaded, kept in the export"},
+    {:load_type_not_exported, :warning, :unresolved, :load,
+     "a data type the target maps but the export has no rows object for; nothing loaded for it"},
+    {:load_invalid_record_id, :error, :unresolved, :load,
+     "a row without a string `_id`; it cannot be keyed and is not loaded"},
+    {:load_unexpected_id_format, :warning, :preserved, :load,
+     "a `_id` not shaped like a Bubble unique ID (`<digits>x<digits>`); loaded as given"},
+    {:load_duplicate_record, :warning, :degraded, :load,
+     "a `_id` exported more than once (e.g. the data changed while paging); the copy with the latest Modified Date is loaded"},
+    {:load_unmapped_key, :error, :unresolved, :load,
+     "a row key that is no field of the data type in the Model (a wrong key format loads whole columns empty); blocks a real run unless `allow_unmapped_keys: true` or mapped with `:keys`"},
+    {:load_ambiguous_key, :error, :unresolved, :load,
+     "a row key naming more than one field (two fields share a display name, or a display name is another field's ID); blocks a real run until `:keys` maps it"},
+    {:load_nul_stripped, :warning, :degraded, :load,
+     "a stored text holding NUL characters, which PostgreSQL text and jsonb cannot hold; loaded without them"},
+    {:load_email_conflict, :error, :unresolved, :load,
+     "an exported user's email held in the target by a record the export does not hold (e.g. a user deleted in Bubble whose email was reused); the unique email identity would refuse it, so nothing is written"},
+    {:load_deleted_field_data, :info, :preserved, :load,
+     "rows holding values of a field deleted in the editor; not loaded, kept in the export"},
+    {:load_type_mismatch, :warning, :degraded, :load,
+     "a stored value that does not fit the field's type (or the target column's, e.g. a fraction in an integer column); loaded as empty, or the list item dropped"},
+    {:load_unknown_option, :warning, :degraded, :load,
+     "a stored option value that is no live option of the set; loaded as empty"},
+    {:load_option_by_label, :info, :degraded, :load,
+     "a stored option value matched by its display text rather than its key"},
+    {:load_invalid_reference, :warning, :degraded, :load,
+     "a text converted to a reference (`text_to_reference`) that is not shaped like a Bubble unique ID; loaded as empty"},
+    {:load_dangling_reference, :info, :preserved, :load,
+     "a reference to a record the export does not hold (deleted, or not exported); loaded as stored (no foreign key rejects it), so it reads as nil through the relationship"},
+    {:load_deleted_ids_dropped, :info, :degraded, :load,
+     "IDs of records the export does not hold, dropped from a list whose count is derived as its length (`derive_count`), as Bubble's `:count` does not count them"},
+    {:load_derived_drift, :warning, :degraded, :load,
+     "a stored value of a field derived by an owner decision (not loaded) that differs from the value derived from the loaded data"},
+    {:load_reverse_list_drift, :warning, :degraded, :load,
+     "a stored list replaced by a `has_many` (`derive_reverse_relationship`) that differs from the records pointing back; the `has_many` reads the latter"},
+    {:load_duplicate_email, :error, :unresolved, :load,
+     "users whose trimmed emails are equal ignoring case; the target's unique email identity refuses them, so nothing is written"},
+    {:load_invalid_email, :warning, :degraded, :load,
+     "a user email without an `@`; loaded as empty"},
+    {:load_auth_status_unmapped, :warning, :unresolved, :load,
+     "users' email-confirmed status, which the target has no column for; kept in the export"},
+    {:load_auth_provider_unmigrated, :warning, :unresolved, :load,
+     "users with a sign-in method other than email (a social login); v1 signs users in by magic link to their email only"},
+    {:load_file_failed, :warning, :unresolved, :load,
+     "a Bubble file the export could not fetch, or whose copy to the target storage failed its checksum; the field keeps the Bubble URL"},
+    {:load_file_not_bubble, :info, :preserved, :load,
+     "a file field holding a URL outside Bubble's storage; loaded as given, not copied"},
+    {:load_file_url_in_text, :info, :preserved, :load,
+     "a text value containing a Bubble file URL; not rewritten (only file and image fields are)"},
+    {:load_file_public_on_restricted_type, :info, :preserved, :load,
+     "public Bubble file URLs on a data type whose privacy rules do not let everyone view attached files; copied public, as Bubble served them"}
   ]
 
   @registry Map.new(@codes, fn {code, severity, outcome, stage, doc} ->
@@ -247,7 +323,7 @@ defmodule BubbleEx.Diagnostic.Codes do
   @type entry :: %{
           severity: BubbleEx.Diagnostic.severity(),
           outcome: BubbleEx.Diagnostic.outcome(),
-          stage: :read | :parse | :model | :target,
+          stage: :read | :parse | :model | :load | :target,
           doc: String.t()
         }
 

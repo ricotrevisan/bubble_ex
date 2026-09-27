@@ -6,6 +6,8 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
   # test/frontend_workflows_behavior_test.exs, with a database).
   use PhxCheckWeb.ConnCase, async: false
 
+  use Oban.Testing, repo: PhxCheck.Repo
+
   import Phoenix.LiveViewTest
 
   defp change(view, element, value, scope \\ "") do
@@ -95,6 +97,22 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     change(view, "bIn", "A note")
     assert click(view, "bBtnData") =~ "Label: saved"
     assert [%{title: "A note"}] = Ash.read!(PhxCheck.Note, authorize?: false)
+  end
+
+  test "a page schedules a backend workflow on the backend runtime, with the opt-in", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, "/")
+    click(view, "bBtnSchedule")
+    refute_enqueued(worker: PhxCheck.Workflows.Scheduler)
+
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+    click(view, "bBtnSchedule")
+
+    assert_enqueued(
+      worker: PhxCheck.Workflows.Scheduler,
+      args: %{"workflow" => "wApiNote", "params" => %{"note" => "from the page"}}
+    )
   end
 
   test "custom states are kept per reusable-element instance", %{conn: conn} do

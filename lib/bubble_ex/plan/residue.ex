@@ -28,7 +28,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:unsupported_option` | workflow, action | `BubbleEx.Workflows.Backend`: an event or action member with no lowering (`detail.options`) |
   | `:unavailable_input` | workflow, action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a value the generated page does not provide (a page's or cell's thing, a group's data, an element's built-in state; `detail.inputs`) |
   | `:target_not_rendered` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: the element a step shows, hides, focuses, resets or calls into is not rendered by the generated page (in a runtime container's template, or not normalized) (`detail.element`) |
-  | `:backend_workflow` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a page scheduling a backend workflow; it waits for the backend workflow runtime (WTF-373) (`detail.workflow`) |
+  | `:backend_workflow` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a page scheduling a backend workflow when the backend workflows (WTF-373) are not bound (`detail.workflow`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
 
   `index/2` and `frontend/2` are computed by `BubbleEx.Plan.build/5` itself;

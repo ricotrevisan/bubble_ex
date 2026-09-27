@@ -13,27 +13,36 @@ of WTF-373:
 # 1. Stack-neutral: events and steps, values as Expression IR, residue.
 {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
 
+# The backend workflows (WTF-373): the frontend's data steps and schedules
+# run on their runtime.
+{:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+{:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Acme")
+
 # 2. Bound to LiveView: Elixir source, where each value comes from, target residue.
 {:ok, spec} =
   BubbleEx.Target.Elixir.FrontendWorkflows.map(lowered, project,
     namespace: "Acme",
-    frontend: frontend
+    frontend: frontend,
+    backend: workflows
   )
 
-# 3. Printed with the pages.
+# 3. Printed with the pages (and the backend workflows, required).
 {:ok, files} =
   BubbleEx.Target.Phoenix.render(project,
     name: "Acme",
     frontend: frontend,
     expressions: expressions,
+    workflows: workflows,
     frontend_workflows: spec
   )
 ```
 
-`BubbleEx.Workflows.Lowering` holds the step vocabulary shared with the
-backend lowering (data operations, custom-event calls and returns, residue
-of action types). `BubbleEx.Workflows.Frontend.residue/1` feeds
-`BubbleEx.Plan.build/5` (`residue:`).
+`BubbleEx.Workflows.Lowering` is the step vocabulary both lowerings share:
+the data operations, custom-event calls and returns, parameters, the value
+structs (`Lowering.Expr`, `.Change`, `.Param`, `.Return`) and the residue of
+action types; `BubbleEx.Workflows.Backend` uses it too.
+`BubbleEx.Workflows.Frontend.residue/1` feeds `BubbleEx.Plan.build/5`
+(`residue:`).
 
 ## What is generated
 
@@ -43,15 +52,15 @@ of action types). `BubbleEx.Workflows.Frontend.residue/1` feeds
 | `lib/<app>_web/components/reusables/<name>/workflows.ex` | owned | a reusable element's workflows, when it has workflows, custom states or tracked inputs |
 | `lib/<app>_web/bubble_workflows.ex` | generated | the runtime the LiveViews and bodies call |
 | `lib/<app>_web/components/bubble.ex` | generated | element steps as JS commands and the page's hook |
-| `test/<app>_web/bubble_workflows_test.exs` | owned | one test per native workflow, tagged `bubble: "workflow:<id>"` |
+| `test/<app>_web/bubble_frontend_workflows_test.exs` | owned | one smoke test per native workflow, tagged `bubble_smoke: "workflow:<id>"` |
 
 A `Workflows` module starts with `__bubble__/1`: what the page lets a
 browser trigger (`:surface`: clicked elements, changed inputs, page-loaded,
 condition-true and "do every" workflows, custom states with their defaults,
 tracked inputs with their first values), each workflow's metadata
 (`:workflows`: its function, its condition, what blocks it, whether it
-touches stored data, its callees) and, for a page, the reusable-element
-instances it renders (`:instances`, by scope). Then one function per
+touches stored data) and, for a page, the reusable-element instances it
+renders (`:instances`, by scope). Then one function per
 workflow, marked `# bubble:workflow <id>`, with one private function per
 step marked `# bubble:step N <type>` (the plan's `step_order`).
 
@@ -85,10 +94,10 @@ lists for that element.
 | Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
-| Create / change / delete things, change the current user | Ash, with the current user as actor (data-access opt-in, below) |
-| Trigger a custom event (also from a reusable element) | a call in the same process; its return values are the step's result |
+| Create / change / delete things, change the current user | the backend workflow runtime's data steps (`<Module>.Workflows.Runtime`, WTF-373), with the current user as actor (data-access opt-in, below) |
+| Trigger a custom event (also from a reusable element) | a call in the same process, counted in the backend runtime's call budget; its return values are the step's result |
 | Schedule a custom event | `Process.send_after` to the page |
-| Schedule API workflow | residue (`:backend_workflow`): waits for the backend runtime of WTF-373 |
+| Schedule API workflow (on a list) | the backend runtime's `schedule/5` (`schedule_list/7`): an Oban job, from the event's job budget (data-access opt-in); without the backend spec, `:backend_workflow` residue |
 | Terminate this workflow | ends it (with a custom event's return values) |
 
 ### Values
@@ -109,11 +118,14 @@ track (a placeholder, a date input, one whose first value is dynamic).
 ## Refusing to run, never a partial run
 
 A workflow with any step bubble_ex did not lower is generated whole (the
-step is a `TODO(bubble:<id>)` function) and listed in `blocked`; the
-runtime refuses it **before its first step**, and refuses every workflow
-that calls or schedules it, transitively. The same holds for data access.
-A step that fails at run time ends its workflow; the steps before it keep
-their effects, as in Bubble.
+step is a `TODO(bubble:<id>)` function); its `blocked` list, as the
+backend's `blocked_by`, names its own residue subjects and the blocked (or
+unknown) workflows it calls or schedules directly (custom events, backend
+workflows), computed transitively at generation. The runtime refuses a
+workflow with a non-empty `blocked` **before its first step**. The same
+holds for data access, which is transitive through custom events. A step
+that fails at run time ends its workflow; the steps before it keep their
+effects, as in Bubble.
 
 ## Security
 
@@ -123,12 +135,18 @@ their effects, as in Bubble.
   Input values are text, numbers or yes/no, never records. Unknown events
   are ignored.
 * **Data access is off by default.** The Ash resources are generated with
-  `privacy: :omit`: they have **no authorization**. A workflow that reads
-  or writes stored data would do so for anyone who can open the page, so
-  such workflows (and their callers) refuse to start unless the owner opts
-  in: `config :<app>, <Web>.BubbleWorkflows, data_access: true`. Data steps
-  pass the current user as the actor with `authorize?: true`, so policies
-  the owner adds apply; none are generated.
+  `privacy: :omit`: **no resource has an authorizer**, so nothing is
+  authorized. A workflow that reads or writes stored data, or schedules a
+  backend workflow, would do so for anyone who can open the page, on any
+  record, so such workflows (and their callers) refuse to start unless the
+  owner opts in: `config :<app>, <Web>.BubbleWorkflows, data_access: true`
+  (the backend's workflow API is off by default the same way). They run
+  on the backend runtime with the current user as actor and `authorize?:
+  true`, which authorizes nothing until the owner adds policies.
+* **Budgets fail closed.** A page event is a root run of the backend
+  runtime (`Runtime.root/2`): its job budget (`:max_jobs`) bounds the jobs
+  its schedules and trigger-firing writes cause, and its call budget
+  (`:max_calls`) the custom events it triggers, frontend ones included.
 * **What is not enforced.** A browser can trigger the workflows of any
   element the page lists, whether or not it is visible at the time (Bubble
   does not guarantee that either). Conditions are evaluated on the server.
@@ -165,13 +183,16 @@ mobile views):
 * **IR level**, `BubbleEx.Workflows.Frontend.coverage/1`: a workflow is
   *native* when it has no residue at all: its event and every step have a
   lowering and every value compiles to Expression IR.
-* **Generated code**, `BubbleEx.Target.Elixir.FrontendWorkflows.coverage/1`:
+* **Generated code**, `BubbleEx.Target.Elixir.FrontendWorkflows.coverage/1`,
+  the backend's metric (`BubbleEx.Target.Ash.Workflows.Spec.coverage/1`)
+  plus what pages add:
   * *native*: the whole body is generated with no residue, neither the
     lowering's nor the binding's (an IR with no Elixir mapping, a value the
-    page does not provide, a step this target does not run yet);
-  * *runnable*: native, and every custom event it calls or schedules is
-    native too, transitively (the runtime starts only these);
-  * *wired*: runnable and triggered by the page (not disabled in the
+    page does not provide, a step this target does not run yet), and so is
+    every workflow it calls or schedules, transitively: the runtime starts
+    only these;
+  * *native own body*: the body alone, callees aside;
+  * *wired*: native and triggered by the page (not disabled in the
     editor, and not a custom event, which runs only when called);
   * *client*: native workflows run in the browser.
 
@@ -183,29 +204,31 @@ mobile views):
 Counts only; the snapshot is
 `test/support/target/phoenix/counts/mm-137.frontend_workflows.json`.
 
-| | total | native | runnable | wired |
-|-|------:|-------:|---------:|------:|
+| | total | native (own body) | native | wired |
+|-|------:|------:|-------:|------:|
 | workflows, IR level | 2,275 | 1,152 (50.6%) | | |
-| workflows, generated code | 2,275 | 635 (27.9%) | 531 (23.3%) | 361 |
+| workflows, generated code | 2,275 | 648 (28.5%) | 531 (23.3%) | 361 |
 | steps, IR level | 3,984 | 2,555 (64.1%) | | |
-| steps, generated code | 3,984 | 1,751 (43.9%) | | |
+| steps, generated code | 3,984 | 1,795 (45.1%) | | |
 
-By surface (generated): pages 215/637, reusable elements 420/1,638. 95
-native workflows run in the browser; 15 touch stored data (they run only
-with the opt-in). 54 workflows are disabled in the editor.
+*Native* here is the backend's definition (the workflow and everything it
+calls or schedules generated whole): 531 workflows start. By surface
+(native): pages 170/637, reusable elements 361/1,638. 95 native workflows
+run in the browser; 13 touch stored data or schedule backend workflows
+(they run only with the opt-in). 54 workflows are disabled in the editor.
+44 "Schedule API workflow" steps are generated on the backend runtime.
 
 The largest blockers (residue entries, generated code): unavailable inputs
-946 (a group's data 448, a reusable element's parameters 319, a cell's
-thing 72, untracked input values 47+13, a page's thing 27, built-in element
-states 42, page data 16), uncompiled expressions 780, plugin actions 607,
+1,027 (mostly a group's data and a reusable element's parameters, then a
+cell's thing, untracked input values, a page's thing, built-in element
+states and page data), uncompiled expressions 783, plugin actions 607,
 plugin events 258, unsupported actions 222, triggers inside runtime
-templates 192, scheduled backend workflows 139 (waiting for WTF-373).
-Workflows blocked by one reason only: unavailable inputs 256, plugin
-actions 216, uncompiled expressions 125, unsupported actions 98.
+templates 192.
 
 The WTF-359 estimate was 30–45% of frontend workflows fully generated; the
-measured 27.9% (23.3% runnable) is below it, mostly because group data and
-reusable-element parameters are not loaded or passed yet.
+measured 23.3% native (28.5% for the body alone) is below it, mostly
+because group data and reusable-element parameters are not loaded or
+passed yet.
 
 ## Checks
 
@@ -215,8 +238,11 @@ and its hostile-ID twin (`hostile_workflows`), compiles them with
 `--warnings-as-errors`, runs the generated tests, runs the behavior tests of
 `test/support/target/phoenix/frontend_workflows_behavior.exs` in the
 generated app, and completes the fixture's workflow tasks with `mix
-wtf.task complete` (compiles, lint, step_order) and runs their tagged tests
-(`scripts/phoenix_compile_check/frontend_workflows.exs`). It formats the
+wtf.task complete` (compiles, lint, step_order) and runs their smoke tests
+by tag (`mix test --only bubble_smoke:workflow:<id>`,
+`scripts/phoenix_compile_check/frontend_workflows.exs`). Frontend workflow
+tasks have no `unit_test` criterion; the smoke tests, which cannot fail on
+behavior, would not satisfy one. It formats the
 scratch project first: a freshly generated project is not formatter-clean
 (HEEx templates, router, runtime config and smoke test of WTF-369/370), so
 `lint` would fail for every task until the owner runs `mix format`.

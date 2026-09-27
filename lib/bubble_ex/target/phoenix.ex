@@ -115,10 +115,14 @@ defmodule BubbleEx.Target.Phoenix do
   element-only workflows, else the page's click event, checked against
   the page's list), tracked inputs in their own `phx-change` form, custom
   states and input values kept per reusable-element instance, and an owned
-  test per native workflow tagged with its plan subject. Workflows that
+  smoke test per native workflow tagged `bubble_smoke:` with its plan
+  subject. Data steps and scheduled backend workflows run on the backend
+  workflow runtime (`<Module>.Workflows.Runtime`, WTF-373: its job and
+  call budgets apply), so `workflows:` is required with it. Workflows that
   read or write stored data run only with an explicit opt-in
-  (`config :<app>, <Web>.BubbleWorkflows, data_access: true`): the
-  resources have no authorization (`privacy: :omit`).
+  (`config :<app>, <Web>.BubbleWorkflows, data_access: true`): as
+  generated (`privacy: :omit`) no resource has an authorizer, so nothing
+  is authorized.
 
   ## Options
 
@@ -138,8 +142,8 @@ defmodule BubbleEx.Target.Phoenix do
       `priv/static/images/bubble`; without it images keep their URLs
     * `:api_clients` - a `BubbleEx.Target.ApiClients.Spec` to render the
       API Connector clients of (see above); none by default
-    * `:frontend_workflows` - with `frontend:`, the page and
-      reusable-element workflows to wire into the pages
+    * `:frontend_workflows` - with `frontend:` and `workflows:`, the page
+      and reusable-element workflows to wire into the pages
       (`BubbleEx.Target.Elixir.FrontendWorkflows.Spec`, see "Frontend
       workflows" above); none by default
   """
@@ -150,7 +154,9 @@ defmodule BubbleEx.Target.Phoenix do
   alias BubbleEx.Target.ApiClients.Spec
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec, as: FlowSpec
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
+  alias BubbleEx.Target.Ash.Workflows.Spec, as: WorkflowSpec
   alias BubbleEx.Target.Phoenix.{ApiClients, Manifest, Pages, Templates}
+  alias BubbleEx.Target.Phoenix.Workflows, as: WorkflowFiles
 
   @version Mix.Project.config()[:version]
 
@@ -240,6 +246,7 @@ defmodule BubbleEx.Target.Phoenix do
           | {:module, String.t()}
           | {:app, String.t()}
           | {:api_clients, Spec.t() | nil}
+          | {:workflows, WorkflowSpec.t() | nil}
           | {:frontend_workflows, FlowSpec.t() | nil}
   @type files :: %{String.t() => binary()}
 
@@ -304,7 +311,14 @@ defmodule BubbleEx.Target.Phoenix do
          :ok <- check_claims(project, clients),
          {:ok, frontend} <- frontend(opts),
          :ok <- frontend_workflows(opts, frontend),
-         ctx = Map.merge(ctx, %{user: user.module, email: email, api_clients: clients}),
+         {:ok, workflows} <- workflow_files(Keyword.get(opts, :workflows), ctx),
+         ctx =
+           Map.merge(ctx, %{
+             user: user.module,
+             email: email,
+             api_clients: clients,
+             workflows: workflows
+           }),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
       ctx = Map.merge(ctx, %{routes: pages.routes, frontend: frontend_inputs(frontend)})
@@ -323,7 +337,10 @@ defmodule BubbleEx.Target.Phoenix do
 
       case Enum.filter(Map.keys(generated), &Map.has_key?(owned, &1)) do
         [] ->
-          manifest = Manifest.build(project, ctx, generated, owned)
+          manifest =
+            project
+            |> Manifest.build(ctx, generated, owned)
+            |> put_workflow_input(generated)
 
           {:ok,
            generated
@@ -510,12 +527,28 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
+  # Frontend workflows run their data steps and schedule backend workflows
+  # on the backend workflow runtime (WTF-373), so they need `workflows:`
+  # (a spec of no backend workflow still renders the runtime).
   defp frontend_workflows(opts, frontend) do
-    case Keyword.get(opts, :frontend_workflows) do
-      nil -> :ok
-      %FlowSpec{} when frontend != nil -> :ok
-      %FlowSpec{} -> invalid("frontend_workflows: needs the frontend: option")
-      _ -> invalid("frontend_workflows: must be a BubbleEx.Target.Elixir.FrontendWorkflows.Spec")
+    case {Keyword.get(opts, :frontend_workflows), Keyword.get(opts, :workflows)} do
+      {nil, _} ->
+        :ok
+
+      {%FlowSpec{}, _} when frontend == nil ->
+        invalid("frontend_workflows: needs the frontend: option")
+
+      {%FlowSpec{}, %WorkflowSpec{}} ->
+        :ok
+
+      {%FlowSpec{}, _} ->
+        invalid(
+          "frontend_workflows: needs workflows: (a BubbleEx.Target.Ash.Workflows.Spec, " <>
+            "even of no backend workflow): its data steps run on the backend workflow runtime"
+        )
+
+      _ ->
+        invalid("frontend_workflows: must be a BubbleEx.Target.Elixir.FrontendWorkflows.Spec")
     end
   end
 
@@ -583,9 +616,15 @@ defmodule BubbleEx.Target.Phoenix do
       namespace: ctx.module,
       domain: ctx.module <> ".Domain",
       repo: ctx.module <> ".Repo",
-      # The authentication configuration is an owned fragment.
-      extend: %{user.module => %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}},
-      extra_resources: [ctx.module <> ".Accounts.Token"]
+      # The authentication configuration is an owned fragment; resources
+      # with database-trigger workflows get the trigger change.
+      extend:
+        Map.merge(
+          workflow_extend(ctx.workflows),
+          %{user.module => %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}},
+          fn _module, triggers, auth -> Map.merge(triggers, auth) end
+        ),
+      extra_resources: [ctx.module <> ".Accounts.Token" | workflow_resources(ctx.workflows)]
     )
   end
 
@@ -614,14 +653,67 @@ defmodule BubbleEx.Target.Phoenix do
         "lib/web/controllers/workflow_api_controller.ex"
     }
 
+    templates =
+      if ctx.workflows,
+        do:
+          Map.merge(templates, %{
+            (lib <> "workflows/runtime.ex") => "lib/app/workflows/runtime.ex",
+            (lib <> "workflows/scheduler.ex") => "lib/app/workflows/scheduler.ex",
+            (lib <> "workflows/triggers.ex") => "lib/app/workflows/triggers.ex"
+          }),
+        else: templates
+
     templated = Map.new(templates, fn {path, t} -> {path, Templates.render(t, assigns)} end)
+    {workflow_json, workflow_code} = workflow_generated(ctx.workflows)
 
     ash
     |> Map.merge(templated)
+    |> Map.merge(workflow_code)
     |> Map.new(fn {path, content} ->
       {path, mark_generated(path, content, Map.has_key?(ash, path))}
     end)
+    |> Map.merge(workflow_json)
     |> Map.put(".wtf/names.json", pretty_json(project.names))
+  end
+
+  # --- backend workflows (WTF-373) ---------------------------------------------------
+
+  defp workflow_files(nil, _ctx), do: {:ok, nil}
+
+  defp workflow_files(%WorkflowSpec{namespace: namespace} = spec, %{module: namespace} = ctx),
+    do: {:ok, WorkflowFiles.files(spec, ctx)}
+
+  defp workflow_files(%WorkflowSpec{namespace: namespace}, ctx),
+    do:
+      invalid(
+        "the workflows were mapped for namespace #{inspect(namespace)}, " <>
+          "not the module #{inspect(ctx.module)}"
+      )
+
+  defp workflow_files(other, _ctx),
+    do: invalid("expected a BubbleEx.Target.Ash.Workflows.Spec, got #{inspect(other)}")
+
+  defp workflow_extend(nil), do: %{}
+  defp workflow_extend(%{extend: extend}), do: extend
+
+  defp workflow_resources(nil), do: []
+  defp workflow_resources(%{resources: resources}), do: resources
+
+  # The generated workflow files: the JSON report (no header) and the code.
+  defp workflow_generated(nil), do: {%{}, %{}}
+
+  defp workflow_generated(%{generated: generated}),
+    do: Map.split_with(generated, fn {path, _} -> String.ends_with?(path, ".json") end)
+
+  defp put_workflow_input(manifest, generated) do
+    case generated[".wtf/workflows.json"] do
+      nil ->
+        manifest
+
+      json ->
+        sha = :sha256 |> :crypto.hash(json) |> Base.encode16(case: :lower)
+        put_in(manifest, ["inputs", "workflows_sha256"], sha)
+    end
   end
 
   defp owned_files(ctx) do
@@ -674,12 +766,13 @@ defmodule BubbleEx.Target.Phoenix do
     }
 
     templates =
-      if ctx.routes == [],
+      if ctx.routes == [] and ctx.workflows == nil,
         do: templates,
         else: Map.put(templates, "#{lib}/bubble/runtime.ex", "lib/app/bubble/runtime.ex")
 
     templates
     |> Map.new(fn {path, t} -> {path, Templates.render(t, assigns)} end)
+    |> Map.merge(if ctx.workflows, do: ctx.workflows.owned, else: %{})
     |> Map.put(
       "mix.lock",
       "# Resolved by mix deps.get; mix.exs pins the framework.\n%{}\n"
@@ -688,6 +781,7 @@ defmodule BubbleEx.Target.Phoenix do
 
   defp assigns(ctx) do
     Map.merge(ctx, %{
+      workflows?: Map.get(ctx, :workflows) != nil,
       deps: deps_source(),
       tailwind: @tailwind,
       esbuild: @esbuild,

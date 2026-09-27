@@ -1,0 +1,837 @@
+defmodule <%= @module %>.Workflows.Runtime do
+  @moduledoc """
+  What the lowered backend workflows run on (WTF-373): the step helpers
+  the generated bodies (`<%= @module %>.Workflows.*.Bodies`) call, the
+  scheduler, the database-trigger outbox and the workflow API.
+
+  Every data access passes the workflow's actor and its `authorize?`:
+  `false` only for a workflow that ignores privacy rules in Bubble (see
+  `<%= @module %>.Workflows.Registry.privacy_bypasses/0`), the caller's for a
+  custom event, `true` otherwise. **Both only matter once the resources
+  have policies**: as generated (bubble_ex `privacy: :omit`) no resource
+  has an authorizer, so any workflow can read and write any record. That
+  is why the workflow API is off until you turn it on (`:serve_workflow_api`
+  below): exposed as is, any caller could run a workflow on other users'
+  records by passing their IDs.
+
+  A workflow whose body (or a workflow it calls or schedules) has a step
+  bubble_ex could not lower fails before its first step, with
+  `{:not_lowered, subjects}`: it never runs half its steps.
+
+  A step answers `{:cont, ctx}` (the next step runs) or `{:halt, result}`
+  (the workflow ends with `result`: `{:ok, %{status: ...}}` or
+  `{:error, reason}`). A step that fails ends its workflow, as in Bubble.
+  A step bubble_ex could not lower fails with `{:not_lowered, step, type}`
+  and logs an error: it never does nothing silently.
+
+  Configuration (`config :<%= @app %>, <%= @module %>.Workflows`):
+
+    * `:serve_workflow_api` - serve the exposed workflows at
+      `/api/1.1/wf/<name>` (default `false`: every request answers 503).
+      Turn it on only after adding policies that protect the data
+    * `:max_jobs` - how many scheduled and trigger jobs one root run (an
+      API call, a user's write, a job enqueued with `enqueue/3`) may cause
+      in total, over every generation (default 10000). Each job carries
+      its share of the budget; a scheduling step or a write whose
+      triggers exceed it fails. A job with a missing or malformed budget
+      gets none. Bubble has no such limit
+    * `:max_calls` - how many custom events one run may trigger
+      synchronously in total (default 1000)
+    * `:max_chain` - how many times a chain of scheduled workflows in a
+      call cycle may schedule the next one (default 10000)
+    * `:max_depth` - how deep custom events may call each other (default
+      100)
+    * `:app_version` - what `AppVersion` reads (default `"live"`)
+
+  The workflow API's admin token is the `WORKFLOW_API_ADMIN_TOKEN`
+  environment variable (unset: no admin access).
+
+  Unverified Bubble behavior (to confirm by replay, WTF-358): changing or
+  deleting an empty thing is an error that ends the workflow; "Return data
+  from API" ends the workflow; adding an item a list already holds keeps
+  the list as it is; a database trigger fires on creation, change and
+  deletion (its job carries the record's ID and only the attributes the
+  trigger workflows read, "now" and "before the change": a trigger that
+  reads an email puts it in oban_jobs.args, diagnosed at generation); whether a trigger's own writes fire it again (here they do,
+  within the job budget); the workflow API's error bodies; that a
+  workflow without a GET/POST setting answers POST only.
+  """
+
+  require Logger
+
+  alias <%= @module %>.Workflows.{Registry, Scheduler}
+
+  defstruct [
+    :workflow,
+    :actor,
+    :now,
+    :trigger,
+    authorize?: true,
+    params: %{},
+    steps: %{},
+    chain: 0,
+    depth: 0,
+    budget: 0,
+    calls: 0
+  ]
+
+  @type t :: %__MODULE__{}
+  @type step :: {:cont, t()} | {:halt, {:ok, map()} | {:error, term()}}
+
+  # --- running a workflow ----------------------------------------------------------
+
+  @doc """
+  Runs the workflow with Bubble ID `id` through its Ash action. `params`
+  are keyed by parameter ID or by the name callers use; things may be
+  records or Bubble IDs.
+
+  Options: `:actor`, `:authorize?` (used by custom events, which inherit
+  it), `:chain`, `:depth`, `:budget` (jobs), `:calls` and `:trigger`.
+  """
+  @spec run(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def run(id, params, opts \\ []) do
+    case registry(:workflow, [id]) do
+      nil ->
+        {:error, {:unknown_workflow, id}}
+
+      w ->
+        bubble = %{
+          authorize?: Keyword.get(opts, :authorize?),
+          chain: Keyword.get(opts, :chain, 0),
+          depth: Keyword.get(opts, :depth, 0),
+          budget: Keyword.get(opts, :budget),
+          calls: Keyword.get(opts, :calls),
+          trigger: Keyword.get(opts, :trigger)
+        }
+
+        w.resource
+        |> Ash.ActionInput.for_action(w.action, arguments(w, params),
+          actor: Keyword.get(opts, :actor),
+          context: %{bubble: bubble}
+        )
+        |> Ash.run_action()
+    end
+  end
+
+  defp arguments(w, params) do
+    for p <- w.params, into: %{} do
+      value =
+        case Map.fetch(params, p.id) do
+          {:ok, value} -> value
+          :error -> Map.get(params, p.key)
+        end
+
+      {p.argument, dump(value)}
+    end
+  end
+
+  @doc "The context a generated body starts from (`input` and `context` of its action)."
+  @spec start(Ash.ActionInput.t(), term(), String.t(), boolean() | :inherit) :: t()
+  def start(input, context, id, authorize) do
+    bubble = Map.get(input.context, :bubble) || %{}
+    w = registry(:workflow, [id])
+
+    %__MODULE__{
+      workflow: id,
+      actor: Map.get(context, :actor),
+      now: DateTime.utc_now(),
+      trigger: bubble[:trigger],
+      authorize?: authorize?(authorize, bubble[:authorize?]),
+      params: Map.new(w.params, &{&1.id, Map.get(input.arguments, &1.argument)}),
+      chain: bubble[:chain] || 0,
+      depth: bubble[:depth] || 0,
+      budget: bubble[:budget] || config(:max_jobs, 10_000),
+      calls: bubble[:calls] || config(:max_calls, 1_000)
+    }
+  end
+
+  @doc """
+  The context of a root run started outside any backend workflow: a page
+  event running frontend workflows (WTF-372, `<%= @web %>.BubbleWorkflows`),
+  as `actor`, with the whole `:max_jobs` and `:max_calls` budgets.
+  `authorize?` is `true`, which only matters once the resources have
+  policies.
+  """
+  @spec root(String.t() | nil, term()) :: t()
+  def root(workflow, actor) do
+    %__MODULE__{
+      workflow: workflow,
+      actor: actor,
+      now: DateTime.utc_now(),
+      budget: config(:max_jobs, 10_000),
+      calls: config(:max_calls, 1_000)
+    }
+  end
+
+  defp authorize?(:inherit, nil), do: true
+  defp authorize?(:inherit, inherited), do: inherited
+  defp authorize?(own, _inherited), do: own
+
+  @doc """
+  Runs the steps when `condition` (nil, or a function of the context)
+  holds. The result is `{:ok, %{status: :done | :not_run | :terminated |
+  :returned, data: ..., text: ...}}` or `{:error, reason}`. With
+  `not_lowered` subjects (residue in this workflow or a workflow it calls
+  or schedules) nothing runs: it fails before the first step.
+  """
+  @spec steps(t(), (t() -> boolean()) | nil, [(t() -> step())], [String.t()]) ::
+          {:ok, map()} | {:error, term()}
+  def steps(ctx, condition, steps, not_lowered \\ [])
+
+  def steps(ctx, _condition, _steps, [_ | _] = not_lowered) do
+    Logger.error(
+      "bubble workflow #{inspect(ctx.workflow)} is not lowered (#{inspect(not_lowered)}); no step ran"
+    )
+
+    {:error, {:not_lowered, not_lowered}}
+  end
+
+  def steps(ctx, condition, steps, []) do
+    if condition == nil or condition.(ctx) == true do
+      case Enum.reduce_while(steps, ctx, fn step, ctx -> step.(ctx) end) do
+        %__MODULE__{} -> {:ok, %{status: :done, data: nil}}
+        result -> result
+      end
+    else
+      {:ok, %{status: :not_run, data: nil}}
+    end
+  end
+
+  # --- reading context values ---------------------------------------------------------
+
+  @doc "The actor (Current User), with `loads` loaded."
+  def actor(ctx, loads), do: load(ctx.actor, loads, ctx)
+
+  @doc "A parameter's value; a thing (or list of things) is loaded by ID."
+  def param(ctx, id, loads) do
+    w = registry(:workflow, [ctx.workflow])
+    spec = Enum.find(w.params, &(&1.id == id))
+    value = Map.get(ctx.params, id)
+
+    case spec do
+      %{kind: :record, resource: resource, list?: false} -> get(resource, value, ctx) |> load(loads, ctx)
+      %{kind: :record, resource: resource, list?: true} -> get_all(resource, value, ctx) |> load(loads, ctx)
+      _ -> value
+    end
+  end
+
+  @doc "The result of an earlier step (nil when it did not run)."
+  def step(ctx, action, loads), do: ctx.steps |> Map.get(action) |> load(loads, ctx)
+
+  @doc "A database trigger's record, `:now` (as stored now) or `:before` the change."
+  def trigger(%{trigger: nil}, _state, _loads), do: nil
+  def trigger(ctx, :now, loads), do: ctx.trigger.now |> load(loads, ctx)
+  def trigger(ctx, :before, loads), do: ctx.trigger.before |> load(loads, ctx)
+
+  @doc "`AppVersion`."
+  def app_version, do: config(:app_version, "live")
+
+  defp get(_resource, nil, _ctx), do: nil
+  defp get(_resource, %{__struct__: _} = record, _ctx), do: record
+
+  defp get(resource, id, ctx) when is_binary(id) do
+    case Ash.get(resource, id, actor: ctx.actor, authorize?: ctx.authorize?, not_found_error?: false) do
+      {:ok, record} -> record
+      _ -> nil
+    end
+  end
+
+  defp get(_resource, _id, _ctx), do: nil
+
+  defp get_all(resource, ids, ctx) when is_list(ids),
+    do: ids |> Enum.map(&get(resource, &1, ctx)) |> Enum.reject(&is_nil/1)
+
+  defp get_all(_resource, _ids, _ctx), do: []
+
+  @doc "`value` (a record or a list) with relationship `loads` (paths of names) loaded."
+  def load(value, [], _ctx), do: value
+  def load(nil, _loads, _ctx), do: nil
+
+  def load(value, loads, ctx) when is_list(value),
+    do: Enum.map(value, &load(&1, loads, ctx))
+
+  def load(%{__struct__: _} = record, loads, ctx) do
+    case Ash.load(record, load_statement(loads), actor: ctx.actor, authorize?: ctx.authorize?) do
+      {:ok, loaded} -> loaded
+      {:error, _} -> record
+    end
+  end
+
+  def load(value, _loads, _ctx), do: value
+
+  # [["project", "owner"], ["creator"]] -> [project: [owner: []], creator: []]
+  defp load_statement(paths) do
+    Enum.reduce(paths, [], fn path, acc -> put_path(acc, Enum.map(path, &String.to_existing_atom/1)) end)
+  end
+
+  defp put_path(acc, []), do: acc
+
+  defp put_path(acc, [head | rest]),
+    do: Keyword.update(acc, head, put_path([], rest), &put_path(&1, rest))
+
+  # --- values ---------------------------------------------------------------------------
+
+  @doc "A value as response text: nil is empty; never raises."
+  def text(nil), do: ""
+  def text(x) when is_binary(x), do: x
+
+  def text(x) do
+    if String.Chars.impl_for(x) != nil and not is_map(x), do: to_string(x), else: inspect(x)
+  end
+
+  @doc "A thing's Bubble ID (a thing written to a reference field)."
+  def id(nil), do: nil
+  def id(%{id: id}), do: id
+  def id(id) when is_binary(id), do: id
+  def id(_), do: nil
+
+  @doc "The Bubble IDs of a list of things (written to a list field)."
+  def ids(nil), do: nil
+  def ids(list) when is_list(list), do: list |> Enum.map(&id/1) |> Enum.reject(&is_nil/1)
+  def ids(one), do: ids([one])
+
+  @doc "A new Bubble-shaped unique ID (`<milliseconds>x<18 digits>`)."
+  def new_id do
+    <<n::unsigned-64>> = :crypto.strong_rand_bytes(8)
+    "#{System.system_time(:millisecond)}x#{n |> rem(1_000_000_000_000_000_000) |> Integer.to_string() |> String.pad_leading(18, "0")}"
+  end
+
+  @doc "A value as JSON: things as their IDs, dates as ISO 8601."
+  def dump(nil), do: nil
+  def dump(%DateTime{} = d), do: DateTime.to_iso8601(d)
+  def dump(%Date{} = d), do: Date.to_iso8601(d)
+  def dump(%Decimal{} = d), do: Decimal.to_float(d)
+  def dump(%Time{} = t), do: Time.to_iso8601(t)
+  def dump(%NaiveDateTime{} = d), do: NaiveDateTime.to_iso8601(d)
+  def dump(%{__struct__: _, id: id}), do: id
+
+  def dump(%{__struct__: _} = other),
+    do: other |> Map.from_struct() |> Map.drop([:__meta__, :__metadata__]) |> dump()
+  def dump(list) when is_list(list), do: Enum.map(list, &dump/1)
+  def dump(map) when is_map(map), do: Map.new(map, fn {k, v} -> {to_string(k), dump(v)} end)
+  def dump(value), do: value
+
+  # --- data steps -----------------------------------------------------------------------
+
+  @doc "Create a new thing: `changes` are `{op, attribute, value}`."
+  def create(ctx, step, resource, changes) do
+    attrs =
+      %{}
+      |> apply_changes(nil, changes)
+      |> Map.put(:id, new_id())
+      |> stamp(resource, :created, ctx.now)
+      |> stamp(resource, :modified, ctx.now)
+      |> stamp(resource, :creator, id(ctx.actor))
+
+    with {:ok, write, ctx} <- write_opts(ctx, resource) do
+      resource |> Ash.create(attrs, write) |> continue(ctx, step)
+    else
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  @doc "Make changes to a thing (an empty thing is an error)."
+  def update(ctx, step, _resource, nil, _changes), do: fail(ctx, step, :empty_thing)
+
+  def update(ctx, step, resource, record, changes) do
+    with {:ok, write, ctx} <- write_opts(ctx, resource) do
+      record |> Ash.update(update_attrs(ctx, resource, record, changes), write) |> continue(ctx, step)
+    else
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  @doc "Make changes to a list of things."
+  def update_list(ctx, step, resource, records, changes) do
+    records
+    |> List.wrap()
+    |> Enum.reduce_while({:ok, [], ctx}, fn record, {:ok, acc, ctx} ->
+      with {:ok, write, ctx} <- write_opts(ctx, resource),
+           {:ok, updated} <- Ash.update(record, update_attrs(ctx, resource, record, changes), write) do
+        {:cont, {:ok, [updated | acc], ctx}}
+      else
+        error -> {:halt, {error, ctx}}
+      end
+    end)
+    |> case do
+      {:ok, updated, ctx} -> continue({:ok, Enum.reverse(updated)}, ctx, step)
+      {error, ctx} -> continue(error, ctx, step)
+    end
+  end
+
+  @doc "Delete a thing (an empty thing is an error)."
+  def delete(ctx, step, nil), do: fail(ctx, step, :empty_thing)
+
+  def delete(ctx, step, %resource{} = record) do
+    with {:ok, write, ctx} <- write_opts(ctx, resource),
+         :ok <- Ash.destroy(record, write) do
+      {:cont, put_step(ctx, step, nil)}
+    else
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  def delete(ctx, step, _other), do: fail(ctx, step, :not_a_thing)
+
+  @doc "Delete a list of things."
+  def delete_list(ctx, step, records) do
+    records
+    |> List.wrap()
+    |> Enum.reduce_while({:cont, ctx}, fn record, {:cont, ctx} ->
+      case delete(ctx, step, record) do
+        {:cont, ctx} -> {:cont, {:cont, ctx}}
+        halt -> {:halt, halt}
+      end
+    end)
+  end
+
+  defp update_attrs(ctx, resource, record, changes) do
+    %{}
+    |> apply_changes(record, changes)
+    |> stamp(resource, :modified, ctx.now)
+  end
+
+  defp apply_changes(attrs, record, changes) do
+    Enum.reduce(changes, attrs, fn {op, attribute, value}, acc ->
+      current =
+        case Map.fetch(acc, attribute) do
+          {:ok, v} -> v
+          :error -> record && Map.get(record, attribute)
+        end
+
+      Map.put(acc, attribute, change(op, current, value))
+    end)
+  end
+
+  defp change(:set, _current, value), do: value
+  defp change(:set_list, _current, value), do: List.wrap(value)
+  defp change(:clear_list, _current, _value), do: []
+  defp change(:add, current, nil), do: current
+  defp change(:add, current, value), do: add(current || [], [value])
+  defp change(:add_list, current, value), do: add(current || [], List.wrap(value))
+  defp change(:remove, current, value), do: Enum.reject(current || [], &(&1 == value))
+  defp change(:remove_list, current, value), do: Enum.reject(current || [], &(&1 in List.wrap(value)))
+
+  defp add(list, items),
+    do: Enum.reduce(items, list, fn item, acc -> if item in acc, do: acc, else: acc ++ [item] end)
+
+  defp stamp(attrs, resource, kind, value) do
+    case registry(:stamps, [resource]) do
+      %{^kind => attribute} when is_atom(attribute) and not is_nil(attribute) ->
+        Map.put_new(attrs, attribute, value)
+
+      _ ->
+        attrs
+    end
+  end
+
+  # A write's options. When the resource has database triggers, the write
+  # reserves their jobs from this run's budget and hands each its share.
+  defp write_opts(ctx, resource) do
+    case length(registry(:triggers, [resource])) do
+      0 ->
+        {:ok, options(ctx, nil), ctx}
+
+      n ->
+        with {:ok, share, ctx} <- reserve(ctx, n), do: {:ok, options(ctx, share), ctx}
+    end
+  end
+
+  defp options(ctx, budget),
+    do: [
+      actor: ctx.actor,
+      authorize?: ctx.authorize?,
+      context: %{bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget}}
+    ]
+
+  # Takes `n` jobs from the run's budget; each gets a share of what is
+  # left, and the run keeps the rest, so one root run causes at most
+  # `:max_jobs` jobs over all its generations.
+  defp reserve(ctx, 0), do: {:ok, 0, ctx}
+
+  defp reserve(ctx, n) when ctx.budget >= n do
+    share = div(ctx.budget - n, 2 * n)
+    {:ok, share, %{ctx | budget: ctx.budget - n - n * share}}
+  end
+
+  defp reserve(ctx, n) do
+    Logger.error("bubble workflow #{inspect(ctx.workflow)}: job budget exhausted (#{n} needed)")
+    {:error, {:job_budget_exhausted, n}}
+  end
+
+  # --- scheduling and calls ----------------------------------------------------------------
+
+  @doc "Schedule API workflow `callee` at `at` (nil or past: now)."
+  def schedule(ctx, step, callee, at, params) do
+    with :ok <- chain_guard(ctx, callee),
+         {:ok, share, ctx} <- reserve(ctx, 1),
+         {:ok, job} <- insert(ctx, callee, at, params, share) do
+      {:cont, put_step(ctx, step, job.id)}
+    else
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  @doc "Schedule API workflow `callee` on each item of `list`, `interval` seconds apart."
+  def schedule_list(ctx, step, callee, at, list, interval, params) do
+    items = List.wrap(list)
+    spacing = if is_number(interval) and interval > 0, do: interval, else: 0
+    start = if match?(%DateTime{}, at), do: at, else: ctx.now
+
+    with :ok <- chain_guard(ctx, callee),
+         {:ok, share, ctx} <- reserve(ctx, length(items)) do
+      items
+      |> Enum.with_index()
+      |> Enum.reduce_while({:ok, []}, fn {_item, i}, {:ok, ids} ->
+        at = DateTime.add(start, round(i * spacing * 1000), :millisecond)
+
+        case insert(ctx, callee, at, params, share) do
+          {:ok, job} -> {:cont, {:ok, [job.id | ids]}}
+          error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, ids} -> {:cont, put_step(ctx, step, Enum.reverse(ids))}
+        error -> continue(error, ctx, step)
+      end
+    else
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  defp insert(ctx, callee, at, params, budget) do
+    args = %{
+      "workflow" => callee,
+      "params" => dump(params),
+      "actor" => id(ctx.actor),
+      "chain" => ctx.chain + 1,
+      "budget" => budget
+    }
+
+    opts = if match?(%DateTime{}, at), do: [scheduled_at: at], else: []
+    args |> Scheduler.new(opts) |> Oban.insert()
+  end
+
+  defp chain_guard(ctx, callee) do
+    if registry(:cycle, [callee]) && ctx.chain >= config(:max_chain, 10_000) do
+      Logger.error("bubble workflow #{inspect(callee)}: chain limit reached, not scheduled")
+      {:error, {:chain_limit, callee}}
+    else
+      :ok
+    end
+  end
+
+  @doc "Trigger custom event `callee` now, in this workflow's context."
+  def call(ctx, step, callee, params) do
+    cond do
+      ctx.depth >= config(:max_depth, 100) ->
+        fail(ctx, step, {:depth_limit, callee})
+
+      ctx.calls < 1 ->
+        fail(ctx, step, {:call_budget_exhausted, callee})
+
+      true ->
+        # The callee gets half of what is left; the rest stays here.
+        calls = div(ctx.calls - 1, 2)
+        jobs = div(ctx.budget, 2)
+        ctx = %{ctx | calls: ctx.calls - 1 - calls, budget: ctx.budget - jobs}
+        call_run(ctx, step, callee, params, calls, jobs)
+    end
+  end
+
+  defp call_run(ctx, step, callee, params, calls, jobs) do
+    callee
+    |> run(params,
+      actor: ctx.actor,
+      authorize?: ctx.authorize?,
+      chain: ctx.chain,
+      depth: ctx.depth + 1,
+      budget: jobs,
+      calls: calls,
+      trigger: ctx.trigger
+    )
+    |> case do
+      {:ok, %{data: data}} -> {:cont, put_step(ctx, step, data)}
+      {:ok, _} -> {:cont, put_step(ctx, step, nil)}
+      error -> continue(error, ctx, step)
+    end
+  end
+
+  # --- ending ------------------------------------------------------------------------------
+
+  @doc "Terminate this workflow, returning `returns` (a custom event's values)."
+  def terminate(_ctx, returns), do: {:halt, {:ok, %{status: :terminated, data: returns}}}
+
+  @doc "Return data from API (ends the workflow)."
+  def return(_ctx, values), do: {:halt, {:ok, %{status: :returned, data: values}}}
+
+  @doc "Return plain text from API (ends the workflow)."
+  def return_text(_ctx, content_type, text),
+    do: {:halt, {:ok, %{status: :returned, data: nil, text: {content_type, text}}}}
+
+  @doc "A step bubble_ex did not lower: it fails, loudly."
+  def not_lowered(ctx, step, type) do
+    Logger.error("bubble workflow #{inspect(ctx.workflow)}: step #{inspect(step)} (#{inspect(type)}) is not lowered")
+    {:halt, {:error, {:not_lowered, step, type}}}
+  end
+
+  @doc "A step whose condition is false."
+  def skip(ctx), do: {:cont, ctx}
+
+  defp put_step(ctx, step, value), do: %{ctx | steps: Map.put(ctx.steps, step, value)}
+
+  defp continue({:ok, value}, ctx, step), do: {:cont, put_step(ctx, step, value)}
+  defp continue(:ok, ctx, step), do: {:cont, put_step(ctx, step, nil)}
+  defp continue({:error, reason}, ctx, step), do: fail(ctx, step, reason)
+
+  defp fail(ctx, step, reason) do
+    Logger.warning("bubble workflow #{inspect(ctx.workflow)}: step #{inspect(step)} failed: #{inspect(reason)}")
+    {:halt, {:error, {step, reason}}}
+  end
+
+  # --- the scheduler and database triggers --------------------------------------------------
+
+  @doc "Runs a scheduled job's workflow (`<%= @module %>.Workflows.Scheduler`)."
+  def perform(%{"workflow" => id} = args) do
+    case registry(:workflow, [id]) do
+      nil ->
+        {:cancel, {:unknown_workflow, id}}
+
+      _ ->
+        with {:ok, actor} <- job_actor(args["actor"]),
+             {:ok, trigger} <- job_trigger(args["trigger"], actor) do
+          id
+          |> run(Map.get(args, "params") || %{},
+            actor: actor,
+            chain: Map.get(args, "chain", 0),
+            budget: args |> Map.get("budget") |> job_budget(),
+            trigger: trigger
+          )
+          |> case do
+            {:ok, _} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+        end
+    end
+  end
+
+  # Fail closed: a missing or malformed budget (negative, text, a float)
+  # is none, so such a job can neither schedule nor write to a resource
+  # with triggers; a budget above :max_jobs is capped. Enqueue root jobs
+  # from your own code with enqueue/3.
+  defp job_budget(n) when is_integer(n) and n >= 0, do: min(n, config(:max_jobs, 10_000))
+  defp job_budget(_), do: 0
+
+  @doc """
+  Schedules the backend workflow `workflow` (Bubble ID) from outside any workflow (a root
+  run with the whole `:max_jobs` budget). Options: `:actor` and
+  `:scheduled_at`.
+  """
+  def enqueue(workflow, params, opts \\ []) do
+    %{
+      "workflow" => workflow,
+      "params" => dump(params),
+      "actor" => id(Keyword.get(opts, :actor)),
+      "chain" => 0,
+      "budget" => config(:max_jobs, 10_000)
+    }
+    |> Scheduler.new(Keyword.take(opts, [:scheduled_at]))
+    |> Oban.insert()
+  end
+
+  # The actor who scheduled the job, read as the system: loading the
+  # actor is not an access on the actor's behalf.
+  defp job_actor(nil), do: {:ok, nil}
+
+  defp job_actor(id) do
+    case Ash.get(<%= @module %>.Accounts.Resources.user(), id, authorize?: false, not_found_error?: false) do
+      {:ok, user} -> {:ok, user}
+      error -> error
+    end
+  end
+
+  defp job_trigger(nil, _actor), do: {:ok, nil}
+
+  # The record as the write left it ("Thing now") and as it was before
+  # ("Thing before change"), both read at write time.
+  defp job_trigger(%{"type" => type, "now" => now, "before" => before}, _actor) do
+    resource = registry(:trigger_resource, [type])
+    {:ok, %{now: restore(resource, now), before: restore(resource, before)}}
+  end
+
+  defp job_trigger(_trigger, _actor), do: {:ok, nil}
+
+  @doc """
+  Enqueues the database-trigger workflows of a written record, in the
+  write's transaction (`<%= @module %>.Workflows.Triggers`).
+  """
+  def enqueue_triggers(changeset, record, context) do
+    resource = changeset.resource
+    bubble = Map.get(changeset.context, :bubble) || %{}
+    chain = bubble[:chain] || 0
+    workflows = registry(:triggers, [resource])
+
+    # A write by a workflow reserved each job's share (Runtime.write_opts);
+    # any other write is a root and splits the whole budget.
+    budget = bubble[:budget] || div(config(:max_jobs, 10_000), max(length(workflows), 1))
+
+    before =
+      if changeset.action_type == :create, do: nil, else: snapshot(resource, changeset.data)
+
+    now = if changeset.action_type == :destroy, do: nil, else: snapshot(resource, record)
+
+    workflows
+    |> Enum.reduce_while(:ok, fn workflow, :ok ->
+      if chain >= config(:max_chain, 10_000) do
+        Logger.error("bubble workflow #{inspect(workflow)}: trigger chain limit reached")
+        {:cont, :ok}
+      else
+        %{
+          "workflow" => workflow,
+          "params" => %{},
+          "actor" => id(Map.get(context, :actor)),
+          "chain" => chain + 1,
+          "budget" => budget,
+          "trigger" => %{
+            "type" => registry(:trigger_type, [resource]),
+            "record" => record.id,
+            "now" => now,
+            "before" => before
+          }
+        }
+        |> Scheduler.new()
+        |> Oban.insert()
+        |> case do
+          {:ok, _} -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+      end
+    end)
+  end
+
+  # Only the attributes the resource's trigger workflows read (their
+  # conditions and steps, as compiled) and the primary key: the job
+  # arguments (oban_jobs.args) never hold the rest of the record.
+  defp snapshot(resource, %{__struct__: _} = record) do
+    fields = registry(:trigger_fields, [resource])
+
+    for attribute <- Ash.Resource.Info.attributes(resource),
+        attribute.primary_key? or attribute.name in fields,
+        into: %{} do
+      value = Map.get(record, attribute.name)
+
+      dumped =
+        case Ash.Type.dump_to_embedded(attribute.type, value, attribute.constraints) do
+          {:ok, v} -> v
+          _ -> nil
+        end
+
+      {Atom.to_string(attribute.name), dumped}
+    end
+  end
+
+  defp snapshot(_resource, _record), do: nil
+
+  defp restore(_resource, nil), do: nil
+
+  defp restore(resource, values) when is_map(values) do
+    fields =
+      for attribute <- Ash.Resource.Info.attributes(resource), into: %{} do
+        value =
+          case Ash.Type.cast_stored(attribute.type, values[Atom.to_string(attribute.name)], attribute.constraints) do
+            {:ok, v} -> v
+            _ -> nil
+          end
+
+        {attribute.name, value}
+      end
+
+    struct(resource, fields)
+  end
+
+  # --- the workflow API --------------------------------------------------------------------
+
+  @doc """
+  Runs an exposed workflow for the workflow API: `name` is its endpoint,
+  `method` the request's (`"GET"`, `"POST"`…), `params` the request's
+  parameters, `actor` the bearer token's user and `authorization` the
+  `Authorization` header (the admin token). Nothing runs unless
+  `:serve_workflow_api` is on (`{:error, :not_served}`).
+  """
+  def call_endpoint(name, method, params, actor, authorization) do
+    with :ok <- served(),
+         {:ok, endpoint} <- endpoint(name),
+         :ok <- method(endpoint, method),
+         {:ok, actor} <- authenticate(endpoint, actor, authorization),
+         {:ok, args} <- endpoint_params(endpoint, params) do
+      case run(endpoint.workflow, args, actor: actor) do
+        {:ok, %{status: :not_run}} when endpoint.return_200? -> {:ok, %{status: :done, data: nil}}
+        {:ok, %{status: :not_run}} -> {:error, :not_run}
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, {:failed, reason}}
+      end
+    end
+  end
+
+  @doc "Whether the workflow API is served (`:serve_workflow_api`)."
+  def served?, do: config(:serve_workflow_api, false) == true
+
+  defp served, do: if(served?(), do: :ok, else: {:error, :not_served})
+
+  # A workflow set to GET or POST answers that method only; one with no
+  # setting answers POST (unverified against Bubble).
+  defp method(endpoint, method) do
+    allowed = endpoint.method || :post
+
+    if method == allowed |> Atom.to_string() |> String.upcase(),
+      do: :ok,
+      else: {:error, {:method_not_allowed, allowed}}
+  end
+
+  defp endpoint(name) do
+    case registry(:endpoint, [name]) do
+      nil -> {:error, :not_found}
+      endpoint -> {:ok, endpoint}
+    end
+  end
+
+  defp authenticate(%{auth: :none}, actor, _authorization), do: {:ok, actor}
+
+  defp authenticate(%{auth: auth}, actor, authorization) do
+    cond do
+      admin?(authorization) -> {:ok, nil}
+      auth == :authenticated and actor != nil -> {:ok, actor}
+      true -> {:error, :unauthorized}
+    end
+  end
+
+  defp admin?("Bearer " <> token) do
+    case System.get_env("WORKFLOW_API_ADMIN_TOKEN") do
+      admin when is_binary(admin) and admin != "" -> Plug.Crypto.secure_compare(token, admin)
+      _ -> false
+    end
+  end
+
+  defp admin?(_), do: false
+
+  defp endpoint_params(endpoint, params) do
+    w = registry(:workflow, [endpoint.workflow])
+
+    Enum.reduce_while(w.params, {:ok, %{}}, fn p, {:ok, acc} ->
+      case Map.fetch(params, p.key) do
+        {:ok, value} -> {:cont, {:ok, Map.put(acc, p.id, value)}}
+        :error when p.optional? -> {:cont, {:ok, acc}}
+        :error -> {:halt, {:error, {:missing, p.key}}}
+      end
+    end)
+  end
+
+  # The generated registry, through `apply/3`: its lookups are constants
+  # for some apps (no endpoints, no triggers), and the type checker must
+  # not specialize this module on one app's data.
+  defp registry(fun, args), do: apply(Registry, fun, args)
+
+  defp config(key, default) do
+    :<%= @app %> |> Application.get_env(<%= @module %>.Workflows, []) |> Keyword.get(key, default)
+  end
+end

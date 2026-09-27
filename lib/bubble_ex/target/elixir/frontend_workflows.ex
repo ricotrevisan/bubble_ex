@@ -51,8 +51,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       `:trigger_in_runtime_template` - an element to show, hide, focus,
       reset or call into, or the element an event listens to, that the
       generated page does not render
-    * `:backend_workflow` - scheduling an API workflow: it waits for the
-      backend workflow runtime (WTF-373)
+    * `:backend_workflow` - scheduling an API workflow without the
+      `:backend` option (the backend workflows' spec, WTF-373)
     * `:unsupported_event` (`detail.target` `"phoenix"`) - popup opened or
       closed, user logged in or out: no wiring yet
     * `:unresolved_reference` (`detail.target` `"ash"`) - a data type or
@@ -69,6 +69,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.{Naming, Project, Resource}
+  alias BubbleEx.Target.Ash.Workflows.Spec, as: BackendSpec
   alias BubbleEx.Target.Elixir, as: ElixirTarget
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
   alias BubbleEx.Workflows.Frontend
@@ -76,7 +77,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   alias BubbleEx.Workflows.Lowering.{Change, Expr}
 
   @client_ops [:show, :hide, :toggle, :focus, :scroll_to]
-  @data_ops [:create, :update, :update_current_user, :delete, :update_list, :delete_list]
+  # Steps that read or write stored data (a schedule inserts a job).
+  @data_ops [
+    :create,
+    :update,
+    :update_current_user,
+    :delete,
+    :update_list,
+    :delete_list,
+    :schedule,
+    :schedule_list
+  ]
 
   # Input element types whose value the page tracks, by value type, with
   # the normalized kind that renders them natively.
@@ -103,6 +114,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       the generated enum and runtime modules)
     * `:frontend` - the normalized frontend the pages render (required:
       what it does not render cannot be wired)
+    * `:backend` - the app's backend workflows bound to Ash
+      (`BubbleEx.Target.Ash.Workflows.Spec`, WTF-373): a page scheduling
+      one of them schedules its job; without it, scheduling is
+      `:backend_workflow` residue
   """
   @spec map(Frontend.t(), Project.t(), keyword()) :: {:ok, Spec.t()} | {:error, Error.t()}
   def map(lowered, project, opts \\ [])
@@ -131,6 +146,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
             do: {id, kind}
 
       ctx = %{
+        backend: backend_actions(Keyword.get(opts, :backend)),
         namespace: namespace,
         runtime: namespace <> ".Bubble.Runtime",
         project: project,
@@ -161,6 +177,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         |> Map.new(fn {surface, ws} ->
           {surface, ws |> names() |> Enum.map(fn {w, fun} -> workflow(w, fun, surface, ctx) end)}
         end)
+        |> block(ctx.backend)
 
       surfaces =
         Map.new(kinds, fn {id, kind} ->
@@ -206,6 +223,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defdelegate residue(spec), to: Spec
 
   # --- options -------------------------------------------------------------------------
+
+  # The backend workflows by Bubble ID, with whether each runs
+  # (`BubbleEx.Target.Ash.Workflows.Spec.native?/1`), or nil.
+  defp backend_actions(%BackendSpec{} = spec),
+    do: spec |> BackendSpec.actions() |> Map.new(&{&1.workflow, BackendSpec.native?(&1)})
+
+  defp backend_actions(_), do: nil
 
   defp namespace(opts) do
     case Keyword.get(opts, :namespace) do
@@ -380,6 +404,86 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp interval_residue(_w, _interval, _residue), do: []
+
+  # --- blocking --------------------------------------------------------------------
+
+  # As the backend binding (`BubbleEx.Target.Ash.Workflows`): a workflow
+  # whose body has residue, or that calls or schedules one that does
+  # (transitively, cycles included), must not run any step. `blocked_by`
+  # lists why: its own residue subjects and the blocked (or unknown)
+  # workflows it reaches directly, sorted. `data?` becomes transitive too:
+  # a workflow runs only with data access when one it calls does.
+  defp block(bound, backend) do
+    all = bound |> Map.values() |> List.flatten()
+    by_key = Map.new(all, &{{&1.surface, &1.workflow}, &1})
+    own = for w <- all, own_residue(w) != [], into: MapSet.new(), do: {w.surface, w.workflow}
+    blocked = fixpoint(own, all, by_key, backend)
+    data = for w <- all, w.data?, into: MapSet.new(), do: key(w)
+    data = data_fixpoint(data, all)
+
+    Map.new(bound, fn {surface, ws} ->
+      {surface,
+       Enum.map(ws, fn w ->
+         callees =
+           for callee <- all_callees(w),
+               callee_blocked?(callee, by_key, backend, blocked),
+               do: callee_subject(callee)
+
+         subjects = Enum.map(own_residue(w), & &1.subject)
+
+         w
+         |> Map.put(:data?, MapSet.member?(data, key(w)))
+         |> Map.put(:blocked_by, Enum.sort(Enum.uniq(subjects ++ callees)))
+       end)}
+    end)
+  end
+
+  defp key(w), do: {w.surface, w.workflow}
+
+  defp fixpoint(blocked, all, by_key, backend) do
+    next =
+      for w <- all,
+          MapSet.member?(blocked, key(w)) or
+            Enum.any?(all_callees(w), &callee_blocked?(&1, by_key, backend, blocked)),
+          into: MapSet.new(),
+          do: key(w)
+
+    if next == blocked, do: blocked, else: fixpoint(next, all, by_key, backend)
+  end
+
+  defp data_fixpoint(data, all) do
+    next =
+      for w <- all,
+          MapSet.member?(data, key(w)) or
+            Enum.any?(w.callees, &MapSet.member?(data, {&1.surface, &1.workflow})),
+          into: MapSet.new(),
+          do: key(w)
+
+    if next == data, do: data, else: data_fixpoint(next, all)
+  end
+
+  # Frontend callees (`%{surface, workflow}`) and scheduled backend
+  # workflows (`{:backend, id}`).
+  defp all_callees(w) do
+    backend =
+      for %{op: op, args: %{backend: id}} <- w.steps,
+          op in [:schedule, :schedule_list],
+          uniq: true,
+          do: {:backend, id}
+
+    w.callees ++ backend
+  end
+
+  defp callee_blocked?({:backend, id}, _by_key, backend, _blocked),
+    do: Map.get(backend || %{}, id) != true
+
+  defp callee_blocked?(%{surface: s, workflow: id}, by_key, _backend, blocked),
+    do: not Map.has_key?(by_key, {s, id}) or MapSet.member?(blocked, {s, id})
+
+  defp callee_subject({:backend, id}), do: "workflow:" <> id
+  defp callee_subject(%{workflow: id}), do: "workflow:" <> id
+
+  defp own_residue(w), do: w.residue ++ Enum.flat_map(w.steps, & &1.residue)
 
   defp event_residue(%Workflow{kind: kind} = w, _ctx) when kind in @unwired_events,
     do: [
@@ -586,8 +690,22 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
      r1 ++ r2}
   end
 
-  defp args(op, args, id, _ctx) when op in [:schedule, :schedule_list],
+  defp args(op, args, id, %{backend: nil}) when op in [:schedule, :schedule_list],
     do: {%{}, [Residue.entry(id, :backend_workflow, %{workflow: "workflow:" <> args.workflow})]}
+
+  defp args(op, args, id, ctx) when op in [:schedule, :schedule_list] do
+    if Map.has_key?(ctx.backend, args.workflow) do
+      {at, r1} = compile(args.at, id, ctx)
+      {list, r2} = compile(args[:list], id, ctx)
+      {interval, r3} = compile(args[:interval], id, ctx)
+      {params, r4} = values(args.params, :param, id, ctx)
+
+      {%{backend: args.workflow, at: at, list: list, interval: interval, params: params},
+       r1 ++ r2 ++ r3 ++ r4}
+    else
+      {%{}, [Residue.entry(id, :unresolved_reference, %{reference: "workflow", target: "ash"})]}
+    end
+  end
 
   defp args(:terminate, args, id, ctx) do
     {returns, residue} = values(args.returns, :return, id, ctx)
@@ -686,20 +804,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   # --- data ------------------------------------------------------------------------------
 
-  defp resource_args(%Resource{} = r) do
-    find = fn field -> Enum.find_value(r.attributes, &(&1.source[:field] == field && &1.name)) end
-    pk = Enum.find_value(r.attributes, &(&1.primary_key? && &1.name))
-
-    %{
-      resource: r.module,
-      pk: pk,
-      stamps: %{
-        created: find.("Created Date"),
-        modified: find.("Modified Date"),
-        creator: find.("Created By")
-      }
-    }
-  end
+  defp resource_args(%Resource{} = r), do: %{resource: r.module}
 
   defp changes(changes, resource, id, ctx) do
     fields = ctx.lookup.types[resource.source.type].fields

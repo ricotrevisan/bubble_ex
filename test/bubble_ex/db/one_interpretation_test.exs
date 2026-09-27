@@ -46,6 +46,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
     "lib/bubble_ex/workflows/node.ex" => "classifies a JSON pointer's section (`user_types`)",
     "lib/bubble_ex/workflows/explanation.ex" =>
       "workflow action parameters' own `key`/`value` members, not fields",
+    "lib/bubble_ex/workflows/backend.ex" =>
+      "backend workflow parameter definitions' own `value` (their type), return definitions' `display` (a caption), and change and return entries' own `value` members, not the data model",
     "lib/bubble_ex/workflows/lowering.ex" =>
       "workflow parameter definitions' own `value` (their type), return definitions' `display` (a caption), and change and return entries' own `value` members, not the data model",
     "lib/bubble_ex/workflows/frontend.ex" =>

@@ -38,9 +38,17 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
     {:ok, frontend} = BubbleEx.Frontend.normalize(app)
     {:ok, lowered} = Frontend.build(app, model, index)
+    {:ok, backend_lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
+
+    {:ok, backend} =
+      BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Private")
 
     {:ok, spec} =
-      FrontendWorkflows.map(lowered, project, namespace: "Private", frontend: frontend)
+      FrontendWorkflows.map(lowered, project,
+        namespace: "Private",
+        frontend: frontend,
+        backend: backend
+      )
 
     %{
       app: app,
@@ -49,6 +57,7 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
       project: project,
       frontend: frontend,
       lowered: lowered,
+      backend: backend,
       spec: spec
     }
   end
@@ -104,9 +113,17 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
   test "the rendered app wires only what its pages list; output is deterministic", %{
     project: project,
     frontend: frontend,
+    backend: backend,
     spec: spec
   } do
-    opts = [name: "Private", frontend: frontend, frontend_workflows: spec]
+    opts = [
+      name: "Private",
+      module: "Private",
+      frontend: frontend,
+      workflows: backend,
+      frontend_workflows: spec
+    ]
+
     {:ok, files} = Phoenix.render(project, opts)
     assert {:ok, ^files} = Phoenix.render(project, opts)
 

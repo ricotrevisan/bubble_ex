@@ -29,11 +29,26 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       )
 
     {:ok, lowered} = Frontend.build(app, model, index)
-    {:ok, spec} = FrontendWorkflows.map(lowered, project, namespace: "Shop", frontend: frontend)
+    {:ok, backend_lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
+
+    {:ok, backend} =
+      BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Shop")
+
+    {:ok, spec} =
+      FrontendWorkflows.map(lowered, project,
+        namespace: "Shop",
+        frontend: frontend,
+        backend: backend
+      )
 
     opts =
-      [module: "Shop", frontend: frontend, expressions: expressions, frontend_workflows: spec] ++
-        opts
+      [
+        module: "Shop",
+        frontend: frontend,
+        expressions: expressions,
+        workflows: backend,
+        frontend_workflows: spec
+      ] ++ opts
 
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
@@ -82,7 +97,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     for path <-
           ~w(lib/shop_web/live/index_live/workflows.ex lib/shop_web/live/other_live/workflows.ex
                    lib/shop_web/components/reusables/card/workflows.ex
-                   test/shop_web/bubble_workflows_test.exs),
+                   test/shop_web/bubble_frontend_workflows_test.exs),
         do: assert(Map.has_key?(manifest["owned"], path), path)
 
     assert Map.has_key?(manifest["generated"], "lib/shop_web/bubble_workflows.ex")
@@ -121,9 +136,17 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # Browser-run and disabled workflows are not in the click list.
     refute module =~ ~s("bBtnOpen" =>)
     assert module =~ ~s({"bInst1", ShopWeb.Reusables.Card.Workflows})
-    assert module =~ ~s|blocked: [{"action:aRes2", :unsupported_action}]|
-    assert module =~ ~s|callees: [{ShopWeb.IndexLive.Workflows, "wEvtResidue"}]|
-    assert module =~ ~s|"wData" => %{run: :wf_w_data, condition: nil, blocked: [], data: true|
+    assert module =~ ~s|blocked: ["action:aRes2"]|
+    # Blocked through the custom event it calls, as the backend's blocked_by.
+    assert module =~ ~s|blocked: ["workflow:wEvtResidue"]|
+    assert module =~ ~s|"wData" => %{run: :wf_w_data, condition: nil, blocked: [], data: true}|
+    # Scheduling a backend workflow runs on the backend runtime.
+    assert module =~ "page_data_current_date_time = ctx.now"
+
+    assert module =~
+             ~s|Runtime.schedule(run, "aSchedule1", "wApiNote", page_data_current_date_time|
+
+    assert module =~ ~s|BubbleWorkflows.backend(ctx, fn run ->|
   end
 
   test "bodies call the runtime; browser-run workflows are JS commands", %{files: files} do
@@ -187,11 +210,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
   } do
     {:ok, plan} = Plan.build(model, index)
     tasks = for t <- plan.tasks, t.kind == :workflow, into: MapSet.new(), do: t.id
-    {:ok, quoted} = Code.string_to_quoted(files["test/shop_web/bubble_workflows_test.exs"])
+
+    {:ok, quoted} =
+      Code.string_to_quoted(files["test/shop_web/bubble_frontend_workflows_test.exs"])
 
     {_, tags} =
       Macro.prewalk(quoted, [], fn
-        {:@, _, [{:tag, _, [[bubble: tag]]}]} = node, acc -> {node, [tag | acc]}
+        {:@, _, [{:tag, _, [[bubble_smoke: tag]]}]} = node, acc -> {node, [tag | acc]}
         node, acc -> {node, acc}
       end)
 
@@ -239,11 +264,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     end
 
     # The test tags are the plan's subjects, as data.
-    {:ok, quoted} = Code.string_to_quoted(files["test/shop_web/bubble_workflows_test.exs"])
+    {:ok, quoted} =
+      Code.string_to_quoted(files["test/shop_web/bubble_frontend_workflows_test.exs"])
 
     {_, tags} =
       Macro.prewalk(quoted, [], fn
-        {:@, _, [{:tag, _, [[bubble: tag]]}]} = node, acc -> {node, [tag | acc]}
+        {:@, _, [{:tag, _, [[bubble_smoke: tag]]}]} = node, acc -> {node, [tag | acc]}
         node, acc -> {node, acc}
       end)
 

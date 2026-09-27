@@ -1,5 +1,43 @@
 {
   "_id": "phx-frontend-workflows",
+  "api": {
+    "wApiNote": {
+      "actions": {
+        "0": {
+          "id": "aApiNote1",
+          "properties": {
+            "initial_values": {
+              "0": {
+                "key": "title_text",
+                "value": {
+                  "properties": {
+                    "btype_id": "text",
+                    "param_id": "note"
+                  },
+                  "type": "APIEventParameter"
+                }
+              }
+            },
+            "thing_type": "custom.note"
+          },
+          "type": "NewThing"
+        }
+      },
+      "id": "wApiNote",
+      "properties": {
+        "parameters": {
+          "0": {
+            "is_list": false,
+            "key": "note",
+            "optional": false,
+            "value": "text"
+          }
+        },
+        "wf_name": "note"
+      },
+      "type": "APIEvent"
+    }
+  },
   "element_definitions": {
     "card": {
       "custom_states": {
@@ -336,6 +374,22 @@
             "text": {
               "entries": {
                 "0": "Residue"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnSchedule": {
+          "id": "bBtnSchedule",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 19,
+            "text": {
+              "entries": {
+                "0": "Schedule"
               },
               "type": "TextExpression"
             },
@@ -985,6 +1039,34 @@
           "id": "wResidue",
           "properties": {
             "element_id": "bBtnResidue"
+          },
+          "type": "ButtonClicked"
+        },
+        "wSchedule": {
+          "actions": {
+            "0": {
+              "id": "aSchedule1",
+              "properties": {
+                "_wf_param_note": {
+                  "entries": {
+                    "0": "from the page"
+                  },
+                  "type": "TextExpression"
+                },
+                "api_event": "wApiNote",
+                "date": {
+                  "properties": {
+                    "name": "Current Date/Time"
+                  },
+                  "type": "PageData"
+                }
+              },
+              "type": "ScheduleAPIEvent"
+            }
+          },
+          "id": "wSchedule",
+          "properties": {
+            "element_id": "bBtnSchedule"
           },
           "type": "ButtonClicked"
         },

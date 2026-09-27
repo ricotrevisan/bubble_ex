@@ -1,0 +1,387 @@
+{
+ "_id": "wfhostile",
+ "api": {
+  "wClose\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+   "actions": {
+    "0": {
+     "id": "aClose\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "changes": {
+       "0": {
+        "key": "done_boolean",
+        "value": true
+       },
+       "1": {
+        "action": "add",
+        "key": "tags_list_text",
+        "value": {
+         "entries": {
+          "0": "closed\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+         },
+         "type": "TextExpression"
+        }
+       }
+      },
+      "to_change": {
+       "properties": {
+        "btype_id": "custom.task",
+        "param_id": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+       },
+       "type": "APIEventParameter"
+      }
+     },
+     "type": "ChangeThing"
+    },
+    "1": {
+     "id": "aNotify\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "arguments": {
+       "0": {
+        "arg_value": {
+         "properties": {
+          "btype_id": "custom.task",
+          "param_id": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+         },
+         "type": "APIEventParameter"
+        },
+        "param_id": "pTask\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+       }
+      },
+      "custom_event": "wNotify\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+     },
+     "type": "TriggerCustomEvent"
+    }
+   },
+   "id": "wClose\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "properties": {
+    "ignore_privacy_rules": true,
+    "parameters": {
+     "0": {
+      "key": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "value": "custom.task"
+     }
+    },
+    "wf_folder": "fTasks\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+    "wf_name": "close task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+   },
+   "type": "APIEvent"
+  },
+  "wCreate\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+   "actions": {
+    "0": {
+     "id": "aNew\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "initial_values": {
+       "0": {
+        "key": "title_text",
+        "value": {
+         "entries": {
+          "0": "literal\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+          "1": {
+           "properties": {
+            "btype_id": "text",
+            "param_id": "title\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+           },
+           "type": "APIEventParameter"
+          }
+         },
+         "type": "TextExpression"
+        }
+       },
+       "1": {
+        "key": "project_custom_project",
+        "value": {
+         "properties": {
+          "btype_id": "custom.project",
+          "param_id": "project\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+         },
+         "type": "APIEventParameter"
+        }
+       },
+       "2": {
+        "key": "done_boolean",
+        "value": false
+       }
+      },
+      "thing_type": "custom.task"
+     },
+     "type": "NewThing"
+    },
+    "1": {
+     "id": "aRet\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "parameters_actions": {
+       "0": {
+        "content": {
+         "properties": {
+          "action_id": "aNew\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+         },
+         "type": "PreviousStep"
+        },
+        "key": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+        "value": "custom.task"
+       }
+      }
+     },
+     "type": "APIReturnData"
+    }
+   },
+   "id": "wCreate\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "properties": {
+    "auth_unecessary": true,
+    "expose": true,
+    "parameters": {
+     "0": {
+      "key": "title\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "value": "text"
+     },
+     "1": {
+      "key": "project\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "optional": true,
+      "value": "custom.project"
+     }
+    },
+    "wf_folder": "fTasks\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+    "wf_name": "create task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+   },
+   "type": "APIEvent"
+  },
+  "wExternal\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+   "actions": {
+    "0": {
+     "id": "aCall\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {},
+     "type": "apiconnector2-gA.cB\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+    },
+    "1": {
+     "id": "aMail\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "to": {
+       "entries": {
+        "0": "a@example.com"
+       },
+       "type": "TextExpression"
+      }
+     },
+     "type": "SendEmail\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+    }
+   },
+   "id": "wExternal\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "properties": {
+    "expose": true,
+    "wf_folder": "fLoop\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+    "wf_name": "sync\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+   },
+   "type": "APIEvent"
+  },
+  "wNotify\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+   "actions": {
+    "0": {
+     "id": "aTerm\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "return_values": {
+       "0": {
+        "return_id": "rTitle\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+        "return_value": {
+         "next": {
+          "name": "title_text",
+          "type": "Message"
+         },
+         "properties": {
+          "btype_id": "custom.task",
+          "param_id": "pTask\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+         },
+         "type": "CurrentWorkflowItem"
+        }
+       }
+      }
+     },
+     "type": "TerminateWorkflow"
+    }
+   },
+   "id": "wNotify\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "properties": {
+    "event_name": "notify\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+    "parameters": {
+     "0": {
+      "btype_id": "custom.task",
+      "param_id": "pTask\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "param_name": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+     }
+    },
+    "return_types": {
+     "0": {
+      "btype_id": "text",
+      "display": "title\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "return_id": "rTitle\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+     }
+    },
+    "wf_folder": "fTasks\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+   },
+   "type": "CustomEvent"
+  },
+  "wOnDone\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+   "actions": {
+    "0": {
+     "id": "aProj\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "changes": {
+       "0": {
+        "key": "closed_boolean",
+        "value": true
+       }
+      },
+      "to_change": {
+       "next": {
+        "name": "project_custom_project",
+        "type": "Message"
+       },
+       "type": "CurrentDataItem"
+      }
+     },
+     "type": "ChangeThing"
+    }
+   },
+   "id": "wOnDone\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "properties": {
+    "condition": {
+     "next": {
+      "name": "done_boolean",
+      "next": {
+       "name": "is_true",
+       "type": "Message"
+      },
+      "type": "Message"
+     },
+     "type": "CurrentDataItem"
+    },
+    "data_trigger_type": "custom.task",
+    "event_name": "task done\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+   },
+   "type": "DatabaseTriggerEvent"
+  },
+  "wTick\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+   "actions": {
+    "0": {
+     "id": "aInc\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "changes": {
+       "0": {
+        "key": "count_number",
+        "value": 1
+       }
+      },
+      "to_change": {
+       "properties": {
+        "btype_id": "custom.task",
+        "param_id": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+       },
+       "type": "APIEventParameter"
+      }
+     },
+     "type": "ChangeThing"
+    },
+    "1": {
+     "id": "aAgain\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "properties": {
+      "_wf_param_task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x": {
+       "properties": {
+        "btype_id": "custom.task",
+        "param_id": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+       },
+       "type": "APIEventParameter"
+      },
+      "api_event": "wTick\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "condition": {
+       "next": {
+        "name": "count_number",
+        "next": {
+         "args": 1,
+         "name": "less_than",
+         "type": "Message"
+        },
+        "type": "Message"
+       },
+       "properties": {
+        "action_id": "aInc\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+       },
+       "type": "PreviousStep"
+      },
+      "date": {
+       "properties": {
+        "name": "Current Date/Time"
+       },
+       "type": "PageData"
+      }
+     },
+     "type": "ScheduleAPIEvent"
+    }
+   },
+   "id": "wTick\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "properties": {
+    "parameters": {
+     "0": {
+      "key": "task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+      "value": "custom.task"
+     }
+    },
+    "wf_folder": "fLoop\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+    "wf_name": "tick\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x"
+   },
+   "type": "APIEvent"
+  }
+ },
+ "user_types": {
+  "project": {
+   "display": "Project",
+   "fields": {
+    "closed_boolean": {
+     "display": "Closed",
+     "value": "boolean"
+    },
+    "name_text": {
+     "display": "Name\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "value": "text"
+    }
+   }
+  },
+  "task": {
+   "display": "Task\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+   "fields": {
+    "count_number": {
+     "display": "Count",
+     "value": "number"
+    },
+    "done_boolean": {
+     "display": "Done",
+     "value": "boolean"
+    },
+    "project_custom_project": {
+     "display": "Project",
+     "value": "custom.project"
+    },
+    "tags_list_text": {
+     "display": "Tags",
+     "value": "list.text"
+    },
+    "title_text": {
+     "display": "Title\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "value": "text"
+    },
+    "watchers_list_user": {
+     "display": "Watchers",
+     "value": "list.user"
+    }
+   }
+  },
+  "user": {
+   "display": "User",
+   "fields": {
+    "name_text": {
+     "display": "Name\"\"\"\"#{raise \"injected\"} a\nb*/--%><%= raise \"eex\" %>}{\u2028end\r\n# x",
+     "value": "text"
+    }
+   }
+  }
+ }
+}

@@ -25,7 +25,7 @@ defmodule <%= @web %>.Router do
   scope "/api/1.1/wf", <%= @web %> do
     pipe_through :api
 
-    match :*, "/:name", WorkflowApiController, :dispatch
+    match :*, "/:__wf_name", WorkflowApiController, :dispatch
   end
 
   scope "/", <%= @web %> do

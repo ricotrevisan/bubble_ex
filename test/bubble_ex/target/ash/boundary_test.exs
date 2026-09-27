@@ -17,6 +17,9 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     # Its HEEx emitter prints the normalized frontend (WTF-370).
     "lib/bubble_ex/target/phoenix/pages.ex",
     "lib/bubble_ex/target/phoenix/tailwind.ex",
+    # Backend workflows (WTF-373) print a Workflows.Spec, plain data.
+    "lib/bubble_ex/target/phoenix/workflows.ex",
+    "lib/bubble_ex/target/ash/workflows/spec.ex",
     # Its frontend workflows (WTF-372) print a FrontendWorkflows.Spec.
     "lib/bubble_ex/target/phoenix/frontend_workflows.ex"
   ]
@@ -25,6 +28,8 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
   @not_project ~w(lib/bubble_ex/target/phoenix/templates.ex
                   lib/bubble_ex/target/phoenix/pages.ex
                   lib/bubble_ex/target/phoenix/tailwind.ex
+                  lib/bubble_ex/target/phoenix/workflows.ex
+                  lib/bubble_ex/target/ash/workflows/spec.ex
                   lib/bubble_ex/target/phoenix/frontend_workflows.ex)
 
   # The API client Spec is plain data too.
@@ -40,8 +45,9 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
       ~r{^lib/bubble_ex/db/reader(\.ex$|/)},
       ~r{^lib/bubble_ex/target/ash\.ex$},
       ~r{^lib/bubble_ex/target/api_clients\.ex$},
-      # The workflow lowerings and their binding (WTF-372).
+      ~r{^lib/bubble_ex/target/ash/workflows\.ex$},
       ~r{^lib/bubble_ex/workflows/},
+      # The frontend workflows binding (WTF-372).
       ~r{^lib/bubble_ex/target/elixir/frontend_workflows\.ex$}
     ]
   end

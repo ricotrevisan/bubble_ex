@@ -26,11 +26,12 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   ## Running a workflow
 
-  A workflow starts only if it and every custom event it calls or
-  schedules, transitively, were lowered completely: a step bubble_ex did
-  not lower (`blocked` in its module's `__bubble__(:workflows)`) makes it
-  refuse **before its first step** and log an error. The same holds for
-  data access (below). Steps run in Bubble order; a step's "Only when"
+  A workflow starts only if it and every workflow it calls or schedules
+  (custom events, backend workflows), transitively, were lowered
+  completely: `blocked` in its module's `__bubble__(:workflows)` (the
+  residue subjects and blocked callees bubble_ex found, as the backend's
+  `not_lowered`) makes it refuse **before its first step** and log an
+  error. The same holds for data access (below). Steps run in Bubble order; a step's "Only when"
   skips it; a failing step ends the workflow (steps before it keep their
   effects, as in Bubble). Custom states, input values, element steps and
   navigation apply to the page when the event's workflows end.
@@ -39,16 +40,20 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   ## Data access (opt-in)
 
-  The Ash resources are generated with `privacy: :omit`: **they have no
-  authorization**, so a workflow that reads or writes stored data would do
-  it for anyone who can open the page. Such workflows (data steps,
-  relationship loads) run only when data access is enabled:
+  The Ash resources are generated with `privacy: :omit`: **no resource has
+  an authorizer**, so a workflow that reads or writes stored data would do
+  it for anyone who can open the page, on any record. Such workflows (data
+  steps, relationship loads, scheduled backend workflows) run only when
+  data access is enabled:
 
       config :<%= @app %>, <%= @web %>.BubbleWorkflows, data_access: true
 
-  Without it they refuse to start and log an error. Data steps pass the
-  current user as the actor with `authorize?: true`, so policies you add
-  apply; none are generated.
+  Without it they refuse to start and log an error. Data steps and
+  schedules run on the backend workflow runtime
+  (`<%= @module %>.Workflows.Runtime`, WTF-373) with the current user as
+  the actor: its stamps, job budget (`:max_jobs`, a page event is a root
+  run) and call budget (`:max_calls`, custom events included) apply. Its
+  `authorize?: true` authorizes nothing until you add policies.
 
   ## Unverified Bubble behavior
 
@@ -66,6 +71,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   import Phoenix.LiveView,
     only: [connected?: 1, push_event: 3, push_navigate: 2, push_patch: 2, redirect: 2]
 
+  alias <%= @module %>.Workflows.Runtime
   alias <%= @web %>.Bubble
 
   @max_rounds 10
@@ -76,8 +82,9 @@ defmodule <%= @web %>.BubbleWorkflows do
     The state a workflow runs with: the surface module and instance
     `scope`, the actor, the start time, its arguments and step results, the
     page's custom states, input values (and their `first` values) and URL,
-    and what it asks of the page (element steps `js`, `navigate`, delayed
-    `messages`).
+    what it asks of the page (element steps `js`, `navigate`, delayed
+    `messages`), and the backend runtime's context of the event (`backend`,
+    `<%= @module %>.Workflows.Runtime.root/2`: its job and call budgets).
     """
     defstruct [
       :module,
@@ -86,6 +93,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       :now,
       :returns,
       :navigate,
+      :backend,
       scope: "",
       path: "/",
       args: %{},
@@ -258,10 +266,13 @@ defmodule <%= @web %>.BubbleWorkflows do
   # --- running events --------------------------------------------------------------------
 
   defp ctx(socket, module, scope) do
+    actor = socket.assigns[:current_user]
+
     %Ctx{
       module: module,
       scope: scope,
-      actor: socket.assigns[:current_user],
+      actor: actor,
+      backend: Runtime.root(nil, actor),
       now: DateTime.utc_now(),
       states: socket.assigns.bubble_states,
       inputs: socket.assigns.bubble_inputs,
@@ -349,9 +360,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   defp condition?(socket, module, scope, id) do
-    with %{condition: fun} when is_atom(fun) and fun != nil <- module.__bubble__(:workflows)[id],
-         [] <- blocked(module, id, MapSet.new()),
-         true <- not data?(module, id, MapSet.new()) or data_access?() do
+    with %{condition: fun, blocked: [], data: data} when is_atom(fun) and fun != nil <-
+           module.__bubble__(:workflows)[id],
+         true <- not data or data_access?() do
       apply(module, fun, [ctx(socket, module, scope)]) == true
     else
       _ -> false
@@ -377,15 +388,17 @@ defmodule <%= @web %>.BubbleWorkflows do
         {{:error, {:runs_in_browser, id}}, ctx}
 
       meta ->
+        ctx = %{ctx | backend: ctx.backend || Runtime.root(id, ctx.actor)}
+
         cond do
-          (blocked = blocked(module, id, MapSet.new())) != [] ->
+          meta.blocked != [] ->
             Logger.error(
-              "bubble workflow #{inspect(id)} not run: not lowered by bubble_ex: #{inspect(blocked)}"
+              "bubble workflow #{inspect(id)} is not lowered (#{inspect(meta.blocked)}); no step ran"
             )
 
-            {{:error, {:not_lowered, blocked}}, ctx}
+            {{:error, {:not_lowered, meta.blocked}}, ctx}
 
-          data?(module, id, MapSet.new()) and not data_access?() ->
+          meta.data and not data_access?() ->
             Logger.error(
               "bubble workflow #{inspect(id)} not run: it reads or writes stored data and " <>
                 "data access is off (config :<%= @app %>, #{inspect(__MODULE__)}, data_access: true)"
@@ -412,43 +425,6 @@ defmodule <%= @web %>.BubbleWorkflows do
             back = %{child | module: ctx.module, workflow: ctx.workflow, scope: ctx.scope}
             {status, %{back | args: ctx.args, steps: ctx.steps, depth: ctx.depth}}
         end
-    end
-  end
-
-  # What stops a workflow before it starts: its own steps bubble_ex did not
-  # lower and its callees', transitively.
-  defp blocked(module, id, seen) do
-    case module.__bubble__(:workflows)[id] do
-      nil ->
-        [{id, :unknown}]
-
-      meta ->
-        seen = MapSet.put(seen, {module, id})
-
-        own = Enum.map(meta.blocked, &{id, &1})
-
-        callees =
-          for {m, callee} <- meta.callees,
-              not MapSet.member?(seen, {m, callee}),
-              entry <- blocked(m, callee, seen),
-              do: entry
-
-        own ++ callees
-    end
-  end
-
-  defp data?(module, id, seen) do
-    case module.__bubble__(:workflows)[id] do
-      nil ->
-        false
-
-      meta ->
-        seen = MapSet.put(seen, {module, id})
-
-        meta.data or
-          Enum.any?(meta.callees, fn {m, callee} ->
-            not MapSet.member?(seen, {m, callee}) and data?(m, callee, seen)
-          end)
     end
   end
 
@@ -505,21 +481,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "The current user, with `loads`."
   def actor(ctx, loads), do: load(ctx.actor, loads, ctx)
 
-  @doc "`value` with the relationship `loads` (paths of names) loaded, as the actor."
-  def load(value, [], _ctx), do: value
-  def load(nil, _loads, _ctx), do: nil
+  @doc "`value` with the relationship `loads` loaded (`Runtime.load/3`)."
+  def load(value, loads, ctx), do: Runtime.load(value, loads, backend(ctx))
 
-  def load(value, loads, ctx) when is_struct(value) or is_list(value) do
-    case Ash.load(value, Enum.map(loads, &load_path/1), actor: ctx.actor, authorize?: true) do
-      {:ok, loaded} -> loaded
-      _ -> value
-    end
-  end
-
-  def load(value, _loads, _ctx), do: value
-
-  defp load_path([name]), do: name
-  defp load_path([name | rest]), do: [{name, load_path(rest)}]
+  defp backend(ctx), do: %{(ctx.backend || Runtime.root(ctx.workflow, ctx.actor)) | actor: ctx.actor}
 
   # --- element and state steps --------------------------------------------------------------
 
@@ -642,6 +607,16 @@ defmodule <%= @web %>.BubbleWorkflows do
   `args`; its return values are the step's result.
   """
   def call(ctx, step, module, id, path, args) do
+    b = backend(ctx)
+
+    if b.calls < 1 do
+      fail(ctx, step, {:call_budget_exhausted, id})
+    else
+      called(%{ctx | backend: %{b | calls: b.calls - 1}}, step, module, id, path, args)
+    end
+  end
+
+  defp called(ctx, step, module, id, path, args) do
     case run(ctx, module, id, args, scope(ctx, path)) do
       {{:error, reason}, after_call} ->
         fail(%{after_call | returns: ctx.returns}, step, reason)
@@ -666,133 +641,26 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "Terminate this workflow, returning `returns` (a custom event's values)."
   def terminate(ctx, returns), do: {:halt, :terminated, %{ctx | returns: returns}}
 
-  # --- data steps ---------------------------------------------------------------------------
+  # --- data steps and backend workflows -------------------------------------------------
 
   @doc """
-  Create a new thing: `changes` are `{op, attribute, value}`; `stamps` the
-  attributes Bubble sets itself (`created`, `modified`, `creator`).
+  Runs a step on the backend workflow runtime: `fun` gets its context
+  (this event's budgets, the actor, the step results) and calls
+  `Runtime.create/4`, `update/5`, `update_list/5`, `delete/3`,
+  `delete_list/3`, `schedule/5` or `schedule_list/7`.
   """
-  def create(ctx, step, resource, pk, stamps, changes) do
-    attrs =
-      %{}
-      |> apply_changes(nil, changes)
-      |> Map.put(pk, new_id())
-      |> stamp(stamps[:created], ctx.now)
-      |> stamp(stamps[:modified], ctx.now)
-      |> stamp(stamps[:creator], id(ctx.actor))
+  def backend(ctx, fun) do
+    b = %{backend(ctx) | workflow: ctx.workflow, now: ctx.now, steps: ctx.steps}
 
-    resource
-    |> Ash.create(attrs, opts(ctx))
-    |> continue(ctx, step)
-  end
-
-  @doc "Make changes to a thing (an empty thing is an error)."
-  def update(ctx, step, _resource, _stamps, nil, _changes), do: fail(ctx, step, :empty_thing)
-
-  def update(ctx, step, _resource, stamps, record, changes) do
-    record
-    |> Ash.update(update_attrs(ctx, stamps, record, changes), opts(ctx))
-    |> continue(ctx, step)
-  end
-
-  @doc "Make changes to a list of things."
-  def update_list(ctx, step, _resource, stamps, records, changes) do
-    records
-    |> List.wrap()
-    |> Enum.reduce_while({:ok, []}, fn record, {:ok, acc} ->
-      case Ash.update(record, update_attrs(ctx, stamps, record, changes), opts(ctx)) do
-        {:ok, updated} -> {:cont, {:ok, [updated | acc]}}
-        error -> {:halt, error}
-      end
-    end)
-    |> case do
-      {:ok, updated} -> continue({:ok, Enum.reverse(updated)}, ctx, step)
-      error -> continue(error, ctx, step)
+    case fun.(b) do
+      {:cont, b} -> {:cont, %{ctx | backend: b, steps: b.steps}}
+      {:halt, {:error, reason}} -> {:halt, {:error, reason}, ctx}
+      {:halt, other} -> {:halt, {:error, {:unexpected, other}}, ctx}
     end
-  end
-
-  @doc "Delete a thing (an empty thing is an error)."
-  def delete(ctx, step, nil), do: fail(ctx, step, :empty_thing)
-
-  def delete(ctx, step, record) do
-    case Ash.destroy(record, opts(ctx)) do
-      :ok -> {:cont, put_step(ctx, step, nil)}
-      error -> continue(error, ctx, step)
-    end
-  end
-
-  @doc "Delete a list of things."
-  def delete_list(ctx, step, records) do
-    records
-    |> List.wrap()
-    |> Enum.reduce_while({:cont, ctx}, fn record, acc ->
-      case delete(ctx, step, record) do
-        {:cont, _} -> {:cont, acc}
-        halt -> {:halt, halt}
-      end
-    end)
-  end
-
-  defp update_attrs(ctx, stamps, record, changes) do
-    %{}
-    |> apply_changes(record, changes)
-    |> stamp(stamps[:modified], ctx.now)
-  end
-
-  defp apply_changes(attrs, record, changes) do
-    Enum.reduce(changes, attrs, fn {op, attribute, value}, acc ->
-      current =
-        case Map.fetch(acc, attribute) do
-          {:ok, v} -> v
-          :error -> record && Map.get(record, attribute)
-        end
-
-      Map.put(acc, attribute, change(op, current, value))
-    end)
-  end
-
-  defp change(:set, _current, value), do: value
-  defp change(:set_list, _current, value), do: List.wrap(value)
-  defp change(:clear_list, _current, _value), do: []
-  defp change(:add, current, nil), do: current
-  defp change(:add, current, value), do: add(current || [], [value])
-  defp change(:add_list, current, value), do: add(current || [], List.wrap(value))
-  defp change(:remove, current, value), do: Enum.reject(current || [], &(&1 == value))
-
-  defp change(:remove_list, current, value),
-    do: Enum.reject(current || [], &(&1 in List.wrap(value)))
-
-  defp add(list, items),
-    do: Enum.reduce(items, list, fn item, acc -> if item in acc, do: acc, else: acc ++ [item] end)
-
-  defp stamp(attrs, nil, _value), do: attrs
-  defp stamp(attrs, attribute, value), do: Map.put_new(attrs, attribute, value)
-
-  defp opts(ctx), do: [actor: ctx.actor, authorize?: true]
-
-  @doc "A record's Bubble ID (a record, or an ID)."
-  def id(nil), do: nil
-  def id(%{id: id}), do: id
-  def id(id) when is_binary(id), do: id
-  def id(_), do: nil
-
-  @doc "The Bubble IDs of records."
-  def ids(nil), do: nil
-  def ids(list) when is_list(list), do: list |> Enum.map(&id/1) |> Enum.reject(&is_nil/1)
-  def ids(one), do: ids([one])
-
-  @doc "A new Bubble-style ID: milliseconds, `x`, 18 random digits."
-  def new_id do
-    ms = System.system_time(:millisecond)
-    random = :rand.uniform(899_999_999_999_999_999) + 100_000_000_000_000_000
-    "#{ms}x#{random}"
   end
 
   defp put_step(ctx, step, value), do: %{ctx | steps: Map.put(ctx.steps, step, value)}
 
-  defp continue({:ok, value}, ctx, step), do: {:cont, put_step(ctx, step, value)}
-  defp continue(:ok, ctx, step), do: {:cont, put_step(ctx, step, nil)}
-  defp continue({:error, reason}, ctx, step), do: fail(ctx, step, reason)
 
   defp fail(ctx, step, reason) do
     Logger.warning("bubble workflow #{inspect(ctx.workflow)}: step #{inspect(step)} failed: #{inspect(reason)}")

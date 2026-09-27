@@ -1,0 +1,24 @@
+defmodule <%= @module %>.Workflows.Triggers do
+  @moduledoc """
+  The database-trigger outbox: after a create, update or destroy of a
+  resource with trigger workflows, inserts one scheduler job per workflow
+  in the same transaction, carrying the record's ID and its values before
+  the change (`<%= @module %>.Workflows.Runtime.enqueue_triggers/3`). The job runs
+  asynchronously, as Bubble's triggers do; a rolled-back write enqueues
+  nothing.
+  """
+  use Ash.Resource.Change
+
+  @impl true
+  def change(changeset, _opts, context) do
+    Ash.Changeset.after_action(changeset, fn changeset, record ->
+      case <%= @module %>.Workflows.Runtime.enqueue_triggers(changeset, record, context) do
+        :ok -> {:ok, record}
+        {:error, error} -> {:error, error}
+      end
+    end)
+  end
+
+  @impl true
+  def atomic(changeset, opts, context), do: {:ok, change(changeset, opts, context)}
+end

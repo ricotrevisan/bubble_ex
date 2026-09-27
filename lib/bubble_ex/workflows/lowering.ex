@@ -251,7 +251,7 @@ defmodule BubbleEx.Workflows.Lowering do
   The arguments of a custom-event call (`arguments`: `{param_id,
   arg_value}` entries) against the callee's parameters (nil when the
   callee does not resolve). Returns `{params, residue}`, each param
-  `%{param, value}`.
+  `%{param, value}` (`value` nil when the argument is left empty).
   """
   @spec call_params(term(), list(), String.t(), Env.t(), [Param.t()] | nil) ::
           {[map()], [Residue.t()]}
@@ -263,18 +263,13 @@ defmodule BubbleEx.Workflows.Lowering do
         arg = map(arg)
         param = text(arg["param_id"])
 
-        cond do
-          is_nil(callee_params) or not Enum.any?(callee_params, &(&1.id == param)) ->
+        # An argument left empty in the editor passes an empty value.
+        value = expr(arg["arg_value"], path ++ [k, "arg_value"], env)
+
+        if callee_params && Enum.any?(callee_params, &(&1.id == param)),
+          do: {%{param: param, value: value}, residue},
+          else:
             {nil, [Residue.entry(id, :unresolved_reference, %{reference: "parameter"}) | residue]}
-
-          # An argument left empty in the editor passes nothing.
-          not Map.has_key?(arg, "arg_value") ->
-            {nil, residue}
-
-          true ->
-            value = expr(arg["arg_value"], path ++ [k, "arg_value"], env)
-            {%{param: param, value: value}, residue}
-        end
       end)
 
     residue =
