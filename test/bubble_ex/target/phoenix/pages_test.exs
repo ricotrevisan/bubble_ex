@@ -237,7 +237,9 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert without[router] =~
                "require ShopWeb.BubbleRoutes\n  ShopWeb.BubbleRoutes.bubble_routes()"
 
-      assert without[routes] =~ "defmacro bubble_routes, do: nil"
+      # Without pages the macro routes only the migrated files (WTF-415).
+      refute without[routes] =~ "live "
+      assert without[routes] =~ ~s(get "/:sha/:name", UploadsController, :public)
       assert with_pages[routes] =~ ~s(live "/bubbleex-overlay-boundaries", ShopWeb.)
 
       for files <- [with_pages, without] do

@@ -1,0 +1,91 @@
+defmodule <%= @web %>.UploadsController do
+  @moduledoc """
+  Serves the files the data loader copied from Bubble (WTF-415):
+  `/uploads/<sha256>/<name>` (public) and `/uploads/private/<sha256>/<name>`
+  (private, off by default), by the rules of `<%= @web %>.Uploads`. Routed
+  by the generated `<%= @web %>.BubbleRoutes`.
+
+  Everything that is not served answers 404, the same whether the file
+  is missing, the address invalid or the reader not authorized.
+  """
+  use <%= @web %>, :controller
+
+  alias <%= @web %>.Uploads
+
+  def public(conn, %{"sha" => sha, "name" => name}) do
+    config = Uploads.config()
+
+    case Uploads.uploads_host(config) do
+      host when is_binary(host) and host != conn.host ->
+        # Public files live on the separate origin only.
+        conn
+        |> put_resp_header("location", Uploads.on_uploads_host(conn.request_path, config))
+        |> put_resp_header("x-content-type-options", "nosniff")
+        |> send_resp(:moved_permanently, "")
+
+      _ ->
+        serve(conn, :public, sha, name, config)
+    end
+  end
+
+  def private(conn, %{"sha" => sha, "name" => name}) do
+    config = Uploads.config()
+
+    if Uploads.valid?(sha, name) and
+         Uploads.authorized?(conn.assigns[:current_user], sha, name, config),
+       do: serve(conn, :private, sha, name, config),
+       else: not_found(conn)
+  end
+
+  defp serve(conn, visibility, sha, name, config) do
+    with {:ok, path, size} <- Uploads.file(visibility, sha, name, config),
+         {:ok, head} <- head(path) do
+      etag = ~s("#{sha}")
+
+      conn =
+        head
+        |> Uploads.content_type()
+        |> Uploads.headers(name, visibility)
+        |> Enum.reduce(conn, fn {key, value}, conn -> put_resp_header(conn, key, value) end)
+        |> put_resp_header("etag", etag)
+
+      if conn |> get_req_header("if-none-match") |> Enum.any?(&String.contains?(&1, etag)),
+        do: send_resp(conn, :not_modified, ""),
+        else: send_range(conn, path, size)
+    else
+      _ -> not_found(conn)
+    end
+  end
+
+  defp send_range(conn, path, size) do
+    case conn |> get_req_header("range") |> List.first() |> Uploads.range(size) do
+      :full ->
+        send_file(conn, 200, path)
+
+      {:partial, offset, length} ->
+        conn
+        |> put_resp_header("content-range", "bytes #{offset}-#{offset + length - 1}/#{size}")
+        |> send_file(206, path, offset, length)
+
+      :unsatisfiable ->
+        conn
+        |> put_resp_header("content-range", "bytes */#{size}")
+        |> send_resp(416, "")
+    end
+  end
+
+  defp head(path) do
+    case File.open(path, [:read, :binary], &IO.binread(&1, Uploads.head_size())) do
+      {:ok, bytes} when is_binary(bytes) -> {:ok, bytes}
+      {:ok, :eof} -> {:ok, ""}
+      _ -> :error
+    end
+  end
+
+  defp not_found(conn) do
+    conn
+    |> put_resp_header("x-content-type-options", "nosniff")
+    |> put_resp_content_type("text/plain")
+    |> send_resp(:not_found, "Not Found")
+  end
+end

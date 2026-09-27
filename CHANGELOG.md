@@ -6,6 +6,26 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Safe serving of migrated files** (WTF-415). The generated Phoenix app
+  serves the files the data loader copied at `/uploads/<sha256>/<name>`
+  (generated `<Web>.Uploads` and `<Web>.UploadsController`, routed by the
+  generated `<Web>.BubbleRoutes`, so existing apps get them on
+  regeneration). A Bubble file field can hold another app's hostile file,
+  so every file is an attachment of an inert type (`application/octet-stream`
+  or `application/pdf`) unless its magic bytes are PNG, JPEG, GIF or WebP
+  (inline), always with `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox; default-src 'none'`; the name never
+  decides the type. Content addresses only (SHA-256 and loader-safe name
+  validated, regular files, no symlinks), single byte ranges, ETags. An
+  optional `uploads_host` puts public files on a separate origin (the
+  preferred production setup). Private files are off by default (404, no
+  link) until the owner opts in with an authorization function or
+  `:signed_in`. Pages link file and image fields (and dynamic texts that
+  are only one) through `<Web>.Uploads.url/1`, never the stored URL
+  (`BubbleEx.Target.Elixir` `:file_url` option). A generated
+  `<Web>.UploadsTest` checks hostile files, traversal and the private
+  default.
+
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
   `BubbleEx.Workflows.Backend.build/4` lowers every backend workflow (API
   workflows, backend custom events, database triggers) to a stack-neutral

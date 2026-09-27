@@ -1,0 +1,281 @@
+defmodule <%= @web %>.Uploads do
+  @moduledoc """
+  Safe serving of the files the data loader copied from Bubble (WTF-415):
+  links to them (`url/1`) and the rules `<%= @web %>.UploadsController`
+  serves them by.
+
+  The loader (`BubbleEx.Load.Storage.Local`) stores a file at
+  `<root>/<public|private>/<sha256>/<name>`; a public file field holds
+  `<public_url>/<sha256>/<name>`, a private one `private/<sha256>/<name>`.
+  File names keep their extensions (`.html`, `.svg`, ...), and a Bubble
+  file field can hold **another Bubble app's file** (Bubble's shared storage
+  hosts do not tell apps apart), so a stored file is untrusted content.
+  It is therefore never served as active content:
+
+    * `Content-Disposition: attachment`, except raster images (PNG, JPEG,
+      GIF, WebP) recognized by their **magic bytes**, which are `inline`
+    * the `Content-Type` comes from those bytes (PDF is recognized, as an
+      attachment), else `application/octet-stream`; never from the name,
+      so `.html`, `.svg`, `.xml` and `.js` files are never rendered
+    * `X-Content-Type-Options: nosniff`,
+      `Content-Security-Policy: sandbox; default-src 'none'`,
+      `Referrer-Policy: no-referrer`
+    * content-addressed paths only: the SHA-256 must be 64 lowercase hex
+      digits and the name a loader-safe name (letters, digits, `.`, `_`,
+      `-`; no leading or trailing dot), so no path traversal; the file must
+      be a regular file (no symlinks); single byte ranges are honoured
+
+  ## Configuration
+
+      config :<%= @app %>, <%= @web %>.Uploads,
+        # The loader's storage root (Storage.Local's root:). Without it
+        # every file answers 404.
+        root: "/srv/uploads",
+        # The loader's public_url: public references must start with it.
+        # Without it, any http(s) prefix is accepted.
+        public_url: "https://files.example.com",
+        # Optional, PREFERRED IN PRODUCTION: a separate origin (ideally a
+        # separate registrable domain, e.g. acme-usercontent.com, pointing
+        # at this app or at a CDN in front of it). Public links use it, and
+        # public files requested on any other host redirect there, so even
+        # a browser bug in the rules above cannot reach the app's cookies
+        # or origin.
+        uploads_host: "https://acme-usercontent.com",
+        # Private files: OFF by default. See below.
+        private: false
+
+  `config/runtime.exs` reads `UPLOADS_ROOT`, `UPLOADS_PUBLIC_URL` and
+  `UPLOADS_HOST`, and sets `private: false` (change it there: it
+  overrides `config/config.exs`).
+
+  ## Private files (off by default)
+
+  The generated app has **no authorization** (`privacy: :omit`), and a
+  private file's key does not say which record it is attached to, so
+  Bubble's "view attached files" rule cannot be enforced here yet. Private
+  files therefore answer 404 and get no link until the owner opts in:
+
+    * `private: {MyModule, :authorize}` - `MyModule.authorize(actor,
+      %{sha256: sha, name: name})` must return `true` (the actor is the
+      signed-in user, or nil); anything else answers 404. This is the one
+      that can match Bubble's rules
+    * `private: :signed_in` - **any** signed-in user who has a file's link
+      can read it. SHA-256 addresses are not guessable, but links leak
+      (history, forwarding), and Bubble would have checked the record's
+      privacy rules: this is weaker than Bubble
+
+  Private files are always served by the app's own origin (the session
+  cookie is needed), with the same headers as public ones, and
+  `Cache-Control: private, no-store`.
+  """
+
+  @app :<%= @app %>
+  @prefix "/uploads"
+  @sha ~r/\A[0-9a-f]{64}\z/
+  # BubbleEx.Load.Files.safe_name/1: at most 100 bytes of letters, digits,
+  # `.`, `_` and `-`, no leading or trailing dot.
+  @name ~r/\A[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9_-])?\z/
+
+  @doc "The configuration (`config :<%= @app %>, <%= @web %>.Uploads`)."
+  @spec config() :: keyword()
+  def config, do: Application.get_env(@app, __MODULE__, [])
+
+  @doc """
+  The link for a stored file reference (a file or image field's value):
+  the upload route, on `uploads_host` when configured. `nil` for anything
+  else (an unmigrated Bubble URL, other text) and for private files while
+  they are off: pages never link a raw stored URL.
+  """
+  @spec url(term(), keyword()) :: String.t() | nil
+  def url(reference, config \\ config())
+
+  def url(reference, config) when is_binary(reference) do
+    case parse(reference, config) do
+      {:public, sha, name} ->
+        origin(config) <> "#{@prefix}/#{sha}/#{name}"
+
+      {:private, sha, name} ->
+        if private?(config), do: "#{@prefix}/private/#{sha}/#{name}"
+
+      :error ->
+        nil
+    end
+  end
+
+  def url(_reference, _config), do: nil
+
+  @doc """
+  A stored reference as `{:public | :private, sha256, name}`, or `:error`.
+  """
+  @spec parse(String.t(), keyword()) :: {:public | :private, String.t(), String.t()} | :error
+  def parse(reference, config \\ config()) when is_binary(reference) do
+    case reference |> String.trim() |> String.split("/") |> Enum.reverse() do
+      [name, sha, "private"] ->
+        valid(:private, sha, name)
+
+      [name, sha | rest] when rest != [] ->
+        prefix = rest |> Enum.reverse() |> Enum.join("/")
+        if public_prefix?(prefix, config), do: valid(:public, sha, name), else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp valid(visibility, sha, name) do
+    if valid?(sha, name), do: {visibility, sha, name}, else: :error
+  end
+
+  @doc "Whether `sha` and `name` are a content address's."
+  @spec valid?(term(), term()) :: boolean()
+  def valid?(sha, name),
+    do: is_binary(sha) and is_binary(name) and Regex.match?(@sha, sha) and Regex.match?(@name, name)
+
+  defp public_prefix?(prefix, config) do
+    case config[:public_url] do
+      url when is_binary(url) and url != "" -> prefix == String.trim_trailing(url, "/")
+      _ -> String.starts_with?(prefix, ["https://", "http://"])
+    end
+  end
+
+  defp origin(config) do
+    case config[:uploads_host] do
+      host when is_binary(host) and host != "" -> String.trim_trailing(host, "/")
+      _ -> ""
+    end
+  end
+
+  @doc """
+  The host public files must be requested on (`uploads_host`'s), or nil
+  when they are served on any host.
+  """
+  @spec uploads_host(keyword()) :: String.t() | nil
+  def uploads_host(config \\ config()) do
+    case origin(config) do
+      "" -> nil
+      origin -> URI.parse(origin).host
+    end
+  end
+
+  @doc "The public URL of a request path on `uploads_host`."
+  @spec on_uploads_host(String.t(), keyword()) :: String.t()
+  def on_uploads_host(path, config \\ config()), do: origin(config) <> path
+
+  @doc "Whether private files are served at all (an explicit opt-in)."
+  @spec private?(keyword()) :: boolean()
+  def private?(config \\ config()) do
+    case config[:private] do
+      :signed_in -> true
+      {module, fun} when is_atom(module) and is_atom(fun) -> true
+      _ -> false
+    end
+  end
+
+  @doc """
+  Whether `actor` may read the private file `sha`/`name` (see the
+  moduledoc). False while private files are off.
+  """
+  @spec authorized?(term(), String.t(), String.t(), keyword()) :: boolean()
+  def authorized?(actor, sha, name, config \\ config()) do
+    case config[:private] do
+      :signed_in -> actor != nil
+      {module, fun} when is_atom(module) and is_atom(fun) -> apply(module, fun, [actor, %{sha256: sha, name: name}]) == true
+      _ -> false
+    end
+  end
+
+  @doc """
+  The stored file of a content address: `{:ok, path, size}`, or `:error`
+  when the address is invalid, there is no storage root, or the file is
+  missing or not a regular file (symlinks are refused).
+  """
+  @spec file(:public | :private, term(), term(), keyword()) ::
+          {:ok, Path.t(), non_neg_integer()} | :error
+  def file(visibility, sha, name, config \\ config()) when visibility in [:public, :private] do
+    with true <- valid?(sha, name),
+         root when is_binary(root) and root != "" <- config[:root],
+         dir = Path.join([Path.expand(root), Atom.to_string(visibility), sha]),
+         {:ok, %File.Stat{type: :directory}} <- File.lstat(dir),
+         path = Path.join(dir, name),
+         {:ok, %File.Stat{type: :regular, size: size}} <- File.lstat(path) do
+      {:ok, path, size}
+    else
+      _ -> :error
+    end
+  end
+
+  @doc """
+  How to serve a file, from its first bytes: `{:inline, type}` for a safe
+  raster image, else `{:attachment, type}`.
+  """
+  @spec content_type(binary()) :: {:inline | :attachment, String.t()}
+  def content_type(<<0x89, "PNG\r\n", 0x1A, "\n", _::binary>>), do: {:inline, "image/png"}
+  def content_type(<<0xFF, 0xD8, 0xFF, _::binary>>), do: {:inline, "image/jpeg"}
+  def content_type(<<"GIF8", v, "a", _::binary>>) when v in [?7, ?9], do: {:inline, "image/gif"}
+
+  def content_type(<<"RIFF", _size::binary-size(4), "WEBP", _::binary>>),
+    do: {:inline, "image/webp"}
+
+  def content_type(<<"%PDF-", _::binary>>), do: {:attachment, "application/pdf"}
+  def content_type(_head), do: {:attachment, "application/octet-stream"}
+
+  @doc "The bytes `content_type/1` needs."
+  @spec head_size() :: pos_integer()
+  def head_size, do: 16
+
+  @doc "The response headers for a file served as `content_type/1` says."
+  @spec headers({:inline | :attachment, String.t()}, String.t(), :public | :private) ::
+          [{String.t(), String.t()}]
+  def headers({disposition, type}, name, visibility) do
+    [
+      {"content-type", type},
+      # `name` is a loader-safe name: nothing to quote or escape.
+      {"content-disposition", ~s(#{disposition}; filename="#{name}")},
+      {"x-content-type-options", "nosniff"},
+      {"content-security-policy", "sandbox; default-src 'none'"},
+      {"referrer-policy", "no-referrer"},
+      {"cache-control", cache_control(visibility)},
+      {"accept-ranges", "bytes"}
+    ]
+  end
+
+  # Content-addressed: a public file never changes.
+  defp cache_control(:public), do: "public, max-age=31536000, immutable"
+  defp cache_control(:private), do: "private, no-store"
+
+  @doc """
+  A `Range` header against a file of `size` bytes: `:full`,
+  `{:partial, offset, length}` or `:unsatisfiable`. Only one range is
+  honoured; several, or an invalid header, serve the whole file.
+  """
+  @spec range(String.t() | nil, non_neg_integer()) ::
+          :full | {:partial, non_neg_integer(), pos_integer()} | :unsatisfiable
+  def range("bytes=" <> spec, size) do
+    case Regex.run(~r/\A\s*(\d{0,19})-(\d{0,19})\s*\z/, spec) do
+      [_, "", ""] ->
+        :full
+
+      [_, "", suffix] ->
+        case String.to_integer(suffix) do
+          0 -> :unsatisfiable
+          _ when size == 0 -> :unsatisfiable
+          n -> {:partial, max(size - n, 0), min(n, size)}
+        end
+
+      [_, first, last] ->
+        first = String.to_integer(first)
+        last = if last == "", do: size - 1, else: min(String.to_integer(last), size - 1)
+
+        cond do
+          first >= size -> :unsatisfiable
+          last < first -> :full
+          true -> {:partial, first, last - first + 1}
+        end
+
+      nil ->
+        :full
+    end
+  end
+
+  def range(_header, _size), do: :full
+end

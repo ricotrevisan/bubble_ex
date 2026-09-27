@@ -14,7 +14,10 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   host: `This element`, `Parent group`, the current cell) by
   `BubbleEx.Expression.Compiler`, then compiled by
   `BubbleEx.Target.Elixir`. The result maps the binding's ID to the
-  compiled `%{source, bindings, runtime, loads}`; a binding that does not
+  compiled `%{source, bindings, runtime, loads, type, file?}` (`type`: the
+  binding's Bubble type, e.g. `"image"`; `file?`: it shows exactly one
+  file or image value, alone or as the only non-empty part of a dynamic
+  text, as Bubble's image sources often are); a binding that does not
   compile is absent (the page keeps a residue marker for it).
 
   ## Options
@@ -22,10 +25,14 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     * `:runtime` - the runtime module the source calls (default
       `"Bubble.Runtime"`; the Phoenix target passes its own)
     * `:namespace` - root namespace of the generated enums
+    * `:file_url` - the function shown file and image values go through
+      (`BubbleEx.Target.Elixir`'s option), default
+      `"<namespace>Web.Uploads.url"`: the Phoenix target's safe file route
+      (WTF-415), so pages never link a raw stored file URL
   """
 
   alias BubbleEx.{Error, Expression, Model}
-  alias BubbleEx.Expression.{Compiler, Env, Tree}
+  alias BubbleEx.Expression.{Compiler, Env, IR, Tree}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Target.Ash.Project
@@ -35,7 +42,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
           source: String.t(),
           bindings: [map()],
           runtime: [atom()],
-          loads: map()
+          loads: map(),
+          type: String.t() | nil,
+          file?: boolean()
         }
 
   @spec compile(map(), Model.t(), Project.t(), Normalized.t(), keyword()) ::
@@ -63,17 +72,33 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   defp nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &nodes/1)]
 
+  @file_types ["file", "image"]
+
+  defp shows_file?(%IR{type: type}) when type in @file_types, do: true
+
+  defp shows_file?(%IR{op: :concat, args: parts}),
+    do: match?([%IR{type: type}] when type in @file_types, Enum.reject(parts, &empty_text?/1))
+
+  defp shows_file?(_ir), do: false
+
+  defp empty_text?(%IR{op: :literal, args: [""]}), do: true
+  defp empty_text?(_ir), do: false
+
   defp compile_binding(payload, %Node{source: source}, env, project, opts) do
     env = %{env | host: source && source.bubble_id}
 
     with {:ok, %{ast: ast}} <- Expression.parse(payload, schema: env.schema),
          {:ok, %{ir: ir}} when not is_nil(ir) <- Compiler.compile(ast, env),
+         namespace = Keyword.get(opts, :namespace, "MyApp"),
          {:ok, %{source: code} = result} when is_binary(code) <-
            ElixirTarget.compile(ir, project,
              runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
-             namespace: Keyword.get(opts, :namespace, "MyApp")
+             namespace: namespace,
+             file_url: Keyword.get(opts, :file_url, namespace <> "Web.Uploads.url")
            ) do
-      Map.take(result, [:source, :bindings, :runtime, :loads])
+      result
+      |> Map.take([:source, :bindings, :runtime, :loads])
+      |> Map.merge(%{type: ir.type, file?: shows_file?(ir)})
     else
       _ -> nil
     end

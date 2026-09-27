@@ -9,6 +9,16 @@ end
 config :<%= @app %>, <%= @web %>.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# The files the data loader copied from Bubble (<%= @web %>.Uploads): its
+# storage root and public_url, and (preferred in production) a separate
+# origin for public files. Private files stay off until you opt in here
+# with `private: {MyModule, :authorize}` (see <%= @web %>.Uploads).
+config :<%= @app %>, <%= @web %>.Uploads,
+  root: System.get_env("UPLOADS_ROOT"),
+  public_url: System.get_env("UPLOADS_PUBLIC_URL"),
+  uploads_host: System.get_env("UPLOADS_HOST"),
+  private: false
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

@@ -17,6 +17,7 @@ app's data model.
 `.wtf/generated.json` lists the **generated** files with their SHA-256.
 They are derived from the Bubble app (the Ash resources, enums and types,
 the token resource, `Accounts.Resources`, the workflow API entry point, the
+file serving (`<%= @web %>.Uploads`, its controller and test), the
 Tailwind theme tokens in `assets/css/bubble.css` and the name map
 `.wtf/names.json`). Regeneration overwrites them, so do not edit them
 by hand: a hand edit is detected and blocks regeneration. Change the
@@ -42,6 +43,33 @@ The resources are generated with `privacy: :omit`: they have **no
 authorization**. Bubble's privacy rules are not enforced, so any code path
 that reads a resource sees every record. Add Ash policies before exposing
 any resource through an API, a LiveView or a controller.
+
+## Migrated files
+
+The data loader copies the Bubble app's files into a storage directory.
+`/uploads/<sha256>/<name>` serves them (`<%= @web %>.UploadsController`;
+set `UPLOADS_ROOT` to the loader's storage root and `UPLOADS_PUBLIC_URL`
+to its `public_url`). A Bubble file field can hold another app's file,
+so every file is treated as hostile: it downloads as an attachment of an
+inert type (`application/octet-stream`, or `application/pdf`), except
+PNG, JPEG, GIF and WebP images recognized by their bytes, which display
+inline; responses carry `X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: sandbox; default-src 'none'`. Pages link file
+and image fields through `<%= @web %>.Uploads.url/1`.
+
+**In production, serve public files from a separate origin:** set
+`UPLOADS_HOST` to a separate domain (ideally not a subdomain of the app's)
+that points at this app or a CDN in front of it; links use it, and file
+requests on the app's own host redirect there.
+
+**Private files are off** (404, no links): the resources have no
+authorization, and nothing yet says which record a private file belongs
+to, so Bubble's "view attached files" rule is not enforced. To serve
+them, replace `private: false` in `config/runtime.exs` with
+`private: {MyModule, :authorize}` (your function gets the user,
+or nil, and the file's `%{sha256, name}` and must return `true`), or
+`private: :signed_in`, which lets **any** signed-in user who has a link
+read the file: weaker than Bubble.
 
 ## Sign-in
 
