@@ -36,7 +36,7 @@ defmodule <%= @web %>.BubbleData do
   list with no page size, or a larger one, stops at `:max_items`
   (`config :<%= @app %>, <%= @web %>.BubbleData, max_items: 100`). A
   search's `count` is a count query. A list of things stored as IDs is
-  read by ID, at most `:max_items`.
+  read by ID, at most the page size capped by `:max_items`.
 
   ## Reactivity
 
@@ -277,15 +277,17 @@ defmodule <%= @web %>.BubbleData do
 
   @doc """
   A thing (or list of things) as records of `resource`: records pass,
-  Bubble IDs are read through Ash (a list at most `max_items/0`, in its
-  order); anything else is the value itself.
+  Bubble IDs are read through Ash (a list at most its page size, capped by
+  `max_items/0`, in its order); anything else is the value itself.
   """
-  def records(_ctx, nil, value, true) when is_list(value), do: Enum.take(value, max_items())
-  def records(_ctx, nil, value, _list?), do: value
-  def records(_ctx, _resource, nil, _list?), do: nil
+  def records(ctx, resource, value, list?, page_size \\ nil)
+  def records(_ctx, nil, value, true, page_size) when is_list(value),
+    do: Enum.take(value, cap(page_size))
+  def records(_ctx, nil, value, _list?, _page_size), do: value
+  def records(_ctx, _resource, nil, _list?, _page_size), do: nil
 
-  def records(ctx, resource, value, true) when is_list(value) do
-    value = Enum.take(value, max_items())
+  def records(ctx, resource, value, true, page_size) when is_list(value) do
+    value = Enum.take(value, cap(page_size))
     ids = for id <- value, is_binary(id), do: id
 
     found =
@@ -314,8 +316,8 @@ defmodule <%= @web %>.BubbleData do
     |> Enum.reject(&is_nil/1)
   end
 
-  def records(ctx, resource, id, _list?) when is_binary(id), do: get(resource, id, ctx)
-  def records(_ctx, _resource, value, _list?), do: value
+  def records(ctx, resource, id, _list?, _page_size) when is_binary(id), do: get(resource, id, ctx)
+  def records(_ctx, _resource, value, _list?, _page_size), do: value
 
   defp get(resource, id, ctx) do
     if Regex.match?(@id, id) do

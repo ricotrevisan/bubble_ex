@@ -19,8 +19,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
         inputs: %{"query" => {:text, nil}},
         loaded: [],
         intervals: [],
-        clicks: %{},
-        changes: %{"query" => ["consume"]},
+        clicks: %{"read" => ["observe"], "write" => ["write", "observe"]},
+        changes: %{"query" => ["consume", "observe"]},
         conditions: [
           {"initial", :every_time},
           {"updated", :every_time},
@@ -54,6 +54,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
           data: true
         },
         "consume" => %{condition: nil, run: :consume, blocked: [], data: false},
+        "observe" => %{condition: nil, run: :observe, blocked: [], data: true},
+        "write" => %{condition: nil, run: :write, blocked: [], data: true},
         "noop" => %{condition: nil, run: :noop, blocked: [], data: false}
       }
 
@@ -77,6 +79,26 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
 
     def consume(ctx) do
       {:cont, ctx} = PhxCheckWeb.BubbleWorkflows.call(ctx, "consume", __MODULE__, "noop", [], %{})
+      {:done, ctx}
+    end
+
+    def observe(ctx) do
+      send(
+        self(),
+        {:observed, title(ctx), PhxCheckWeb.BubbleWorkflows.input(ctx, [], "query"),
+         ctx.backend.calls}
+      )
+
+      {:done, ctx}
+    end
+
+    @task_id "1700000000000x200000000000000001"
+    def write(ctx) do
+      PhxCheck.Task
+      |> Ash.get!(@task_id, authorize?: false)
+      |> Ash.Changeset.for_update(:update, %{title: "Bread"})
+      |> Ash.update!(authorize?: false)
+
       {:done, ctx}
     end
 
@@ -132,6 +154,50 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       do: PhxCheck.Task |> Ash.Query.new() |> PhxCheckWeb.BubbleData.read(ctx, :all, 100)
 
     def project(ctx), do: ctx.cell.project
+  end
+
+  defmodule ValuePage do
+    def __bubble__(:instances), do: []
+
+    def __bubble__(:surface),
+      do: %{
+        states: %{},
+        inputs: %{},
+        loaded: [],
+        intervals: [],
+        clicks: %{},
+        changes: %{},
+        conditions: []
+      }
+
+    def __bubble__(:data),
+      do: [
+        %{
+          element: "list",
+          instance: nil,
+          fun: :list,
+          read: :value,
+          cell: nil,
+          loads: [],
+          cell_loads: [],
+          topic: "Task",
+          blocked: []
+        }
+      ]
+
+    def list(ctx),
+      do:
+        PhxCheckWeb.BubbleData.records(
+          ctx,
+          PhxCheck.Task,
+          [
+            "1700000000000x200000000000000001",
+            "1700000000000x200000000000000002",
+            "1700000000000x200000000000000003"
+          ],
+          true,
+          2
+        )
   end
 
   @p1 "1700000000000x100000000000000001"
@@ -195,6 +261,32 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     {:ok, _view, html} = live(conn, "/")
     assert html =~ "Card: Answer"
     assert html =~ "Card: Eat"
+  end
+
+  test "value-backed lists obey page size and the global cap before looking up IDs" do
+    on()
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+
+    socket =
+      socket
+      |> PhxCheckWeb.BubbleWorkflows.mount(ValuePage)
+      |> PhxCheckWeb.BubbleData.load(ValuePage)
+
+    assert Enum.map(socket.assigns.bubble_data[{"", "list"}], & &1.title) == ["Bake", "Answer"]
+
+    assert PhxCheckWeb.BubbleData.records(nil, nil, Enum.to_list(1..5), true, 2) == [1, 2]
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_items: 1)
+    assert PhxCheckWeb.BubbleData.records(nil, nil, Enum.to_list(1..5), true, 2) == [1]
+
+    assert length(
+             PhxCheckWeb.BubbleData.records(
+               PhxCheckWeb.BubbleWorkflows.data_ctx(socket, ValuePage, "", %{}),
+               PhxCheck.Task,
+               [@t1, "1700000000000x200000000000000002"],
+               true,
+               2
+             )
+           ) == 1
   end
 
   test "scalar lists without a resource are bounded too" do
@@ -310,6 +402,141 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
 
     assert_received {:condition_fired, :updated}
     refute_received {:condition_fired, :initial}
+  end
+
+  test "clicks reload before running and between workflows after a write" do
+    on()
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, ConditionPage)
+
+    socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        socket,
+        ConditionPage,
+        %{"bubble_thing" => @t1},
+        "http://localhost/task/#{@t1}"
+      )
+
+    PhxCheck.Task
+    |> Ash.get!(@t1, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Changed"})
+    |> Ash.update!(authorize?: false)
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:click", %{
+        "scope" => "",
+        "element" => "read"
+      })
+
+    assert_received {:observed, "Changed", nil, _}
+
+    {:noreply, _socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:click", %{
+        "scope" => "",
+        "element" => "write"
+      })
+
+    assert_received {:observed, "Bread", nil, _}
+  end
+
+  test "input workflow waits for the debounced read and retains the shared budget" do
+    on()
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, ConditionPage)
+
+    socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        socket,
+        ConditionPage,
+        %{"bubble_thing" => @t1},
+        "http://localhost/task/#{@t1}"
+      )
+
+    PhxCheck.Task
+    |> Ash.get!(@t1, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Bread"})
+    |> Ash.update!(authorize?: false)
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "query", "value" => "g"}
+      })
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "query", "value" => "go"}
+      })
+
+    refute_received {:observed, _, _, _}
+    assert_receive {:bubble, :data_refresh, stale_ref}, 500
+
+    {:noreply, _} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(
+        socket,
+        ConditionPage,
+        {:bubble, :data_refresh, stale_ref}
+      )
+
+    refute_received {:observed, _, _, _}
+    assert_receive {:bubble, :data_refresh, ref}, 500
+
+    {:noreply, _} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(
+        socket,
+        ConditionPage,
+        {:bubble, :data_refresh, ref}
+      )
+
+    assert_received {:observed, "Bread", "go", calls}
+    assert calls == Runtime.root(nil, nil).calls - 1
+  end
+
+  test "a click flushes a pending input workflow once with fresh data and its shared budget" do
+    on()
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, ConditionPage)
+
+    socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        socket,
+        ConditionPage,
+        %{"bubble_thing" => @t1},
+        "http://localhost/task/#{@t1}"
+      )
+
+    PhxCheck.Task
+    |> Ash.get!(@t1, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Bread"})
+    |> Ash.update!(authorize?: false)
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "query", "value" => "go"}
+      })
+
+    refute_received {:observed, _, _, _}
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ConditionPage, "bubble:click", %{
+        "scope" => "",
+        "element" => "read"
+      })
+
+    assert_received {:observed, "Bread", "go", calls}
+    assert calls == Runtime.root(nil, nil).calls - 1
+    assert_received {:observed, "Bread", "go", ^calls}
+    refute_received {:observed, _, _, _}
+
+    assert_receive {:bubble, :data_refresh, ref}, 500
+
+    {:noreply, _} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(
+        socket,
+        ConditionPage,
+        {:bubble, :data_refresh, ref}
+      )
+
+    refute_received {:observed, _, _, _}
   end
 
   test "input-driven condition waits for fresh data and inherits the event's call budget" do

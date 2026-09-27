@@ -102,6 +102,38 @@ defmodule BubbleEx.PageDataTest do
   end
 
   describe "bound to Ash and LiveView" do
+    test "value-backed repeating groups pass their page size to the generated loader" do
+      {spec, project, frontend, app, model} = spec(app())
+
+      surfaces =
+        Map.new(spec.surfaces, fn {id, surface} ->
+          {id,
+           %{
+             surface
+             | data:
+                 Enum.map(surface.data, fn
+                   %{element: "bList"} = d -> %{d | read: {:value, %{source: "[]", bindings: []}}}
+                   d -> d
+                 end)
+           }}
+        end)
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, backend} = BubbleEx.Target.Ash.Workflows.map(lowered, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          module: "Shop",
+          frontend: frontend,
+          workflows: backend,
+          frontend_workflows: %{spec | surfaces: surfaces}
+        )
+
+      assert files["lib/shop_web/live/index_live/workflows.ex"] =~
+               "BubbleData.records(ctx, Shop.Task, [], true, 3)"
+    end
+
     test "a search is a query with pinned inputs; a thing comes from the URL" do
       {spec, _project, _frontend, _app, _model} = spec(app())
 

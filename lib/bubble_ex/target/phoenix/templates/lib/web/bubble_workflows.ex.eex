@@ -269,6 +269,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     if BubbleData.pending?(socket, ref) do
       run = socket.assigns[:bubble_pending_run] || start(socket, nil)
       socket = socket |> assign(:bubble_pending_run, nil) |> BubbleData.refresh(page, ref)
+      {socket, run} = run_events(socket, page, socket.assigns[:bubble_pending_events] || [], run, true)
+      socket = assign(socket, :bubble_pending_events, nil)
       {socket, run} = settle(socket, page, run)
       {:noreply, dispatch(socket, run)}
     else
@@ -346,31 +348,65 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do
     run = start(socket, budget)
 
-    {socket, run} =
-      Enum.reduce(runs, {socket, run}, fn {module, scope, ids, args}, {socket, run} ->
-        run_event(socket, module, scope, ids, args, run)
-      end)
-
     case reload do
       :already_loaded ->
+        {socket, run} = run_events(socket, page, runs, run, true)
         {socket, run} = settle(socket, page, run)
         dispatch(socket, run)
 
       :deferred ->
-        previous = socket.assigns[:bubble_pending_run]
-        run = merge_pending(previous, run)
-        socket |> assign(:bubble_pending_run, run) |> BubbleData.defer()
+        # With page data, input workflows must read the latest input's
+        # sources, not the preceding render. Keep their shared run budget
+        # until the last keystroke's single debounced read.
+        if BubbleData.data_access?() and
+             Enum.any?(surfaces(page), fn {_, m} -> BubbleData.sources(m) != [] end) do
+          run = merge_pending(socket.assigns[:bubble_pending_run], run)
+
+          pending =
+            Enum.reduce(runs, socket.assigns[:bubble_pending_events] || [], fn
+              {module, scope, ids, _} = entry, acc ->
+                Enum.reject(acc, fn {m, s, i, _} -> {m, s, i} == {module, scope, ids} end) ++
+                  [entry]
+            end)
+
+          socket
+          |> assign(:bubble_pending_run, run)
+          |> assign(:bubble_pending_events, pending)
+          |> BubbleData.defer()
+        else
+          # No page data to re-read: keep input-only workflows and their
+          # conditions responsive without a needless debounce timer.
+          {socket, run} = run_events(socket, page, runs, run, true)
+          {socket, run} = settle(socket, page, run)
+          dispatch(socket, run)
+        end
 
       :immediate ->
-        # A click or timer while an input read is pending must not run with
-        # stale data or dispatch that input's scheduled work twice.
+        # A click while an input read is pending flushes its workflows
+        # first with the latest inputs, on the same (bounded) run.
         run = merge_pending(socket.assigns[:bubble_pending_run], run)
-        socket = socket |> assign(:bubble_pending_run, nil) |> assign(:bubble_data_refresh, nil)
-        # Conditions see the event's freshly loaded data, not the previous render.
+        pending = (socket.assigns[:bubble_pending_events] || []) ++ runs
+        socket =
+          socket
+          |> assign(:bubble_pending_run, nil)
+          |> assign(:bubble_pending_events, nil)
+          |> assign(:bubble_data_refresh, nil)
         socket = BubbleData.load(socket, page)
+        {socket, run} = run_events(socket, page, pending, run, true)
         {socket, run} = settle(socket, page, run)
         dispatch(socket, run)
     end
+  end
+
+  defp run_events(socket, page, runs, run, loaded?) do
+    Enum.reduce(runs, {socket, run, loaded?}, fn {module, scope, ids, args}, acc ->
+      Enum.reduce(ids, acc, fn id, {socket, run, loaded?} ->
+        socket = if loaded?, do: socket, else: BubbleData.load(socket, page)
+        {socket, run} = run_event(socket, module, scope, [id], args, run)
+        {socket, run, false}
+      end)
+    end)
+    |> then(fn {socket, run, _} -> {socket, run} end)
   end
 
   defp merge_pending(nil, run), do: run
@@ -446,8 +482,6 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # Runs workflows `ids` of `module` in `scope` with what is left of the
   # event's budgets; returns the socket and the event's run, charged.
-  defp run_event(socket, _module, _scope, [], _args, run), do: {socket, run}
-
   defp run_event(socket, module, scope, ids, args, run) do
     ctx =
       Enum.reduce(ids, ctx(socket, module, scope, run), fn id, ctx ->

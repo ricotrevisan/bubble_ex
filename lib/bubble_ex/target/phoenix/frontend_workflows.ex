@@ -627,7 +627,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         {:value, v} ->
           resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
 
-          "#{prelude([v], d.cell != nil)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?})"
+          "#{prelude([v], d.cell != nil)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
 
         {:query, q} ->
           query_source(q, d, ctx)

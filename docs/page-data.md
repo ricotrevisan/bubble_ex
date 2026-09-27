@@ -122,9 +122,11 @@ also on `bubble:<Type>:<id>`. A connected page subscribes to the type of
 each search it ran, each record it holds, and the related records its
 bindings preload. Notifications are coalesced into a re-read. Only the
 topic travels, never the record: the page reads again with its own actor.
-Clicks and workflow events re-read before evaluating data-driven conditions;
-input changes defer the re-read and condition evaluation for 150 ms after
-the last keystroke (while preserving the event's run budgets). Writes that
+Clicks and workflow events re-read before running their workflows, between
+workflows (so a preceding write is visible), and before evaluating data-driven
+conditions. Input changes defer the workflows, re-read and condition evaluation
+for 150 ms after the last keystroke; repeated changes to the same input
+supersede its pending workflow without resetting the shared run budget. Writes that
 bypass Ash (raw SQL, `Ash.Seed`, the loader) publish nothing.
 
 ## Residue fails loudly
