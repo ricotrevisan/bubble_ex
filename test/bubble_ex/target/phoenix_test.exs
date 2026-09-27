@@ -121,6 +121,22 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert files["lib/acme_import/enums/status.ex"] =~ ~s({"open", [label: "Open"]})
     end
 
+    test "join resources (WTF-406) are generated files; the Repo installs the indexes' extensions" do
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3)
+      files = render!(project)
+      assert files["lib/acme_import/project_tasks.ex"] =~ "defmodule AcmeImport.ProjectTasks do"
+      assert files["lib/acme_import/domain.ex"] =~ "resource AcmeImport.ProjectTasks"
+      assert Map.has_key?(manifest(files)["generated"], "lib/acme_import/project_tasks.ex")
+      assert files["lib/acme_import/project.ex"] =~ "through AcmeImport.ProjectTasks"
+
+      # the cut-2 hints applied by default include a trigram index
+      {:ok, indexed} = BubbleEx.Test.DecidedFixture.project(:indexes)
+      assert indexed.extensions == ["pg_trgm"]
+
+      assert render!(indexed)["lib/acme_import/repo.ex"] =~
+               ~s(["ash-functions", "citext", "pg_trgm"])
+    end
+
     test "adds magic-link authentication to the User through an owned fragment" do
       files = render!()
       user = files["lib/acme_import/user.ex"]

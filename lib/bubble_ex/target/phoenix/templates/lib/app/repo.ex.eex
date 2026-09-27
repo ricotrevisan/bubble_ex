@@ -2,8 +2,10 @@ defmodule <%= @module %>.Repo do
   use AshPostgres.Repo, otp_app: :<%= @app %>
 
   def installed_extensions do
-    # Ash's SQL functions, and citext for the case-insensitive User email.
-    ["ash-functions", "citext"]
+    # Ash's SQL functions, citext for the case-insensitive User email, and
+    # what the generated indexes need (pg_trgm for trigram indexes). This
+    # file is yours: add an extension a later generation lists.
+    <%= inspect(["ash-functions", "citext" | @extensions]) %>
   end
 
   # Nothing generated needs more than PostgreSQL 14 (CI tests on 16).

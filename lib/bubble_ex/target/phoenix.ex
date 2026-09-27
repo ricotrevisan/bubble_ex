@@ -288,7 +288,10 @@ defmodule BubbleEx.Target.Phoenix do
              user: user.module,
              email: email,
              api_clients: clients,
-             workflows: workflows
+             workflows: workflows,
+             # the PostgreSQL extensions the project's indexes need
+             # (`pg_trgm` for trigram indexes), in the scaffolded Repo
+             extensions: project.extensions
            }),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
