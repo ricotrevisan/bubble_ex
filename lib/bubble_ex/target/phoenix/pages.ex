@@ -1149,11 +1149,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     case href(value, ctx) do
       nil -> nil
       {:page, path} -> "~p" <> source(path)
-      {:url, url} -> literal(url)
+      {:url, url} -> "to_string(" <> literal(url) <> ")"
     end
   end
 
-  defp override_expr(:attr, value, _ctx) when is_binary(value), do: literal(value)
+  defp override_expr(:attr, value, _ctx) when is_binary(value),
+    do: "to_string(" <> literal(value) <> ")"
+
   defp override_expr(:attr, value, _ctx), do: source(value)
 
   # For every reusable: the {element path, slot} its instances resolve to a
@@ -2696,7 +2698,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     Enum.map(attrs, fn
       {key, value} when is_binary(value) ->
         if Regex.match?(~r/[&<>"'{}\r\n]/, value),
-          do: {key, {:expr, literal(value)}},
+          # HTMLFormatter folds a bare string expression into a quoted HEEx
+          # attribute, where Elixir's \\x escapes would become literal text.
+          do: {key, {:expr, "to_string(" <> literal(value) <> ")"}},
           else: {key, value}
 
       other ->

@@ -2,7 +2,8 @@
 # workflows fixture (WTF-372): writes the fixture's plan (with its
 # normalized frontend and the lowering's residue) to .wtf/plan.json, checks
 # that every generated workflow smoke test is tagged (`bubble_smoke:`, as
-# the backend's) with a workflow task of the plan, formats the project (see below), then, in plan order, claims and
+# the backend's) with a workflow task of the plan, then, in plan order,
+# claims and
 # completes every workflow task whose workflow was generated whole (one
 # waiting on a task left to agent work, such as a custom event with
 # residue, cannot be claimed and is skipped). `complete` runs the task's
@@ -71,12 +72,6 @@ tasks =
   |> Enum.sort_by(&order[&1])
 
 if tasks == [], do: raise("no workflow task for a generated workflow in #{fixture}")
-
-# The owner's first `mix format`: the scaffold's HEEx templates, router,
-# runtime config and smoke test are not formatter-clean as generated
-# (WTF-369/370), so `lint` fails on a fresh project for every task. The
-# workflow modules and tests of this ticket are formatted as generated.
-{_, 0} = System.cmd("mix", ["format"], cd: dir, env: [{"MIX_ENV", "test"}])
 
 completed =
   Enum.filter(tasks, fn id ->

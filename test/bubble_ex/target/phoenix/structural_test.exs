@@ -786,7 +786,9 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       assert status(report, "structural.bypass_inventory") == :fail
     end
 
-    test "a lint failure is reported as known (WTF-416), still a failure", %{root: root} do
+    test "a lint failure is reported without treating it as a known generator failure", %{
+      root: root
+    } do
       cmd = fn
         ["format" | _], _ -> {"not formatted", 1}
         _, _ -> {"", 0}
@@ -795,9 +797,9 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       {:ok, report} = project(root, cmd)
       assert status(report, "structural.lint") == :fail
       assert [%{detail: detail}] = diff(report, "structural.lint")
-      assert detail =~ "known failure: WTF-416"
-      assert [%{check: "lint", issue: "WTF-416"}] = report.known
-      assert [%{"issue" => "WTF-416"}] = Structural.summary(report)["known_failures"]
+      assert detail =~ "format"
+      assert report.known == []
+      assert Structural.summary(report)["known_failures"] == []
     end
 
     test "a project without a manifest is refused", %{tmp_dir: root} do

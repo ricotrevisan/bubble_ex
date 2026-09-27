@@ -275,10 +275,13 @@ defmodule BubbleEx.Target.Phoenix.UploadsTest do
       Phoenix.render(project, module: "Shop", frontend: frontend, expressions: expressions)
 
     template = files["lib/shop_web/live/profile_live.html.heex"]
-    assert template =~ ~r/<img data-bubble-id="bIM"[^>]* src=\{src_bim\(@current_user\)\}/
-    assert template =~ ~r/<img data-bubble-id="bIT"[^>]* src=\{src_bit\(@current_user\)\}/
-    assert template =~ ~r/<a data-bubble-id="bLK"[^>]* href=\{destination_blk\(@current_user\)\}/
-    assert template =~ ~r/<img data-bubble-id="bIH"[^>]* src=\{src_bih\(@current_user\)\}/
+    assert template =~ ~r/<img\s+data-bubble-id="bIM"[^>]*\s+src=\{src_bim\(@current_user\)\}/
+    assert template =~ ~r/<img\s+data-bubble-id="bIT"[^>]*\s+src=\{src_bit\(@current_user\)\}/
+
+    assert template =~
+             ~r/<a\s+data-bubble-id="bLK"[^>]*\s+href=\{destination_blk\(@current_user\)\}/
+
+    assert template =~ ~r/<img\s+data-bubble-id="bIH"[^>]*\s+src=\{src_bih\(@current_user\)\}/
 
     live = files["lib/shop_web/live/profile_live.ex"]
 

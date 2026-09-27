@@ -194,7 +194,7 @@ defmodule BubbleEx.Target.Phoenix do
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec, as: FlowSpec
   alias BubbleEx.Target.Ash.{Identity, Project, Resource, Source, Versions}
   alias BubbleEx.Target.Ash.Workflows.Spec, as: WorkflowSpec
-  alias BubbleEx.Target.Phoenix.{ApiClients, Manifest, Pages, Templates}
+  alias BubbleEx.Target.Phoenix.{ApiClients, Formatter, Manifest, Pages, Templates}
   alias BubbleEx.Target.Phoenix.Structural.Bypasses
   alias BubbleEx.Target.Phoenix.Workflows, as: WorkflowFiles
 
@@ -392,6 +392,13 @@ defmodule BubbleEx.Target.Phoenix do
           |> Map.filter(fn {path, _} -> String.starts_with?(path, "lib/") end)
           |> Bypasses.allowlist_json()
         )
+
+      # Hash the exact bytes an owner receives; formatting must never be an
+      # owner-side post-processing step that invalidates generated.json.
+      generated =
+        Map.new(generated, fn {path, content} -> {path, Formatter.format(path, content)} end)
+
+      owned = Map.new(owned, fn {path, content} -> {path, Formatter.format(path, content)} end)
 
       case Enum.filter(Map.keys(generated), &Map.has_key?(owned, &1)) do
         [] ->

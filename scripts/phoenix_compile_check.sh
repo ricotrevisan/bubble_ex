@@ -62,6 +62,9 @@ for fixture in $fixtures; do
     first=0
   fi
 
+  # A fresh render must be lint-clean without touching generated files (or
+  # invalidating the manifest's hashes).
+  mix format --check-formatted
   mix compile --warnings-as-errors
 
   rm -rf priv/resource_snapshots

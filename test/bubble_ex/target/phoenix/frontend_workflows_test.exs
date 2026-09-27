@@ -176,16 +176,16 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert page =~ ~s|phx-click={Bubble.push("click", "", "bBtnState")}|
 
     assert page =~
-             ~s(<form id="bubble-input-bIn" phx-change="bubble:change" phx-submit="bubble:change")
+             ~r/<form\s+id="bubble-input-bIn"\s+phx-change="bubble:change"\s+phx-submit="bubble:change"/
 
     assert page =~
-             ~s(<input type="hidden" name="bubble[value]" value="false"><label data-bubble-id="bCheck")
+             ~r/<input\s+type="hidden"\s+name="bubble\[value\]"\s+value="false"\s*\/><label\s+data-bubble-id="bCheck"/
 
     assert page =~ ~s|{text_blabel(Bubble.state(@bubble_states, "", "bHome", "custom.label_"))}|
-    assert page =~ ~s|<.card data-bubble-id="bInst1"|
+    assert page =~ ~r/<\.card\s+data-bubble-id="bInst1"/
 
     assert page =~
-             ~s|scope="bInst1" bubble_states={@bubble_states} bubble_inputs={@bubble_inputs}|
+             ~r/scope="bInst1"\s+bubble_states=\{@bubble_states\}\s+bubble_inputs=\{@bubble_inputs\}/
 
     assert page =~ "<Bubble.runtime />"
 
@@ -194,7 +194,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert card =~ ~s|phx-click={Bubble.push("click", @scope, "bCardInc")}|
     assert card =~ ~s|phx-click={Workflows.wf_w_card_open(@scope)}|
     assert card =~ ~s|Bubble.state(@bubble_states, @scope, "bCard", "custom.count_")|
-    assert card =~ ~s|<input type="hidden" name="bubble[scope]" value={@scope}>|
+    assert card =~ ~r/<input\s+type="hidden"\s+name="bubble\[scope\]"\s+value=\{@scope\}/
 
     live = files["lib/shop_web/live/index_live.ex"]
     assert live =~ "|> BubbleWorkflows.mount(Workflows)"
