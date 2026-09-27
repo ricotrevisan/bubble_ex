@@ -108,7 +108,11 @@ limits the run to some fixtures. CI runs it as the `phoenix-compile-check`
 job: every fixture on Elixir 1.18, a representative subset on 1.20.
 Fixtures with pages (the frozen fidelity cases, `fidelity_<case>`, and the
 expression fixture) also compile their LiveViews and, with the database,
-mount every page and check each element's `data-bubble-id`.
+mount every page and check each element's `data-bubble-id`. Fixtures with page
+workflows also get their `Workflows` modules and tests (WTF-372); for
+`phoenix_frontend_workflows` the check runs the behavior tests of
+`test/support/target/phoenix/frontend_workflows_behavior.exs` in the
+generated app and completes its workflow tasks with `mix wtf.task`.
 
 To check the HEEx emitter's pages against the frozen fidelity references
 (after the compile check has fetched the dependencies, and with the

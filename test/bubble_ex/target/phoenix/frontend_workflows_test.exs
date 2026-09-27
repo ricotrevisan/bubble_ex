@@ -1,0 +1,293 @@
+defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
+  # Printing page and reusable-element workflows with the pages (WTF-372).
+  # scripts/phoenix_compile_check.sh compiles the output, runs its tests,
+  # the behavior tests of test/support/target/phoenix/
+  # frontend_workflows_behavior.exs and `mix wtf.task complete` of the
+  # workflow tasks.
+  use ExUnit.Case, async: true
+
+  alias BubbleEx.{Index, Model, Plan}
+  alias BubbleEx.Target.Elixir.FrontendWorkflows
+  alias BubbleEx.Target.Phoenix
+  alias BubbleEx.Test.HostileIds
+  alias BubbleEx.Workflows.Frontend
+
+  @fixture "test/support/target/phoenix/frontend_workflows.json"
+
+  defp app, do: @fixture |> File.read!() |> Jason.decode!()
+
+  defp render(app, opts \\ []) do
+    {:ok, model} = Model.build(app)
+    {:ok, index} = Index.build(app, model: model)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+
+    {:ok, expressions} =
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+        runtime: "Shop.Bubble.Runtime",
+        namespace: "Shop"
+      )
+
+    {:ok, lowered} = Frontend.build(app, model, index)
+    {:ok, backend_lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
+
+    {:ok, backend} =
+      BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Shop")
+
+    {:ok, spec} =
+      FrontendWorkflows.map(lowered, project,
+        namespace: "Shop",
+        frontend: frontend,
+        backend: backend
+      )
+
+    opts =
+      [
+        module: "Shop",
+        frontend: frontend,
+        expressions: expressions,
+        workflows: backend,
+        frontend_workflows: spec
+      ] ++ opts
+
+    {:ok, files} = Phoenix.render(project, opts)
+    {:ok, ^files} = Phoenix.render(project, opts)
+    %{files: files, spec: spec, model: model, index: index, frontend: frontend, lowered: lowered}
+  end
+
+  setup_all do
+    render(app())
+  end
+
+  # workflow ID => [{n, type}], from the `# bubble:` comments of lib/, as
+  # the task CLI's step_order check reads them.
+  defp markers(files) do
+    for {path, content} <- files,
+        String.starts_with?(path, "lib/") and Path.extname(path) == ".ex",
+        {:ok, _, comments} = Code.string_to_quoted_with_comments(content),
+        {id, steps} <- blocks(comments),
+        reduce: %{} do
+      acc -> Map.update(acc, id, [steps], &[steps | &1])
+    end
+  end
+
+  defp blocks(comments) do
+    comments
+    |> Enum.map(&String.trim(String.trim_leading(&1.text, "#")))
+    |> Enum.reduce([], &block/2)
+  end
+
+  defp block(text, blocks) do
+    case {Regex.run(~r/\Abubble:workflow\s+(\S+)/, text),
+          Regex.run(~r/\Abubble:step\s+(\d+)\s+(\S+)/, text), blocks} do
+      {[_, id], _, blocks} ->
+        [{id, []} | blocks]
+
+      {_, [_, n, type], [{id, steps} | rest]} ->
+        [{id, steps ++ [{String.to_integer(n), type}]} | rest]
+
+      _ ->
+        blocks
+    end
+  end
+
+  test "workflow modules are owned, the runtime is generated", %{files: files} do
+    manifest = Jason.decode!(files[".wtf/generated.json"])
+
+    for path <-
+          ~w(lib/shop_web/live/index_live/workflows.ex lib/shop_web/live/other_live/workflows.ex
+                   lib/shop_web/components/reusables/card/workflows.ex
+                   test/shop_web/bubble_frontend_workflows_test.exs),
+        do: assert(Map.has_key?(manifest["owned"], path), path)
+
+    assert Map.has_key?(manifest["generated"], "lib/shop_web/bubble_workflows.ex")
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ "defmodule ShopWeb.BubbleWorkflows do"
+    assert runtime =~ "config :shop, ShopWeb.BubbleWorkflows, data_access: true"
+    assert {:ok, _} = Code.string_to_quoted(runtime)
+  end
+
+  test "every workflow of the plan is marked once, with its steps in order", %{
+    files: files,
+    model: model,
+    index: index,
+    frontend: frontend,
+    lowered: lowered
+  } do
+    {:ok, plan} = Plan.build(model, index, frontend, [], residue: Frontend.residue(lowered))
+    markers = markers(files)
+
+    for task <- plan.tasks, task.kind == :workflow do
+      "workflow:" <> id = task.id
+      [%{args: %{steps: steps}}] = Enum.filter(task.criteria, &(&1.check == :step_order))
+      expected = steps |> Enum.with_index(1) |> Enum.map(fn {type, n} -> {n, type} end)
+      assert markers[id] == [expected], task.id
+    end
+  end
+
+  test "the page lists what a browser may trigger", %{files: files} do
+    module = files["lib/shop_web/live/index_live/workflows.ex"]
+    assert module =~ ~s("bBtnState" => ["wState"])
+    assert module =~ ~s|changes: %{"bNum" => ["wChanged"]}|
+    assert module =~ ~s("bIn" => {:text, nil})
+    assert module =~ ~s("bNum" => {:number, 3})
+    assert module =~ ~s|loaded: ["wLoad"]|
+    assert module =~ ~s|conditions: [{"wCond", :every_time}]|
+    # Browser-run and disabled workflows are not in the click list.
+    refute module =~ ~s("bBtnOpen" =>)
+    assert module =~ ~s({"bInst1", ShopWeb.Reusables.Card.Workflows})
+    assert module =~ ~s|blocked: ["action:aRes2"]|
+    # Blocked through the custom event it calls, as the backend's blocked_by.
+    assert module =~ ~s|blocked: ["workflow:wEvtResidue"]|
+    assert module =~ ~s|"wData" => %{run: :wf_w_data, condition: nil, blocked: [], data: true}|
+    # Scheduling a backend workflow runs on the backend runtime.
+    assert module =~ "page_data_current_date_time = ctx.now"
+
+    assert module =~
+             ~s|Runtime.schedule(run, "aSchedule1", "wApiNote", page_data_current_date_time|
+
+    assert module =~ ~s|BubbleWorkflows.backend(ctx, fn run ->|
+  end
+
+  test "bodies call the runtime; browser-run workflows are JS commands", %{files: files} do
+    module = files["lib/shop_web/live/index_live/workflows.ex"]
+    assert module =~ "def wf_w_open(js \\\\ %JS{}, scope) do"
+    assert module =~ ~s[|> Bubble.show(scope, "bPop")]
+
+    assert module =~
+             ~s|BubbleWorkflows.navigate(ctx, "/other", [{"q", "hello"}], false, false, false)|
+
+    assert module =~
+             ~s|BubbleWorkflows.set_state(ctx, "aState1", [\n      {[], "bHome", "custom.label_", element_state_bin_get_data}|
+
+    assert module =~
+             ~s|defp wf_w_residue__step(2, ctx),\n    do: BubbleWorkflows.not_lowered(ctx, "aRes2", "SendEmail")|
+
+    assert module =~ "# TODO(bubble:action:aRes2) not lowered: unsupported_action"
+
+    card = files["lib/shop_web/components/reusables/card/workflows.ex"]
+    assert card =~ "@instances []"
+    assert card =~ ~s|BubbleWorkflows.reset(ctx, [], nil, [])|
+  end
+
+  test "templates wire clicks, inputs and state reads", %{files: files} do
+    page = files["lib/shop_web/live/index_live.html.heex"]
+    assert page =~ ~s|phx-click={Workflows.wf_w_open("")}|
+    assert page =~ ~s|phx-click={Bubble.push("click", "", "bBtnState")}|
+
+    assert page =~
+             ~s(<form id="bubble-input-bIn" phx-change="bubble:change" phx-submit="bubble:change")
+
+    assert page =~
+             ~s(<input type="hidden" name="bubble[value]" value="false"><label data-bubble-id="bCheck")
+
+    assert page =~ ~s|{text_blabel(Bubble.state(@bubble_states, "", "bHome", "custom.label_"))}|
+    assert page =~ ~s|<.card data-bubble-id="bInst1"|
+
+    assert page =~
+             ~s|scope="bInst1" bubble_states={@bubble_states} bubble_inputs={@bubble_inputs}|
+
+    assert page =~ "<Bubble.runtime />"
+
+    card = files["lib/shop_web/components/reusables/card.html.heex"]
+    assert card =~ ~s|<div class={@class} data-bubble-scope={@scope} {@rest}>|
+    assert card =~ ~s|phx-click={Bubble.push("click", @scope, "bCardInc")}|
+    assert card =~ ~s|phx-click={Workflows.wf_w_card_open(@scope)}|
+    assert card =~ ~s|Bubble.state(@bubble_states, @scope, "bCard", "custom.count_")|
+    assert card =~ ~s|<input type="hidden" name="bubble[scope]" value={@scope}>|
+
+    live = files["lib/shop_web/live/index_live.ex"]
+    assert live =~ "|> BubbleWorkflows.mount(Workflows)"
+    assert live =~ ~s|def handle_event("bubble:" <> _ = event, params, socket)|
+    assert live =~ "def handle_info(message, socket) when elem(message, 0) == :bubble"
+  end
+
+  test "generated tests carry the plan's workflow subjects", %{
+    files: files,
+    model: model,
+    index: index,
+    spec: spec
+  } do
+    {:ok, plan} = Plan.build(model, index)
+    tasks = for t <- plan.tasks, t.kind == :workflow, into: MapSet.new(), do: t.id
+
+    {:ok, quoted} =
+      Code.string_to_quoted(files["test/shop_web/bubble_frontend_workflows_test.exs"])
+
+    {_, tags} =
+      Macro.prewalk(quoted, [], fn
+        {:@, _, [{:tag, _, [[bubble_smoke: tag]]}]} = node, acc -> {node, [tag | acc]}
+        node, acc -> {node, acc}
+      end)
+
+    native =
+      for w <- FrontendWorkflows.Spec.workflows(spec),
+          FrontendWorkflows.Spec.native?(w),
+          do: w.symbol
+
+    assert Enum.sort(tags) == Enum.sort(native)
+    assert Enum.all?(tags, &MapSet.member?(tasks, &1))
+  end
+
+  test "without frontend workflows the pages are T5's" do
+    app = app()
+    {:ok, model} = Model.build(app)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+    {:ok, files} = Phoenix.render(project, module: "Shop", frontend: frontend)
+
+    refute Map.has_key?(files, "lib/shop_web/bubble_workflows.ex")
+    refute files["lib/shop_web/live/index_live.ex"] =~ "BubbleWorkflows"
+    refute files["lib/shop_web/live/index_live.html.heex"] =~ "phx-click={"
+  end
+
+  test "hostile IDs are quoted in generated source, never spliced in" do
+    app = app()
+    # Two workflow IDs that differ only by a newline and a space.
+    app =
+      put_in(
+        app,
+        ["pages", "home", "workflows", "wUrl", "id"],
+        HostileIds.hostile("wNav") |> String.replace("\n", " ")
+      )
+
+    ids = HostileIds.ids(app)
+    %{files: files} = render(HostileIds.rename(app, ids))
+
+    for {path, content} <- files, Path.extname(path) in [".ex", ".exs"] do
+      assert {:ok, quoted} = Code.string_to_quoted(content), path
+
+      {_, calls} =
+        Macro.prewalk(quoted, [], fn
+          {:raise, _, ["injected"]} = node, acc -> {node, [path | acc]}
+          node, acc -> {node, acc}
+        end)
+
+      assert calls == [], path
+    end
+
+    for {path, content} <- files, String.ends_with?(path, ".heex") do
+      refute content =~ ~s("\#{raise), path
+      refute content =~ ~r/<%(?!!-- TODO\(bubble:)/, path
+    end
+
+    # Markers are one word each and never collide (review L4): control
+    # characters and spaces are percent-encoded, not replaced.
+    workflows = markers(files)
+    # 21 page workflows and the backend workflow they schedule.
+    assert map_size(workflows) == 22
+    assert Enum.all?(Map.values(workflows), &match?([_], &1))
+
+    # The test tags are the plan's subjects, as data.
+    {:ok, quoted} =
+      Code.string_to_quoted(files["test/shop_web/bubble_frontend_workflows_test.exs"])
+
+    {_, tags} =
+      Macro.prewalk(quoted, [], fn
+        {:@, _, [{:tag, _, [[bubble_smoke: tag]]}]} = node, acc -> {node, [tag | acc]}
+        node, acc -> {node, acc}
+      end)
+
+    assert BubbleEx.Index.Symbol.id(:workflow, HostileIds.hostile("wState")) in tags
+  end
+end

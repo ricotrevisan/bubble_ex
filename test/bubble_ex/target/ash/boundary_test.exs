@@ -19,7 +19,9 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
     "lib/bubble_ex/target/phoenix/tailwind.ex",
     # Backend workflows (WTF-373) print a Workflows.Spec, plain data.
     "lib/bubble_ex/target/phoenix/workflows.ex",
-    "lib/bubble_ex/target/ash/workflows/spec.ex"
+    "lib/bubble_ex/target/ash/workflows/spec.ex",
+    # Its frontend workflows (WTF-372) print a FrontendWorkflows.Spec.
+    "lib/bubble_ex/target/phoenix/frontend_workflows.ex"
   ]
 
   # Renderers that print something other than a Project.
@@ -27,10 +29,14 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
                   lib/bubble_ex/target/phoenix/pages.ex
                   lib/bubble_ex/target/phoenix/tailwind.ex
                   lib/bubble_ex/target/phoenix/workflows.ex
-                  lib/bubble_ex/target/ash/workflows/spec.ex)
+                  lib/bubble_ex/target/ash/workflows/spec.ex
+                  lib/bubble_ex/target/phoenix/frontend_workflows.ex)
 
   # The API client Spec is plain data too.
-  @plain ["lib/bubble_ex/target/api_clients/spec.ex"]
+  @plain [
+    "lib/bubble_ex/target/api_clients/spec.ex",
+    "lib/bubble_ex/target/elixir/frontend_workflows/spec.ex"
+  ]
 
   defp forbidden do
     [
@@ -40,7 +46,9 @@ defmodule BubbleEx.Target.Ash.BoundaryTest do
       ~r{^lib/bubble_ex/target/ash\.ex$},
       ~r{^lib/bubble_ex/target/api_clients\.ex$},
       ~r{^lib/bubble_ex/target/ash/workflows\.ex$},
-      ~r{^lib/bubble_ex/workflows/}
+      ~r{^lib/bubble_ex/workflows/},
+      # The frontend workflows binding (WTF-372).
+      ~r{^lib/bubble_ex/target/elixir/frontend_workflows\.ex$}
     ]
   end
 

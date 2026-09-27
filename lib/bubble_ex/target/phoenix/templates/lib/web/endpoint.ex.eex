@@ -9,7 +9,9 @@ defmodule <%= @web %>.Endpoint do
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
+    # A frame is at most 1 MB (Phoenix sets no limit): an input's value is
+    # capped much lower by <%= @web %>.BubbleWorkflows.
+    websocket: [connect_info: [session: @session_options], max_frame_size: 1_000_000],
     longpoll: [connect_info: [session: @session_options]]
 
   plug Plug.Static,

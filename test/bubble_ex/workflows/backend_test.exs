@@ -4,7 +4,8 @@ defmodule BubbleEx.Workflows.BackendTest do
   alias BubbleEx.{Index, Model, Plan}
   alias BubbleEx.Test.PermutedJson
   alias BubbleEx.Workflows.Backend
-  alias BubbleEx.Workflows.Backend.{Change, Expr, Step, Workflow}
+  alias BubbleEx.Workflows.Backend.{Step, Workflow}
+  alias BubbleEx.Workflows.Lowering.{Change, Expr}
 
   @fixture "test/support/target/workflows/backend.json"
 

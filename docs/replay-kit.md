@@ -55,6 +55,14 @@ included, to anonymous callers as soon as it was exposed on a branch. So:
 - [ ] Before exposing a type, check its privacy rules: expose only types
       whose rules show a logged-out visitor nothing. Leave every other type
       unexposed and record it as "needs a decision".
+- [ ] Check the **database triggers** of every type the seed writes.
+      Seeding creates, updates and deletes records through the Data API,
+      and Bubble runs the app's "a thing is modified" backend workflows
+      for those changes, like any other change: they can call external
+      services (analytics, billing, integrations) and create records the
+      ledger does not know. The driver calls no app workflow itself, but
+      it cannot stop these. Prefer types without triggers, or check that
+      no trigger condition holds for the seed's records.
 - [ ] Settings → API → enable **Data API** and tick only those types.
       The preflight runs two checks on each type under test:
       - a search that matches no records (`_id in [0x0]`, as admin) needs
@@ -99,6 +107,9 @@ Settings → API → enable **Workflow API**. Then, in Backend workflows:
         workflow, at `/version-<branch ID>/`, returns exactly that branch
         name and nonce. A mistyped host or branch ID fails there, and the
         admin token is never sent to it.
+- [ ] Only for a seed with users (personas): `wtf_replay_signup` and
+      `wtf_replay_login` below. A seed without users needs only the
+      marker.
 - [ ] `wtf_replay_signup`: exposed as a public API workflow. Leave "This
       workflow can be run without authentication" **unchecked**, so only
       the admin token can call it.
@@ -111,8 +122,8 @@ Settings → API → enable **Workflow API**. Then, in Backend workflows:
       - Step 2: **Return data from API**: `token`, `user_id` and `expires`
         from the login step.
 - [ ] The preflight reads `/version-<branch ID>/api/1.1/meta` (as admin,
-      after the marker check) and needs the sign-up and login names among
-      the exposed workflows.
+      after the marker check) and, for a seed with users, needs the
+      sign-up and login names among the exposed workflows.
 
 The driver signs personas up with emails like
 `alice+<run>@replay.wtf.invalid` and random passwords that are never stored.
@@ -129,13 +140,38 @@ No email reaches a real person.
       memory, redacts it from inspection and telemetry, and refuses to
       write any output that contains it (the credential scan).
 
+## What Bubble does (observed on a real branch, WTF-385)
+
+- `/meta` answers without a token on a branch: `get` lists the exposed
+  types by Data API path (`00.thing`, `🎙️msgs`: the display name
+  lowercased without spaces), `post` lists workflow objects named by
+  `endpoint`, `types` gives each exposed or referenced type's fields as
+  `{id, display, type}` objects (built-in fields included, `_id` as
+  `unique ID`, deleted fields left out) and `app_data.use_captions_for_get`
+  says whether the Data API keys fields by display name.
+- Option-set values are written and read by their **display text**; a
+  create with the stored key (`db_value`) is refused (400 `INVALID_DATA`).
+- A create stores the fields' defaults; `PATCH` with a field set to `null`
+  clears it (204, and the field is gone when read back).
+- A Data API create with the admin token sets `Created By`.
+- A record the privacy rules hide from the caller answers `GET` by ID with
+  200 and only `_id`, not 404; a search leaves it out. The driver records
+  that as not visible. This rests on one observation (logged-out callers,
+  rules that grant nothing): a rule granting search or some fields without
+  "view all" may produce the same ID-only answer, so "not visible" may
+  merge "hidden" with "findable but no field visible" (unverified; listed
+  on WTF-358).
+- A branch's Data API setting and type list are its own: exposing or
+  hiding types on the replay branch leaves `test` unchanged.
+
 ## 5. Dry run, then record
 
 1. `Replay.Recorder.plan/4` validates the scenarios against the seed and
    the target (app, branch name, branch ID, host) and estimates the number
    of calls. It makes no requests.
    Review the plan. The driver calls no workflow of your app, only the
-   kit's two: scenarios that call app workflows are refused until they can
+   kit's (database triggers still run: see "Check the database triggers"
+   in section 2 of this checklist): scenarios that call app workflows are refused until they can
    be classified as replay-safe (V7).
 2. `Replay.Recorder.record/4` needs the plan's `sha256` and a
    `:ledger_dir`. It runs the preflight (refusing the run if the kit is

@@ -23,10 +23,10 @@ defmodule BubbleEx.Workflows.Backend.Workflow do
       ignores privacy rules on some call path); informational
     * `invocation_modes` - from the index (`:public_http`, `:scheduled`,
       `:direct`, `:database_trigger`)
-    * `parameters` - `BubbleEx.Workflows.Backend.Param`s, in Bubble order
-    * `returns` - a custom event's `BubbleEx.Workflows.Backend.Return`s
+    * `parameters` - `BubbleEx.Workflows.Lowering.Param`s, in Bubble order
+    * `returns` - a custom event's `BubbleEx.Workflows.Lowering.Return`s
     * `trigger_type` - a database trigger's data type key
-    * `condition` - its "Only when" `BubbleEx.Workflows.Backend.Expr`, or nil
+    * `condition` - its "Only when" `BubbleEx.Workflows.Lowering.Expr`, or nil
     * `steps` - `BubbleEx.Workflows.Backend.Step`s, in Bubble order
     * `cycle` - the ID of its call cycle (`cycle:<id>+<id>`), or nil
     * `residue` - residue of the event itself (see
@@ -75,10 +75,10 @@ defmodule BubbleEx.Workflows.Backend.Workflow do
           inherits_privacy?: boolean(),
           runs_ignoring_privacy?: boolean(),
           invocation_modes: [atom()],
-          parameters: [BubbleEx.Workflows.Backend.Param.t()],
-          returns: [BubbleEx.Workflows.Backend.Return.t()],
+          parameters: [BubbleEx.Workflows.Lowering.Param.t()],
+          returns: [BubbleEx.Workflows.Lowering.Return.t()],
           trigger_type: String.t() | nil,
-          condition: BubbleEx.Workflows.Backend.Expr.t() | nil,
+          condition: BubbleEx.Workflows.Lowering.Expr.t() | nil,
           steps: [BubbleEx.Workflows.Backend.Step.t()],
           cycle: String.t() | nil,
           residue: [BubbleEx.Plan.Residue.t()],
@@ -92,39 +92,6 @@ defmodule BubbleEx.Workflows.Backend.Workflow do
   @doc "Whether the workflow has no residue at all."
   @spec native?(t()) :: boolean()
   def native?(%__MODULE__{} = w), do: residue(w) == []
-end
-
-defmodule BubbleEx.Workflows.Backend.Param do
-  @moduledoc """
-  A workflow parameter: `id` (what expressions reference: `param_id`, or an
-  API workflow's key), `key` (the name callers pass: an API workflow's key,
-  a custom event's `param_name`; display text), `type` (the Bubble type
-  descriptor, `list.` for lists, or nil when not declared), `optional?`
-  and `in_url?` (an API workflow reads it from the query string).
-  """
-
-  @enforce_keys [:id, :key]
-  defstruct [:id, :key, :type, optional?: false, in_url?: false]
-
-  @type t :: %__MODULE__{
-          id: String.t(),
-          key: String.t(),
-          type: String.t() | nil,
-          optional?: boolean(),
-          in_url?: boolean()
-        }
-end
-
-defmodule BubbleEx.Workflows.Backend.Return do
-  @moduledoc """
-  A value a custom event returns: `id` (`return_id`), `name` (its caption,
-  display text) and `type` (a Bubble type descriptor, or nil).
-  """
-
-  @enforce_keys [:id, :name]
-  defstruct [:id, :name, :type]
-
-  @type t :: %__MODULE__{id: String.t(), name: String.t(), type: String.t() | nil}
 end
 
 defmodule BubbleEx.Workflows.Backend.Step do
@@ -145,43 +112,9 @@ defmodule BubbleEx.Workflows.Backend.Step do
           id: String.t(),
           type: String.t() | nil,
           op: atom() | nil,
-          condition: BubbleEx.Workflows.Backend.Expr.t() | nil,
+          condition: BubbleEx.Workflows.Lowering.Expr.t() | nil,
           args: map(),
           residue: [BubbleEx.Plan.Residue.t()],
           path: String.t() | nil
-        }
-end
-
-defmodule BubbleEx.Workflows.Backend.Change do
-  @moduledoc """
-  One field change of a create or update step: `field` (the field's Bubble
-  ID), `op` (`:set`, `:add`, `:remove`, `:add_list`, `:remove_list`,
-  `:set_list` or `:clear_list`) and `value` (nil for `:clear_list`).
-  """
-
-  @enforce_keys [:field, :op]
-  defstruct [:field, :op, :value]
-
-  @type t :: %__MODULE__{
-          field: String.t(),
-          op: :set | :add | :remove | :add_list | :remove_list | :set_list | :clear_list,
-          value: BubbleEx.Workflows.Backend.Expr.t() | nil
-        }
-end
-
-defmodule BubbleEx.Workflows.Backend.Expr do
-  @moduledoc """
-  A value or condition of a workflow: `path` (JSON pointer of its source)
-  and `ir` (`BubbleEx.Expression.IR`), or nil with `constructs` naming what
-  stopped it (as `BubbleEx.Plan.Residue.constructs/1`).
-  """
-
-  @enforce_keys [:path]
-  defstruct [:path, :ir, constructs: []]
-
-  @type t :: %__MODULE__{
-          path: String.t(),
-          ir: BubbleEx.Expression.IR.t() | nil,
-          constructs: [String.t()]
         }
 end

@@ -228,6 +228,66 @@ defmodule BubbleEx.Verify.ReplayTest do
 
   # --- the guard --------------------------------------------------------------------------
 
+  describe "Names" do
+    test "option values go to the Data API as display text and come back as keys" do
+      {:ok, names} =
+        Names.new(
+          types: %{"custom.ev" => "ev"},
+          fields: %{"custom.ev" => %{"status_os" => "Status"}},
+          options: %{"custom.ev" => %{"status_os" => %{"sent" => "Sent", "done" => "Done"}}}
+        )
+
+      assert {:ok, {:option, "Sent"}} =
+               Names.to_api(names, "custom.ev", "status_os", {:option, "sent"})
+
+      assert {:ok, {:list, [{:option, "Done"}, {:option, "Sent"}]}} =
+               Names.to_api(
+                 names,
+                 "custom.ev",
+                 "status_os",
+                 {:list, [{:option, "done"}, {:option, "sent"}]}
+               )
+
+      assert {:option, "sent"} =
+               Names.from_api(names, "custom.ev", "status_os", {:option, "Sent"})
+
+      assert {:error, %Error{context: %{reason: :unknown_option}}} =
+               Names.to_api(names, "custom.ev", "status_os", {:option, "nope"})
+
+      # Non-option values pass through.
+      assert {:ok, {:text, "x"}} = Names.to_api(names, "custom.ev", "other", {:text, "x"})
+
+      # An option with no mapping is an error to send, and a display text
+      # the model does not know is a mismatch, never passed on as a key.
+      assert {:error, %Error{context: %{reason: :unmapped_option_field}}} =
+               Names.to_api(names, "custom.ev", "other", {:option, "k"})
+
+      assert {:json, %{"unmapped_option" => true}} =
+               Names.from_api(names, "custom.ev", "status_os", {:option, "Unknown"})
+
+      assert {:json, %{"unmapped_option" => true}} =
+               Names.from_api(names, "custom.ev", "other", {:option, "Other"})
+
+      assert {:list, [{:option, "done"}, {:json, %{"unmapped_option" => true}}]} =
+               Names.from_api(
+                 names,
+                 "custom.ev",
+                 "status_os",
+                 {:list, [{:option, "Done"}, {:option, "?"}]}
+               )
+    end
+
+    test "an option field whose display texts repeat has no mapping, so sending it fails" do
+      {:ok, names} = Names.new(options: %{"custom.ev" => %{"dup_os" => :ambiguous}})
+
+      assert {:error, %Error{context: %{reason: :ambiguous_option_field}}} =
+               Names.to_api(names, "custom.ev", "dup_os", {:option, "a"})
+
+      assert {:json, %{"unmapped_option" => true}} =
+               Names.from_api(names, "custom.ev", "dup_os", {:option, "A"})
+    end
+  end
+
   describe "Target" do
     test "accepts an app ID and a wtfreplay branch only" do
       for branch <- ~w(wtfreplay wtfreplay-2 wtfreplay_v5) do
@@ -388,8 +448,49 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:ok, root <> "/obj/task/1700x12"} == Target.data_url(t, "task", "1700x12")
       assert {:ok, root <> "/wf/wtf_replay_login"} == Target.workflow_url(t, "wtf_replay_login")
 
-      for bad <- ["../live", "task/../x", "Task", "", "task?x=1", "a%2Fb"] do
+      for bad <- [
+            "../live",
+            "task/../x",
+            "Task",
+            "",
+            "task?x=1",
+            "a%2Fb",
+            ".",
+            "..",
+            "a b",
+            "a#b"
+          ] do
         assert {:error, _} = Target.data_url(t, bad)
+      end
+
+      # Bubble's type paths keep dots, colons and emoji (`/meta`'s `get`).
+      assert {:ok, root <> "/obj/00.thing-join"} == Target.data_url(t, "00.thing-join")
+      assert {:ok, root <> "/obj/%F0%9F%92%AC" <> "workspace"} == Target.data_url(t, "💬workspace")
+      assert {:ok, url} = Target.data_url(t, "🪄mq:answers", "1700x12")
+      assert :ok = Target.check_url(t, url)
+      # Emoji sequences keep their joiner and variation selector.
+      assert {:ok, _} = Target.data_url(t, "\u{1F468}\u200D\u{1F469}x")
+      assert {:ok, _} = Target.data_url(t, "\u{1F399}\uFE0Fmsgs")
+
+      # Look-alikes of separators and dots, bidi overrides, zero-width and
+      # other invisible or non-NFKC characters are refused.
+      for bad <- [
+            "a\uFF0Fb",
+            "a\uFF0Eb",
+            "\uFF0E\uFF0E",
+            "a\u2215b",
+            "a\u2044b",
+            "a\u202Eb",
+            "a\u200Bb",
+            "a\u2060b",
+            "a\uFEFFb",
+            "\uFF41bc",
+            "a\u00A0b",
+            "a\u0000b",
+            "a\uE000b"
+          ] do
+        assert {:error, %Error{context: %{reason: :invalid_segment}}} = Target.data_url(t, bad),
+               "accepted #{inspect(bad)}"
       end
 
       for id <- ["../1x2", "1x2/..", "abc", "1x2?", ""] do
@@ -437,6 +538,15 @@ defmodule BubbleEx.Verify.ReplayTest do
   # --- client: budgets, backoff, redirects -------------------------------------------------
 
   describe "Client" do
+    test "a record answered with its ID only is hidden, as Bubble answers privacy-hidden records" do
+      start_fake()
+      c = client()
+      assert {:ok, id} = Client.create(c, "custom.task", %{"Title" => "t"}, :admin)
+      assert {:ok, {:found, %{"Title" => "t"}}} = Client.get(c, "custom.task", id, :admin)
+      # The fake's tasks are hidden from logged-out callers: 200 with `_id` only.
+      assert {:ok, :not_found} = Client.get(c, "custom.task", id, :none)
+    end
+
     test "stops at the call budget before sending" do
       fake = start_fake()
       c = client(max_calls: 2)
@@ -542,6 +652,49 @@ defmodule BubbleEx.Verify.ReplayTest do
   # --- ledger and cleanup --------------------------------------------------------------------
 
   describe "ledger" do
+    @tag :tmp_dir
+    test "the journal and its directory are owner-only", %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "ledgers/nested")
+      {:ok, ledger} = Ledger.new(target(), "perm", dir: dir)
+      {:ok, _} = Ledger.intend(ledger, "k", "custom.task")
+      assert {:ok, %File.Stat{mode: mode}} = File.stat(ledger.path)
+      assert Bitwise.band(mode, 0o777) == 0o600
+      assert {:ok, %File.Stat{mode: dmode}} = File.stat(dir)
+      assert Bitwise.band(dmode, 0o777) == 0o700
+
+      # An existing, group-readable directory is made owner-only.
+      open = Path.join(tmp, "open")
+      File.mkdir_p!(open)
+      File.chmod!(open, 0o755)
+      assert {:ok, _} = Ledger.new(target(), "perm", dir: open)
+      assert {:ok, %File.Stat{mode: omode}} = File.stat(open)
+      assert Bitwise.band(omode, 0o777) == 0o700
+    end
+
+    @tag :tmp_dir
+    test "a journal is created exclusively: an existing file or link is never reused",
+         %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "ledgers")
+      assert {:ok, _} = Ledger.new(target(), "once", dir: dir)
+      assert {:error, %Error{message: message}} = Ledger.new(target(), "once", dir: dir)
+      assert message =~ "already exists"
+
+      elsewhere = Path.join(tmp, "elsewhere.jsonl")
+      File.write!(elsewhere, "")
+      :ok = File.ln_s(elsewhere, Path.join(dir, "link.jsonl"))
+      assert {:error, _} = Ledger.new(target(), "link", dir: dir)
+      assert File.read!(elsewhere) == ""
+    end
+
+    @tag :tmp_dir
+    test "a directory that cannot be made owner-only refuses the run", %{tmp_dir: tmp} do
+      file = Path.join(tmp, "file")
+      File.write!(file, "")
+
+      assert {:error, %Error{context: %{reason: :ledger_write_failed}}} =
+               Ledger.new(target(), "x", dir: Path.join(file, "sub"))
+    end
+
     test "only ledger records can be updated or deleted" do
       fake =
         start_fake(owner_records: [%{type: "task", fields: %{"Title" => "owner's own"}}])
@@ -998,7 +1151,9 @@ defmodule BubbleEx.Verify.ReplayTest do
       start_fake(exposed: ~w(task user))
 
       assert {:ok, report} =
-               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace user))
+               Kit.preflight(client(), %Kit{}, ~w(custom.task custom.workspace user),
+                 personas: true
+               )
 
       refute report.ok?
 
@@ -1007,6 +1162,18 @@ defmodule BubbleEx.Verify.ReplayTest do
 
       assert %{status: :ok} = Enum.find(report.checks, &(&1[:workflow] == "wtf_replay_login"))
       assert :privacy_rules_unchanged_from_parent in report.manual
+    end
+
+    test "the sign-up and login workflows are needed only for a seed with users" do
+      start_fake(workflows: ~w(wtf_replay_marker))
+
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.task), personas: true)
+
+      assert %{status: :missing} =
+               Enum.find(report.checks, &(&1[:workflow] == "wtf_replay_signup"))
+
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(custom.task))
+      refute Enum.any?(report.checks, &Map.has_key?(&1, :workflow))
     end
 
     test "the anonymous exposure probe refuses a type that shows a logged-out visitor fields" do
@@ -1082,6 +1249,72 @@ defmodule BubbleEx.Verify.ReplayTest do
                  )
 
         assert %{status: :ok, anonymous: :proven_hidden} = check.(report)
+      end
+    end
+
+    test "reads Bubble's metadata field objects, by display name or ID as the Data API keys them" do
+      # Bubble lists `%{id, display, type}` objects, built-in fields included,
+      # `_id` as `unique ID` (WTF-385).
+      builtin = fn names -> Enum.map(names, &%{"id" => &1, "display" => &1, "type" => "text"}) end
+      unique_id = %{"id" => "_id", "display" => "unique ID", "type" => "text"}
+
+      ids_only = %{
+        "workspace" => %{
+          "display" => "Workspace",
+          "fields" => [unique_id | builtin.(["Created Date", "Modified Date"])]
+        }
+      }
+
+      with_name = %{
+        "workspace" => %{
+          "display" => "Workspace",
+          "fields" =>
+            [unique_id | builtin.(["Created Date"])] ++
+              [%{"id" => "name_text", "display" => "Name", "type" => "text"}]
+        }
+      }
+
+      # A field of the app displayed "unique ID" is a real field, not `_id`.
+      impostor = %{
+        "workspace" => %{
+          "display" => "Workspace",
+          "fields" =>
+            [unique_id | builtin.(["Created Date", "Modified Date"])] ++
+              [%{"id" => "unique_id_text", "display" => "unique ID", "type" => "text"}]
+        }
+      }
+
+      check = fn ->
+        Enum.find(
+          elem(Kit.preflight(client(), %Kit{}, ~w(custom.workspace)), 1).checks,
+          &(&1[:check] == :anonymous_exposure)
+        )
+      end
+
+      for captions <- [true, false] do
+        start_fake(
+          owner_records: [%{type: "workspace", fields: %{}}],
+          meta_types: ids_only,
+          captions: captions
+        )
+
+        assert %{status: :ok, anonymous: :ids_only} = check.()
+
+        start_fake(
+          owner_records: [%{type: "workspace", fields: %{}}],
+          meta_types: with_name,
+          captions: captions
+        )
+
+        assert %{status: :may_leak} = check.()
+
+        start_fake(
+          owner_records: [%{type: "workspace", fields: %{}}],
+          meta_types: impostor,
+          captions: captions
+        )
+
+        assert %{status: :may_leak} = check.()
       end
     end
 
