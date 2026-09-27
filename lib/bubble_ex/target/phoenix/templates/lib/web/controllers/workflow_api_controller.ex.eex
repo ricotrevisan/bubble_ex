@@ -1,7 +1,85 @@
 defmodule <%= @web %>.WorkflowApiController do
   @moduledoc """
   Bubble's workflow API, `/api/1.1/wf/<name>` (WTF-359 Q6).
+<%= if @workflows? do %>
+  Each backend workflow the Bubble app exposes as a public API endpoint
+  runs here through `<%= @module %>.Workflows.Runtime.call_endpoint/5`,
+  **only when the owner turns the API on** (`config :<%= @app %>,
+  <%= @module %>.Workflows, serve_workflow_api: true`); until then every request
+  answers 503. As generated, no resource has authorization, so an exposed
+  workflow would let any caller read and write other users' records.
 
+  When served: authentication as the workflow requires (a user's bearer
+  token, or the admin token `WORKFLOW_API_ADMIN_TOKEN`), the workflow's
+  HTTP method only (POST when it names none; 405 otherwise), its
+  parameters from the query string and the body, and Bubble's response
+  shape (`{"status": "success", "response": {...}}`, or the returned text
+  with an allowlisted content type). An unknown name answers 404. (Bubble's
+  own error bodies are not reproduced yet.)
+  """
+  use <%= @web %>, :controller
+
+  alias <%= @module %>.Workflows.Runtime
+
+  # Content types a workflow may return text as; anything else is text/plain.
+  @content_types ~w(text/plain application/json text/csv application/xml text/xml text/calendar)
+
+  def dispatch(conn, %{"__wf_name" => name} = params) do
+    actor = Ash.PlugHelpers.get_actor(conn)
+    authorization = conn |> get_req_header("authorization") |> List.first()
+    conn = put_resp_header(conn, "x-content-type-options", "nosniff")
+
+    case Runtime.call_endpoint(name, conn.method, Map.delete(params, "__wf_name"), actor, authorization) do
+      {:ok, %{text: {content_type, text}}} ->
+        conn
+        |> put_resp_content_type(content_type(content_type))
+        |> send_resp(200, Runtime.text(text))
+
+      {:ok, result} ->
+        json(conn, %{"status" => "success", "response" => Runtime.dump(result.data || %{})})
+
+      {:error, :not_served} ->
+        error(
+          conn,
+          :service_unavailable,
+          "NOT_SERVED",
+          "The workflow API is off: add authorization policies, then set serve_workflow_api"
+        )
+
+      {:error, :not_found} ->
+        error(conn, :not_found, "NOT_FOUND", "Workflow not found")
+
+      {:error, {:method_not_allowed, method}} ->
+        conn
+        |> put_resp_header("allow", method |> Atom.to_string() |> String.upcase())
+        |> error(:method_not_allowed, "METHOD_NOT_ALLOWED", "Use #{String.upcase(to_string(method))}")
+
+      {:error, :unauthorized} ->
+        error(conn, :unauthorized, "UNAUTHORIZED", "This workflow requires authentication")
+
+      {:error, {:missing, key}} ->
+        error(conn, :bad_request, "MISSING_DATA", "Missing parameter: #{key}")
+
+      {:error, :not_run} ->
+        error(conn, :bad_request, "NOT_RUN", "The workflow's condition is not met")
+
+      {:error, {:failed, _reason}} ->
+        error(conn, :bad_request, "ERROR", "The workflow failed")
+    end
+  end
+
+  defp content_type(type) do
+    base = type |> Runtime.text() |> String.split(";") |> hd() |> String.trim() |> String.downcase()
+    if base in @content_types, do: base, else: "text/plain"
+  end
+
+  defp error(conn, status, code, message) do
+    conn
+    |> put_status(status)
+    |> json(%{"status" => code, "message" => message})
+  end
+end
+<% else %>
   Each backend workflow the Bubble app exposes as a public API endpoint
   becomes a generated entry point here, dispatching to its Ash action. No
   workflow is lowered yet, so every name answers 404. (Bubble's own error
@@ -15,3 +93,4 @@ defmodule <%= @web %>.WorkflowApiController do
     |> json(%{"status" => "NOT_FOUND", "message" => "Workflow not found"})
   end
 end
+<% end %>
