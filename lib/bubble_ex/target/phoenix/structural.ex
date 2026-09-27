@@ -59,8 +59,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
                "intact and deterministic, and where authorization is bypassed in lib/ " <>
                "(authorize? not literally true, Runtime.start bypasses, bypass policies, " <>
                "authorize modes, empty authorizers, Repo and Ecto.Adapters.SQL calls). It " <>
-               "does not see bypasses built at runtime without a literal authorize? key, " <>
-               "other query libraries or code outside lib/, and it does not show that the " <>
+               "does not see every bypass (not_run lists the forms it misses), and it " <>
+               "does not show that the " <>
                "app behaves like the Bubble app: privacy, workflows, pages and data are " <>
                "verified by replay (L2/L3), data verification (L4) and the cutover gates " <>
                "(L5). Residue is work still to do."
@@ -86,7 +86,12 @@ defmodule BubbleEx.Target.Phoenix.Structural do
 
   @unseen {"bypass_inventory (not seen)",
            "bypasses built at runtime without a literal authorize? key (Keyword.merge/2 " <>
-             "of a variable, apply/3), queries through other libraries, code outside lib/"}
+             "of a variable, put_in/2 with runtime keys, apply/3), Repo reached through an " <>
+             "alias, import, apply/3 or a variable, Runtime.start/4 through an alias, " <>
+             "`policy always()` with `authorize_if always()`, owned resources with no " <>
+             "authorizer, queries through other libraries, code outside lib/. A hand-written " <>
+             "`# bubble:workflow` comment in owned code passes for a workflow body, and a " <>
+             "decision:<key> marker accepts any active owner decision (WTF-424)"}
 
   @lint_issue "WTF-416"
 
@@ -526,10 +531,11 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   defp expected_scaffold(lib, project) do
     fixed =
       for {path, _} <- lib,
-          {purpose, {suffix, n}} <- Bypasses.expected_sites(),
+          {purpose, {suffix, _kind, functions}} <- Bypasses.expected_sites(),
           String.ends_with?(path, suffix),
+          {fun, n} <- functions,
           into: %{},
-          do: {{path, purpose}, n}
+          do: {{path, purpose, fun}, n}
 
     counts =
       for r <- project.resources,
@@ -545,7 +551,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
           n = counts[relative(module, project)],
           n != nil,
           into: %{},
-          do: {{path, "derived_count"}, n}
+          do: {{path, "derived_count", nil}, n}
 
     Map.merge(fixed, derived)
   end

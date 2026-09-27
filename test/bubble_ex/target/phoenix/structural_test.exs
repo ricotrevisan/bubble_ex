@@ -186,8 +186,14 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
 
       report = run!(inputs)
 
-      # pHome's surface task is open with residue; the reusables are not.
-      assert symbols(report, "pages")["residue"] == 1
+      # The generator emits every surface: a missing one is never residue,
+      # even when its surface task is open with residue (pHome's is).
+      assert symbols(report, "pages")["reasons"] == %{
+               "excluded:mobile_view" => 1,
+               "uncovered:not_emitted" => 1
+             }
+
+      assert status(report, "structural.symbol_coverage.pages") == :fail
       assert symbols(report, "reusables")["reasons"] == %{"uncovered:not_emitted" => 3}
       assert symbols(report, "api_calls")["reasons"] == %{"uncovered:not_emitted" => 2}
       assert symbols(report, "workflows")["reasons"]["uncovered:not_emitted"] == 8
@@ -200,13 +206,16 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       assert "symbol_coverage (rendered source)" in not_run
     end
 
-    test "an empty surfaces map leaves the reusables uncovered", %{inputs: inputs} do
+    test "an empty surfaces map leaves pages and reusables uncovered", %{inputs: inputs} do
       files =
         Map.put(inputs.files, ".wtf/surfaces.json", ~s({"pages": {}, "reusables": {}}))
 
       report = run!(%{inputs | files: files})
 
-      assert diff(report, "structural.symbol_coverage.pages") == []
+      assert diff(report, "structural.symbol_coverage.pages") == [
+               %{op: "symbol_uncovered", page: "pHome", detail: "page:pHome (not_emitted)"}
+             ]
+
       assert length(diff(report, "structural.symbol_coverage.reusables")) == 3
 
       assert %{op: "symbol_uncovered", element: "rA", detail: "reusable:rA (not_emitted)"} in diff(
@@ -546,11 +555,31 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       Ash.read!(q, authorize?: false)
       """
 
+      # A slot covers one site kind in one function.
+      anchored = """
+      def c do
+        # bubble:ignores_privacy scaffold:confirm_email
+        Acme.Repo.query!("delete from users")
+        # bubble:ignores_privacy scaffold:confirm_email
+        Ash.update!(u, authorize?: false)
+      end
+      def d do
+        # bubble:ignores_privacy scaffold:confirm_email
+        Ash.update!(u, authorize?: false)
+      end
+      """
+
       inventory =
         Bypasses.inventory(
-          %{"a.ex" => body, "b.ex" => scaffold, "c.ex" => decided, "d.txt" => scaffold},
+          %{
+            "a.ex" => body,
+            "b.ex" => scaffold,
+            "c.ex" => decided,
+            "d.txt" => scaffold,
+            "e.ex" => anchored
+          },
           workflows: ["wClose"],
-          scaffold: %{{"b.ex", "confirm_email"} => 1},
+          scaffold: %{{"b.ex", "confirm_email", nil} => 1, {"e.ex", "confirm_email", "c/0"} => 1},
           decisions: ["parity_exception:ok"]
         )
 
@@ -563,8 +592,14 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                {"b.ex", 4, :authorize_false, :unlisted},
                {"b.ex", 6, :authorize_false, :unlisted},
                {"c.ex", 2, :authorize_false, :marked},
-               {"c.ex", 4, :authorize_false, :unlisted}
+               {"c.ex", 4, :authorize_false, :unlisted},
+               {"e.ex", 3, :repo_call, :unlisted},
+               {"e.ex", 5, :authorize_false, :scaffold},
+               {"e.ex", 9, :authorize_false, :unlisted}
              ]
+
+      assert Enum.find(inventory.sites, &(&1.path == "e.ex" and &1.line == 3)).detail =~
+               "covers authorize_false sites only"
     end
   end
 
@@ -662,7 +697,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                {"lib/acme/owned.ex:5",
                 "authorize_false: the workflow marker is outside that workflow's body"},
                {"lib/acme/owned.ex:8",
-                "authorize_false: more scaffold:confirm_email sites than the generator wrote here"},
+                "authorize_false: more scaffold:confirm_email sites in copied_scaffold/1 than the generator wrote"},
                {"lib/acme/owned.ex:10", "repo_call"}
              ]
     end

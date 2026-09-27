@@ -12,7 +12,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   |--------|---------|-----------|
   | `generated` | the generator emitted it | data types, fields, option sets and values: a resource, attribute, relationship, enum or enum value of the `BubbleEx.Target.Ash.Project` whose `source` is its Bubble ID **and**, with rendered files, the module and name in the rendered source (read from the AST); pages and reusables: `.wtf/surfaces.json` of the rendered files; workflows: a **native** workflow (its whole body, and its callees', generated) of the `BubbleEx.Target.Ash.Workflows.Spec` (backend) or the `BubbleEx.Target.Elixir.FrontendWorkflows.Spec` (pages and reusables); API calls: a call of the `BubbleEx.Target.ApiClients.Spec` |
   | `decision` | an applied owner decision replaced or removed it | fields: a derived calculation, count aggregate or `has_many` standing for the field (`derive_*` decisions), rendered like a field; workflows: a closed `delete_workflows` or plugin `drop` task of the plan |
-  | `residue` | not emitted, and an **open** plan task that is not a generator node carries residue for it: agent work | the plan's tasks and their `BubbleEx.Plan.Residue` |
+  | `residue` | not emitted, and an **open** plan task that is not a generator node carries residue whose subject is the symbol itself or one of its own parts (a workflow's actions): agent work. Never for pages and reusables: the generator emits every surface | the plan's tasks and their `BubbleEx.Plan.Residue` |
   | `diagnosed` | the generator left it out and said why | a `:ash_malformed_omitted` or `:ash_duplicate_enum_value` diagnostic of the Project; a workflow on no page or reusable (`no_surface`) |
   | `excluded` | not part of the app to migrate | deleted in Bubble; mobile views and their workflows (the plan excludes them) |
   | `uncovered` | none of the above: a structural failure | why: `not_emitted` (its generator did not emit it), `not_rendered` (in the Project, not in the rendered source) |
@@ -79,8 +79,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       fields: fields(inputs.model, ctx),
       option_sets: option_sets(inputs.model, ctx),
       option_values: option_values(inputs.model, ctx),
-      pages: surfaces(inputs.index, :page, surfaces(files), plan),
-      reusables: surfaces(inputs.index, :reusable, surfaces(files), plan),
+      pages: surfaces(inputs.index, :page, surfaces(files)),
+      reusables: surfaces(inputs.index, :reusable, surfaces(files)),
       workflows:
         workflows(
           inputs.index,
@@ -349,7 +349,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   # --- surfaces -----------------------------------------------------------------------
 
-  defp surfaces(%Index{} = index, kind, rendered, plan) do
+  defp surfaces(%Index{} = index, kind, rendered) do
     section = if kind == :page, do: "pages", else: "reusables"
     emitted = Map.get(rendered, section, %{})
     key = if kind == :page, do: :page, else: :element
@@ -364,8 +364,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         Map.has_key?(emitted, symbol.bubble_id) ->
           entry(symbol.id, :generated, nil, subjects)
 
+        # The generator emits every surface, residue or not: a missing
+        # one is never excused by a task's residue.
         true ->
-          planned(symbol.id, subjects, plan, :not_emitted)
+          entry(symbol.id, :uncovered, :not_emitted, subjects)
       end
     end
   end
@@ -399,7 +401,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
           do: s.id
 
     actions = Map.merge(workflow_actions(spec), frontend_actions(frontend))
-    known = %{surfaces: surfaces, mobile: mobile, actions: actions, plan: plan}
+    own = own_subjects(index)
+    known = %{surfaces: surfaces, mobile: mobile, actions: actions, plan: plan, own: own}
     Enum.map(Index.symbols(index, :workflow), &workflow(&1, known))
   end
 
@@ -438,12 +441,22 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         not_native(symbol.id, subjects, known, MapSet.new([symbol.id]))
 
       :error ->
-        planned(symbol.id, subjects, known.plan, missing)
+        planned(symbol.id, own(known, symbol.id), subjects, known.plan, missing)
+    end
+  end
+
+  # A workflow's own subjects: itself and its actions.
+  defp own(known, id), do: [id | Map.get(known.own, id, [])]
+
+  defp own_subjects(index) do
+    for %{kind: :action, parent: "workflow:" <> _ = parent, id: id} <- index.symbols,
+        reduce: %{} do
+      acc -> Map.update(acc, parent, [id], &[id | &1])
     end
   end
 
   defp not_native(id, subjects, known, seen) do
-    case planned(id, subjects, known.plan, :not_native) do
+    case planned(id, own(known, id), subjects, known.plan, :not_native) do
       %{bucket: :residue} = entry ->
         entry
 
@@ -460,7 +473,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   # itself only blocked by such callees (cycles count as unaccounted).
   defp callee_accounted?("workflow:" <> _ = callee, known, seen) do
     if MapSet.member?(seen, callee),
-      do: MapSet.member?(known.plan.residue_subjects, callee),
+      do: Enum.any?(own(known, callee), &Map.has_key?(known.plan.reasons, &1)),
       else:
         match?(
           %{bucket: :residue},
@@ -504,42 +517,30 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
     for symbol <- Index.symbols(index, :api_call) do
       if MapSet.member?(generated, symbol.id),
         do: entry(symbol.id, :generated, nil, %{}),
-        else: planned(symbol.id, %{}, plan, :not_emitted)
+        else: planned(symbol.id, [symbol.id], %{}, plan, :not_emitted)
     end
   end
 
   # --- the plan ------------------------------------------------------------------------
 
   # A symbol no generator emitted is `residue` when an open plan task that
-  # is not a generator node covers it and carries residue, else
-  # `uncovered` for `why`.
-  defp planned(id, subjects, plan, why) do
-    case Enum.filter(Map.get(plan.covering, id, []), &(&1.residue != [])) do
-      [] -> entry(id, :uncovered, why, subjects)
-      tasks -> entry(id, :residue, residue_reason(id, tasks, plan), subjects)
+  # is not a generator node carries residue whose subject is the symbol
+  # itself or one of its own parts (`own`: a workflow's actions), else
+  # `uncovered` for `why`. Residue elsewhere in a covering task (another
+  # element of a page, another workflow of a folder) excuses nothing.
+  defp planned(id, own, subjects, plan, why) do
+    case Enum.find_value(own, &Map.get(plan.reasons, &1)) do
+      nil -> entry(id, :uncovered, why, subjects)
+      reason -> entry(id, :residue, reason, subjects)
     end
   end
 
-  defp residue_reason(id, tasks, plan) do
-    Map.get(plan.reasons, id) ||
-      tasks
-      |> Enum.flat_map(& &1.residue)
-      |> Enum.map(& &1.reason)
-      |> Enum.min(fn -> nil end)
-  end
-
-  # Symbol -> the open tasks covering it that are not generator nodes,
-  # nor review, release or owner-decision tasks; residue subjects' first
-  # reason; workflows removed by closed decision tasks.
+  # Residue subjects of the open tasks that are not generator nodes, nor
+  # review, release or owner-decision tasks, with their first reason;
+  # workflows removed by closed decision tasks.
   defp plan_facts(%Plan{tasks: tasks}) do
     ignored = [:generate, :acceptance, :delivery, :cutover, :data, :replay, :decision]
     open = Enum.filter(tasks, &(&1.status == :open and &1.kind not in ignored))
-
-    covering =
-      open
-      |> Enum.flat_map(fn t -> Enum.map(t.subjects, &{&1, t}) end)
-      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
     residue = open |> Enum.flat_map(& &1.residue) |> Enum.sort_by(& &1.reason)
 
     removed =
@@ -551,11 +552,6 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
           do: {id, if(kind == :plugin, do: :plugin_drop, else: :delete_workflows)}
 
     %{
-      covering: covering,
-      residue_subjects:
-        covering
-        |> Enum.filter(fn {_, ts} -> Enum.any?(ts, &(&1.residue != [])) end)
-        |> MapSet.new(&elem(&1, 0)),
       reasons: residue |> Enum.reverse() |> Map.new(&{&1.subject, &1.reason}),
       removed: removed
     }

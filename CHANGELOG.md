@@ -35,8 +35,11 @@ All notable changes to this project are documented here.
   and `Ecto.Adapters.SQL` calls; each needs `# bubble:ignores_privacy`
   with a listed workflow (inside its body), `scaffold:<purpose>` (a closed
   vocabulary the generator now writes, counted per file in the new
-  generated `.wtf/bypasses.json`) or `decision:<key>` (an active owner
-  decision). `Verify.Result` diff entries may name `option_set` and
+  generated `.wtf/bypasses.json` per file, enclosing function and site
+  kind) or `decision:<key>` (an active owner decision; hardening is
+  WTF-424). A missing page or reusable is always uncovered; a missing
+  workflow or API call is residue only through residue on itself or its
+  own actions. `Verify.Result` diff entries may name `option_set` and
   `page`. `scripts/phoenix_compile_check/structural.sh` runs the task end
   to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
   counts snapshot (private fixture).

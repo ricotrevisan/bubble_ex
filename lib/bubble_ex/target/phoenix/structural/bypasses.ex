@@ -27,9 +27,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   on its line or the line above:
 
     * `scaffold:<purpose>` - written by the generator, from the closed
-      vocabulary `scaffold_purposes/0`; the rendered `.wtf/bypasses.json`
-      (generated, so hash-checked) lists how many of each purpose each file
-      has, and no file may have more
+      vocabulary `scaffold_purposes/0`, each covering one site kind
+      (`purpose_kind/1`); the rendered `.wtf/bypasses.json` (generated, so
+      hash-checked) lists how many sites of each purpose each file has in
+      each enclosing function, and no function may have more
     * `workflow:<id>` (or a bare `<id>`) - a workflow that ignores privacy
       rules in Bubble, and only inside that workflow's generated body
       (after its `# bubble:workflow <id>` comment and before the next one)
@@ -43,9 +44,14 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   ## Not seen
 
   A bypass that names no literal `authorize?` key (options built with
-  `Keyword.merge/2` from a variable, `apply/3`), a policy check that
-  always passes under another name, queries through Postgrex or another
-  library, and files outside `lib/` (tests). It is an inventory, not a
+  `Keyword.merge/2` from a variable, `put_in/2` with runtime keys,
+  `apply/3`); a Repo reached through an alias, an import, `apply/3` or a
+  variable; `Runtime.start/4` through an alias; a `policy always()` whose
+  check is `authorize_if always()`, or an owned resource with no
+  authorizer at all; queries through Postgrex or another library; files
+  outside `lib/` (tests). A hand-written `# bubble:workflow` comment in
+  owned code passes for a workflow body, and a `decision:<key>` marker
+  accepts any active owner decision (WTF-424). It is an inventory, not a
   proof.
   """
 
@@ -74,21 +80,43 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
           optional(:detail) => String.t() | nil
         }
 
-  # Where the generator writes each fixed scaffold purpose, and how many
-  # sites (a generator change that adds or moves one fails run/2).
+  # Where the generator writes each fixed scaffold purpose: the file
+  # (path suffix under lib/<app>), the one site kind the purpose covers,
+  # and how many sites in which function (a generator change that adds or
+  # moves one fails run/2).
   @expected_sites %{
-    "confirm_email" => {"_web/controllers/auth_controller.ex", 1},
-    "job_actor" => {"/workflows/runtime.ex", 1},
-    "workflow_authorize" => {"/workflows/runtime.ex", 6},
-    "load_actor" => {"/privacy.ex", 1}
+    "confirm_email" =>
+      {"_web/controllers/auth_controller.ex", :authorize_false, %{"confirm_email/2" => 1}},
+    "job_actor" => {"/workflows/runtime.ex", :authorize_false, %{"job_actor/1" => 1}},
+    "workflow_authorize" =>
+      {"/workflows/runtime.ex", :authorize_unverifiable,
+       %{
+         "run/3" => 1,
+         "start/4" => 1,
+         "get/3" => 1,
+         "load/3" => 1,
+         "options/2" => 1,
+         "call_run/6" => 1
+       }},
+    "load_actor" => {"/privacy.ex", :authorize_false, %{"load_actor/1" => 1}}
   }
+
+  # The site kind each purpose covers (`derived_count`: the aggregate's
+  # `authorize?: false`, in the resource body, no function).
+  @purpose_kinds Map.new(@expected_sites, fn {p, {_, kind, _}} -> {p, kind} end)
+                 |> Map.put("derived_count", :authorize_false)
 
   @doc """
   The fixed scaffold sites the generator writes: purpose => `{path suffix
-  under lib/<app>, count}`. `derived_count` is per Project aggregate.
+  under lib/<app>, site kind, %{function => count}}`. `derived_count` is
+  per Project aggregate.
   """
-  @spec expected_sites() :: %{String.t() => {String.t(), pos_integer()}}
+  @spec expected_sites() :: %{String.t() => {String.t(), atom(), %{String.t() => pos_integer()}}}
   def expected_sites, do: @expected_sites
+
+  @doc "The site kind a scaffold purpose covers, or nil for an unknown purpose."
+  @spec purpose_kind(String.t()) :: atom() | nil
+  def purpose_kind(purpose), do: Map.get(@purpose_kinds, purpose)
 
   @doc "The allowlist's path in the project."
   @spec path() :: String.t()
@@ -103,8 +131,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   by path and line, classified. Options:
 
     * `:workflows` - Bubble IDs of the workflows allowed to bypass
-    * `:scaffold` - `%{{path, purpose} => count}`: the scaffold sites
-      allowed per file (`.wtf/bypasses.json`)
+    * `:scaffold` - `%{{path, purpose, function} => count}`: the scaffold
+      sites allowed per file and enclosing function (`.wtf/bypasses.json`)
     * `:decisions` - keys of the owner's active decisions a marker may cite
 
   Returns the sites and the paths that do not parse (reported, never
@@ -137,16 +165,20 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
   @doc """
   The scaffold sites of `files` as `.wtf/bypasses.json` content: per file,
-  the count of each `scaffold:<purpose>` marker on a site.
+  purpose and enclosing function (`name/arity`, nil in a module body), the
+  count of `scaffold:<purpose>` markers on a site of the purpose's kind.
   """
-  @spec scaffold_counts(%{String.t() => binary()}) :: %{{String.t(), String.t()} => pos_integer()}
+  @spec scaffold_counts(%{String.t() => binary()}) :: %{
+          {String.t(), String.t(), String.t() | nil} => pos_integer()
+        }
   def scaffold_counts(files) do
     for {path, source} <- files,
         Path.extname(path) in [".ex", ".exs"],
         {:ok, found} <- [sites(source)],
-        %{marker: {:scaffold, purpose}} <- found,
+        %{marker: {:scaffold, purpose}, kind: kind, function: fun} <- found,
+        purpose_kind(purpose) == kind,
         reduce: %{} do
-      acc -> Map.update(acc, {path, purpose}, 1, &(&1 + 1))
+      acc -> Map.update(acc, {path, purpose, fun}, 1, &(&1 + 1))
     end
   end
 
@@ -157,32 +189,40 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
       files
       |> scaffold_counts()
       |> Enum.sort()
-      |> Enum.map(fn {{path, purpose}, n} ->
-        %{"path" => path, "purpose" => purpose, "count" => n}
+      |> Enum.map(fn {{path, purpose, fun}, n} ->
+        %{
+          "path" => path,
+          "purpose" => purpose,
+          "kind" => Atom.to_string(purpose_kind(purpose)),
+          "function" => fun,
+          "count" => n
+        }
       end)
 
-    %{"version" => 1, "scaffold" => entries}
+    %{"version" => 2, "scaffold" => entries}
     |> BubbleEx.CanonicalJson.ordered()
     |> Jason.encode!(pretty: true)
     |> Kernel.<>("\n")
   end
 
-  @doc "Reads `.wtf/bypasses.json` content into `%{{path, purpose} => count}`."
+  @doc "Reads `.wtf/bypasses.json` into `%{{path, purpose, function} => count}`."
   @spec decode_allowlist(String.t() | nil) :: {:ok, map()} | :error
   def decode_allowlist(nil), do: {:ok, %{}}
 
   def decode_allowlist(json) do
-    with {:ok, %{"version" => 1, "scaffold" => entries}} when is_list(entries) <-
+    with {:ok, %{"version" => 2, "scaffold" => entries}} when is_list(entries) <-
            Jason.decode(json),
          true <- Enum.all?(entries, &allow_entry?/1) do
-      {:ok, Map.new(entries, &{{&1["path"], &1["purpose"]}, &1["count"]})}
+      {:ok, Map.new(entries, &{{&1["path"], &1["purpose"], &1["function"]}, &1["count"]})}
     else
       _ -> :error
     end
   end
 
-  defp allow_entry?(%{"path" => p, "purpose" => u, "count" => n}),
-    do: is_binary(p) and is_binary(u) and is_integer(n) and n > 0
+  defp allow_entry?(%{"path" => p, "purpose" => u, "function" => f, "count" => n} = e),
+    do:
+      is_binary(p) and is_binary(u) and (is_binary(f) or is_nil(f)) and is_integer(n) and n > 0 and
+        e["kind"] == Atom.to_string(purpose_kind(u) || :none)
 
   defp allow_entry?(_), do: false
 
@@ -217,19 +257,25 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   defp classify(%{kind: :runtime_unverifiable}, _ctx, used),
     do: {:unlisted, "Runtime.start/4 with a value that cannot be read", used}
 
-  defp classify(%{marker: {:scaffold, purpose}, path: path}, ctx, used) do
-    allowed = Map.get(ctx.scaffold, {path, purpose}, 0)
-    n = Map.get(used, {path, purpose}, 0)
+  defp classify(%{marker: {:scaffold, purpose}, path: path} = site, ctx, used) do
+    slot = {path, purpose, site.function}
+    allowed = Map.get(ctx.scaffold, slot, 0)
+    n = Map.get(used, slot, 0)
 
     cond do
-      not Map.has_key?(@scaffold_purposes, purpose) ->
+      purpose_kind(purpose) == nil ->
         {:unlisted, "unknown scaffold purpose", used}
 
+      purpose_kind(purpose) != site.kind ->
+        {:unlisted, "scaffold:#{purpose} covers #{purpose_kind(purpose)} sites only", used}
+
       n >= allowed ->
-        {:unlisted, "more scaffold:#{purpose} sites than the generator wrote here", used}
+        {:unlisted,
+         "more scaffold:#{purpose} sites in #{site.function || "the module body"} than the generator wrote",
+         used}
 
       true ->
-        {:scaffold, nil, Map.put(used, {path, purpose}, n + 1)}
+        {:scaffold, nil, Map.put(used, slot, n + 1)}
     end
   end
 
@@ -277,7 +323,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
         {:ok,
          ast
-         |> walk(nil, [])
+         |> walk({nil, nil}, [])
          |> Enum.reverse()
          |> Enum.sort_by(&(&1.line || 0))
          |> Enum.map(&annotate(&1, markers, bodies))}
@@ -304,8 +350,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     Map.merge(site, %{marker: marker, in_workflow: body})
   end
 
-  defp walk({form, meta, args} = node, line, acc) when is_list(meta) do
-    line = Keyword.get(meta, :line, line)
+  # `line` is `{line, function}`: the nearest line and the enclosing
+  # function (`name/arity`, nil outside one).
+  defp walk({form, meta, args} = node, {line, fun}, acc) when is_list(meta) do
+    line = {Keyword.get(meta, :line, line), def_name(node) || fun}
     acc = node_sites(node, line, acc)
     acc = walk(form, line, acc)
     if is_list(args), do: Enum.reduce(args, acc, &walk(&1, line, &2)), else: acc
@@ -318,6 +366,18 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
   defp walk(list, line, acc) when is_list(list), do: Enum.reduce(list, acc, &walk(&1, line, &2))
   defp walk(_other, _line, acc), do: acc
+
+  defp def_name({kind, _, [head | _]}) when kind in [:def, :defp, :defmacro, :defmacrop],
+    do: head_name(head)
+
+  defp def_name(_node), do: nil
+
+  defp head_name({:when, _, [head | _]}), do: head_name(head)
+
+  defp head_name({name, _, args}) when is_atom(name),
+    do: "#{name}/#{if is_list(args), do: length(args), else: 0}"
+
+  defp head_name(_), do: nil
 
   defp pair_site(:authorize?, value, line, acc), do: authorize_site(value, line, acc)
   defp pair_site(:authorizers, [], line, acc), do: [site(:no_authorizers, line) | acc]
@@ -378,5 +438,5 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     end)
   end
 
-  defp site(kind, line), do: %{kind: kind, line: line, workflow: nil}
+  defp site(kind, {line, fun}), do: %{kind: kind, line: line, function: fun, workflow: nil}
 end
