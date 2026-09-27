@@ -169,6 +169,26 @@ defmodule BubbleEx.Target.PhoenixTest do
                Phoenix.check_manifest(manifest, %{files | "lib/acme_import/repo.ex" => named})
     end
 
+    test "change notifications dispatch join owner topics without a compile-time map" do
+      template = "lib/app/bubble/changes.ex"
+      assigns = %{module: "AcmeImport", web: "AcmeImportWeb", join_topics: %{}}
+      empty = BubbleEx.Target.Phoenix.Templates.render(template, assigns)
+      refute empty =~ "@join_topics"
+      assert empty =~ "defp join_topics(_resource), do: []"
+
+      joined =
+        BubbleEx.Target.Phoenix.Templates.render(template, %{
+          assigns
+          | join_topics: %{"ProjectTasks" => [{"Project", "project_id"}]}
+        })
+
+      assert joined =~
+               "defp join_topics(AcmeImport.ProjectTasks), do: [{\"Project\", :project_id}]"
+
+      assert joined =~ "defp join_topics(_resource), do: []"
+      assert joined =~ "join_topics(resource)"
+    end
+
     test "adds magic-link authentication to the User through an owned fragment" do
       files = render!()
       user = files["lib/acme_import/user.ex"]

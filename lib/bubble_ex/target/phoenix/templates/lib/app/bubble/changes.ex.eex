@@ -12,16 +12,15 @@ defmodule <%= @module %>.Bubble.Changes do
   """
 
   @pubsub <%= @module %>.PubSub
-  @join_topics %{
-<%= for {resource, owners} <- @join_topics do %>    <%= @module %>.<%= resource %> => [<%= Enum.map_join(owners, ", ", fn {type, column} -> "{#{inspect(type)}, #{inspect(String.to_atom(column))}}" end) %>],
-<% end %>  }
-
   use Ash.Notifier
+
+<%= for {resource, owners} <- @join_topics do %>  defp join_topics(<%= @module %>.<%= resource %>), do: [<%= Enum.map_join(owners, ", ", fn {type, column} -> "{#{inspect(type)}, #{inspect(String.to_atom(column))}}" end) %>]
+<% end %>  defp join_topics(_resource), do: []
 
   @doc false
   def notify(%Ash.Notifier.Notification{resource: resource, data: data, changeset: changeset}) do
     topics =
-      for {type, column} <- Map.get(@join_topics, resource, []),
+      for {type, column} <- join_topics(resource),
           record <- [data, changeset && changeset.data],
           is_map(record),
           id = Map.get(record, column),
