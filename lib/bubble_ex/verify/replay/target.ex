@@ -50,7 +50,9 @@ defmodule BubbleEx.Verify.Replay.Target do
 
   **URLs.** Every URL is built here, under
   `https://<host>/version-<branch_id>/api/1.1/`, from validated segments
-  (a type path, a Bubble record ID, a workflow name). `check_url/2`
+  (a type path, a Bubble record ID, a workflow name). A type path is the
+  one Bubble's `/meta` lists (`00.thing`, `🎙️msgs`: the display name
+  lowercased without spaces) and is percent-encoded. `check_url/2`
   re-checks any URL against that prefix and the exact host before the
   client sends it, so a URL that was not built for this branch never
   leaves the process. `BubbleEx.HTTP` checks the destination on every
@@ -75,6 +77,18 @@ defmodule BubbleEx.Verify.Replay.Target do
         }
 
   @segment ~r/\A[a-z0-9][a-z0-9_-]{0,127}\z/
+  # A Data API type path as Bubble's `/meta` lists it: the type's display
+  # name lowercased without spaces, so it may hold `.`, `:` or emoji
+  # (`00.thing`, `🎙️msgs`). No separator, query, escape, whitespace,
+  # uppercase, math symbol (`∕`) or control, format, surrogate or
+  # private-use character, and never a dot segment. (Unassigned code points
+  # are not refused: older OTP Unicode tables count recent emoji as
+  # unassigned.) The path must equal
+  # its NFKC form, so full-width look-alikes (`／`, `．`) are refused. The
+  # only format characters kept are the ones emoji need: the zero-width
+  # joiner (U+200D) and the emoji variation selector (U+FE0F).
+  @type_path ~r/\A[^\/\\?#%\s\p{Lu}\p{Sm}\p{Cc}\p{Cs}\p{Co}]{1,128}\z/u
+  @emoji_format ["\u200D", "\uFE0F"]
   @record_id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
   @token ~r/\A[\x21-\x7e]{8,512}\z/
   @nonce ~r/\A[A-Za-z0-9_-]{16,128}\z/
@@ -195,10 +209,10 @@ defmodule BubbleEx.Verify.Replay.Target do
   @spec data_url(t(), String.t(), String.t() | nil) ::
           {:ok, String.t()} | {:error, Error.t()}
   def data_url(%__MODULE__{} = t, type_path, id \\ nil) do
-    with :ok <- segment(type_path, "Data API type path"),
+    with :ok <- type_path(type_path),
          :ok <- record_id(id) do
       suffix = if id, do: "/" <> id, else: ""
-      {:ok, api_root(t) <> "/obj/" <> type_path <> suffix}
+      {:ok, api_root(t) <> "/obj/" <> URI.encode(type_path, &URI.char_unreserved?/1) <> suffix}
     end
   end
 
@@ -251,6 +265,26 @@ defmodule BubbleEx.Verify.Replay.Target do
   end
 
   defp segment(_value, name),
+    do: {:error, Error.new(:invalid_input, "invalid #{name}", %{reason: :invalid_segment})}
+
+  defp type_path(path) when is_binary(path) do
+    if String.valid?(path) and path =~ @type_path and path not in [".", ".."] and
+         String.normalize(path, :nfkc) == path and not format_char?(path),
+       do: :ok,
+       else: invalid_segment("Data API type path")
+  end
+
+  defp type_path(_path), do: invalid_segment("Data API type path")
+
+  # Format characters (\p{Cf}: bidi overrides, zero-width space, …) other
+  # than the two emoji sequences need.
+  defp format_char?(path) do
+    path
+    |> String.codepoints()
+    |> Enum.any?(&(&1 not in @emoji_format and &1 =~ ~r/\A\p{Cf}\z/u))
+  end
+
+  defp invalid_segment(name),
     do: {:error, Error.new(:invalid_input, "invalid #{name}", %{reason: :invalid_segment})}
 
   defp record_id(nil), do: :ok

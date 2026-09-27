@@ -13,6 +13,22 @@ defmodule BubbleEx.Verify.Replay.Names do
   `Slug`, `email`). V5 checks the guess against a real branch; `new/1`
   takes explicit maps when it is wrong. A type or field without a mapping is
   an error, never a guess at request time.
+
+  **Option values.** The Data API reads and writes an option-set value by
+  its **display text**, not its stored key (`db_value`): on mm-137 a
+  create with `"sent"` for a value displayed `Sent` was refused, `"Sent"`
+  accepted (WTF-385). `options` maps, per type and option field, each key
+  to its display text; `to_api/4` and `from_api/4` translate seed and
+  observed values. The translation is strict:
+
+    * sending an option value for a field with no map, or whose set's
+      display texts repeat (`:ambiguous`: no reversible map), is an error;
+      keys are never sent in place of display texts
+    * an observed display text the map does not know (or on a field with
+      no map) becomes `{:json, %{"unmapped_option" => true}}`, a mismatch
+      against any expected option, never a key
+
+  Values that are not options pass through.
   """
 
   alias BubbleEx.Error
@@ -21,10 +37,11 @@ defmodule BubbleEx.Verify.Replay.Names do
 
   @type t :: %__MODULE__{
           types: %{String.t() => String.t()},
-          fields: %{String.t() => %{String.t() => String.t()}}
+          fields: %{String.t() => %{String.t() => String.t()}},
+          options: %{String.t() => %{String.t() => %{String.t() => String.t()}}}
         }
 
-  defstruct types: %{}, fields: %{}
+  defstruct types: %{}, fields: %{}, options: %{}
 
   @doc """
   Explicit names: `types` maps type descriptors to Data API paths,
@@ -33,7 +50,12 @@ defmodule BubbleEx.Verify.Replay.Names do
   @spec new(keyword() | map()) :: {:ok, t()} | {:error, Error.t()}
   def new(attrs) do
     attrs = Map.new(attrs)
-    names = %__MODULE__{types: Map.get(attrs, :types, %{}), fields: Map.get(attrs, :fields, %{})}
+
+    names = %__MODULE__{
+      types: Map.get(attrs, :types, %{}),
+      fields: Map.get(attrs, :fields, %{}),
+      options: Map.get(attrs, :options, %{})
+    }
 
     reversible? =
       Enum.all?(names.fields, fn {_type, map} ->
@@ -47,10 +69,21 @@ defmodule BubbleEx.Verify.Replay.Names do
 
   @doc "Names guessed from the Model's display names (see the moduledoc)."
   @spec from_model(Model.t()) :: {:ok, t()} | {:error, Error.t()}
-  def from_model(%Model{data_types: types}) do
+  def from_model(%Model{data_types: types} = model) do
     live = Enum.reject(types, & &1.deleted)
 
     new(
+      options:
+        Map.new(live, fn t ->
+          {Type.record(t.id),
+           for(
+             f <- t.fields,
+             not f.deleted,
+             match?(%Type{kind: :option}, f.type),
+             into: %{},
+             do: {f.id, option_map(model, f.type.target) || :ambiguous}
+           )}
+        end),
       types: Map.new(live, &{Type.record(&1.id), path(&1.name || &1.id)}),
       fields:
         Map.new(live, fn t ->
@@ -63,6 +96,97 @@ defmodule BubbleEx.Verify.Replay.Names do
         end)
     )
   end
+
+  # key => display text, when every display text is distinct (reversible);
+  # nil otherwise (the field is then `:ambiguous`).
+  defp option_map(model, set_id) do
+    case Model.option_set(model, set_id) do
+      %{values: values} ->
+        map = for v <- values, not v.deleted, is_binary(v.name), into: %{}, do: {v.key, v.name}
+
+        if map |> Map.values() |> Enum.uniq() |> length() == map_size(map), do: map
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc "A seed value of `type`'s `field` in Data API form: option keys become display texts."
+  @spec to_api(t(), String.t(), String.t(), term()) :: {:ok, term()} | {:error, Error.t()}
+  def to_api(%__MODULE__{} = names, type, field, value) do
+    case {option_map(names, type, field), options?(value)} do
+      {_, false} -> {:ok, value}
+      {map, true} when is_map(map) -> translate(map, value, :to_api)
+      {:ambiguous, true} -> unmapped(:ambiguous_option_field)
+      {nil, true} -> unmapped(:unmapped_option_field)
+    end
+  end
+
+  defp unmapped(reason),
+    do:
+      {:error,
+       Error.new(:invalid_input, "option field has no display-text mapping in the model", %{
+         reason: reason
+       })}
+
+  defp options?({:option, _}), do: true
+  defp options?({:list, items}), do: Enum.any?(items, &options?/1)
+  defp options?(_), do: false
+
+  @unmapped {:json, %{"unmapped_option" => true}}
+
+  @doc "An observed value of `type`'s `field` back in seed form: display texts become keys."
+  @spec from_api(t(), String.t(), String.t(), term()) :: term()
+  def from_api(%__MODULE__{} = names, type, field, value) do
+    inverse =
+      case option_map(names, type, field) do
+        map when is_map(map) -> Map.new(map, fn {k, v} -> {v, k} end)
+        _ -> %{}
+      end
+
+    back(inverse, value)
+  end
+
+  defp back(inverse, {:option, v}) do
+    case Map.fetch(inverse, v) do
+      {:ok, key} -> {:option, key}
+      :error -> @unmapped
+    end
+  end
+
+  defp back(inverse, {:list, items}), do: {:list, Enum.map(items, &back(inverse, &1))}
+  defp back(_inverse, value), do: value
+
+  defp option_map(names, type, field), do: names.options |> Map.get(type, %{}) |> Map.get(field)
+
+  defp translate(map, {:option, v}, dir) do
+    case Map.fetch(map, v) do
+      {:ok, out} ->
+        {:ok, {:option, out}}
+
+      :error ->
+        {:error,
+         Error.new(:invalid_input, "option value has no display text in the model", %{
+           reason: :unknown_option,
+           direction: dir
+         })}
+    end
+  end
+
+  defp translate(map, {:list, items}, dir) do
+    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, acc} ->
+      case translate(map, item, dir) do
+        {:ok, v} -> {:cont, {:ok, [v | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, list} -> {:ok, {:list, Enum.reverse(list)}}
+      error -> error
+    end
+  end
+
+  defp translate(_map, value, _dir), do: {:ok, value}
 
   defp path(name), do: name |> String.downcase() |> String.replace(~r/\s+/, "")
 

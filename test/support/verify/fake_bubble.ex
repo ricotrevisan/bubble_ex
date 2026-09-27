@@ -60,6 +60,7 @@ defmodule BubbleEx.Test.FakeBubble do
         ),
       meta: Keyword.get(opts, :meta, true),
       meta_types: Keyword.get(opts, :meta_types),
+      captions: Keyword.get(opts, :captions, true),
       marker: %{
         "branch" => Keyword.get(opts, :marker_branch, @branch),
         "nonce" => Keyword.get(opts, :marker_nonce, @nonce)
@@ -173,7 +174,19 @@ defmodule BubbleEx.Test.FakeBubble do
 
   defp route(pid, conn, "GET", ["meta"], _body, viewer) when viewer in [:admin, :none] do
     s = Agent.get(pid, & &1)
-    body = %{"get" => s.exposed, "post" => s.workflows}
+    # Bubble's shape (observed on a real branch, WTF-385): `post` lists
+    # workflow objects named by `endpoint`; `app_data` says whether the
+    # Data API keys fields by display name.
+    workflows =
+      for name <- s.workflows,
+          do: %{"endpoint" => name, "method" => "post", "parameters" => []}
+
+    body = %{
+      "get" => s.exposed,
+      "post" => workflows,
+      "app_data" => %{"use_captions_for_get" => s.captions}
+    }
+
     body = if s.meta_types, do: Map.put(body, "types", s.meta_types), else: body
 
     if s.meta,
@@ -267,9 +280,11 @@ defmodule BubbleEx.Test.FakeBubble do
 
     case s.records[id] do
       %{type: ^type} = r ->
+        # Bubble answers a record the privacy rules hide with its ID only
+        # (observed on mm-137, WTF-385), not a 404.
         if visible?(s, r, viewer),
           do: json(conn, 200, %{"response" => view(s, id, r, viewer, conn)}),
-          else: json(conn, 404, %{"body" => %{"status" => "NOT_FOUND"}})
+          else: json(conn, 200, %{"response" => %{"_id" => id}})
 
       _ ->
         json(conn, 404, %{"body" => %{"status" => "NOT_FOUND"}})
