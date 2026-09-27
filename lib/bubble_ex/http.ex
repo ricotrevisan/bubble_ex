@@ -65,6 +65,13 @@ defmodule BubbleEx.HTTP do
     request(:post, url, body, headers, options)
   end
 
+  @doc """
+  One request. With `bounded_body: true` the body is read in chunks under
+  `max_body_length` and the deadline; `sink: {acc, fun}` then hands each
+  chunk to `fun.(chunk, acc)` (returning `{:ok, acc}` or `{:error,
+  reason}`) instead of keeping it, and the response body is the final
+  `acc` (e.g. a file written and hashed while streaming).
+  """
   @spec request(atom(), String.t(), iodata() | nil, headers(), options()) ::
           {:ok, Response.t()} | {:error, Error.t()}
   def request(method, url, body, headers \\ [], options \\ [])
@@ -201,7 +208,8 @@ defmodule BubbleEx.HTTP do
     control_options = %{
       max_body_length: max_body_length,
       bounded_body?: bounded_body?,
-      deadline: Keyword.get(options, :deadline)
+      deadline: Keyword.get(options, :deadline),
+      sink: Keyword.get(options, :sink)
     }
 
     {req_options, header_overrides, control_options}
@@ -317,6 +325,7 @@ defmodule BubbleEx.HTTP do
       :recv_timeout,
       :max_body_length,
       :bounded_body,
+      :sink,
       :deadline,
       :redact_values,
       :proxy,
@@ -440,15 +449,14 @@ defmodule BubbleEx.HTTP do
     max_body_length && is_binary(body) && byte_size(body) > max_body_length
   end
 
-  defp maybe_put_bounded_into(req_options, %{
-         max_body_length: max_bytes,
-         bounded_body?: true,
-         deadline: deadline
-       }) do
+  defp maybe_put_bounded_into(
+         req_options,
+         %{max_body_length: max_bytes, bounded_body?: true, deadline: deadline} = control
+       ) do
     req_options
     |> Keyword.put(:raw, true)
     |> Keyword.put(:compressed, false)
-    |> Keyword.put(:into, bounded_into(max_bytes, deadline))
+    |> Keyword.put(:into, bounded_into(max_bytes, deadline, Map.get(control, :sink)))
   end
 
   defp maybe_put_bounded_into(req_options, _control_options), do: req_options
@@ -467,28 +475,24 @@ defmodule BubbleEx.HTTP do
     Enum.any?(headers, fn {key, _} -> String.downcase(to_string(key)) == name end)
   end
 
-  defp bounded_into(max_bytes, deadline) do
+  defp bounded_into(max_bytes, deadline, sink) do
     fn {:data, data}, {request, response} ->
       state =
-        Map.get(response.private, :bubble_ex_body, %{chunks: [], size: 0, too_large?: false})
+        Map.get(response.private, :bubble_ex_body, %{
+          chunks: [],
+          size: 0,
+          too_large?: false,
+          sink: sink
+        })
 
       size = state.size + byte_size(data)
-
-      too_large? =
-        state.too_large? or size > max_bytes or declared_too_large?(response, max_bytes)
-
-      error =
-        cond do
-          expired?(deadline) -> :total_timeout
-          encoded_response?(response) -> :unsupported_content_encoding
-          too_large? -> :body_too_large
-          true -> nil
-        end
+      error = chunk_error(state, response, size, max_bytes, deadline)
+      {state, error} = if error, do: {state, error}, else: take_chunk(state, data)
 
       state =
         if error,
           do: %{state | chunks: [], size: size, too_large?: true},
-          else: %{state | chunks: [data | state.chunks], size: size}
+          else: %{state | size: size}
 
       private =
         response.private
@@ -500,6 +504,29 @@ defmodule BubbleEx.HTTP do
     end
   end
 
+  defp chunk_error(state, response, size, max_bytes, deadline) do
+    too_large? =
+      state.too_large? or (max_bytes != nil and size > max_bytes) or
+        declared_too_large?(response, max_bytes)
+
+    cond do
+      expired?(deadline) -> :total_timeout
+      encoded_response?(response) -> :unsupported_content_encoding
+      too_large? -> :body_too_large
+      true -> nil
+    end
+  end
+
+  # Keeps the chunk, or hands it to the sink.
+  defp take_chunk(%{sink: nil} = state, data), do: {%{state | chunks: [data | state.chunks]}, nil}
+
+  defp take_chunk(%{sink: {acc, fun}} = state, data) do
+    case fun.(data, acc) do
+      {:ok, acc} -> {%{state | sink: {acc, fun}}, nil}
+      {:error, _reason} -> {state, :sink_failed}
+    end
+  end
+
   defp expired?(nil), do: false
   defp expired?(deadline), do: System.monotonic_time(:millisecond) >= deadline
 
@@ -507,6 +534,9 @@ defmodule BubbleEx.HTTP do
     case Map.get(response.private, :bubble_ex_body) do
       %{too_large?: true} ->
         {"", true, true}
+
+      %{sink: {acc, _fun}, too_large?: false} ->
+        {acc, false, true}
 
       %{chunks: chunks, too_large?: false} ->
         {chunks |> Enum.reverse() |> IO.iodata_to_binary(), false, true}

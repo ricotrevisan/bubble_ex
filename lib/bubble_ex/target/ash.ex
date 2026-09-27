@@ -237,14 +237,21 @@ defmodule BubbleEx.Target.Ash do
   `<table>_<columns>_<kind>` within 63 bytes (cut and hashed when longer,
   and hashed when two tables would share one).
 
-  **Loading data (WTF-357).** A derived field (calculation, aggregate,
-  has_many) has no column: the loader skips it and may report drift
-  between the stored copy and the derived value. A `text_to_reference`
-  attribute keeps its column, but the loader must convert its values:
-  trim them, load an empty text as nil, keep only values shaped like a
-  Bubble unique ID (`<digits>x<digits>`), reporting the others, and report
-  IDs whose record does not exist (no foreign key rejects them; they load
-  nil through the relationship). For a list of texts, the same per item.
+  **Loading data (WTF-357).** `BubbleEx.Load` with the adapter
+  `BubbleEx.Target.Ash.Loader` loads a Bubble export into the project's
+  database by these rules. A derived field (calculation, aggregate,
+  has_many) has no column: the loader skips it and reports drift between
+  the stored copy and the derived value (`:load_derived_drift`; a list
+  replaced by a `has_many`, `:load_reverse_list_drift`). A
+  `text_to_reference` attribute keeps its column, but the loader converts
+  its values: trims them, loads an empty text as nil, keeps only values
+  shaped like a Bubble unique ID (`<digits>x<digits>`), reporting the
+  others, and reports IDs whose record does not exist (no foreign key
+  rejects them; they load nil through the relationship). For a list of
+  texts, the same per item. A list whose `derive_count` is its length
+  loses the IDs of records the export does not hold, since Bubble's
+  `:count` does not count deleted records (`:load_deleted_ids_dropped`);
+  other lists and references keep dangling IDs (WTF-338).
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
