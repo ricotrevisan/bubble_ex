@@ -1139,7 +1139,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
         slots =
           for {%{as: :slot, name: name}, value} <- passed,
-              do: ["<:", name, ">", text_html(to_string(value)), "</:", name, ">"]
+              # The slot's text is whitespace-sensitive; formatting its
+              # component call must not add indentation to the rendered text.
+              do: ["<:", name, " phx-no-format>", text_html(to_string(value)), "</:", name, ">"]
 
         {attrs, slots}
     end
@@ -1364,6 +1366,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     rest = sorted_attrs(rest)
 
+    # Text uses pre-wrap: formatter-inserted indentation around a binding
+    # would become visible content. Keep the exact emitted inner markup while
+    # still allowing the rest of the template to be format-clean.
+    rest = if node.kind == :text, do: rest ++ [{"phx-no-format", true}], else: rest
     all = [{"data-bubble-id", bid(node)}, {"class", classes} | rest]
 
     case node.runtime do

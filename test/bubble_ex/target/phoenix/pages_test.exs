@@ -213,7 +213,11 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     assert live =~ "defp text_bt2(element_state_bi1_get_data) do"
     assert live =~ "|> assign(:element_state_bi1_get_data, nil)"
     assert live =~ "|> assign(:items_br1, [])"
-    assert template =~ "{text_bt2(@element_state_bi1_get_data)}"
+    # The formatter must not turn indentation into visible text in a
+    # whitespace-pre-wrap Bubble Text element.
+    assert template =~
+             ~r/<p\b[^>]*data-bubble-id="bT2"[^>]*>\{text_bt2\(@element_state_bi1_get_data\)\}<\/p>/s
+
     assert template =~ "<%!-- TODO(bubble:bT5) text: dynamic value not compiled --%>"
     assert template =~ "<div :for={_item <- @items_br1}>"
 
@@ -523,10 +527,11 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       refute card =~ "{@text_label}"
 
       # BBCode as HTML, braces and markup escaped, line breaks as <br>.
-      assert page =~ "<:text_label><strong>One</strong> &lbrace;@x&rbrace;</:text_label>"
+      assert page =~
+               "<:text_label phx-no-format><strong>One</strong> &lbrace;@x&rbrace;</:text_label>"
 
       assert page =~
-               ~r|<:text_label>\s*Two<br\s*/?>&lt;script&gt;bad\(\)&lt;/script&gt;\s*</:text_label>|
+               "<:text_label phx-no-format>Two<br>&lt;script&gt;bad()&lt;/script&gt;</:text_label>"
 
       refute page =~ "<script>"
       refute page =~ "raw("
