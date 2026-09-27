@@ -4,7 +4,7 @@
     "applied": {
       "derive_from_related": 1
     },
-    "attributes": 1692,
+    "attributes": 1693,
     "attributes_by_type": {
       "array enum": 19,
       "array float": 1,
@@ -15,7 +15,7 @@
       "json_value": 12,
       "string": 934,
       "typed_struct": 4,
-      "utc_datetime_usec": 278
+      "utc_datetime_usec": 279
     },
     "db_references": {
       "ignore": 386
@@ -81,6 +81,6 @@
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "f1b0d5631cd61b9ec46e2f78ef32a4704f9b40cf40f9a3a02b41df361283d908",
-  "schema_version": 5
+  "project_sha256": "7674f5b4fefc27e98058e1fd22632081f9d2d6c2c0fb582f27435c5f20382fc6",
+  "schema_version": 6
 }

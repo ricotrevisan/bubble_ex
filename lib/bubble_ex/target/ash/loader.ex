@@ -35,8 +35,13 @@ defmodule BubbleEx.Target.Ash.Loader do
   length a `derive_count` calculation counts drops dangling IDs; derived
   calculations, count aggregates and `has_many` relationships become
   `BubbleEx.Load.Plan.Derived` entries (no column, drift reported). The
-  User resource's `email` attribute takes users' emails; the project has
-  no column for the email-confirmed status (reported by the loader).
+  User resource's `email` attribute takes users' emails, and its
+  `confirmed_at` attribute (`BubbleEx.Target.Ash`, WTF-413; the attribute
+  whose source is `%{auth: "confirmed_at"}`) is the plan's
+  `confirmed_column`: a confirmed user's Created Date, nil for the others
+  (see `BubbleEx.Load`, "Users"). A Project without it (mapped before
+  WTF-413) plans no `confirmed_column` and the loader reports the status
+  as unmapped.
 
   ## Writes
 
@@ -50,7 +55,19 @@ defmodule BubbleEx.Target.Ash.Loader do
       RETURNING (xmax = 0)
 
   so a batch is atomic, an identical record is not rewritten, and the
-  counts come back (inserted, updated, unchanged). There are no foreign
+  counts come back (inserted, updated, unchanged). The users' confirmed
+  column (WTF-413) is the exception to "the row replaces the columns": a
+  nil does not clear a stored confirmation while the user's email is
+  unchanged,
+
+      "confirmed_at" = CASE WHEN EXCLUDED."confirmed_at" IS NULL
+        AND t."email" IS NOT DISTINCT FROM EXCLUDED."email"
+        THEN t."confirmed_at" ELSE EXCLUDED."confirmed_at" END
+
+  (the same expression in the `IS DISTINCT FROM` guard), so a delta sync
+  keeps a confirmation made in the target (a magic-link sign-in) of a
+  user Bubble has unconfirmed. A user whose email changed had it cleared
+  first (`BubbleEx.Load`), so they take Bubble's status. There are no foreign
   keys (WTF-338), so tables load in any order. An error names the
   PostgreSQL error code and constraint, never a stored value.
   """
@@ -87,18 +104,7 @@ defmodule BubbleEx.Target.Ash.Loader do
     ctx = %{project: project, model: model, by_module: by_module}
 
     tables = Enum.map(project.resources, &table(&1, ctx))
-
-    auth =
-      case Enum.find(project.resources, &(&1.source.type == "user")) do
-        %Resource{} = user ->
-          email = Enum.find(user.attributes, &(&1.source[:field] == "email"))
-          %Auth{type: "user", email_column: email && column_name(email), confirmed_column: nil}
-
-        nil ->
-          nil
-      end
-
-    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth}}
+    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth(project)}}
   rescue
     e in [KeyError, MatchError, FunctionClauseError] ->
       {:error,
@@ -107,13 +113,43 @@ defmodule BubbleEx.Target.Ash.Loader do
        })}
   end
 
+  defp auth(%Project{} = project) do
+    case Enum.find(project.resources, &(&1.source.type == "user")) do
+      %Resource{} = user ->
+        email = Enum.find(user.attributes, &(&1.source[:field] == "email"))
+        confirmed = confirmed_at(user)
+
+        %Auth{
+          type: "user",
+          email_column: email && column_name(email),
+          confirmed_column: confirmed && column_name(confirmed)
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  # The User's `confirmed_at` attribute (it maps no Bubble field).
+  defp confirmed_at(%Resource{} = user),
+    do: Enum.find(user.attributes, &(&1.source[:auth] == "confirmed_at"))
+
+  # The column users' confirmed timestamp goes to, for `table` (the users'
+  # table only), as a plan column the schema check and the upsert handle
+  # like the others. It maps no field, so it is not in the table's columns.
+  defp auth_columns(%Auth{type: type, confirmed_column: column}, %Table{type: type})
+       when is_binary(column),
+       do: [%Column{field: "authentication", column: column, encoding: :datetime}]
+
+  defp auth_columns(_auth, _table), do: []
+
   defp table(%Resource{} = r, ctx) do
     type = r.source.type
     pk = Enum.find(r.attributes, & &1.primary_key?)
     counted = counted_lists(r, ctx)
 
     columns =
-      for %Attribute{primary_key?: false} = a <- r.attributes do
+      for %Attribute{primary_key?: false, source: %{field: _}} = a <- r.attributes do
         field = a.source.field
 
         %Column{
@@ -324,7 +360,7 @@ defmodule BubbleEx.Target.Ash.Loader do
   # --- schema -----------------------------------------------------------------------------
 
   @impl true
-  def check_schema(%__MODULE__{} = c, %Plan{tables: tables}) do
+  def check_schema(%__MODULE__{} = c, %Plan{tables: tables} = plan) do
     sql = """
     SELECT table_name, column_name, udt_name, is_nullable
     FROM information_schema.columns
@@ -337,8 +373,13 @@ defmodule BubbleEx.Target.Ash.Loader do
           {col, {udt, nullable}}
         end)
 
-      {:ok,
-       Diagnostic.normalize(Enum.flat_map(tables, &table_diags(&1, Map.get(actual, &1.table))))}
+      diags =
+        Enum.flat_map(tables, fn table ->
+          table = %{table | columns: table.columns ++ auth_columns(plan.auth, table)}
+          table_diags(table, Map.get(actual, table.table))
+        end)
+
+      {:ok, Diagnostic.normalize(diags)}
     end
   end
 
@@ -446,7 +487,9 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   @impl true
   def upsert(%__MODULE__{} = c, %Table{} = table, rows) do
-    sql = upsert_sql(c.schema, table)
+    auth = auth(c.project)
+    columns = table.columns ++ auth_columns(auth, table)
+    sql = upsert_sql(c.schema, %{table | columns: columns}, keep_confirmed(auth, table))
 
     case run(c, sql, [Jason.encode!(rows)]) do
       {:ok, returned} ->
@@ -483,11 +526,14 @@ defmodule BubbleEx.Target.Ash.Loader do
 
   @doc false
   # The upsert statement of a table (see the moduledoc).
-  @spec upsert_sql(String.t(), Table.t()) :: String.t()
-  def upsert_sql(schema, %Table{} = table) do
+  # `keep` is `{confirmed_column, email_column}` for the users' table:
+  # see the moduledoc.
+  @spec upsert_sql(String.t(), Table.t(), {String.t(), String.t()} | nil) :: String.t()
+  def upsert_sql(schema, %Table{} = table, keep \\ nil) do
     target = ident(schema) <> "." <> ident(table.table)
     key = ident(table.key)
-    others = Enum.map(table.columns, &ident(&1.column))
+    columns = Enum.map(table.columns, & &1.column)
+    others = Enum.map(columns, &ident/1)
     all = Enum.join([key | others], ", ")
 
     conflict =
@@ -496,9 +542,10 @@ defmodule BubbleEx.Target.Ash.Loader do
           "ON CONFLICT (#{key}) DO NOTHING"
 
         _ ->
-          set = Enum.map_join(others, ", ", &"#{&1} = EXCLUDED.#{&1}")
+          new = Enum.map(columns, &new_value(&1, keep))
+          set = Enum.map_join(Enum.zip(others, new), ", ", fn {c, v} -> "#{c} = #{v}" end)
           mine = Enum.map_join(others, ", ", &"t.#{&1}")
-          theirs = Enum.map_join(others, ", ", &"EXCLUDED.#{&1}")
+          theirs = Enum.join(new, ", ")
 
           "ON CONFLICT (#{key}) DO UPDATE SET #{set} " <>
             "WHERE ROW(#{mine}) IS DISTINCT FROM ROW(#{theirs})"
@@ -508,6 +555,22 @@ defmodule BubbleEx.Target.Ash.Loader do
       "SELECT #{all} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb) " <>
       conflict <> " RETURNING (xmax = 0)"
   end
+
+  # The users' confirmed column: see the moduledoc.
+  defp keep_confirmed(%Auth{type: type, confirmed_column: c, email_column: e}, %Table{type: type})
+       when is_binary(c) and is_binary(e),
+       do: {c, e}
+
+  defp keep_confirmed(_auth, _table), do: nil
+
+  defp new_value(column, {column, email}) do
+    {c, e} = {ident(column), ident(email)}
+
+    "CASE WHEN EXCLUDED.#{c} IS NULL AND t.#{e} IS NOT DISTINCT FROM EXCLUDED.#{e} " <>
+      "THEN t.#{c} ELSE EXCLUDED.#{c} END"
+  end
+
+  defp new_value(column, _keep), do: "EXCLUDED." <> ident(column)
 
   defp ident(name), do: ~s("#{String.replace(name, ~s("), ~s(""))}")
 

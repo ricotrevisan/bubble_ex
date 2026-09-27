@@ -187,8 +187,17 @@ rendered =
     {:ok, project} = project.()
     {:ok, source} = BubbleEx.Target.Ash.Source.render(project, namespace: namespace, repo: repo)
 
-    if privacy == :omit and source =~ policy_source do
-      [match | _] = Regex.run(policy_source, source)
+    # The User's confirmed_at (WTF-413) is a private attribute, not policy
+    # machinery.
+    unconfirmed =
+      String.replace(
+        source,
+        ~r/^\s*attribute :confirmed_at(_\d+)?, :utc_datetime_usec, [^\n]*public\?: false\n/m,
+        ""
+      )
+
+    if privacy == :omit and unconfirmed =~ policy_source do
+      [match | _] = Regex.run(policy_source, unconfirmed)
       raise "#{name}: privacy: :omit rendered policy machinery (#{inspect(match)})"
     end
 

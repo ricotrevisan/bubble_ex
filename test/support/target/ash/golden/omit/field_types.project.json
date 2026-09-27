@@ -143,6 +143,7 @@
           "Modified Date": "modified_date",
           "Slug": "slug",
           "_id": "id",
+          "authentication.email.email_confirmed": "confirmed_at",
           "email": "email",
           "nickname_text": "nickname"
         },
@@ -1322,6 +1323,23 @@
         },
         {
           "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "confirmed_at",
+          "primary_key?": false,
+          "public?": false,
+          "references": null,
+          "source": {
+            "auth": "confirmed_at",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
           "bubble_type": "text",
           "column": null,
           "constraints": [
@@ -1386,7 +1404,7 @@
       "table": "user"
     }
   ],
-  "schema_version": 5,
+  "schema_version": 6,
   "typed_structs": [
     {
       "bubble_name": null,
