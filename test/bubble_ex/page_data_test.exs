@@ -258,6 +258,8 @@ defmodule BubbleEx.PageDataTest do
       assert files["lib/shop_web/bubble_routes.ex"] =~
                ~s(live "/task/:bubble_thing", ShopWeb.TaskLive)
 
+      refute files["lib/shop_web/bubble_routes.ex"] =~ ~s(live "/:bubble_thing")
+
       index = files["lib/shop_web/live/index_live/workflows.ex"]
       assert index =~ "def __bubble__(:data), do: @data"
       assert index =~ "|> Ash.Query.filter("

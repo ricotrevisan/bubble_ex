@@ -30,7 +30,71 @@ All notable changes to this project are documented here.
   1,980 sources loaded; frontend workflows 553 native (was 531), 380
   wired (was 361), unavailable inputs 858 (was 1,027).
   `Target.Ash.Source.filter/1` prints a bare filter with `{:pin, var}`
-  nodes; `:extend` takes `notifiers:`.
+  nodes; `:extend` takes `notifiers:`. Page change notifications are
+  coalesced, related fields loaded in batches (related lists capped at
+  100), and the disconnected mount no longer repeats the first read.
+  The index page does not create a root catch-all thing route; query
+  parameters cannot supply a page thing.
+
+- **Structural verification pack** (WTF-386, V6 of WTF-358).
+  `BubbleEx.Target.Phoenix.Structural` checks, offline and
+  deterministically, that a generated project matches the Bubble model,
+  and records every outcome as a structural (L0) `BubbleEx.Verify.Result`
+  the cutover gates can read. **Structural, not behavioural**: every
+  summary says so, and lists what it did not check (`not_run`).
+  `run/2`, at generation with the model: `symbol_coverage` per category
+  (data types, fields, option sets and values, pages, reusables,
+  workflows, API calls), each symbol `generated` (emitted, and for the
+  data model found in the rendered source's AST), `decision`, `residue`
+  (not emitted, with an open non-generator task carrying its residue),
+  `diagnosed`, `excluded` or `uncovered`, which fails: a generator node or
+  an `:auto` task accounts for nothing; workflows count as generated when
+  native in the backend (`Target.Ash.Workflows`) or page
+  (`Target.Elixir.FrontendWorkflows`, input `frontend_workflows:`) Spec;
+  `policy_coverage` (`skipped` for `privacy: :omit`: blocked on WTF-356);
+  `bypass_inventory` (the lowering bypasses exactly Bubble's own "ignore
+  privacy rules" workflows; every bypass site in the rendered `lib/` is a
+  listed workflow body or an expected scaffold site; `skipped` when
+  bypasses are expected and no Spec is given); `generated_unchanged`;
+  `deterministic`. `project/2` and `mix wtf.verify structural --app
+  APP_ID` in the owner's repository (advisory): the manifest, compile,
+  lint (a known failure until WTF-416), `mix ash.codegen --check`, and the
+  owned-code bypass inventory. `Structural.Bypasses` reads the AST: every
+  `authorize?` not literally `true`, `Runtime.start(..., false)`, `bypass`
+  policies, `authorize :never`/`:when_requested`, `authorizers: []`, Repo
+  and `Ecto.Adapters.SQL` calls; each needs `# bubble:ignores_privacy`
+  with a listed workflow (inside its body), `scaffold:<purpose>` (a closed
+  vocabulary the generator now writes, counted per file in the new
+  generated `.wtf/bypasses.json` per file, enclosing function and site
+  kind) or `decision:<key>` (an active owner decision; hardening is
+  WTF-424). A missing page or reusable is always uncovered; a missing
+  workflow or API call is residue only through residue on itself or its
+  own actions. `Verify.Result` diff entries may name `option_set` and
+  `page`. `scripts/phoenix_compile_check/structural.sh` runs the task end
+  to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
+  counts snapshot (private fixture).
+- **Safe serving of migrated files** (WTF-415). The generated Phoenix app
+  serves the files the data loader copied at `/uploads/<sha256>/<name>`
+  (generated `<Web>.Uploads` and `<Web>.UploadsController`, routed by the
+  generated `<Web>.BubbleRoutes`, so existing apps get them on
+  regeneration). A Bubble file field can hold another app's hostile file,
+  so every file is an attachment of an inert type (`application/octet-stream`
+  or `application/pdf`) unless its magic bytes are PNG, JPEG, GIF or WebP
+  (inline), always with `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox; default-src 'none'`; the name never
+  decides the type. Content addresses only (SHA-256 and loader-safe name
+  validated, regular files, no symlinks), single byte ranges, ETags. An
+  optional `uploads_host` (`https://` and a host, validated at boot, fails
+  closed) puts public files on a separate origin (the preferred production
+  setup), where `<Web>.UploadsHostGuard` serves nothing else. Private files are off by default (404, no
+  link) until the owner opts in with an authorization function or
+  `:signed_in`; a raising or missing function denies, and the session is
+  not read while they are off. Pages link file and image fields (and
+  dynamic texts that are only one, optionally after `"https:"`) through
+  `<Web>.Uploads.url/1`, nil when empty, never the stored URL
+  (`BubbleEx.Target.Elixir` `:file_url` option). A generated
+  `<Web>.UploadsTest` checks hostile files, traversal and the private
+  default.
 
 - **Frontend workflow lowering** (WTF-372, T6 of WTF-359; see
   `docs/frontend-workflows.md`). `BubbleEx.Workflows.Frontend` lowers every

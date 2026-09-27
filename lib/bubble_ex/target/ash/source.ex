@@ -31,6 +31,10 @@ defmodule BubbleEx.Target.Ash.Source do
       elsewhere that the domain lists after the Project's, default `[]`
   """
 
+  # The bypass marker the structural pack reads
+  # (BubbleEx.Target.Phoenix.Structural.Bypasses, WTF-386).
+  @scaffold_marker "# bubble:ignores_privacy scaffold:"
+
   alias BubbleEx.Error
 
   alias BubbleEx.Target.Ash.{
@@ -444,7 +448,10 @@ defmodule BubbleEx.Target.Ash.Source do
           [{"public?", literal(g.public?)}, {"authorize?", literal(g.authorize?)}] ++
             if(g.description, do: [{"description", literal(g.description)}], else: [])
 
-        "count #{atom(g.name)}, [#{Enum.map_join(g.path, ", ", &atom/1)}], #{options(options)}"
+        marker = if g.authorize?, do: "", else: "#{@scaffold_marker}derived_count\n"
+
+        marker <>
+          "count #{atom(g.name)}, [#{Enum.map_join(g.path, ", ", &atom/1)}], #{options(options)}"
       end)
 
     "\naggregates do\n#{lines}\nend\n"
@@ -746,6 +753,7 @@ defmodule BubbleEx.Target.Ash.Source do
           def load_actor(%{id: id}), do: load_actor(id)
 
           def load_actor(id) when is_binary(id) do
+            #{@scaffold_marker}load_actor
             case Ash.get(#{module(user.module, ctx)}, id, load: actor_loads(), authorize?: false) do
               {:ok, actor} -> actor
               {:error, _} -> nil

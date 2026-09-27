@@ -86,10 +86,12 @@ defmodule <%= @web %>.BubbleData do
   The unique ID of a page's thing from the URL path parameter
   (`bubble_thing`): a Bubble ID, else nil.
   """
-  def thing_id(%{"bubble_thing" => id}) when is_binary(id) and byte_size(id) <= 64,
-    do: if(Regex.match?(@id, id), do: id)
+  def thing_id(%{"bubble_thing" => id}, path)
+      when is_binary(id) and byte_size(id) <= 64 and is_binary(path) do
+    if List.last(String.split(path, "/", trim: true)) == id and Regex.match?(@id, id), do: id
+  end
 
-  def thing_id(_params), do: nil
+  def thing_id(_params, _path), do: nil
 
   # --- loading --------------------------------------------------------------------------
 
@@ -98,7 +100,7 @@ defmodule <%= @web %>.BubbleData do
   off) and, once connected, subscribes to the changes of what it read.
   """
   def load(socket, page) do
-    if data_access?() do
+    if data_access?() and connected?(socket) do
       {data, topics} =
         Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, MapSet.new()}, fn {scope, module},
                                                                           acc ->
@@ -109,8 +111,8 @@ defmodule <%= @web %>.BubbleData do
       |> assign(:bubble_data, data)
       |> subscribe(topics)
     else
-      if connected?(socket) and not Map.get(socket.assigns, :bubble_data_warned, false) and
-           sources?(page) do
+      if not data_access?() and connected?(socket) and
+           not Map.get(socket.assigns, :bubble_data_warned, false) and sources?(page) do
         Logger.warning(
           "bubble page data not loaded: data access is off " <>
             "(config :<%= @app %>, #{inspect(BubbleWorkflows)}, data_access: true)"
@@ -119,7 +121,32 @@ defmodule <%= @web %>.BubbleData do
 
       socket
       |> assign(:bubble_data, %{})
-      |> assign(:bubble_data_warned, true)
+      |> assign(:bubble_data_warned, not data_access?() and connected?(socket))
+    end
+  end
+
+  @doc "Coalesces change notifications into one read per burst, for subscribed topics only."
+  def changed(socket, topic) do
+    topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
+
+    if data_access?() and MapSet.member?(topics, topic) and
+         is_nil(socket.assigns[:bubble_data_refresh]) do
+      ref = make_ref()
+      Process.send_after(self(), {:bubble, :data_refresh, ref}, 25)
+      assign(socket, :bubble_data_refresh, ref)
+    else
+      socket
+    end
+  end
+
+  @doc "Handles the pending refresh; stale timers do not read."
+  def refresh(socket, page, ref) do
+    if socket.assigns[:bubble_data_refresh] == ref and not is_nil(ref) do
+      socket
+      |> assign(:bubble_data_refresh, nil)
+      |> load(page)
+    else
+      socket
     end
   end
 
@@ -164,7 +191,7 @@ defmodule <%= @web %>.BubbleData do
   defp run(module, source, ctx) do
     module
     |> apply(source.fun, [ctx])
-    |> BubbleWorkflows.load(source.loads, ctx)
+    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), min(max_items(), 100))
   rescue
     error ->
       Logger.error(

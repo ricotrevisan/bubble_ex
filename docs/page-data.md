@@ -32,7 +32,9 @@ workflows' opt-in, `config :<app>, <Web>.BubbleWorkflows, data_access:
 true` (owner decision, 2026-09-27): the resources are generated with
 `privacy: :omit`, so no resource has an authorizer and every read would
 return every record to anyone who can open the page. Until privacy
-policies are generated, turning it on is the owner's call.
+policies are generated, turning it on is the owner's call. **Do not enable it on
+public pages without first adding and testing authorization policies**; passing
+`authorize?: true` alone does not enforce privacy.
 
 ## Sources
 
@@ -41,7 +43,7 @@ element (not a mobile view):
 
 | Bubble | `kind` | Generated read |
 |--------|--------|----------------|
-| a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read |
+| a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route except for `index`, where a root catch-all would capture owned routes); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read; query parameters cannot select a thing |
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
 | a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
 | a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it) |
@@ -104,7 +106,9 @@ while rendering.
 * **Bounded.** A repeating group reads its first page (rows × columns);
   any list, with no page size or a larger one, stops at `:max_items`
   (`config :<app>, <Web>.BubbleData, max_items: 100`); a list of IDs is
-  read by ID, at most as many; `count` is a count query.
+  read by ID, at most as many; relationships loaded for page bindings
+  batch across rows and related lists are capped at 100; `count` is a
+  count query.
 * **Generated text is escaped**: Bubble IDs and app text in generated code
   are `inspect/1`ed without limits (quotes, `#{`, braces escaped); the
   `hostile_page_data` compile-check fixture renames every ID.
@@ -115,9 +119,9 @@ The resources the pages read publish their changes through
 `Ash.Notifier.PubSub` to `<App>.Bubble.Changes`: every create, update or
 delete of a type on `bubble:<Type>`, every update or delete of a record
 also on `bubble:<Type>:<id>`. A connected page subscribes to the type of
-each search it ran and to each record it holds, and reloads its data when
-one fires. Only the topic travels, never the record: the page reads again
-with its own actor. Data also reloads after each event its workflows
+each search it ran and to each record it holds, and coalesces a burst of
+notifications on those topics into one re-read. Only the topic travels,
+never the record: the page reads again with its own actor. Data also reloads after each event its workflows
 handle (their states and inputs may be constraints). Writes that bypass
 Ash (raw SQL, `Ash.Seed`, the loader) publish nothing.
 
@@ -182,9 +186,10 @@ are in a cell.
 ## Unverified Bubble behavior and open questions
 
 * **`ignore_empty_constraints`.** Most searches do not state it, and
-  Bubble's default is not verified; such a search with a constraint whose
-  value may be empty is residue (149 on mm-137, and every source reading
-  them). `BubbleEx.PageData.build/3` takes the default
+  Bubble's default is not verified; **do not set a global default merely to
+  increase coverage**: verify the app's ignore-empty behavior first.
+  Such a search with a constraint whose value may be empty is residue
+  (149 on mm-137, and every source reading them). `BubbleEx.PageData.build/3` takes the default
   (`ignore_empty_constraints:`); it is left unset until replay (WTF-358)
   or the owner decides.
 * A page's thing is read from the path segment after the page name; a

@@ -209,7 +209,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_params(socket, page, params, uri) do
     socket
     |> handle_params(params, uri)
-    |> assign(:bubble_thing, BubbleData.thing_id(params))
+    |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
     |> BubbleData.load(page)
   end
 
@@ -258,9 +258,12 @@ defmodule <%= @web %>.BubbleWorkflows do
       else: {:noreply, socket}
   end
 
-  # A record the page's data read changed (WTF-420): read it again.
-  def handle_info(socket, page, {:bubble, :data_changed, topic}) when is_binary(topic),
-    do: {:noreply, BubbleData.load(socket, page)}
+  # Coalesce a burst of changes; ignore notifications for other pages' topics.
+  def handle_info(socket, _page, {:bubble, :data_changed, topic}) when is_binary(topic),
+    do: {:noreply, BubbleData.changed(socket, topic)}
+
+  def handle_info(socket, page, {:bubble, :data_refresh, ref}),
+    do: {:noreply, BubbleData.refresh(socket, page, ref)}
 
   def handle_info(socket, page, {:bubble, :interval, scope, id}) do
     case surface(page, scope) do

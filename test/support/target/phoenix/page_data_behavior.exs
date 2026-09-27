@@ -97,6 +97,10 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert html =~ "Title: Bake"
     assert html =~ "Project: Apollo"
 
+    # Query strings cannot provide a page thing; only the path can.
+    {:ok, _view, html} = live(conn, "/task?bubble_thing=#{@t1}")
+    refute html =~ "Title: Bake"
+
     # No thing, an unknown one, or a path segment that is not a unique ID.
     for path <- [
           "/task",
@@ -111,6 +115,116 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     end
   end
 
+  test "the first load does not read twice across disconnected and connected mounts", %{
+    conn: conn
+  } do
+    on()
+    handler = "page-data-first-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, _, _ ->
+          send(parent, {:page_data_query, self()})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+    {:ok, _view, html} = live(conn, "/")
+    assert cells(html) == ["Answer", "Bake", "Clean"]
+    queries = flush_all_queries()
+    IO.puts("page data: initial connected load used #{queries} queries")
+    assert queries < 8
+  end
+
+  defp flush_all_queries do
+    receive do
+      {:page_data_query, _pid} -> 1 + flush_all_queries()
+    after
+      0 -> 0
+    end
+  end
+
+  test "a hundred records preload their related fields in a batch" do
+    for i <- 1..95 do
+      Ash.Seed.seed!(PhxCheck.Task, %{
+        id: Runtime.new_id(),
+        title: "Bulk #{i}",
+        done: false,
+        project_id: @p1
+      })
+    end
+
+    records = PhxCheck.Task |> Ash.Query.limit(100) |> Ash.read!(authorize?: true)
+    handler = "page-data-batch-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, _, _ ->
+          send(parent, {:page_data_query, self()})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    loaded = Runtime.load_page(records, [["project"]], Runtime.root(nil, nil), 100)
+    assert length(loaded) == 100
+    assert Enum.all?(loaded, &(&1.project.name == "Apollo"))
+    queries = flush_queries(self())
+    IO.puts("page data: 100 related rows loaded with #{queries} queries")
+    assert queries < 10
+  end
+
+  test "bursts of unrelated creates cause one re-read, not a re-read per notification", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, _html} = live(conn, "/")
+
+    handler = "page-data-query-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, _, _ ->
+          send(parent, {:page_data_query, self()})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    for i <- 1..50 do
+      Ash.create!(PhxCheck.Task, %{id: Runtime.new_id(), title: "New #{i}", done: false},
+        authorize?: false
+      )
+    end
+
+    Process.sleep(100)
+    assert cells(render(view)) == ["Answer", "Bake", "Clean"]
+    queries = flush_queries(view.pid)
+    IO.puts("page data: 50 creates caused #{queries} view queries")
+    assert queries < 20
+  end
+
+  defp flush_queries(pid) do
+    receive do
+      {:page_data_query, ^pid} -> 1 + flush_queries(pid)
+      {:page_data_query, _other} -> flush_queries(pid)
+    after
+      0 -> 0
+    end
+  end
+
   test "lists and things update when their records change", %{conn: conn} do
     on()
     {:ok, list, _html} = live(conn, "/")
@@ -120,6 +234,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       authorize?: false
     )
 
+    Process.sleep(60)
     assert cells(render(list)) == ["Aardvark", "Answer", "Bake"]
     assert render(list) =~ "First open: Aardvark"
 
@@ -128,6 +243,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     |> Ash.Changeset.for_update(:update, %{title: "Bread"})
     |> Ash.update!(authorize?: false)
 
+    Process.sleep(60)
     assert render(thing) =~ "Title: Bread"
 
     PhxCheck.Project
@@ -135,6 +251,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     |> Ash.Changeset.for_update(:update, %{name: "Gemini"})
     |> Ash.update!(authorize?: false)
 
+    Process.sleep(60)
     assert render(thing) =~ "Project: Gemini"
   end
 

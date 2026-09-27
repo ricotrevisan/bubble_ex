@@ -113,7 +113,8 @@ defmodule BubbleEx.Verify.Result do
                row_count row_hash dangling_refs file auth_user file_changed not_deterministic
                compile_error lint boundary migration symbol_uncovered rule_uncovered
                bypass_unlisted secret_found marker_missing criterion gate)
-  @diff_members ~w(op type record field element workflow rule path expected actual detail)
+  @diff_members ~w(op type record field option_set page element workflow rule path expected actual
+                   detail)
   @diff_atoms Map.new(@diff_members, &{&1, String.to_atom(&1)})
   @quarantine_days 7
 

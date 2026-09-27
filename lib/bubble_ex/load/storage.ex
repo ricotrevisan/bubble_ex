@@ -62,7 +62,10 @@ defmodule BubbleEx.Load.Storage.Local do
   `<root>/public`, it must add `Content-Disposition: attachment` and
   `X-Content-Type-Options: nosniff` to those responses (for
   `Plug.Static`, its `:headers` option). The generated Phoenix project
-  does not serve uploads yet.
+  serves `<root>` itself, safely (WTF-415): its `<Web>.Uploads` and
+  `<Web>.UploadsController` (see `BubbleEx.Target.Phoenix`), configured
+  with this `root` and `public_url`; private files stay off there until
+  the owner opts in.
   """
 
   @behaviour BubbleEx.Load.Storage

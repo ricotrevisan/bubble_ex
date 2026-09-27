@@ -618,6 +618,7 @@ defmodule MyApp.Privacy do
   def load_actor(%{id: id}), do: load_actor(id)
 
   def load_actor(id) when is_binary(id) do
+    # bubble:ignores_privacy scaffold:load_actor
     case Ash.get(MyApp.User, id, load: actor_loads(), authorize?: false) do
       {:ok, actor} -> actor
       {:error, _} -> nil
