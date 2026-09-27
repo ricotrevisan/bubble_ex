@@ -7,8 +7,8 @@
       },
       "residue": {
         "auth_action": 21,
-        "dynamic_url": 1,
         "no_native_lowering": 516,
+        "not_generated": 5,
         "plugin_action": 620,
         "plugin_element": 717,
         "plugin_event": 258,
@@ -19,8 +19,7 @@
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
-        "unsupported_event": 2,
-        "unsupported_request": 5
+        "unsupported_event": 2
       },
       "tasks": {
         "acceptance": {
@@ -212,8 +211,8 @@
       },
       "residue": {
         "auth_action": 21,
-        "dynamic_url": 1,
         "no_native_lowering": 516,
+        "not_generated": 5,
         "plugin_action": 620,
         "plugin_element": 717,
         "plugin_event": 258,
@@ -224,8 +223,7 @@
         "uncompiled_expression": 2934,
         "unresolved_reference": 90,
         "unsupported_action": 5,
-        "unsupported_event": 2,
-        "unsupported_request": 5
+        "unsupported_event": 2
       },
       "tasks": {
         "acceptance": {
@@ -409,8 +407,8 @@
       },
       "residue": {
         "auth_action": 21,
-        "dynamic_url": 1,
         "no_native_lowering": 516,
+        "not_generated": 5,
         "plugin_action": 620,
         "plugin_element": 717,
         "plugin_event": 258,
@@ -421,8 +419,7 @@
         "uncompiled_expression": 2420,
         "unresolved_reference": 90,
         "unsupported_action": 5,
-        "unsupported_event": 2,
-        "unsupported_request": 5
+        "unsupported_event": 2
       },
       "tasks": {
         "acceptance": {

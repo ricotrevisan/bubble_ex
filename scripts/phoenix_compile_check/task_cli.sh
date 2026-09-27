@@ -109,9 +109,12 @@ ELIXIR
     fail "generate:api_clients is not done with residue calls"
 
   wtf claim api_clients:residue --agent ci
-  if wtf complete api_clients:residue --agent ci --app "$app"; then
+  if refused="$(wtf complete api_clients:residue --agent ci --app "$app" 2>&1)"; then
     fail "api_clients:residue closed without an attestation"
   fi
+  echo "$refused"
+  grep -q 'FAIL .*attested' <<<"$refused" ||
+    fail "api_clients:residue was refused, but not for its missing attestation"
   wtf complete api_clients:residue --agent ci --app "$app" \
     --attest "1=No kept workflow or page calls these three API calls."
   grep -q 'status done' <<<"$(wtf show api_clients:residue)" || fail "api_clients:residue is not done"

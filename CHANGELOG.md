@@ -1046,13 +1046,18 @@ All notable changes to this project are documented here.
   mm-137, which were wrongly `auto` before), and those nothing kept uses
   are the new `api_clients:residue` task (kind `:api_clients_residue`,
   agent, open, one `attested` criterion; one on mm-137), after
-  `generate:api_clients` and before `replay:app`. The plan knows which
-  calls are residue from two new `Plan.Residue` reasons:
-  `:unsupported_request` (the Model's `ConnectorRequest.unsupported`,
-  computed by `Plan.build/5` itself) and `:not_generated`, which
-  `BubbleEx.Target.ApiClients.residue/1` gives for `residue:` (every call
-  its Spec leaves out, with the generator's reasons, such as unsupported
-  authentication). Surfaces and workflows had no such check: their
+  `generate:api_clients` and before `replay:app`. The plan and the
+  generator now share one stack-neutral decision,
+  `BubbleEx.Model.ConnectorSupport.unsupported/2` (malformed call,
+  unsupported authentication such as OAuth, JWT or a custom token, unknown
+  method, unnamed parameter, the request template's `unsupported`
+  reasons): `Plan.Residue` gives every call it rejects one new
+  `:not_generated` entry with those reasons, and `BubbleEx.Target.ApiClients`
+  leaves exactly those calls out. The plan's own API call checks
+  (`:dynamic_url`, `:oauth`, `:malformed_call`) are gone: they missed JWT
+  and custom-token groups, unknown methods and unnamed parameters, and
+  marked a call with a malformed `types` registry (which is generated,
+  untyped) as residue. The three reasons still decode. Surfaces and workflows had no such check: their
   generator tasks run no tagged tests, and their residue is already
   surface and workflow task work. Plan coverage snapshots for mm-137 are
   re-recorded (plan and plugins). `scripts/phoenix_compile_check/task_cli.sh`

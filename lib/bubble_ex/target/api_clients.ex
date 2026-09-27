@@ -53,7 +53,10 @@ defmodule BubbleEx.Target.ApiClients do
   (`:unsupported_auth`), a non-private parameter has no usable name
   (`:unnamed_parameter`: absent, or not a plain name), or its request
   template is incomplete (the reasons of
-  `BubbleEx.Model.ConnectorRequest`'s `unsupported`).
+  `BubbleEx.Model.ConnectorRequest`'s `unsupported`). The decision is
+  `BubbleEx.Model.ConnectorSupport.unsupported/2`, which
+  `BubbleEx.Plan.Residue` shares: a call the Spec leaves out is the plan's
+  `:not_generated` residue, with the same reasons.
 
   ## Responses
 
@@ -66,21 +69,19 @@ defmodule BubbleEx.Target.ApiClients do
   """
 
   alias BubbleEx.{Error, Model}
-  alias BubbleEx.Model.{Connector, ConnectorCall, ConnectorParameter, ExternalType, Type}
-  alias BubbleEx.Model.ConnectorRequest.Reader
+
+  alias BubbleEx.Model.{
+    Connector,
+    ConnectorCall,
+    ConnectorParameter,
+    ConnectorSupport,
+    ExternalType,
+    Type
+  }
+
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Target.Ash.Naming
   alias BubbleEx.Target.ApiClients.{Call, Group, Spec}
-
-  @methods %{
-    "get" => :get,
-    "post" => :post,
-    "put" => :put,
-    "patch" => :patch,
-    "delete" => :delete
-  }
-
-  @auth_supported [nil, "none", "private_key_header", "private_key_url", "basic_auth"]
 
   # Function names a client module must not define: Kernel's (imported
   # everywhere) and the module's own helpers.
@@ -128,23 +129,6 @@ defmodule BubbleEx.Target.ApiClients do
   def map(_model, _opts),
     do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Model")}
 
-  @doc """
-  The Spec's residue as `BubbleEx.Plan.Residue` entries (`:not_generated`,
-  with the generator's reasons as `detail.reasons`), for
-  `BubbleEx.Plan.build/5`'s `residue:` option: the plan then knows which
-  calls have generated request-shape tests (`generate:api_clients`'s
-  `request_shape`) and which are hand work.
-  """
-  @spec residue(Spec.t()) :: [%{subject: String.t(), reason: :not_generated, detail: map()}]
-  def residue(%Spec{residue: residue}) do
-    for %{group: group, call: call, reasons: reasons} <- residue,
-        do: %{
-          subject: Symbol.id(:api_call, [group, call]),
-          reason: :not_generated,
-          detail: %{reasons: reasons}
-        }
-  end
-
   # --- groups --------------------------------------------------------------------------
 
   defp group(%Connector{} = group, model, state) do
@@ -153,11 +137,11 @@ defmodule BubbleEx.Target.ApiClients do
     state = %{state | modules: modules}
     prefix = env_part(Macro.underscore(module))
 
-    {shared, group_reasons, state} = shared(group, prefix, state)
+    {shared, state} = shared(group, prefix, state)
 
     {calls, {_functions, state}} =
       Enum.flat_map_reduce(group.calls, {MapSet.new(), state}, fn call, {functions, state} ->
-        case call(call, group, shared, group_reasons, prefix, functions, model, state) do
+        case call(call, group, shared, prefix, functions, model, state) do
           {:ok, call, functions, state} ->
             {[call], {functions, state}}
 
@@ -171,17 +155,17 @@ defmodule BubbleEx.Target.ApiClients do
   end
 
   # The group's authentication and shared parameters: header, query and
-  # other (`:param`) entries every call gets, and reasons no call can be
-  # generated.
+  # other (`:param`) entries every call gets. Whether a call can be
+  # generated at all is `ConnectorSupport.unsupported/2`'s.
   defp shared(%Connector{} = group, prefix, state) do
     values = Map.new(group.shared_values, &{&1.parameter, &1.parts})
-    {auth, reasons, state} = auth(group, prefix, state)
+    {auth, state} = auth(group, prefix, state)
 
-    {entries, {reasons, state}} =
-      Enum.map_reduce(group.parameters, {reasons, state}, fn p, {reasons, state} ->
+    {entries, state} =
+      Enum.map_reduce(group.parameters, state, fn p, state ->
         case shared_entry(p, values, group, prefix, state) do
-          {:unnamed, state} -> {nil, {[:unnamed_parameter | reasons], state}}
-          {entry, state} -> {{p.in, entry}, {reasons, state}}
+          {:unnamed, state} -> {nil, state}
+          {entry, state} -> {{p.in, entry}, state}
         end
       end)
 
@@ -194,7 +178,7 @@ defmodule BubbleEx.Target.ApiClients do
       auth: Map.get(auth, :auth)
     }
 
-    {shared, reasons, state}
+    {shared, state}
   end
 
   defp auth(%Connector{auth: "private_key_header"} = group, prefix, state) do
@@ -202,7 +186,7 @@ defmodule BubbleEx.Target.ApiClients do
       env(state, prefix <> "_API_KEY", :auth, subject(group), "API key (private key in header)")
 
     header = if header_name?(group.key_name), do: group.key_name, else: "authorization"
-    {%{headers: [%{name: header, value: [{:env, name}]}]}, [], state}
+    {%{headers: [%{name: header, value: [{:env, name}]}]}, state}
   end
 
   defp auth(%Connector{auth: "private_key_url", key_name: key} = group, prefix, state)
@@ -210,7 +194,7 @@ defmodule BubbleEx.Target.ApiClients do
     {name, state} =
       env(state, prefix <> "_API_KEY", :auth, subject(group), "API key (private key in URL)")
 
-    {%{query: [%{name: key, value: [{:env, name}]}]}, [], state}
+    {%{query: [%{name: key, value: [{:env, name}]}]}, state}
   end
 
   defp auth(%Connector{auth: "private_key_url"} = group, prefix, state) do
@@ -223,7 +207,7 @@ defmodule BubbleEx.Target.ApiClients do
         "API key (private key in URL) whose parameter name Bubble does not send (`name=value`)"
       )
 
-    {%{query: [%{name: nil, value: [{:env_line, name}]}]}, [], state}
+    {%{query: [%{name: nil, value: [{:env_line, name}]}]}, state}
   end
 
   defp auth(%Connector{auth: "basic_auth"} = group, prefix, state) do
@@ -232,13 +216,11 @@ defmodule BubbleEx.Target.ApiClients do
     {password, state} =
       env(state, prefix <> "_PASSWORD", :auth, subject(group), "basic auth password")
 
-    {%{auth: {:basic, user, password}}, [], state}
+    {%{auth: {:basic, user, password}}, state}
   end
 
-  defp auth(%Connector{auth: auth}, _prefix, state) when auth in @auth_supported,
-    do: {%{}, [], state}
-
-  defp auth(_group, _prefix, state), do: {%{}, [:unsupported_auth], state}
+  # none, or unsupported (then no call of the group is generated).
+  defp auth(_group, _prefix, state), do: {%{}, state}
 
   defp subject(%Connector{id: id}), do: %{group: id, call: nil}
 
@@ -306,43 +288,20 @@ defmodule BubbleEx.Target.ApiClients do
 
   # --- calls ---------------------------------------------------------------------------
 
-  defp call(%ConnectorCall{raw: raw}, _group, _shared, _reasons, _prefix, _fns, _model, state)
-       when raw != nil,
-       do: {:residue, [:malformed_call], state}
-
-  defp call(
-         %ConnectorCall{} = call,
-         group,
-         shared,
-         group_reasons,
-         prefix,
-         functions,
-         model,
-         state
-       ) do
-    method = Map.get(@methods, Reader.method(call.method))
-    request = call.request
-
-    unnamed =
-      Enum.any?(call.parameters, &(not &1.private and is_nil(&1.name)))
-
-    reasons =
-      (group_reasons ++
-         request.unsupported ++
-         if(method, do: [], else: [:method]) ++
-         if(unnamed, do: [:unnamed_parameter], else: []))
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    if reasons != [] do
-      {:residue, reasons, state}
-    else
-      base = Naming.base(:snake, call.name, call.id, "call")
-      base = if base in @reserved_functions, do: base <> "_call", else: base
-      {function, functions} = Naming.claim(base, functions, :snake, :none)
-      {call, state} = build(call, group, shared, method, prefix, function, model, state)
-      {:ok, call, functions, state}
+  defp call(%ConnectorCall{} = call, group, shared, prefix, functions, model, state) do
+    case ConnectorSupport.unsupported(group, call) do
+      [] -> generate(call, group, shared, prefix, functions, model, state)
+      reasons -> {:residue, reasons, state}
     end
+  end
+
+  defp generate(call, group, shared, prefix, functions, model, state) do
+    method = ConnectorSupport.method(call)
+    base = Naming.base(:snake, call.name, call.id, "call")
+    base = if base in @reserved_functions, do: base <> "_call", else: base
+    {function, functions} = Naming.claim(base, functions, :snake, :none)
+    {call, state} = build(call, group, shared, method, prefix, function, model, state)
+    {:ok, call, functions, state}
   end
 
   defp build(call, group, shared, method, prefix, function, model, state) do

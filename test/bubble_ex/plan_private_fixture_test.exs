@@ -112,12 +112,19 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
   end
 
   # WTF-412: generate:api_clients checks only the calls the generator
-  # generated, with and without its residue; the others are open api_call
-  # tasks or api_clients:residue. Counts only.
+  # generated, with and without its residue passed as `residue:`; the
+  # others are open api_call tasks or api_clients:residue. Counts only.
   test "generate:api_clients checks only the generated API calls", ctx do
     {:ok, spec} = ApiClients.map(ctx.model)
     generated = for g <- spec.groups, c <- g.calls, into: MapSet.new(), do: c.subject
-    adapter = ApiClients.residue(spec)
+
+    adapter =
+      for r <- spec.residue,
+          do: %{
+            subject: BubbleEx.Index.Symbol.id(:api_call, [r.group, r.call]),
+            reason: :not_generated,
+            detail: %{reasons: r.reasons}
+          }
 
     for residue <- [ctx.neutral, ctx.neutral ++ adapter] do
       {:ok, plan} = Plan.build(ctx.model, ctx.index, ctx.frontend, [], residue: residue)
@@ -126,6 +133,7 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
 
       assert MapSet.new(calls) == generated
 
+      assert generate.residue == adapter
       residue_calls = generate.residue |> Enum.map(& &1.subject) |> Enum.uniq()
       open = for t <- plan.tasks, t.kind == :api_call, t.status == :open, do: t.id
       unused = (Plan.task(plan, "api_clients:residue") || %{subjects: []}).subjects

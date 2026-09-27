@@ -14,10 +14,10 @@ alias BubbleEx.Target.ApiClients
 app = fixture |> File.read!() |> Jason.decode!()
 {:ok, model} = Model.build(app)
 {:ok, index} = Index.build(app, model: model)
-{:ok, spec} = ApiClients.map(model)
-{:ok, plan} = Plan.build(model, index, nil, [], residue: ApiClients.residue(spec))
+{:ok, plan} = Plan.build(model, index)
 :ok = BubbleEx.Tasks.Store.write_plan(dir, plan)
 
+{:ok, spec} = ApiClients.map(model)
 generated = for g <- spec.groups, c <- g.calls, into: MapSet.new(), do: c.subject
 tasks = for t <- plan.tasks, t.kind == :api_call, MapSet.member?(generated, t.id), do: t.id
 

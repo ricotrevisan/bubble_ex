@@ -218,8 +218,9 @@ defmodule BubbleEx.Plan do
 
     * `:residue` - more `BubbleEx.Plan.Residue` entries: from
       `Residue.expressions/4` and `Residue.styles/1` (they need the app
-      JSON) or from a target adapter (`BubbleEx.Target.ApiClients.residue/1`:
-      the API calls its generator leaves out)
+      JSON) or from a target adapter. API call residue needs none: the
+      plan computes it with the generator's own decision
+      (`BubbleEx.Model.ConnectorSupport.unsupported/2`)
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records, recorded in `inputs`
     * `:content` - `BubbleEx.Plan.Content.digests/4` of the same app, keyed
