@@ -26,10 +26,10 @@ defmodule BubbleEx.Load.Target do
     * `clear/4` - sets a column to nil for the records with the given keys
       (the first phase of an email swap)
     * `join_members/4` - the `{left ID, right ID}` rows of a join table
-      that are members of one list (its column set) and whose owner is one
-      of `owners`: what the table holds for the exported owners, so the
-      loader reports members a list no longer holds (nothing is deleted).
-      It reads only
+      that are members of one list (a position is not null, a flag is true).
+      `:all` reads every owner, including owners absent from the export;
+      alternatively `owners` filters to those IDs. The loader reports
+      members a list no longer holds (nothing is deleted). It reads only
     * `upsert_join/4` - writes one batch of rows of one list of a join
       table (`BubbleEx.Load.Plan.Join` and one of its sides): each row maps
       the two ID columns and the list's membership column to values. An
@@ -63,7 +63,7 @@ defmodule BubbleEx.Load.Target do
               config :: term(),
               Plan.Join.t(),
               Plan.Join.side(),
-              owners :: [String.t()]
+              owners :: [String.t()] | :all
             ) ::
               {:ok, [{String.t(), String.t()}]} | {:error, Error.t()}
   @callback upsert_join(config :: term(), Plan.Join.t(), Plan.Join.side(), [map()]) ::

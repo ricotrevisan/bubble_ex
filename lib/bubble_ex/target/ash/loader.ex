@@ -602,11 +602,23 @@ defmodule BubbleEx.Target.Ash.Loader do
   def join_members(%__MODULE__{} = c, %Plan.Join{} = join, side, owners) do
     owner = if side.owner == :left, do: join.left.column, else: join.right.column
 
+    {filter, params} =
+      case owners do
+        :all -> {"", []}
+        ids -> {" AND #{ident(owner)} = ANY($1)", [ids]}
+      end
+
+    membership =
+      case side.kind do
+        :flag -> "#{ident(side.column)} = TRUE"
+        :position -> "#{ident(side.column)} IS NOT NULL"
+      end
+
     sql =
       "SELECT #{ident(join.left.column)}, #{ident(join.right.column)} FROM #{qualified(c.schema, join)} " <>
-        "WHERE #{ident(side.column)} IS NOT NULL AND #{ident(owner)} = ANY($1)"
+        "WHERE #{membership}#{filter}"
 
-    with {:ok, rows} <- run(c, sql, [owners]), do: {:ok, Enum.map(rows, fn [l, r] -> {l, r} end)}
+    with {:ok, rows} <- run(c, sql, params), do: {:ok, Enum.map(rows, fn [l, r] -> {l, r} end)}
   end
 
   @impl true

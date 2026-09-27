@@ -75,9 +75,10 @@ defmodule BubbleEx.Load do
       back). The rows upsert idempotently. Nothing is deleted: a member
       removed from a list in Bubble since an earlier load keeps its row,
       and with it any access a privacy rule grants through the list; each
-      such row is reported (`:load_join_stale_member`, an error: the
-      owner's ID, counts). A dry run reports it; a real run is blocked
-      before any writes until WTF-414 implements pruning.
+      such row (including one whose owner was deleted in Bubble) is reported
+      (`:load_join_stale_member`, an error: the owner's ID, counts). A dry run
+      reports it; a real run is blocked before any writes until WTF-414
+      implements pruning.
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -246,7 +247,7 @@ defmodule BubbleEx.Load do
          scan = Scan.run(export, model, plan, opts),
          {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags),
          {joins, issues} = Joins.build(plan, scan, issues),
-         {:ok, issues} <- stale_members(joins, scan, {tmod, tconf}, schema_diags, issues) do
+         {:ok, issues} <- stale_members(joins, {tmod, tconf}, schema_diags, issues) do
       issues = Scan.drift(%{scan | issues: issues}, plan, model)
       issues = auth_status(issues, scan, plan)
 
@@ -349,18 +350,18 @@ defmodule BubbleEx.Load do
   end
 
   # Members a list held at an earlier load that it no longer holds: the
-  # target's rows of the list for the exported owners that the export does
-  # not give it. Nothing deletes them (WTF-414), and they keep any access
-  # a rule grants through the list, so each blocks a real run before writes
+  # target's rows of the list that the export does not give it, including
+  # rows whose owner is absent from the complete delta export. Nothing deletes
+  # them (WTF-414), and they keep any access a rule grants through the list,
+  # so each blocks a real run before writes
   # (`:load_join_stale_member`, the owner's ID). Not read when the schema
   # check failed.
-  defp stale_members(joins, scan, {tmod, tconf}, schema, issues) do
+  defp stale_members(joins, {tmod, tconf}, schema, issues) do
     if Enum.any?(schema, &(&1.code == :load_schema_mismatch)) do
       {:ok, issues}
     else
       Enum.reduce_while(joins, {:ok, issues}, fn built, {:ok, issues} ->
-        owners = scan.ids |> Map.get(built.side.type, MapSet.new()) |> Enum.sort()
-        stored = tmod.join_members(tconf, built.join, built.side, owners)
+        stored = tmod.join_members(tconf, built.join, built.side, :all)
         stale_step(stored, built, issues)
       end)
     end

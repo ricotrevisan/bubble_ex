@@ -492,6 +492,75 @@ defmodule BubbleEx.LoadTest do
              end)
     end
 
+    test "a deleted owner in a complete delta blocks before writes, even with an existing ledger",
+         %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      ledger_dir = Path.join(dir, "ledger")
+      {:ok, _} = Load.run(f.export, f.model, f.target, ledger_dir: ledger_dir)
+      before = Memory.tables(f.target)
+      ledger_before = ledger_state(ledger_dir)
+
+      rows = F.cut3_rows()
+
+      rows = %{
+        rows
+        | "workspace" => Enum.reject(rows["workspace"], &(&1["_id"] == F.workspace1()))
+      }
+
+      {:ok, delta} = F.export(:cut3, Path.join(dir, "deleted-owner"), rows)
+
+      {:ok, dry} = Load.dry_run(delta, f.model, f.target)
+      assert :load_join_stale_member in dry.blocked
+
+      assert %{details: %{count: 3, sample_ids: [owner]}} =
+               diag(dry, :load_join_stale_member, "workspace", "members_list_user")
+
+      assert owner == F.workspace1()
+
+      assert {:error, %{context: %{blocked: blocked, report: report}}} =
+               Load.run(delta, f.model, f.target, ledger_dir: ledger_dir)
+
+      assert :load_join_stale_member in blocked
+      assert report.run == nil
+      assert Memory.tables(f.target) == before
+      assert ledger_state(ledger_dir) == ledger_before
+      refute Jason.encode!(Report.to_map(report)) =~ "Acme"
+    end
+
+    test "false flags are not members of a normalized list", %{tmp_dir: dir} do
+      f = setup_fixture(:cut3, dir)
+      {:ok, _} = Load.run(f.export, f.model, f.target)
+      # The target can hold a join row whose boolean flag is false. It is
+      # not a viewer, unlike a non-nil position (including position zero).
+      Memory.put_rows(f.target, "favorite_project", %{
+        {F.initiative2(), F.ada()} => %{
+          "project_id" => F.initiative2(),
+          "user_id" => F.ada(),
+          "viewers_listed" => false
+        }
+      })
+
+      {:ok, dry} = Load.dry_run(f.export, f.model, f.target)
+      refute :load_join_stale_member in dry.blocked
+      assert {:ok, _} = Load.run(f.export, f.model, f.target)
+
+      Memory.put_rows(f.target, "favorite_project", %{
+        {F.initiative2(), F.ada()} => %{
+          "project_id" => F.initiative2(),
+          "user_id" => F.ada(),
+          "viewers_listed" => true
+        }
+      })
+
+      {:ok, stale} = Load.dry_run(f.export, f.model, f.target)
+      assert :load_join_stale_member in stale.blocked
+
+      assert %{details: %{count: 1, sample_ids: [id]}} =
+               diag(stale, :load_join_stale_member, "project", "viewers_list_user")
+
+      assert id == F.initiative2()
+    end
+
     test "an interrupted load resumes its join rows from the ledger", %{tmp_dir: dir} do
       f = setup_fixture(:cut3, dir)
       opts = [ledger_dir: Path.join(dir, "ledger"), batch_size: 1]

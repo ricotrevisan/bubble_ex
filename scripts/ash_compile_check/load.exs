@@ -675,6 +675,22 @@ loaded =
           "reordered membership keeps the other list's column"
         )
 
+        # A false flag is not a member, even though its join row exists.
+        Postgrex.query!(
+          conn,
+          ~s[INSERT INTO "public"."favorite_project" ("project_id", "user_id", "viewers_listed") VALUES ($1, $2, false)],
+          [F.initiative2(), F.ada()]
+        )
+
+        {:ok, false_flag} = Load.dry_run(reordered_export, model, target, base_opts)
+        LoadCheck.eq!(fixture, false_flag.blocked, [], "false flag is not a stale member")
+
+        Postgrex.query!(
+          conn,
+          ~s(DELETE FROM "public"."favorite_project" WHERE "project_id" = $1 AND "user_id" = $2),
+          [F.initiative2(), F.ada()]
+        )
+
         # Bob is absent in the next export. The stale row retains access;
         # the whole load, including scalar changes, must fail before writes.
         [w1 | rest] = reordered["workspace"]
@@ -747,6 +763,48 @@ loaded =
         )
 
         LoadCheck.check!(fixture, not File.exists?(blocked_ledger), "blocked run wrote a ledger")
+
+        # A complete delta omitting Acme itself must also catch its rows.
+        deleted_owner = %{
+          reordered
+          | "workspace" => Enum.reject(reordered["workspace"], &(&1["_id"] == F.workspace1()))
+        }
+
+        {:ok, deleted_export} = F.export(which, Path.join(dir, "deleted_owner"), deleted_owner)
+        {:ok, missing} = Load.dry_run(deleted_export, model, target, base_opts)
+
+        LoadCheck.eq!(
+          fixture,
+          stale_members.(missing),
+          [{"members_list_user", 3, [F.workspace1()]}],
+          "missing owner is stale"
+        )
+
+        # The earlier completed run's ledger exists; refusing the delta must
+        # neither write rows nor create another ledger entry.
+        ledger_before = File.ls!(ledger) |> Enum.sort()
+        {:error, missing_run} = Load.run(deleted_export, model, target, opts)
+
+        LoadCheck.eq!(
+          fixture,
+          missing_run.context.blocked,
+          [:load_join_stale_member],
+          "missing owner blocked"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          LoadCheck.snapshot(conn, plan),
+          before_blocked,
+          "missing owner wrote no rows"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          File.ls!(ledger) |> Enum.sort(),
+          ledger_before,
+          "missing owner wrote no ledger"
+        )
 
         # back to the fixture's state for loaded.exs
         LoadCheck.truncate(conn, plan)
