@@ -38,9 +38,7 @@ defmodule BubbleEx.Verify.Replay.Kit do
          * `:denied` (401/403/404 to a logged-out caller): `:ok`
          * fields beyond `_id`, `Created Date` and `Modified Date` came
            back: `:exposed` (the field names, never values), never
-           overridable by default. Only the scoped, expiring owner
-           `:exposure_waiver` can accept this risk while preserving the
-           actual probe result and warning
+           overridable. Disable that type's exposure at once
          * no record came back: `:unproven` (nothing shows that the rules
            hide the fields: there may be no record they open yet), unless
            the type is proven hidden (`:anonymous_proof`) or the operator
@@ -53,20 +51,18 @@ defmodule BubbleEx.Verify.Replay.Kit do
        cleanup**: sign-ups are deleted, and unconfirmed ones found by
        email, only through the `User` Data API, so `user` must be among
        the types and pass checks 3 and 4. Otherwise the check is
-       `:missing` and the run is refused unless `user` was explicitly
-       accepted by the scoped owner waiver: otherwise record logged-out
-       only (a seed with no users)
+       `:missing` and the run is refused: record logged-out only (a seed
+       with no users)
 
   Owner-only items (privacy rules unchanged from the parent version, the
   replay token is a dedicated one, the signup and login workflows need the
   admin token) cannot be read through the API; the report lists them as
-  `:manual`. The report is `ok?` only when every read check is `:ok` or
-  an exposed/may-leak probe is explicitly owner-accepted.
+  `:manual`. The report is `ok?` only when every read check is `:ok`.
   """
 
   alias BubbleEx.Error
   alias BubbleEx.Verify.Interpreter.Dataset
-  alias BubbleEx.Verify.Replay.{Client, ExposureWaiver, Names}
+  alias BubbleEx.Verify.Replay.{Client, Names}
 
   defstruct signup: "wtf_replay_signup",
             login: "wtf_replay_login",
@@ -97,16 +93,11 @@ defmodule BubbleEx.Verify.Replay.Kit do
     * `:allow_unproven` - type descriptors the operator accepts although
       the anonymous probe found no record (each is reported in
       `warnings`)
-    * `:exposure_waiver` - explicit owner acceptance of `:exposed` and
-      `:may_leak` on the one mm-137 replay target; never suppresses the
-      probe's actual findings.
   """
   @spec preflight(Client.t(), t(), [String.t()], keyword()) ::
           {:ok, report()} | {:error, Error.t()}
   def preflight(%Client{} = client, %__MODULE__{} = kit, types, opts \\ []) do
-    with :ok <- validate_waiver(client, types, opts),
-         :ok <- validate_persona_path(client, opts),
-         {:ok, schema} <- Client.verify(client, kit),
+    with {:ok, schema} <- Client.verify(client, kit),
          {:ok, meta} <- Client.meta(client),
          {:ok, type_checks} <- type_checks(client, types, schema, opts) do
       personas? = Keyword.get(opts, :personas, false)
@@ -117,48 +108,13 @@ defmodule BubbleEx.Verify.Replay.Kit do
 
       {:ok,
        %{
-         ok?: Enum.all?(checks, &accepted_check?/1),
+         ok?: Enum.all?(checks, &(&1.status == :ok)),
          checks: checks,
          manual: @manual,
          warnings: for(%{warning: w} = c <- checks, do: %{type: c[:type], warning: w})
        }}
     end
   end
-
-  defp validate_waiver(client, types, opts) do
-    case Keyword.get(opts, :exposure_waiver) do
-      nil ->
-        :ok
-
-      %ExposureWaiver{} = waiver ->
-        ExposureWaiver.validate(
-          waiver,
-          client.target,
-          client.names,
-          types,
-          DateTime.utc_now()
-        )
-
-      _ ->
-        {:error,
-         Error.new(:invalid_input, "invalid owner anonymous exposure waiver", %{
-           reason: :invalid_exposure_waiver
-         })}
-    end
-  end
-
-  defp validate_persona_path(client, opts) do
-    if Keyword.get(opts, :personas, false),
-      do: ExposureWaiver.validate_user_path(client.names),
-      else: :ok
-  end
-
-  defp accepted_check?(%{check: :anonymous_exposure, status: status, waived: true})
-       when status in [:exposed, :may_leak],
-       do: true
-
-  defp accepted_check?(%{status: :ok}), do: true
-  defp accepted_check?(_), do: false
 
   @doc """
   A conservative proof, from an app's Model, of the types whose privacy
@@ -301,32 +257,9 @@ defmodule BubbleEx.Verify.Replay.Kit do
       accepted? = type in Keyword.get(opts, :allow_unproven, [])
       base = %{check: :anonymous_exposure, type: type}
 
-      check = Map.merge(base, verdict(probe, schema_fields(schema, path), proven?, accepted?))
-      {:ok, maybe_waive(check, opts)}
+      {:ok, Map.merge(base, verdict(probe, schema_fields(schema, path), proven?, accepted?))}
     end
   end
-
-  defp maybe_waive(%{status: status, type: type} = check, opts)
-       when status in [:exposed, :may_leak] do
-    case Keyword.get(opts, :exposure_waiver) do
-      %ExposureWaiver{types: types} when is_list(types) ->
-        if type in types do
-          Map.merge(check, %{
-            waived: true,
-            warning:
-              "OWNER-ACCEPTED ANONYMOUS EXPOSURE: #{type} is #{status}; " <>
-                "development data may be publicly readable (see probe counts and fields)"
-          })
-        else
-          check
-        end
-
-      _ ->
-        check
-    end
-  end
-
-  defp maybe_waive(check, _opts), do: check
 
   defp verdict(%{status: :denied, http_status: s}, _schema, _proven?, _accepted?),
     do: %{status: :ok, anonymous: :denied, http_status: s}
@@ -360,38 +293,23 @@ defmodule BubbleEx.Verify.Replay.Kit do
     other = with {:ok, names} <- schema, do: names -- Client.anonymous_fields()
 
     cond do
-      other == [] ->
-        Map.merge(counts(probe), %{status: :ok, anonymous: :ids_only})
-
-      proven? ->
-        Map.merge(counts(probe), %{status: :ok, anonymous: :proven_hidden})
-
-      true ->
-        Map.merge(counts(probe), %{
-          status: :may_leak,
-          anonymous: :ids_only,
-          possible_fields: if(is_list(other), do: other, else: :unknown)
-        })
+      other == [] -> Map.merge(counts(probe), %{status: :ok, anonymous: :ids_only})
+      proven? -> Map.merge(counts(probe), %{status: :ok, anonymous: :proven_hidden})
+      true -> Map.merge(counts(probe), %{status: :may_leak, anonymous: :ids_only})
     end
   end
 
-  defp counts(probe),
-    do:
-      probe
-      |> Map.take([:records, :remaining, :capped, :extra_fields])
-      |> Map.put(:probe_status, probe.status)
+  defp counts(probe), do: Map.take(probe, [:records, :remaining, :capped])
 
   # --- personas -----------------------------------------------------------------------
 
   defp persona_checks(false, _type_checks), do: []
 
   defp persona_checks(true, type_checks) do
-    user = for %{type: "user"} = check <- type_checks, do: check
+    user = for %{type: "user"} = check <- type_checks, do: check.status
 
     status =
-      if user != [] and Enum.all?(user, &accepted_check?/1),
-        do: :ok,
-        else: :missing
+      if user != [] and Enum.all?(user, &(&1 == :ok)), do: :ok, else: :missing
 
     [
       %{
