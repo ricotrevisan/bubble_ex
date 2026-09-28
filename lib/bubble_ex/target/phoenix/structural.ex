@@ -34,7 +34,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   | `bypass_inventory` | the lowering bypasses exactly the backend workflows that ignore privacy rules in Bubble; every bypass site in the rendered `lib/` is a listed workflow body or a scaffold site the generator is expected to write, and `.wtf/bypasses.json` lists exactly those; `skipped` when workflows are expected to bypass and no Spec was given | every bypass site in owned `lib/` code is marked (`Structural.Bypasses`) |
   | `generated_unchanged` | the manifest matches the rendered files | the manifest matches the files on disk |
   | `deterministic` | a second rendering (`rerender`) is byte-identical | no: needs the generator |
-  | `compiles`, `lint` | no | `Target.Phoenix.Checks`; `lint` fails on fresh projects until WTF-416 (reported as a known failure) |
+  | `compiles`, `lint` | no | `Target.Phoenix.Checks` (a fresh project is lint-clean, WTF-416) |
   | `migrations_in_sync` | no | `mix ash.codegen --check` |
   | `boundary`, `secrets_absent` | not bound yet | not bound yet |
   | `traceability.source`, `traceability.rendered` | per task: `mix wtf.task` (`Target.Phoenix.Checks`) | the same |

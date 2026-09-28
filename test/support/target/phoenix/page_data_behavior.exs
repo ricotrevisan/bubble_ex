@@ -214,6 +214,115 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
         )
   end
 
+  # Read budgets (post-audit of WTF-420): one source (the page's thing,
+  # one query per read); `task/1` reports each read.
+  defmodule BudgetPage do
+    @task_id "1700000000000x200000000000000001"
+
+    def __bubble__(:instances), do: []
+
+    def __bubble__(:surface),
+      do: %{
+        states: %{},
+        inputs: %{},
+        loaded: ["on_load"],
+        intervals: [],
+        clicks: %{
+          "five" => ["n1", "n2", "n3", "n4", "n5"],
+          "tick" => ["tick"],
+          "write" => ["write", "observe"],
+          "write_direct" => ["write_direct", "observe"],
+          "state" => ["set", "observe"]
+        },
+        changes: %{},
+        conditions: []
+      }
+
+    def __bubble__(:data),
+      do: [
+        %{
+          element: "task",
+          instance: nil,
+          fun: :task,
+          read: :url_thing,
+          cell: nil,
+          loads: [],
+          cell_loads: [],
+          topic: "Task",
+          blocked: []
+        }
+      ]
+
+    def __bubble__(:workflows),
+      do:
+        Map.new(
+          [
+            {"on_load", :observe, true},
+            {"tick", :tick, false},
+            {"write", :write, true},
+            {"write_direct", :write_direct, true},
+            {"set", :set, false},
+            {"observe", :observe, true}
+          ] ++ for(i <- 1..5, do: {"n#{i}", :noop, false}),
+          fn {id, run, data} -> {id, %{condition: nil, run: run, blocked: [], data: data}} end
+        )
+
+    def task(ctx) do
+      send(self(), :budget_page_read)
+      PhxCheckWeb.BubbleData.url_thing(ctx, PhxCheck.Task)
+    end
+
+    def noop(ctx) do
+      send(self(), :budget_page_noop)
+      {:done, ctx}
+    end
+
+    def observe(ctx) do
+      task = PhxCheckWeb.BubbleWorkflows.data(ctx, [], "task")
+      send(self(), {:budget_page_observed, task && task.title})
+      {:done, ctx}
+    end
+
+    # A custom event that schedules itself: it ends on its budgets.
+    def tick(ctx) do
+      send(self(), :budget_page_tick)
+
+      case PhxCheckWeb.BubbleWorkflows.schedule_custom(ctx, "s", __MODULE__, "tick", [], 0, %{}) do
+        {:cont, ctx} -> {:done, ctx}
+        {:halt, status, ctx} -> {status, ctx}
+      end
+    end
+
+    # A data step on the workflow runtime.
+    def write(ctx) do
+      {:cont, ctx} =
+        PhxCheckWeb.BubbleWorkflows.backend(ctx, fn run ->
+          retitle("Bread")
+          {:cont, run}
+        end)
+
+      {:done, ctx}
+    end
+
+    # A write in owned code, through Ash but outside the runtime.
+    def write_direct(ctx) do
+      retitle("Brioche")
+      {:done, ctx}
+    end
+
+    def set(ctx),
+      do: PhxCheckWeb.BubbleWorkflows.set_state(ctx, "set", [{[], "x", "s", 1}]) |> done()
+
+    defp done({:cont, ctx}), do: {:done, ctx}
+
+    defp retitle(title) do
+      PhxCheck.Task
+      |> Ash.get!(@task_id, authorize?: false)
+      |> Ash.Changeset.for_update(:update, %{title: title})
+      |> Ash.update!(authorize?: false)
+    end
+  end
+
   @p1 "1700000000000x100000000000000001"
   @t1 "1700000000000x200000000000000001"
 
@@ -692,6 +801,162 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     queries = flush_all_queries()
     IO.puts("page data: initial connected load used #{queries} queries")
     assert queries < 20
+  end
+
+  # --- read budgets (post-audit of WTF-420) ---------------------------------------------
+
+  defp count_queries(fun) do
+    handler = "page-data-budget-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, _, _ -> send(parent, {:page_data_query, self()}) end,
+        nil
+      )
+
+    try do
+      result = fun.()
+      {result, flush_queries(self())}
+    after
+      :telemetry.detach(handler)
+    end
+  end
+
+  defp count(message, n \\ 0) do
+    receive do
+      ^message -> count(message, n + 1)
+    after
+      0 -> n
+    end
+  end
+
+  defp budget_socket do
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, BudgetPage)
+
+    PhxCheckWeb.BubbleWorkflows.handle_params(
+      socket,
+      BudgetPage,
+      %{"bubble_thing" => @t1},
+      "http://localhost/task/#{@t1}"
+    )
+  end
+
+  defp budget_click(socket, element) do
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, BudgetPage, "bubble:click", %{
+        "scope" => "",
+        "element" => element
+      })
+
+    socket
+  end
+
+  test "a page-load workflow runs on the mount's read: one read" do
+    on()
+
+    {_socket, queries} =
+      count_queries(fn ->
+        {:noreply, socket} =
+          PhxCheckWeb.BubbleWorkflows.handle_info(
+            budget_socket(),
+            BudgetPage,
+            {:bubble, :page_loaded}
+          )
+
+        socket
+      end)
+
+    reads = count(:budget_page_read)
+    IO.puts("page data: a page-load workflow mount read #{reads} times, #{queries} queries")
+    assert_received {:budget_page_observed, "Bake"}
+    assert reads == 1
+    assert queries == 1
+  end
+
+  test "a click running five workflows that change nothing reads nothing" do
+    on()
+    socket = budget_socket()
+    count(:budget_page_read)
+
+    {_socket, queries} = count_queries(fn -> budget_click(socket, "five") end)
+    reads = count(:budget_page_read)
+
+    IO.puts(
+      "page data: a click with 5 no-write workflows read #{reads} times, #{queries} queries"
+    )
+
+    assert count(:budget_page_noop) == 5
+    assert reads == 0
+    assert queries == 0
+  end
+
+  test "a self-scheduling custom event ends on its budget and reads nothing per round" do
+    on()
+    socket = budget_socket()
+    count(:budget_page_read)
+
+    run_all = fn run_all, socket, rounds ->
+      receive do
+        {:bubble, :run, _, _, _, _, _} = message ->
+          {:noreply, socket} =
+            PhxCheckWeb.BubbleWorkflows.handle_info(socket, BudgetPage, message)
+
+          run_all.(run_all, socket, rounds + 1)
+      after
+        100 -> rounds
+      end
+    end
+
+    {rounds, queries} =
+      count_queries(fn -> run_all.(run_all, budget_click(socket, "tick"), 0) end)
+
+    reads = count(:budget_page_read)
+    ticks = count(:budget_page_tick)
+
+    IO.puts(
+      "page data: a self-scheduling custom event ran #{rounds} rounds, " <>
+        "read #{reads} times, #{queries} queries"
+    )
+
+    assert rounds > 0 and ticks == rounds + 1
+    assert rounds <= Runtime.root(nil, nil).calls
+    assert reads == 0
+    assert queries == 0
+  end
+
+  test "a write and its own notification are one read" do
+    on()
+
+    for element <- ["write", "write_direct"] do
+      socket = budget_socket()
+      count(:budget_page_read)
+
+      socket = budget_click(socket, element)
+      expected = if element == "write", do: "Bread", else: "Brioche"
+      assert_received {:budget_page_observed, ^expected}
+
+      # The notification the write sent was covered by the read before
+      # "observe": nothing is left to read again.
+      refute_received {:bubble, :data_changed, _}
+      refute socket.assigns.bubble_data_stale
+      reads = count(:budget_page_read)
+      IO.puts("page data: a click that writes (#{element}) read #{reads} times")
+      assert reads == 1
+    end
+  end
+
+  test "a custom state a workflow changes makes the next workflow read again" do
+    on()
+    socket = budget_socket()
+    count(:budget_page_read)
+
+    _socket = budget_click(socket, "state")
+    assert_received {:budget_page_observed, "Bake"}
+    assert count(:budget_page_read) == 1
   end
 
   defp flush_all_queries do

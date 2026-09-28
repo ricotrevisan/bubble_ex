@@ -473,12 +473,26 @@ defmodule BubbleEx.LoadTest do
       assert w == F.workspace1()
       refute diag(dry, :load_join_stale_member, "user", "workspaces_list_custom_workspace")
 
+      # Every stale row is in the details, for pruning by hand; the message
+      # names no record.
+      stale = diag(dry, :load_join_stale_member, "workspace", "members_list_user")
+
+      assert %{table: "user_workspaces", membership_column: "members_position", rows: [row]} =
+               stale.details.stale_members
+
+      assert Enum.sort(row) == Enum.sort([F.bob(), F.workspace1()])
+      refute stale.message =~ F.bob()
+      refute stale.message =~ F.workspace1()
+
       ledger_dir = Path.join(dir, "blocked-ledger")
 
-      assert {:error, %BubbleEx.Error{kind: :invalid_input, context: context}} =
+      assert {:error, %BubbleEx.Error{kind: :invalid_input, context: context, message: message}} =
                Load.run(delta_export, f.model, f.target, ledger_dir: ledger_dir)
 
       assert :load_join_stale_member in context.blocked
+      assert message =~ "fresh, empty database"
+      assert message =~ "details.stale_members"
+      refute message =~ F.bob()
       assert context.report.blocked == dry.blocked
       assert diag(context.report, :load_join_stale_member, "workspace", "members_list_user")
       assert Memory.tables(f.target) == before

@@ -251,7 +251,8 @@ defmodule BubbleEx.Target.Ash do
   the owner of the join's first list), no database foreign key (WTF-338:
   a dangling ID loads nothing), a `belongs_to` to each, a btree index on
   the right ID, and per list a membership column: a row is a member of
-  the list when it is set, so two lists sharing a table never mix
+  the list when its position is not null (0 is the first member) or its
+  flag is true (a false flag is not a member), so two lists sharing a table never mix
   members (a row may be a member of one and not the other). It is a
   position (`position`, or `<list name>_position` in a shared table),
   the member's index in Bubble's list, when the order is kept
@@ -273,8 +274,8 @@ defmodule BubbleEx.Target.Ash do
   by an actor who may view, on its owner, a list the row is a member of:
   per list, a private calculation `privacy_<list>` with the list field's
   checks (reading the owner's privacy calculations through the join's
-  private `belongs_to`), and `privacy_visible`, "a list's column is set
-  and its calculation holds", for any of the table's lists; each list's
+  private `belongs_to`), and `privacy_visible`, "a list's column marks
+  the row a member (as above) and its calculation holds", for any of the table's lists; each list's
   column reads (field policy) only for those who may view that list.
   Rows read through one list's relationships (the owner's join
   relationships, through which its `many_to_many` loads, and the member's

@@ -1892,8 +1892,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
     {join, {names, modules, tables}}
   end
 
-  # Each list's membership column: a row is a member of the list when it
-  # is set. Its position (`position`, or `<list name>_position` in a join
+  # Each list's membership column: a row is a member of the list when its
+  # position is not null or its flag is true. Its position (`position`, or `<list name>_position` in a join
   # two lists share: the member's index in Bubble's list) when the order
   # is kept, else a flag (`listed`, `<list name>_listed`, true).
   defp marker_column(side, spec, by_type, {used, attrs}) do
@@ -1969,8 +1969,8 @@ defmodule BubbleEx.Target.Ash.Decisions do
   defp join_description(_spec, sides) do
     lists =
       Enum.map_join(sides, " and ", fn side ->
-        "#{side.type}.#{side.field} (owner decision #{side.key}; member when " <>
-          "#{side.marker.column} is set)"
+        "#{side.type}.#{side.field} (owner decision #{side.key}; " <>
+          "#{member_when(side.marker)})"
       end)
 
     what = if length(sides) == 2, do: "the lists are", else: "the list is"
@@ -1979,6 +1979,11 @@ defmodule BubbleEx.Target.Ash.Decisions do
       "app must set the membership column of its list; rows written after the cutover " <>
       "have no Bubble position, so their order among the list's members is not defined."
   end
+
+  # A position of 0 is a member and a false flag is not: "set" would read
+  # either way.
+  defp member_when(%{kind: :position, column: c}), do: "member when #{c} is not null"
+  defp member_when(%{kind: :flag, column: c}), do: "member when #{c} is true"
 
   # --- indexes ---------------------------------------------------------------------
 

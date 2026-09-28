@@ -5,7 +5,15 @@ defmodule BubbleEx.Load.Report do
     * `dry_run` - true when nothing was written
     * `blocked` - the codes of diagnostics that stop a real run
       (a schema mismatch, stale join membership, duplicate emails, an
-      incomplete export without `allow_partial: true`); `[]` when it may run
+      incomplete export without `allow_partial: true`); `[]` when it may run.
+      Stale join membership (`:load_join_stale_member`) blocks every load
+      into a database holding join rows the export no longer lists, until
+      WTF-414 prunes them; meanwhile load into a fresh, empty database, or
+      delete the rows the diagnostic's `details.stale_members` lists
+      (`table`, `left_column`, `right_column`, `membership_column`, `rows`
+      as `[left ID, right ID]`) and load again. An `allow_partial` run in
+      which an owner type failed blocks this way when that type owns join
+      rows (all of them look stale): re-export it instead
     * `run` - the ledger's run key (nil for a dry run)
     * `export_sha256`, `plan_sha256`, `target` - what was loaded, by what
       plan, into which database (its credential-free identity)

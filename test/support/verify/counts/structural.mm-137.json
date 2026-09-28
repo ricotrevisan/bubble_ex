@@ -6,7 +6,7 @@
         "lowered": 147,
         "sites": {
           "authorize_false:scaffold": 2,
-          "authorize_unverifiable:scaffold": 6,
+          "authorize_unverifiable:scaffold": 7,
           "runtime_start:listed": 147
         }
       },
@@ -170,7 +170,7 @@
         "lowered": 147,
         "sites": {
           "authorize_false:scaffold": 2,
-          "authorize_unverifiable:scaffold": 6,
+          "authorize_unverifiable:scaffold": 7,
           "runtime_start:listed": 147
         }
       },

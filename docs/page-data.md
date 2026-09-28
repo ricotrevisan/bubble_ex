@@ -36,6 +36,17 @@ policies are generated, turning it on is the owner's call. **Do not enable it on
 public pages without first adding and testing authorization policies**; passing
 `authorize?: true` alone does not enforce privacy.
 
+**A search that ignores empty constraints can return every record.** A
+search stating `ignore_empty_constraints: true` drops each constraint
+whose value is empty, as Bubble does. For a logged-out visitor `Current
+User` is empty, so a constraint `X = Current User` (the usual "my
+records" search) is dropped and the search returns every record of the
+type, up to the page size or `:max_items`. Under `privacy: :omit`
+nothing stops this: there is no policy to fall back on. Before enabling
+data access, find such searches on pages a logged-out visitor can open
+(or that a signed-out session can reach), and either require a signed-in
+user there or add policies.
+
 ## Sources
 
 `BubbleEx.PageData.Source`, per page and element of a page or reusable
@@ -107,8 +118,10 @@ while rendering.
   any list, with no page size or a larger one, stops at `:max_items`
   (`config :<app>, <Web>.BubbleData, max_items: 100`); a list of IDs is
   read by ID, at most as many; relationships loaded for page bindings
-  batch across rows and related lists are capped at 100; `count` is a
-  count query.
+  batch across rows, and a record's related list reads at most
+  `:max_items`, capped at 100 (`<Web>.BubbleData.related_cap/0`), in all
+  when lists nest (two levels read at most 10 × 10); `count` is a count
+  query.
 * **Generated text is escaped**: Bubble IDs and app text in generated code
   are `inspect/1`ed without limits (quotes, `#{`, braces escaped); the
   `hostile_page_data` compile-check fixture renames every ID.
@@ -122,9 +135,22 @@ also on `bubble:<Type>:<id>`. A connected page subscribes to the type of
 each search it ran, each record it holds, and the related records its
 bindings preload. Notifications are coalesced into a re-read. Only the
 topic travels, never the record: the page reads again with its own actor.
-Clicks and workflow events re-read before running their workflows, between
-workflows (so a preceding write is visible), and before evaluating data-driven
-conditions. Input changes defer the workflows, re-read and condition evaluation
+The page reads again only when its data is **stale** (`@bubble_data_stale`):
+a change notification of a topic it subscribes to, a data step of its
+workflows (create, change, delete, and schedules, through
+`<Web>.BubbleWorkflows.backend/2`), or a custom state or input value its
+workflows changed (either may be a search constraint). Stale data is read
+again before the next workflow of an event (so a preceding write is
+visible) and before data-driven conditions settle; every read clears the
+flag. An event that changes none of these reads nothing: a click whose
+workflows neither write nor change a state or input, a "do every" tick, a
+scheduled custom event (a self-scheduling one no longer reads per round).
+A page-load workflow runs on the data `handle_params` loaded (one read on
+a connected mount). Every read also takes the change notifications already
+delivered to the page (each is sent after its write committed, so the
+read sees it): a workflow's own write and its notification cost one read,
+not two; a write in owned code that goes through Ash counts too.
+Input changes defer the workflows, re-read and condition evaluation
 for 150 ms after the last keystroke; repeated changes to the same input
 supersede its pending workflow without resetting the shared run budget. Writes that
 bypass Ash (raw SQL, `Ash.Seed`, the loader) publish nothing.

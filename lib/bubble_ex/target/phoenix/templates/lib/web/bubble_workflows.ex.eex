@@ -104,7 +104,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     The page's data (WTF-420, `<%= @web %>.BubbleData`): what it loaded
     (`data`), the unique ID of its thing from the URL (`thing`) and, while
     a repeating group's cells are read, the current cell's thing and
-    1-based index (`cell`, `cell_index`).
+    1-based index (`cell`, `cell_index`); `data_stale` once a data step
+    ran (it may have written what the page shows).
     """
     defstruct [
       :module,
@@ -128,7 +129,8 @@ defmodule <%= @web %>.BubbleWorkflows do
       first: %{},
       js: [],
       messages: [],
-      depth: 0
+      depth: 0,
+      data_stale: false
     ]
 
     @type t :: %__MODULE__{}
@@ -174,6 +176,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_path, "/")
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
+    |> assign(:bubble_data_stale, false)
     |> assign(:bubble_thing, nil)
   end
 
@@ -249,10 +252,10 @@ defmodule <%= @web %>.BubbleWorkflows do
       for {scope, module} <- surfaces(page),
           do: {module, scope, module.__bubble__(:surface).loaded, %{}}
 
-    # handle_params already loaded the data when no page-load workflow can
-    # change its constraints. Conditions still settle against that load.
-    reload = if Enum.all?(runs, fn {_, _, ids, _} -> ids == [] end), do: :already_loaded, else: :immediate
-    {:noreply, event(socket, page, runs, nil, reload)}
+    # Sent from a connected mount: handle_params/4 has loaded the data
+    # already. The page-load workflows and conditions run on that load; a
+    # workflow that changes it marks it stale and the page reads again.
+    {:noreply, event(socket, page, runs, nil, :already_loaded)}
   end
 
   def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
@@ -261,7 +264,8 @@ defmodule <%= @web %>.BubbleWorkflows do
       else: {:noreply, socket}
   end
 
-  # Coalesce a burst of changes; ignore notifications for other pages' topics.
+  # Marks the data stale and coalesces a burst of changes into one read;
+  # ignores notifications for other pages' topics.
   def handle_info(socket, _page, {:bubble, :data_changed, topic}) when is_binary(topic),
     do: {:noreply, BubbleData.changed(socket, topic)}
 
@@ -270,7 +274,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       run = socket.assigns[:bubble_pending_run] || start(socket, nil)
       socket = socket |> assign(:bubble_pending_run, nil) |> BubbleData.refresh(page, ref)
       pending = socket.assigns[:bubble_pending_events] || []
-      {socket, run} = run_events(socket, page, pending, run, true)
+      {socket, run} = run_events(socket, page, pending, run)
       socket = assign(socket, :bubble_pending_events, nil)
       {socket, run} = settle_after_events(socket, page, pending, run)
       {:noreply, dispatch(socket, run)}
@@ -346,12 +350,18 @@ defmodule <%= @web %>.BubbleWorkflows do
   # chain of the run that scheduled it (WTF-421: the condition-true
   # workflows it fires inherit them too, never fresh ones). What the run
   # scheduled is sent when it ends, sharing what the run left.
+  #
+  # The page's data is read again only when it is stale
+  # (`@bubble_data_stale`: a data step ran, a custom state or an input
+  # changed, or a change notification of a record it shows arrived), before
+  # a workflow and before conditions settle; every read clears it. An event
+  # that changes none of that reads nothing.
   defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do
     run = start(socket, budget)
 
     case reload do
       :already_loaded ->
-        {socket, run} = run_events(socket, page, runs, run, true)
+        {socket, run} = run_events(socket, page, runs, run)
         {socket, run} = settle_after_events(socket, page, runs, run)
         dispatch(socket, run)
 
@@ -373,11 +383,12 @@ defmodule <%= @web %>.BubbleWorkflows do
           socket
           |> assign(:bubble_pending_run, run)
           |> assign(:bubble_pending_events, pending)
+          |> BubbleData.mark_stale()
           |> BubbleData.defer()
         else
           # No page data to re-read: keep input-only workflows and their
           # conditions responsive without a needless debounce timer.
-          {socket, run} = run_events(socket, page, runs, run, true)
+          {socket, run} = run_events(socket, page, runs, run)
           {socket, run} = settle_after_events(socket, page, runs, run)
           dispatch(socket, run)
         end
@@ -387,39 +398,33 @@ defmodule <%= @web %>.BubbleWorkflows do
         # first with the latest inputs, on the same (bounded) run.
         run = merge_pending(socket.assigns[:bubble_pending_run], run)
         pending = (socket.assigns[:bubble_pending_events] || []) ++ runs
+
         socket =
           socket
           |> assign(:bubble_pending_run, nil)
           |> assign(:bubble_pending_events, nil)
           |> assign(:bubble_data_refresh, nil)
-        socket = BubbleData.load(socket, page)
-        {socket, run} = run_events(socket, page, pending, run, true)
+
+        {socket, run} = run_events(socket, page, pending, run)
         {socket, run} = settle_after_events(socket, page, pending, run)
         dispatch(socket, run)
     end
   end
 
-  # The final workflow may write the data a condition reads. Re-read before
-  # settling, not later via PubSub (which would start a fresh root budget).
-  defp settle_after_events(socket, page, runs, run) do
-    socket =
-      if BubbleData.data_access?() and Enum.any?(runs, fn {_, _, ids, _} -> ids != [] end) and
-           Enum.any?(surfaces(page), fn {_, module} -> BubbleData.sources(module) != [] end),
-        do: BubbleData.load(socket, page),
-        else: socket
+  # The final workflow may write the data a condition reads. Re-read (when
+  # stale) before settling, not later via PubSub (which would start a fresh
+  # root budget); the write's own notification is covered by that read.
+  defp settle_after_events(socket, page, _runs, run),
+    do: settle(BubbleData.reload(socket, page), page, run)
 
-    settle(socket, page, run)
-  end
-
-  defp run_events(socket, page, runs, run, loaded?) do
-    Enum.reduce(runs, {socket, run, loaded?}, fn {module, scope, ids, args}, acc ->
-      Enum.reduce(ids, acc, fn id, {socket, run, loaded?} ->
-        socket = if loaded?, do: socket, else: BubbleData.load(socket, page)
-        {socket, run} = run_event(socket, module, scope, [id], args, run)
-        {socket, run, false}
+  # Each workflow runs on current data: re-read first when a preceding one
+  # (or anything since the last read) made it stale.
+  defp run_events(socket, page, runs, run) do
+    Enum.reduce(runs, {socket, run}, fn {module, scope, ids, args}, acc ->
+      Enum.reduce(ids, acc, fn id, {socket, run} ->
+        socket |> BubbleData.reload(page) |> run_event(module, scope, [id], args, run)
       end)
     end)
-    |> then(fn {socket, run, _} -> {socket, run} end)
   end
 
   defp merge_pending(nil, run), do: run
@@ -508,10 +513,18 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   defp apply_ctx(socket, %Ctx{} = ctx) do
+    # A data step may have written what the page shows; a custom state or
+    # an input may be a search constraint.
+    stale? =
+      ctx.data_stale or ctx.states != socket.assigns.bubble_states or
+        ctx.inputs != socket.assigns.bubble_inputs
+
     socket =
       socket
       |> assign(:bubble_states, ctx.states)
       |> assign(:bubble_inputs, ctx.inputs)
+
+    socket = if stale?, do: BubbleData.mark_stale(socket), else: socket
 
     socket =
       if ctx.js == [],
@@ -567,8 +580,9 @@ defmodule <%= @web %>.BubbleWorkflows do
           end)
 
         # A fired workflow can change a source or its constraints. Keep the
-        # same run budgets while re-reading before the next condition check.
-        settle(BubbleData.load(socket, page), page, run, round + 1)
+        # same run budgets while re-reading (when stale) before the next
+        # condition check.
+        settle(BubbleData.reload(socket, page), page, run, round + 1)
     end
   end
 
@@ -911,7 +925,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   Runs a step on the backend workflow runtime: `fun` gets its context
   (this event's budgets, the actor, the step results) and calls
   `Runtime.create/4`, `update/5`, `update_list/5`, `delete/3`,
-  `delete_list/3`, `schedule/5` or `schedule_list/7`.
+  `delete_list/3`, `schedule/5` or `schedule_list/7`. It marks the page's
+  data stale (a create, change or delete, even one that failed part-way,
+  may have written what the page shows), so the page reads again before
+  its next workflow or condition.
   """
   def backend(ctx, fun) do
     if data_access?(), do: run_backend(ctx, fun), else: {:halt, {:error, :data_access_disabled}, ctx}
@@ -919,6 +936,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp run_backend(ctx, fun) do
     b = %{backend(ctx) | workflow: ctx.workflow, now: ctx.now, steps: ctx.steps}
+    ctx = %{ctx | data_stale: true}
 
     case fun.(b) do
       {:cont, b} -> {:cont, %{ctx | backend: b, steps: b.steps}}

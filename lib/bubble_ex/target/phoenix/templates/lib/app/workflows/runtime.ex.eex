@@ -278,41 +278,82 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   def load(value, _loads, _ctx), do: value
 
-  @doc "Loads relationships for page data in one batch, bounding related lists."
-  def load_page(value, [], _ctx, _cap), do: value
-  def load_page(nil, _loads, _ctx, _cap), do: nil
-  def load_page([], _loads, _ctx, _cap), do: []
+  @doc """
+  Loads relationships for page data in one batch, bounding related lists:
+  per record, a relationship path reads at most `cap` related records in
+  all (nested lists split it, e.g. 10 × 10 for two levels and a cap of
+  100). With `lazy?: true`, relationships already loaded are kept.
+  """
+  def load_page(value, loads, ctx, cap, opts \\ [])
+  def load_page(value, [], _ctx, _cap, _opts), do: value
+  def load_page(nil, _loads, _ctx, _cap, _opts), do: nil
+  def load_page([], _loads, _ctx, _cap, _opts), do: []
 
-  def load_page([%{__struct__: resource} | _] = values, loads, ctx, cap) do
+  def load_page([%{__struct__: resource} | _] = values, loads, ctx, cap, opts) do
     if Enum.all?(values, &match?(%{__struct__: ^resource}, &1)) do
-      page_load(values, resource, loads, ctx, cap)
+      page_load(values, resource, loads, ctx, cap, opts)
     else
-      Enum.map(values, &load_page(&1, loads, ctx, cap))
+      Enum.map(values, &load_page(&1, loads, ctx, cap, opts))
     end
   end
 
-  def load_page(%{__struct__: resource} = value, loads, ctx, cap),
-    do: page_load(value, resource, loads, ctx, cap)
+  def load_page(%{__struct__: resource} = value, loads, ctx, cap, opts),
+    do: page_load(value, resource, loads, ctx, cap, opts)
 
-  def load_page(value, _loads, _ctx, _cap), do: value
+  def load_page(value, _loads, _ctx, _cap, _opts), do: value
 
-  defp page_load(value, resource, loads, ctx, cap) do
+  defp page_load(value, resource, loads, ctx, cap, opts) do
     statement = page_load_statement(resource, load_statement(loads), cap)
+    lazy? = Keyword.get(opts, :lazy?, false)
 
-    case Ash.load(value, statement, actor: ctx.actor, authorize?: true) do
+    case Ash.load(value, statement, actor: ctx.actor, authorize?: true, lazy?: lazy?) do
       {:ok, loaded} -> loaded
       {:error, _} -> value
     end
   end
 
+  # `cap` is what a record may read below it: a list takes the largest
+  # limit that leaves its nested lists (the deepest chain below it) an
+  # equal share, and passes on what is left per item.
   defp page_load_statement(resource, statement, cap) do
     Enum.map(statement, fn {name, nested} ->
       relationship = Ash.Resource.Info.relationship(resource, name)
       query = Ash.Query.new(relationship.destination)
-      query = if relationship.cardinality == :many, do: Ash.Query.limit(query, cap), else: query
-      query = if nested == [], do: query, else: Ash.Query.load(query, page_load_statement(relationship.destination, nested, cap))
+
+      {query, below} =
+        if relationship.cardinality == :many do
+          limit = nth_root(cap, 1 + many_depth(relationship.destination, nested))
+          {Ash.Query.limit(query, limit), max(div(cap, limit), 1)}
+        else
+          {query, cap}
+        end
+
+      query =
+        if nested == [],
+          do: query,
+          else: Ash.Query.load(query, page_load_statement(relationship.destination, nested, below))
+
       {name, query}
     end)
+  end
+
+  # The most to-many relationships on one path of `statement`.
+  defp many_depth(resource, statement) do
+    statement
+    |> Enum.map(fn {name, nested} ->
+      relationship = Ash.Resource.Info.relationship(resource, name)
+      own = if relationship.cardinality == :many, do: 1, else: 0
+      own + many_depth(relationship.destination, nested)
+    end)
+    |> Enum.max(fn -> 0 end)
+  end
+
+  # The largest n >= 1 with n^k <= cap.
+  defp nth_root(cap, 1), do: max(cap, 1)
+
+  defp nth_root(cap, k) do
+    n = cap |> :math.pow(1 / k) |> Float.round() |> trunc() |> max(1)
+    if Integer.pow(n, k) > cap and n > 1, do: n - 1, else: n
   end
 
   # [["project", "owner"], ["creator"]] -> [project: [owner: []], creator: []]

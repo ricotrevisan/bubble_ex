@@ -882,6 +882,31 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Pages read their data again only when it is stale** (post-audit of
+  WTF-420). `<Web>.BubbleData` keeps `@bubble_data_stale`, set by a
+  change notification, a data step (`BubbleWorkflows.backend/2`) or a
+  custom state or input a workflow changed, and cleared by every read;
+  events re-read only when it is set, and a read takes the notifications
+  already delivered, so a write and its own notification are one read. A
+  self-scheduling custom event: 2,002 reads over its 1,000 rounds before,
+  0 now; a mount with a page-load workflow: 3 reads, now 1; a click
+  running 5 workflows that change nothing: 6 reads, now 0 (query budgets
+  in `page_data_behavior.exs`). Related lists loaded for bindings share
+  one cap (`related_cap/0`: `:max_items`, at most 100) per record across
+  nesting levels, `load_value/3` included; a cell source no longer
+  reloads a relationship its list already loaded. Docs: a search stating
+  `ignore_empty_constraints: true` returns every record to a logged-out
+  visitor when its constraint is `Current User`.
+- **Stale join members** (`:load_join_stale_member`): the diagnostic's
+  details list every stale row with the join's table and columns (never
+  the message), the blocked error names the ways forward before WTF-414
+  (a fresh, empty database, or pruning those rows), and the docs note
+  that an `allow_partial` run missing an owner type blocks the same way.
+  Join resources say "member when <position> is not null" / "<flag> is
+  true" instead of "is set".
+- The structural check's `lint` must pass on fresh projects (WTF-416 is
+  done): the known-failure branch is gone.
+
 - **A condition-true loop no longer escapes the budgets** (WTF-421). The
   condition-true workflows an event fires inherit its budgets and chain
   (they started a fresh root run before), and what the event schedules is

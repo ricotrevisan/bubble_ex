@@ -31,7 +31,10 @@ defmodule BubbleEx.Load do
        upsert it in batches (`:batch_size`, default 500), recording each
        batch in the ledger (`BubbleEx.Load.Ledger`).
     5. **Report** (`BubbleEx.Load.Report`): counts, and diagnostics for all
-       that does not fit.
+       that does not fit. A report whose `blocked` lists
+       `:load_join_stale_member` (join rows a list no longer holds) cannot
+       load into this database until WTF-414: see step 5 of a live run
+       below (a fresh, empty database, or pruning the listed rows).
 
   A **dry run** (`dry_run/4`) does steps 1, 2 and the conversion of step 4
   without writing anything (no database write, no file copy, no ledger):
@@ -76,9 +79,14 @@ defmodule BubbleEx.Load do
       removed from a list in Bubble since an earlier load keeps its row,
       and with it any access a privacy rule grants through the list; each
       such row (including one whose owner was deleted in Bubble) is reported
-      (`:load_join_stale_member`, an error: the owner's ID, counts). A dry run
-      reports it; a real run is blocked before any writes until WTF-414
-      implements pruning.
+      (`:load_join_stale_member`, an error: counts, sample owner IDs, and in
+      its details `stale_members` every stale row, `[left ID, right ID]`,
+      with the join's table and columns; the message names no record). A
+      dry run reports it; a real run is blocked before any writes until
+      WTF-414 implements pruning (see step 5 of a live run for the ways
+      forward). An `allow_partial` run in which an owner type failed to
+      export blocks too when that type owns a join's list: none of its
+      stored members is in the export, so every one reads as stale.
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -162,9 +170,21 @@ defmodule BubbleEx.Load do
     4. Run with a `:ledger_dir` and the target storage, from the generated
        project (`query: &Repo.query/2`), against a staging database first.
     5. At cutover, freeze writes in Bubble and export again. Dry-run the
-       new export first: a removed normalized-list member blocks a real
-       load until WTF-414 implements pruning. Otherwise load into the same
-       database: only what changed is written.
+       new export first, then load it into the same database: only what
+       changed is written. A member removed from a normalized list since
+       the earlier load (`:load_join_stale_member`) blocks that load
+       until WTF-414 implements pruning. Until then, either
+         * load the final export into a fresh, empty database (migrated
+           from the same project; nothing is stale there), or
+         * delete the stale rows by hand: each diagnostic's
+           `details.stale_members` names the join `table`, its
+           `left_column` and `right_column` and every stale row
+           (`rows`, `[left ID, right ID]`); delete those rows (or, for a
+           table two lists share, clear that list's `membership_column`
+           on them), then dry-run again until nothing is stale.
+       An `allow_partial` export in which an owner type failed blocks the
+       same way when that type owns join rows: re-export that type rather
+       than pruning, since its rows only look stale.
 
     6. After the cutover, delete the export:
        `mix bubble.export.delete exports/mm-137` (`Export.delete/1`).
@@ -375,14 +395,26 @@ defmodule BubbleEx.Load do
   defp add_stale(issues, built, stored) do
     %{join: join, side: side, rows: rows} = built
     loaded = MapSet.new(rows, &{&1[join.left.column], &1[join.right.column]})
+    stale = stored |> Enum.reject(&MapSet.member?(loaded, &1)) |> Enum.sort()
 
-    for {l, r} = pair <- stored,
-        not MapSet.member?(loaded, pair),
-        reduce: issues do
-      issues ->
+    issues =
+      Enum.reduce(stale, issues, fn {l, r}, issues ->
         owner = if side.owner == :left, do: l, else: r
         Issues.add(issues, :load_join_stale_member, side.type, side.field, owner, :not_listed_now)
-    end
+      end)
+
+    # Every stale row, for pruning by hand before WTF-414 (details only:
+    # the message names no record). Its list's rows are those of `table`
+    # whose `membership_column` marks a member.
+    Issues.put_details(issues, :load_join_stale_member, side.type, side.field, %{
+      stale_members: %{
+        table: join.table,
+        left_column: join.left.column,
+        right_column: join.right.column,
+        membership_column: side.column,
+        rows: Enum.map(stale, fn {l, r} -> [l, r] end)
+      }
+    })
   end
 
   defp fold(nil), do: nil
@@ -461,10 +493,24 @@ defmodule BubbleEx.Load do
   end
 
   defp blocked_error(report, blocked) do
-    Error.new(:invalid_input, "the load is blocked: #{Enum.join(blocked, ", ")}", %{
-      blocked: blocked,
-      report: report
-    })
+    Error.new(
+      :invalid_input,
+      "the load is blocked: #{Enum.join(blocked, ", ")}#{hint(blocked)}",
+      %{
+        blocked: blocked,
+        report: report
+      }
+    )
+  end
+
+  # Stale join members block every delta load until WTF-414 prunes them.
+  defp hint(blocked) do
+    if :load_join_stale_member in blocked,
+      do:
+        " (stale join members: until WTF-414, load the final export into a fresh, empty " <>
+          "database, or delete the rows each :load_join_stale_member diagnostic lists in " <>
+          "details.stale_members and load again)",
+      else: ""
   end
 
   # --- dry run --------------------------------------------------------------------

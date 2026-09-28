@@ -69,12 +69,20 @@ defmodule BubbleEx.MixProject do
       {:telemetry, "~> 1.0"},
       {:mock, "~> 0.3", only: :test},
       {:meck, "~> 1.2", only: :test, override: true},
+      # bubble_ex itself calls Plug only in tests (Req.Test stubs), but it
+      # cannot be `only: :test`: phoenix_live_view (below) needs it at runtime.
       {:plug, "~> 1.14"},
       # The data loader's end-to-end check writes to PostgreSQL
       # (scripts/ash_compile_check/load.exs); the library itself takes a
       # query function (e.g. the generated app's `Repo.query/2`).
       {:postgrex, "== 0.22.4", only: :test},
-      # Format rendered HEEx with the same pinned formatter as the generated app.
+      # Format rendered HEEx with the same formatter as the generated app,
+      # which pins `== 1.2.12` (BubbleEx.Target.Phoenix.deps/1) and checks
+      # `mix format --check-formatted`. Keep the exact pin: HTMLFormatter
+      # output changes in patch releases (1.2.11 changed which expressions
+      # it migrates, html_algebra.ex `safe_to_migrate?/2`, #4409), and a
+      # fresh render formatted by another patch would fail the app's lint
+      # and its manifest hashes. Bump it with Target.Phoenix's pin.
       {:phoenix_live_view, "== 1.2.12"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},

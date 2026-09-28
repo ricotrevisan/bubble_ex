@@ -42,6 +42,21 @@ defmodule BubbleEx.Load.Issues do
     )
   end
 
+  @doc false
+  # Merges `extra` into the details of an issue already added (e.g. the
+  # full list of stale join rows, for pruning by hand). Details only: a
+  # diagnostic's message never names a record.
+  @spec put_details(t(), atom(), String.t() | nil, String.t() | nil, map()) :: t()
+  def put_details(acc, code, type, field, extra) do
+    case Map.fetch(acc, {code, type, field}) do
+      {:ok, e} ->
+        Map.put(acc, {code, type, field}, Map.update(e, :extra, extra, &Map.merge(&1, extra)))
+
+      :error ->
+        acc
+    end
+  end
+
   defp entry(id, detail),
     do: %{count: 1, samples: sample([], id), reasons: reason(%{}, detail)}
 
@@ -72,8 +87,12 @@ defmodule BubbleEx.Load.Issues do
         samples: Enum.take(Enum.uniq(x.samples ++ y.samples), @samples),
         reasons: Map.merge(x.reasons, y.reasons, fn _, m, n -> add(m, n) end)
       }
+      |> put_extra(Map.merge(Map.get(x, :extra, %{}), Map.get(y, :extra, %{})))
     end)
   end
+
+  defp put_extra(e, extra) when extra == %{}, do: e
+  defp put_extra(e, extra), do: Map.put(e, :extra, extra)
 
   defp add(m, n) when is_map(m), do: Map.merge(m, n, fn _, a, b -> a + b end)
   defp add(m, n), do: m + n
@@ -91,7 +110,9 @@ defmodule BubbleEx.Load.Issues do
   defp subject(type, field), do: %{type: type, field: field}
 
   defp details(e) do
-    Map.merge(%{count: e.count, sample_ids: e.samples}, e.reasons)
+    %{count: e.count, sample_ids: e.samples}
+    |> Map.merge(e.reasons)
+    |> Map.merge(Map.get(e, :extra, %{}))
   end
 
   defp where(%{type: t, field: f}), do: "#{t}.#{f}"
@@ -299,7 +320,9 @@ defmodule BubbleEx.Load.Issues do
         :load_join_stale_member,
         "",
         "#{d.count} members #{where(s)} held at an earlier load are no longer listed; their " <>
-          "rows stay (nothing is deleted until WTF-414) and keep the access they grant",
+          "rows stay (nothing is deleted until WTF-414) and keep the access they grant. " <>
+          "Load into a fresh, empty database, or delete the rows listed in this " <>
+          "diagnostic's details (stale_members) and load again",
         subject: s,
         details: d
       )
