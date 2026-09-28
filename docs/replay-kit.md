@@ -87,37 +87,6 @@ included, to anonymous callers as soon as it was exposed on a branch. So:
       API. A seed with users therefore needs `User` exposed and passing
       the anonymous probe (`persona_cleanup` check). If `User` can't be
       exposed safely, record logged-out only: a seed without users.
-      The exceptional owner acceptance below is the only way an unsafe
-      User exposure can permit persona cleanup.
-### Exceptional mm-137 owner acceptance (not the default)
-
-**Only if the owner expressly accepts development emails/JWT exposure:**
-The `mm-137` app's `wtfreplay` branch (ID `33kpg`) on
-`beta.mocharymethod.com` may use an explicit, expiring
-`BubbleEx.Verify.Replay.ExposureWaiver` for selected type descriptors.
-This is not a privacy fix: anonymous visitors may read development data.
-Do not enable it for another app, branch, ID, host or type; never merge
-this replay branch into test/live. Revoke exposure after recording.
-
-Construct `%ExposureWaiver{owner_accepted: true, expires_at: expiry,
-types: ["user", ...], paths: %{"user" => "user", ...}}` and pass
-`exposure_waiver: waiver` to **both**
-`Recorder.plan/4` and `Recorder.record/4`. `expiry` is a UTC `DateTime`
-after now but no more than seven days away. Use exact type descriptors
-(for example `"user"`, `"custom.task"`) and bind every accepted descriptor
-in `paths` to its exact Data API path. Missing, extra or changed mappings,
-invalid scope, absent acceptance and expired waivers fail before any write.
-The `"user"` descriptor must map to Bubble's canonical `"user"` path even
-without a waiver when signing up personas. Include `"user"` explicitly if
-personas need cleanup; accepting another type does **not** accept User. Only
-`:exposed` and `:may_leak` probes for named types can be accepted. The
-anonymous probe still runs: its actual status, counts and field names
-remain in `report.preflight.checks`, with conspicuous warnings in
-`report.preflight.warnings`. Never treat accepted exposure as safe. The
-waiver, including its descriptor-to-path map, is bound into the reviewed
-dry-run hash. Tokenless target verification and call/cleanup budgets are
-unchanged.
-
 - [ ] *(you confirm)* **Don't change any privacy rule.** The recording is
       only worth something if the branch's rules match the parent's. Don't
       tick "ignore privacy rules" anywhere.
