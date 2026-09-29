@@ -149,6 +149,12 @@ effects, as in Bubble.
   (the backend's workflow API is off by default the same way). They run
   on the backend runtime with the current user as actor and `authorize?:
   true`, which authorizes nothing until the owner adds policies.
+  Rendered with `privacy: :enforced` (WTF-423) the policies are there:
+  the actor is the current user read afresh with what the policies read
+  at every event, reads follow the privacy rules, and the runtime's writes
+  are allowed (the workflow's conditions guard them, as in Bubble; they
+  are not checked against the privacy rules). See `docs/page-data.md`,
+  "Enforced privacy", for what that guarantees and the opt-in defaults.
 * **Budgets fail closed.** A browser event is a root run of the backend
   runtime (`Runtime.root/2`): its job budget (`:max_jobs`) bounds the jobs
   its schedules and trigger-firing writes cause, and its call budget

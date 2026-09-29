@@ -12,7 +12,8 @@ config :<%= @app %>, <%= @web %>.Endpoint,
 # The files the data loader copied from Bubble (<%= @web %>.Uploads): its
 # storage root and public_url, and (preferred in production) a separate
 # origin for public files. Private files stay off until you opt in here
-# with `private: {MyModule, :authorize}` (see <%= @web %>.Uploads).
+# with <%= if @enforced? do %>`private: :privacy_rules` (Bubble's "view attached files" rule) or
+# <% end %>`private: {MyModule, :authorize}` (see <%= @web %>.Uploads).
 uploads_host = System.get_env("UPLOADS_HOST")
 
 if uploads_host not in [nil, ""] do

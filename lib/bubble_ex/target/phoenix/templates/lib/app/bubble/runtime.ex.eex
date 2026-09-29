@@ -13,7 +13,9 @@ defmodule <%= @module %>.Bubble.Runtime do
   import Kernel, except: [abs: 1, div: 2, round: 1]
 
   @doc "A value as Bubble shows it in text."
-  def text(nil), do: ""
+  def text(nil), do: ""<%= if @enforced? do %>
+  # A field the privacy rules hide from the user reads as empty, as in Bubble.
+  def text(%Ash.ForbiddenField{}), do: ""<% end %>
   def text(true), do: "yes"
   def text(false), do: "no"
   def text(x) when is_float(x) and x == trunc(x), do: Integer.to_string(trunc(x))
@@ -28,7 +30,8 @@ defmodule <%= @module %>.Bubble.Runtime do
   def text(x), do: inspect(x)
 
   @doc "`is empty`."
-  def empty?(x), do: x in [nil, "", []]
+<%= if @enforced? do %>  def empty?(%Ash.ForbiddenField{}), do: true
+<% end %>  def empty?(x), do: x in [nil, "", []]
 
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty."
   def compare(op, a, b) do

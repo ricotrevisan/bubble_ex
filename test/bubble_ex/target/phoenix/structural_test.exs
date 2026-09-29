@@ -20,7 +20,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
 
   defp load(path), do: path |> File.read!() |> Jason.decode!()
 
-  defp build(app, render? \\ true) do
+  defp build(app, render? \\ true, privacy \\ :omit) do
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
 
@@ -30,7 +30,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
         _ -> nil
       end
 
-    {:ok, project} = Ash.map(model, [], privacy: :omit)
+    {:ok, project} = Ash.map(model, [], privacy: privacy)
     {:ok, backend} = Backend.build(app, model, index)
     {:ok, workflows} = Workflows.map(backend, project, namespace: "Acme")
     {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
@@ -92,6 +92,38 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
   defp diff(report, id), do: result(report, id).diff
   defp statuses(report), do: Map.new(report.results, &{&1.id, &1.status})
   defp symbols(report, category), do: report.counts["symbols"][category]
+
+  # WTF-423: the enforced render's own bypasses (AshAuthentication's
+  # interactions with the User, the private file lookup) are scaffold
+  # sites the generator is expected to write, each marked.
+  test "an enforced render passes the bypass inventory with its scaffold sites" do
+    report =
+      "test/support/target/phoenix/enforced.json" |> load() |> build(true, :enforced) |> run!()
+
+    assert status(report, "structural.bypass_inventory") == :pass
+    assert status(report, "structural.generated_unchanged") == :pass
+
+    inputs = "test/support/target/phoenix/enforced.json" |> load() |> build(true, :enforced)
+
+    counts =
+      inputs.files
+      |> Map.filter(fn {p, _} -> String.starts_with?(p, "lib/") end)
+      |> Bypasses.scaffold_counts()
+
+    assert counts[{"lib/acme/user.ex", "ash_authentication", nil}] == 2
+    assert counts[{"lib/acme_web/uploads.ex", "private_file_holders", "holders/4"}] == 1
+
+    # An unmarked copy of the bypass is unlisted.
+    user =
+      String.replace(
+        inputs.files["lib/acme/user.ex"],
+        "# bubble:ignores_privacy scaffold:ash_authentication\n",
+        ""
+      )
+
+    report = run!(%{inputs | files: Map.put(inputs.files, "lib/acme/user.ex", user)})
+    assert status(report, "structural.bypass_inventory") == :fail
+  end
 
   test "cut3 normalized fields are rendered and covered" do
     %{model: model, index: index, applied: applied} = BubbleEx.Test.DecidedFixture.build(:cut3)

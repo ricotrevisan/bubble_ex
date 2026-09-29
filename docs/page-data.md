@@ -56,6 +56,60 @@ and under `privacy: :omit` nothing would. With policies (`privacy:
 :unverified`), `<App>.Privacy.SearchFields` limits such a read to the
 records where the user may search by the field.
 
+## Enforced privacy (WTF-423)
+
+`BubbleEx.Target.Phoenix.render/2` also renders a Project mapped with
+`privacy: :enforced` (`BubbleEx.Target.Ash`, "Enforced"): the privacy
+rules compiled to Ash policies, and a runtime that passes them an actor
+everywhere.
+
+**What is guaranteed**, for page data, frontend and backend workflows,
+the workflow API and private files:
+
+* **Reads follow the compiled privacy rules** for the current user, read
+  afresh with what the policies read (`<App>.Privacy.load_actor/1`) at
+  every page load and event, so a changed role is not served stale. A
+  record the user may not view reads as nothing; a hidden field as empty
+  (`%Ash.ForbiddenField{}`, shown as empty text); a search runs the
+  `:search` action (what the user may find in searches); a read the
+  policies refuse outright (logged out, where every rule reads the user)
+  shows nothing, as in Bubble. Relationships load through the policies
+  too.
+* **Stricter than Bubble on empty values**, by decision: where a rule
+  compares a value of the user's (logged out, or a user without it) with
+  a record's, Bubble may grant when both are empty; the policies deny
+  (`actor_empty_denies`, reported as intended differences).
+* **Writes (Rico's option A)**: the generated runtime's writes are allowed
+  (the `WorkflowWrite` check: a context flag only the runtime sets), so a
+  workflow's own conditions guard them, as in Bubble. **They are not
+  checked against the privacy rules**; every generated app warns about it
+  (README, file headers, `:ash_writes_not_policy_checked`). Any other
+  write (owned code, a form) is forbidden. A list change (add, remove) on
+  a field the user may not view fails the step instead of overwriting it.
+* **The workflow API's admin token bypasses privacy**, like Bubble, for
+  the run and the custom events it triggers (not the jobs it schedules).
+  A user's bearer token runs as that user.
+* **Private files** can follow Bubble's "view attached files" rule:
+  `private: :privacy_rules` serves a file when a record holding it in a
+  file field is readable through its `:attachments` action by the user.
+
+**Not guaranteed:** code filters are not field-guarded (a search's own
+constraint on a field the user may not view still matches its value,
+though the record itself must be findable); aggregates over hidden fields;
+owned code that bypasses authorization. The policies are checked by the
+privacy matrix against the interpreter's calibrated reading of Bubble,
+run against the generated app (`scripts/phoenix_compile_check.sh`): that
+is evidence, not a proof.
+
+**Defaults stay off** (the owner's call). With enforced policies,
+`data_access: true` and `serve_workflow_api: true` no longer expose every
+record to anyone: they expose what Bubble's rules allow, with writes as
+Bubble does them. bubble_ex's recommendation is to default both on in
+enforced mode once the owner has reviewed the stricter-than-Bubble list
+and the workflows users can trigger (writes are theirs to guard);
+`private: :privacy_rules` likewise. Until the owner decides, they remain
+opt-in.
+
 ## Sources
 
 `BubbleEx.PageData.Source`, per page and element of a page or reusable

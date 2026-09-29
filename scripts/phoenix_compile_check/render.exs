@@ -31,6 +31,11 @@
 
 alias BubbleEx.Target.Phoenix
 
+# The privacy mode: `:omit` (what an owner downloads by default), or
+# `:enforced` for a fixture named `enforced_<fixture>` (WTF-423: the
+# generated policies enforced, set before the fixture is built).
+privacy = fn -> Process.get(:phoenix_check_privacy, :omit) end
+
 # The app's frontend (pages, reusable elements, styles), its compiled
 # bindings (WTF-370) and its page and reusable-element workflows (WTF-372,
 # which schedule the backend workflows of `backend`), when the app JSON has
@@ -101,7 +106,9 @@ end
 # {project, render options} of an app JSON.
 app_fixture = fn app ->
   {:ok, model} = BubbleEx.Model.build(app)
-  {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+  # The privacy matrix of an enforced render reads it (below).
+  Process.put(:phoenix_check_model, model)
+  {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: privacy.())
   # The API client Spec of its API Connector calls (WTF-374).
   {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
 
@@ -183,7 +190,7 @@ fixtures =
     "decided_drop" => fn ->
       app = BubbleEx.Test.DecidedFixture.app(:drop)
       {:ok, model} = BubbleEx.Model.build(app)
-      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:drop, privacy: :omit)
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:drop, privacy: privacy.())
       backend = workflows.(app, model, project, true)
       {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
     end,
@@ -204,17 +211,17 @@ fixtures =
           BubbleEx.Index.Symbol.id(:page, hostile.("bOther")),
           BubbleEx.Index.Symbol.id(:workflow, hostile.("wEvt")),
           BubbleEx.Index.Symbol.id(:workflow, hostile.("wApiNote"))
-        ], privacy: :omit)
+        ], privacy: privacy.())
 
       backend = workflows.(app, model, project, true)
       {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
     end,
     "decided_combined" => fn ->
-      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit)
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: privacy.())
       {:ok, project, []}
     end,
     "decided_locked" => fn ->
-      {:ok, project} = BubbleEx.Test.DecidedFixture.locked_project(privacy: :omit)
+      {:ok, project} = BubbleEx.Test.DecidedFixture.locked_project(privacy: privacy.())
       {:ok, project, []}
     end,
     # lists normalized to join resources (WTF-406)
@@ -236,7 +243,7 @@ fixtures =
         })
 
       {:ok, model} = BubbleEx.Model.build(app)
-      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: :omit)
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: privacy.())
       backend = workflows.(app, model, project, true)
       {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
     end
@@ -262,7 +269,7 @@ fixtures =
               BubbleEx.Test.DecidedFixture.accept_cut3(findings, [], index)
 
             {:ok, project} =
-              BubbleEx.Target.Ash.map(model, applied, privacy: :omit, decisions_sha256: sha)
+              BubbleEx.Target.Ash.map(model, applied, privacy: privacy.(), decisions_sha256: sha)
 
             {:ok, project, []}
           end
@@ -324,6 +331,16 @@ case System.argv() do
     fixtures |> Map.keys() |> Enum.sort() |> Enum.each(&IO.puts/1)
 
   [dir, name] ->
+    name =
+      case name do
+        "enforced_" <> base ->
+          Process.put(:phoenix_check_privacy, :enforced)
+          base
+
+        name ->
+          name
+      end
+
     {:ok, project, frontend_opts} = Map.fetch!(fixtures, name).()
 
     opts =
@@ -343,6 +360,62 @@ case System.argv() do
     end
 
     File.cp!("scripts/phoenix_compile_check/mix.lock", Path.join(dir, "mix.lock"))
+
+    # The privacy matrix (BubbleEx.Verify.Matrix, WTF-383) against the
+    # enforced app (WTF-423): its ExUnit module (BubbleEx.Target.Ash.
+    # MatrixTests, on the app's Repo) in test/matrix/, the owner-repo files
+    # in matrix/<name>/ and matrix_index.json for
+    # scripts/ash_compile_check/matrix_results.exs, which scores the
+    # observations the tests write (WTF_VERIFY_OBSERVATIONS).
+    for entry <- ~w(matrix matrix_index.json observations), do: File.rm_rf!(Path.join(dir, entry))
+
+    with :enforced <- project.privacy,
+         %BubbleEx.Model{} = model <- Process.get(:phoenix_check_model),
+         true <- model.data_types |> Enum.flat_map(& &1.rules) |> Enum.any?() do
+      app_id = if String.starts_with?(name, "private_"), do: "private-app", else: "fixture-app"
+      {:ok, synthesized} = BubbleEx.Verify.Matrix.synthesize(model, app: app_id)
+      matrix_files = BubbleEx.Verify.Matrix.files(synthesized)
+      root = Path.join([dir, "matrix", name])
+
+      for {path, json} <- matrix_files do
+        File.mkdir_p!(Path.dirname(Path.join(root, path)))
+        File.write!(Path.join(root, path), json)
+      end
+
+      {:ok, plan} = BubbleEx.Target.Ash.MatrixTests.plan(matrix_files)
+
+      {:ok, out} =
+        BubbleEx.Target.Ash.MatrixTests.render(project, plan,
+          namespace: "PhxCheck",
+          repo: "PhxCheck.Repo",
+          module: "PhxCheck.PrivacyMatrixTest"
+        )
+
+      File.mkdir_p!(Path.join(dir, "test/matrix"))
+      File.write!(Path.join(dir, "test/matrix/privacy_matrix_test.exs"), out.source)
+
+      File.write!(
+        Path.join(dir, "matrix_index.json"),
+        Jason.encode!(
+          [
+            %{
+              name: name,
+              app: app_id,
+              repo: "PhxCheck.Repo",
+              module: out.module,
+              counts: out.counts,
+              skipped: synthesized.report.skipped
+            }
+          ],
+          pretty: true
+        )
+      )
+
+      IO.puts(
+        "rendered #{name}'s privacy-matrix tests: #{out.counts["scenarios"]} scenarios, " <>
+          "#{out.counts["ops"]} ops over #{out.counts["records"]} seed records"
+      )
+    end
 
     # Behavior tests of a workflow fixture's generated app (WTF-373).
     behavior =

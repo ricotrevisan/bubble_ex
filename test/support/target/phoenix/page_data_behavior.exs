@@ -1014,7 +1014,12 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       })
     end
 
-    records = PhxCheck.Task |> Ash.Query.limit(100) |> Ash.read!(authorize?: true)
+    # Listing is the :search action's under enforced policies (WTF-423).
+    action = if Ash.Resource.Info.action(PhxCheck.Task, :search), do: :search, else: :read
+
+    records =
+      PhxCheck.Task |> Ash.Query.limit(100) |> Ash.read!(action: action, authorize?: true)
+
     handler = "page-data-batch-#{System.unique_integer([:positive])}"
     parent = self()
 

@@ -24,6 +24,14 @@
 #     (test/support/target/phoenix/frontend_workflows_behavior.exs) and
 #     `mix wtf.task complete` of its workflow tasks (compiles, lint,
 #     step_order) with their tagged tests (frontend_workflows.exs)
+#   * the same checks with privacy: :enforced (WTF-423) on the fixtures
+#     with privacy rules, pages and workflows (a second scratch project,
+#     <scratch>_enforced), plus the generated privacy-matrix tests against
+#     the app (scored by scripts/ash_compile_check/matrix_results.exs; the
+#     private app too when BUBBLE_EX_PRIVATE_EXPORT is set) and
+#     test/support/target/phoenix/enforced_behavior.exs, which must pass
+#     there and fail, every test, against the :omit render of the same app
+#     (PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES overrides the list)
 #   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
 #     complete/audit end to end on one generated project (WTF-375), and
 #     scripts/phoenix_compile_check/structural.sh: mix wtf.verify
@@ -105,6 +113,23 @@ for fixture in $fixtures; do
         "$scratch" test/support/target/phoenix/frontend_workflows.json)
     fi
 
+    # Enforcement is real (WTF-423): the enforced app's behavior tests
+    # (below) must FAIL, every one of them, against this :omit render.
+    if [[ "$fixture" == phoenix_enforced ]]; then
+      cp "$root/test/support/target/phoenix/enforced_behavior.exs" test/enforced_behavior_test.exs
+      out="$(mix test test/enforced_behavior_test.exs 2>&1 || true)"
+      rm test/enforced_behavior_test.exs
+      summary="$(grep -E '^[0-9]+ tests?, [0-9]+ failures?' <<<"$out" | tail -1)"
+      tests="$(sed -E 's/^([0-9]+) tests?.*/\1/' <<<"$summary")"
+      failed="$(sed -E 's/.* ([0-9]+) failures?.*/\1/' <<<"$summary")"
+      if [[ -z "$summary" || "$tests" == 0 || "$tests" != "$failed" ]]; then
+        echo "$out" | tail -40
+        echo "the enforcement tests must all fail without policies (privacy: :omit): $summary" >&2
+        exit 1
+      fi
+      echo "enforcement tests without policies: $summary (as required)"
+    fi
+
     # Join-backed page reads and membership notifications (WTF-420).
     if [[ "$fixture" == decided_cut3 ]]; then
       cp "$root/test/support/target/phoenix/join_page_data_behavior.exs" \
@@ -123,13 +148,74 @@ for fixture in $fixtures; do
   fi
 done
 
+# privacy: :enforced (WTF-423): the policies compiled from Bubble, enforced
+# by the generated app, in a project of its own (its dependencies add
+# PicoSAT). For each fixture: lint, compile, migrations, and with a
+# database `mix test` with the generated privacy-matrix tests (every fixture
+# with privacy rules, and the private app: BubbleEx.Target.Ash.MatrixTests
+# against the app's own Repo), scored by
+# scripts/ash_compile_check/matrix_results.exs (every scenario passes or
+# is an intended difference, BubbleEx.Verify.Difference); the behavior
+# tests of the page, workflow and backend fixtures, which must pass with
+# policies too; and test/support/target/phoenix/enforced_behavior.exs,
+# which must pass here and fail without policies (above).
+enforced_scratch="${scratch}_enforced"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+mkdir -p "$enforced_scratch"
+first=1
+
+for fixture in $enforced_fixtures; do
+  echo "== enforced_$fixture"
+  cd "$root"
+  mix run --no-compile scripts/phoenix_compile_check/render.exs "$enforced_scratch" "enforced_$fixture"
+  cd "$enforced_scratch"
+
+  if [[ $first == 1 ]]; then
+    mix deps.get --check-locked
+    first=0
+  fi
+
+  mix format --check-formatted
+  mix compile --warnings-as-errors
+
+  rm -rf priv/resource_snapshots
+  find priv/repo/migrations -name '*.exs' ! -name '20260101000000_add_oban_jobs_table.exs' -delete
+  mix ash.codegen initial >/dev/null
+  mix ash.codegen --check
+
+  if [[ -n "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
+    mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
+    WTF_VERIFY_OBSERVATIONS="$enforced_scratch/observations" mix test
+
+    if [[ -f matrix_index.json ]]; then
+      (cd "$root" && mix run --no-compile scripts/ash_compile_check/matrix_results.exs "$enforced_scratch")
+    fi
+
+    behavior=""
+    case "$fixture" in
+      phoenix_enforced) behavior=test/support/target/phoenix/enforced_behavior.exs ;;
+      phoenix_page_data) behavior=test/support/target/phoenix/page_data_behavior.exs ;;
+      phoenix_frontend_workflows) behavior=test/support/target/phoenix/frontend_workflows_behavior.exs ;;
+    esac
+
+    if [[ -n "$behavior" ]]; then
+      cp "$root/$behavior" test/behavior_test.exs
+      mix test test/behavior_test.exs
+      rm test/behavior_test.exs
+    fi
+  fi
+done
+
 # The task CLI (mix wtf.task) end to end on one generated project.
 cd "$root"
 scripts/phoenix_compile_check/task_cli.sh "$scratch"
 
-# The structural verification pack (mix wtf.verify structural) end to end.
+# The structural verification pack (mix wtf.verify structural) end to end,
+# on an :omit and an enforced project.
 cd "$root"
 scripts/phoenix_compile_check/structural.sh "$scratch"
+cd "$root"
+scripts/phoenix_compile_check/structural.sh "$enforced_scratch" enforced_phoenix_enforced
 
 if [[ -z "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
   echo "smoke tests skipped: set PHOENIX_COMPILE_CHECK_DB to a PostgreSQL URL"
