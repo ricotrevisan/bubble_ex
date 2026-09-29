@@ -359,17 +359,22 @@ defmodule BubbleEx.Verify.Replay.Client do
   end
 
   # Which type, and as whom (never the token). A persona's create refused
-  # with 401/403 is `:user_create_refused`: on a real app (WTF-385) Bubble
-  # answered 401 to a Data API create with a user token on a type none of
-  # whose privacy rules grants "Create via API"; the admin token's creates
-  # of the same run succeeded.
+  # with 401/403 in Bubble's JSON (a short `bubble` code) is
+  # `:user_create_refused`: on a real app (WTF-385) Bubble answered 401 to
+  # a Data API create with a user token on a type none of whose privacy
+  # rules grants "Create via API", while the admin token's creates of the
+  # same run succeeded. That is a strong hint, not proof: an expired or
+  # revoked persona token is refused the same way. A 401/403 without
+  # Bubble's JSON (a firewall's HTML page) is `:user_create_not_bubble`.
   defp create_context({:error, %Error{context: context} = error}, type, auth) do
     as = auth_kind(auth)
 
     reason =
-      if as == :user and context[:status] in [401, 403],
-        do: %{reason: :user_create_refused},
-        else: %{}
+      cond do
+        as != :user or context[:status] not in [401, 403] -> %{}
+        context[:bubble] != nil -> %{reason: :user_create_refused}
+        true -> %{reason: :user_create_not_bubble}
+      end
 
     {:error, %{error | context: context |> Map.merge(%{type: type, as: as}) |> Map.merge(reason)}}
   end

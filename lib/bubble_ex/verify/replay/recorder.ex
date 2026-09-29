@@ -82,6 +82,11 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       `:exposure_waiver` - passed to the preflight
       (`BubbleEx.Verify.Replay.Kit.preflight/4`); see above for the waiver
     * `:delete_after_seed` - seed keys to delete right after seeding
+    * `:creator` - `:token` (default: a record whose `Created By` is a
+      seeded user is created with that user's token) or `:admin_field`
+      (created with the admin token and an explicit `Created By`, read
+      back to check; see `BubbleEx.Verify.Replay.Seeder`). Part of the
+      plan hash
     * `:dependencies` - `%{{scenario ID, op ID} => [flag]}`
     * `:run_id` - prefix of the runs' IDs (lowercase letters, digits, `-`;
       default random); run `n` is `<run_id>-<n>`
@@ -117,6 +122,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
           | {:error, Error.t()}
   def plan(%Client{} = client, %Seed{} = seed, scenarios, opts \\ []) do
     with {:ok, runs} <- runs(opts),
+         {:ok, creator} <- creator_mode(opts),
          :ok <- validate(client, seed, scenarios, opts),
          :ok <- waiver_ok(client, seed, scenarios, opts) do
       per_run = seeding_calls(seed, opts) + op_calls(client, seed, scenarios)
@@ -141,6 +147,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
                "allow_unproven" => opts |> Keyword.get(:allow_unproven, []) |> Enum.sort()
              },
              "delete_after_seed" => opts |> Keyword.get(:delete_after_seed, []) |> Enum.sort(),
+             "creator" => Atom.to_string(creator),
              "exposure_waiver_sha256" => ExposureWaiver.sha256(opts[:exposure_waiver]),
              "max_calls" => client.max_calls
            }),
@@ -241,6 +248,17 @@ defmodule BubbleEx.Verify.Replay.Recorder do
          Error.new(:invalid_input, "a Bubble recording needs 2 to 5 runs (double recording)", %{
            runs: n
          })}
+    end
+  end
+
+  defp creator_mode(opts) do
+    case Keyword.get(opts, :creator, :token) do
+      mode when mode in [:token, :admin_field] ->
+        {:ok, mode}
+
+      mode ->
+        {:error,
+         Error.new(:invalid_input, "creator must be :token or :admin_field", %{creator: mode})}
     end
   end
 
@@ -388,7 +406,12 @@ defmodule BubbleEx.Verify.Replay.Recorder do
 
     clears = Enum.count(seed.records, &(Seeder.empties(&1) != []))
 
-    3 * length(users) + length(records) + refs + clears +
+    read_backs =
+      if Keyword.get(opts, :creator, :token) == :admin_field,
+        do: Enum.count(records, &match?({:ref, _}, &1.fields["Created By"])),
+        else: 0
+
+    3 * length(users) + length(records) + refs + clears + read_backs +
       length(Keyword.get(opts, :delete_after_seed, []))
   end
 
@@ -550,7 +573,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
          {:ok, state} <-
            Seeder.seed(client, seed, ledger,
              kit: kit(opts),
-             delete_after_seed: opts[:delete_after_seed] || []
+             delete_after_seed: opts[:delete_after_seed] || [],
+             creator: Keyword.get(opts, :creator, :token)
            ) do
       progress.({:seeded, ledger.run_id})
       uncleared = state |> Map.get(:uncleared, %{}) |> Map.keys() |> MapSet.new()

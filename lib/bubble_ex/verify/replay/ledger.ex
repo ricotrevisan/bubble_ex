@@ -230,6 +230,18 @@ defmodule BubbleEx.Verify.Replay.Ledger do
     append(ledger, %{"event" => "cleared", "key" => key, "fields" => fields, "ok" => ok?})
   end
 
+  @doc """
+  Journals that record `key` was created with the admin token and an
+  explicit `Created By` naming the seeded user `user_key` (seed keys only,
+  never an email or ID), and whether Bubble's read-back held that user.
+  Cleanup ignores these events.
+  """
+  @spec note_creator(t(), String.t(), String.t(), boolean()) :: :ok | {:error, Error.t()}
+  def note_creator(%__MODULE__{} = ledger, key, user_key, ok?)
+      when is_binary(user_key) and is_boolean(ok?) do
+    append(ledger, %{"event" => "creator", "key" => key, "user" => user_key, "ok" => ok?})
+  end
+
   defp update(ledger, key, fun) do
     %{
       ledger

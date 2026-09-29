@@ -212,16 +212,20 @@ No email reaches a real person.
   on WTF-358).
 - A branch's Data API setting and type list are its own: exposing or
   hiding types on the replay branch leaves `test` unchanged.
-- **Creating a record as a persona needs "Create via API".** The seeder
-  creates a record whose `Created By` is a seeded user with that user's
-  token, so Bubble sets the creator. Bubble answered such a create with
-  401 on a type none of whose privacy rules grants "Create via API"
-  (that app grants it nowhere). The same run's admin-token creates worked.
-  The run then stops at seeding (`reason: :user_create_refused`, with the
-  type). Before recording, check that the types of the seed's
-  persona-created records grant it. Changing privacy rules on the branch
-  would make the recording worthless, so if they don't grant it, leave
-  those records out.
+- **Creating a record as a persona needs "Create via API".** By default
+  the seeder creates a record whose `Created By` is a seeded user with
+  that user's token, so Bubble sets the creator. Bubble answered such a
+  create with 401 on a type none of whose privacy rules grants "Create
+  via API" (that app grants it nowhere). The same run's admin-token
+  creates worked. The run then stops at seeding with
+  `reason: :user_create_refused` and the type. That is a strong hint,
+  not proof: an expired persona token gets the same answer. A refusal
+  without Bubble's JSON (a firewall's page) is `:user_create_not_bubble`.
+  Changing privacy rules on the branch would make the recording
+  worthless, so use `creator: :admin_field` instead: such records are
+  created with the admin token and an explicit `Created By`, which the
+  seeder reads back and checks (`reason: :creator_not_set` if Bubble did
+  not store it).
 - The sign-up workflow's "Return data from API" of step 1's unique ID
   returns the new user's ID, and the login workflow above returns a
   working token (observed while seeding six personas).

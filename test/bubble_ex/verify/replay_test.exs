@@ -799,6 +799,80 @@ defmodule BubbleEx.Verify.ReplayTest do
 
   # --- recording --------------------------------------------------------------------------------
 
+  describe "creator: :admin_field" do
+    test "persona-created records are made as admin with an explicit Created By, same recordings" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice"), privacy_scenario(seed, "bob")]
+
+      start_fake()
+      assert {:ok, by_token} = record(client(), seed, scenarios)
+
+      fake = start_fake(quirks: [:refuse_user_create])
+      d = dir()
+
+      assert {:ok, by_admin} =
+               record(client(), seed, scenarios, creator: :admin_field, ledger_dir: d)
+
+      # No create carried a persona's token; the tasks named their creator.
+      creates =
+        for %{method: "POST", path: @prefix <> "obj/" <> _} = e <- FakeBubble.log(fake), do: e
+
+      assert creates != [] and Enum.all?(creates, &(&1.auth == "Bearer " <> @admin))
+
+      assert Enum.count(creates, &(&1.path == @prefix <> "obj/task")) == 4
+
+      assert by_admin.report.complete |> Enum.sort() == by_token.report.complete |> Enum.sort()
+      assert by_admin.report.leftovers == []
+      assert FakeBubble.records(fake) == %{}
+
+      obs = fn r -> Map.new(r.recordings, &{&1.scenario.id, &1.observations}) end
+      assert obs.(by_admin) == obs.(by_token)
+
+      # Journaled: seed keys only, never an ID or email.
+      [journal | _] = Path.wildcard(Path.join(d, "*.jsonl")) |> Enum.sort()
+
+      events =
+        journal |> File.read!() |> String.split("\n", trim: true) |> Enum.map(&Jason.decode!/1)
+
+      assert [
+               %{"event" => "creator", "key" => "task_a", "user" => "user_a", "ok" => true},
+               %{"event" => "creator", "key" => "task_b", "user" => "user_b", "ok" => true}
+             ] = Enum.filter(events, &(&1["event"] == "creator"))
+
+      refute File.read!(journal) =~ "\"Created By\""
+    end
+
+    test "a Created By Bubble does not store stops seeding and cleans up" do
+      fake = start_fake(quirks: [:ignore_created_by])
+      seed = seed()
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], creator: :admin_field)
+
+      assert [%{error: %{reason: :creator_not_set, type: "custom.task"}} | _] = result.report.runs
+      assert result.report.complete == []
+      assert result.report.leftovers == []
+      assert FakeBubble.records(fake) == %{}
+    end
+
+    test "the creator mode is validated and part of the plan hash" do
+      start_fake()
+      seed = seed()
+      s = [privacy_scenario(seed, "alice")]
+      c = client()
+      opts = Keyword.merge(@anonymous, run_id: "t1")
+
+      assert {:ok, token} = Recorder.plan(c, seed, s, opts)
+      assert {:ok, admin} = Recorder.plan(c, seed, s, [creator: :admin_field] ++ opts)
+      assert token.sha256 != admin.sha256
+      # One read-back per persona-created record, per run.
+      assert admin.calls == token.calls + 2 * 2
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Recorder.plan(c, seed, s, [creator: :both] ++ opts)
+    end
+  end
+
   describe "Recorder" do
     test "double-records complete Bubble recordings, masks what differs, and cleans up" do
       fake = start_fake(owner_records: [%{type: "task", fields: %{"Title" => "owner"}}])
@@ -1515,7 +1589,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     end
 
     test "a persona's refused create is reported as :user_create_refused, with no token" do
-      start_fake(script: [{"POST", "/obj/task", 401, []}])
+      start_fake(quirks: [:refuse_user_create])
       seed = seed()
 
       assert {:ok, result} =
@@ -1533,7 +1607,32 @@ defmodule BubbleEx.Verify.ReplayTest do
                }
              ] = result.report.runs
 
-      refute inspect(result.report) =~ @admin
+      report = inspect(result.report, limit: :infinity)
+      refute report =~ @admin
+      # The personas signed up and logged in; their tokens never reach the report.
+      refute report =~ "user-token-"
+    end
+
+    test "a persona's create refused without Bubble's JSON is not labelled a Bubble refusal" do
+      start_fake(quirks: [:edge_block_user_create])
+      seed = seed()
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], ledger_dir: dir())
+
+      assert [
+               %{
+                 error: %{
+                   kind: :forbidden,
+                   reason: :user_create_not_bubble,
+                   status: 403,
+                   bubble: nil,
+                   as: :user
+                 }
+               }
+             ] = result.report.runs
+
+      refute inspect(result.report, limit: :infinity) =~ "user-token-"
     end
 
     test "an admin create refused keeps its status and type, without the persona reason" do
