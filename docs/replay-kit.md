@@ -208,8 +208,13 @@ No email reaches a real person.
   that as not visible. This rests on one observation (logged-out callers,
   rules that grant nothing): a rule granting search or some fields without
   "view all" may produce the same ID-only answer, so "not visible" may
-  merge "hidden" with "findable but no field visible" (unverified; listed
-  on WTF-358).
+  merge "hidden" with "findable but no field visible". A later run
+  observed that merge: an `everyone` rule granting search and two
+  listed fields, both empty on the record, answered `GET` with `_id`
+  only (the built-in dates weren't listed, so they were hidden too), and
+  the search found the record. So "not visible" from an ID-only answer
+  can mean "readable, but no granted field holds a value". Use a search
+  op to tell the two apart.
 - A branch's Data API setting and type list are its own: exposing or
   hiding types on the replay branch leaves `test` unchanged.
 - **Creating a record as a persona needs "Create via API".** By default
@@ -221,11 +226,12 @@ No email reaches a real person.
   `reason: :user_create_refused` and the type. That is a strong hint,
   not proof: an expired persona token gets the same answer. A refusal
   without Bubble's JSON (a firewall's page) is `:user_create_not_bubble`.
-  Changing privacy rules on the branch would make the recording
-  worthless, so use `creator: :admin_field` instead: such records are
-  created with the admin token and an explicit `Created By`, which the
-  seeder reads back and checks (`reason: :creator_not_set` if Bubble did
-  not store it).
+  An admin-token create can't stand in for it: Bubble refused a create
+  that set `Created By` explicitly (400 `ERROR`, nothing stored). So a
+  seed record whose creator is a persona can only be created where the
+  type grants "Create via API". Changing privacy rules on the branch
+  would make the recording worthless, so leave such records, and the
+  scenarios that depend on them, out of the run.
 - The sign-up workflow's "Return data from API" of step 1's unique ID
   returns the new user's ID, and the login workflow above returns a
   working token (observed while seeding six personas).

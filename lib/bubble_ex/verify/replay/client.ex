@@ -312,12 +312,12 @@ defmodule BubbleEx.Verify.Replay.Client do
   rests on one observation: logged-out callers on three mm-137 types whose
   rules grant nothing (no `view_all`, no `view_fields`, no search). Admin
   reads of readable records carried `Created Date` and `Modified Date`.
-  Not yet observed: a rule granting search or `view_fields` without
-  `view_all`. Bubble may answer such a record ("findable, but no visible
-  field") with the same ID-only body, so `visible: false` here can merge
-  "hidden" with "findable but no field visible". A recording relying on
-  that difference needs a search op, or a replay that exercises such a
-  rule first.
+  Also observed (WTF-385, a later run): an `everyone` rule granting
+  search and `view_fields` without `view_all`, on a record whose listed
+  fields were all empty, answered with the same ID-only body, and a
+  search found the record. So `visible: false` here merges "hidden" with
+  "readable, but no granted field holds a value". A recording relying on
+  that difference needs a search op.
   """
   @spec get(t(), String.t(), String.t(), auth()) ::
           {:ok, {:found, map()} | :not_found} | {:error, Error.t()}

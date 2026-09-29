@@ -14,15 +14,6 @@ defmodule BubbleEx.Verify.Replay.Seeder do
        user's token, so Bubble sets its creator; others with the admin
        token. `Created By`, `Created Date`, `Modified Date` and `_id` are
        never sent. References to records not created yet are deferred.
-
-       With `creator: :admin_field`, a record whose `Created By` names a
-       seeded user is instead created with the admin token and an explicit
-       `Created By` (that user's Bubble ID), then read back as admin: the
-       answer's `Created By` must be that ID, or the seeding stops
-       (`reason: :creator_not_set`). Bubble refuses a user-token create on
-       a type whose privacy rules grant no "Create via API" (WTF-385).
-       Each such create is journaled (`Ledger.note_creator/4`, seed keys
-       only).
     3. **Deferred fields**, and the users' own fields (email excluded),
        are set with ledger-only updates.
     4. **Explicit empties**: a seed field whose value is `nil` must be
@@ -65,16 +56,7 @@ defmodule BubbleEx.Verify.Replay.Seeder do
   def seed(%Client{} = client, %Seed{} = seed, %Ledger{} = ledger, opts \\ []) do
     kit = Keyword.get(opts, :kit, %Kit{})
     run_id = ledger.run_id
-    creator_mode = Keyword.get(opts, :creator, :token)
-
-    state = %{
-      ledger: ledger,
-      session: %Session{},
-      deferred: %{},
-      uncleared: %{},
-      creator: creator_mode
-    }
-
+    state = %{ledger: ledger, session: %Session{}, deferred: %{}, uncleared: %{}}
     {users, records} = Enum.split_with(seed.records, &(&1.type == "user"))
 
     steps = [
@@ -93,8 +75,8 @@ defmodule BubbleEx.Verify.Replay.Seeder do
       end
     end)
     |> case do
-      {:ok, state} -> {:ok, Map.drop(state, [:deferred, :creator])}
-      {:error, error, state} -> {:error, error, Map.drop(state, [:deferred, :creator])}
+      {:ok, state} -> {:ok, Map.delete(state, :deferred)}
+      {:error, error, state} -> {:error, error, Map.delete(state, :deferred)}
     end
   end
 
@@ -198,34 +180,28 @@ defmodule BubbleEx.Verify.Replay.Seeder do
     with {:ok, auth} <- creator(record, state),
          {now, later} = split_refs(record, state.ledger),
          {:ok, body} <- body(client.names, record, now, state.ledger),
-         {:ok, body} <- creator_field(client.names, record, auth, body, state.ledger),
          {:ok, ledger} <- Ledger.intend(state.ledger, record.key, record.type),
          state = %{state | ledger: ledger},
-         {:ok, id} <- create(client, record, body, creator_auth(auth), state),
-         {:ok, ledger} <- confirm(state, record.key, id),
-         state = %{state | ledger: ledger},
-         :ok <- check_creator(client, record, id, auth, state) do
+         {:ok, id} <- create(client, record, body, auth, state),
+         {:ok, ledger} <- confirm(state, record.key, id) do
       deferred =
         if later == [], do: state.deferred, else: Map.put(state.deferred, record.key, later)
 
-      {:ok, %{state | deferred: deferred}}
+      {:ok, %{state | ledger: ledger, deferred: deferred}}
     end
   end
 
   defp creator(record, state) do
     case record.fields["Created By"] do
       {:ref, user} ->
-        case {Session.token(state.session, user), state.creator} do
-          {nil, _} ->
+        case Session.token(state.session, user) do
+          nil ->
             {:error,
              Error.new(:invalid_input, "Created By must name a seeded user", %{
                record: record.key
              })}
 
-          {_token, :admin_field} ->
-            {:ok, {:admin_field, user}}
-
-          {token, _} ->
+          token ->
             {:ok, {:user, token}}
         end
 
@@ -233,45 +209,6 @@ defmodule BubbleEx.Verify.Replay.Seeder do
         {:ok, :admin}
     end
   end
-
-  defp creator_auth({:admin_field, _user}), do: :admin
-  defp creator_auth(auth), do: auth
-
-  # The explicit `Created By` (the seeded user's Bubble ID), admin_field only.
-  defp creator_field(names, record, {:admin_field, user}, body, ledger) do
-    with {:ok, key} <- Names.field_key(names, record.type, "Created By") do
-      {:ok, Map.put(body, key, Ledger.id(ledger, user))}
-    end
-  end
-
-  defp creator_field(_names, _record, _auth, body, _ledger), do: {:ok, body}
-
-  # Bubble must have stored the explicit creator; read back as admin.
-  defp check_creator(client, record, id, {:admin_field, user}, state) do
-    expected = Ledger.id(state.ledger, user)
-
-    held? =
-      with {:ok, key} <- Names.field_key(client.names, record.type, "Created By"),
-           {:ok, {:found, fields}} <- Client.get(client, record.type, id, :admin) do
-        fields[key] == expected
-      else
-        _ -> false
-      end
-
-    with :ok <- Ledger.note_creator(state.ledger, record.key, user, held?) do
-      if held?,
-        do: :ok,
-        else:
-          {:error,
-           Error.new(:http_error, "Bubble did not store the explicit Created By", %{
-             reason: :creator_not_set,
-             record: record.key,
-             type: record.type
-           }), state}
-    end
-  end
-
-  defp check_creator(_client, _record, _id, _auth, _state), do: :ok
 
   # The sendable fields of `record`, split into those whose references
   # are all created and those that must wait.

@@ -75,8 +75,7 @@ defmodule BubbleEx.Test.FakeBubble do
       # :ignore_constraints, :leak (task titles echo the caller's credentials),
       # :refuse_clear (a PATCH setting a field to null answers 400),
       # :refuse_user_create (a create with a user token answers 401),
-      # :edge_block_user_create (… answers a firewall's HTML 403),
-      # :ignore_created_by (an admin create's `Created By` is not stored)
+      # :edge_block_user_create (… answers a firewall's HTML 403)
       quirks: Keyword.get(opts, :quirks, [])
     }
 
@@ -352,16 +351,9 @@ defmodule BubbleEx.Test.FakeBubble do
     if found, do: Conn.send_resp(conn, 204, ""), else: json(conn, 404, %{})
   end
 
-  # A user-token create sets the creator; an admin create may name one in
-  # `Created By` (dropped with :ignore_created_by).
-  defp create(pid, conn, type, body, viewer, quirks) do
-    {explicit, body} = Map.pop(body, "Created By")
-
-    creator =
-      case viewer do
-        {:user, id} -> id
-        :admin -> if :ignore_created_by in quirks, do: nil, else: explicit
-      end
+  defp create(pid, conn, type, body, viewer, _quirks) do
+    creator = with {:user, id} <- viewer, do: id
+    creator = if creator == :admin, do: nil, else: creator
 
     id =
       Agent.get_and_update(pid, fn s ->
