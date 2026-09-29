@@ -19,8 +19,6 @@ defmodule Mix.Tasks.Wtf.Verify do
   ignores privacy rules in Bubble (inside that workflow's body), a
   `scaffold:<purpose>` the generator wrote there (`.wtf/bypasses.json`),
   or `decision:<key>` (not verifiable here: there is no decision store).
-  `lint` fails on fresh projects until WTF-416; it is reported as a known
-  failure.
   The checks that need the Bubble model (symbol and policy coverage,
   determinism) run at generation; the summary lists what did not run
   here and why.

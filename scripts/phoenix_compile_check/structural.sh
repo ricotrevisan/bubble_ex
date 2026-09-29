@@ -6,10 +6,9 @@
 # generates its initial migrations as an owner would, then, from the
 # bubble_ex checkout with --root:
 #
-#   * a freshly generated project passes the manifest, compile,
-#     `mix ash.codegen --check` and the owned-code bypass inventory, lint
-#     fails only as the known WTF-416 failure, and the output says it is
-#     structural and advisory
+#   * a freshly generated project passes the manifest, compile, lint,
+#     `mix ash.codegen --check` and the owned-code bypass inventory, and the
+#     output says it is structural and advisory
 #   * a hand edit of a generated file fails generated_unchanged
 #   * an unmarked `authorize?: false` in owned code fails bypass_inventory;
 #     marked with `# bubble:ignores_privacy <workflow id>` inside the body
@@ -39,19 +38,15 @@ mix run --no-compile scripts/phoenix_compile_check/render.exs "$scratch" "$fixtu
 verify() { mix wtf.verify structural --root "$scratch" --app "$app" "$@"; }
 fail() { echo "structural check failed: $*" >&2; exit 1; }
 
-# Every check but lint passes on a fresh project. lint fails until
-# WTF-416 (the scaffolded and templated files are not yet `mix
-# format`-clean) and must be reported as that known failure.
+# Every check passes on a fresh project, lint included (WTF-416: a fresh
+# render is `mix format`-clean).
 out="$(verify 2>&1 || true)"
 echo "$out"
 grep -q 'not behavioural' <<<"$out" || fail "the output does not say it is structural only"
 grep -q 'advisory: not verified' <<<"$out" || fail "the output is not labelled advisory"
-for check in generated_unchanged compiles migrations_in_sync bypass_inventory; do
+for check in generated_unchanged compiles lint migrations_in_sync bypass_inventory; do
   grep -q "^pass  structural.$check" <<<"$out" || fail "$check does not pass on a fresh project"
 done
-if grep -q '^fail  structural.lint' <<<"$out"; then
-  grep -q 'known failure: lint (WTF-416)' <<<"$out" || fail "lint fails without naming WTF-416"
-fi
 
 domain="$scratch/lib/phx_check/domain.ex"
 cp "$domain" "$scratch/domain.ex.orig"

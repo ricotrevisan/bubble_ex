@@ -166,7 +166,7 @@ defmodule BubbleEx.PageDataTest do
                ~s|BubbleData.load_value(BubbleWorkflows.data(ctx, [], "pHome"), [["tasks"]], ctx)|
 
       assert files["lib/shop_web/bubble_data.ex"] =~
-               "Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), max_items())"
+               "Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap())"
 
       assert page =~ "BubbleData.records("
       assert page =~ "Shop.Task"

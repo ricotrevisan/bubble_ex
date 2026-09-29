@@ -941,7 +941,7 @@ defmodule MyApp.Workspace do
 end
 
 defmodule MyApp.ProjectTasks do
-  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is set); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
+  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is not null); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource,
     domain: MyApp,
@@ -1009,7 +1009,7 @@ defmodule MyApp.ProjectTasks do
     calculate :privacy_visible, :boolean, expr(not is_nil(position) and privacy_tasks),
       public?: false,
       description:
-        "The row is a member of a list the actor may view on its owner record (its membership column is set)"
+        "The row is a member of a list the actor may view on its owner record (its membership column holds a position, or a true flag)"
   end
 
   actions do
@@ -1070,7 +1070,7 @@ defmodule MyApp.ProjectTasks do
 end
 
 defmodule MyApp.UserWorkspaces do
-  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d; member when workspaces_position is set) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453; member when members_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
+  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d; member when workspaces_position is not null) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453; member when members_position is not null); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource,
     domain: MyApp,
@@ -1146,7 +1146,7 @@ defmodule MyApp.UserWorkspaces do
               ),
               public?: false,
               description:
-                "The row is a member of a list the actor may view on its owner record (its membership column is set)"
+                "The row is a member of a list the actor may view on its owner record (its membership column holds a position, or a true flag)"
   end
 
   actions do
@@ -1221,7 +1221,7 @@ defmodule MyApp.UserWorkspaces do
 end
 
 defmodule MyApp.FavoriteProject do
-  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is set) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
+  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is true) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is not null); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource,
     domain: MyApp,
@@ -1294,7 +1294,7 @@ defmodule MyApp.FavoriteProject do
               ),
               public?: false,
               description:
-                "The row is a member of a list the actor may view on its owner record (its membership column is set)"
+                "The row is a member of a list the actor may view on its owner record (its membership column holds a position, or a true flag)"
   end
 
   actions do

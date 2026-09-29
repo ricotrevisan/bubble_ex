@@ -468,7 +468,7 @@ defmodule MyApp.Workspace do
 end
 
 defmodule MyApp.ProjectTasks do
-  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is set); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
+  @moduledoc "Join: one row per member of project.tasks_list_custom_task (owner decision finding:list_relationship:639085fbd2d9810b; member when position is not null); the list is not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
 
@@ -530,7 +530,7 @@ defmodule MyApp.ProjectTasks do
 end
 
 defmodule MyApp.FavoriteProject do
-  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is set) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
+  @moduledoc "Join: one row per member of project.viewers_list_user (owner decision finding:list_relationship:1f3c654d5970dd53; member when viewers_listed is true) and user.favorites_list_custom_project (owner decision finding:list_relationship:aa3ba92c1799ff50; member when favorites_position is not null); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
 

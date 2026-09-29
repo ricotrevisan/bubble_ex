@@ -20,6 +20,14 @@ defmodule <%= @web %>.BubbleData do
   Every read goes through Ash with the current user as the actor and
   `authorize?: true`, which restricts nothing until you add policies.
 
+  **A search that ignores empty constraints can return every record.** A
+  search stating `ignore_empty_constraints: true` drops each constraint
+  whose value is empty, as Bubble does: for a logged-out visitor
+  `Current User` is empty, so `X = Current User` is dropped and the
+  search returns every record of the type (up to its page size or
+  `:max_items`). With no policies nothing stops this; require a signed-in
+  user on such pages or add policies before enabling data access.
+
   ## What a browser can choose
 
   Nothing but the page's own state. A page reads only the sources its
@@ -36,7 +44,10 @@ defmodule <%= @web %>.BubbleData do
   list with no page size, or a larger one, stops at `:max_items`
   (`config :<%= @app %>, <%= @web %>.BubbleData, max_items: 100`). A
   search's `count` is a count query. A list of things stored as IDs is
-  read by ID, at most the page size capped by `:max_items`.
+  read by ID, at most the page size capped by `:max_items`. A
+  relationship the page's bindings read through a record (its related
+  list) reads at most `related_cap/0` records (`:max_items`, at most 100)
+  per record, in all when lists nest (a record's tasks' comments share it).
 
   ## Reactivity
 
@@ -45,8 +56,17 @@ defmodule <%= @web %>.BubbleData do
   and one per record it holds (`<%= @module %>.Bubble.Changes`, published
   by the resources' `Ash.Notifier.PubSub`), and reloads its data when any
   fires. Only a topic name travels, never a record: the page reads again
-  with its own actor. Its data also reloads after each event its
-  workflows handle (their states and inputs may be search constraints).
+  with its own actor.
+
+  The page reads again only when its data is stale (`@bubble_data_stale`):
+  a change notification of a topic it subscribes to, a data step of its
+  workflows (`<%= @web %>.BubbleWorkflows.backend/2`), or a custom state or
+  input its workflows changed (they may be search constraints). An event
+  whose workflows change none of that reads nothing, and a "do every"
+  tick or a scheduled custom event that changes nothing reads nothing.
+  Every read clears the flag and takes the change notifications already
+  delivered to the page (sent after their writes committed, so the read
+  sees them): a workflow's own write and its notification are one read.
 
   ## Unverified Bubble behavior
 
@@ -98,9 +118,16 @@ defmodule <%= @web %>.BubbleData do
   @doc """
   Loads the page's data into `@bubble_data` (nothing with data access
   off) and, once connected, subscribes to the changes of what it read.
+  The data is then current (`@bubble_data_stale` false).
   """
   def load(socket, page) do
+    socket = assign(socket, :bubble_data_stale, false)
+
     if data_access?() and connected?(socket) do
+      # Notifications already delivered were sent after their writes
+      # committed: this read covers them.
+      _ = take_changes(Map.get(socket.assigns, :bubble_topics, MapSet.new()), false)
+
       {data, topics} =
         Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, MapSet.new()}, fn {scope, module},
                                                                           acc ->
@@ -125,12 +152,46 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  @doc "Coalesces change notifications into one read per burst, for subscribed topics only."
+  @doc """
+  A change notification: for a subscribed topic, marks the data stale and
+  coalesces a burst into one read.
+  """
   def changed(socket, topic) do
     topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
 
-    if data_access?() and MapSet.member?(topics, topic) and
-         is_nil(socket.assigns[:bubble_data_refresh]), do: defer(socket, 25), else: socket
+    cond do
+      not data_access?() or not MapSet.member?(topics, topic) -> socket
+      is_nil(socket.assigns[:bubble_data_refresh]) -> socket |> mark_stale() |> defer(25)
+      true -> mark_stale(socket)
+    end
+  end
+
+  @doc "Marks the page's data stale: the next `reload/2` reads it again."
+  def mark_stale(socket), do: assign(socket, :bubble_data_stale, true)
+
+  @doc """
+  Reads the page's data again only when it is stale, or when a change
+  notification of a subscribed topic is already waiting (e.g. the echo of
+  a write the event just made outside the workflow runtime).
+  """
+  def reload(socket, page) do
+    topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
+    waiting? = take_changes(topics, false)
+
+    if waiting? or Map.get(socket.assigns, :bubble_data_stale, false),
+      do: load(socket, page),
+      else: socket
+  end
+
+  # Takes the change notifications waiting in the page's mailbox; whether
+  # one was of a subscribed topic.
+  defp take_changes(topics, subscribed?) do
+    receive do
+      {:bubble, :data_changed, topic} ->
+        take_changes(topics, subscribed? or MapSet.member?(topics, topic))
+    after
+      0 -> subscribed?
+    end
   end
 
   @doc "Debounces input-driven reads; only the latest input values are loaded."
@@ -145,12 +206,15 @@ defmodule <%= @web %>.BubbleData do
   @doc "Whether this is the current (not superseded) refresh timer."
   def pending?(socket, ref), do: not is_nil(ref) and socket.assigns[:bubble_data_refresh] == ref
 
-  @doc "Handles the pending refresh; stale timers do not read."
+  @doc """
+  Handles the pending refresh: reads when the data is stale (not when a
+  read since has covered it); superseded timers do not read.
+  """
   def refresh(socket, page, ref) do
     if pending?(socket, ref) do
       socket
       |> assign(:bubble_data_refresh, nil)
-      |> load(page)
+      |> reload(page)
     else
       socket
     end
@@ -180,7 +244,16 @@ defmodule <%= @web %>.BubbleData do
     # A group in a repeating group's cell holds a value per cell.
     Enum.reduce(cells, acc, fn source, {data, topics} ->
       items = data |> Map.get({scope, source.cell}) |> List.wrap()
-      items = Runtime.load_page(items, source.cell_loads, Runtime.root(nil, socket.assigns[:current_user]), min(max_items(), 100))
+      # The list's own source may have loaded these already (the same
+      # relationship for a binding): load only what is missing.
+      items =
+        Runtime.load_page(
+          items,
+          source.cell_loads,
+          Runtime.root(nil, socket.assigns[:current_user]),
+          related_cap(),
+          lazy?: true
+        )
 
       values =
         for {item, i} <- Enum.with_index(items, 1) do
@@ -192,7 +265,7 @@ defmodule <%= @web %>.BubbleData do
       loaded =
         values
         |> Enum.map(&elem(&1, 1))
-        |> Runtime.load_page(source.loads, Runtime.root(nil, socket.assigns[:current_user]), min(max_items(), 100))
+        |> Runtime.load_page(source.loads, Runtime.root(nil, socket.assigns[:current_user]), related_cap())
 
       Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
       |> Enum.reduce({data, topics}, fn {i, value}, {data, topics} ->
@@ -208,7 +281,7 @@ defmodule <%= @web %>.BubbleData do
   defp run(module, source, ctx) do
     module
     |> apply(source.fun, [ctx])
-    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), min(max_items(), 100))
+    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), related_cap())
   rescue
     error ->
       Logger.error(
@@ -220,12 +293,22 @@ defmodule <%= @web %>.BubbleData do
 
   # --- reads -----------------------------------------------------------------------------
 
-  @doc "Loads a page expression's relationships with a database-side limit on every list."
+  @doc """
+  Loads a page expression's relationships with a database-side limit on
+  the related lists (`related_cap/0`, as for the sources' own loads).
+  """
   def load_value(value, loads, ctx) do
     if data_access?(),
-      do: Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), max_items()),
+      do: Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap()),
       else: value
   end
+
+  @doc """
+  The most related records a loaded relationship reads per record:
+  `:max_items`, at most 100. Nested lists share it (a list of lists reads
+  at most this many in all, not this many per level).
+  """
+  def related_cap, do: min(max_items(), 100)
 
   @doc "A page's thing: the record whose unique ID is in the URL, read through Ash."
   def url_thing(ctx, resource) do

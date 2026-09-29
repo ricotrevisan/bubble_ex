@@ -442,7 +442,8 @@ defmodule BubbleEx.Target.Ash.Policies do
       Enum.map_reduce(join.sides, used, &side_calculation(&1, &2, r, by_type, source))
 
     # A row is readable when it is a member of a list the actor may view
-    # on its owner: its membership column is set and that list's grants
+    # on its owner: its membership column holds a position (not null) or a
+    # true flag, and that list's grants
     # hold. Each list's membership column (its position) reads only for
     # those who may view that list.
     visible =
@@ -464,7 +465,7 @@ defmodule BubbleEx.Target.Ash.Policies do
             source: source,
             description:
               "The row is a member of a list the actor may view on its owner record " <>
-                "(its membership column is set)",
+                "(its membership column holds a position, or a true flag)",
             expr: %Expr{
               resource: r.module,
               source: source,

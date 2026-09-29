@@ -457,7 +457,7 @@ defmodule MyApp.Workspace do
 end
 
 defmodule MyApp.UserWorkspaces do
-  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d; member when workspaces_position is set) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453; member when members_position is set); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
+  @moduledoc "Join: one row per member of user.workspaces_list_custom_workspace (owner decision finding:list_relationship:b426fecd8cad673d; member when workspaces_position is not null) and workspace.members_list_user (owner decision finding:privacy_access_list:f86b7e1509c01453; member when members_position is not null); the lists are not stored. A row written by the app must set the membership column of its list; rows written after the cutover have no Bubble position, so their order among the list's members is not defined."
 
   use Ash.Resource, domain: MyApp, data_layer: AshPostgres.DataLayer
 
