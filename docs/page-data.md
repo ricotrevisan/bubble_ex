@@ -152,8 +152,21 @@ read sees it): a workflow's own write and its notification cost one read,
 not two; a write in owned code that goes through Ash counts too.
 Input changes defer the workflows, re-read and condition evaluation
 for 150 ms after the last keystroke; repeated changes to the same input
-supersede its pending workflow without resetting the shared run budget. Writes that
-bypass Ash (raw SQL, `Ash.Seed`, the loader) publish nothing.
+supersede its pending workflow without resetting the shared run budget.
+
+Writes that bypass Ash (raw SQL, `Ash.Seed`, the data loader, a Repo call
+in owned code) publish nothing, and since reads are gated on staleness
+they are no longer picked up by the next click either: a page shows them
+only after something marks its data stale (a notification, a data step or
+a state change of its own workflows) or on its next mount. Owned code that
+writes around Ash and wants open pages to follow must broadcast the
+topics above itself (`<App>.Bubble.Changes`).
+
+A "do every" workflow whose actions change no data, custom state or input
+does not re-read either. A source that uses Current date/time directly (a
+search constrained by `Current date/time`, a displayed "time ago") is
+therefore frozen at its last read; to refresh it on a schedule, have the
+"do every" workflow set a custom state the source reads.
 
 ## Residue fails loudly
 

@@ -16,9 +16,11 @@ defmodule Mix.Tasks.Wtf.Verify do
   bypass in owned `lib/` code is accounted for
   (`BubbleEx.Target.Phoenix.Structural.Bypasses`): a `# bubble:ignores_privacy
   <token>` comment on or above it, where the token is a workflow that
-  ignores privacy rules in Bubble (inside that workflow's body), a
-  `scaffold:<purpose>` the generator wrote there (`.wtf/bypasses.json`),
-  or `decision:<key>` (not verifiable here: there is no decision store).
+  ignores privacy rules in Bubble (inside that workflow's body: the
+  function `.wtf/workflows.json` binds it to, never a hand-written
+  `# bubble:workflow` comment), a `scaffold:<purpose>` the generator wrote
+  there (`.wtf/bypasses.json`), or `decision:<key>` (not verifiable here:
+  there is no decision store or trusted owners list, WTF-411).
   The checks that need the Bubble model (symbol and policy coverage,
   determinism) run at generation; the summary lists what did not run
   here and why.

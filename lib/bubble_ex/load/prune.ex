@@ -377,16 +377,15 @@ defmodule BubbleEx.Load.Prune do
       unowned ->
         issues = Enum.reduce(unowned, issues, &add.(&1, &2, :load_prune_unowned, :not_written))
 
-        # Every kept row, as `:load_join_stale_member` gives them (IDs only).
-        Issues.put_details(issues, :load_prune_unowned, side.type, side.field, %{
-          stale_members: %{
-            table: built.join.table,
-            left_column: built.join.left.column,
-            right_column: built.join.right.column,
-            membership_column: side.column,
-            rows: Enum.map(unowned, fn {l, r} -> [l, r] end)
-          }
-        })
+        # The kept rows, as `:load_join_stale_member` gives them (IDs only,
+        # capped).
+        Issues.put_details(
+          issues,
+          :load_prune_unowned,
+          side.type,
+          side.field,
+          Issues.stale_members(built.join, side, unowned)
+        )
     end
   end
 

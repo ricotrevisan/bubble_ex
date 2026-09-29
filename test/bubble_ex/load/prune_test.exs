@@ -552,11 +552,18 @@ defmodule BubbleEx.Load.PruneTest do
       # the lock is taken before the run's ledger is opened
       assert ledger_files.() == before
 
-      # another host's lock is never taken over, even with no such process here
+      # another host's lock is never taken over, even with no such process
+      # here; the error says to remove a crashed run's lock by hand (WTF-425)
       File.write!(lock, holder_line("another-host.example", "999999999", holder))
 
-      assert {:error, %{message: "another load is recording" <> _}} =
-               Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
+      assert {:error,
+              %{
+                message: "another host holds this target's lock" <> _ = message,
+                context: %{host: "another-host.example"}
+              }} = Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
+
+      assert message =~ lock
+      assert message =~ "remove the lock file by hand"
 
       # a takeover in progress (its lock present) is not raced
       File.write!(lock, holder_line(host(), "999999999", holder))

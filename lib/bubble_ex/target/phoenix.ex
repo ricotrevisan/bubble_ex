@@ -210,7 +210,8 @@ defmodule BubbleEx.Target.Phoenix do
     {:oban, "== 2.24.1"},
     {:ash_oban, "== 0.8.14"},
     {:phoenix, "== 1.8.15"},
-    {:phoenix_live_view, "== 1.2.12"},
+    # the version the rendered HEEx is formatted with (Formatter)
+    {:phoenix_live_view, "== " <> Formatter.live_view_version()},
     {:phoenix_html, "~> 4.1"},
     {:phoenix_ecto, "~> 4.5"},
     {:ecto_sql, "~> 3.13"},
@@ -345,7 +346,8 @@ defmodule BubbleEx.Target.Phoenix do
   def render(project, opts \\ [])
 
   def render(%Project{privacy: :omit} = project, opts) when is_list(opts) do
-    with {:ok, ctx} <- context(project, opts),
+    with :ok <- Formatter.ensure_live_view(),
+         {:ok, ctx} <- context(project, opts),
          {:ok, clients} <- api_clients(opts),
          {:ok, user, email, confirmed_at} <- user(project),
          :ok <- check_claims(project, clients),

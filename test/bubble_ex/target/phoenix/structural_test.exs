@@ -590,18 +590,39 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
     end
 
     test "classifies listed, marked, scaffold and unlisted sites" do
+      # A workflow body is the function the generated name map binds it
+      # to; the `# bubble:workflow` comment is only a reading aid.
       body = """
-      # bubble:workflow wClose
-      def run(i, c) do
-        Runtime.start(i, c, "wClose", false)
-        # bubble:ignores_privacy wClose
-        Ash.read!(q, authorize?: false)
+      defmodule Acme.Workflows.FolderF.Bodies do
+        # bubble:workflow wClose
+        def close(i, c) do
+          Runtime.start(i, c, "wClose", false)
+          # bubble:ignores_privacy wClose
+          Ash.read!(q, authorize?: false)
+        end
+        # bubble:workflow wOther
+        def other(q) do
+          # bubble:ignores_privacy wClose
+          Ash.read!(q, authorize?: false)
+          Runtime.start(i, c, "wClose", false)
+        end
+        defp close__step(1, ctx) do
+          # bubble:ignores_privacy wClose
+          Ash.read!(q, authorize?: false)
+          Runtime.start(i, c, "wClose", false)
+        end
       end
-      # bubble:workflow wOther
-      def other(q) do
-        # bubble:ignores_privacy wClose
-        Ash.read!(q, authorize?: false)
-        Runtime.start(i, c, "wClose", false)
+      """
+
+      # WTF-424 §3: a hand-written workflow comment is not a body.
+      forged = """
+      defmodule Acme.Owned do
+        # bubble:workflow wClose
+        def close(i, c) do
+          Runtime.start(i, c, "wClose", false)
+          # bubble:ignores_privacy wClose
+          Ash.read!(q, authorize?: false)
+        end
       end
       """
 
@@ -614,11 +635,22 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       Ash.update!(u, authorize?: false)
       """
 
+      # WTF-424 §4: a decision allows its scope only.
       decided = """
-      # bubble:ignores_privacy decision:parity_exception:ok
-      Ash.read!(q, authorize?: false)
-      # bubble:ignores_privacy decision:parity_exception:unknown
-      Ash.read!(q, authorize?: false)
+      defmodule Acme.Decided do
+        # bubble:ignores_privacy decision:parity_exception:module
+        def a(q), do: Ash.read!(q, authorize?: false)
+        # bubble:ignores_privacy decision:parity_exception:unknown
+        def b(q), do: Ash.read!(q, authorize?: false)
+        # bubble:ignores_privacy decision:parity_exception:fun
+        def c(q), do: Ash.read!(q, authorize?: false)
+        # bubble:ignores_privacy decision:parity_exception:fun
+        def d(q), do: Ash.read!(q, authorize?: false)
+        defmodule Inner do
+          # bubble:ignores_privacy decision:parity_exception:module
+          def e(q), do: Ash.read!(q, authorize?: false)
+        end
+      end
       """
 
       # A slot covers one site kind in one function.
@@ -635,6 +667,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       end
       """
 
+      names = %{"actions" => %{"wClose" => %{"resource" => "FolderF", "action" => "close"}}}
+
       inventory =
         Bypasses.inventory(
           %{
@@ -642,30 +676,155 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
             "b.ex" => scaffold,
             "c.ex" => decided,
             "d.txt" => scaffold,
-            "e.ex" => anchored
+            "e.ex" => anchored,
+            "f.ex" => forged
           },
           workflows: ["wClose"],
+          bodies: Bypasses.bodies(names, "Acme"),
           scaffold: %{{"b.ex", "confirm_email", nil} => 1, {"e.ex", "confirm_email", "c/0"} => 1},
-          decisions: ["parity_exception:ok"]
+          decisions: %{
+            "parity_exception:module" => "Acme.Decided",
+            "parity_exception:fun" => "Acme.Decided.c/1",
+            "parity_exception:bad" => "not a module"
+          }
         )
 
       assert Enum.map(inventory.sites, &{&1.path, &1.line, &1.kind, &1.class}) == [
-               {"a.ex", 3, :runtime_start, :listed},
-               {"a.ex", 5, :authorize_false, :marked},
-               {"a.ex", 10, :authorize_false, :unlisted},
-               {"a.ex", 11, :runtime_start, :unlisted},
+               {"a.ex", 4, :runtime_start, :listed},
+               {"a.ex", 6, :authorize_false, :marked},
+               {"a.ex", 11, :authorize_false, :unlisted},
+               {"a.ex", 12, :runtime_start, :unlisted},
+               {"a.ex", 16, :authorize_false, :marked},
+               {"a.ex", 17, :runtime_start, :unlisted},
                {"b.ex", 2, :authorize_false, :scaffold},
                {"b.ex", 4, :authorize_false, :unlisted},
                {"b.ex", 6, :authorize_false, :unlisted},
-               {"c.ex", 2, :authorize_false, :marked},
-               {"c.ex", 4, :authorize_false, :unlisted},
+               {"c.ex", 3, :authorize_false, :marked},
+               {"c.ex", 5, :authorize_false, :unlisted},
+               {"c.ex", 7, :authorize_false, :marked},
+               {"c.ex", 9, :authorize_false, :unlisted},
+               {"c.ex", 12, :authorize_false, :unlisted},
                {"e.ex", 3, :repo_call, :unlisted},
                {"e.ex", 5, :authorize_false, :scaffold},
-               {"e.ex", 9, :authorize_false, :unlisted}
+               {"e.ex", 9, :authorize_false, :unlisted},
+               {"f.ex", 4, :runtime_start, :unlisted},
+               {"f.ex", 6, :authorize_false, :unlisted}
              ]
 
-      assert Enum.find(inventory.sites, &(&1.path == "e.ex" and &1.line == 3)).detail =~
-               "covers authorize_false sites only"
+      detail =
+        &Enum.find(inventory.sites, fn s -> s.path == elem(&1, 0) and s.line == elem(&1, 1) end).detail
+
+      assert detail.({"e.ex", 3}) =~ "covers authorize_false sites only"
+      assert detail.({"c.ex", 9}) =~ "outside the decision's scope"
+      assert detail.({"c.ex", 5}) =~ "not an active privacy exception of a trusted owner"
+      assert detail.({"f.ex", 6}) =~ "outside that workflow's body"
+
+      assert Bypasses.decision_scope("Acme.Owned.run?/2") == {:function, "Acme.Owned", "run?/2"}
+      assert Bypasses.decision_scope("acme") == :error
+    end
+
+    # WTF-424 §5: each form the scanner used to miss.
+    test "finds Repo and Runtime calls through aliases, imports, apply and variables" do
+      source = """
+      defmodule Z do
+        alias Acme.Repo, as: R
+        alias Acme.Workflows.Runtime, as: W
+        alias Ecto.Adapters.SQL
+        import Acme.Repo
+        def a, do: R.all(Acme.Thing)
+        def b, do: SQL.query!(R, "select 1", [])
+        def c, do: apply(Acme.Repo, :all, [Acme.Thing])
+        def d(repo), do: repo.all(Acme.Thing)
+        def e(repo), do: apply(repo, :delete_all, [Acme.Thing])
+        def f(i, c), do: W.start(i, c, "wClose", false)
+        def g(i, c), do: Kernel.apply(W, :start, [i, c, "wClose", false])
+        import Acme.Workflows.Runtime
+        def h(socket, mod), do: {socket.assigns, mod.render(), apply(__MODULE__, :x, [])}
+        def i(m, f), do: apply(m, f, [])
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {5, :repo_call},
+               {6, :repo_call},
+               {7, :repo_call},
+               {8, :repo_call},
+               {9, :repo_unverifiable},
+               {10, :repo_unverifiable},
+               {11, :runtime_start},
+               {12, :runtime_unverifiable},
+               {13, :runtime_unverifiable}
+             ]
+
+      assert Enum.find(sites, &(&1.line == 11)).workflow == "wClose"
+    end
+
+    test "finds runtime keys set to false, always-authorizing policies and unauthorized resources" do
+      source = """
+      defmodule Z do
+        def a(o, k), do: put_in(o, [k], false)
+        def b(o, k), do: put_in(o[k], false)
+        def c(o), do: put_in(o[:authorize?], false)
+        def d(o, v), do: put_in(o, [:authorize?], v)
+        def e(o), do: update_in(o[:authorize?], &(!&1))
+        def f(o, k), do: Keyword.merge(o, [{k, false}])
+        def g(o, k), do: Map.put(o, k, false)
+        def h(o, k), do: Map.merge(o, %{k => false})
+        def none(o, k), do: {put_in(o[:x], false), Map.put(o, k, 1), Keyword.merge(o, x: false)}
+      end
+      defmodule R1 do
+        use Ash.Resource, domain: D
+        policies do
+          policy always() do
+            authorize_if always()
+          end
+          policy [always()] do
+            forbid_if actor_absent()
+            authorize_if always()
+          end
+          policy action_type(:read) do
+            authorize_if always()
+          end
+          policy always() do
+            authorize_if actor_present()
+          end
+        end
+      end
+      defmodule R2 do
+        alias Ash.Policy.Authorizer
+        use Ash.Resource, domain: D, authorizers: [Authorizer]
+      end
+      defmodule R3 do
+        use Ash.Resource, data_layer: :embedded
+      end
+      defmodule R4 do
+        use Ash.Resource, authorizers: @authorizers
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {2, :authorize_unverifiable},
+               {3, :authorize_unverifiable},
+               {4, :authorize_false},
+               {5, :authorize_unverifiable},
+               {6, :authorize_unverifiable},
+               {7, :authorize_unverifiable},
+               {8, :authorize_unverifiable},
+               {9, :authorize_unverifiable},
+               {13, :unauthorized_resource},
+               {15, :policy_always},
+               {18, :policy_always},
+               {38, :unauthorized_resource}
+             ]
+
+      # Generated resources are hash-checked (and with privacy: :omit have
+      # no authorizer by design).
+      inventory = Bypasses.inventory(%{"r.ex" => source}, generated: ["r.ex"])
+      refute Enum.any?(inventory.sites, &(&1.kind == :unauthorized_resource))
     end
   end
 
@@ -768,7 +927,9 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
              ]
     end
 
-    test "a decision marker counts only for an active owner decision", %{root: root} do
+    # WTF-424 §4: only a trusted owner's privacy exception, in its scope.
+    test "a decision marker counts only for a trusted owner's privacy exception in scope",
+         %{root: root} do
       owned!(root, """
       defmodule Acme.Owned do
         # bubble:ignores_privacy decision:parity_exception:abc
@@ -785,20 +946,77 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
         revision: 1,
         subject: %{},
         choice: :accept,
+        params: %{
+          scope: "Acme.Owned.decided/1",
+          checks: ["privacy_read"],
+          bubble_behavior: "b",
+          chosen_behavior: "c"
+        },
         author: %{kind: :owner, id: "o", via: :form}
       }
 
-      resolved = %Resolved{entries: [%{decision: decision, state: :active}]}
-      {:ok, report} = project(root, &pass/2, resolved: resolved)
+      resolved = fn d -> %Resolved{entries: [%{decision: d, state: :active}]} end
+      check = fn d, owners -> project(root, &pass/2, resolved: resolved.(d), owners: owners) end
+
+      {:ok, report} = check.(decision, ["o"])
       assert status(report, "structural.bypass_inventory") == :pass
       refute "bypass_inventory (decision markers)" in Enum.map(report.not_run, & &1.check)
 
-      agent = %Resolved{
-        entries: [%{decision: %{decision | author: %{kind: :agent}}, state: :active}]
-      }
+      {:ok, report} =
+        check.(%{decision | params: %{decision.params | scope: "Acme.Owned"}}, ["o"])
 
-      {:ok, report} = project(root, &pass/2, resolved: agent)
+      assert status(report, "structural.bypass_inventory") == :pass
+
+      # No trusted owners list: nothing counts, and the summary says why.
+      {:ok, report} = check.(decision, [])
       assert status(report, "structural.bypass_inventory") == :fail
+
+      assert Enum.find(report.not_run, &(&1.check == "bypass_inventory (decision markers)")).reason =~
+               "no trusted owners list"
+
+      for d <- [
+            %{decision | author: %{kind: :agent, id: "o", via: :chat}},
+            %{decision | author: %{kind: :owner, id: "someone else", via: :form}},
+            %{decision | params: %{decision.params | checks: ["row_counts"]}},
+            %{decision | params: %{decision.params | scope: "Acme.Other"}},
+            %{decision | params: %{decision.params | scope: "Acme.Owned.other/1"}},
+            %{decision | params: %{decision.params | scope: "a scenario"}},
+            %{decision | choice: :withdraw},
+            # A finding (an owner's drop of a symbol, WTF-422, included) is
+            # not a bypass authorization.
+            %{decision | kind: :finding, choice: :accept, params: %{}}
+          ] do
+        {:ok, report} = check.(d, ["o"])
+        assert status(report, "structural.bypass_inventory") == :fail, inspect(d)
+      end
+    end
+
+    # WTF-424 §3 and §5 in the owner's repository.
+    test "a forged workflow comment and an owned resource with no authorizer fail",
+         %{root: root, workflows: w} do
+      [listed] = w.privacy_bypasses
+
+      owned!(root, """
+      defmodule Acme.Owned do
+        # bubble:workflow #{listed}
+        def forged(q) do
+          # bubble:ignores_privacy #{listed}
+          Ash.read!(q, authorize?: false)
+        end
+      end
+
+      defmodule Acme.OwnedResource do
+        use Ash.Resource, domain: Acme.Domain
+      end
+      """)
+
+      {:ok, report} = project(root)
+
+      assert Enum.map(diff(report, "structural.bypass_inventory"), &{&1.path, &1.detail}) == [
+               {"lib/acme/owned.ex:5",
+                "authorize_false: the workflow marker is outside that workflow's body"},
+               {"lib/acme/owned.ex:10", "unauthorized_resource"}
+             ]
     end
 
     test "a lint failure is reported without treating it as a known generator failure", %{

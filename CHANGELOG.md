@@ -6,6 +6,37 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Structural bypass inventory hardened** (WTF-424). A workflow body is
+  now the function the generated name map binds it to
+  (`Structural.Bypasses.bodies/2`: `<App>.Workflows.<Folder>.Bodies.<action>/2`
+  and its step and condition helpers), read from the Spec at generation
+  and from `.wtf/workflows.json` in the owner's repository: a hand-written
+  `# bubble:workflow` comment no longer makes owned code a body.
+  `decision:<key>` markers count only for a privacy exception: an active,
+  accepted `parity_exception` whose `checks` include a privacy check,
+  authored by an owner listed in `Structural.project/2`'s new `:owners`
+  option (trusted list; its anchor is WTF-411), and only inside the
+  module or function its `scope` names; any other decision (an owner's
+  drop of a symbol included) authorizes no bypass. New sites: Repo and
+  `Ecto.Adapters.SQL` calls through an alias, an `import`, `apply/3` or a
+  variable module (`:repo_unverifiable`), `Runtime.start/4` through an
+  alias, `apply/3` or `import`, `put_in`/`update_in` of an `:authorize?`
+  path and `false` under a runtime key (`put_in`, `Keyword.put/3`,
+  `Map.put/3`, `Keyword.merge/2`/`Map.merge/2` of a literal),
+  `policy always()` with `authorize_if always()` (`:policy_always`), and
+  owned `use Ash.Resource` without `Ash.Policy.Authorizer`
+  (`:unauthorized_resource`; generated resources stay hash-checked). The
+  `not_run` "bypass_inventory (not seen)" text lists only what remains.
+- **LiveView patch releases** (WTF-425). bubble_ex requires
+  `phoenix_live_view ~> 1.2.12` (was `== 1.2.12`), so apps using it can
+  take patch and security releases. `Target.Phoenix.render/2` checks the
+  loaded LiveView against the generator's pin
+  (`Target.Phoenix.Formatter.live_view_version/0`, still `==` in the
+  generated `mix.exs`): another patch warns once (rendered HEEx may
+  format differently), another minor or major version is refused.
+  `.ex` formatting follows the running Elixir version, which no pin
+  covers.
+
 - **V5 calibration applied: Bubble semantics vs. the target policy**
   (WTF-426). The privacy interpreter's defaults are now Bubble's reading
   as calibrated: `actor_empty_denies` is `false` (Bubble treats an empty
@@ -995,6 +1026,17 @@ All notable changes to this project are documented here.
   are unchanged on the private mm-137 export.
 
 ### Fixed
+
+- The loader's stale join rows (`details.stale_members` of
+  `:load_join_stale_member` and `:load_prune_unowned`) are capped at
+  `Load.Issues.stale_rows/0` rows, with `rows_total` and `truncated`: an
+  `allow_partial` run could list a whole join (WTF-425). `Load.Report`'s
+  docs say so.
+- The written record's lock error for another host's lock names the lock
+  file and says a crashed run's lock must be removed by hand (WTF-425).
+- `docs/page-data.md`: writes that bypass Ash are not picked up by the
+  next click since reads are stale-gated, and a "do every" workflow that
+  changes nothing leaves sources using Current date/time frozen (WTF-425).
 
 - **Pages read their data again only when it is stale** (post-audit of
   WTF-420). `<Web>.BubbleData` keeps `@bubble_data_stale`, set by a

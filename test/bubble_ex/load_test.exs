@@ -479,8 +479,13 @@ defmodule BubbleEx.LoadTest do
       # names no record.
       stale = diag(dry, :load_join_stale_member, "workspace", "members_list_user")
 
-      assert %{table: "user_workspaces", membership_column: "members_position", rows: [row]} =
-               stale.details.stale_members
+      assert %{
+               table: "user_workspaces",
+               membership_column: "members_position",
+               rows: [row],
+               rows_total: 1,
+               truncated: false
+             } = stale.details.stale_members
 
       assert Enum.sort(row) == Enum.sort([F.bob(), F.workspace1()])
       refute stale.message =~ F.bob()
@@ -1145,5 +1150,19 @@ defmodule BubbleEx.LoadExportDeleteTest do
     ExUnit.CaptureIO.capture_io(fn -> Mix.Tasks.Bubble.Export.Delete.run([export.dir]) end)
     refute File.exists?(export.dir)
     assert_raise Mix.Error, fn -> Mix.Tasks.Bubble.Export.Delete.run([dir]) end
+  end
+
+  # WTF-425: an `allow_partial` run can make a whole join look stale.
+  test "the stale rows in a diagnostic's details are capped" do
+    cap = BubbleEx.Load.Issues.stale_rows()
+    pairs = for i <- 1..(cap + 1), do: {"l#{i}", "r#{i}"}
+    join = %{table: "t", left: %{column: "l"}, right: %{column: "r"}}
+
+    assert %{stale_members: %{rows: rows, rows_total: total, truncated: true}} =
+             BubbleEx.Load.Issues.stale_members(join, %{column: "m"}, pairs)
+
+    assert length(rows) == cap
+    assert total == cap + 1
+    assert hd(rows) == ["l1", "r1"]
   end
 end

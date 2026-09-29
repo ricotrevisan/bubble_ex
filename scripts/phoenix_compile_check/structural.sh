@@ -10,9 +10,11 @@
 #     `mix ash.codegen --check` and the owned-code bypass inventory, and the
 #     output says it is structural and advisory
 #   * a hand edit of a generated file fails generated_unchanged
-#   * an unmarked `authorize?: false` in owned code fails bypass_inventory;
-#     marked with `# bubble:ignores_privacy <workflow id>` inside the body
-#     of a workflow that ignores privacy rules in Bubble, it passes
+#   * an unmarked `authorize?: false` in owned code fails bypass_inventory,
+#     and so does one marked under a hand-written `# bubble:workflow`
+#     comment (WTF-424); marked with `# bubble:ignores_privacy <workflow
+#     id>` inside the body of a workflow that ignores privacy rules in
+#     Bubble (the function .wtf/workflows.json binds it to), it passes
 #   * a resource change without its migration fails migrations_in_sync
 #   * --out writes the results (Verify.Result JSON) and the summary
 #
@@ -68,6 +70,22 @@ end
 ELIXIR
 if out="$(verify 2>&1)"; then rm -f "$owned"; fail "an unmarked bypass passed"; fi
 grep -q 'bypass_unlisted .*lib/phx_check/owned_bypass.ex:3' <<<"$out" || fail "the bypass is not reported"
+
+# A hand-written `# bubble:workflow` comment does not make owned code the
+# workflow's body (WTF-424): the marked bypass still fails.
+cat > "$owned" <<ELIXIR
+defmodule PhxCheck.OwnedBypass do
+  @moduledoc false
+  # bubble:workflow $listed
+  def read(query) do
+    # bubble:ignores_privacy $listed
+    Ash.read!(query, authorize?: false)
+  end
+end
+ELIXIR
+if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a forged workflow body passed"; fi
+grep -q "bypass_unlisted detail=.*outside that workflow's body path=lib/phx_check/owned_bypass.ex:6" <<<"$out" ||
+  { rm -f "$owned"; echo "$out"; fail "the forged workflow body is not reported"; }
 
 rm -f "$owned"
 
