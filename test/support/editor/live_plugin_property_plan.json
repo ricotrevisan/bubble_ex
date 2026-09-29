@@ -1,6 +1,6 @@
 {
-  "appname": "tiptap-plugin",
-  "version": "43jvs",
+  "appname": "example-plugin",
+  "version": "dev03",
   "base_last_change": 65050278876,
   "plugin_types": ["1787127143284x497506916809310200_current"],
   "plugin_schema_hashes": {

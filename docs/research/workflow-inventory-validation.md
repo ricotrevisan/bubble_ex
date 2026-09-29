@@ -7,8 +7,8 @@ private-page exploration or HTML export changes were made.
 
 ## Controlled app and editor
 
-Buildprint's current project and branch listings confirmed `tiptap-plugin`
-(`TiptapDev`) and `83jop` (`bubble-ex`). A fresh read-only clone was taken. The
+Buildprint's current project and branch listings confirmed `example-plugin`
+(`ExamplePluginDev`) and `dev02` (`bubble-ex`). A fresh read-only clone was taken. The
 clone's SQLite `snapshot_roots` were assembled into supplied app data by merging
 section records and replacing records with the same editor ID; the original
 snapshot and assembly inputs remain private. This is exported editor structure,
@@ -22,14 +22,14 @@ thread browser provided usable editor access. No access blocker is being claimed
 | Editor observation | Inventory comparison |
 | --- | --- |
 | `index`: 2 workflows | 2 workflow definitions; collection `length` metadata excluded and retained separately |
-| `bTHEe0`: Button Go to demo doc is clicked → Step 1 Go to page tiptap-demo | `ButtonClicked`, `ChangePage`; destination reference resolves to the supplied page |
+| `bTHEe0`: Button Go to demo doc is clicked → Step 1 Go to page example-demo | `ButtonClicked`, `ChangePage`; destination reference resolves to the supplied page |
 | `bubbleex-overlay-boundaries`: 3 workflows | Exactly 3 definitions |
 | `bpavsdwc`: Open Popup → Show Overlay__Popup | `ButtonClicked`, `ShowElement`, matching source element IDs |
 | `bpcpmnmu`: Close Popup → Hide Overlay__Popup | `ButtonClicked`, `HideElement`, matching source element IDs |
 | `bpbccsjz`: Open Focus → Toggle Overlay__Group_Focus | `ButtonClicked`, `ToggleElement`, matching source element IDs |
 | `editor collab reuse`: 49 workflows | Exactly 49 definitions in that reusable |
 | `bTKFs`: Page is loaded, only when This CustomDefinition's enableCollab? is yes | `PageLoaded`; complete chained `ThisElement`/parameter/`is_true` condition retained as unresolved |
-| `bTKFs` steps: generate auth token (testing), Set states jwt..., Show Tiptap A | Ordered plugin action, `SetCustomState`, `ShowElement`; prior-step and reusable-self references retained; plugin semantics unsupported |
+| `bTKFs` steps: generate auth token (testing), Set states jwt..., Show Editor A | Ordered plugin action, `SetCustomState`, `ShowElement`; prior-step and reusable-self references retained; plugin semantics unsupported |
 | Backend editor: 1 workflow, `bpyerffv`, 2 steps | One `APIEvent` definition, 2 action entries |
 
 **Backend UI limitation:** both backend step labels showed `[missing: null]` in
@@ -49,8 +49,8 @@ empty. This explains the overall `partial` availability.
 Each authorized landing URL was fetched as HTML through BubbleEx.HTTP, followed
 by its advertised dynamic bundle. BubbleEx.Apps.Parser decoded the supplied data;
 JavaScript was not evaluated. No additional page hydration, login, workflow
-endpoint call, or sample-record enrichment was used. BetterLegal followed its
-existing public landing redirect to `app2.betterlegal.com`.
+endpoint call, or sample-record enrichment was used. Site A followed its
+existing public landing redirect to its custom domain.
 
 An independent Python walk enumerated collection entries, excluding and
 accounting separately for nonnegative integer `length` metadata. It compared the
@@ -62,10 +62,10 @@ and checked report entry counts. All comparisons passed.
 | --- | ---: | ---: | ---: | ---: | --- |
 | example-customer.test | 38 | 65 | 19 | 99 | partial |
 | bubble.io | 502 | 1,155 | 427 | 2,231 | partial |
-| betterlegal.bubbleapps.io | 44 | 83 | 27 | 133 | partial |
-| app.voicediq.com | 10 | 19 | 6 | 22 | partial |
-| assistra.ai | 164 | 502 | 211 | 684 | partial |
-| kroki-pay.bubbleapps.io | 24 | 51 | 29 | 88 | partial |
+| site-a.example | 44 | 83 | 27 | 133 | partial |
+| site-b.example | 10 | 19 | 6 | 22 | partial |
+| site-c.example | 164 | 502 | 211 | 684 | partial |
+| site-d.example | 24 | 51 | 29 | 88 | partial |
 | **Total** | **782** | **1,875** | **719** | **3,257** | |
 
 Counts describe those captured payloads only. They do not establish each app's

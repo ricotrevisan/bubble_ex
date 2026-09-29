@@ -6,9 +6,9 @@ unrelated app payloads belong here.
 ## 2026-09-14 — independent read primitive
 
 - Opened the authenticated Bubble editor in this thread at the authorized URL:
-  `tiptap-plugin`, app version `43jvs`, page `index`.
+  `example-plugin`, app version `dev03`, page `index`.
 - Observed the editor read endpoint
-  `POST /appeditor/load_multiple_paths/tiptap-plugin/43jvs`.
+  `POST /appeditor/load_multiple_paths/example-plugin/dev03`.
 - The request body is `{path_arrays: [...], no_chunking: boolean}`. With
   `no_chunking: true`, Bubble returned complete JSON data inline plus
   `last_change: 65049763350`; no internal path codec or Buildprint was used.
@@ -130,7 +130,7 @@ Live CLI discovery at revision `65050278876` returned:
 
 - Modern Dropdown/Popover: 25 web element/event/action nodes; schema hash
   `f8d4f63073245aa683a1299cb86a908e8bd73bfe92265e0061f09b7a1e71e9d4`.
-- Tiptap: 76 nodes, including descriptive `toc_element` / `heading_clicked`
+- Rich-text plugin: 76 nodes, including descriptive `toc_element` / `heading_clicked`
   IDs; schema hash
   `7001d6e01f8752cdcbdbca3dd2589da48f8ae30ea0bf31621e46e66b371b9272`.
 
@@ -151,8 +151,8 @@ then rolled back at `65063669467`. A second browser read verified `Row actions`
 restored. No Main/test/live writes, merges, deployment or Buildprint were used.
 This follow-up did not repeat the entire demo runtime exercise recorded above.
 
-Reproduction: run `mix bubble.editor schema tiptap-plugin 43jvs` with the two
-plugin groups from `live_plugin_property_plan.json` and the Tiptap group
+Reproduction: run `mix bubble.editor schema example-plugin dev03` with the two
+plugin groups from `live_plugin_property_plan.json` and the rich-text group
 `1670612027178x122079323974008830_current`. Refresh the plan's base revision and
 schema pin from fresh reads before check/apply; the checked-in live fixture is
 historical and deliberately stale after rollback. Retain an apply receipt and

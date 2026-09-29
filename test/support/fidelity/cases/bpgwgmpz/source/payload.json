@@ -1006,7 +1006,7 @@
                     "single_width": false,
                     "src": {
                       "%e": {
-                        "0": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
+                        "0": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
                         "1": {
                           "%p": {
                             "%nm": "Current Page Width"
@@ -1202,7 +1202,7 @@
                     "single_width": false,
                     "src": {
                       "%e": {
-                        "0": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
+                        "0": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
                         "1": {
                           "%p": {
                             "%nm": "Current Page Width"
@@ -1296,7 +1296,7 @@
                     "single_width": false,
                     "src": {
                       "%e": {
-                        "0": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
+                        "0": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1&n=",
                         "1": {
                           "%p": {
                             "%nm": "Current Page Width"
@@ -3498,7 +3498,7 @@
           "%p": {
             "%3": {
               "%e": {
-                "0": "Tiptap 🩰 is a rich text editor that gives you control over of your text editor. (⚠️ Tiptap -- the underlying tech of this rich text editor -- is still in beta)\n\n\n✅ Demo: [url=https://tiptap-demo.bubbleapps.io/version-test/doc/demo][u]link[/u][/url]\n\n___________\n[b]FEATURES[/b]\n---------------\n\n[b]Menus[/b]\nFully customizable menus\n[ul]\n[li]Top menu[/li]\n[li]Bubble menu: highlight a word and this menu pops up.[/li]\n[li]Floating menu: appears in an empty line.[/li]\n[/ul]\n\n[b]Formats[/b]\n[ul]\n[li]Bold, Italics, [/li]\n[li]Heading (1 - 6)[/li]\n[li]blockquotes[/li]\n[li]lists[/li]\n[li]task lists[/li]\n[li]Images[/li]\n[li]code blocks[/li]\n[/ul]\n\n\n[b]Output[/b]\n[ul]\n[li]HTML[/li]\n[li]Plain text[/li]\n[li]JSON[/li]\n[li]autobind. ⚠️ not yet recommended to use in pop-ups. Use autobind where the source doesn't change.[/li]\n[/ul]\n\n\n[b]Keyboard shortcuts[/b]\nBoth for classical editor and markdown. You can set a paragraph to Heading1 either by typing ⌘ + ⌥ + 1  or by adding # at the beginning of a paragraph.\n\n\n[b]Beautiful Tailwind Typography styling[/b]\nThe text inside the editor is styled according to TailwindCSS's Typography styles.\n\n\n[b]Modern tech[/b]\nUnder the hood it uses the esh.sm for the latest web tech: es2015+ for speed and flexibility."
+                "0": "Example plugin demo page.\n\n[b]FEATURES[/b]\n[ul]\n[li]Menus[/li]\n[li]Formats[/li]\n[/ul]"
               },
               "%x": "TextExpression"
             },
@@ -3685,7 +3685,7 @@
       "id": "bTMFL"
     },
     "cmtnu": {
-      "%nm": "collab_tiptap_cloud",
+      "%nm": "collab_cloud",
       "%p": {
         "%rf": null
       },
@@ -3853,7 +3853,7 @@
       "id": "bpcybc"
     },
     "cmuBz": {
-      "%nm": "collab_rico_wtf",
+      "%nm": "collab_demo",
       "%p": {
         "%rf": null
       },
@@ -3885,7 +3885,7 @@
       "id": "bTHlJ"
     }
   },
-  "_id": "tiptap-plugin",
+  "_id": "example-plugin",
   "_index": {
     "id_to_path": {
       "bTHWT": "%p3.bTGbC.%el.bTHWV",
@@ -4053,9 +4053,9 @@
     "responsive": {}
   },
   "app_json_version": 0,
-  "app_version": "13iti",
+  "app_version": "dev01",
   "domains": null,
-  "favicon": "//s3.amazonaws.com/appforest_uf/f1530294839424x143528842134401200/Icon-no-clearspace.png",
+  "favicon": "//s3.amazonaws.com/appforest_uf/f1x2/icon.png",
   "generation_fiber_id": "1787911604793x903311256218520600",
   "global_elements": {},
   "global_expressions": {},
@@ -4152,7 +4152,7 @@
           }
         }
       },
-      "default_page_title": "tiptap-plugin",
+      "default_page_title": "example-plugin",
       "first_times": {
         "component_library": false
       },

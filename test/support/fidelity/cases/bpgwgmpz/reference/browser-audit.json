@@ -1,7 +1,7 @@
 {
   "status": "captured",
   "scope": "authorized-controlled-source",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-13iti/bubbleex-complex-demo",
+  "url": "https://example-plugin.bubbleapps.io/version-dev01/bubbleex-complex-demo",
   "chromium": "140.0.7339.186",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpgwgmpz",
@@ -18,7 +18,7 @@
         "htmlClass": "b-root wf-robotoserif-n6-active wf-ubuntumono-n4-active wf-ebgaramond-n6-active wf-ibmplexmono-n4-active wf-ibmplexmono-n5-active wf-inconsolata-n4-active wf-inconsolata-n6-active wf-inter-n4-active wf-inter-n5-active wf-inter-n6-active wf-inter-n7-active wf-inter-n8-active wf-jetbrainsmono-n4-active wf-opensans-n4-active wf-opensans-n5-active wf-opensans-n6-active wf-opensans-n7-active wf-opensans-n8-active wf-robotoserif-n4-active wf-active",
         "fontResources": [
           "https://fonts.googleapis.com/css?family=EB+Garamond:600%7CIBM+Plex+Mono:regular%7CIBM+Plex+Mono:500%7CInconsolata:regular%7CInconsolata:600%7CInter:regular%7CInter:500%7CInter:600%7CInter:700%7CInter:800%7CJetBrains+Mono:regular%7COpen+Sans:regular%7COpen+Sans:500%7COpen+Sans:600%7COpen+Sans:700%7COpen+Sans:800%7CRoboto+Serif:regular%7CRoboto+Serif:600%7CUbuntu+Mono:regular",
-          "https://tiptap-plugin.bubbleapps.io/static/icon_libraries/fontawesome-4.7.0.svg#fa-star"
+          "https://example-plugin.bubbleapps.io/static/icon_libraries/fontawesome-4.7.0.svg#fa-star"
         ],
         "elements": {
           "bpcjysad": {
@@ -314,7 +314,7 @@
         "htmlClass": "b-root wf-jetbrainsmono-n4-active wf-ebgaramond-n6-active wf-ibmplexmono-n5-active wf-inconsolata-n4-active wf-inconsolata-n6-active wf-inter-n8-active wf-opensans-n4-active wf-opensans-n5-active wf-opensans-n6-active wf-opensans-n7-active wf-opensans-n8-active wf-robotoserif-n4-active wf-robotoserif-n6-active wf-ubuntumono-n4-active wf-ibmplexmono-n4-active wf-inter-n4-active wf-inter-n5-active wf-inter-n6-active wf-inter-n7-active wf-active",
         "fontResources": [
           "https://fonts.googleapis.com/css?family=EB+Garamond:600%7CIBM+Plex+Mono:regular%7CIBM+Plex+Mono:500%7CInconsolata:regular%7CInconsolata:600%7CInter:regular%7CInter:500%7CInter:600%7CInter:700%7CInter:800%7CJetBrains+Mono:regular%7COpen+Sans:regular%7COpen+Sans:500%7COpen+Sans:600%7COpen+Sans:700%7COpen+Sans:800%7CRoboto+Serif:regular%7CRoboto+Serif:600%7CUbuntu+Mono:regular",
-          "https://tiptap-plugin.bubbleapps.io/static/icon_libraries/fontawesome-4.7.0.svg#fa-star"
+          "https://example-plugin.bubbleapps.io/static/icon_libraries/fontawesome-4.7.0.svg#fa-star"
         ],
         "elements": {
           "bpcjysad": {

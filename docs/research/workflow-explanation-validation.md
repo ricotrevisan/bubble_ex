@@ -6,13 +6,13 @@ No HTML/snapshot work was reopened. Raw real-app inputs and reports stay private
 
 ## Controlled editor evidence
 
-Buildprint project/branch listings reconfirmed `TiptapDev` / `tiptap-plugin` and
-`bubble-ex` / `83jop`. The thread browser opened the actual editor successfully.
+Buildprint project/branch listings reconfirmed `ExamplePluginDev` / `example-plugin` and
+`bubble-ex` / `dev02`. The thread browser opened the actual editor successfully.
 The saved inventory snapshot has no `NewThing` or `ChangeThing` actions, so a
-separate `i91-explain` / `33juy` branch was created from `test` with savepoints.
+separate `i91-explain` / `dev04` branch was created from `test` with savepoints.
 Only a new `bubbleex-explain-91` page, its two disabled workflows, and the new
 `Explanation Task 91` data type were added. The final branch diff confirms no
-changes to pre-existing app files. Neither `test`, `live`, `83jop`, nor the
+changes to pre-existing app files. Neither `test`, `live`, `dev02`, nor the
 preceding session's workspace was modified.
 
 Buildprint rejected stale-base applies without writing. Sync and reapply
@@ -22,7 +22,7 @@ projection was retained and Buildprint validation passed. Although apply lists
 `settings/app.ts` among affected projection files, the final source diff contains
 only the four new fixture files. No application workflow was run.
 
-The actual editor on `33juy` showed:
+The actual editor on `dev04` showed:
 
 | Source identity | Editor observation | Explanation check |
 | --- | --- | --- |
@@ -61,8 +61,8 @@ makes no claim that reusable parameter or plugin semantics are fully supported.
 The six saved landing-page payloads from the prior milestone were reused
 read-only. No fresh third-party requests, private-page acquisition, workflow
 endpoint calls, record lookups or login automation were performed. Their
-availability remains partial. BetterLegal's recorded acquisition remains the
-public redirect from `betterlegal.bubbleapps.io` to `app2.betterlegal.com`.
+availability remains partial. Site A's recorded acquisition remains the
+public redirect from its `bubbleapps.io` subdomain to its custom domain.
 
 An independent Python verifier enumerated source collections, dereferenced raw
 workflow/action/explanation/condition pointers and reference candidates, checked
@@ -79,10 +79,10 @@ and `ChangeThing`, not every workflow action.
 | --- | ---: | ---: | --- | --- |
 | example-customer.test | 38 | 65 | 7 / 4 / 8 / 0 | 0 / 6 / 0 / 0 |
 | bubble.io | 502 | 1,155 | 45 / 278 / 104 / 0 | 3 / 89 / 2 / 0 |
-| betterlegal.bubbleapps.io | 44 | 83 | 2 / 14 / 10 / 1 | 0 / 3 / 0 / 0 |
-| app.voicediq.com | 10 | 19 | 5 / 1 / 0 / 0 | 6 / 0 / 0 / 0 |
-| assistra.ai | 164 | 502 | 43 / 153 / 11 / 4 | 19 / 83 / 4 / 0 |
-| kroki-pay.bubbleapps.io | 24 | 51 | 1 / 20 / 8 / 0 | 0 / 0 / 0 / 0 |
+| site-a.example | 44 | 83 | 2 / 14 / 10 / 1 | 0 / 3 / 0 / 0 |
+| site-b.example | 10 | 19 | 5 / 1 / 0 / 0 | 6 / 0 / 0 / 0 |
+| site-c.example | 164 | 502 | 43 / 153 / 11 / 4 | 19 / 83 / 4 / 0 |
+| site-d.example | 24 | 51 | 1 / 20 / 8 / 0 | 0 / 0 / 0 / 0 |
 | **Total** | **782** | **1,875** | **103 / 470 / 141 / 5** | **28 / 181 / 6 / 0** |
 
 Thus **103 of 719 conditions (14.3%)** and **28 of 215 create/change actions

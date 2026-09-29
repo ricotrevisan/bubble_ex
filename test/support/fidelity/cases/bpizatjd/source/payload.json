@@ -1,6 +1,6 @@
 {
-  "_id": "tiptap-plugin",
-  "app_version": "83jop",
+  "_id": "example-plugin",
+  "app_version": "dev02",
   "pages": {
     "bphriwuj": {
       "elements": {

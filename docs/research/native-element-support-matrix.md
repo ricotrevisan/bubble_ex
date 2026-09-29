@@ -68,7 +68,7 @@ test and remaining release gates.
 ## Corrections to earlier support claims
 
 The four repaired input cases now use valid Bubble enums and source literals
-from authorized branch `83jop`. Invalid enum aliases could render fallback text
+from authorized branch `dev02`. Invalid enum aliases could render fallback text
 fields while still passing a screenshot comparison. The source validator and
 independent Input-value checks now reject those cases. See the
 [input audit](frozen-input-validation-audit.md).

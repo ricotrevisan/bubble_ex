@@ -75,9 +75,11 @@ defmodule BubbleEx.Editor.PluginSchemaTest do
     end
   end
 
-  test "exposes Tiptap string identifiers and states without assuming three-letter codes" do
+  test "exposes rich-text plugin string identifiers and states without assuming three-letter codes" do
     raw =
-      Jason.decode!(File.read!("test/support/editor/discovered_plugin_contracts.json"))["tiptap"]
+      Jason.decode!(File.read!("test/support/editor/discovered_plugin_contracts.json"))[
+        "rich_text"
+      ]
 
     assert {:ok, schema} = PluginSchema.normalize("123x456_current", "current", raw)
     assert schema.nodes["123x456_current-toc_element"].fields["accessible_label"]

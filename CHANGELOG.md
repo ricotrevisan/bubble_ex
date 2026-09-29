@@ -1692,14 +1692,14 @@ All notable changes to this project are documented here.
   their full definitions and reporting the runtime boundary. Do not infer an
   open dialog from `is_visible` or paint Group Focus in the page layout.
 - Restore the actual Popup source in `bpndkqfs`, correlate its closed state,
-  and recapture it on `83jop`. Add initial-state case `bptvorpv` plus separate
+  and recapture it on `dev02`. Add initial-state case `bptvorpv` plus separate
   source-only opening/dismissal observations; update the native support matrix.
 - Reject ambiguous fidelity selectors and withdraw one invalid shared-icon
   collapse sample while retaining both icon instances' structural checks.
 - Keep the range-slider wrapper transparent as in Bubble when restoring the
   complete source styling; retain existing pixel tolerances.
 - Correct Bubble Input/DateInput enum mappings and reject invalid frozen source
-  formats. Repair and recapture four affected cases from authorized branch `83jop`.
+  formats. Repair and recapture four affected cases from authorized branch `dev02`.
 - Preserve explicit control borders/backgrounds over native defaults, render
   static percentage/currency/US phone values, and compare captured Input values
   independently of screenshot tolerances.
@@ -1736,12 +1736,12 @@ All notable changes to this project are documented here.
 - S1 simple SliderInput (`type=range`) and static AutocompleteDropdown
   (`type=search` + `<datalist>`). Dynamic/Google search stays a placeholder.
   Authorized page `bubbleex-i67-slider-search`
-  is on `tiptap-plugin` Test.
+  is on `example-plugin` Test.
 
 - Frozen S1 PictureInput case `bpdimzwm` (`bubbleex-i65-picture-input`)
 
 - S1 PictureInput lowering as `<input type="file" accept="image/*">`.
-  Authorized page `bubbleex-i65-picture-input` is on `tiptap-plugin` Test.
+  Authorized page `bubbleex-i65-picture-input` is on `example-plugin` Test.
 
 - Frozen S1 numbers / datetime / FileInput case `bpoyzixi`
   (`bubbleex-i63-datetime-numbers-file`)
@@ -1750,7 +1750,7 @@ All notable changes to this project are documented here.
   Numbers use `inputmode=numeric`. Datetime stays `type=text` (no
   native picker). FileInput is `<input type="file">` with no upload.
   Authorized page `bubbleex-i63-datetime-numbers-file` is on
-  `tiptap-plugin` Test. Google address autocomplete remains deferred
+  `example-plugin` Test. Google address autocomplete remains deferred
   (needs a live Google contract).
 
 - Frozen S1 Address Input / DateInput case `bpizatjd`
@@ -1758,14 +1758,14 @@ All notable changes to this project are documented here.
 
 - S1 Address Input and DateInput lowering as `type=text` (no Google
   autocomplete, no native date-picker chrome). Authorized page
-  `bubbleex-i61-address-dateinput` is on `tiptap-plugin` Test.
+  `bubbleex-i61-address-dateinput` is on `example-plugin` Test.
 
 - Frozen S1 extra Input formats case `bpjehwxg`
   (`bubbleex-i59-input-formats`)
 
 - S1 decimal / percent / currency / US phone / euro-date Input lowering
   as `type=text` with matching `inputmode`. Authorized page
-  `bubbleex-i59-input-formats` is on `tiptap-plugin` Test; freeze is a
+  `bubbleex-i59-input-formats` is on `example-plugin` Test; freeze is a
   follow-up.
 
 - Frozen S1 date / integer Input case `bpqkcldq`
@@ -1773,7 +1773,7 @@ All notable changes to this project are documented here.
 
 - S1 date and integer Input lowering (`content_format` `date` / `integer`
   as `type=text`, integer `inputmode=numeric`). Authorized page
-  `bubbleex-i57-date-integer-input` is on `tiptap-plugin` Test; freeze is a
+  `bubbleex-i57-date-integer-input` is on `example-plugin` Test; freeze is a
   follow-up.
 
 - Frozen S1 fit-height MultiLineInput case `bpuzekut`
@@ -1781,19 +1781,19 @@ All notable changes to this project are documented here.
 
 - S1 fit-height MultiLineInput lowering (`fit_height` + static content →
   `field-sizing: content`). Authorized page `bubbleex-i55-fit-height-multiline`
-  is on `tiptap-plugin` Test; freeze is a follow-up.
+  is on `example-plugin` Test; freeze is a follow-up.
 
 - Frozen S1 icon Link case `bpaupfbj` (`bubbleex-i53-icon-link`)
 
 - S1 icon / icon+label Link lowering for static Font Awesome 4 icons
   (`show_icon` or `link_type: icon`). Authorized page `bubbleex-i53-icon-link`
-  is on `tiptap-plugin` Test; freeze is a follow-up.
+  is on `example-plugin` Test; freeze is a follow-up.
 
 - Literal newlines in Text become `<br>` so 404 boilerplate keeps its paragraph
   break. Native Input chrome uses `appearance: none`, white fill, and a 1px border.
 
 - S1 icon / icon+label Button lowering for static Font Awesome 4 icons, with frozen
-  case `bpiordvb` on `tiptap-plugin` Test (`bubbleex-i51-icon-button`).
+  case `bpiordvb` on `example-plugin` Test (`bubbleex-i51-icon-button`).
 
 - Theme tokens: export emits `:root` CSS variables from
   `settings.client_safe` color/font tokens. Existing unstyled elements retain
@@ -1808,7 +1808,7 @@ All notable changes to this project are documented here.
   works without Trufflehog. An explicit non-Trufflehog adapter is unchanged.
 
 - Frozen BBCode Text case `bpwipyqn` (#44): controlled `bubbleex-i44-bbcode-text`
-  page on `tiptap-plugin` Test. Block BBCode (`[ul]/[ol]`) exports as a `div`
+  page on `example-plugin` Test. Block BBCode (`[ul]/[ol]`) exports as a `div`
   with Bubble-like list/link CSS; `[b]`, `[url=https]` stay inline.
 
 - Selected live-page hydration (#40): `BubbleEx.export_frontend/3` and

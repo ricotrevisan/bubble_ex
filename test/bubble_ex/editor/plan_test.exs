@@ -332,8 +332,8 @@ defmodule BubbleEx.Editor.PlanTest do
 
   defp plan(operations, plugin_types \\ []) do
     %{
-      "appname" => "tiptap-plugin",
-      "version" => "43jvs",
+      "appname" => "example-plugin",
+      "version" => "dev03",
       "base_last_change" => 41,
       "plugin_types" => plugin_types,
       "operations" => operations
@@ -361,6 +361,11 @@ defmodule BubbleEx.Editor.PlanTest do
     entries =
       Map.new(values, fn {path, value} -> {Snapshot.key(path), %{path: path, value: value}} end)
 
-    %Snapshot{appname: "tiptap-plugin", version: "43jvs", last_change: revision, entries: entries}
+    %Snapshot{
+      appname: "example-plugin",
+      version: "dev03",
+      last_change: revision,
+      entries: entries
+    }
   end
 end

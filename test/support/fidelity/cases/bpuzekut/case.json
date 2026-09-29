@@ -14,12 +14,12 @@
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
   "source": {
-    "bubble_id": "tiptap-plugin",
+    "bubble_id": "example-plugin",
     "app_version": "test",
     "page_id": "bpuzekut",
     "page_path": "bubbleex-i55-fit-height-multiline",
     "page_payload_sha256": "5df750e1b75f545cdf4183f131d45e0fd7f01693b9e7a6b6e2c397f4efe5aabb",
-    "payload_sha256": "562634cc8618a975cd4c82439fd8af79902859d90ac3e3ff21e93cc6f4236bcf"
+    "payload_sha256": "aa38a2e6abc207be4b5c355fe338822ede5cd80a2c39e121d202aa2cbeae6584"
   },
   "public_assets": [],
   "viewports": [

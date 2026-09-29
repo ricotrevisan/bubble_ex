@@ -1,7 +1,7 @@
 {
   "status": "captured",
   "scope": "authorized-controlled-source",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-83jop/bubbleex-i61-address-dateinput",
+  "url": "https://example-plugin.bubbleapps.io/version-dev02/bubbleex-i61-address-dateinput",
   "chromium": "140.0.7339.186",
   "platform": "linux",
   "deviceScaleFactor": 1,

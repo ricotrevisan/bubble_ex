@@ -1,5 +1,5 @@
 {
-  "_id": "tiptap-plugin",
+  "_id": "example-plugin",
   "app_version": "test",
   "pages": {
     "bubbleex-i65-picture-input": {

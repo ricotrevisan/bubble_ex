@@ -356,13 +356,13 @@ defmodule BubbleEx.ExportFrontendTest do
       conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
 
       case path do
-        "/version-13iti" ->
+        "/version-dev01" ->
           Conn.resp(conn, 200, page_html("/package/dynamic_js/root/dynamic.js"))
 
         "/package/dynamic_js/root/dynamic.js" ->
           Conn.resp(conn, 200, dynamic_script(payload))
 
-        "/version-13iti/page-a" ->
+        "/version-dev01/page-a" ->
           Conn.resp(conn, 200, page_html("/package/dynamic_js/page-a/dynamic.js"))
 
         "/package/dynamic_js/page-a/dynamic.js" ->
@@ -372,12 +372,12 @@ defmodule BubbleEx.ExportFrontendTest do
 
     assert {:ok, %Result{}} =
              BubbleEx.export_frontend(
-               "https://app.example.test/version-13iti",
+               "https://app.example.test/version-dev01",
                Path.join(tmp, "pkg"),
                @scan ++ [pages: ["page-a"]]
              )
 
-    assert_received {:fetched, "/version-13iti/page-a"}
+    assert_received {:fetched, "/version-dev01/page-a"}
     refute_received {:fetched, "/page-a"}
   end
 

@@ -14,12 +14,12 @@
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
   "source": {
-    "bubble_id": "tiptap-plugin",
+    "bubble_id": "example-plugin",
     "app_version": "test",
     "page_id": "bpwipyqn",
     "page_path": "bubbleex-i44-bbcode-text",
     "page_payload_sha256": "d582b6c3faf0121c94a346dd41e68027a6fa7eae0ae1dd78aceb68cd2c1bb0ba",
-    "payload_sha256": "34d9d0c07ab1ef8b41fb99b864e75d3c133d7f0b939ad99b4afaf5fb8bf1e42b"
+    "payload_sha256": "8e08d415ddce0cb4e088296fc30ba2d6e7e5db77d0cdc0a4e7a80cd4d04fa488"
   },
   "viewports": [
     390,

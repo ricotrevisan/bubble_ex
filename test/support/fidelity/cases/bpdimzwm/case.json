@@ -14,12 +14,12 @@
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
   "source": {
-    "bubble_id": "tiptap-plugin",
+    "bubble_id": "example-plugin",
     "app_version": "test",
     "page_id": "bpdimzwm",
     "page_path": "bubbleex-i65-picture-input",
     "page_payload_sha256": "f9c236cad764e47fe24b49885dd9a58adb1cf3fb0deef38be1ed0a524aebe304",
-    "payload_sha256": "29dc34f7d50e6a367a8b97a93b11091b567d65e8029e0050327316e00d3fa212"
+    "payload_sha256": "5ee6e1d6f45efcd56a6b45f1fccb12b91e436a7e6d324ae73b79f616b1248c45"
   },
   "public_assets": [],
   "viewports": [

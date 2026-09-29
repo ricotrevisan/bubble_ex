@@ -88,11 +88,11 @@
       }
     }
   },
-  "tiptap": {
-    "human": "🤌 Rich text editor (Tiptap.dev)",
+  "rich_text": {
+    "human": "Rich text editor",
     "plugin_elements": {
       "toc_element": {
-        "display": "Tiptap Table of Contents",
+        "display": "Table of Contents",
         "platform_type": "web",
         "fields": {
           "accessible_label": {

@@ -1,9 +1,11 @@
 # Four additional browser snapshot page tests
 
 Tested the four user-authorized anonymous landing pages on 2026-09-11.
-BetterLegal redirects normally from `https://betterlegal.bubbleapps.io/` to
-`https://app2.betterlegal.com/`. No login, form submission, source-app changes,
-or link crawling was performed.
+Site A redirects normally from its `bubbleapps.io` subdomain to its custom
+domain. No login, form submission, source-app changes,
+or link crawling was performed. The four sites are anonymized here as Site A–D
+(`site-a.example` … `site-d.example`); their real URLs live only in a private
+sites file.
 
 ## Fixed checks and final results
 
@@ -17,10 +19,10 @@ failing elements were introduced. The source PNG is never an exporter input.
 
 | Page | 390 grade | 768 grade | 1440 grade | Pixel difference at 390 / 768 / 1440 |
 | --- | ---: | ---: | ---: | --- |
-| BetterLegal | 100% | 100% | 100% | 0.015216% / 0.007313% / 0.005993% |
-| app.voicediq.com | 100% | 100% | 100% | 0% / 0% / 0% |
-| assistra.ai | 100% | 100% | 100% | 0.012735% / 0.007215% / 0.001549% |
-| kroki-pay.bubbleapps.io | 100% | 100% | 100% | 0.064893% / 0.043387% / 0.029181% |
+| site-a.example | 100% | 100% | 100% | 0.015216% / 0.007313% / 0.005993% |
+| site-b.example | 100% | 100% | 100% | 0% / 0% / 0% |
+| site-c.example | 100% | 100% | 100% | 0.012735% / 0.007215% / 0.001549% |
+| site-d.example | 100% | 100% | 100% | 0.064893% / 0.043387% / 0.029181% |
 
 All twelve final views pass every assertion, the normal decoded credential
 publication gate, and the zero-external-request check. The six original customer
@@ -40,15 +42,15 @@ working Bubble workflows, or correctness for every possible source state.
 - **Reversed stylesheet precedence.** MHTML hoists inline styles ahead of linked
   styles, allowing Bubble's reset CSS to override later plugin styling. Capture
   now records the CSSOM cascade order, media/disabled state and adopted sheets;
-  export restores that order and sanitizes the CSS. This fixes Assistra's spacing
-  and icons and Kroki's hidden tracking-frame layout.
+  export restores that order and sanitizes the CSS. This fixes Site C's spacing
+  and icons and Site D's hidden tracking-frame layout.
 - **Embedded document state and local assets.** Each embedded frame receives the
   same preparation as the main page and is correlated through its MHTML frame ID.
   A non-opaque sandbox origin allows its local CSS, fonts and images to load when
   opening the export from disk. Source scripts remain removed and each document
-  receives its own restrictive CSP. Kroki's YouTube previews remain HTML and local
+  receives its own restrictive CSP. Site D's YouTube previews remain HTML and local
   image assets; no full-page or iframe screenshot fallback was needed.
-- **Missing scroll offsets.** Assistra's scrolling row retained its DOM but lost
+- **Missing scroll offsets.** Site C's scrolling row retained its DOM but lost
   `scrollLeft`. Captured scroll offsets now use a fixed library initializer that
   runs initially and once after load. Values stay in data attributes, never code.
   CSP permits only the initializer's SHA-256 hash; it introduces no workflows,
@@ -66,16 +68,16 @@ working Bubble workflows, or correctness for every possible source state.
 
 Private evidence lives under `_build/four-site-snapshot/` and is not committed:
 
-1. `baseline-1` retained eleven captures and a failed Voicediq mobile acquisition.
+1. `baseline-1` retained eleven captures and a failed Site B mobile acquisition.
    `baseline-2` completed only that missing acquisition and verified all eleven
    previous inputs and PNGs were byte-identical. `iteration-2` scored **86.39%**.
-2. That first benchmark demonstrated a capture defect: BetterLegal and Kroki's
+2. That first benchmark demonstrated a capture defect: Site A and Site D's
    reference PNGs showed inactive fallback text that was absent from both their
    initial page layout and captured DOM. After reproducing and fixing the capture
    pipeline, `baseline-3` was acquired and locked before export. Earlier inputs,
    scores, and failures were retained. Live database content can differ between
    separate captures, so these are distinct paired benchmarks.
-3. `baseline-3` had one unstable Voicediq desktop screenshot pair. Both subsequent
+3. `baseline-3` had one unstable Site B desktop screenshot pair. Both subsequent
    production captures were stable. `baseline-4` uses the **first** follow-up,
    captured before exporting either follow-up, and verifies the other eleven
    inputs/PNGs are byte-identical to `baseline-3`. The failed acquisition remains
@@ -86,7 +88,7 @@ Private evidence lives under `_build/four-site-snapshot/` and is not committed:
    The generic grader also reproduced their pre-change assertion results. The
    historical app-data renderer and its earlier 70.53% benchmark are unchanged.
 
-One earlier Kroki tablet source state supplied `href="//"` for a randomly selected
+One earlier Site D tablet source state supplied `href="//"` for a randomly selected
 review. Its navigation failure remains in the original benchmark. The current
 captured reviews contain valid destinations and pass. This is a source-data
 limitation, not evidence that every future review link will work. No source data
@@ -99,12 +101,15 @@ The capture harness now accepts an optional JSON file of unique `[slug, URL]`
 pairs; omitting it selects the customer page (URL from `LANDING_CUSTOMER_URL`,
 which has no default) and the Bubble page:
 
+Use placeholder URLs like these in your own private file; the harness has no
+built-in site list.
+
 ```json
 [
-  ["betterlegal", "https://betterlegal.bubbleapps.io/"],
-  ["voicediq", "https://app.voicediq.com/"],
-  ["assistra", "https://assistra.ai/"],
-  ["kroki-pay", "https://kroki-pay.bubbleapps.io/"]
+  ["site-a", "https://site-a.example/"],
+  ["site-b", "https://site-b.example/"],
+  ["site-c", "https://site-c.example/"],
+  ["site-d", "https://site-d.example/"]
 ]
 ```
 

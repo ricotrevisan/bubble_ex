@@ -92,14 +92,14 @@
     ]
   },
   "source": {
-    "app_version": "83jop",
-    "bubble_id": "tiptap-plugin",
+    "app_version": "dev02",
+    "bubble_id": "example-plugin",
     "page_id": "bpjehwxg",
     "page_path": "bubbleex-i59-input-formats",
     "page_payload_sha256": "38b770346b5a15973725c39aad0cc461a250caa3947acf67ecd6f2dab87a2186",
-    "payload_sha256": "ef022add6c73ba9f3f775a7a9a84a3d936e436748e3b917af52beb102cceb374",
+    "payload_sha256": "c83065d88559c91b096dae02e8a4e9f4dcc098062f7dd044ed408a1e8230afa7",
     "validation": {
-      "branch": "83jop",
+      "branch": "dev02",
       "date": "2026-09-10",
       "method": "Buildprint canonical schema audit and applied branch snapshot"
     }
