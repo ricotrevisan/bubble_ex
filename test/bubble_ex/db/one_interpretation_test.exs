@@ -60,6 +60,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "the generated input-change event's own `value` member, not the data model",
     "lib/bubble_ex/index/plugins.ex" =>
       "installed plugin IDs and versions under `client_safe.plugins`, not API Connector types",
+    "lib/bubble_ex/buildprint/" =>
+      "merges Buildprint snapshot fragments by app section (`user_types`, `option_sets`, `client_safe.apiconnector2`) without reading definitions, and names the Model's count keys; counts come from the Model",
     "lib/bubble_ex/apps/parser.ex" =>
       "app settings under `client_safe` (plugins, meta tags), not API Connector types",
     "lib/bubble_ex/target/phoenix/structural/coverage.ex" =>

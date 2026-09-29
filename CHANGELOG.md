@@ -6,6 +6,27 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Buildprint v5 workspaces** (`BubbleEx.Buildprint.V5`). Buildprint
+  retired its v4 JSON export; a v5 workspace (`buildprint project clone`)
+  keeps Bubble's raw app JSON in `.buildprint/index.sqlite`.
+  `BubbleEx.Buildprint.V5.load/2` opens that index read-only and immutable,
+  checks `formatVersion`/`schemaVersion` (and the manifest version) against
+  an allowlist (`:unknown_format` otherwise), verifies every row's content
+  hash against the manifest, applies the fragment rows onto the preamble
+  (each definition a fragment holds replaces the preamble's stub whole),
+  drops Buildprint's own members (`__bp_*`, `_index`) and every setting
+  but `client_safe`, and returns the app in the shape `BubbleEx.Model`
+  reads. It compares the loaded data types, fields, option sets, pages, API
+  calls and workflows with the index's `symbols` table
+  (`:buildprint_count_mismatch`) and reports stubs no fragment completes,
+  ignored or overlapping fragments, redacted secret handles and the
+  manifest's snapshot hash, which is not reproducible from the rows
+  (`:buildprint_snapshot_unverified`); diagnostics hold counts only. SQLite
+  comes from `exqlite`, an **optional** dependency: without it `load/2`
+  returns the new `:dependency_missing` error kind. The private-fixture
+  loader (`BUBBLE_EX_PRIVATE_EXPORT`) detects v5 workspaces and still reads
+  split (v4) export directories and `.bubble` files.
+
 - **Structural bypass inventory hardened** (WTF-424). A workflow body is
   now the function the generated name map binds it to, in its scaffolded
   file (`Structural.Bypasses.bodies/3`:

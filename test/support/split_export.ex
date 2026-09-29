@@ -23,10 +23,37 @@ defmodule BubbleEx.Test.SplitExport do
   # export keeps it. Layout helper members (`children`, `bp_layout`, `__bp_*`
   # files) are dropped. A path that is a file is decoded as a `.bubble` JSON
   # export.
+  #
+  # A Buildprint v5 workspace (a directory holding `.buildprint/index.sqlite`,
+  # the format that replaced the split export) is detected and read through
+  # `BubbleEx.Buildprint.V5`, so BUBBLE_EX_PRIVATE_EXPORT may name either.
+
+  alias BubbleEx.Buildprint.V5
 
   @spec load(String.t()) :: map()
   def load(path) do
-    if File.dir?(path), do: assemble(path), else: decode(path)
+    cond do
+      V5.workspace?(path) -> load_v5(path)
+      File.dir?(path) -> assemble(path)
+      true -> decode(path)
+    end
+  end
+
+  @doc false
+  @spec format(String.t()) :: :buildprint_v5 | :split_export | :json
+  def format(path) do
+    cond do
+      V5.workspace?(path) -> :buildprint_v5
+      File.dir?(path) -> :split_export
+      true -> :json
+    end
+  end
+
+  defp load_v5(path) do
+    case V5.load(path) do
+      {:ok, %V5{app: app}} -> app
+      {:error, error} -> raise error
+    end
   end
 
   defp assemble(root) do

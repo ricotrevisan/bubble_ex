@@ -152,6 +152,13 @@ captures:
 BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
 ```
 
+The path may be a Buildprint v5 workspace (a `buildprint project clone`
+directory, read through `BubbleEx.Buildprint.V5` from its
+`.buildprint/index.sqlite`), a split (v4) export directory or a `.bubble`
+JSON file; the loader detects which. With a v5 workspace,
+`test/bubble_ex/buildprint/v5_private_fixture_test.exs` also checks the
+loaded Model against the workspace's `symbols` index.
+
 The backend-workflow coverage snapshot
 (`test/support/target/workflows/counts/private-app.json`, counts only) is part of
 that run; refresh it with `BUBBLE_EX_UPDATE_COUNTS=1` and give the reason in
