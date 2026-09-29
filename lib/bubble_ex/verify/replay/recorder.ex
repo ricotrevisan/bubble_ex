@@ -32,6 +32,20 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   signs users up has a safely exposed `User` Data API to clean them up
   with. Anything else refuses the run before any write.
 
+  **Owner exposure waiver** (`:exposure_waiver`, a
+  `BubbleEx.Verify.Replay.ExposureWaiver` loaded from the owner's private
+  file; never built in code). It lets the preflight accept `:exposed` and
+  `:may_leak` for the types it lists, on the target it names, and nothing
+  else. The file is re-read and checked (unchanged, in scope, unexpired)
+  by `plan/4`, by the preflight before any request, before each run's
+  first write and before each scenario. A failing check before the
+  preflight refuses the run; later it stops the run: the scenarios left
+  are incomplete (`:exposure_waiver_expired`, `…_changed`, …), no further
+  run starts, and cleanup still runs. The waiver clock is the later of the
+  system clock and `:now`, so `:now` can only bring expiry closer. The
+  file's SHA-256 is part of the plan hash, `report.exposure_waiver` and
+  every run's ledger journal header.
+
   **Dry run first (§6.1 rule 3).** `plan/4` makes no call: it validates
   the scenarios against the seed and the target, estimates the calls and
   hashes the run's inputs. `record/4` needs that hash (`:plan_sha256`) and
@@ -64,13 +78,15 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       `{:observed, run_id}`
     * `:runs` - at least 2 (default 2)
     * `:kit` - `BubbleEx.Verify.Replay.Kit` (workflow names)
-    * `:anonymous_cap`, `:anonymous_proof`, `:allow_unproven` - passed to
-      the preflight (`BubbleEx.Verify.Replay.Kit.preflight/4`)
+    * `:anonymous_cap`, `:anonymous_proof`, `:allow_unproven`,
+      `:exposure_waiver` - passed to the preflight
+      (`BubbleEx.Verify.Replay.Kit.preflight/4`); see above for the waiver
     * `:delete_after_seed` - seed keys to delete right after seeding
     * `:dependencies` - `%{{scenario ID, op ID} => [flag]}`
     * `:run_id` - prefix of the runs' IDs (lowercase letters, digits, `-`;
       default random); run `n` is `<run_id>-<n>`
-    * `:now` - a 0-arity function returning a `DateTime` (tests)
+    * `:now` - a 0-arity function returning a `DateTime` (tests); for the
+      waiver's expiry only a time later than the system clock counts
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -82,6 +98,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     Codec,
     CredentialScan,
     Differential,
+    ExposureWaiver,
     Kit,
     Ledger,
     Names,
@@ -100,7 +117,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
           | {:error, Error.t()}
   def plan(%Client{} = client, %Seed{} = seed, scenarios, opts \\ []) do
     with {:ok, runs} <- runs(opts),
-         :ok <- validate(client, seed, scenarios, opts) do
+         :ok <- validate(client, seed, scenarios, opts),
+         :ok <- waiver_ok(client, seed, scenarios, opts) do
       per_run = seeding_calls(seed, opts) + op_calls(client, seed, scenarios)
       types = types(seed, scenarios)
       kit = Keyword.get(opts, :kit, %Kit{})
@@ -123,6 +141,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
                "allow_unproven" => opts |> Keyword.get(:allow_unproven, []) |> Enum.sort()
              },
              "delete_after_seed" => opts |> Keyword.get(:delete_after_seed, []) |> Enum.sort(),
+             "exposure_waiver_sha256" => ExposureWaiver.sha256(opts[:exposure_waiver]),
              "max_calls" => client.max_calls
            }),
          calls: preflight_calls(types, opts) + runs * per_run,
@@ -147,14 +166,20 @@ defmodule BubbleEx.Verify.Replay.Recorder do
              kit(opts),
              types(seed, scenarios),
              [personas: Enum.any?(seed.records, &(&1.type == "user"))] ++
-               Keyword.take(opts, [:anonymous_cap, :anonymous_proof, :allow_unproven])
+               Keyword.take(opts, [
+                 :anonymous_cap,
+                 :anonymous_proof,
+                 :allow_unproven,
+                 :exposure_waiver
+               ])
            ) do
       if preflight.ok? do
         {:ok, run(client, seed, scenarios, plan, run_id, preflight, opts)}
       else
         {:error,
          Error.new(:invalid_input, "the replay kit is not complete on the branch", %{
-           preflight: preflight.checks
+           preflight: preflight.checks,
+           warnings: preflight.warnings
          })}
       end
     end
@@ -172,6 +197,37 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     do: plan(client, seed, scenarios, opts)
 
   defp kit(opts), do: Keyword.get(opts, :kit, %Kit{})
+
+  # The owner's waiver, re-read from its file, still valid for this run.
+  defp waiver_ok(client, seed, scenarios, opts) do
+    case opts[:exposure_waiver] do
+      nil ->
+        :ok
+
+      waiver ->
+        ExposureWaiver.check(
+          waiver,
+          client.target,
+          client.names,
+          types(seed, scenarios),
+          waiver_now(opts)
+        )
+    end
+  end
+
+  # Only a clock ahead of the system's counts: expiry can come sooner, never later.
+  defp waiver_now(opts) do
+    system = DateTime.utc_now()
+
+    case Keyword.get(opts, :now) do
+      nil ->
+        system
+
+      now ->
+        injected = now.()
+        if DateTime.compare(injected, system) == :gt, do: injected, else: system
+    end
+  end
 
   # --- validation -------------------------------------------------------------------
 
@@ -351,6 +407,8 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   # --- runs ---------------------------------------------------------------------------
 
   defp run(client, seed, scenarios, plan, run_id, preflight, opts) do
+    waiver = fn -> waiver_ok(client, seed, scenarios, opts) end
+    opts = Keyword.put(opts, :waiver_check, waiver)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
     runs =
@@ -388,6 +446,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
       branch_id: client.target.branch_id,
       host: client.target.host,
       preflight: preflight,
+      exposure_waiver: ExposureWaiver.summary(opts[:exposure_waiver]),
       calls: Client.calls(client),
       cleanup_calls: Client.cleanup_calls(client),
       runs: Enum.map(runs, &run_summary/1),
@@ -419,7 +478,10 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   defp one_run(client, seed, scenarios, run_id, now, opts) do
     started = now.() |> DateTime.truncate(:second)
 
-    case Ledger.new(client.target, run_id, dir: Keyword.fetch!(opts, :ledger_dir)) do
+    case Ledger.new(client.target, run_id,
+           dir: Keyword.fetch!(opts, :ledger_dir),
+           exposure_waiver_sha256: ExposureWaiver.sha256(opts[:exposure_waiver])
+         ) do
       {:ok, ledger} ->
         {seeded, state, observed} = guarded(client, seed, scenarios, ledger, opts)
         {ledger, leftovers} = safe_cleanup(client, state.ledger)
@@ -477,26 +539,46 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   end
 
   defp seed_and_observe(client, seed, scenarios, ledger, opts, progress) do
-    case Seeder.seed(client, seed, ledger,
-           kit: kit(opts),
-           delete_after_seed: opts[:delete_after_seed] || []
-         ) do
-      {:ok, state} ->
-        progress.({:seeded, ledger.run_id})
-        uncleared = state |> Map.get(:uncleared, %{}) |> Map.keys() |> MapSet.new()
+    waiver = Keyword.fetch!(opts, :waiver_check)
 
-        observed =
-          Map.new(
-            scenarios,
-            &{&1.id, observe_unless_uncleared(client, seed, &1, state, uncleared)}
-          )
+    with :ok <- waiver.(),
+         {:ok, state} <-
+           Seeder.seed(client, seed, ledger,
+             kit: kit(opts),
+             delete_after_seed: opts[:delete_after_seed] || []
+           ) do
+      progress.({:seeded, ledger.run_id})
+      uncleared = state |> Map.get(:uncleared, %{}) |> Map.keys() |> MapSet.new()
 
-        progress.({:observed, ledger.run_id})
-        {:ok, state, observed}
+      {status, observed} =
+        observe_all(
+          scenarios,
+          waiver,
+          &observe_unless_uncleared(client, seed, &1, state, uncleared)
+        )
+
+      progress.({:observed, ledger.run_id})
+      {status, state, observed}
+    else
+      {:error, %Error{} = error} ->
+        {{:error, error}, %{ledger: ledger, session: %Session{}},
+         Map.new(scenarios, &{&1.id, {:error, error, 0}})}
 
       {:error, error, state} ->
         {{:error, error}, state, Map.new(scenarios, &{&1.id, {:error, :seeding_failed, 0}})}
     end
+  end
+
+  # Each scenario after the waiver check; once it fails, the rest are not observed.
+  defp observe_all(scenarios, waiver, observe) do
+    Enum.reduce(scenarios, {:ok, %{}}, fn scenario, {status, acc} ->
+      with :ok <- status,
+           :ok <- waiver.() do
+        {:ok, Map.put(acc, scenario.id, observe.(scenario))}
+      else
+        {:error, error} -> {{:error, error}, Map.put(acc, scenario.id, {:error, error, 0})}
+      end
+    end)
   end
 
   defp safe_cleanup(client, ledger) do
@@ -761,7 +843,10 @@ defmodule BubbleEx.Verify.Replay.Recorder do
   defp failure(:seeding_failed), do: :seeding_failed
   defp failure(:clear_failed), do: :clear_failed
   defp failure(%Error{context: %{reason: :budget_exhausted}}), do: :budget_exhausted
-  defp failure(%Error{kind: kind}), do: kind
+
+  defp failure(%Error{kind: kind, context: context}) do
+    if ExposureWaiver.reason?(context[:reason]), do: context.reason, else: kind
+  end
 
   # --- calibration -----------------------------------------------------------------------
 

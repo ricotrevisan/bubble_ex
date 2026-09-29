@@ -87,6 +87,50 @@ included, to anonymous callers as soon as it was exposed on a branch. So:
       API. A seed with users therefore needs `User` exposed and passing
       the anonymous probe (`persona_cleanup` check). If `User` can't be
       exposed safely, record logged-out only: a seed without users.
+- [ ] **Only if the owner accepts anonymous exposure (not the default).**
+      If a type the scenarios need, such as `User`, can't pass the
+      anonymous probe, the owner may accept its exposure on the replay
+      branch **for one run window**. Anonymous visitors can then read that
+      type's development data, so this is not a privacy fix. It needs an
+      owner exposure waiver (`BubbleEx.Verify.Replay.ExposureWaiver`),
+      which the driver never writes:
+      - **The file is the consent record, and nothing proves who wrote
+        it.** Any process running as your user can write one, agents
+        included. The driver checks that it is private and outside any
+        repository, not who wrote it. Write it only **after** the owner's
+        approval has been recorded (a message, a ticket comment), and
+        quote that approval, with its date, in `approval_reference`.
+      - The owner, or an operator acting on the owner's recorded
+        approval, writes it by hand as a JSON file in a private directory
+        outside any git checkout (the directory's real path is checked, so
+        a symlink into a checkout is refused), for example
+        `~/.local/share/wtf-v5/waivers/<name>.json`. The directory must be
+        `0700`, the file `0600` with a single link (no hard link), both
+        owned by the user running the driver. A file that changes while it
+        is read is refused.
+      - It names the exact `app`, `branch`, `branch_id` and `host` of the
+        target and the exact type descriptors with their Data API paths
+        (`"types": {"user": "user"}`), with no wildcard. `live` and `test`
+        are refused. `issued_at` and `expires_at` are UTC (`Z`) and at most
+        24 hours apart. It also has `approved_by` and an
+        `approval_reference` that quotes the owner's approval and gives
+        its date. See the module doc for the full format.
+      - Load it with `ExposureWaiver.load_waiver(path)` and pass
+        `exposure_waiver:` to both `plan/4` and `record/4`. The file is
+        read again at every use: at `plan/4`, before the preflight, before
+        each run and between scenarios. Editing or deleting the file
+        revokes the waiver, and expiry has the same effect: the run stops
+        and cleanup still runs.
+      - It accepts only `:exposed` and `:may_leak` for the types it lists.
+        The probe still runs, and its actual status, counts and field names
+        stay in the report with a warning. `:unproven` and missing types
+        are still refused.
+      - The file's SHA-256 is in the dry-run hash, `report.exposure_waiver`
+        and each run's ledger journal.
+      - After the run, remove the exposure on the branch and delete the
+        waiver. Never merge the replay branch into test or live.
+      - Disable the app's database-trigger workflows **on the replay
+        branch only** if the owner asks. The parent versions keep theirs.
 - [ ] *(you confirm)* **Don't change any privacy rule.** The recording is
       only worth something if the branch's rules match the parent's. Don't
       tick "ignore privacy rules" anywhere.
@@ -175,8 +219,8 @@ No email reaches a real person.
    be classified as replay-safe (V7).
 2. `Replay.Recorder.record/4` needs the plan's `sha256` and a
    `:ledger_dir`. It runs the preflight (refusing the run if the kit is
-   incomplete, a type is exposed to logged-out callers, or personas can't
-   be cleaned up), then records every scenario twice from a fresh seed
+   incomplete, a type is exposed to logged-out callers without an owner
+   waiver, or personas can't be cleaned up), then records every scenario twice from a fresh seed
    each time. A seed field that must be empty (`null`, e.g. a field with
    a default that a scenario needs empty) is cleared after the record is
    created, since Bubble stores the default on creation; the clear is

@@ -12,6 +12,7 @@ defmodule BubbleEx.Verify.ReplayTest do
     Client,
     CredentialScan,
     Differential,
+    ExposureWaiver,
     Kit,
     Ledger,
     Names,
@@ -1681,6 +1682,574 @@ defmodule BubbleEx.Verify.ReplayTest do
     test "pointers are escaped" do
       assert Differential.diff(%{"a/b" => 1, "c~" => 1}, %{"a/b" => 2, "c~" => 2}, "") ==
                ["/a~1b", "/c~0"]
+    end
+  end
+
+  # --- owner exposure waiver ----------------------------------------------------------------
+
+  # A waiver lives in an owner-only directory outside any git checkout:
+  # under the system temp dir here (never the repository).
+  defp waiver_dir do
+    base = Path.join(System.tmp_dir!(), "replay-waiver-#{System.unique_integer([:positive])}")
+    dir = Path.join(base, "waivers")
+    File.mkdir_p!(dir)
+    File.chmod!(base, 0o700)
+    File.chmod!(dir, 0o700)
+    on_exit(fn -> File.rm_rf!(base) end)
+    dir
+  end
+
+  defp iso(dt), do: DateTime.to_iso8601(dt)
+
+  defp waiver_doc(overrides \\ %{}) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Map.merge(
+      %{
+        "format" => "bubble_ex.verify.replay_exposure_waiver",
+        "version" => 1,
+        "app" => "acme",
+        "branch" => "wtfreplay",
+        "branch_id" => @branch_id,
+        "host" => "acme.bubbleapps.io",
+        "types" => %{"user" => "user"},
+        "issued_at" => iso(DateTime.add(now, -60)),
+        "expires_at" => iso(DateTime.add(now, 3600)),
+        "approved_by" => "Test Owner (owner of acme)",
+        "approval_reference" =>
+          ~s(2026-01-01, chat: "You may expose User anonymously on wtfreplay for this run")
+      },
+      overrides
+    )
+  end
+
+  defp write_waiver(dir, doc, name \\ "run.json") do
+    path = Path.join(dir, name)
+    File.write!(path, if(is_binary(doc), do: doc, else: Jason.encode!(doc)))
+    File.chmod!(path, 0o600)
+    path
+  end
+
+  defp load!(overrides \\ %{}) do
+    path = write_waiver(waiver_dir(), waiver_doc(overrides))
+    {:ok, waiver} = ExposureWaiver.load_waiver(path)
+    {waiver, path}
+  end
+
+  defp sha(path), do: :sha256 |> :crypto.hash(File.read!(path)) |> Base.encode16(case: :lower)
+
+  # User visible to logged-out callers, with an owner user holding an email.
+  defp exposed_user_fake(opts \\ []) do
+    start_fake(
+      [
+        user_anonymous: true,
+        owner_records: [%{type: "user", fields: %{"email" => "owner@example.test"}}]
+      ] ++ opts
+    )
+  end
+
+  defp reason({:error, %Error{context: %{reason: reason}}}), do: reason
+  defp reason(other), do: other
+
+  defp anonymous_check(checks, type),
+    do: Enum.find(checks, &(&1[:check] == :anonymous_exposure and &1.type == type))
+
+  describe "owner exposure waiver" do
+    test "fail-closed by default; a loaded waiver passes only its types' findings and keeps them" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+
+      fake = exposed_user_fake()
+
+      assert {:error, %Error{context: %{preflight: checks}}} =
+               record(client(), seed, scenarios)
+
+      assert %{status: :exposed, extra_fields: ["email"]} = anonymous_check(checks, "user")
+      assert %{status: :missing} = Enum.find(checks, &(&1[:check] == :persona_cleanup))
+      assert read_only?(fake)
+
+      {waiver, path} = load!()
+      fake = exposed_user_fake()
+      [owner_id] = Map.keys(FakeBubble.records(fake))
+
+      assert {:ok, result} = record(client(), seed, scenarios, exposure_waiver: waiver)
+
+      # The actual finding stays in the report, marked and warned.
+      checks = result.report.preflight.checks
+
+      assert %{
+               status: :exposed,
+               probe_status: :answered,
+               extra_fields: ["email"],
+               records: 1,
+               waived: true,
+               warning: warning
+             } = anonymous_check(checks, "user")
+
+      assert warning =~ "OWNER-WAIVED ANONYMOUS EXPOSURE"
+      assert %{type: "user", warning: warning} in result.report.preflight.warnings
+      assert %{status: :ok} = Enum.find(checks, &(&1[:check] == :persona_cleanup))
+      refute Map.has_key?(anonymous_check(checks, "custom.task"), :waived)
+
+      # The waiver file's hash is in the report and every ledger journal.
+      digest = sha(path)
+      assert %{sha256: ^digest, types: %{"user" => "user"}} = result.report.exposure_waiver
+      assert result.report.preflight.exposure_waiver.sha256 == digest
+      refute inspect(result.report) =~ path
+
+      for ledger <- result.ledgers do
+        assert ledger.exposure_waiver_sha256 == digest
+        assert {:ok, %Ledger{exposure_waiver_sha256: ^digest}} = Ledger.load(ledger.path)
+        assert %{"exposure_waiver_sha256" => ^digest} = Ledger.to_map(ledger)
+      end
+
+      assert [%Recording{complete: true}] = result.recordings
+      assert result.report.leftovers == []
+      assert Map.keys(FakeBubble.records(fake)) == [owner_id]
+    end
+
+    test "only :exposed and :may_leak of listed types can be waived" do
+      only_ids = %{"workspace" => %{"fields" => [%{"key" => "Name"}, %{"key" => "_id"}]}}
+      types = ~w(custom.workspace user)
+
+      # A waiver for Task does not cover User.
+      exposed_user_fake()
+      {waiver, _} = load!(%{"types" => %{"custom.task" => "task"}})
+
+      assert {:ok, report} =
+               Kit.preflight(client(), %Kit{}, ~w(custom.task user), exposure_waiver: waiver)
+
+      refute report.ok?
+      refute Map.has_key?(anonymous_check(report.checks, "user"), :waived)
+
+      # :may_leak is waivable and keeps its possible field names.
+      start_fake(owner_records: [%{type: "workspace", fields: %{}}], meta_types: only_ids)
+      {waiver, _} = load!(%{"types" => %{"custom.workspace" => "workspace"}})
+
+      assert {:ok, report} =
+               Kit.preflight(client(), %Kit{}, types, exposure_waiver: waiver)
+
+      assert %{status: :may_leak, possible_fields: ["Name"], waived: true} =
+               anonymous_check(report.checks, "custom.workspace")
+
+      # :unproven (no record answered) is not: allow_unproven stays the only way.
+      start_fake()
+      {waiver, _} = load!(%{"types" => %{"custom.workspace" => "workspace"}})
+
+      assert {:ok, report} =
+               Kit.preflight(client(), %Kit{}, types, exposure_waiver: waiver)
+
+      refute report.ok?
+      assert %{status: :unproven} = check = anonymous_check(report.checks, "custom.workspace")
+      refute Map.has_key?(check, :waived)
+
+      # A type the Data API does not expose stays :missing.
+      start_fake(exposed: ~w(task))
+      {waiver, _} = load!()
+
+      assert {:ok, report} = Kit.preflight(client(), %Kit{}, ~w(user), exposure_waiver: waiver)
+      refute report.ok?
+      assert %{status: :missing} = Enum.find(report.checks, &(&1[:check] == :data_api))
+      refute anonymous_check(report.checks, "user")
+    end
+
+    test "cannot be forged in memory; the file is the only authority" do
+      refute Enum.any?(
+               ExposureWaiver.__info__(:functions),
+               fn {name, _} -> name in [:new, :build, :from_map, :accept, :owner_accepted] end
+             )
+
+      {waiver, path} = load!()
+      fake = exposed_user_fake()
+      c = client(verified: false)
+      types = ~w(user)
+
+      forged = [
+        # Built in code, pointing nowhere.
+        struct!(ExposureWaiver, Map.from_struct(%{waiver | path: path <> ".missing"})),
+        # A loaded waiver widened in memory.
+        %{waiver | types: Map.put(waiver.types, "custom.task", "task")},
+        %{waiver | expires_at: DateTime.add(waiver.expires_at, 86_400)},
+        %{waiver | branch_id: "9zz9z"},
+        %{waiver | sha256: String.duplicate("0", 64)},
+        # Not a waiver at all.
+        Map.from_struct(waiver),
+        %{owner_accepted: true, types: ["user"]},
+        true
+      ]
+
+      for bad <- forged do
+        assert reason(Kit.preflight(c, %Kit{}, types, exposure_waiver: bad)) in [
+                 :exposure_waiver_changed,
+                 :exposure_waiver_unreadable
+               ],
+               inspect(bad)
+
+        assert {:error, %Error{}} =
+                 Recorder.plan(client(), seed(), [privacy_scenario(seed(), "alice")],
+                   exposure_waiver: bad
+                 )
+      end
+
+      # Refused before any request (the marker check included).
+      assert FakeBubble.log(fake) == []
+    end
+
+    test "the file must be 0600 in a 0700 directory, owned by this user, outside git" do
+      dir = waiver_dir()
+      path = write_waiver(dir, waiver_doc())
+      assert {:ok, _} = ExposureWaiver.load_waiver(path)
+
+      File.chmod!(path, 0o644)
+      assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_not_private
+      File.chmod!(path, 0o400)
+      assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_not_private
+      File.chmod!(path, 0o600)
+
+      File.chmod!(dir, 0o750)
+      assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_not_private
+      File.chmod!(dir, 0o700)
+
+      # A symlink to a private file is not the file.
+      link = Path.join(dir, "link.json")
+      File.ln_s!(path, link)
+      assert reason(ExposureWaiver.load_waiver(link)) == :exposure_waiver_not_private
+
+      # Owned by another user.
+      {:ok, dir_stat} = File.lstat(dir)
+      {:ok, file_stat} = File.lstat(path)
+      assert ExposureWaiver.private_stat?(dir_stat, file_stat, file_stat.uid)
+      refute ExposureWaiver.private_stat?(dir_stat, file_stat, file_stat.uid + 1)
+
+      refute ExposureWaiver.private_stat?(
+               dir_stat,
+               %{file_stat | uid: file_stat.uid + 1},
+               file_stat.uid
+             )
+
+      refute ExposureWaiver.private_stat?(
+               %{dir_stat | uid: dir_stat.uid + 1},
+               file_stat,
+               dir_stat.uid
+             )
+
+      # A hard link: two names for one file.
+      File.ln!(path, Path.join(dir, "hard.json"))
+      assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_not_private
+      File.rm!(Path.join(dir, "hard.json"))
+      assert {:ok, _} = ExposureWaiver.load_waiver(path)
+
+      # Inside a git checkout (never committed).
+      repo = Path.dirname(dir)
+      File.mkdir_p!(Path.join(repo, ".git"))
+      assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_in_repository
+      File.rm_rf!(Path.join(repo, ".git"))
+
+      # Reached through a symlink into a checkout's subdirectory: the real
+      # path is walked, so the checkout's .git is found.
+      checkout = Path.join(repo, "checkout")
+      inner = Path.join([checkout, "sub", "waivers"])
+      File.mkdir_p!(Path.join(checkout, ".git"))
+      File.mkdir_p!(inner)
+      File.chmod!(inner, 0o700)
+      write_waiver(inner, waiver_doc())
+      File.ln_s!(Path.join(checkout, "sub"), Path.join(repo, "outside"))
+      via_link = Path.join([repo, "outside", "waivers", "run.json"])
+      assert {:ok, real} = ExposureWaiver.real_path(Path.dirname(via_link))
+      assert real == inner
+      assert reason(ExposureWaiver.load_waiver(via_link)) == :exposure_waiver_in_repository
+
+      # The file read must be the file checked (inode, size, mtime).
+      {:ok, before} = File.lstat(path, time: :posix)
+      bytes = File.read!(path)
+      assert ExposureWaiver.stable?(before, before, bytes)
+      refute ExposureWaiver.stable?(before, %{before | inode: before.inode + 1}, bytes)
+      refute ExposureWaiver.stable?(before, %{before | mtime: before.mtime + 1}, bytes)
+      refute ExposureWaiver.stable?(before, %{before | size: before.size + 1}, bytes)
+      refute ExposureWaiver.stable?(before, before, bytes <> " ")
+
+      # Relative, unnormalized, missing.
+      assert reason(ExposureWaiver.load_waiver("waivers/run.json")) == :exposure_waiver_malformed
+
+      assert reason(ExposureWaiver.load_waiver(Path.join([dir, "..", "waivers", "run.json"]))) ==
+               :exposure_waiver_malformed
+
+      assert reason(ExposureWaiver.load_waiver(Path.join(dir, "none.json"))) ==
+               :exposure_waiver_unreadable
+    end
+
+    test "the file must be exact: owner statement, dated reference, UTC window of at most 24h" do
+      dir = waiver_dir()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      load = fn doc -> reason(ExposureWaiver.load_waiver(write_waiver(dir, doc))) end
+
+      for overrides <- [
+            %{"approved_by" => ""},
+            %{"approved_by" => nil},
+            %{"approval_reference" => "the owner said yes, trust me"},
+            %{"format" => "something_else"},
+            %{"version" => 2},
+            %{"extra" => true},
+            %{"types" => %{}},
+            %{"types" => ["user"]},
+            %{"types" => %{"*" => "user"}},
+            %{"types" => %{"user" => "*"}},
+            %{"types" => %{"custom.*" => "task"}},
+            %{"branch" => "live"},
+            %{"branch" => "test"},
+            %{"branch" => "main"},
+            %{"branch_id" => "live"},
+            %{"branch_id" => "test"},
+            %{"app" => "acme.bubbleapps.io"},
+            %{"host" => "other.bubbleapps.io"},
+            %{"expires_at" => "2026-01-01T09:00:00+02:00"},
+            %{"expires_at" => "tomorrow"}
+          ] do
+        assert load.(waiver_doc(overrides)) == :exposure_waiver_malformed, inspect(overrides)
+      end
+
+      assert load.(Map.delete(waiver_doc(), "approval_reference")) == :exposure_waiver_malformed
+
+      # Duplicate keys (last-wins parsers would hide the first).
+      dup =
+        waiver_doc()
+        |> Jason.encode!()
+        |> String.replace(~s("types":), ~s("types":{"user":"user"},"types":))
+
+      assert load.(dup) == :exposure_waiver_malformed
+
+      for {issued, expires} <- [{0, 86_401}, {-3600, 86_000}, {3600, 60}] do
+        doc =
+          waiver_doc(%{
+            "issued_at" => iso(DateTime.add(now, issued)),
+            "expires_at" => iso(DateTime.add(now, expires))
+          })
+
+        assert load.(doc) == :exposure_waiver_window
+      end
+
+      assert {:ok, _} =
+               ExposureWaiver.load_waiver(
+                 write_waiver(
+                   dir,
+                   waiver_doc(%{
+                     "issued_at" => iso(now),
+                     "expires_at" => iso(DateTime.add(now, 86_400))
+                   })
+                 )
+               )
+    end
+
+    test "the scope must equal the target, types and Data API paths exactly" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+
+      for overrides <- [
+            %{"app" => "acme-2", "host" => "acme-2.bubbleapps.io"},
+            %{"branch" => "wtfreplay2"},
+            %{"branch_id" => "5k2xq"},
+            %{"host" => "app.example.test"},
+            %{"types" => %{"user" => "users"}},
+            %{"types" => %{"custom.task" => "tasks"}},
+            %{"types" => %{"user" => "user", "custom.project" => "project"}},
+            %{"types" => %{"custom.user" => "user"}}
+          ] do
+        fake = exposed_user_fake()
+        {waiver, _} = load!(overrides)
+
+        assert reason(Recorder.plan(client(), seed, scenarios, exposure_waiver: waiver)) ==
+                 :exposure_waiver_scope_mismatch,
+               inspect(overrides)
+
+        assert reason(Kit.preflight(client(), %Kit{}, ~w(user), exposure_waiver: waiver)) ==
+                 :exposure_waiver_scope_mismatch
+
+        assert FakeBubble.log(fake) == []
+      end
+
+      # A custom host is in scope only when the target has it.
+      exposed_user_fake(host: "app.example.test")
+      {waiver, _} = load!(%{"host" => "app.example.test"})
+      c = client(target: [host: "app.example.test"])
+      assert {:ok, %{ok?: true}} = Kit.preflight(c, %Kit{}, ~w(user), exposure_waiver: waiver)
+    end
+
+    test "expiry: refused before the run, and a run stops cleanly when it expires mid-run" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice"), privacy_scenario(seed, "bob")]
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      fake = exposed_user_fake()
+
+      {expired, _} =
+        load!(%{
+          "issued_at" => iso(DateTime.add(now, -7200)),
+          "expires_at" => iso(DateTime.add(now, -3600))
+        })
+
+      assert reason(Recorder.plan(client(), seed, scenarios, exposure_waiver: expired)) ==
+               :exposure_waiver_expired
+
+      # A clock in the past cannot revive it.
+      past = fn -> DateTime.add(now, -5400) end
+
+      assert reason(Recorder.plan(client(), seed, scenarios, exposure_waiver: expired, now: past)) ==
+               :exposure_waiver_expired
+
+      {future, _} =
+        load!(%{
+          "issued_at" => iso(DateTime.add(now, 600)),
+          "expires_at" => iso(DateTime.add(now, 3600))
+        })
+
+      assert reason(Recorder.plan(client(), seed, scenarios, exposure_waiver: future)) ==
+               :exposure_waiver_not_yet_valid
+
+      assert FakeBubble.log(fake) == []
+
+      # Valid at the preflight; the clock passes expiry once run 1 is seeded.
+      fake = exposed_user_fake()
+      [owner_id] = Map.keys(FakeBubble.records(fake))
+      {waiver, _} = load!()
+
+      clock = fn ->
+        if Process.get(:waiver_jump),
+          do: DateTime.add(DateTime.utc_now(), 7200),
+          else: DateTime.utc_now()
+      end
+
+      progress = fn
+        {:seeded, _} -> Process.put(:waiver_jump, true)
+        _ -> :ok
+      end
+
+      assert {:ok, result} =
+               record(client(), seed, scenarios,
+                 exposure_waiver: waiver,
+                 now: clock,
+                 progress: progress
+               )
+
+      # One run only, stopped before its first scenario, cleaned up.
+      assert [%{error: %{reason: :exposure_waiver_expired}, uncleared: %{}}] = result.report.runs
+      assert result.recordings == [] or Enum.all?(result.recordings, &(not &1.complete))
+
+      assert Enum.sort(result.report.incomplete) ==
+               Enum.sort(for s <- scenarios, do: %{scenario: s.id, why: :exposure_waiver_expired})
+
+      assert result.report.leftovers == []
+      assert Map.keys(FakeBubble.records(fake)) == [owner_id]
+
+      refute Enum.any?(
+               FakeBubble.log(fake),
+               &(&1.method == "GET" and &1.path =~ "/obj/task/" and &1.auth != nil and
+                   &1.auth != "Bearer " <> @admin)
+             )
+    end
+
+    test "editing or deleting the file mid-run revokes it; cleanup still runs" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+
+      for revoke <- [
+            fn path -> File.write!(path, File.read!(path) <> " ") end,
+            &File.rm!/1
+          ] do
+        fake = exposed_user_fake()
+        [owner_id] = Map.keys(FakeBubble.records(fake))
+        {waiver, path} = load!()
+
+        progress = fn
+          {:seeded, _} -> revoke.(path)
+          _ -> :ok
+        end
+
+        assert {:ok, result} =
+                 record(client(), seed, scenarios, exposure_waiver: waiver, progress: progress)
+
+        assert [%{error: %{reason: why}}] = result.report.runs
+        assert why in [:exposure_waiver_changed, :exposure_waiver_unreadable]
+        assert result.report.leftovers == []
+        assert Map.keys(FakeBubble.records(fake)) == [owner_id]
+      end
+    end
+
+    test "the waiver file's hash is bound into the dry-run hash" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+      exposed_user_fake()
+
+      dir = waiver_dir()
+      doc = waiver_doc()
+      {:ok, a} = ExposureWaiver.load_waiver(write_waiver(dir, doc, "a.json"))
+
+      {:ok, b} =
+        ExposureWaiver.load_waiver(
+          write_waiver(dir, Map.put(doc, "approved_by", "Another Owner"), "b.json")
+        )
+
+      {:ok, same} = ExposureWaiver.load_waiver(write_waiver(dir, doc, "c.json"))
+
+      {:ok, none} = Recorder.plan(client(), seed, scenarios, @anonymous)
+      {:ok, plan_a} = Recorder.plan(client(), seed, scenarios, [exposure_waiver: a] ++ @anonymous)
+      {:ok, plan_b} = Recorder.plan(client(), seed, scenarios, [exposure_waiver: b] ++ @anonymous)
+
+      {:ok, plan_same} =
+        Recorder.plan(client(), seed, scenarios, [exposure_waiver: same] ++ @anonymous)
+
+      assert length(Enum.uniq([none.sha256, plan_a.sha256, plan_b.sha256])) == 3
+      assert plan_same.sha256 == plan_a.sha256
+
+      opts = [run_id: "h1", ledger_dir: dir()] ++ @anonymous
+
+      for {waiver, confirmed} <- [{b, plan_a}, {nil, plan_a}, {a, none}] do
+        fake = exposed_user_fake()
+
+        assert reason(
+                 Recorder.record(
+                   client(),
+                   seed,
+                   scenarios,
+                   [plan_sha256: confirmed.sha256, exposure_waiver: waiver] ++ opts
+                 )
+               ) == :plan_not_confirmed
+
+        assert FakeBubble.log(fake) == []
+      end
+    end
+
+    test "the admin token never appears in a waived run's report or ledgers" do
+      seed = seed()
+      exposed_user_fake()
+      {waiver, _} = load!()
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], exposure_waiver: waiver)
+
+      refute inspect(result.report, limit: :infinity, printable_limit: :infinity) =~ @admin
+      assert result.report.exposure_waiver.sha256 == waiver.sha256
+
+      for ledger <- result.ledgers do
+        refute inspect(ledger, limit: :infinity, printable_limit: :infinity) =~ @admin
+        refute ledger |> Ledger.to_map() |> Jason.encode!() =~ @admin
+        refute File.read!(ledger.path) =~ @admin
+        assert {:ok, _} = Ledger.to_json(ledger, [@admin])
+      end
+    end
+
+    test "target verification still runs, tokenless, before any token is sent" do
+      seed = seed()
+      scenarios = [privacy_scenario(seed, "alice")]
+      {waiver, _} = load!()
+
+      fake = exposed_user_fake(marker_nonce: "another-nonce-0123456789")
+
+      assert {:error, %Error{context: %{reason: :unverified_target, step: :marker}}} =
+               record(client(verified: false), seed, scenarios, exposure_waiver: waiver)
+
+      assert FakeBubble.log(fake) != []
+      assert Enum.all?(FakeBubble.log(fake), &(&1.auth == nil))
+      refute Enum.any?(FakeBubble.log(fake), &(&1.path =~ "/obj/"))
     end
   end
 end
