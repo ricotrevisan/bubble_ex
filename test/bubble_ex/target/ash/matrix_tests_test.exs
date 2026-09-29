@@ -318,6 +318,7 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
                  now: @now,
                  app: "fixture-app",
                  recording: bubble,
+                 seed: matrix.seed,
                  differences: matrix.differences
                )
     end

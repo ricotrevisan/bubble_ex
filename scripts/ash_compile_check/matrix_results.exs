@@ -84,9 +84,10 @@ failures =
 
       IO.puts(
         "privacy matrix #{name}: stricter than Bubble by design (#{Enum.join(Difference.flags(), ", ")}): " <>
-          "#{length(intended)} differences in " <>
+          "#{length(intended)} diff entries (record, field or record-set differences; " <>
+          "#{length(plan.differences)} matrix observations) in " <>
           "#{intended |> Enum.map(& &1.result) |> Enum.uniq() |> length()} scenarios, " <>
-          "#{map_size(by_rule)} rules"
+          "#{map_size(by_rule)} (type, rule) pairs; per rule: diff entries"
       )
 
       # A private export's type and rule IDs are not printed (CI logs).

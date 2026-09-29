@@ -18,8 +18,8 @@ defmodule BubbleEx.Verify.Difference do
   `actor_empty_denies`. Bubble treats an empty value on the user's side
   (a logged-out user, or a user without the value a condition reads) as
   equal to an empty record value, so a condition such as `Current User's
-  workspace = This Thing's workspace` grants a logged-out user access to
-  a record with no workspace. The owner decided (2026-09-29) that the
+  team = This Thing's team` grants a logged-out user access to
+  a record with no team. The owner decided (2026-09-29) that the
   generated policies keep denying there.
 
   A difference is **intended** only when it is stricter (the target shows
@@ -277,15 +277,28 @@ defmodule BubbleEx.Verify.Difference do
   record the case hides or shows fewer fields of, a field the case hides,
   records the case drops from the search. Comparisons against Bubble
   recordings see both sides through the Data API (`BubbleEx.Verify.DataApi`),
-  where a record left with no held field answers ID-only, so a
-  `record_visible` entry may stem from a case on the record's fields.
+  where a record left with no held field answers ID-only: with `held`
+  (`DataApi.held_map/1`), a `record_visible` entry may stem from a case on
+  the record's fields when the target shows none of its held fields.
+  Without `held` it may not. An entry whose `actual` is missing (the op
+  never ran) is never an intended difference.
   """
-  @spec explaining([t()], map()) :: t() | nil
-  def explaining(cases, entry), do: Enum.find(cases, &explains?(&1, entry))
+  @spec explaining([t()], map(), %{String.t() => [String.t()]} | nil) :: t() | nil
+  def explaining(cases, entry, held \\ nil),
+    do: Enum.find(cases, &explains?(&1, entry, held))
 
-  defp explains?(%{kind: kind} = c, %{op: "record_visible"} = e)
-       when kind in [:visible, :visible_fields],
-       do: c.record == e[:record] and e[:expected] == true and e[:actual] in [false, nil]
+  defp explains?(%{kind: :visible} = c, %{op: "record_visible"} = e, _held),
+    do:
+      c.record == e[:record] and e[:expected] == true and e[:actual] == false and
+        c.target == false
+
+  defp explains?(%{kind: :visible_fields} = c, %{op: "record_visible"} = e, held)
+       when is_map(held) do
+    shown = c.target -- (c.target -- Map.get(held, c.record, DataApi.always_held()))
+    c.record == e[:record] and e[:expected] == true and e[:actual] == false and shown == []
+  end
+
+  defp explains?(c, e, _held), do: explains?(c, e)
 
   defp explains?(%{kind: :visible} = c, %{op: "field_visible"} = e),
     do:

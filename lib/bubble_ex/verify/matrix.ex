@@ -38,7 +38,12 @@ defmodule BubbleEx.Verify.Matrix do
      coverage: dropping or negating the rule changes a recorded verdict),
      and records whose verdict depends on each assumption flag, so V5 has
      something to calibrate (up to three per type for the flags
-     calibration has not settled, `Assumptions.unsettled/0`).
+     calibration has not settled, `Assumptions.unsettled/0`). Then every
+     field a rule's permissions govern (listed, or all under "view all")
+     that no condition reads and that has no default gets a synthetic
+     value where a record leaves it empty, because the Data API omits
+     empty fields: an empty governed field is a visibility no Bubble
+     recording can check (`report.governed_fields` counts what is left).
   5. **Scenarios**, one per (type, persona): a `search` of the type and a
      `get` of each of its records, observing `record_set`, `visible` and
      `visible_fields`. An op whose verdict an unsupported rule could
@@ -157,6 +162,7 @@ defmodule BubbleEx.Verify.Matrix do
         |> witnesses(interpreter, types, personas)
         |> then(&Coverage.isolate(interpreter, &1, personas))
         |> then(&Coverage.exercise_flags(interpreter, &1, personas))
+        |> fill_governed(interpreter, personas)
 
       rules = coverage(interpreter, ds, personas)
       observability = Coverage.observability(interpreter, ds, personas, rules)
@@ -200,6 +206,134 @@ defmodule BubbleEx.Verify.Matrix do
 
   defp empty_record(type_id, ds),
     do: Dataset.put(ds, "e.#{Personas.slug(type_id)}", type_id, %{})
+
+  # --- governed fields ---------------------------------------------------------------
+
+  # Fills the empty governed fields no condition reads (so no verdict
+  # changes) with synthetic scalar values: the Data API shows only fields
+  # that hold a value.
+  # Persona users keep exactly the values their persona defines.
+  defp fill_governed(ds, interpreter, personas) do
+    users = personas |> Map.values() |> MapSet.new()
+    read = condition_fields(interpreter)
+
+    for {key, %{type: type_id, fields: fields}} <- Enum.sort(ds.records),
+        not MapSet.member?(users, key),
+        %{status: :rules} = info <- [Interpreter.type(interpreter, type_id)],
+        field <- governed(info),
+        not Map.has_key?(fields, field),
+        unfilled(interpreter, read, type_id, field) == nil,
+        {:ok, value} <- [synthetic(interpreter.model, type_id, field)],
+        reduce: ds,
+        do: (ds -> Dataset.set(ds, key, field, value))
+  end
+
+  # Why an empty governed field is left empty, or nil.
+  defp unfilled(interpreter, read, type_id, field) do
+    cond do
+      MapSet.member?(read, field) -> :condition_reads
+      Map.has_key?(Map.get(interpreter.defaults, type_id, %{}), field) -> :default
+      synthetic(interpreter.model, type_id, field) == :none -> :no_synthetic_value
+      true -> nil
+    end
+  end
+
+  # Non-built-in fields some rule (or the everyone rule) lets someone view.
+  defp governed(info) do
+    builtin = for %{id: id, builtin: true} <- info.fields, into: MapSet.new(), do: id
+    rules = Enum.map(info.rules, & &1.rule) ++ List.wrap(info.default)
+
+    rules
+    |> Enum.flat_map(fn
+      %{permissions: %{view_all: true}} ->
+        MapSet.to_list(info.field_ids)
+
+      %{permissions: %{} = p} ->
+        Enum.filter(p.view_fields || [], &MapSet.member?(info.field_ids, &1))
+
+      _ ->
+        []
+    end)
+    |> Enum.uniq()
+    |> Enum.reject(&MapSet.member?(builtin, &1))
+    |> Enum.sort()
+  end
+
+  # Every field ID a supported condition reads, on any type.
+  defp condition_fields(interpreter) do
+    for {_, %{rules: rules}} <- interpreter.types,
+        %{ir: %IR{} = ir} <- rules,
+        field <- ir_fields(ir),
+        into: MapSet.new(),
+        do: field
+  end
+
+  defp ir_fields(%IR{op: :field, args: [base, _type, field]}) when is_binary(field),
+    do: [field | ir_fields(base)]
+
+  defp ir_fields(%IR{args: args}), do: Enum.flat_map(args, &ir_fields/1)
+  defp ir_fields(_), do: []
+
+  defp synthetic(model, type_id, field) do
+    with {:ok, %{type: %Type{} = type}} <- Model.field(model, type_id, field),
+         {:ok, v} <- synthetic_value(model, type) do
+      {:ok, if(type.cardinality == :many, do: {:list, [v]}, else: v)}
+    else
+      _ -> :none
+    end
+  end
+
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :text}), do: {:ok, {:text, "sample"}}
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :number}), do: {:ok, {:number, 1.0}}
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :boolean}), do: {:ok, {:boolean, true}}
+
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :date}),
+    do: {:ok, {:date, 1_759_363_200_000}}
+
+  defp synthetic_value(model, %Type{kind: :option, target: set}) do
+    keys =
+      case Model.option_set(model, set) do
+        %{values: values} -> for v <- values, not v.deleted, is_binary(v.key), do: v.key
+        _ -> []
+      end
+
+    case keys do
+      [key | _] -> {:ok, {:option, key}}
+      [] -> :none
+    end
+  end
+
+  defp synthetic_value(_model, _type), do: :none
+
+  # Governed field slots of the seed's records, how many hold a value,
+  # and why the others are empty.
+  defp governed_report(seed, interpreter) do
+    read = condition_fields(interpreter)
+    users = seed.personas |> Map.values() |> Enum.map(& &1.user) |> MapSet.new()
+
+    slots =
+      for r <- seed.records,
+          type_id = Dataset.type_id(r.type),
+          %{status: :rules} = info <- [Interpreter.type(interpreter, type_id)],
+          field <- governed(info) do
+        cond do
+          r.fields[field] not in [nil, {:text, ""}, {:list, []}] -> :held
+          Map.has_key?(r.fields, field) -> :explicitly_empty
+          MapSet.member?(users, r.key) -> :persona
+          true -> unfilled(interpreter, read, type_id, field) || :other
+        end
+      end
+
+    unchecked = Enum.reject(slots, &(&1 == :held))
+
+    %{
+      slots: length(slots),
+      held: length(slots) - length(unchecked),
+      unchecked: length(unchecked),
+      unchecked_by_reason:
+        unchecked |> Enum.frequencies() |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+    }
+  end
 
   # --- witnesses --------------------------------------------------------------------
 
@@ -857,6 +991,13 @@ defmodule BubbleEx.Verify.Matrix do
       recorded verdict of: `unsolved`, `grants_nothing`, `masked`,
       `undecided_type`
     * `seed_values_from_condition_literals`, `oracle_scope`
+    * `governed_fields` - field slots (record x non-built-in field some
+      rule lets someone view) in the seed: `slots`, `held` (non-empty) and
+      `unchecked` (empty, so a Bubble recording cannot show whether they
+      are visible: the Data API omits empty fields), by reason
+      (`condition_reads`: a witness may need it empty; `default`,
+      `explicitly_empty`, `persona`, `no_synthetic_value`: a reference,
+      file or other value the matrix does not invent)
     * `unsolved` - `%{type, rule, reason, detail}` per unsolved rule
       (Bubble IDs); `unsolved_by_reason` counts them
     * `types` - `total`, `with_rules`, `public`, `deleted`, `unavailable`
@@ -921,6 +1062,7 @@ defmodule BubbleEx.Verify.Matrix do
       seed_values_from_condition_literals: literal_values(matrix.seed, interpreter),
       defaults: defaults_report(matrix.seed, interpreter),
       explicit_empties: explicit_empties(matrix.seed),
+      governed_fields: governed_report(matrix.seed, interpreter),
       oracle_scope:
         "model: expectations from the interpreter over the shared expression compiler's IR; " <>
           "agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, " <>
@@ -1128,7 +1270,7 @@ defmodule BubbleEx.Verify.Matrix do
 
       actual = observations |> view.() |> Map.new(&{Observation.key(&1), &1.value})
 
-      {status, diff} = compare(expected, target, actual, cases)
+      {status, diff} = compare(expected, target, actual, cases, held)
       sha = Recording.sha256(recording)
 
       BubbleEx.Verify.Result.new(
@@ -1187,7 +1329,7 @@ defmodule BubbleEx.Verify.Matrix do
     end
   end
 
-  defp compare(expected, target, actual, cases) do
+  defp compare(expected, target, actual, cases, held) do
     against = fn observations ->
       Enum.flat_map(observations, &diff(&1, Map.get(actual, Observation.key(&1), :missing)))
     end
@@ -1198,7 +1340,9 @@ defmodule BubbleEx.Verify.Matrix do
 
       {[], diff} ->
         annotated =
-          for e <- diff, c = Difference.explaining(cases, e), do: Difference.annotate(e, c)
+          for e <- diff,
+              c = Difference.explaining(cases, e, held),
+              do: Difference.annotate(e, c)
 
         if length(annotated) == length(diff),
           do: {:intended_difference, annotated},

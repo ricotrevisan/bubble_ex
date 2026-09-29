@@ -86,6 +86,17 @@
     "types": 28,
     "unintended": 0
   },
+  "governed_fields": {
+    "held": 2646,
+    "slots": 4004,
+    "unchecked": 1358,
+    "unchecked_by_reason": {
+      "condition_reads": 135,
+      "explicitly_empty": 11,
+      "no_synthetic_value": 1120,
+      "persona": 92
+    }
+  },
   "observations": 2850,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,

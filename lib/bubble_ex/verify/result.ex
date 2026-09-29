@@ -573,7 +573,7 @@ defmodule BubbleEx.Verify.Result do
   defp intended_entry?(%{intended: [_ | _]} = e) do
     case e.op do
       op when op in ["record_visible", "field_visible"] ->
-        e[:expected] == true and e[:actual] in [false, nil]
+        e[:expected] == true and e[:actual] == false
 
       "record_set" ->
         is_list(e[:expected]) and is_list(e[:actual]) and e[:actual] -- e[:expected] == [] and
@@ -780,12 +780,17 @@ defmodule BubbleEx.Verify.Result do
       (`check_recording/2`)
     * `:export_sha256` - the SHA-256 of the export an `export` oracle cites,
       computed by the caller from the export it loaded
+    * `:seed` - the scenario's seed: with a `bubble` recording, the
+      intended differences are checked through the Data API's view (a
+      record whose target shows no held field answers ID-only)
     * `:differences` - the difference record (`BubbleEx.Verify.Difference`
       cases, e.g. `matrix.differences` or the decoded owner-repo file) an
       `intended_difference` result is checked against: every diff entry
       must be explained by a case of the result's scenario
-      (`Difference.explaining/2`) with the same flags. Without it, or with
-      an entry it does not explain, the result is `:invalid_input`
+      (`Difference.explaining/3`) with the same flags, and with
+      `:recording`, every case the recording shows must appear in the diff
+      (a truncated diff does not pass). Without it, or with an entry it
+      does not explain, the result is `:invalid_input`
 
   Returns the result after `link_decision/2` (possibly `stale`) and:
 
@@ -812,7 +817,7 @@ defmodule BubbleEx.Verify.Result do
          :ok <- same_app(r, opts[:app]),
          {:ok, linked} <- link_decision(r, resolved),
          :ok <- maybe_recording(linked, opts[:recording]),
-         :ok <- check_intended(linked, opts[:differences]) do
+         :ok <- check_intended(linked, opts) do
       passing = counts?(linked, Keyword.get(opts, :reviewers, [])) and evidenced?(linked)
 
       {:ok,
@@ -877,19 +882,34 @@ defmodule BubbleEx.Verify.Result do
   defp same_app(r, app),
     do: Json.error("the result is for another app", %{app: r.app, expected: app})
 
-  defp check_intended(%{status: :intended_difference} = r, nil),
-    do:
-      Json.error(
-        "an intended difference is checked against the difference record: pass differences:",
-        %{result: r.id}
-      )
+  defp check_intended(%{status: :intended_difference} = r, opts) do
+    case opts[:differences] do
+      nil ->
+        Json.error(
+          "an intended difference is checked against the difference record: pass differences:",
+          %{result: r.id}
+        )
 
-  defp check_intended(%{status: :intended_difference} = r, differences) do
-    cases = Difference.for_scenario(differences, (r.scenario && r.scenario.id) || r.id)
+      differences ->
+        cases = Difference.for_scenario(differences, (r.scenario && r.scenario.id) || r.id)
+        held = held(opts[:recording], opts[:seed])
 
+        with :ok <- intended_listed(r, cases, held),
+             do: intended_complete(r, cases, opts[:recording], held)
+    end
+  end
+
+  defp check_intended(_r, _opts), do: :ok
+
+  defp held(%Recording{oracle: :bubble}, %BubbleEx.Verify.Seed{} = seed),
+    do: BubbleEx.Verify.DataApi.held_map(seed)
+
+  defp held(_recording, _seed), do: nil
+
+  defp intended_listed(r, cases, held) do
     unexplained =
       Enum.reject(r.diff, fn entry ->
-        case Difference.explaining(cases, entry) do
+        case Difference.explaining(cases, entry, held) do
           nil -> false
           c -> Enum.map(c.flags, &Atom.to_string/1) == Enum.sort(entry.intended)
         end
@@ -904,7 +924,34 @@ defmodule BubbleEx.Verify.Result do
         })
   end
 
-  defp check_intended(_r, _differences), do: :ok
+  # Every case the recording shows (applying it changes an observation)
+  # must appear in the diff: a truncated diff does not pass.
+  defp intended_complete(_r, _cases, nil, _held), do: :ok
+
+  defp intended_complete(r, cases, %Recording{} = recording, held) do
+    missing =
+      cases
+      |> Enum.group_by(&{&1.op, &1.record})
+      |> Enum.filter(fn {_, group} -> shown?(recording, group, held) end)
+      |> Enum.reject(fn {_, group} ->
+        Enum.any?(r.diff, &(Difference.explaining(group, &1, held) != nil))
+      end)
+      |> Enum.map(fn {{op, record}, _} -> %{op: op, record: record} end)
+
+    if missing == [],
+      do: :ok,
+      else:
+        Json.error("the result's diff leaves out intended differences the recording shows", %{
+          result: r.id,
+          missing: missing
+        })
+  end
+
+  defp shown?(recording, group, nil),
+    do: Difference.to_target(recording.observations, group) != recording.observations
+
+  defp shown?(recording, group, held),
+    do: Difference.to_target(recording.observations, group, held) != recording.observations
 
   defp maybe_recording(_r, nil), do: :ok
   defp maybe_recording(r, recording), do: check_recording(r, recording)

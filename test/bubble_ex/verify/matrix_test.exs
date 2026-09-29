@@ -88,6 +88,17 @@ defmodule BubbleEx.Verify.MatrixTest do
              {:ref, "u.w2_member"}
   end
 
+  test "governed fields no condition reads hold a value; the rest are counted",
+       %{policies: matrix} do
+    g = matrix.report.governed_fields
+    assert g.slots == g.held + g.unchecked
+    assert g.unchecked == g.unchecked_by_reason |> Map.values() |> Enum.sum()
+    refute Map.has_key?(g.unchecked_by_reason, "other")
+    # a board's name is governed and read by no condition
+    assert Seed.record(matrix.seed, "e.board").fields["name_text"] == {:text, "sample"}
+    assert Matrix.counts(matrix.report)["governed_fields"]["slots"] == g.slots
+  end
+
   test "documents validate and fit together", %{policies: policies, expression: expression} do
     for matrix <- [policies, expression] do
       assert {:ok, seed} = Seed.from_json(Seed.to_json(matrix.seed))
@@ -498,6 +509,87 @@ defmodule BubbleEx.Verify.MatrixTest do
       # without the differences the stricter subject fails
       assert {:ok, %Result{status: :fail}} =
                Matrix.result(scenario, recording, stricter, Keyword.delete(opts, :differences))
+    end
+
+    test "evaluate/3 with the recording refuses a diff that leaves out a recorded case",
+         %{policies: matrix} do
+      {id, _} =
+        matrix.differences
+        |> Enum.group_by(& &1.scenario, &{&1.op, &1.record})
+        |> Enum.find(fn {_, ops} -> ops |> Enum.uniq() |> length() > 1 end)
+
+      scenario = Enum.find(matrix.scenarios, &(&1.id == id))
+      recording = Enum.find(matrix.recordings, &(&1.scenario.id == id))
+      cases = Difference.for_scenario(matrix.differences, id)
+      now = ~U[2026-10-02 09:15:00Z]
+
+      {:ok, %Result{status: :intended_difference} = full} =
+        Matrix.result(scenario, recording, Difference.to_target(recording.observations, cases),
+          app: "fixture-app",
+          ran_at: now,
+          differences: matrix.differences
+        )
+
+      evaluate = [now: now, app: "fixture-app", differences: matrix.differences]
+
+      assert {:ok, %{passing: true}} =
+               Result.evaluate(full, %Resolved{}, [{:recording, recording} | evaluate])
+
+      # drop every entry of one record: still listed, but incomplete
+      dropped = hd(full.diff)[:record] || hd(full.diff)[:op]
+      kept = Enum.reject(full.diff, &((&1[:record] || &1[:op]) == dropped))
+      assert kept != []
+      {:ok, truncated} = full |> Map.from_struct() |> Map.put(:diff, kept) |> Result.new()
+
+      assert {:ok, %{passing: true}} = Result.evaluate(truncated, %Resolved{}, evaluate)
+
+      assert {:error, %{message: "the result's diff leaves out" <> _}} =
+               Result.evaluate(truncated, %Resolved{}, [{:recording, recording} | evaluate])
+    end
+
+    test "a hidden record from a fields case needs the held fields; a missing op never counts" do
+      fields = %Difference{
+        scenario: "s",
+        op: "get.r",
+        kind: :visible_fields,
+        record: "r",
+        type: "t",
+        bubble: ["Created Date", "title_text"],
+        target: ["Created Date"],
+        flags: [:actor_empty_denies]
+      }
+
+      hidden = %{op: "record_visible", record: "r", expected: true, actual: false}
+      # without the Data API's view, fewer fields never hide the record
+      assert Difference.explaining([fields], hidden) == nil
+      # the target still shows a held field: the record is not ID-only
+      assert Difference.explaining([fields], hidden, %{"r" => ["Created Date"]}) == nil
+      # no held field left: ID-only, so hidden through the Data API
+      assert Difference.explaining([%{fields | target: ["body_text"]}], hidden, %{
+               "r" => ["Created Date"]
+             })
+
+      visible = %{fields | kind: :visible, bubble: true, target: false}
+      assert Difference.explaining([visible], hidden) == visible
+      assert Difference.explaining([visible], %{hidden | actual: nil}) == nil
+
+      assert {:error, _} =
+               Result.new(
+                 id: "s",
+                 app: "fixture-app",
+                 check: "privacy_read",
+                 status: :intended_difference,
+                 scenario: %{
+                   id: "s",
+                   sha256: String.duplicate("a", 64),
+                   source_sha256: String.duplicate("b", 64),
+                   seed_sha256: String.duplicate("c", 64)
+                 },
+                 oracle: %{kind: :model, sha256: String.duplicate("d", 64)},
+                 diff: [Map.merge(%{hidden | actual: nil}, %{intended: ["actor_empty_denies"]})],
+                 actor: "ci",
+                 ran_at: ~U[2026-10-02 09:15:00Z]
+               )
     end
 
     test "an intended difference must be stricter and name the policy's flags" do

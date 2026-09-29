@@ -140,6 +140,10 @@
         "everyone": 47,
         "privacy": "unverified",
         "rules": 123,
+        "stricter_than_bubble": {
+          "rules": 87,
+          "types": 45
+        },
         "types": {
           "none": 46,
           "present": 47

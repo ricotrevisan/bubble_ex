@@ -235,9 +235,9 @@ No email reaches a real person.
   scenarios that depend on them, out of the run.
 - **An empty value on the user's side equals an empty record value.**
   A logged-out user, or a user without the value a condition reads,
-  matches a record whose value is empty too: `Current User's workspace =
-  This Thing's workspace` grants a logged-out user the records with no
-  workspace (the calibration refuted the fail-safe reading, 14 ops
+  matches a record whose value is empty too: `Current User's team =
+  This Thing's team` grants a logged-out user the records with no
+  team (the calibration refuted the fail-safe reading, 14 ops
   agreeing and 69 not). The interpreter now predicts this; the generated
   policies deliberately keep denying (see step 6).
 - The sign-up workflow's "Return data from API" of step 1's unique ID
