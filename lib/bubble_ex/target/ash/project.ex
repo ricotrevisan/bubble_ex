@@ -662,6 +662,11 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
       access is denied)
     * `compiled_rules` / `denied_rules` - rule IDs whose condition compiled,
       and those that grant nothing because it did not (or is missing)
+    * `stricter_rules` - compiled rule IDs whose condition reads the
+      current user, where the policies deny what Bubble grants when the
+      user is logged out or lacks a value the condition reads (stricter
+      than Bubble by the owner's decision, `BubbleEx.Verify.Difference`),
+      plus `"everyone"` when the `everyone` rule's reach negates them
     * `attachments` - `BubbleEx.Target.Ash.PolicyCheck`s for Bubble's "view
       attached files", which Ash cannot enforce (file fields are URLs; the
       file store must): data for the owner and later lowering only
@@ -679,6 +684,7 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     :source,
     compiled_rules: [],
     denied_rules: [],
+    stricter_rules: [],
     attachments: [],
     file_fields: [],
     data_api: %{exposed: nil, create: [], modify: [], delete: []},
@@ -689,6 +695,7 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
           source: :rules | :public_default | :unavailable,
           compiled_rules: [String.t()],
           denied_rules: [String.t()],
+          stricter_rules: [String.t()],
           attachments: [BubbleEx.Target.Ash.PolicyCheck.t()],
           file_fields: [String.t()],
           data_api: map(),

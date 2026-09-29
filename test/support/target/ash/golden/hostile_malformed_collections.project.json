@@ -394,7 +394,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "unavailable"
+        "source": "unavailable",
+        "stricter_rules": []
       },
       "privacy_relationships": [
         {

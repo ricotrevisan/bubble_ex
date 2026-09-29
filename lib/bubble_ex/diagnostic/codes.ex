@@ -223,6 +223,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "privacy rules the source has (or may have) that were not compiled (`privacy: :omit`, the default); the generated resources have no authorization"},
     {:ash_policies_unverified, :warning, :degraded, :target,
      "the generated Ash policies rest on Bubble semantics not yet verified against Bubble (WTF-384/385); not to be shipped to users until they are"},
+    {:ash_policy_stricter_than_bubble, :info, :degraded, :target,
+     "a privacy rule whose condition reads the current user: where the user is logged out or lacks a value it reads, Bubble compares the empty value like any other (and may grant) while the generated policy denies; stricter than Bubble by the owner's decision (`BubbleEx.Verify.Difference`, WTF-426)"},
     {:ash_policy_rule_denied, :warning, :degraded, :target,
      "a privacy rule whose condition does not compile (or is missing); it grants nothing"},
     {:ash_policy_default_grant_denied, :warning, :degraded, :target,

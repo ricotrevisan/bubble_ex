@@ -26,6 +26,8 @@ defmodule BubbleEx.Target.Ash.Policies do
   alias BubbleEx.Expression.IR
   alias BubbleEx.Model.Type
 
+  alias BubbleEx.Verify.Difference
+
   alias BubbleEx.Target.Ash.{
     Action,
     Attribute,
@@ -750,10 +752,17 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     denied = for r <- others, not MapSet.member?(compiled, r.id), do: r.id
 
+    stricter =
+      for r <- others,
+          MapSet.member?(compiled, r.id),
+          Difference.affected?(by_rule[{type.id, r.id}].ir),
+          do: r.id
+
     privacy = %ResourcePrivacy{
       source: :rules,
       compiled_rules: for(r <- others, MapSet.member?(compiled, r.id), do: r.id),
       denied_rules: denied,
+      stricter_rules: stricter ++ stricter_everyone(stricter, default),
       attachments: attachments,
       file_fields: file_fields(type, fields),
       data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api),
@@ -777,6 +786,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       Enum.reverse(ctx.diags) ++
         default_diags(ctx) ++
         denied_rules(type, denied, ctx) ++
+        stricter_rules(type, stricter, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
         binding_dropped(type, others ++ List.wrap(default), fields) ++
         attachments_diag(type, privacy) ++
@@ -1178,6 +1188,37 @@ defmodule BubbleEx.Target.Ash.Policies do
         "do not ship them to users",
       target: :ash
     )
+  end
+
+  # The everyone rule's reach negates the other rules: when some are
+  # stricter than Bubble and it grants something, so is its reach.
+  defp stricter_everyone([], _default), do: []
+
+  defp stricter_everyone(_stricter, %{permissions: %{} = p}) do
+    if p.view_all == true or (p.view_fields || []) != [] or p.search_for == true,
+      do: ["everyone"],
+      else: []
+  end
+
+  defp stricter_everyone(_stricter, _default), do: []
+
+  defp stricter_rules(type, stricter, ctx) do
+    rules = Map.new(ctx.others, &{&1.id, &1})
+
+    for id <- stricter do
+      rule = Map.fetch!(rules, id)
+
+      Diagnostic.new(
+        :ash_policy_stricter_than_bubble,
+        rule.path,
+        "#{type.id}: privacy rule #{rule_label(rule)} reads the current user; where the user " <>
+          "is logged out or lacks a value it reads, Bubble may grant and the policy denies " <>
+          "(stricter than Bubble by design)",
+        target: :ash,
+        subject: %{type: type.id, rule: id},
+        details: %{flags: Enum.map(Difference.flags(), &Atom.to_string/1)}
+      )
+    end
   end
 
   defp denied_rules(type, denied, ctx) do

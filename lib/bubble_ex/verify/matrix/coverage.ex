@@ -18,13 +18,16 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   **Checks that depend on an assumption.** V5 calibration can only settle
   an assumption flag (`BubbleEx.Verify.Interpreter.Assumptions`) if some
   recorded check depends on it. `exercise_flags/3` looks, per flag and per
-  type whose rules read the shape the flag governs, for a record whose
-  verdict for some persona changes when the flag flips, when no recorded
-  cell of that type depends on it yet. `dangling_ref_is_empty` cannot be
-  exercised: V1 seeds cannot hold a reference to a missing record. Where a
-  fail-safe hedge (`everyone_guards_record_values`, `actor_empty_denies`)
-  hides a flag entirely, it looks for cells that depend on the flag with
-  the hedge lifted (`joint/4` counts them).
+  type whose rules read the shape the flag governs, for records whose
+  verdict for some persona changes when the flag flips: one per type, and
+  for the flags calibration has not settled (`Assumptions.unsettled/0`:
+  leaning, unclear or never exercised) up to three per type, each for the
+  next persona in turn, so the next run has more samples of them.
+  `dangling_ref_is_empty` cannot be exercised: V1 seeds cannot hold a
+  reference to a missing record. Where a fail-safe hedge that is on
+  (`everyone_guards_record_values`, and `actor_empty_denies` when a caller
+  turns it on) hides a flag entirely, it looks for cells that depend on
+  the flag with the hedge lifted (`joint/4` counts them).
   """
 
   alias BubbleEx.Expression.IR
@@ -36,11 +39,29 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   @personas ~w(w1_member w1_other w2_member admin logged_in_empty anonymous)
   @budget 1500
   @flag_budget 600
+  # Records per type that depend on a flag calibration has not settled.
+  @unsettled_samples 3
 
   @unexercisable %{
     dangling_ref_is_empty:
       "seeds cannot hold a reference to a missing record (V1 seed references must resolve)"
   }
+
+  # Flags no recording can depend on: dangling references, and (when the
+  # seed writes defaults out, as Bubble stores records after creation)
+  # whether defaults are applied at creation.
+  defp unexercisable(interpreter) do
+    if interpreter.assumptions.defaults_applied_at_creation,
+      do:
+        Map.put(
+          @unexercisable,
+          :defaults_applied_at_creation,
+          "the seed writes every modeled default out (as Bubble stores records after " <>
+            "creation), so no recording can tell the readings apart; a Data API create " <>
+            "was seen storing defaults (WTF-385)"
+        ),
+      else: @unexercisable
+  end
 
   # --- observability ------------------------------------------------------------------
 
@@ -185,27 +206,73 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   """
   @spec exercise_flags(Interpreter.t(), Dataset.t(), map()) :: Dataset.t()
   def exercise_flags(%Interpreter{} = interpreter, ds, personas) do
+    unsettled = Assumptions.unsettled()
+
     for flag <- Assumptions.names(),
-        not Map.has_key?(@unexercisable, flag),
+        not Map.has_key?(unexercisable(interpreter), flag),
         flipped = %{interpreter | assumptions: Assumptions.flip(interpreter.assumptions, flag)},
         {type_id, %{status: :rules} = info} <- Enum.sort(interpreter.types),
         relevant?(flag, info, interpreter),
         reduce: ds do
       ds ->
-        cond do
-          depends?(interpreter, flipped, ds, personas, type_id) -> ds
-          exercised = exercise(interpreter, flipped, ds, personas, info) -> exercised
-          true -> exercise_jointly(interpreter, flag, ds, personas, info)
+        wanted = if flag in unsettled, do: @unsettled_samples, else: 1
+
+        case dependent_records(interpreter, flipped, ds, personas, type_id) do
+          0 ->
+            (exercise(interpreter, flipped, ds, personas, info) ||
+               exercise_jointly(interpreter, flag, ds, personas, info))
+            |> more_samples(interpreter, flipped, personas, info, wanted)
+
+          _ ->
+            more_samples(ds, interpreter, flipped, personas, info, wanted)
         end
     end
   end
 
+  # More records of the type whose verdict depends on the flag, up to
+  # `wanted`, each looked for with the next persona first.
+  defp more_samples(ds, interpreter, flipped, personas, info, wanted) do
+    Enum.reduce_while(1..wanted, ds, fn attempt, ds ->
+      if dependent_records(interpreter, flipped, ds, personas, info.type.id) >= wanted,
+        do: {:halt, ds},
+        else: sample(interpreter, flipped, ds, personas, info, attempt)
+    end)
+  end
+
+  defp sample(interpreter, flipped, ds, personas, info, attempt) do
+    case exercise(interpreter, flipped, ds, personas, info, rotate(@personas, attempt)) do
+      nil -> {:halt, ds}
+      ds -> {:cont, ds}
+    end
+  end
+
+  defp rotate(list, n) do
+    k = rem(n, length(list))
+    Enum.drop(list, k) ++ Enum.take(list, k)
+  end
+
+  # Records of the type whose verdict, for some persona, depends on the flag.
+  defp dependent_records(interpreter, flipped, ds, personas, type_id) do
+    ds
+    |> Dataset.keys(type_id)
+    |> Enum.count(fn key ->
+      Enum.any?(Enum.sort(personas), fn {_, user} ->
+        base = Interpreter.observe(interpreter, ds, user, key)
+        decided?(base) and Interpreter.observe(flipped, ds, user, key) != base
+      end)
+    end)
+  end
+
   # The fail-safe hedges that can hide a flag entirely: with one of them
   # lifted, a cell may depend on the flag (V5 calibrates them together).
+  # Only a hedge that is on can be lifted.
   @partners [:everyone_guards_record_values, :actor_empty_denies]
 
+  defp partners(interpreter, flag),
+    do: for(p <- @partners -- [flag], interpreter.assumptions[p], do: p)
+
   defp exercise_jointly(interpreter, flag, ds, personas, info) do
-    Enum.find_value(@partners -- [flag], ds, fn partner ->
+    Enum.find_value(partners(interpreter, flag), ds, fn partner ->
       base = flip(interpreter, [partner])
       both = flip(interpreter, [partner, flag])
 
@@ -221,10 +288,10 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
       | assumptions: Enum.reduce(flags, interpreter.assumptions, &Assumptions.flip(&2, &1))
     }
 
-  defp exercise(interpreter, flipped, ds, personas, info) do
+  defp exercise(interpreter, flipped, ds, personas, info, order \\ @personas) do
     irs = for %{status: :ok, ir: ir} <- info.rules, do: ir
 
-    Enum.find_value(@personas, fn persona ->
+    Enum.find_value(order, fn persona ->
       user = personas[persona]
 
       goal = fn ds, key ->
@@ -336,6 +403,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
     recorded = for type <- types, cell <- cells(ds, personas, type), do: cell
 
     for flag <- flags,
+        not Map.has_key?(unexercisable(interpreter), flag),
         partners = joint_partners(interpreter, flag, ds, recorded),
         partners != %{},
         into: %{},
@@ -343,7 +411,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   end
 
   defp joint_partners(interpreter, flag, ds, recorded) do
-    for partner <- @partners -- [flag],
+    for partner <- partners(interpreter, flag),
         base = flip(interpreter, [partner]),
         both = flip(interpreter, [partner, flag]),
         n = Enum.count(recorded, &jointly?(interpreter, base, both, ds, &1)),
@@ -372,7 +440,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
           MapSet.member?(used, flag) ->
             :exercised
 
-          reason = @unexercisable[flag] ->
+          reason = unexercisable(interpreter)[flag] ->
             {:not_exercised, reason}
 
           not Enum.any?(interpreter.types, fn {_, i} ->

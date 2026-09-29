@@ -37,15 +37,31 @@ defmodule BubbleEx.Verify.Matrix do
      records that make masked rules decide a verdict alone (mutation
      coverage: dropping or negating the rule changes a recorded verdict),
      and records whose verdict depends on each assumption flag, so V5 has
-     something to calibrate.
+     something to calibrate (up to three per type for the flags
+     calibration has not settled, `Assumptions.unsettled/0`). Then every
+     field a rule's permissions govern (listed, or all under "view all")
+     that no condition reads and that has no default gets a synthetic
+     value where a record leaves it empty, because the Data API omits
+     empty fields: an empty governed field is a visibility no Bubble
+     recording can check (`report.governed_fields` counts what is left).
   5. **Scenarios**, one per (type, persona): a `search` of the type and a
      `get` of each of its records, observing `record_set`, `visible` and
-     `visible_fields`. An op whose verdict an unsupported rule could decide
-     is left out (the report counts it).
+     `visible_fields`. An op whose verdict an unsupported rule could
+     decide, under Bubble's reading or the target's, is left out (the
+     report counts it).
   6. **Recordings**: the interpreter's verdicts under the chosen
-     assumptions, oracle `model` (never Bubble-verified, decision D2 on
-     WTF-358). `dependencies` holds, per scenario op, the assumption flags
-     its expected observations depend on.
+     assumptions (by default Bubble's reading, as calibrated), oracle
+     `model` (never Bubble-verified, decision D2 on WTF-358).
+     `dependencies` holds, per scenario op, the assumption flags its
+     expected observations depend on.
+  7. **Intended differences** (`BubbleEx.Verify.Difference`, WTF-426):
+     every observation where the generated policies' reading
+     (`Interpreter.target/1`) is stricter than the recording by the
+     owner's decision, with the flags and rules responsible
+     (`differences`). An observation where the two readings differ
+     otherwise (another flag, or less strict) is an *unintended*
+     difference (`unintended`, counted in the report): the generated
+     tests fail on it.
 
   A rule is **solved** when the interpreter evaluates it and the seed has a
   cell (persona, record) where its condition holds and one where it does
@@ -78,6 +94,7 @@ defmodule BubbleEx.Verify.Matrix do
       Model's `bubble_id`)
     * `:seed_id` - default `"privacy_matrix"`
     * `:assumptions` - overrides of `BubbleEx.Verify.Interpreter.Assumptions`
+      (the defaults are Bubble's reading)
     * `:recorded_at` (DateTime) and `:t0` (ms) of the recordings, default the
       Unix epoch (pass the run's time; the default keeps output reproducible)
     * `:bubble_ex` - the interpreter version in the recordings' source,
@@ -87,7 +104,7 @@ defmodule BubbleEx.Verify.Matrix do
   alias BubbleEx.{CanonicalJson, Error, Model}
   alias BubbleEx.Expression.IR
   alias BubbleEx.Model.Type
-  alias BubbleEx.Verify.{Observation, Recording, Replay, Scenario, Seed}
+  alias BubbleEx.Verify.{Difference, Observation, Recording, Replay, Scenario, Seed}
   alias BubbleEx.Verify.Interpreter
   alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset}
   alias BubbleEx.Verify.Matrix.{Coverage, Personas, Solver}
@@ -99,6 +116,8 @@ defmodule BubbleEx.Verify.Matrix do
     scenarios: [],
     recordings: [],
     dependencies: %{},
+    differences: [],
+    unintended: [],
     rules: [],
     observability: [],
     flags: %{},
@@ -114,6 +133,8 @@ defmodule BubbleEx.Verify.Matrix do
           scenarios: [Scenario.t()],
           recordings: [Recording.t()],
           dependencies: %{{String.t(), String.t()} => [atom()]},
+          differences: [Difference.t()],
+          unintended: [%{scenario: String.t(), op: String.t()}],
           rules: [map()],
           observability: [map()],
           flags: %{atom() => :exercised | {:not_exercised, String.t()}},
@@ -141,6 +162,7 @@ defmodule BubbleEx.Verify.Matrix do
         |> witnesses(interpreter, types, personas)
         |> then(&Coverage.isolate(interpreter, &1, personas))
         |> then(&Coverage.exercise_flags(interpreter, &1, personas))
+        |> fill_governed(interpreter, personas)
 
       rules = coverage(interpreter, ds, personas)
       observability = Coverage.observability(interpreter, ds, personas, rules)
@@ -162,6 +184,8 @@ defmodule BubbleEx.Verify.Matrix do
       scenarios: built.scenarios,
       recordings: built.recordings,
       dependencies: built.dependencies,
+      differences: Difference.sort(built.differences),
+      unintended: Enum.sort_by(built.unintended, &{&1.scenario, &1.op}),
       skipped: built.skipped,
       rules: rules,
       observability: observability,
@@ -182,6 +206,134 @@ defmodule BubbleEx.Verify.Matrix do
 
   defp empty_record(type_id, ds),
     do: Dataset.put(ds, "e.#{Personas.slug(type_id)}", type_id, %{})
+
+  # --- governed fields ---------------------------------------------------------------
+
+  # Fills the empty governed fields no condition reads (so no verdict
+  # changes) with synthetic scalar values: the Data API shows only fields
+  # that hold a value.
+  # Persona users keep exactly the values their persona defines.
+  defp fill_governed(ds, interpreter, personas) do
+    users = personas |> Map.values() |> MapSet.new()
+    read = condition_fields(interpreter)
+
+    for {key, %{type: type_id, fields: fields}} <- Enum.sort(ds.records),
+        not MapSet.member?(users, key),
+        %{status: :rules} = info <- [Interpreter.type(interpreter, type_id)],
+        field <- governed(info),
+        not Map.has_key?(fields, field),
+        unfilled(interpreter, read, type_id, field) == nil,
+        {:ok, value} <- [synthetic(interpreter.model, type_id, field)],
+        reduce: ds,
+        do: (ds -> Dataset.set(ds, key, field, value))
+  end
+
+  # Why an empty governed field is left empty, or nil.
+  defp unfilled(interpreter, read, type_id, field) do
+    cond do
+      MapSet.member?(read, field) -> :condition_reads
+      Map.has_key?(Map.get(interpreter.defaults, type_id, %{}), field) -> :default
+      synthetic(interpreter.model, type_id, field) == :none -> :no_synthetic_value
+      true -> nil
+    end
+  end
+
+  # Non-built-in fields some rule (or the everyone rule) lets someone view.
+  defp governed(info) do
+    builtin = for %{id: id, builtin: true} <- info.fields, into: MapSet.new(), do: id
+    rules = Enum.map(info.rules, & &1.rule) ++ List.wrap(info.default)
+
+    rules
+    |> Enum.flat_map(fn
+      %{permissions: %{view_all: true}} ->
+        MapSet.to_list(info.field_ids)
+
+      %{permissions: %{} = p} ->
+        Enum.filter(p.view_fields || [], &MapSet.member?(info.field_ids, &1))
+
+      _ ->
+        []
+    end)
+    |> Enum.uniq()
+    |> Enum.reject(&MapSet.member?(builtin, &1))
+    |> Enum.sort()
+  end
+
+  # Every field ID a supported condition reads, on any type.
+  defp condition_fields(interpreter) do
+    for {_, %{rules: rules}} <- interpreter.types,
+        %{ir: %IR{} = ir} <- rules,
+        field <- ir_fields(ir),
+        into: MapSet.new(),
+        do: field
+  end
+
+  defp ir_fields(%IR{op: :field, args: [base, _type, field]}) when is_binary(field),
+    do: [field | ir_fields(base)]
+
+  defp ir_fields(%IR{args: args}), do: Enum.flat_map(args, &ir_fields/1)
+  defp ir_fields(_), do: []
+
+  defp synthetic(model, type_id, field) do
+    with {:ok, %{type: %Type{} = type}} <- Model.field(model, type_id, field),
+         {:ok, v} <- synthetic_value(model, type) do
+      {:ok, if(type.cardinality == :many, do: {:list, [v]}, else: v)}
+    else
+      _ -> :none
+    end
+  end
+
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :text}), do: {:ok, {:text, "sample"}}
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :number}), do: {:ok, {:number, 1.0}}
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :boolean}), do: {:ok, {:boolean, true}}
+
+  defp synthetic_value(_model, %Type{kind: :scalar, base: :date}),
+    do: {:ok, {:date, 1_759_363_200_000}}
+
+  defp synthetic_value(model, %Type{kind: :option, target: set}) do
+    keys =
+      case Model.option_set(model, set) do
+        %{values: values} -> for v <- values, not v.deleted, is_binary(v.key), do: v.key
+        _ -> []
+      end
+
+    case keys do
+      [key | _] -> {:ok, {:option, key}}
+      [] -> :none
+    end
+  end
+
+  defp synthetic_value(_model, _type), do: :none
+
+  # Governed field slots of the seed's records, how many hold a value,
+  # and why the others are empty.
+  defp governed_report(seed, interpreter) do
+    read = condition_fields(interpreter)
+    users = seed.personas |> Map.values() |> Enum.map(& &1.user) |> MapSet.new()
+
+    slots =
+      for r <- seed.records,
+          type_id = Dataset.type_id(r.type),
+          %{status: :rules} = info <- [Interpreter.type(interpreter, type_id)],
+          field <- governed(info) do
+        cond do
+          r.fields[field] not in [nil, {:text, ""}, {:list, []}] -> :held
+          Map.has_key?(r.fields, field) -> :explicitly_empty
+          MapSet.member?(users, r.key) -> :persona
+          true -> unfilled(interpreter, read, type_id, field) || :other
+        end
+      end
+
+    unchecked = Enum.reject(slots, &(&1 == :held))
+
+    %{
+      slots: length(slots),
+      held: length(slots) - length(unchecked),
+      unchecked: length(unchecked),
+      unchecked_by_reason:
+        unchecked |> Enum.frequencies() |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+    }
+  end
 
   # --- witnesses --------------------------------------------------------------------
 
@@ -238,40 +390,43 @@ defmodule BubbleEx.Verify.Matrix do
     end)
   end
 
-  # A false branch that holds only through the fail-safe actor guard
-  # (`actor_empty_denies`) says nothing about the condition itself: look
-  # for a false cell that stays false with the guard off, first.
-  defp ensure(ds, interpreter, info, type_id, personas, false) do
-    unguarded = unguarded(interpreter)
+  # A branch that holds only through how empty user-side values compare
+  # (`actor_empty_denies`: a cell true only because an empty user value
+  # equals an empty record value, or false only because the fail-safe
+  # guard denies it) says nothing about the condition itself: look for a
+  # cell with the same value under both readings, first. The cells where
+  # the readings differ are the intended differences.
+  defp ensure(ds, interpreter, info, type_id, personas, target) do
+    other = other_reading(interpreter)
 
-    if robust_false?(ds, interpreter, unguarded, info, type_id, personas) do
+    if robust?(ds, interpreter, other, info, type_id, personas, target) do
       ds
     else
       first_found(personas, nil, fn user ->
-        goal = &false_either_way?(interpreter, unguarded, info, &1, user, &2)
-        Solver.find(interpreter, ds, type_id, goal, irs: [info.ir], empty_first: true)
-      end) || plain_ensure(ds, interpreter, info, type_id, personas, false)
+        goal = &either_reading?(interpreter, other, info, &1, user, &2, target)
+        Solver.find(interpreter, ds, type_id, goal, irs: [info.ir], empty_first: not target)
+      end) || plain_ensure(ds, interpreter, info, type_id, personas, target)
     end
   end
 
-  defp ensure(ds, interpreter, info, type_id, personas, target),
-    do: plain_ensure(ds, interpreter, info, type_id, personas, target)
+  defp other_reading(interpreter),
+    do: %{
+      interpreter
+      | assumptions: Assumptions.flip(interpreter.assumptions, :actor_empty_denies)
+    }
 
-  defp unguarded(interpreter),
-    do: %{interpreter | assumptions: %{interpreter.assumptions | actor_empty_denies: false}}
-
-  defp robust_false?(ds, interpreter, unguarded, info, type_id, personas) do
+  defp robust?(ds, interpreter, other, info, type_id, personas, target) do
     Enum.any?(Enum.sort(personas), fn {_, user} ->
       Enum.any?(
         Dataset.keys(ds, type_id),
-        &false_either_way?(interpreter, unguarded, info, ds, user, &1)
+        &either_reading?(interpreter, other, info, ds, user, &1, target)
       )
     end)
   end
 
-  defp false_either_way?(interpreter, unguarded, info, ds, user, key) do
-    match?({false, _}, Interpreter.eval_rule(interpreter, info, ds, user, key)) and
-      match?({false, _}, Interpreter.eval_rule(unguarded, info, ds, user, key))
+  defp either_reading?(interpreter, other, info, ds, user, key, target) do
+    match?({^target, _}, Interpreter.eval_rule(interpreter, info, ds, user, key)) and
+      match?({^target, _}, Interpreter.eval_rule(other, info, ds, user, key))
   end
 
   defp plain_ensure(ds, interpreter, info, type_id, personas, target) do
@@ -315,19 +470,21 @@ defmodule BubbleEx.Verify.Matrix do
         rule: rule.id,
         default: rule.default?,
         status: status,
-        robust_false: robust_false(status, rule, info, interpreter, ds, personas)
+        robust_false: robust(status, rule, info, interpreter, ds, personas, false),
+        robust_true: robust(status, rule, info, interpreter, ds, personas, true)
       }
     end
   end
 
-  # Whether a solved conditional rule has a false cell that does not rest
-  # on the fail-safe actor guard (nil for other rules).
-  defp robust_false(:solved, %{default?: false} = rule, info, interpreter, ds, personas) do
+  # Whether a solved conditional rule has a `target` cell that does not
+  # rest on how empty user-side values compare (nil for other rules).
+  defp robust(:solved, %{default?: false} = rule, info, interpreter, ds, personas, target) do
     rinfo = Enum.find(info.rules, &(&1.rule.id == rule.id))
-    robust_false?(ds, interpreter, unguarded(interpreter), rinfo, info.type.id, personas)
+    other = other_reading(interpreter)
+    robust?(ds, interpreter, other, rinfo, info.type.id, personas, target)
   end
 
-  defp robust_false(_status, _rule, _info, _interpreter, _ds, _personas), do: nil
+  defp robust(_status, _rule, _info, _interpreter, _ds, _personas, _target), do: nil
 
   defp rule_status(%{status: {:unknown, reason}} = info, _rule, _i, _ds, _p),
     do: {:unsolved, if(info.type.deleted, do: :deleted_type, else: :privacy_unavailable), reason}
@@ -438,7 +595,16 @@ defmodule BubbleEx.Verify.Matrix do
       t0: t0
     }
 
-    acc = %{scenarios: [], recordings: [], dependencies: %{}, skipped: %{gets: 0, searches: 0}}
+    acc = %{
+      scenarios: [],
+      recordings: [],
+      dependencies: %{},
+      differences: [],
+      unintended: [],
+      skipped: %{gets: 0, searches: 0}
+    }
+
+    readings = readings(interpreter)
 
     sources = Map.new(types, &{&1, source_sha256(interpreter, &1)})
 
@@ -447,7 +613,13 @@ defmodule BubbleEx.Verify.Matrix do
 
     result =
       Enum.reduce_while(pairs, {:ok, acc}, fn {type_id, persona, user}, {:ok, acc} ->
-        cell = %{type: type_id, persona: persona, user: user, source: sources[type_id]}
+        cell = %{
+          type: type_id,
+          persona: persona,
+          user: user,
+          source: sources[type_id],
+          readings: readings
+        }
 
         case scenario(interpreter, ds, seed, seed_ref, cell, common) do
           {:ok, built} -> {:cont, {:ok, merge(acc, built)}}
@@ -470,6 +642,8 @@ defmodule BubbleEx.Verify.Matrix do
       scenarios: built.scenarios ++ acc.scenarios,
       recordings: built.recordings ++ acc.recordings,
       dependencies: Map.merge(acc.dependencies, built.dependencies),
+      differences: built.differences ++ acc.differences,
+      unintended: built.unintended ++ acc.unintended,
       skipped: %{
         gets: acc.skipped.gets + built.skipped.gets,
         searches: acc.skipped.searches + built.skipped.searches
@@ -481,11 +655,27 @@ defmodule BubbleEx.Verify.Matrix do
     descriptor = Type.record(cell.type)
     id = "privacy_read.#{descriptor}.#{cell.persona}"
     {checks, skipped} = checks(interpreter, ds, cell, descriptor)
-    empty = %{scenarios: [], recordings: [], dependencies: %{}, skipped: skipped}
+
+    empty = %{
+      scenarios: [],
+      recordings: [],
+      dependencies: %{},
+      differences: [],
+      unintended: [],
+      skipped: skipped
+    }
 
     if checks == [],
       do: {:ok, empty},
-      else: build(interpreter, seed, seed_ref, cell, common, {id, descriptor, checks, empty})
+      else:
+        build(
+          interpreter,
+          seed,
+          seed_ref,
+          Map.put(cell, :ds, ds),
+          common,
+          {id, descriptor, checks, empty}
+        )
   end
 
   defp build(interpreter, seed, seed_ref, cell, common, {id, descriptor, checks, empty}) do
@@ -514,35 +704,70 @@ defmodule BubbleEx.Verify.Matrix do
              complete: true,
              observations: Enum.flat_map(checks, & &1.observations)
            ) do
-      dependencies =
-        for c <- checks, c.assumptions != [], into: %{}, do: {{id, c.op.id}, c.assumptions}
+      # With defaults applied at creation the seed writes every modeled
+      # default out: no recording can depend on that flag.
+      unobservable =
+        if interpreter.assumptions.defaults_applied_at_creation,
+          do: [:defaults_applied_at_creation],
+          else: []
 
-      {:ok, %{empty | scenarios: [scenario], recordings: [recording], dependencies: dependencies}}
+      dependencies =
+        for c <- checks,
+            flags = c.assumptions -- unobservable,
+            flags != [],
+            into: %{},
+            do: {{id, c.op.id}, flags}
+
+      {differences, unintended} = differences(checks, id, cell, cell.ds)
+
+      {:ok,
+       %{
+         empty
+         | scenarios: [scenario],
+           recordings: [recording],
+           dependencies: dependencies,
+           differences: differences,
+           unintended: unintended
+       }}
     end
   end
 
   # The decided ops of one (type, persona): a search, then a get per
   # record, each with its expected observations and the assumptions they
   # depend on; and how many were left out as undecided.
+  # An op is decided when both Bubble's reading and the target's decide
+  # it (an unsupported rule can leave either undecided).
   defp checks(interpreter, ds, cell, descriptor) do
+    target = cell.readings.target
     {:ok, search} = Interpreter.search(interpreter, ds, cell.user, cell.type)
+    {:ok, target_search} = Interpreter.search(target, ds, cell.user, cell.type)
 
     {known, unknown} =
       ds
       |> Dataset.keys(cell.type)
       |> Enum.map(fn key ->
         {:ok, access} = Interpreter.access(interpreter, ds, cell.user, key)
-        access
+        {:ok, target_access} = Interpreter.access(target, ds, cell.user, key)
+        {access, target_access}
       end)
-      |> Enum.split_with(&Interpreter.determined?/1)
+      |> Enum.split_with(fn {a, t} ->
+        Interpreter.determined?(a) and Interpreter.determined?(t)
+      end)
 
-    searches = if search.unknown == [], do: [search_check(search, descriptor)], else: []
+    known = Enum.map(known, &elem(&1, 0))
+
+    searches =
+      if search.unknown == [] and target_search.unknown == [],
+        do: [search_check(search, descriptor)],
+        else: []
+
     gets = Enum.map(known, &get_check(&1, descriptor))
     {searches ++ gets, %{gets: length(unknown), searches: 1 - length(searches)}}
   end
 
   defp search_check(search, descriptor) do
     %{
+      verdict: {:search, search.records},
       op: %{id: "search", op: :search, type: descriptor, sort: nil, observe: [:record_set]},
       observations: [
         %Observation{
@@ -559,6 +784,7 @@ defmodule BubbleEx.Verify.Matrix do
     op = "get." <> access.record
 
     %{
+      verdict: {:get, access.record, access.visible, Enum.sort(access.fields)},
       op: %{
         id: op,
         op: :get,
@@ -578,6 +804,142 @@ defmodule BubbleEx.Verify.Matrix do
       assumptions: access.assumptions
     }
   end
+
+  # --- intended differences ------------------------------------------------------------
+
+  # The three readings a cell is compared under: Bubble's (the matrix's
+  # assumptions), the target's (the generated policies) and Bubble's with
+  # only the policy's flags at their target reading.
+  defp readings(interpreter) do
+    {:ok, intended} =
+      Interpreter.with_assumptions(interpreter, Difference.intended(interpreter.assumptions))
+
+    %{bubble: interpreter, target: Interpreter.target(interpreter), intended: intended}
+  end
+
+  # Per op of a scenario: where the target's verdict differs from the
+  # recorded one, an intended difference per observation (stricter, and
+  # the policy's flags alone explain it) or an unintended one.
+  defp differences(checks, scenario_id, cell, ds) do
+    Enum.reduce(checks, {[], []}, fn check, {cases, unintended} ->
+      case op_difference(check, scenario_id, cell, ds) do
+        :same -> {cases, unintended}
+        {:intended, more} -> {cases ++ more, unintended}
+        :unintended -> {cases, unintended ++ [%{scenario: scenario_id, op: check.op.id}]}
+      end
+    end)
+  end
+
+  defp op_difference(%{verdict: {:get, key, visible, fields}, op: op}, scenario_id, cell, ds) do
+    bubble = {visible, fields}
+    target = get_verdict(cell.readings.target, ds, cell.user, key)
+
+    cond do
+      target == bubble ->
+        :same
+
+      target != get_verdict(cell.readings.intended, ds, cell.user, key) or
+          not stricter_get?(bubble, target) ->
+        :unintended
+
+      true ->
+        rules = changed_rules(cell, ds, key)
+        {tv, tf} = target
+        base = difference(scenario_id, op.id, cell, key, rules)
+
+        {:intended,
+         if(tv != visible, do: [%{base | kind: :visible, bubble: visible, target: tv}], else: []) ++
+           if(tf != fields,
+             do: [%{base | kind: :visible_fields, bubble: fields, target: tf}],
+             else: []
+           )}
+    end
+  end
+
+  defp op_difference(%{verdict: {:search, records}, op: op}, scenario_id, cell, ds) do
+    target = search_records(cell.readings.target, ds, cell.user, cell.type)
+    bubble = Enum.sort(records)
+
+    cond do
+      target == bubble ->
+        :same
+
+      not is_list(target) or
+        target != search_records(cell.readings.intended, ds, cell.user, cell.type) or
+          not Difference.stricter?(:record_set, %{records: bubble}, %{records: target}) ->
+        :unintended
+
+      true ->
+        rules = Enum.flat_map(bubble -- target, &changed_rules(cell, ds, &1)) |> Enum.uniq()
+
+        {:intended,
+         [
+           %{
+             difference(scenario_id, op.id, cell, nil, Enum.sort(rules))
+             | kind: :record_set,
+               bubble: %{ordered: false, records: bubble},
+               target: %{ordered: false, records: target}
+           }
+         ]}
+    end
+  end
+
+  defp difference(scenario_id, op_id, cell, key, rules) do
+    %Difference{
+      scenario: scenario_id,
+      op: op_id,
+      kind: nil,
+      record: key,
+      type: cell.type,
+      persona: cell.persona,
+      bubble: nil,
+      target: nil,
+      flags: Difference.flags(),
+      rules: rules
+    }
+  end
+
+  defp get_verdict(interpreter, ds, user, key) do
+    {visible, fields, unknown, _searchable} = Interpreter.observe(interpreter, ds, user, key)
+    if unknown == [], do: {visible, Enum.sort(fields)}, else: {visible, :unknown}
+  end
+
+  defp stricter_get?({bv, bf}, {tv, tf}) when is_boolean(tv) and is_list(tf),
+    do: Difference.stricter?(:visible, bv, tv) and Difference.stricter?(:visible_fields, bf, tf)
+
+  defp stricter_get?(_bubble, _target), do: false
+
+  defp search_records(interpreter, ds, user, type_id) do
+    {:ok, search} = Interpreter.search(interpreter, ds, user, type_id)
+    if search.unknown == [], do: Enum.sort(search.records), else: :unknown
+  end
+
+  # The rules of the record's type whose outcome for the user differs
+  # between Bubble's reading and the intended one: conditions, and the
+  # everyone rule's reach.
+  defp changed_rules(cell, ds, key) do
+    %{bubble: bubble, intended: intended} = cell.readings
+    info = Interpreter.type(bubble, cell.type)
+
+    conditional =
+      for %{status: :ok} = r <- info.rules,
+          outcome(Interpreter.eval_rule(bubble, r, ds, cell.user, key)) !=
+            outcome(Interpreter.eval_rule(intended, r, ds, cell.user, key)),
+          do: r.rule.id
+
+    everyone =
+      if info.default != nil and info.rules != [] and
+           Enum.all?(info.rules, &(&1.status == :ok)) and
+           Interpreter.everyone_applies(bubble, ds, cell.user, cell.type, key) !=
+             Interpreter.everyone_applies(intended, ds, cell.user, cell.type, key),
+         do: ["everyone"],
+         else: []
+
+    Enum.sort(conditional) ++ everyone
+  end
+
+  defp outcome({b, _flags}) when is_boolean(b), do: b
+  defp outcome(_), do: :unknown
 
   # What a scenario's expectations are computed from: the type's fields and
   # its rules (compiled conditions, without source paths, and permissions).
@@ -620,13 +982,22 @@ defmodule BubbleEx.Verify.Matrix do
 
     * `rules` - `total`, `conditional`, `everyone`, `solved`, `unsolved`,
       `solved_percent` (of all rules, one decimal), `observable`,
-      `observable_percent` (mutation coverage) and
-      `false_branch_only_via_actor_guard` (solved rules whose only false
-      cells rest on the fail-safe actor guard)
+      `observable_percent` (mutation coverage),
+      `false_branch_only_via_actor_guard` and
+      `true_branch_only_via_empty_actor` (solved rules whose only false,
+      or true, cells rest on how empty user-side values compare:
+      `actor_empty_denies`)
     * `unobservable` / `unobservable_by_reason` - rules no mutant changes a
       recorded verdict of: `unsolved`, `grants_nothing`, `masked`,
       `undecided_type`
     * `seed_values_from_condition_literals`, `oracle_scope`
+    * `governed_fields` - field slots (record x non-built-in field some
+      rule lets someone view) in the seed: `slots`, `held` (non-empty) and
+      `unchecked` (empty, so a Bubble recording cannot show whether they
+      are visible: the Data API omits empty fields), by reason
+      (`condition_reads`: a witness may need it empty; `default`,
+      `explicitly_empty`, `persona`, `no_synthetic_value`: a reference,
+      file or other value the matrix does not invent)
     * `unsolved` - `%{type, rule, reason, detail}` per unsolved rule
       (Bubble IDs); `unsolved_by_reason` counts them
     * `types` - `total`, `with_rules`, `public`, `deleted`, `unavailable`
@@ -636,7 +1007,16 @@ defmodule BubbleEx.Verify.Matrix do
       whose expectations depend on it (`dependent_checks`), and per flag
       whether some check depends on it and if not why (`outcomes`); for
       flags a fail-safe hedge hides, the checks that depend on them with
-      the hedge lifted (`jointly_dependent_checks`)
+      the hedge lifted (`jointly_dependent_checks`); per flag the last
+      calibration's verdict (`calibration`, `Assumptions.evidence/0`) and
+      the flags it has not settled (`unsettled`)
+    * `differences` - where the generated policies are stricter than Bubble
+      by design (`BubbleEx.Verify.Difference`): the policy's flags, and the
+      observations, scenarios, types and rules concerned; `unintended`
+      counts the ops where the two readings differ otherwise
+    * `intended_differences` - the owner's list (`Difference.summary/1`:
+      per type and rule, Bubble IDs); `unintended_differences` the
+      unintended ops (`%{scenario, op}`)
   """
   @spec report(t(), Interpreter.t()) :: map()
   def report(%__MODULE__{} = matrix, %Interpreter{} = interpreter) do
@@ -663,7 +1043,9 @@ defmodule BubbleEx.Verify.Matrix do
         solved_percent: percent(solved, total),
         observable: observable,
         observable_percent: percent(observable, total),
-        false_branch_only_via_actor_guard: Enum.count(matrix.rules, &(&1[:robust_false] == false))
+        false_branch_only_via_actor_guard:
+          Enum.count(matrix.rules, &(&1[:robust_false] == false)),
+        true_branch_only_via_empty_actor: Enum.count(matrix.rules, &(&1[:robust_true] == false))
       },
       unsolved: unsolved,
       unsolved_by_reason: Enum.frequencies_by(unsolved, &Atom.to_string(&1.reason)),
@@ -680,6 +1062,7 @@ defmodule BubbleEx.Verify.Matrix do
       seed_values_from_condition_literals: literal_values(matrix.seed, interpreter),
       defaults: defaults_report(matrix.seed, interpreter),
       explicit_empties: explicit_empties(matrix.seed),
+      governed_fields: governed_report(matrix.seed, interpreter),
       oracle_scope:
         "model: expectations from the interpreter over the shared expression compiler's IR; " <>
           "agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, " <>
@@ -690,9 +1073,26 @@ defmodule BubbleEx.Verify.Matrix do
       checks: matrix.scenarios |> Enum.map(&length(&1.ops)) |> Enum.sum(),
       observations: matrix.recordings |> Enum.map(&length(&1.observations)) |> Enum.sum(),
       skipped: matrix.skipped,
+      differences: %{
+        policy: Difference.flags(),
+        observations: length(matrix.differences),
+        scenarios: matrix.differences |> Enum.map(& &1.scenario) |> Enum.uniq() |> length(),
+        types: matrix.differences |> Enum.map(& &1.type) |> Enum.uniq() |> length(),
+        rules:
+          matrix.differences
+          |> Enum.flat_map(fn d -> for r <- d.rules, do: {d.type, r} end)
+          |> Enum.uniq()
+          |> length(),
+        unintended: length(matrix.unintended)
+      },
+      intended_differences: Difference.summary(matrix.differences),
+      unintended_differences: matrix.unintended,
       assumptions: %{
         in_force: Assumptions.to_map(matrix.assumptions),
         changed: Assumptions.changed(matrix.assumptions),
+        calibration:
+          Map.new(Assumptions.evidence(), fn {flag, e} -> {Atom.to_string(flag), e.status} end),
+        unsettled: Assumptions.unsettled(),
         outcomes: Map.new(matrix.flags, &outcome(&1, matrix.joint)),
         jointly_dependent_checks:
           Map.new(matrix.joint, fn {flag, partners} ->
@@ -794,7 +1194,13 @@ defmodule BubbleEx.Verify.Matrix do
   @spec counts(map()) :: map()
   def counts(report) do
     report
-    |> Map.drop([:unsolved, :unobservable, :explicit_empties])
+    |> Map.drop([
+      :unsolved,
+      :unobservable,
+      :explicit_empties,
+      :intended_differences,
+      :unintended_differences
+    ])
     |> Map.update!(:assumptions, &Map.drop(&1, [:in_force]))
     |> stringify()
   end
@@ -814,16 +1220,37 @@ defmodule BubbleEx.Verify.Matrix do
   @doc """
   A `privacy_read` `BubbleEx.Verify.Result` comparing a subject's
   `observations` of `scenario` (e.g. the generated Ash tests,
-  `BubbleEx.Target.Ash.MatrixTests`, V3) with the expected recording: `pass`
-  when every expected observation is matched, else `fail` with a diff
-  (`record_visible`, `field_visible` per field, `record_set`). The oracle
-  and evidence cite the recording, so `Result.evaluate/3` can count it as
-  passing; as Bubble-verified only with a `bubble` recording (its replay
-  branch is the oracle's), never with the `model` one.
+  `BubbleEx.Target.Ash.MatrixTests`, V3) with the expected recording. The
+  oracle and evidence cite the recording, so `Result.evaluate/3` can count
+  it as passing; as Bubble-verified only with a `bubble` recording (its
+  replay branch is the oracle's), never with the `model` one.
+
+  The subject is held to the **target policy**: the recording with the
+  scenario's intended differences applied (`:differences`,
+  `BubbleEx.Verify.Difference.apply/2`). The status is
+
+    * `pass` - the observations match the recording
+    * `intended_difference` - they match the target policy, which is
+      stricter than the recording by design: the diff (against the
+      recording) lists each difference with its `intended` flags and
+      `rules`
+    * `fail` - anything else, with the diff against the target policy
+      (entries where the target is stricter than Bubble say so in
+      `detail`)
+
+  Against a `bubble` recording both sides are compared as the Data API
+  shows them (`BubbleEx.Verify.DataApi.project/2`): fields restricted to
+  those the record holds, and a readable record with no held field as
+  ID-only. That needs the `:seed`.
 
   ## Options
 
     * `:app` (required), `:ran_at` (required, DateTime)
+    * `:differences` - the intended differences (`BubbleEx.Verify.Difference`
+      cases; those of other scenarios are ignored), default none
+    * `:seed` - the scenario's seed, required with a `bubble` recording
+    * `:held_only` - compare through the Data API's view; default true for
+      a `bubble` recording, false for a `model` one
     * `:actor` - default `"ci"`
     * `:ref` - the recording's evidence path, default
       `.wtf/verification/recordings/<scenario id>.json`
@@ -831,47 +1258,110 @@ defmodule BubbleEx.Verify.Matrix do
   @spec result(Scenario.t(), Recording.t(), [Observation.t()], keyword()) ::
           {:ok, BubbleEx.Verify.Result.t()} | {:error, Error.t()}
   def result(%Scenario{} = scenario, %Recording{} = recording, observations, opts) do
-    actual = Map.new(observations, &{Observation.key(&1), &1.value})
-    sha = Recording.sha256(recording)
+    cases = Difference.for_scenario(Keyword.get(opts, :differences, []), scenario.id)
 
-    diff =
-      Enum.flat_map(
-        recording.observations,
-        &diff(&1, Map.get(actual, Observation.key(&1), :missing))
-      )
+    with {:ok, view, held} <- view(recording, opts) do
+      expected = view.(recording.observations)
 
-    BubbleEx.Verify.Result.new(
-      id: scenario.id,
-      app: Keyword.fetch!(opts, :app),
-      check: scenario.check,
-      status: if(diff == [], do: :pass, else: :fail),
-      subjects: scenario.subjects,
-      scenario: %{
+      target =
+        if held,
+          do: view.(Difference.to_target(recording.observations, cases, held)),
+          else: Difference.to_target(recording.observations, cases)
+
+      actual = observations |> view.() |> Map.new(&{Observation.key(&1), &1.value})
+
+      {status, diff} = compare(expected, target, actual, cases, held)
+      sha = Recording.sha256(recording)
+
+      BubbleEx.Verify.Result.new(
         id: scenario.id,
-        sha256: Scenario.sha256(scenario),
-        source_sha256: scenario.source_sha256,
-        seed_sha256: recording.seed_sha256
-      },
-      oracle: %{
-        kind: recording.oracle,
-        sha256: sha,
-        branch: if(recording.oracle == :bubble, do: recording.source.branch)
-      },
-      evidence: [
-        %{
-          kind: :recording,
-          ref: Keyword.get(opts, :ref, ".wtf/verification/recordings/#{scenario.id}.json"),
-          sha256: sha
-        }
-      ],
-      diff: diff,
-      actor: Keyword.get(opts, :actor, "ci"),
-      ran_at: Keyword.fetch!(opts, :ran_at)
-    )
+        app: Keyword.fetch!(opts, :app),
+        check: scenario.check,
+        status: status,
+        subjects: scenario.subjects,
+        scenario: %{
+          id: scenario.id,
+          sha256: Scenario.sha256(scenario),
+          source_sha256: scenario.source_sha256,
+          seed_sha256: recording.seed_sha256
+        },
+        oracle: %{
+          kind: recording.oracle,
+          sha256: sha,
+          branch: if(recording.oracle == :bubble, do: recording.source.branch)
+        },
+        evidence: [
+          %{
+            kind: :recording,
+            ref: Keyword.get(opts, :ref, ".wtf/verification/recordings/#{scenario.id}.json"),
+            sha256: sha
+          }
+        ],
+        diff: diff,
+        actor: Keyword.get(opts, :actor, "ci"),
+        ran_at: Keyword.fetch!(opts, :ran_at)
+      )
+    end
   end
 
   def result(_scenario, _recording, _observations, _opts),
     do: {:error, Error.new(:invalid_input, "expected a scenario and its recording")}
+
+  # How observations are compared: as recorded, or as the Data API shows
+  # them (default for Bubble recordings).
+  defp view(recording, opts) do
+    held_only = Keyword.get(opts, :held_only, recording.oracle == :bubble)
+
+    case {held_only, opts[:seed]} do
+      {false, _} ->
+        {:ok, & &1, nil}
+
+      {true, %Seed{} = seed} ->
+        held = BubbleEx.Verify.DataApi.held_map(seed)
+        {:ok, &BubbleEx.Verify.DataApi.project(&1, held), held}
+
+      {true, _} ->
+        {:error,
+         Error.new(
+           :invalid_input,
+           "comparing through the Data API's view (a bubble recording) needs the seed"
+         )}
+    end
+  end
+
+  defp compare(expected, target, actual, cases, held) do
+    against = fn observations ->
+      Enum.flat_map(observations, &diff(&1, Map.get(actual, Observation.key(&1), :missing)))
+    end
+
+    case {against.(target), against.(expected)} do
+      {[], []} ->
+        {:pass, []}
+
+      {[], diff} ->
+        annotated =
+          for e <- diff,
+              c = Difference.explaining(cases, e, held),
+              do: Difference.annotate(e, c)
+
+        if length(annotated) == length(diff),
+          do: {:intended_difference, annotated},
+          else: {:fail, diff}
+
+      {diff, _} ->
+        {:fail, Enum.map(diff, &stricter_detail(&1, cases))}
+    end
+  end
+
+  # A failing entry where the target is stricter than Bubble by design.
+  defp stricter_detail(entry, cases) do
+    if Enum.any?(cases, &(&1.record == entry[:record])) do
+      flags = cases |> Enum.flat_map(& &1.flags) |> Enum.uniq() |> Enum.join(", ")
+      Map.put(entry, :detail, "the target policy is stricter than Bubble here (#{flags})")
+    else
+      entry
+    end
+  end
 
   defp diff(%Observation{value: v}, v), do: []
 
@@ -911,9 +1401,10 @@ defmodule BubbleEx.Verify.Matrix do
   @doc """
   The matrix as owner-repo files (decision D6 on WTF-358), paths relative
   to the repository root: the seed, one scenario and one recording per
-  (type, persona), and `.wtf/verification/interpreter/<seed id>.json` with
-  the assumptions in force, the per-op dependencies and the coverage
-  report.
+  (type, persona), `.wtf/verification/differences/<seed id>.json` with
+  the intended differences (`BubbleEx.Verify.Difference`), and
+  `.wtf/verification/interpreter/<seed id>.json` with the assumptions in
+  force, the per-op dependencies and the coverage report.
   """
   @spec files(t()) :: [{String.t(), String.t()}]
   def files(%__MODULE__{} = matrix) do
@@ -929,6 +1420,11 @@ defmodule BubbleEx.Verify.Matrix do
         do: {"#{root}/recordings/#{r.scenario.id}.json", Recording.to_json(r)}
       ) ++
       [
+        {"#{root}/differences/#{matrix.seed.id}.json",
+         Difference.to_json(matrix.differences, %{
+           id: matrix.seed.id,
+           sha256: Seed.sha256(matrix.seed)
+         })},
         {"#{root}/interpreter/#{matrix.seed.id}.json",
          CanonicalJson.encode(interpreter_doc(matrix))}
       ]
@@ -939,6 +1435,7 @@ defmodule BubbleEx.Verify.Matrix do
       "format" => "bubble_ex.verify.interpreter",
       "seed" => %{"id" => matrix.seed.id, "sha256" => Seed.sha256(matrix.seed)},
       "assumptions" => Assumptions.to_map(matrix.assumptions),
+      "target_assumptions" => Assumptions.to_map(Assumptions.target()),
       "dependencies" =>
         matrix.dependencies
         |> Enum.sort()

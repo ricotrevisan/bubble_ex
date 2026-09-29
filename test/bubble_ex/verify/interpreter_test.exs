@@ -3,7 +3,10 @@ defmodule BubbleEx.Verify.InterpreterTest do
   # hand-authored expectation tables the compiled Ash conditions and
   # policies are held to in PostgreSQL (scripts/ash_compile_check.sh, which
   # also compares the interpreter's verdicts with PostgreSQL directly), and
-  # each assumption flag flipped.
+  # each assumption flag flipped. The tables hold the generated policies,
+  # so the interpreter is compared under the target's reading
+  # (Assumptions.target/0); Bubble's calibrated reading (the defaults,
+  # WTF-426) is tested on its own.
   use ExUnit.Case, async: true
 
   alias BubbleEx.Expression.IR
@@ -35,10 +38,13 @@ defmodule BubbleEx.Verify.InterpreterTest do
     }
   end
 
+  # The target's reading, with `overrides`.
   defp interpreter(model, overrides \\ []) do
-    {:ok, interpreter} = Interpreter.new(model, assumptions: overrides)
+    {:ok, interpreter} = Interpreter.new(model, assumptions: target(overrides))
     interpreter
   end
+
+  defp target(overrides), do: Map.merge(Assumptions.target(), Map.new(overrides))
 
   defp holds(model, ds, user, type, rule, key, overrides \\ []) do
     case Interpreter.condition(interpreter(model, overrides), ds, user, type, rule, key) do
@@ -190,7 +196,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
     end
   end
 
-  describe "assumption flags (defaults: the compiler's fail-safe reading)" do
+  describe "assumption flags (the target's reading: the compiler's fail-safe one)" do
     test "the registry" do
       assert length(Assumptions.names()) == 16
 
@@ -201,7 +207,8 @@ defmodule BubbleEx.Verify.InterpreterTest do
                :dangling_ref_is_empty
              ]
 
-      assert Assumptions.defaults().actor_empty_denies
+      refute Assumptions.defaults().actor_empty_denies
+      assert Assumptions.target().actor_empty_denies
       refute Assumptions.defaults().empty_yes_no_is_no
       assert {:ok, a} = Assumptions.new(empty_equals_empty: false)
       assert Assumptions.changed(a) == [:empty_equals_empty]
@@ -355,12 +362,86 @@ defmodule BubbleEx.Verify.InterpreterTest do
   end
 
   defp ctx(model, ds, user, this, flags \\ []) do
-    {:ok, assumptions} = Assumptions.new(flags)
+    {:ok, assumptions} = Assumptions.new(target(flags))
     %{ds: ds, user: user, logged_in: user != nil, this: this, flags: assumptions, model: model}
   end
 
   defp task_field(field, type),
     do: IR.node(:field, [IR.node(:this, [:rule_record], "custom.task"), "task", field], type)
+
+  describe "Bubble's reading (the defaults, calibrated by V5: WTF-426)" do
+    test "only the refuted flag differs from the target's; the evidence is recorded" do
+      assert {:ok, target} = Assumptions.new(Assumptions.target())
+      assert Assumptions.changed(target) == [:actor_empty_denies]
+      assert BubbleEx.Verify.Difference.intended(Assumptions.defaults()) == Assumptions.target()
+
+      evidence = Assumptions.evidence()
+      assert map_size(evidence) == 16
+
+      assert %{status: :refuted, agree: 14, disagree: 69, flip_fixes: 64} =
+               evidence.actor_empty_denies
+
+      for flag <- [:logged_out_user_is_empty, :everyone_exclusive, :empty_yes_no_is_no],
+          do: assert(evidence[flag].status == :leaning_flipped, "#{flag}")
+
+      for flag <- [
+            :builtin_fields_hidden_unless_listed,
+            :no_visible_field_unreadable,
+            :search_independent_of_view
+          ],
+          do: assert(evidence[flag].status == :supported, "#{flag}")
+
+      assert evidence.everyone_guards_record_values.status == :unclear
+
+      not_exercised = for {flag, %{status: :not_exercised}} <- evidence, do: flag
+      assert length(not_exercised) == 8
+      assert :defaults_applied_at_creation in not_exercised
+
+      # the leaning flags are not flipped: too few samples
+      for flag <- Assumptions.unsettled(),
+          do: assert(Assumptions.defaults()[flag] == Assumptions.target()[flag], "#{flag}")
+
+      assert length(Assumptions.unsettled()) == 12
+    end
+
+    test "an empty user-side value compares like any empty value", %{model: model, ds: ds} do
+      {:ok, bubble} = Interpreter.new(model)
+
+      # o_no_access_: not(This's access contains Current User); logged out,
+      # the user is empty, and k2's empty access list doesn't contain it
+      assert {:ok, true, flags} =
+               Interpreter.condition(bubble, ds, nil, "task", "o_no_access_", "k2")
+
+      assert :actor_empty_denies in flags
+
+      # p_not_owner_: This's Created By is not Current User; k1 was created by u1
+      assert {:ok, true, _} = Interpreter.condition(bubble, ds, nil, "task", "p_not_owner_", "k1")
+    end
+
+    test "on the policy table Bubble's reading shows a superset of the policies'",
+         %{pmodel: model, pproject: project, pds: ds} do
+      {:ok, bubble} = Interpreter.new(model)
+      target = Interpreter.target(bubble)
+
+      more =
+        for %{"type" => type, "action" => action, "expected" => expected} <- @policies["reads"],
+            action in ["get", "search"],
+            {persona, _} <- expected,
+            mine = PrivacyCrossCheck.reads(bubble, project, ds, type, action, persona),
+            theirs = PrivacyCrossCheck.reads(target, project, ds, type, action, persona),
+            mine != theirs do
+          for {id, fields} <- theirs, is_list(fields) do
+            assert is_list(mine[id]) or mine[id] == "all", "#{type}.#{action} #{id} as #{persona}"
+          end
+
+          {type, persona}
+        end
+
+      # users lacking a value a condition reads (logged out, or without a
+      # team whose lead the board rule compares) see more in Bubble
+      assert {"board", "logged_out"} in more and {"doc", "logged_out"} in more
+    end
+  end
 
   describe "assumption flags for unmodeled Bubble facts" do
     test "empty_text_contains_nothing: contains with an empty text", %{model: model, ds: ds} do

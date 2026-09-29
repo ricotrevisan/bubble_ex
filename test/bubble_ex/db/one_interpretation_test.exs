@@ -74,6 +74,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "the Bubble Data API `/meta` schema's own `fields` member; reads no app JSON",
     "lib/bubble_ex/verify/replay/client.ex" =>
       "the Bubble Data API search constraint's `value` member; reads no app JSON",
+    "lib/bubble_ex/verify/difference.ex" =>
+      "the differences format's cases, decoded as observations (`value`); reads no app JSON",
     "lib/bubble_ex/verify/recording.ex" =>
       "the recording format's observation members (`value`, `values`); reads no app JSON",
     "lib/bubble_ex/verify/scenario.ex" =>

@@ -95,7 +95,11 @@ defmodule BubbleEx.Target.Phoenix.Structural do
 
   @typedoc """
   A run: its results, its counts (aggregates only), the checks it did not
-  run and why, and the failures known to have an open issue. `project/2`
+  run and why, the failures known to have an open issue, and (`run/2`)
+  the privacy rules where the generated policies are stricter than Bubble
+  by design (`intended_differences`, `BubbleEx.Verify.Difference`; counted
+  in `counts["privacy_rules"]["stricter_than_bubble"]`): known and
+  intended, never a failure. `project/2`
   adds `outputs`: the tail of a failing command's output by result ID, to
   show, never to store.
   """
@@ -104,6 +108,9 @@ defmodule BubbleEx.Target.Phoenix.Structural do
           required(:counts) => map(),
           required(:not_run) => [%{check: String.t(), reason: String.t()}],
           optional(:known) => [%{check: String.t(), issue: String.t(), reason: String.t()}],
+          optional(:intended_differences) => [
+            %{type: String.t(), rule: String.t(), flags: [atom()], decision: String.t()}
+          ],
           optional(:outputs) => %{String.t() => String.t()}
         }
 
@@ -180,7 +187,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
              "bypasses" => bypass_counts
            },
            not_run: not_run(not_run),
-           known: []
+           known: [],
+           intended_differences: intended_differences(inputs.project)
          }}
       end
     end
@@ -384,10 +392,34 @@ defmodule BubbleEx.Target.Phoenix.Structural do
             "everyone" => types |> Enum.flat_map(& &1.rules) |> Enum.count(& &1.default?),
             "compiled" => privacy |> Enum.map(&length(&1.compiled_rules)) |> Enum.sum(),
             "denied" => privacy |> Enum.map(&length(&1.denied_rules)) |> Enum.sum(),
+            "stricter_than_bubble" => %{
+              "rules" => privacy |> Enum.map(&length(&1.stricter_rules)) |> Enum.sum(),
+              "types" => Enum.count(privacy, &(&1.stricter_rules != []))
+            },
             "uncovered" => length(diff)
           })
 
         {Map.put(spec, :diff, diff), counts}
+    end
+  end
+
+  # Where the generated policies are stricter than Bubble by design
+  # (BubbleEx.Verify.Difference): known and intended, not a failure.
+  defp intended_differences(%Project{privacy: :omit}), do: []
+
+  defp intended_differences(%Project{} = project) do
+    policy = BubbleEx.Verify.Difference.policy()
+
+    for r <- Enum.sort_by(project.resources, & &1.source[:type]),
+        %{stricter_rules: rules} <- [r.privacy],
+        rule <- rules do
+      %{
+        type: r.source[:type],
+        rule: rule,
+        flags: Map.keys(policy) |> Enum.sort(),
+        decision:
+          policy |> Map.values() |> Enum.map(& &1.decision) |> Enum.uniq() |> Enum.join("; ")
+      }
     end
   end
 

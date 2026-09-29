@@ -17,7 +17,7 @@ defmodule BubbleEx.Test.PrivacyCrossCheck do
   alias BubbleEx.Model
   alias BubbleEx.Model.Type
   alias BubbleEx.Verify.Interpreter
-  alias BubbleEx.Verify.Interpreter.Dataset
+  alias BubbleEx.Verify.Interpreter.{Assumptions, Dataset}
 
   @doc "The Dataset of the table's `records` (type => rows)."
   def dataset(model, project, rows) do
@@ -173,9 +173,11 @@ defmodule BubbleEx.Test.PrivacyCrossCheck do
     %{conditions: condition_verdicts(), policies: policy_verdicts()}
   end
 
+  # The tables hold what the compiled conditions and policies select: the
+  # target's reading (Assumptions.target/0), stricter than Bubble's.
   defp condition_verdicts do
     {model, _project, doc, ds} = load(@conditions)
-    {:ok, interpreter} = Interpreter.new(model)
+    {:ok, interpreter} = Interpreter.new(model, assumptions: Assumptions.target())
 
     for %{"type" => type, "rule" => rule, "expected" => expected} <- doc["cases"] do
       verdicts =
@@ -189,7 +191,7 @@ defmodule BubbleEx.Test.PrivacyCrossCheck do
 
   defp policy_verdicts do
     {model, project, doc, ds} = load(@policies)
-    {:ok, interpreter} = Interpreter.new(model)
+    {:ok, interpreter} = Interpreter.new(model, assumptions: Assumptions.target())
 
     for %{"type" => type, "action" => action, "expected" => expected} <- doc["reads"],
         action in ["get", "search"] do

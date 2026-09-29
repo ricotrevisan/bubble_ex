@@ -75,6 +75,23 @@
         "field": "weird_text",
         "type": "note"
       }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "memo: privacy rule \"Active users\" (active_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/memo/privacy_role/active_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "active_",
+        "type": "memo"
+      }
     }
   ],
   "enums": [],
@@ -622,7 +639,10 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "active_"
+        ]
       },
       "privacy_relationships": [
         {
@@ -1071,7 +1091,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": []
       },
       "privacy_relationships": [
         {
@@ -1486,7 +1507,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": []
       },
       "privacy_relationships": [],
       "relationships": [

@@ -7,7 +7,7 @@ defmodule BubbleEx.Verify.MatrixTest do
   alias BubbleEx.Model
   alias BubbleEx.Test.{ExpressionFixture, PermutedJson}
   alias BubbleEx.Verify
-  alias BubbleEx.Verify.{Interpreter, Matrix, Recording, Result, Scenario, Seed}
+  alias BubbleEx.Verify.{Difference, Interpreter, Matrix, Recording, Result, Scenario, Seed}
   alias BubbleEx.Verify.Interpreter.Dataset
   alias BubbleEx.Verify.Matrix.Personas
 
@@ -88,6 +88,17 @@ defmodule BubbleEx.Verify.MatrixTest do
              {:ref, "u.w2_member"}
   end
 
+  test "governed fields no condition reads hold a value; the rest are counted",
+       %{policies: matrix} do
+    g = matrix.report.governed_fields
+    assert g.slots == g.held + g.unchecked
+    assert g.unchecked == g.unchecked_by_reason |> Map.values() |> Enum.sum()
+    refute Map.has_key?(g.unchecked_by_reason, "other")
+    # a board's name is governed and read by no condition
+    assert Seed.record(matrix.seed, "e.board").fields["name_text"] == {:text, "sample"}
+    assert Matrix.counts(matrix.report)["governed_fields"]["slots"] == g.slots
+  end
+
   test "documents validate and fit together", %{policies: policies, expression: expression} do
     for matrix <- [policies, expression] do
       assert {:ok, seed} = Seed.from_json(Seed.to_json(matrix.seed))
@@ -136,8 +147,10 @@ defmodule BubbleEx.Verify.MatrixTest do
     # doc and memo have an uncompilable rule
     assert matrix.skipped.gets > 0
 
-    # anonymous: every doc is either unknown or partly unknown (raw_ grants
-    # view_all), so there is no scenario; an admin's is fully decided.
+    # anonymous: every doc is unknown or partly unknown under the target's
+    # reading (raw_ grants view_all), so there is no scenario, although
+    # Bubble's decides some (an empty owner equals the logged-out user, so
+    # owner_ grants view_all); an admin's is fully decided.
     ids = Enum.map(matrix.scenarios, & &1.id)
     refute "privacy_read.custom.doc.anonymous" in ids
     assert "privacy_read.custom.doc.admin" in ids
@@ -146,12 +159,12 @@ defmodule BubbleEx.Verify.MatrixTest do
   end
 
   test "dependencies name the assumptions an op's expectations rest on", %{policies: matrix} do
-    # board's lead_ rule: This's owner is Current User's team's lead. The
-    # empty board is hidden from a logged-out user; it would be readable
-    # with no fields if such records were, and visible outright if the
-    # user's empty values compared (an empty owner is an empty lead).
+    # board's lead_ rule: This's owner is Current User's team's lead. Under
+    # Bubble's reading the empty board is visible to a logged-out user (an
+    # empty owner is an empty lead); it would be hidden if empty user-side
+    # values denied, or if empty never equaled empty.
     assert matrix.dependencies[{"privacy_read.custom.board.anonymous", "get.e.board"}] ==
-             [:actor_empty_denies, :no_visible_field_unreadable]
+             [:actor_empty_denies, :empty_equals_empty]
 
     assert Enum.all?(matrix.dependencies, fn {_, flags} -> flags != [] end)
     assert matrix.report.assumptions.changed == []
@@ -197,11 +210,24 @@ defmodule BubbleEx.Verify.MatrixTest do
     {_, interpreter} = List.last(files)
     doc = Jason.decode!(interpreter)
     assert doc["format"] == "bubble_ex.verify.interpreter"
-    assert doc["assumptions"]["actor_empty_denies"] == true
+    assert doc["assumptions"]["actor_empty_denies"] == false
+    assert doc["target_assumptions"]["actor_empty_denies"] == true
     assert doc["dependencies"] != []
+
+    {_, differences} =
+      Enum.find(files, fn {path, _} ->
+        path == ".wtf/verification/differences/privacy_matrix.json"
+      end)
+
+    assert {:ok, %{seed: %{id: "privacy_matrix"}, cases: cases}} =
+             Difference.from_json(differences)
+
+    assert cases == matrix.differences
 
     counts = Matrix.counts(matrix.report)
     refute Map.has_key?(counts, "unsolved")
+    refute Map.has_key?(counts, "intended_differences")
+    assert counts["differences"]["policy"] == ["actor_empty_denies"]
     assert counts["rules"]["total"] == 14
     refute counts |> Jason.encode!() |> String.contains?("raw_")
   end
@@ -234,7 +260,11 @@ defmodule BubbleEx.Verify.MatrixTest do
         do: assert(Seed.record(matrix.seed, key).fields[f] == nil)
 
     refute Map.has_key?(Matrix.counts(matrix.report), "explicit_empties")
-    assert matrix.flags[:defaults_applied_at_creation] == :exercised
+    # the seed writes defaults out: no recording can depend on the flag
+    assert {:not_exercised, "the seed writes every modeled default out" <> _} =
+             matrix.flags[:defaults_applied_at_creation]
+
+    refute Enum.any?(matrix.dependencies, fn {_, f} -> :defaults_applied_at_creation in f end)
 
     # the recordings are what the interpreter reads from the seed file
     for rec <- matrix.recordings,
@@ -346,7 +376,9 @@ defmodule BubbleEx.Verify.MatrixTest do
       outcomes = matrix.report.assumptions.outcomes
       assert outcomes["everyone_exclusive"] == "exercised"
       assert matrix.report.rules.false_branch_only_via_actor_guard == 0
+      assert matrix.report.rules.true_branch_only_via_empty_actor == 0
       assert Enum.all?(matrix.rules, &(&1.robust_false in [true, nil]))
+      assert Enum.all?(matrix.rules, &(&1.robust_true in [true, nil]))
     end
 
     test "counts carry no Bubble IDs of unobservable rules", %{policies: matrix} do
@@ -372,6 +404,240 @@ defmodule BubbleEx.Verify.MatrixTest do
       end)
 
     assert {:ok, %Result{status: :pass}} = Matrix.result(scenario, recording, reordered, opts)
+  end
+
+  describe "intended differences: the target policy is stricter than Bubble (WTF-426)" do
+    test "every case is stricter, explained by the policy's flags, and none is unintended",
+         %{pmodel: model, policies: matrix} do
+      {:ok, bubble} = Interpreter.new(model)
+      target = Interpreter.target(bubble)
+      {:ok, ds} = Dataset.from_seed(matrix.seed)
+
+      assert matrix.differences != []
+      assert matrix.unintended == []
+      assert matrix.report.differences.unintended == 0
+      assert matrix.report.differences.observations == length(matrix.differences)
+
+      for c <- matrix.differences do
+        assert c.flags == [:actor_empty_denies]
+        assert c.bubble != c.target
+        assert Difference.stricter?(c.kind, c.bubble, c.target)
+        user = matrix.seed.personas[c.persona].user
+
+        # bubble is the recording's value; target what the policies' reading gives
+        recording = Enum.find(matrix.recordings, &(&1.scenario.id == c.scenario))
+
+        assert Enum.any?(
+                 recording.observations,
+                 &(&1.op == c.op and &1.kind == c.kind and &1.value == c.bubble)
+               )
+
+        case c.kind do
+          :visible ->
+            assert {:ok, %{visible: v}} = Interpreter.access(target, ds, user, c.record)
+            assert v == c.target
+
+          :visible_fields ->
+            assert {:ok, %{fields: f}} = Interpreter.access(target, ds, user, c.record)
+            assert f == c.target
+
+          :record_set ->
+            {:ok, search} = Interpreter.search(target, ds, user, c.type)
+            assert Enum.sort(search.records) == c.target.records
+        end
+      end
+
+      # the logged-out user sees the empty board through lead_ in Bubble only
+      assert %Difference{kind: :visible, bubble: true, target: false, rules: ["lead_"]} =
+               Enum.find(
+                 matrix.differences,
+                 &(&1.scenario == "privacy_read.custom.board.anonymous" and &1.op == "get.e.board" and
+                     &1.kind == :visible)
+               )
+
+      assert [%{type: "board", rule: "lead_", flags: [:actor_empty_denies]} | _] =
+               matrix.report.intended_differences
+    end
+
+    test "the structural list names every rule reading the current user", %{pmodel: model} do
+      list = Difference.structural(model)
+      assert %{type: "board", rule: "lead_", flags: [:actor_empty_denies]} in list
+      assert %{type: "doc", rule: "owner_", flags: [:actor_empty_denies]} in list
+      assert %{type: "doc", rule: "everyone", flags: [:actor_empty_denies]} in list
+      refute Enum.any?(list, &(&1.type == "note" and &1.rule == "hidden_"))
+    end
+
+    test "result/4 holds the subject to the target policy", %{policies: matrix} do
+      id = "privacy_read.custom.board.anonymous"
+      scenario = Enum.find(matrix.scenarios, &(&1.id == id))
+      recording = Enum.find(matrix.recordings, &(&1.scenario.id == id))
+      cases = Difference.for_scenario(matrix.differences, id)
+      assert cases != []
+      now = ~U[2026-10-02 09:15:00Z]
+      opts = [app: "fixture-app", ran_at: now, differences: matrix.differences]
+      evaluate = [now: now, app: "fixture-app", recording: recording]
+
+      # the subject is stricter exactly where the policy says: reported, passing
+      stricter = Difference.to_target(recording.observations, cases)
+
+      assert {:ok, %Result{status: :intended_difference, diff: diff} = result} =
+               Matrix.result(scenario, recording, stricter, opts)
+
+      assert Enum.all?(diff, &(&1.intended == ["actor_empty_denies"] and &1.rules != []))
+      assert {:ok, ^result} = result |> Result.to_json() |> Result.from_json()
+
+      assert {:ok, %{passing: true, bubble_verified: false, intended: ^diff}} =
+               Result.evaluate(result, %Resolved{}, [
+                 {:differences, matrix.differences} | evaluate
+               ])
+
+      assert [%{result: ^id, intended: ["actor_empty_denies"]} | _] =
+               Result.intended_differences([result])
+
+      # without the difference record, or with another scenario's, it does not count
+      assert {:error, %{kind: :invalid_input}} = Result.evaluate(result, %Resolved{}, evaluate)
+
+      assert {:error, %{kind: :invalid_input}} =
+               Result.evaluate(result, %Resolved{}, [{:differences, []} | evaluate])
+
+      # a subject granting what Bubble grants there fails: the leak is not the policy
+      assert {:ok, %Result{status: :fail, diff: [_ | _] = diff}} =
+               Matrix.result(scenario, recording, recording.observations, opts)
+
+      assert Enum.all?(diff, &(&1[:detail] =~ "stricter than Bubble"))
+
+      # without the differences the stricter subject fails
+      assert {:ok, %Result{status: :fail}} =
+               Matrix.result(scenario, recording, stricter, Keyword.delete(opts, :differences))
+    end
+
+    test "evaluate/3 with the recording refuses a diff that leaves out a recorded case",
+         %{policies: matrix} do
+      {id, _} =
+        matrix.differences
+        |> Enum.group_by(& &1.scenario, &{&1.op, &1.record})
+        |> Enum.find(fn {_, ops} -> ops |> Enum.uniq() |> length() > 1 end)
+
+      scenario = Enum.find(matrix.scenarios, &(&1.id == id))
+      recording = Enum.find(matrix.recordings, &(&1.scenario.id == id))
+      cases = Difference.for_scenario(matrix.differences, id)
+      now = ~U[2026-10-02 09:15:00Z]
+
+      {:ok, %Result{status: :intended_difference} = full} =
+        Matrix.result(scenario, recording, Difference.to_target(recording.observations, cases),
+          app: "fixture-app",
+          ran_at: now,
+          differences: matrix.differences
+        )
+
+      evaluate = [now: now, app: "fixture-app", differences: matrix.differences]
+
+      assert {:ok, %{passing: true}} =
+               Result.evaluate(full, %Resolved{}, [{:recording, recording} | evaluate])
+
+      # drop every entry of one record: still listed, but incomplete
+      dropped = hd(full.diff)[:record] || hd(full.diff)[:op]
+      kept = Enum.reject(full.diff, &((&1[:record] || &1[:op]) == dropped))
+      assert kept != []
+      {:ok, truncated} = full |> Map.from_struct() |> Map.put(:diff, kept) |> Result.new()
+
+      assert {:ok, %{passing: true}} = Result.evaluate(truncated, %Resolved{}, evaluate)
+
+      assert {:error, %{message: "the result's diff leaves out" <> _}} =
+               Result.evaluate(truncated, %Resolved{}, [{:recording, recording} | evaluate])
+    end
+
+    test "a hidden record from a fields case needs the held fields; a missing op never counts" do
+      fields = %Difference{
+        scenario: "s",
+        op: "get.r",
+        kind: :visible_fields,
+        record: "r",
+        type: "t",
+        bubble: ["Created Date", "title_text"],
+        target: ["Created Date"],
+        flags: [:actor_empty_denies]
+      }
+
+      hidden = %{op: "record_visible", record: "r", expected: true, actual: false}
+      # without the Data API's view, fewer fields never hide the record
+      assert Difference.explaining([fields], hidden) == nil
+      # the target still shows a held field: the record is not ID-only
+      assert Difference.explaining([fields], hidden, %{"r" => ["Created Date"]}) == nil
+      # no held field left: ID-only, so hidden through the Data API
+      assert Difference.explaining([%{fields | target: ["body_text"]}], hidden, %{
+               "r" => ["Created Date"]
+             })
+
+      visible = %{fields | kind: :visible, bubble: true, target: false}
+      assert Difference.explaining([visible], hidden) == visible
+      assert Difference.explaining([visible], %{hidden | actual: nil}) == nil
+
+      assert {:error, _} =
+               Result.new(
+                 id: "s",
+                 app: "fixture-app",
+                 check: "privacy_read",
+                 status: :intended_difference,
+                 scenario: %{
+                   id: "s",
+                   sha256: String.duplicate("a", 64),
+                   source_sha256: String.duplicate("b", 64),
+                   seed_sha256: String.duplicate("c", 64)
+                 },
+                 oracle: %{kind: :model, sha256: String.duplicate("d", 64)},
+                 diff: [Map.merge(%{hidden | actual: nil}, %{intended: ["actor_empty_denies"]})],
+                 actor: "ci",
+                 ran_at: ~U[2026-10-02 09:15:00Z]
+               )
+    end
+
+    test "an intended difference must be stricter and name the policy's flags" do
+      base = %{
+        id: "privacy_read.custom.board.anonymous",
+        scenario: %{
+          id: "privacy_read.custom.board.anonymous",
+          sha256: String.duplicate("a", 64),
+          source_sha256: String.duplicate("b", 64),
+          seed_sha256: String.duplicate("c", 64)
+        },
+        oracle: %{kind: :model, sha256: String.duplicate("d", 64)},
+        app: "fixture-app",
+        check: "privacy_read",
+        status: :intended_difference,
+        actor: "ci",
+        ran_at: ~U[2026-10-02 09:15:00Z]
+      }
+
+      entry = %{op: "record_visible", record: "e.board", expected: true, actual: false}
+
+      assert {:ok, _} =
+               Result.new(
+                 Map.put(base, :diff, [Map.put(entry, :intended, ["actor_empty_denies"])])
+               )
+
+      assert {:error, _} = Result.new(Map.put(base, :diff, [entry]))
+
+      assert {:error, _} =
+               Result.new(
+                 Map.put(base, :diff, [
+                   %{entry | expected: false, actual: true}
+                   |> Map.put(:intended, ["actor_empty_denies"])
+                 ])
+               )
+
+      assert {:error, _} =
+               Result.new(
+                 Map.put(base, :diff, [Map.put(entry, :intended, ["everyone_exclusive"])])
+               )
+
+      assert {:error, _} =
+               Result.new(
+                 base
+                 |> Map.put(:check, "row_counts")
+                 |> Map.put(:diff, [Map.put(entry, :intended, ["actor_empty_denies"])])
+               )
+    end
   end
 
   defp recorded_cells(matrix) do

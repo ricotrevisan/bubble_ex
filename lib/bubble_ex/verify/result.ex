@@ -47,12 +47,20 @@ defmodule BubbleEx.Verify.Result do
   |--------|---------------------------|---------------------------------|
   | `pass` | yes | no diff, decision or waiver |
   | `decided_difference` | yes, if the decision links | a diff explained by a **finding** decision: `decision` = its `key` + the finding's `proposal_sha256`; the class must be decidable |
+  | `intended_difference` | yes, if the difference record lists every entry | `privacy` checks only: a diff in which the subject is **stricter than Bubble by design** (`BubbleEx.Verify.Difference`): every entry is stricter (hidden where Bubble shows, fewer fields, fewer records) and names the policy flags responsible (`intended`, with the `rules`); no decision or waiver |
   | `waived` | yes (listed at cutover), if the decision links or the reviewer is trusted | a diff excused by an owner **parity exception** (`decision` = its `key`, `proposal_sha256` null, no `waiver`), or by a `waiver` from an agent or reviewer the class allows (visual reviewer waivers need an `attestation` with its `sha256` in `evidence`). Owner waivers are refused: owners accept through decisions |
   | `quarantined` | no, blocks cutover | `behavior` checks only: a `waiver` with a reason, `since` (the first quarantine, not after `ran_at`) and `expires_at` after `ran_at` and at most 7 days after `since`; no decision |
   | `fail` | no | no decision or waiver |
   | `stale` | no | `stale_reasons` (`BubbleEx.Verify.Staleness`); the rest is kept as it was |
   | `skipped` | never (reported separately) | a `reason` |
   | `error` | no | a `reason` |
+
+  An `intended_difference` is not an acceptance: it is the target policy
+  the owner decided (the generated policies stay stricter than Bubble),
+  checked case by case against the difference record the privacy matrix
+  computes (`evaluate/3`'s `:differences`). It is reported, so the owner
+  sees every place the new app is stricter than Bubble
+  (`intended_differences/1`).
 
   So agents can never accept a privacy, data or auth difference: those
   classes have no waivers and no quarantine, and a finding decision or
@@ -83,7 +91,7 @@ defmodule BubbleEx.Verify.Result do
 
   alias BubbleEx.{CanonicalJson, Decision, Error}
   alias BubbleEx.Decision.Resolved
-  alias BubbleEx.Verify.{Check, Json, Recording, Replay}
+  alias BubbleEx.Verify.{Check, Difference, Json, Recording, Replay}
 
   @format "bubble_ex.verify.result"
   @schema_version 1
@@ -91,7 +99,17 @@ defmodule BubbleEx.Verify.Result do
               basis subject_build diff evidence decision waiver reason stale_reasons actor ran_at)
   @required ~w(format schema_version id app check status actor ran_at)
 
-  @statuses [:pass, :decided_difference, :waived, :quarantined, :fail, :stale, :skipped, :error]
+  @statuses [
+    :pass,
+    :decided_difference,
+    :intended_difference,
+    :waived,
+    :quarantined,
+    :fail,
+    :stale,
+    :skipped,
+    :error
+  ]
   @stale_reasons [
     :scenario_changed,
     :source_changed,
@@ -114,13 +132,14 @@ defmodule BubbleEx.Verify.Result do
                compile_error lint boundary migration symbol_uncovered rule_uncovered
                bypass_unlisted secret_found marker_missing criterion gate)
   @diff_members ~w(op type record field option_set page element workflow rule path expected actual
-                   detail)
+                   detail intended rules)
   @diff_atoms Map.new(@diff_members, &{&1, String.to_atom(&1)})
   @quarantine_days 7
 
   @type status ::
           :pass
           | :decided_difference
+          | :intended_difference
           | :waived
           | :quarantined
           | :fail
@@ -347,10 +366,29 @@ defmodule BubbleEx.Verify.Result do
   defp diff_entry(map) do
     with :ok <- Json.members(map, @diff_members, ~w(op), "diff entry"),
          {:ok, op} <- Json.string(map["op"], "diff op"),
-         :ok <- known_diff_op(op) do
+         :ok <- known_diff_op(op),
+         :ok <- intended_flags(map["intended"]),
+         {:ok, _} <- Json.string_set(Map.get(map, "rules") || [], "diff rules") do
       {:ok, Map.new(map, fn {k, v} -> {Map.fetch!(@diff_atoms, k), v} end)}
     end
   end
+
+  defp intended_flags(nil), do: :ok
+
+  defp intended_flags(flags) when is_list(flags) and flags != [] do
+    known = Enum.map(Difference.flags(), &Atom.to_string/1)
+
+    if Enum.all?(flags, &(&1 in known)),
+      do: :ok,
+      else:
+        Json.error("a diff entry's intended flags are not the target policy's", %{
+          intended: flags,
+          policy: known
+        })
+  end
+
+  defp intended_flags(other),
+    do: Json.error("intended must list the target policy's flags", %{intended: other})
 
   defp known_diff_op(op) do
     if op in @diff_ops,
@@ -492,6 +530,25 @@ defmodule BubbleEx.Verify.Result do
     end
   end
 
+  defp status_rule(:intended_difference, r) do
+    with :ok <- none(r, [:decision, :waiver]),
+         :ok <- differs(r) do
+      cond do
+        r.class != :privacy ->
+          Json.error("only privacy checks have intended differences", %{class: r.class})
+
+        entry = Enum.find(r.diff, &(not intended_entry?(&1))) ->
+          Json.error(
+            "an intended difference is stricter than Bubble and names the policy flags",
+            %{entry: entry}
+          )
+
+        true ->
+          :ok
+      end
+    end
+  end
+
   defp status_rule(:waived, r) do
     with :ok <- differs(r), do: waived(r)
   end
@@ -511,6 +568,23 @@ defmodule BubbleEx.Verify.Result do
       if r.reason, do: :ok, else: Json.error("a #{status} result needs a reason")
     end
   end
+
+  # Stricter: the subject hides what Bubble shows, never the reverse.
+  defp intended_entry?(%{intended: [_ | _]} = e) do
+    case e.op do
+      op when op in ["record_visible", "field_visible"] ->
+        e[:expected] == true and e[:actual] == false
+
+      "record_set" ->
+        is_list(e[:expected]) and is_list(e[:actual]) and e[:actual] -- e[:expected] == [] and
+          e[:expected] -- e[:actual] != []
+
+      _ ->
+        false
+    end
+  end
+
+  defp intended_entry?(_), do: false
 
   defp waived(%{decision: %{kind: :parity_exception}} = r) do
     cond do
@@ -673,7 +747,12 @@ defmodule BubbleEx.Verify.Result do
   # --- reading results ------------------------------------------------------------
 
   @typedoc "What `evaluate/3` concludes about a result."
-  @type verdict :: %{result: t(), passing: boolean(), bubble_verified: boolean()}
+  @type verdict :: %{
+          result: t(),
+          passing: boolean(),
+          bubble_verified: boolean(),
+          intended: [map()]
+        }
 
   # Classes compared against an oracle; they need it, and the artifact
   # behind it in `evidence`, to count.
@@ -701,10 +780,22 @@ defmodule BubbleEx.Verify.Result do
       (`check_recording/2`)
     * `:export_sha256` - the SHA-256 of the export an `export` oracle cites,
       computed by the caller from the export it loaded
+    * `:seed` - the scenario's seed: with a `bubble` recording, the
+      intended differences are checked through the Data API's view (a
+      record whose target shows no held field answers ID-only)
+    * `:differences` - the difference record (`BubbleEx.Verify.Difference`
+      cases, e.g. `matrix.differences` or the decoded owner-repo file) an
+      `intended_difference` result is checked against: every diff entry
+      must be explained by a case of the result's scenario
+      (`Difference.explaining/3`) with the same flags, and with
+      `:recording`, every case the recording shows must appear in the diff
+      (a truncated diff does not pass). Without it, or with an entry it
+      does not explain, the result is `:invalid_input`
 
   Returns the result after `link_decision/2` (possibly `stale`) and:
 
-    * `passing` - `pass`, `decided_difference` or `waived` (a reviewer
+    * `passing` - `pass`, `decided_difference`, `intended_difference` or
+      `waived` (a reviewer
       waiver only from a trusted reviewer), **with evidence**: structural
       checks need none; privacy, data, auth, behaviour and visual checks
       need an oracle and an `evidence` entry whose `sha256` is the
@@ -716,21 +807,48 @@ defmodule BubbleEx.Verify.Result do
       recording, or (L4 data and auth only) an `export` oracle whose
       `:export_sha256` matches. A `model` oracle (the interpreter) never
       counts (decision D2)
+    * `intended` - the diff entries that are intended differences
+      (stricter than Bubble by design), each with its `intended` flags and
+      `rules`; `[]` for other statuses
   """
   @spec evaluate(t(), Resolved.t(), keyword()) :: {:ok, verdict()} | {:error, Error.t()}
   def evaluate(%__MODULE__{} = r, %Resolved{} = resolved, opts) do
     with :ok <- not_future(r, opts),
          :ok <- same_app(r, opts[:app]),
          {:ok, linked} <- link_decision(r, resolved),
-         :ok <- maybe_recording(linked, opts[:recording]) do
+         :ok <- maybe_recording(linked, opts[:recording]),
+         :ok <- check_intended(linked, opts) do
       passing = counts?(linked, Keyword.get(opts, :reviewers, [])) and evidenced?(linked)
 
       {:ok,
        %{
          result: linked,
          passing: passing,
-         bubble_verified: passing and oracle_verified?(linked, opts)
+         bubble_verified: passing and oracle_verified?(linked, opts),
+         intended: if(linked.status == :intended_difference, do: linked.diff, else: [])
        }}
+    end
+  end
+
+  @doc """
+  The owner's list from results: every `intended_difference` entry, as
+  `%{result, scenario, type, record, field, op, intended, rules}`, sorted
+  by result ID. Where the new app is stricter than Bubble by design.
+  """
+  @spec intended_differences([t()]) :: [map()]
+  def intended_differences(results) do
+    for %__MODULE__{status: :intended_difference} = r <- Enum.sort_by(results, & &1.id),
+        e <- r.diff do
+      %{
+        result: r.id,
+        scenario: r.scenario && r.scenario.id,
+        type: e[:type] || r.subjects[:type],
+        record: e[:record],
+        field: e[:field],
+        op: e.op,
+        intended: e.intended,
+        rules: e[:rules] || []
+      }
     end
   end
 
@@ -764,10 +882,83 @@ defmodule BubbleEx.Verify.Result do
   defp same_app(r, app),
     do: Json.error("the result is for another app", %{app: r.app, expected: app})
 
+  defp check_intended(%{status: :intended_difference} = r, opts) do
+    case opts[:differences] do
+      nil ->
+        Json.error(
+          "an intended difference is checked against the difference record: pass differences:",
+          %{result: r.id}
+        )
+
+      differences ->
+        cases = Difference.for_scenario(differences, (r.scenario && r.scenario.id) || r.id)
+        held = held(opts[:recording], opts[:seed])
+
+        with :ok <- intended_listed(r, cases, held),
+             do: intended_complete(r, cases, opts[:recording], held)
+    end
+  end
+
+  defp check_intended(_r, _opts), do: :ok
+
+  defp held(%Recording{oracle: :bubble}, %BubbleEx.Verify.Seed{} = seed),
+    do: BubbleEx.Verify.DataApi.held_map(seed)
+
+  defp held(_recording, _seed), do: nil
+
+  defp intended_listed(r, cases, held) do
+    unexplained =
+      Enum.reject(r.diff, fn entry ->
+        case Difference.explaining(cases, entry, held) do
+          nil -> false
+          c -> Enum.map(c.flags, &Atom.to_string/1) == Enum.sort(entry.intended)
+        end
+      end)
+
+    if unexplained == [],
+      do: :ok,
+      else:
+        Json.error("the difference record does not list this intended difference", %{
+          result: r.id,
+          entries: unexplained
+        })
+  end
+
+  # Every case the recording shows (applying it changes an observation)
+  # must appear in the diff: a truncated diff does not pass.
+  defp intended_complete(_r, _cases, nil, _held), do: :ok
+
+  defp intended_complete(r, cases, %Recording{} = recording, held) do
+    missing =
+      cases
+      |> Enum.group_by(&{&1.op, &1.record})
+      |> Enum.filter(fn {_, group} -> shown?(recording, group, held) end)
+      |> Enum.reject(fn {_, group} ->
+        Enum.any?(r.diff, &(Difference.explaining(group, &1, held) != nil))
+      end)
+      |> Enum.map(fn {{op, record}, _} -> %{op: op, record: record} end)
+
+    if missing == [],
+      do: :ok,
+      else:
+        Json.error("the result's diff leaves out intended differences the recording shows", %{
+          result: r.id,
+          missing: missing
+        })
+  end
+
+  defp shown?(recording, group, nil),
+    do: Difference.to_target(recording.observations, group) != recording.observations
+
+  defp shown?(recording, group, held),
+    do: Difference.to_target(recording.observations, group, held) != recording.observations
+
   defp maybe_recording(_r, nil), do: :ok
   defp maybe_recording(r, recording), do: check_recording(r, recording)
 
-  defp counts?(%{status: status}, _) when status in [:pass, :decided_difference], do: true
+  defp counts?(%{status: status}, _)
+       when status in [:pass, :decided_difference, :intended_difference],
+       do: true
 
   defp counts?(%{status: :waived, waiver: %{actor: %{kind: :reviewer, id: id}}}, reviewers),
     do: id in reviewers
