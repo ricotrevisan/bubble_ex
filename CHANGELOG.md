@@ -6,6 +6,69 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Opt-in pruning for the data loader** (WTF-414). `BubbleEx.Load` can
+  now delete what a new complete export no longer holds among the rows the
+  loader wrote itself, and nothing else. It works in two steps:
+  `dry_run(..., prune: true)` reports the plan in `report.prune`, counts
+  per type and list with a `sha256`. Then `run(..., prune: [expect:
+  sha256])` prunes exactly that plan. A bare `prune: true` real run is
+  refused, and a resumed run prunes only what is left of the plan
+  recorded in its ledger.
+  - `BubbleEx.Load.Written` records the Bubble IDs and join rows the
+    loader wrote into a target, across its runs, in the ledger directory.
+    It is bound to the database's load marker (a UUID in
+    `bubble_ex_load_target`, created by the first real load), to the
+    export's `app` and `source.base_url`, and to the newest export loaded.
+    Its journal fails closed, every event carries the target identity, and
+    it is file-locked while a run records into it.
+  - Pruning is refused for an export of another app or version, an older
+    export, a database whose marker differs or is missing, `allow_partial`
+    or a partial export, a missing `:ledger_dir`, or an export lacking a
+    type the loader wrote.
+  - A type or list that would lose all, or more than half, of the loader's
+    rows blocks (`load_prune_mass_delete`) unless it is named in
+    `allow_mass_delete`. An export read with a non-admin token silently
+    lacks the records it cannot see, and would look like this.
+  - Records are deleted (`load_prune_record`). A join member loses only its
+    list's column, and its row is deleted only when no other list's column
+    is set (`load_prune_join_member`).
+  - Rows the loader did not write are kept. Records are reported as
+    `load_prune_unowned`; stale join rows still block
+    (`load_join_stale_member`) unless named in `acknowledge_unowned`.
+  - A user deleted in Bubble whose email a new signup reused now loads:
+    the old record's email is cleared before the upserts, and the record
+    is pruned.
+  - A real run holds the target's lock (`with_lock/2`, a PostgreSQL
+    advisory lock). The Ash adapter now requires `checkout:`
+    (`&Repo.checkout/1`) for a real run, so every statement of the run
+    stays on the connection that holds the lock. The lock records that
+    connection's `pg_backend_pid()`: each prune statement fails on any
+    other backend, and so does the unlock.
+  - The marker and the other bindings guard against accidents, not
+    against someone with write access: a `pg_dump` clone carries the
+    marker too.
+  - New adapter callbacks: `keys/2`, `delete/3` and `prune_join/4` (one
+    statement per batch), plus `marker/2` and `with_lock/2`.
+  - The ledger's snapshot and journal mechanics moved to
+    `BubbleEx.Load.Journal`, and a corrupt line other than a torn last
+    one is now an error.
+  - The cutover path (`BubbleEx.Load`, step 5 of a live run) is now
+    pruning.
+  - `scripts/ash_compile_check/load.exs` checks all of this in PostgreSQL.
+
+- **The check scripts fail closed** (`scripts/check_db.exs`).
+  - `ASH_COMPILE_CHECK_DB` is required (`System.fetch_env!`), including
+    in the generated scratch config. The Ash check therefore always runs
+    its database steps.
+  - The URL must name its port, and 5432 is refused unless
+    `ASH_COMPILE_CHECK_ALLOW_5432=1` is set
+    (`PHOENIX_COMPILE_CHECK_ALLOW_5432=1` for the Phoenix check).
+  - Only databases with a check prefix are opened, created or dropped.
+  - Without `PHOENIX_COMPILE_CHECK_DB`, the Phoenix check's scratch test
+    config points at an unresolvable `.invalid` host rather than the
+    template's `localhost:5432`.
+  - CI runs PostgreSQL on port 55432.
+
 - **Owner exposure waiver for replay** (WTF-385).
   `BubbleEx.Verify.Replay.ExposureWaiver` lets the replay preflight accept
   `:exposed` and `:may_leak` anonymous-exposure findings for named types,

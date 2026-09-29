@@ -320,9 +320,54 @@ defmodule BubbleEx.Load.Issues do
         :load_join_stale_member,
         "",
         "#{d.count} members #{where(s)} held at an earlier load are no longer listed; their " <>
-          "rows stay (nothing is deleted until WTF-414) and keep the access they grant. " <>
-          "Load into a fresh, empty database, or delete the rows listed in this " <>
-          "diagnostic's details (stale_members) and load again",
+          "rows stay and keep the access they grant. Load with prune: true to remove " <>
+          "those the loader wrote (this diagnostic's details list them: stale_members)",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_prune_record, s, d),
+    do:
+      Diagnostic.new(
+        :load_prune_record,
+        "",
+        "#{d.count} records of #{where(s)} the loader wrote are not in the export; " <>
+          "prune: true deletes them",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_prune_join_member, s, d),
+    do:
+      Diagnostic.new(
+        :load_prune_join_member,
+        "",
+        "#{d.count} members of #{where(s)} the loader wrote are no longer listed; " <>
+          "prune: true removes them from the list",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_prune_mass_delete, s, d),
+    do:
+      Diagnostic.new(
+        :load_prune_mass_delete,
+        "",
+        "pruning would delete #{d.count} of the #{d.owned} rows of #{where(s)} the loader " <>
+          "wrote: all or most of them. An export read with a non-admin token, or of another " <>
+          "app or version, looks like this. Check the export; to prune anyway, name it in " <>
+          "prune: [allow_mass_delete: [\"#{d.key}\"]]",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_prune_unowned, s, d),
+    do:
+      Diagnostic.new(
+        :load_prune_unowned,
+        "",
+        "#{d.count} rows of #{where(s)} are not in the export and were not written by " <>
+          "the loader; pruning keeps them",
         subject: s,
         details: d
       )

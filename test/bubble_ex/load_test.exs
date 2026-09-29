@@ -321,7 +321,9 @@ defmodule BubbleEx.LoadTest do
           [storage: storage(dir), ledger_dir: Path.join(dir, "l")] ++ @unmapped
         )
 
-      text = dir |> Path.join("l/*") |> Path.wildcard() |> Enum.map_join(&File.read!/1)
+      # the run's ledger and the written record (IDs only, WTF-414)
+      text = dir |> Path.join("l/**/*.json") |> Path.wildcard() |> Enum.map_join(&File.read!/1)
+      assert text =~ F.task1()
       refute text =~ "Ada@Example"
       refute text =~ "keeps spaces"
       {_file, state} = ledger_state(Path.join(dir, "l"))
@@ -490,7 +492,7 @@ defmodule BubbleEx.LoadTest do
                Load.run(delta_export, f.model, f.target, ledger_dir: ledger_dir)
 
       assert :load_join_stale_member in context.blocked
-      assert message =~ "fresh, empty database"
+      assert message =~ "prune: true"
       assert message =~ "details.stale_members"
       refute message =~ F.bob()
       assert context.report.blocked == dry.blocked

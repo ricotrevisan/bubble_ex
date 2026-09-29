@@ -37,8 +37,22 @@
 #     of one list is never added to the other; the interrupted and resumed
 #     load, the rerun and the delta sync compare them too, and a later
 #     export that reorders members succeeds; an export that drops one
-#     reports the stale membership and is blocked before writing (WTF-414
-#     must prune before a real cutover)
+#     reports the stale membership and is blocked before writing
+#   * pruning (WTF-414, cut3): a delta that deletes a record and removes
+#     members, dry-run with prune (the counts and the plan's hash, nothing
+#     written; the app's membership blocks until acknowledged), then run
+#     confirmed by that hash (a bare prune: true and another hash are
+#     refused), interrupted mid-prune and resumed: only the rows the
+#     loader wrote are deleted (a record and a membership created in the
+#     app survive), a membership another list holds loses only its list's
+#     column, and the result equals an uninterrupted prune; refused for an
+#     export of another app or version or an older one, a present but
+#     empty type (mass deletion), another database (its load marker) and
+#     while another connection holds the target's advisory lock; on a pool
+#     of 4 connections, a query function without :checkout is refused, and
+#     while one run holds the lock three concurrent runs are refused, and
+#     no advisory lock is left held; a user
+#     deleted in Bubble whose email a new signup reused loads with prune
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
 # runs against every fixture database render.exs created (and, with
@@ -62,8 +76,10 @@ work = Path.join(scratch, "load")
 File.rm_rf!(work)
 File.mkdir_p!(work)
 
-base =
-  URI.parse(System.get_env("ASH_COMPILE_CHECK_DB", "ecto://postgres:postgres@localhost:5432"))
+# Fail closed: the URL is required and names its port (never 5432 unless
+# ASH_COMPILE_CHECK_ALLOW_5432=1), and only check databases are opened.
+Code.require_file("scripts/check_db.exs")
+base = URI.parse(CheckDb.url!())
 
 [user, password] = String.split(base.userinfo || "postgres:postgres", ":", parts: 2)
 
@@ -79,21 +95,54 @@ defmodule LoadCheck do
       else: fail!(fixture, "#{what}: expected #{inspect(expected)}, got #{inspect(actual)}")
   end
 
-  def query(conn), do: fn sql, params -> Postgrex.query(conn, sql, params) end
+  # Every connection is a pool of 4: a real run keeps its statements on
+  # one connection through :checkout (DBConnection.run pins it for this
+  # process; the query function uses the pinned one), as Repo.checkout/1
+  # does for Repo.query/2.
+  def query(pool),
+    do: fn sql, params -> Postgrex.query(Process.get({__MODULE__, pool}, pool), sql, params) end
 
-  # Fails the Nth INSERT, as a crash mid-run would.
+  def checkout(pool) do
+    fn fun ->
+      DBConnection.run(
+        pool,
+        fn conn ->
+          Process.put({__MODULE__, pool}, conn)
+
+          try do
+            fun.()
+          after
+            Process.delete({__MODULE__, pool})
+          end
+        end,
+        timeout: :infinity
+      )
+    end
+  end
+
+  def target(project, pool, opts \\ []) do
+    Loader.target(
+      project,
+      [query: Keyword.get(opts, :query, query(pool)), checkout: checkout(pool)] ++
+        Keyword.drop(opts, [:query])
+    )
+  end
+
+  # Fails the Nth INSERT of rows (not the load marker's), as a crash
+  # mid-run would.
   def failing(conn, n) do
     counter = :counters.new(1, [])
+    pass = query(conn)
 
     fn sql, params ->
-      if String.starts_with?(sql, "INSERT") do
+      if String.starts_with?(sql, "INSERT") and not String.contains?(sql, "bubble_ex_load_target") do
         :counters.add(counter, 1, 1)
 
         if :counters.get(counter, 1) == n,
           do: {:error, :injected_crash},
-          else: Postgrex.query(conn, sql, params)
+          else: pass.(sql, params)
       else
-        Postgrex.query(conn, sql, params)
+        pass.(sql, params)
       end
     end
   end
@@ -138,18 +187,21 @@ end
 
 # --- the schema check over every fixture database ----------------------------------------
 
-connect = fn database ->
+connect_pool = fn database, size ->
   {:ok, conn} =
     Postgrex.start_link(
       hostname: base.host,
-      port: base.port || 5432,
+      port: base.port,
       username: URI.decode(user),
       password: URI.decode(password),
-      database: database
+      database: CheckDb.database!(database),
+      pool_size: size
     )
 
   conn
 end
+
+connect = &connect_pool.(&1, 4)
 
 faithful = fn app ->
   fn ->
@@ -308,20 +360,13 @@ loaded =
   for {which, database, namespace} <- fixtures do
     fixture = Atom.to_string(which)
 
-    {:ok, conn} =
-      Postgrex.start_link(
-        hostname: base.host,
-        port: base.port || 5432,
-        username: URI.decode(user),
-        password: URI.decode(password),
-        database: database
-      )
+    conn = connect.(database)
 
     model = F.model(which)
     {:ok, project} = F.project(which, privacy: :unverified)
     dir = Path.join(work, fixture)
     {:ok, export} = F.export(which, Path.join(dir, "export"))
-    target = Loader.target(project, query: LoadCheck.query(conn))
+    target = LoadCheck.target(project, conn)
     {Loader, config} = target
     {:ok, plan} = Loader.plan(config, model)
     storage = Local.new(root: Path.join(dir, "storage"), public_url: "https://files.example.test")
@@ -350,14 +395,14 @@ loaded =
     LoadCheck.check!(fixture, not File.exists?(ledger), "the dry run wrote a ledger")
 
     # --- a schema lacking the tables: reported, and a real run refused ------------------
-    wrong = Loader.target(project, query: LoadCheck.query(conn), schema: "no_such_schema")
+    wrong = LoadCheck.target(project, conn, schema: "no_such_schema")
     {:ok, wrong_dry} = Load.dry_run(export, model, wrong, base_opts)
     LoadCheck.eq!(fixture, wrong_dry.blocked, [:load_schema_mismatch], "missing schema")
     {:error, refused} = Load.run(export, model, wrong, opts)
     LoadCheck.eq!(fixture, refused.context.blocked, [:load_schema_mismatch], "refused run")
 
     # --- interrupted, then resumed ------------------------------------------------------------
-    crashing = Loader.target(project, query: LoadCheck.failing(conn, 3))
+    crashing = LoadCheck.target(project, conn, query: LoadCheck.failing(conn, 3))
     {:error, crash} = Load.run(export, model, crashing, opts)
     LoadCheck.eq!(fixture, crash.context[:reason], :injected_crash, "crash error")
     partial = LoadCheck.snapshot(conn, plan) |> Map.values() |> List.flatten() |> length()
@@ -806,6 +851,346 @@ loaded =
           "missing owner wrote no ledger"
         )
 
+        # --- pruning (WTF-414) ------------------------------------------------------------
+        # The second task is deleted in Bubble (and leaves Plan's Tasks); Ada and Bob
+        # leave Acme's Members (Ada's Workspaces still list Acme).
+        rows = F.cut3_rows()
+        [w1 | ws_rest] = rows["workspace"]
+        [p1 | p_rest] = rows["project"]
+
+        pruned_rows = %{
+          rows
+          | "workspace" => [Map.put(w1, "Members", [F.gone_user()]) | ws_rest],
+            "project" => [Map.put(p1, "Tasks", [F.todo1(), F.todo1(), F.gone_task()]) | p_rest],
+            "task" => Enum.reject(rows["task"], &(&1["_id"] == F.todo2()))
+        }
+
+        {:ok, prune_export} = F.export(which, Path.join(dir, "prune"), pruned_rows)
+        app_task = F.id(800)
+
+        # A load recording what it wrote, then rows created in the app
+        # (a task, and Bob's membership of Beta), which pruning must keep.
+        fresh_load = fn ledger_dir ->
+          LoadCheck.truncate(conn, plan)
+
+          {:ok, _} =
+            Load.run(export, model, target, [storage: storage, ledger_dir: ledger_dir] ++ base_opts)
+
+          Postgrex.query!(
+            conn,
+            ~s[INSERT INTO "public"."task" ("id", "title") VALUES ($1, 'app')],
+            [app_task]
+          )
+
+          Postgrex.query!(
+            conn,
+            ~s[INSERT INTO "public"."user_workspaces" ("user_id", "workspace_id", "members_position") VALUES ($1, $2, 5)],
+            [F.bob(), F.workspace2()]
+          )
+        end
+
+        prune_ledger = Path.join(dir, "prune_ledger")
+        fresh_load.(prune_ledger)
+        before_prune = LoadCheck.snapshot(conn, plan)
+        dry_opts = [ledger_dir: prune_ledger] ++ base_opts
+
+        # Without prune the removed members block; so does, with it, the
+        # app's membership (not the loader's) until acknowledged by name.
+        {:ok, plain} = Load.dry_run(prune_export, model, target, dry_opts)
+        LoadCheck.eq!(fixture, plain.blocked, [:load_join_stale_member], "delta without prune")
+        {:ok, unacked} = Load.dry_run(prune_export, model, target, [prune: true] ++ dry_opts)
+        LoadCheck.eq!(fixture, unacked.blocked, [:load_join_stale_member], "unowned member blocks")
+
+        [members_key] =
+          for k <- Map.keys(unacked.joins), String.ends_with?(k, "/workspace/members_list_user"), do: k
+
+        [tasks_key] =
+          for k <- Map.keys(unacked.joins),
+              String.ends_with?(k, "/project/tasks_list_custom_task"),
+              do: k
+
+        ack = [acknowledge_unowned: %{members_key => [[F.bob(), F.workspace2()]]}]
+        {:ok, prune_dry} = Load.dry_run(prune_export, model, target, [prune: ack] ++ dry_opts)
+        LoadCheck.eq!(fixture, prune_dry.blocked, [], "prune dry run blocked")
+
+        LoadCheck.eq!(
+          fixture,
+          Map.delete(prune_dry.prune, :sha256),
+          %{
+            types: %{"task" => %{delete: 1, owned: 2, unowned: 1}},
+            joins: %{
+              tasks_key => %{remove: 1, owned: 3, unowned: 0},
+              members_key => %{remove: 2, owned: 4, unowned: 1}
+            }
+          },
+          "prune dry run counts"
+        )
+
+        LoadCheck.check!(
+          fixture,
+          Enum.any?(prune_dry.diagnostics, &(&1.code == :load_prune_unowned and &1.severity == :warning)),
+          "the app's rows are a warning"
+        )
+
+        LoadCheck.eq!(fixture, LoadCheck.snapshot(conn, plan), before_prune, "prune dry run wrote rows")
+        confirmed = [prune: [expect: prune_dry.prune.sha256] ++ ack]
+        prune_opts = [storage: storage, ledger_dir: prune_ledger, batch_size: 1] ++ base_opts
+
+        # A bare prune: true, or another hash, does not prune.
+        {:error, bare} = Load.run(prune_export, model, target, [prune: true] ++ prune_opts)
+        LoadCheck.check!(fixture, bare.message =~ "expect", "a bare prune: true is refused")
+
+        {:error, wrong} =
+          Load.run(prune_export, model, target, [prune: [expect: String.duplicate("0", 64)] ++ ack] ++ prune_opts)
+
+        LoadCheck.check!(fixture, wrong.message =~ "not the one confirmed", "another hash is refused")
+
+        # The export must be the target's: not another app, not another
+        # version, not older; not most of a type (a present but empty type).
+        for {name, export_opts, reason} <- [
+              {"other_app", [app: "another-app"], :app},
+              {"other_version", [base_url: "https://acme.bubbleapps.io"], :base_url},
+              {"older", [created_at: "2026-09-01T00:00:00Z"], :older_export}
+            ] do
+          {:ok, bad} = F.export(which, Path.join(dir, name), pruned_rows, export_opts)
+          {:error, refused} = Load.dry_run(bad, model, target, [prune: ack] ++ dry_opts)
+          LoadCheck.eq!(fixture, refused.context[:reason], reason, "#{name} refused")
+        end
+
+        {:ok, empty_tasks} = F.export(which, Path.join(dir, "empty_tasks"), Map.put(pruned_rows, "task", []))
+        {:ok, mass} = Load.dry_run(empty_tasks, model, target, [prune: ack] ++ dry_opts)
+        LoadCheck.check!(fixture, :load_prune_mass_delete in mass.blocked, "an empty type blocks")
+
+        # The database must be the record's (its marker), and one run at a
+        # time holds the target's advisory lock.
+        %{rows: [[marker]]} = Postgrex.query!(conn, ~s[SELECT id::text FROM "public"."bubble_ex_load_target"], [])
+        Postgrex.query!(conn, ~s[UPDATE "public"."bubble_ex_load_target" SET id = gen_random_uuid()], [])
+        {:error, moved} = Load.dry_run(prune_export, model, target, [prune: ack] ++ dry_opts)
+        LoadCheck.eq!(fixture, moved.context[:reason], :marker_mismatch, "another database refused")
+        Postgrex.query!(conn, ~s[UPDATE "public"."bubble_ex_load_target" SET id = $1::text::uuid], [marker])
+
+        holder = connect_pool.(database, 1)
+        key = Loader.lock_key("public")
+        Postgrex.query!(holder, "SELECT pg_advisory_lock($1)", [key])
+        {:error, locked} = Load.run(prune_export, model, target, confirmed ++ prune_opts)
+        LoadCheck.eq!(fixture, locked.context[:reason], :locked, "a held lock refuses the run")
+        Postgrex.query!(holder, "SELECT pg_advisory_unlock($1)", [key])
+        GenServer.stop(holder)
+        LoadCheck.eq!(fixture, LoadCheck.snapshot(conn, plan), before_prune, "refused runs wrote rows")
+
+        # On a real pool of 4 connections: a pooled query function alone
+        # (Repo.query/2 without :checkout) is refused; with it, while one
+        # run holds the lock, runs started meanwhile (other connections of
+        # the pool) are refused, and no lock is left held afterwards.
+        LoadCheck.truncate(conn, plan)
+        pooled_only = Loader.target(project, query: fn sql, p -> Postgrex.query(conn, sql, p) end)
+        {:error, bare} = Load.run(export, model, pooled_only, [ledger_dir: Path.join(dir, "pool0")] ++ base_opts)
+        LoadCheck.eq!(fixture, bare.context[:reason], :checkout, "a pooled query function without :checkout")
+
+        parent = self()
+        pinned = LoadCheck.query(conn)
+
+        pausing =
+          LoadCheck.target(project, conn,
+            query: fn sql, params ->
+              if String.starts_with?(sql, "INSERT") and not String.contains?(sql, "bubble_ex_load_target") and
+                   Process.get(:paused) == nil do
+                Process.put(:paused, true)
+                send(parent, {:holding, self()})
+                receive do: (:go -> :ok)
+              end
+
+              pinned.(sql, params)
+            end
+          )
+
+        first =
+          Task.async(fn ->
+            Load.run(export, model, pausing, [ledger_dir: Path.join(dir, "pool1")] ++ base_opts)
+          end)
+
+        receive do
+          {:holding, runner} ->
+            others =
+              for n <- 2..4 do
+                Task.async(fn ->
+                  Load.run(export, model, target, [ledger_dir: Path.join(dir, "pool#{n}")] ++ base_opts)
+                end)
+              end
+
+            reasons = others |> Task.await_many(60_000) |> Enum.map(fn {:error, e} -> e.context[:reason] end)
+            LoadCheck.eq!(fixture, reasons, [:locked, :locked, :locked], "concurrent runs on a pool")
+            send(runner, :go)
+        after
+          60_000 -> LoadCheck.fail!(fixture, "the first pooled run never wrote")
+        end
+
+        {:ok, _} = Task.await(first, 120_000)
+
+        %{rows: [[advisory]]} =
+          Postgrex.query!(conn, "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'", [])
+
+        LoadCheck.eq!(fixture, advisory, 0, "no advisory lock left held")
+        {:ok, _} = Load.run(export, model, target, [ledger_dir: Path.join(dir, "pool1")] ++ base_opts)
+
+        # back to the state the prune checks start from
+        fresh_load.(prune_ledger)
+
+        # Interrupted: the 3rd prune statement fails (a crash mid-prune).
+        counter = :counters.new(1, [])
+
+        pass = LoadCheck.query(conn)
+
+        crashing_prune =
+          LoadCheck.target(project, conn,
+            query: fn sql, params ->
+              if String.starts_with?(sql, "DELETE") or String.starts_with?(sql, "WITH b AS") do
+                :counters.add(counter, 1, 1)
+
+                if :counters.get(counter, 1) == 3,
+                  do: {:error, :injected_crash},
+                  else: pass.(sql, params)
+              else
+                pass.(sql, params)
+              end
+            end
+          )
+
+        {:error, prune_crash} = Load.run(prune_export, model, crashing_prune, confirmed ++ prune_opts)
+        LoadCheck.eq!(fixture, prune_crash.context[:reason], :injected_crash, "prune crash error")
+        mid = LoadCheck.snapshot(conn, plan)
+
+        LoadCheck.check!(
+          fixture,
+          LoadCheck.row(mid, "task", app_task) != nil and
+            Enum.any?(mid["user_workspaces"], &(&1["user_id"] == F.bob() and &1["workspace_id"] == F.workspace2())),
+          "a crash mid-prune kept the app's rows"
+        )
+
+        # Resumed under the same confirmation (the run's ledger holds the plan).
+        {:ok, pruned} = Load.run(prune_export, model, target, confirmed ++ prune_opts)
+        LoadCheck.eq!(fixture, pruned.blocked, [], "prune run blocked")
+
+        LoadCheck.eq!(
+          fixture,
+          pruned.prune.types["task"].deleted + pruned.prune.joins[tasks_key].deleted +
+            pruned.prune.joins[members_key].deleted + pruned.prune.joins[members_key].cleared,
+          4,
+          "pruned over the interrupted and resumed run"
+        )
+
+        after_prune = LoadCheck.snapshot(conn, plan)
+
+        LoadCheck.eq!(
+          fixture,
+          after_prune["task"] |> Enum.map(& &1["id"]) |> Enum.sort(),
+          Enum.sort([F.todo1(), app_task]),
+          "only the loader's deleted record is gone; the app's task survives"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          after_prune["project_tasks"] |> Enum.map(& &1["task_id"]) |> Enum.sort(),
+          Enum.sort([F.todo1(), F.gone_task()]),
+          "the removed task's membership row is deleted"
+        )
+
+        LoadCheck.eq!(
+          fixture,
+          ws.(after_prune),
+          Enum.sort([
+            {F.ada(), F.workspace1(), 0, nil},
+            {F.gone_user(), F.workspace1(), nil, 0},
+            {F.bob(), F.workspace2(), nil, 5},
+            {F.carol(), F.workspace2(), 0, 0},
+            {F.carol(), F.workspace1(), 1, nil}
+          ]),
+          "memberships cleared per list: Ada keeps her Workspaces column, Bob's Acme row is deleted, the app's row is kept"
+        )
+
+        # The same prune, uninterrupted, gives the same state.
+        prune! = fn exp, ledger_dir, settings ->
+          opts = [storage: storage, ledger_dir: ledger_dir] ++ base_opts
+          {:ok, d} = Load.dry_run(exp, model, target, [prune: settings] ++ opts)
+          LoadCheck.eq!(fixture, d.blocked, [], "dry run before a prune")
+          Load.run(exp, model, target, [prune: [expect: d.prune.sha256] ++ settings] ++ opts)
+        end
+
+        clean_ledger = Path.join(dir, "prune_clean_ledger")
+        fresh_load.(clean_ledger)
+        {:ok, _} = prune!.(prune_export, clean_ledger, ack)
+        LoadCheck.eq!(fixture, LoadCheck.snapshot(conn, plan), after_prune, "resumed vs uninterrupted prune")
+
+        # Rerunning changes nothing.
+        {:ok, again} = prune!.(prune_export, clean_ledger, ack)
+        LoadCheck.eq!(fixture, again.prune.types["task"], %{delete: 0, owned: 1, unowned: 1, deleted: 0, cleared: 0}, "prune rerun")
+        LoadCheck.eq!(fixture, LoadCheck.snapshot(conn, plan), after_prune, "prune rerun state")
+
+        # A user deleted in Bubble whose email a new signup reused, under a
+        # unique index on lower(email): blocked without prune, loads with it.
+        reuse_ledger = Path.join(dir, "reuse_ledger")
+        LoadCheck.truncate(conn, plan)
+        {:ok, _} = Load.run(export, model, target, [storage: storage, ledger_dir: reuse_ledger] ++ base_opts)
+
+        Postgrex.query!(
+          conn,
+          ~s[CREATE UNIQUE INDEX load_check_email ON "public"."user" (lower(email))],
+          []
+        )
+
+        [ada, bob, _carol] = rows["user"]
+        [w1, w2] = rows["workspace"]
+
+        newcomer = %{
+          "_id" => F.id(801),
+          "Created Date" => "2024-09-01T00:00:00Z",
+          "authentication" => %{
+            "email" => %{"email" => "Carol@example.test", "email_confirmed" => false}
+          }
+        }
+
+        reused_rows = %{
+          rows
+          | "user" => [ada, bob, newcomer],
+            "workspace" => [w1, Map.put(w2, "members_list_user", [])]
+        }
+
+        {:ok, reused_export} = F.export(which, Path.join(dir, "reused"), reused_rows)
+
+        {:ok, reused_plain} =
+          Load.dry_run(reused_export, model, target, [ledger_dir: reuse_ledger] ++ base_opts)
+
+        LoadCheck.check!(
+          fixture,
+          :load_email_conflict in reused_plain.blocked,
+          "a reused email blocks without prune"
+        )
+
+        # Carol's own Workspaces rows go with her: 2 of 3, named.
+        [workspaces_key] =
+          for k <- Map.keys(reused_plain.joins),
+              String.ends_with?(k, "/user/workspaces_list_custom_workspace"),
+              do: k
+
+        {:ok, reused} = prune!.(reused_export, reuse_ledger, allow_mass_delete: [workspaces_key])
+        LoadCheck.eq!(fixture, reused.prune.types["user"].deleted, 1, "the old holder pruned")
+
+        %{rows: reused_emails} =
+          Postgrex.query!(conn, ~s[SELECT id, email FROM "public"."user" ORDER BY id], [])
+
+        LoadCheck.eq!(
+          fixture,
+          reused_emails,
+          [
+            [F.ada(), "Ada@Example.test"],
+            [F.bob(), "bob@example.test"],
+            [F.id(801), "Carol@example.test"]
+          ],
+          "the reused email loads with prune"
+        )
+
+        Postgrex.query!(conn, "DROP INDEX load_check_email", [])
+
         # back to the fixture's state for loaded.exs
         LoadCheck.truncate(conn, plan)
         {:ok, _} = Load.run(export, model, target, [storage: storage] ++ base_opts)
@@ -814,7 +1199,11 @@ loaded =
     GenServer.stop(conn)
 
     IO.puts(
-      "load check passed (#{fixture}): #{records} records, dry run, resume, rerun, delta sync"
+      "load check passed (#{fixture}): #{records} records, dry run, resume, rerun, delta sync" <>
+        if(which == :cut3,
+          do: ", prune (dry run and hash, refusals, advisory lock on a pool of 4, interrupted and resumed, app rows kept, reused email)",
+          else: ""
+        )
     )
 
     {which, namespace}

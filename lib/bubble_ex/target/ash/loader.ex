@@ -5,13 +5,27 @@ defmodule BubbleEx.Target.Ash.Loader do
   `BubbleEx.Target.Ash.Project` (migrated by AshPostgres), through a query
   function, so BubbleEx needs no database driver.
 
-      target = BubbleEx.Target.Ash.Loader.target(project, query: &MyApp.Repo.query/2)
+      target =
+        BubbleEx.Target.Ash.Loader.target(project,
+          query: &MyApp.Repo.query/2,
+          checkout: &MyApp.Repo.checkout/1
+        )
       {:ok, report} = BubbleEx.Load.dry_run(export, model, target)
 
   `query` is called as `query.(sql, params)` and returns `{:ok, result}`
   with `result.rows` (`Ecto.Adapters.SQL.query/4`, `Repo.query/2` and
   `Postgrex.query/3` do) or `{:error, reason}`. Options: `:query`
-  (required), `:schema` (default `"public"`).
+  (required), `:schema` (default `"public"`), and `:checkout` (required
+  for a real run), a function that runs a function on one database
+  connection, `&Repo.checkout/1`: a real run holds a PostgreSQL advisory
+  lock for its whole length (`with_lock/2`), a session lock, which holds
+  only on the connection that took it, so every statement of the run must
+  go to that connection. `Repo.checkout/1` does that for `Repo.query/2`
+  (a pooled query function would otherwise spread the run over the pool,
+  and another run could take the lock on the same connection, or leave
+  it held). The lock records the connection's `pg_backend_pid()`: every
+  prune statement fails unless it runs there, and so does the unlock.
+  Without `:checkout` a real run is refused; a dry run needs none.
 
   ## The plan (`BubbleEx.Load.Plan`)
 
@@ -85,10 +99,32 @@ defmodule BubbleEx.Target.Ash.Loader do
       WHERE t."members_position" IS DISTINCT FROM EXCLUDED."members_position"
       RETURNING (xmax = 0)
 
-  Nothing is deleted from a join table: a member removed from a list in
-  Bubble since an earlier load keeps its row (WTF-414), and the loader
-  reports it (`join_members/4`, `:load_join_stale_member`) and blocks the
-  real run before any writes.
+  The upserts delete nothing: a member removed from a list in Bubble since
+  an earlier load keeps its row, and the loader reports it
+  (`join_members/4`, `:load_join_stale_member`) and blocks the real run
+  before any writes, unless it prunes.
+
+  ## Pruning (WTF-414)
+
+  With `prune: true` the loader deletes rows it wrote that the export no
+  longer holds (`BubbleEx.Load`, "Pruning"), after the upserts, one
+  statement per batch (so each batch is one transaction): records by key
+  (`delete/3`),
+
+      DELETE FROM "public"."task" WHERE "id" = ANY($1::text[]) RETURNING "id"
+
+  and join rows per list (`prune_join/4`): a row that is a member of the
+  list and of no other is deleted, one another list holds loses only this
+  list's column,
+
+      WITH b AS (SELECT "user_id", "workspace_id" FROM jsonb_populate_recordset(NULL::"public"."user_workspaces", $1::text::jsonb)),
+      d AS (DELETE FROM ... t USING b WHERE <the pair> AND t."members_position" IS NOT NULL
+            AND NOT (t."workspaces_position" IS NOT NULL) RETURNING 1),
+      c AS (UPDATE ... t SET "members_position" = NULL FROM b WHERE <the pair>
+            AND t."members_position" IS NOT NULL AND (t."workspaces_position" IS NOT NULL) RETURNING 1)
+      SELECT (SELECT count(*) FROM d)::int, (SELECT count(*) FROM c)::int
+
+  (the two touch disjoint rows). `keys/2` reads a table's keys, to plan it.
   """
 
   @behaviour BubbleEx.Load.Target
@@ -101,9 +137,14 @@ defmodule BubbleEx.Target.Ash.Loader do
   @json {:module, "Types.JsonValue"}
 
   @enforce_keys [:project, :query]
-  defstruct [:project, :query, schema: "public"]
+  defstruct [:project, :query, :checkout, schema: "public"]
 
-  @type t :: %__MODULE__{project: Project.t(), query: function(), schema: String.t()}
+  @type t :: %__MODULE__{
+          project: Project.t(),
+          query: function(),
+          checkout: function() | nil,
+          schema: String.t()
+        }
 
   @doc "The loader target (`{module, config}`) for `project`; see the moduledoc."
   @spec target(Project.t(), keyword()) :: {module(), t()}
@@ -111,8 +152,16 @@ defmodule BubbleEx.Target.Ash.Loader do
     query = Keyword.fetch!(opts, :query)
     true = is_function(query, 2)
 
+    checkout = Keyword.get(opts, :checkout)
+    true = checkout == nil or is_function(checkout, 1)
+
     {__MODULE__,
-     %__MODULE__{project: project, query: query, schema: Keyword.get(opts, :schema, "public")}}
+     %__MODULE__{
+       project: project,
+       query: query,
+       checkout: checkout,
+       schema: Keyword.get(opts, :schema, "public")
+     }}
   end
 
   # --- the plan ----------------------------------------------------------------------
@@ -633,6 +682,248 @@ defmodule BubbleEx.Target.Ash.Loader do
         {:error, %{e | context: Map.put(e.context, :join, join.id)}}
     end
   end
+
+  # --- the marker and the lock (WTF-414) ---------------------------------------------------
+
+  @marker "bubble_ex_load_target"
+
+  @impl true
+  def marker(%__MODULE__{} = c, mode) do
+    table = ident(c.schema) <> "." <> ident(@marker)
+
+    with {:ok, [[exists]]} <- run(c, "SELECT to_regclass($1) IS NOT NULL", [table]) do
+      cond do
+        exists -> read_marker(c, table)
+        mode == :read -> {:ok, nil}
+        true -> create_marker(c, table)
+      end
+    end
+  end
+
+  defp read_marker(c, table) do
+    case run(c, "SELECT id::text FROM #{table}", []) do
+      {:ok, [[id]]} -> {:ok, id}
+      {:ok, []} -> {:ok, nil}
+      {:ok, _} -> {:error, Error.new(:invalid_input, "the load marker table holds several rows")}
+      error -> error
+    end
+  end
+
+  # One row, ever: the singleton column's unique constraint keeps a second
+  # insert out (the run holds the advisory lock anyway).
+  defp create_marker(c, table) do
+    with {:ok, _} <-
+           run(
+             c,
+             "CREATE TABLE IF NOT EXISTS #{table} (id uuid PRIMARY KEY, " <>
+               "singleton boolean NOT NULL DEFAULT true UNIQUE CHECK (singleton))",
+             []
+           ),
+         {:ok, _} <-
+           run(
+             c,
+             "INSERT INTO #{table} (id) VALUES ($1::text::uuid) ON CONFLICT (singleton) DO NOTHING",
+             [uuid()]
+           ),
+         do: read_marker(c, table)
+  end
+
+  defp uuid do
+    <<a::48, _::4, b::12, _::2, d::62>> = :crypto.strong_rand_bytes(16)
+    <<u::128>> = <<a::48, 4::4, b::12, 2::2, d::62>>
+    hex = u |> Integer.to_string(16) |> String.pad_leading(32, "0") |> String.downcase()
+
+    Enum.join(
+      [
+        binary_part(hex, 0, 8),
+        binary_part(hex, 8, 4),
+        binary_part(hex, 12, 4),
+        binary_part(hex, 16, 4),
+        binary_part(hex, 20, 12)
+      ],
+      "-"
+    )
+  end
+
+  @backend {__MODULE__, :locked_backend}
+
+  # A session lock is only a lock on one connection: a real run needs
+  # `:checkout` (e.g. `&Repo.checkout/1`), which keeps its statements on
+  # the connection that took the lock. The lock is taken with that
+  # connection's `pg_backend_pid()`; every prune statement fails unless it
+  # runs on that backend (`guard_sql/1`), and so does the unlock.
+  @impl true
+  def with_lock(%__MODULE__{checkout: nil}, _fun),
+    do:
+      {:error,
+       Error.new(
+         :invalid_input,
+         "a real load needs the :checkout option (e.g. checkout: &MyApp.Repo.checkout/1): " <>
+           "the advisory lock holds only on one connection",
+         %{reason: :checkout}
+       )}
+
+  def with_lock(%__MODULE__{} = c, fun), do: c.checkout.(fn -> locked(c, fun) end)
+
+  defp locked(c, fun) do
+    key = lock_key(c.schema)
+
+    case run(c, "SELECT pg_try_advisory_lock($1), pg_backend_pid()", [key]) do
+      {:ok, [[true, backend]]} ->
+        Process.put(@backend, backend)
+
+        try do
+          result = fun.()
+          unlocked(result, unlock(c, key, backend))
+        catch
+          kind, reason ->
+            unlock(c, key, backend)
+            :erlang.raise(kind, reason, __STACKTRACE__)
+        after
+          Process.delete(@backend)
+        end
+
+      {:ok, [[false, _]]} ->
+        {:error,
+         Error.new(:invalid_input, "another load holds this target's lock", %{reason: :locked})}
+
+      {:ok, _} ->
+        {:error, Error.new(:request_failed, "unexpected advisory lock result")}
+
+      error ->
+        error
+    end
+  end
+
+  defp unlock(c, key, backend) do
+    case run(c, "SELECT pg_advisory_unlock($1), pg_backend_pid()", [key]) do
+      {:ok, [[true, ^backend]]} ->
+        :ok
+
+      _ ->
+        {:error,
+         Error.new(
+           :request_failed,
+           "the advisory lock was not released on the connection that took it " <>
+             "(is :checkout keeping the run on one connection?)",
+           %{reason: :lock_session}
+         )}
+    end
+  end
+
+  defp unlocked(result, :ok), do: result
+  defp unlocked(_result, error), do: error
+
+  # The backend holding the run's lock (nil outside `with_lock/2`).
+  defp locked_backend do
+    case Process.get(@backend) do
+      nil ->
+        {:error,
+         Error.new(:invalid_input, "pruning outside the target's lock", %{reason: :not_locked})}
+
+      backend ->
+        {:ok, backend}
+    end
+  end
+
+  @doc false
+  # A condition that raises (division by zero) unless the statement runs
+  # on the backend that holds the lock, parameter `$n`: a prune statement
+  # on another connection fails before it deletes anything.
+  @spec guard_sql(pos_integer()) :: String.t()
+  def guard_sql(n), do: "1 / (pg_backend_pid() = $#{n}::int)::int = 1"
+
+  @doc false
+  # The advisory lock's key: per database (advisory locks are) and schema.
+  @spec lock_key(String.t()) :: integer()
+  def lock_key(schema) do
+    <<key::signed-64, _::binary>> = :crypto.hash(:sha256, "bubble_ex.load:" <> schema)
+    key
+  end
+
+  # --- pruning (WTF-414) -----------------------------------------------------------------
+
+  @impl true
+  def keys(%__MODULE__{} = c, %Table{} = table) do
+    sql = "SELECT #{ident(table.key)} FROM #{qualified(c.schema, table)}"
+    with {:ok, rows} <- run(c, sql, []), do: {:ok, Enum.map(rows, fn [k] -> k end)}
+  end
+
+  @impl true
+  def delete(%__MODULE__{}, %Table{}, []), do: {:ok, 0}
+
+  def delete(%__MODULE__{} = c, %Table{} = table, keys) do
+    with {:ok, backend} <- locked_backend() do
+      case run(c, delete_sql(c.schema, table), [keys, backend]) do
+        {:ok, rows} -> {:ok, length(rows)}
+        {:error, %Error{} = e} -> {:error, %{e | context: Map.put(e.context, :type, table.type)}}
+      end
+    end
+  end
+
+  @doc false
+  # One statement per batch, so a batch deletes all or nothing; only on
+  # the locked backend (`$2`).
+  @spec delete_sql(String.t(), Table.t()) :: String.t()
+  def delete_sql(schema, %Table{} = table) do
+    key = ident(table.key)
+
+    "DELETE FROM #{qualified(schema, table)} WHERE #{key} = ANY($1::text[]) " <>
+      "AND #{guard_sql(2)} RETURNING #{key}"
+  end
+
+  @impl true
+  def prune_join(%__MODULE__{}, %Plan.Join{}, _side, []), do: {:ok, %{deleted: 0, cleared: 0}}
+
+  def prune_join(%__MODULE__{} = c, %Plan.Join{} = join, side, pairs) do
+    rows = Enum.map(pairs, fn {l, r} -> %{join.left.column => l, join.right.column => r} end)
+
+    with {:ok, backend} <- locked_backend() do
+      case run(c, prune_join_sql(c.schema, join, side), [Jason.encode!(rows), backend]) do
+        {:ok, [[deleted, cleared]]} ->
+          {:ok, %{deleted: deleted, cleared: cleared}}
+
+        {:ok, _} ->
+          {:error, Error.new(:request_failed, "unexpected prune result", %{join: join.id})}
+
+        {:error, %Error{} = e} ->
+          {:error, %{e | context: Map.put(e.context, :join, join.id)}}
+      end
+    end
+  end
+
+  @doc false
+  # Removes rows from one list of a join table in one statement (so one
+  # transaction): a row that is a member of the list and of no other is
+  # deleted; one another list also holds keeps that list's column and
+  # loses this list's. The two sub-statements touch disjoint rows.
+  @spec prune_join_sql(String.t(), Plan.Join.t(), Plan.Join.side()) :: String.t()
+  def prune_join_sql(schema, %Plan.Join{} = join, side) do
+    target = qualified(schema, join)
+    {l, r} = {ident(join.left.column), ident(join.right.column)}
+    col = ident(side.column)
+
+    others =
+      case for(s <- join.sides, s.column != side.column, do: member_sql("t", s)) do
+        [] -> "FALSE"
+        list -> "(" <> Enum.join(list, " OR ") <> ")"
+      end
+
+    match =
+      "t.#{l} = b.#{l} AND t.#{r} = b.#{r} AND #{member_sql("t", side)} AND #{guard_sql(2)}"
+
+    "WITH b AS (SELECT #{l}, #{r} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb)), " <>
+      "d AS (DELETE FROM #{target} AS t USING b WHERE #{match} AND NOT #{others} RETURNING 1), " <>
+      "c AS (UPDATE #{target} AS t SET #{col} = NULL FROM b WHERE #{match} AND #{others} RETURNING 1) " <>
+      "SELECT (SELECT count(*) FROM d)::int, (SELECT count(*) FROM c)::int"
+  end
+
+  # A row is a member of a list when its position is set or its flag is true.
+  defp member_sql(alias, %{column: column, kind: :flag}),
+    do: "#{alias}.#{ident(column)} IS TRUE"
+
+  defp member_sql(alias, %{column: column, kind: :position}),
+    do: "#{alias}.#{ident(column)} IS NOT NULL"
 
   @doc false
   # The upsert statement of one list of a join table: keyed by its two ID

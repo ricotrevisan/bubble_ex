@@ -29,13 +29,36 @@ defmodule BubbleEx.Load.Target do
       that are members of one list (a position is not null, a flag is true).
       `:all` reads every owner, including owners absent from the export;
       alternatively `owners` filters to those IDs. The loader reports
-      members a list no longer holds (nothing is deleted). It reads only
+      members a list no longer holds (pruned with `prune: true` when the
+      loader wrote them). It reads only
     * `upsert_join/4` - writes one batch of rows of one list of a join
       table (`BubbleEx.Load.Plan.Join` and one of its sides): each row maps
       the two ID columns and the list's membership column to values. An
       idempotent upsert on the two IDs that sets only that list's column:
       another list's column is never changed. Returns the counts like
       `upsert/3`
+    * `keys/2` - every key of a table (the records it holds, whoever
+      wrote them), to find what pruning (`prune: true`, WTF-414) deletes
+      and what it leaves. It reads only
+    * `delete/3` - deletes the records of a table with the given keys, in
+      one transaction (a batch deletes all or nothing), and returns how
+      many it deleted. Called only with keys the loader wrote
+    * `prune_join/4` - removes `{left ID, right ID}` rows from one list of
+      a join table, in one transaction: each row that is a member of the
+      list loses the list's membership column (nil), and a row that is
+      then a member of no list is deleted. Returns `%{deleted: n, cleared:
+      n}` (rows deleted, rows kept with the column cleared). Called only
+      with rows the loader wrote
+    * `marker/2` - the database's load marker (WTF-414): a random UUID
+      in a table of its own, which binds the loader's written record
+      (`BubbleEx.Load.Written`) to this database rather than to its
+      address. `:read` returns it (nil when there is none) and writes
+      nothing; `:ensure` creates it when there is none (the first real
+      load) and returns it
+    * `with_lock/2` - runs a function holding the target's exclusive load
+      lock (e.g. a PostgreSQL advisory lock), for a whole real run, and
+      returns its result; `{:error, _}` without running it when another
+      load holds the lock
 
   `BubbleEx.Target.Ash.Loader` is the Ash/PostgreSQL adapter.
   """
@@ -68,4 +91,19 @@ defmodule BubbleEx.Load.Target do
               {:ok, [{String.t(), String.t()}]} | {:error, Error.t()}
   @callback upsert_join(config :: term(), Plan.Join.t(), Plan.Join.side(), [map()]) ::
               {:ok, counts()} | {:error, Error.t()}
+  @callback marker(config :: term(), :read | :ensure) ::
+              {:ok, String.t() | nil} | {:error, Error.t()}
+  @callback with_lock(config :: term(), (-> result)) :: result | {:error, Error.t()}
+            when result: term()
+  @callback keys(config :: term(), Plan.Table.t()) :: {:ok, [String.t()]} | {:error, Error.t()}
+  @callback delete(config :: term(), Plan.Table.t(), [String.t()]) ::
+              {:ok, non_neg_integer()} | {:error, Error.t()}
+  @callback prune_join(
+              config :: term(),
+              Plan.Join.t(),
+              Plan.Join.side(),
+              [{String.t(), String.t()}]
+            ) ::
+              {:ok, %{deleted: non_neg_integer(), cleared: non_neg_integer()}}
+              | {:error, Error.t()}
 end

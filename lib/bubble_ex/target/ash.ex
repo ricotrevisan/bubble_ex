@@ -328,11 +328,13 @@ defmodule BubbleEx.Target.Ash do
   two lists sharing a table are written separately, each setting only its
   own column, so neither gains the other's members (`:load_join_asymmetric`,
   info, counts the members one list holds that the other does not list
-  back). Nothing is deleted from a join table: a member removed from a
-  list since an earlier load keeps its row, and any access a rule grants
-  through the list; the loader reports each (`:load_join_stale_member`,
-  error) in a dry run and blocks the real run before writes until WTF-414
-  implements pruning.
+  back). Without `prune: true` nothing is deleted from a join table: a
+  member removed from a list since an earlier load keeps its row, and any
+  access a rule grants through the list; the loader reports each
+  (`:load_join_stale_member`, error) in a dry run and blocks the real run
+  before writes. With `prune: true` (WTF-414) the rows the loader wrote
+  lose the list's column (deleted when no list holds them); see
+  `BubbleEx.Load`.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.

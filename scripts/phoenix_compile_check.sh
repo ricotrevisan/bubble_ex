@@ -9,7 +9,9 @@
 #   * mix ash.codegen initial, then mix ash.codegen --check: the generated
 #     resources give migrations and nothing is left pending
 #   * with PHOENIX_COMPILE_CHECK_DB set (a PostgreSQL URL without a
-#     database, e.g. ecto://postgres:postgres@localhost:5432): mix test,
+#     database, with an explicit port that is not 5432 unless
+#     PHOENIX_COMPILE_CHECK_ALLOW_5432=1, e.g.
+#     ecto://postgres:postgres@127.0.0.1:55432; scripts/check_db.exs): mix test,
 #     the scaffolded smoke test, which migrates a fresh database, boots the
 #     endpoint, renders the home and sign-in pages, calls the workflow API
 #     and signs a stored user in with a magic link (Oban job, Swoosh email),

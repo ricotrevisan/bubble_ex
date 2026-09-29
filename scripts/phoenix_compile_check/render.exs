@@ -333,10 +333,28 @@ case System.argv() do
 
     case System.get_env("PHOENIX_COMPILE_CHECK_DB") do
       blank when blank in [nil, ""] ->
-        :ok
+        # Fail closed: without a database URL the smoke tests do not run,
+        # and the scaffolded test config (localhost:5432) must not be
+        # usable by accident, so it points at a host that cannot resolve.
+        File.write!(
+          Path.join(dir, "config/test.exs"),
+          """
 
-      url ->
-        uri = URI.parse(url)
+          # PHOENIX_COMPILE_CHECK_DB is not set: no database (fail closed).
+          config :phx_check, PhxCheck.Repo,
+            hostname: "phoenix-compile-check-db-unset.invalid",
+            port: 1,
+            database: "phx_check_test"
+          """,
+          [:append]
+        )
+
+      _url ->
+        # Fail closed (scripts/check_db.exs): an explicit port, never 5432
+        # unless PHOENIX_COMPILE_CHECK_ALLOW_5432=1, and a check database
+        # (the smoke tests drop and create it).
+        Code.require_file("scripts/check_db.exs")
+        uri = URI.parse(CheckDb.url!("PHOENIX_COMPILE_CHECK_DB", "PHOENIX_COMPILE_CHECK_ALLOW_5432"))
         [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
 
         File.write!(
@@ -345,9 +363,10 @@ case System.argv() do
 
           config :phx_check, PhxCheck.Repo,
             hostname: #{inspect(uri.host)},
-            port: #{uri.port || 5432},
+            port: #{uri.port},
             username: #{inspect(user)},
-            password: #{inspect(password)}
+            password: #{inspect(password)},
+            database: #{inspect(CheckDb.database!("phx_check_test"))}
           """,
           [:append]
         )

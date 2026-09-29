@@ -347,16 +347,22 @@ defmodule BubbleEx.Test.LoadFixture do
   def project(:field_types, opts), do: BubbleEx.Target.Ash.map(model(:field_types), [], opts)
   def project(which, opts), do: BubbleEx.Test.DecidedFixture.project(which, opts)
 
-  @doc "Writes the fixture's export to `dir`; `rows` overrides the rows."
-  def export(which, dir, rows \\ nil) do
+  @doc """
+  Writes the fixture's export to `dir`; `rows` overrides the rows. Options
+  (WTF-414): `:app`, `:base_url`, `:created_at` override the manifest's.
+  """
+  def export(which, dir, rows \\ nil, opts \\ []) do
     rows = rows || rows(which)
 
     Export.write(dir, %{
-      app: "fixture-app",
+      app: Keyword.get(opts, :app, "fixture-app"),
       model_sha256: Model.sha256(model(which)),
       # The app's host, where its private (/fileupload/) files live.
-      source: %{"kind" => "fixture", "base_url" => "https://acme.bubbleapps.io/version-test"},
-      created_at: "2026-09-26T00:00:00Z",
+      source: %{
+        "kind" => "fixture",
+        "base_url" => Keyword.get(opts, :base_url, "https://acme.bubbleapps.io/version-test")
+      },
+      created_at: Keyword.get(opts, :created_at, "2026-09-26T00:00:00Z"),
       types: for({type, list} <- Enum.sort(rows), do: %{type: type, path: type, rows: list}),
       files: files(which)
     })

@@ -37,16 +37,21 @@ When changing `BubbleEx.Target.Ash` (or the expression compiler that feeds
 `BubbleEx.Target.Ash.Expressions`), also compile its output:
 
 ```bash
-scripts/ash_compile_check.sh
+ASH_COMPILE_CHECK_DB=ecto://postgres:postgres@127.0.0.1:55432 scripts/ash_compile_check.sh
 ```
 
 This renders every fixture into a scratch Ash project
 (`_build/ash_compile_check`, dependencies from `BubbleEx.Target.Ash.versions/0`),
-runs `mix compile --warnings-as-errors` and dry-runs `mix ash.codegen`, which
-needs no database. Each fixture's compiled privacy-rule conditions are printed
+runs `mix compile --warnings-as-errors` and dry-runs `mix ash.codegen`. Each fixture's compiled privacy-rule conditions are printed
 as `expr(...)` into a `PrivacyFilters` module and must build AshPostgres
-queries. With `ASH_COMPILE_CHECK_DB` set to a PostgreSQL URL (e.g.
-`ecto://postgres:postgres@localhost:5432`) it also runs the migrations,
+queries. It needs `ASH_COMPILE_CHECK_DB`, a PostgreSQL URL without a
+database and with an explicit port (e.g.
+`ecto://postgres:postgres@127.0.0.1:55432`). The scripts fail closed
+(`scripts/check_db.exs`): the variable has no default, port 5432 is refused
+unless `ASH_COMPILE_CHECK_ALLOW_5432=1` is set, and only databases with a
+check prefix (`ash_check_`, `ash_omit_check_`, `ash_matrix_`,
+`ecto_check_`) are created, emptied or dropped. Run it against a PostgreSQL
+of its own. It runs the migrations,
 round-trips sample rows through every resource and runs every privacy filter
 against them, requiring PostgreSQL and Ash's in-memory evaluation to agree,
 then reads every resource through its generated privacy policies and checks
@@ -82,7 +87,7 @@ When changing `BubbleEx.Target.Phoenix` (or its templates under
 `lib/bubble_ex/target/phoenix/templates/`), also build its output:
 
 ```bash
-PHOENIX_COMPILE_CHECK_DB=ecto://postgres:postgres@localhost:5432 scripts/phoenix_compile_check.sh
+PHOENIX_COMPILE_CHECK_DB=ecto://postgres:postgres@127.0.0.1:55432 scripts/phoenix_compile_check.sh
 ```
 
 This renders every fixture as a complete Phoenix/Ash application into one

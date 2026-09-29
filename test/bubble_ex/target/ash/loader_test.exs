@@ -323,6 +323,171 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       refute position_sql =~ "ANY($1)"
     end
 
+    test "pruning (WTF-414): keys, deletes by key and per-list join removal, one statement per batch" do
+      table = Plan.table(plan(:cut3), "task")
+      join = Enum.find(plan(:cut3).joins, &(&1.table == "favorite_project"))
+      flag = Enum.find(join.sides, &(&1.kind == :flag))
+      position = Enum.find(join.sides, &(&1.kind == :position))
+      test = self()
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params})
+
+        rows =
+          cond do
+            sql =~ "advisory" -> [[true, 42]]
+            String.starts_with?(sql, "WITH") -> [[1, 2]]
+            String.starts_with?(sql, "DELETE") -> [["1x1"]]
+            true -> [["1x1"], ["1x2"]]
+          end
+
+        {:ok, %{rows: rows}}
+      end
+
+      {:ok, project} = F.project(:cut3)
+      {Loader, config} = Loader.target(project, query: query, checkout: & &1.())
+      assert {:ok, ["1x1", "1x2"]} = Loader.keys(config, table)
+      assert_received {:query, ~s(SELECT "id" FROM "public"."task"), []}
+
+      # outside the run's lock nothing is pruned
+      assert {:error, %{context: %{reason: :not_locked}}} =
+               Loader.delete(config, table, ["1x1"])
+
+      assert {:error, %{context: %{reason: :not_locked}}} =
+               Loader.prune_join(config, join, flag, [{"1x1", "1x2"}])
+
+      refute_received {:query, _, _}
+
+      Loader.with_lock(config, fn ->
+        assert {:ok, 1} = Loader.delete(config, table, ["1x1", "1x3"])
+        assert {:ok, 0} = Loader.delete(config, table, [])
+
+        assert {:ok, %{deleted: 1, cleared: 2}} =
+                 Loader.prune_join(config, join, flag, [{"1x1", "1x2"}])
+      end)
+
+      assert_received {:query, "SELECT pg_try_advisory_lock($1), pg_backend_pid()", _}
+      assert_received {:query, sql, [["1x1", "1x3"], 42]}
+
+      # only on the backend that holds the lock (else division by zero)
+      assert sql ==
+               ~s|DELETE FROM "public"."task" WHERE "id" = ANY($1::text[]) | <>
+                 ~s|AND 1 / (pg_backend_pid() = $2::int)::int = 1 RETURNING "id"|
+
+      assert_received {:query, sql, [json, 42]}
+      assert sql =~ "1 / (pg_backend_pid() = $2::int)::int = 1"
+      assert [%{} = row] = Jason.decode!(json)
+      assert Map.values(row) |> Enum.sort() == ["1x1", "1x2"]
+      # this list's rows: deleted when the other list does not hold them,
+      # else only this list's column cleared
+      assert sql =~
+               ~s|t."viewers_listed" IS TRUE AND 1 / (pg_backend_pid() = $2::int)::int = 1 AND NOT (t."favorites_position" IS NOT NULL)|
+
+      assert sql =~ ~s(SET "viewers_listed" = NULL)
+
+      assert sql =~
+               ~s|t."viewers_listed" IS TRUE AND 1 / (pg_backend_pid() = $2::int)::int = 1 AND (t."favorites_position" IS NOT NULL)|
+
+      sql = Loader.prune_join_sql("public", join, position)
+      assert sql =~ ~s(SET "favorites_position" = NULL)
+      assert sql =~ ~s|NOT (t."viewers_listed" IS TRUE)|
+
+      # a join of one list deletes its rows
+      own = Enum.find(plan(:cut3).joins, &(length(&1.sides) == 1))
+      assert Loader.prune_join_sql("public", own, hd(own.sides)) =~ "AND NOT FALSE"
+    end
+
+    test "the load marker: read writes nothing, ensure creates one row" do
+      test = self()
+      exists = :counters.new(1, [])
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params})
+
+        cond do
+          sql =~ "to_regclass" -> {:ok, %{rows: [[:counters.get(exists, 1) == 1]]}}
+          sql =~ "CREATE TABLE" -> {:ok, %{rows: []}}
+          sql =~ "INSERT" -> :counters.put(exists, 1, 1) && {:ok, %{rows: []}}
+          sql =~ "SELECT id::text" -> {:ok, %{rows: [["00000000-0000-4000-8000-000000000001"]]}}
+        end
+      end
+
+      {:ok, project} = F.project(:cut3)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, nil} = Loader.marker(config, :read)
+      assert_received {:query, _, [~s("public"."bubble_ex_load_target")]}
+      refute_received {:query, _, _}
+
+      assert {:ok, "00000000-0000-4000-8000-000000000001"} = Loader.marker(config, :ensure)
+      assert_received {:query, _, _}
+      assert_received {:query, create, []}
+      assert create =~ ~s(CREATE TABLE IF NOT EXISTS "public"."bubble_ex_load_target")
+      assert_received {:query, insert, [uuid]}
+      assert insert =~ "ON CONFLICT (singleton) DO NOTHING"
+      assert uuid =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    end
+
+    test "a real run's advisory lock: needs :checkout, on one backend, refused when held" do
+      test = self()
+      held = :counters.new(1, [])
+      unlock_backend = :counters.new(1, [])
+      :counters.put(unlock_backend, 1, 7)
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params, Process.get(:checked_out)})
+
+        cond do
+          sql =~ "pg_try_advisory_lock" ->
+            {:ok, %{rows: [[:counters.get(held, 1) == 0, 7]]}}
+
+          sql =~ "pg_advisory_unlock" ->
+            {:ok, %{rows: [[true, :counters.get(unlock_backend, 1)]]}}
+        end
+      end
+
+      checkout = fn fun ->
+        Process.put(:checked_out, true)
+
+        try do
+          fun.()
+        after
+          Process.delete(:checked_out)
+        end
+      end
+
+      {:ok, project} = F.project(:cut3)
+
+      # without :checkout (e.g. a pooled Repo.query/2 alone) a real run is refused
+      {Loader, bare} = Loader.target(project, query: query)
+
+      assert {:error, %{context: %{reason: :checkout}}} =
+               Loader.with_lock(bare, fn -> flunk("ran without :checkout") end)
+
+      refute_received {:query, _, _, _}
+
+      {Loader, config} = Loader.target(project, query: query, checkout: checkout)
+      key = Loader.lock_key("public")
+      assert Loader.with_lock(config, fn -> :ran end) == :ran
+      assert_received {:query, "SELECT pg_try_advisory_lock($1), pg_backend_pid()", [^key], true}
+      assert_received {:query, "SELECT pg_advisory_unlock($1), pg_backend_pid()", [^key], true}
+
+      # an exception still unlocks
+      assert_raise RuntimeError, fn -> Loader.with_lock(config, fn -> raise "boom" end) end
+      assert_received {:query, "SELECT pg_try_advisory_lock($1), pg_backend_pid()", _, _}
+      assert_received {:query, "SELECT pg_advisory_unlock($1), pg_backend_pid()", _, _}
+
+      # unlocked on another backend than the one that locked: an error
+      :counters.put(unlock_backend, 1, 8)
+
+      assert {:error, %{context: %{reason: :lock_session}}} =
+               Loader.with_lock(config, fn -> :ran end)
+
+      :counters.put(held, 1, 1)
+
+      assert {:error, %{context: %{reason: :locked}}} =
+               Loader.with_lock(config, fn -> flunk("ran without the lock") end)
+    end
+
     test "quotes identifiers" do
       table = %Plan.Table{type: "x", table: ~s(we"ird), key: "id", columns: []}
       assert Loader.upsert_sql("public", table) =~ ~s("we""ird")
