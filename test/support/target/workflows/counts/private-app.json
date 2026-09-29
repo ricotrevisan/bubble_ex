@@ -3,111 +3,111 @@
     "by_kind": {
       "api": {
         "native": 66,
-        "total": 462
+        "total": 472
       },
       "custom_event": {
         "native": 24,
-        "total": 110
+        "total": 113
       },
       "database_trigger": {
-        "native": 11,
-        "total": 63
+        "native": 14,
+        "total": 74
       }
     },
     "cycles": 31,
-    "entry_points": 635,
-    "exposed": 40,
+    "entry_points": 659,
+    "exposed": 37,
     "exposed_privacy_bypasses": {
       "admin_only": 14,
-      "authenticated": 17,
+      "authenticated": 16,
       "none": 1
     },
-    "native_own_body": 132,
-    "privacy_bypasses": 147,
+    "native_own_body": 142,
+    "privacy_bypasses": 165,
     "residue_reasons": {
       "api_connector_action": 132,
       "auth_action": 3,
-      "plugin_action": 13,
-      "uncompiled_expression": 1042,
+      "plugin_action": 15,
+      "uncompiled_expression": 1216,
       "unresolved_reference": 19,
-      "unsupported_action": 31,
-      "unsupported_option": 36
+      "unsupported_action": 34,
+      "unsupported_option": 33
     },
     "step_ops": {
-      "call": 118,
-      "create": 60,
+      "call": 138,
+      "create": 62,
       "delete": 34,
       "delete_list": 9,
-      "return": 20,
-      "schedule": 109,
+      "return": 40,
+      "schedule": 120,
       "schedule_list": 1,
-      "terminate": 88,
-      "update": 256,
+      "terminate": 115,
+      "update": 282,
       "update_current_user": 1,
-      "update_list": 4
+      "update_list": 5
     },
     "steps": {
-      "native": 700,
-      "residue": 1162,
-      "total": 1862
+      "native": 807,
+      "residue": 1338,
+      "total": 2145
     },
-    "triggers": 15,
+    "triggers": 20,
     "workflows": {
-      "native": 101,
-      "residue": 534,
-      "total": 635
+      "native": 104,
+      "residue": 555,
+      "total": 659
     }
   },
   "lowering": {
     "by_kind": {
       "api": {
-        "native": 117,
-        "total": 462
+        "native": 118,
+        "total": 472
       },
       "custom_event": {
         "native": 34,
-        "total": 110
+        "total": 113
       },
       "database_trigger": {
-        "native": 34,
-        "total": 63
+        "native": 43,
+        "total": 74
       }
     },
     "cycles": 31,
-    "exposed": 40,
-    "inherits_privacy": 110,
-    "privacy_bypasses": 147,
+    "exposed": 37,
+    "inherits_privacy": 113,
+    "privacy_bypasses": 165,
     "residue_reasons": {
       "api_connector_action": 132,
       "auth_action": 3,
-      "plugin_action": 13,
-      "uncompiled_expression": 872,
+      "plugin_action": 15,
+      "uncompiled_expression": 1025,
       "unresolved_reference": 19,
-      "unsupported_action": 31,
-      "unsupported_option": 35
+      "unsupported_action": 34,
+      "unsupported_option": 32
     },
     "step_ops": {
-      "call": 127,
-      "create": 85,
+      "call": 147,
+      "create": 88,
       "delete": 34,
       "delete_list": 13,
-      "return": 22,
-      "schedule": 141,
-      "schedule_list": 16,
-      "terminate": 100,
-      "update": 288,
+      "return": 42,
+      "schedule": 155,
+      "schedule_list": 17,
+      "terminate": 130,
+      "update": 323,
       "update_current_user": 1,
-      "update_list": 5
+      "update_list": 6
     },
     "steps": {
-      "native": 832,
-      "residue": 1030,
-      "total": 1862
+      "native": 956,
+      "residue": 1189,
+      "total": 2145
     },
     "workflows": {
-      "native": 185,
-      "residue": 450,
-      "total": 635
+      "native": 195,
+      "residue": 464,
+      "total": 659
     }
   }
 }

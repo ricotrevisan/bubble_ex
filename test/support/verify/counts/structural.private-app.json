@@ -2,20 +2,20 @@
   "decided": {
     "counts": {
       "bypasses": {
-        "expected": 147,
-        "lowered": 147,
+        "expected": 165,
+        "lowered": 165,
         "sites": {
           "authorize_false:scaffold": 2,
           "authorize_unverifiable:scaffold": 7,
-          "runtime_start:listed": 147
+          "runtime_start:listed": 165
         }
       },
       "privacy_rules": {
         "privacy": "omit",
-        "rules": 123,
+        "rules": 142,
         "types": {
-          "none": 46,
-          "present": 47
+          "none": 45,
+          "present": 52
         }
       },
       "symbols": {
@@ -23,38 +23,37 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 198,
+          "generated": 199,
           "reasons": {
             "residue:not_generated": 5
           },
           "residue": 5,
-          "total": 203,
+          "total": 204,
           "uncovered": 0
         },
         "data_types": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 4,
-          "generated": 93,
+          "generated": 97,
           "reasons": {
             "excluded:deleted": 4
           },
           "residue": 0,
-          "total": 97,
+          "total": 101,
           "uncovered": 0
         },
         "fields": {
-          "decision": 1,
+          "decision": 0,
           "diagnosed": 0,
-          "excluded": 50,
-          "generated": 1692,
+          "excluded": 51,
+          "generated": 1787,
           "reasons": {
-            "decision:derived": 1,
-            "excluded:deleted": 14,
+            "excluded:deleted": 15,
             "excluded:type_deleted": 36
           },
           "residue": 0,
-          "total": 1743,
+          "total": 1838,
           "uncovered": 0,
           "unreadable_parents": 0
         },
@@ -62,25 +61,25 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 4,
-          "generated": 141,
+          "generated": 144,
           "reasons": {
             "excluded:deleted": 4
           },
           "residue": 0,
-          "total": 145,
+          "total": 148,
           "uncovered": 0
         },
         "option_values": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 16,
-          "generated": 678,
+          "generated": 1142,
           "reasons": {
             "excluded:deleted": 2,
             "excluded:option_set_deleted": 14
           },
           "residue": 0,
-          "total": 694,
+          "total": 1158,
           "uncovered": 0,
           "unreadable_parents": 0
         },
@@ -88,45 +87,45 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 1,
-          "generated": 30,
+          "generated": 31,
           "reasons": {
             "excluded:mobile_view": 1
           },
           "residue": 0,
-          "total": 31,
+          "total": 32,
           "uncovered": 0
         },
         "reusables": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 127,
+          "generated": 128,
           "reasons": {},
           "residue": 0,
-          "total": 127,
+          "total": 128,
           "uncovered": 0
         },
         "workflows": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 632,
+          "generated": 642,
           "reasons": {
-            "residue:api_connector_action": 56,
-            "residue:auth_action": 8,
-            "residue:blocked_by_callee": 147,
-            "residue:plugin_action": 310,
-            "residue:plugin_event": 258,
-            "residue:trigger_in_runtime_template": 192,
-            "residue:unavailable_input": 417,
-            "residue:uncompiled_expression": 683,
+            "residue:api_connector_action": 53,
+            "residue:auth_action": 7,
+            "residue:blocked_by_callee": 154,
+            "residue:plugin_action": 320,
+            "residue:plugin_event": 259,
+            "residue:trigger_in_runtime_template": 195,
+            "residue:unavailable_input": 427,
+            "residue:uncompiled_expression": 700,
             "residue:unresolved_reference": 16,
-            "residue:unsupported_action": 110,
+            "residue:unsupported_action": 109,
             "residue:unsupported_event": 17,
-            "residue:unsupported_option": 64
+            "residue:unsupported_option": 65
           },
-          "residue": 2278,
-          "total": 2910,
+          "residue": 2322,
+          "total": 2964,
           "uncovered": 0
         }
       }
@@ -135,18 +134,18 @@
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
-        "compiled": 76,
-        "denied": 0,
-        "everyone": 47,
+        "compiled": 86,
+        "denied": 4,
+        "everyone": 52,
         "privacy": "unverified",
-        "rules": 123,
+        "rules": 142,
         "stricter_than_bubble": {
-          "rules": 87,
-          "types": 45
+          "rules": 96,
+          "types": 49
         },
         "types": {
-          "none": 46,
-          "present": 47
+          "none": 45,
+          "present": 52
         },
         "uncovered": 0
       },
@@ -170,20 +169,20 @@
   "faithful": {
     "counts": {
       "bypasses": {
-        "expected": 147,
-        "lowered": 147,
+        "expected": 165,
+        "lowered": 165,
         "sites": {
           "authorize_false:scaffold": 2,
           "authorize_unverifiable:scaffold": 7,
-          "runtime_start:listed": 147
+          "runtime_start:listed": 165
         }
       },
       "privacy_rules": {
         "privacy": "omit",
-        "rules": 123,
+        "rules": 142,
         "types": {
-          "none": 46,
-          "present": 47
+          "none": 45,
+          "present": 52
         }
       },
       "symbols": {
@@ -191,37 +190,37 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 198,
+          "generated": 199,
           "reasons": {
             "residue:not_generated": 5
           },
           "residue": 5,
-          "total": 203,
+          "total": 204,
           "uncovered": 0
         },
         "data_types": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 4,
-          "generated": 93,
+          "generated": 97,
           "reasons": {
             "excluded:deleted": 4
           },
           "residue": 0,
-          "total": 97,
+          "total": 101,
           "uncovered": 0
         },
         "fields": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 50,
-          "generated": 1693,
+          "excluded": 51,
+          "generated": 1787,
           "reasons": {
-            "excluded:deleted": 14,
+            "excluded:deleted": 15,
             "excluded:type_deleted": 36
           },
           "residue": 0,
-          "total": 1743,
+          "total": 1838,
           "uncovered": 0,
           "unreadable_parents": 0
         },
@@ -229,25 +228,25 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 4,
-          "generated": 141,
+          "generated": 144,
           "reasons": {
             "excluded:deleted": 4
           },
           "residue": 0,
-          "total": 145,
+          "total": 148,
           "uncovered": 0
         },
         "option_values": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 16,
-          "generated": 678,
+          "generated": 1142,
           "reasons": {
             "excluded:deleted": 2,
             "excluded:option_set_deleted": 14
           },
           "residue": 0,
-          "total": 694,
+          "total": 1158,
           "uncovered": 0,
           "unreadable_parents": 0
         },
@@ -255,45 +254,45 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 1,
-          "generated": 30,
+          "generated": 31,
           "reasons": {
             "excluded:mobile_view": 1
           },
           "residue": 0,
-          "total": 31,
+          "total": 32,
           "uncovered": 0
         },
         "reusables": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 127,
+          "generated": 128,
           "reasons": {},
           "residue": 0,
-          "total": 127,
+          "total": 128,
           "uncovered": 0
         },
         "workflows": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 632,
+          "generated": 642,
           "reasons": {
-            "residue:api_connector_action": 56,
-            "residue:auth_action": 8,
-            "residue:blocked_by_callee": 147,
-            "residue:plugin_action": 310,
-            "residue:plugin_event": 258,
-            "residue:trigger_in_runtime_template": 192,
-            "residue:unavailable_input": 417,
-            "residue:uncompiled_expression": 683,
+            "residue:api_connector_action": 53,
+            "residue:auth_action": 7,
+            "residue:blocked_by_callee": 154,
+            "residue:plugin_action": 320,
+            "residue:plugin_event": 259,
+            "residue:trigger_in_runtime_template": 195,
+            "residue:unavailable_input": 427,
+            "residue:uncompiled_expression": 700,
             "residue:unresolved_reference": 16,
-            "residue:unsupported_action": 110,
+            "residue:unsupported_action": 109,
             "residue:unsupported_event": 17,
-            "residue:unsupported_option": 64
+            "residue:unsupported_option": 65
           },
-          "residue": 2278,
-          "total": 2910,
+          "residue": 2322,
+          "total": 2964,
           "uncovered": 0
         }
       }
@@ -302,18 +301,18 @@
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
-        "compiled": 76,
-        "denied": 0,
-        "everyone": 47,
+        "compiled": 86,
+        "denied": 4,
+        "everyone": 52,
         "privacy": "unverified",
-        "rules": 123,
+        "rules": 142,
         "stricter_than_bubble": {
-          "rules": 87,
-          "types": 45
+          "rules": 96,
+          "types": 49
         },
         "types": {
-          "none": 46,
-          "present": 47
+          "none": 45,
+          "present": 52
         },
         "uncovered": 0
       },

@@ -18,8 +18,12 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   # every cut-2 and cut-3 finding (lists normalized to joins, membership
   # joins) the same way.
   # It names private Bubble IDs, so it is never committed. The committed
-  # snapshot holds only the Project's hash, the decision set's hash and
-  # aggregate counts, never names or IDs. A changed hash or count means
+  # snapshot holds only the Project's hash, the decision set's hash,
+  # aggregate counts and how the decisions resolve against the export (by
+  # state, `BubbleEx.Decision.Resolved.summary/1`), never names or IDs.
+  # Decisions made against an older export may resolve `:stale` or
+  # `:orphaned` against a newer one; they then never apply, and the cut-2
+  # and cut-3 runs must add no blocking entry of their own. A changed hash or count means
   # updating the snapshot, with the reason in the PR:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… BUBBLE_EX_PRIVATE_DECISIONS=… \
@@ -65,6 +69,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       end)
 
     {:ok, resolved} = Decision.resolve(records, findings, index: index, now: @now)
+    recorded_blocking = MapSet.new(Resolved.blocking(resolved), & &1.decision.id)
     applied = Decision.applicable(resolved, findings)
     sha = Decision.decisions_sha256(records)
     opts = [index: index, privacy: :unverified, decisions_sha256: sha]
@@ -77,6 +82,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       findings: findings,
       records: records,
       resolved: resolved,
+      recorded_blocking: recorded_blocking,
       applied: applied,
       sha: sha,
       opts: opts,
@@ -85,10 +91,21 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     }
   end
 
-  test "the decisions are current and apply", %{resolved: resolved, applied: applied} do
-    assert Resolved.blocking(resolved) == []
-    assert Enum.any?(applied, &(&1.transform == :derive_from_related))
-    refute Enum.any?(applied, & &1.automatic)
+  test "only the active decisions apply", %{resolved: resolved, applied: applied} do
+    blocking = Resolved.blocking(resolved)
+    active = MapSet.new(Resolved.in_state(resolved, :active), & &1.decision.key)
+    decided = MapSet.new(resolved.entries, & &1.decision.key)
+
+    # an owner change comes from an active decision; an automatic one is a
+    # hint no record decides (one added to the app since the decisions)
+    for a <- applied do
+      if a.automatic,
+        do: assert(a.transform == :add_indexes and not MapSet.member?(decided, a.key)),
+        else: assert(MapSet.member?(active, a.key))
+    end
+
+    # the recorded accept derives its field while it is current
+    if blocking == [], do: assert(Enum.any?(applied, &(&1.transform == :derive_from_related)))
   end
 
   test "with the hints left undecided they apply by default",
@@ -112,10 +129,16 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   end
 
   test "every cut-2 finding accepted, with the hints applied by default, maps and renders",
-       %{model: model, index: index, findings: findings, records: records} do
+       %{
+         model: model,
+         index: index,
+         findings: findings,
+         records: records,
+         recorded_blocking: recorded_blocking
+       } do
     {decided, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut2(findings, records, index)
     {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
-    assert Resolved.blocking(resolved) == []
+    assert new_blocking(resolved, recorded_blocking) == []
     automatic = Enum.filter(applied, & &1.automatic)
 
     untyped =
@@ -140,10 +163,17 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   end
 
   test "every cut-2 and cut-3 finding accepted maps and renders; no privacy rule is lost",
-       %{model: model, index: index, findings: findings, records: records, faithful: faithful} do
+       %{
+         model: model,
+         index: index,
+         findings: findings,
+         records: records,
+         recorded_blocking: recorded_blocking,
+         faithful: faithful
+       } do
     {decided, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, records, index)
     {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
-    assert Resolved.blocking(resolved) == []
+    assert new_blocking(resolved, recorded_blocking) == []
     automatic = Enum.filter(applied, & &1.automatic)
     joins = Enum.count(applied, &(&1.transform in [:normalize_list_to_join, :membership_policy]))
     assert joins > 0
@@ -173,6 +203,11 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       )
     end
   end
+
+  # Blocking entries other than the recorded decisions' own.
+  defp new_blocking(resolved, recorded_blocking),
+    do:
+      Enum.reject(Resolved.blocking(resolved), &MapSet.member?(recorded_blocking, &1.decision.id))
 
   defp report(what, project, automatic) do
     applied_keys = MapSet.new(project.applied, & &1.key)
@@ -221,7 +256,14 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   end
 
   test "matches the recorded hash and count snapshot",
-       %{project: project, sha: sha, model: model, applied: applied, opts: opts} do
+       %{
+         project: project,
+         sha: sha,
+         model: model,
+         applied: applied,
+         opts: opts,
+         resolved: resolved
+       } do
     snapshot = System.get_env("BUBBLE_EX_ASH_DECIDED_COUNTS") || @default_snapshot
 
     document = %{
@@ -229,7 +271,12 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       "project_sha256" => CanonicalJson.sha256(Project.to_map(project)),
       "decisions_sha256" => sha,
       "applied_sha256" => project.applied_sha256,
-      "counts" => Project.summary(project)
+      "counts" => Project.summary(project),
+      "resolved" =>
+        resolved
+        |> Resolved.summary()
+        |> Map.put(:blocking, length(Resolved.blocking(resolved)))
+        |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
     }
 
     IO.puts(

@@ -5,13 +5,15 @@ defmodule BubbleEx.PrivacyPrivateFixtureTest do
   #
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
-  # The path is either a decoded `.bubble` app JSON file or a split export
-  # directory (`data_types/<id>/type.json`, plus `pages/`, `api/`,
-  # `element-definitions/` JSON for expression samples).
+  # The path is a decoded `.bubble` app JSON file, a split export directory
+  # (`data_types/<id>/type.json`, plus `pages/`, `api/`,
+  # `element-definitions/` JSON for expression samples) or a Buildprint v5
+  # workspace (read through `BubbleEx.Test.SplitExport`).
   use ExUnit.Case, async: true
 
   alias BubbleEx.{CanonicalJson, Expression, Privacy}
   alias BubbleEx.Expression.Ast
+  alias BubbleEx.Test.SplitExport
 
   @moduletag :private_fixture
   @moduletag timeout: :infinity
@@ -88,7 +90,7 @@ defmodule BubbleEx.PrivacyPrivateFixtureTest do
   end
 
   defp load(path) do
-    if File.dir?(path) do
+    if SplitExport.format(path) == :split_export do
       types =
         Map.new(Path.wildcard(Path.join(path, "data_types/*/type.json")), fn file ->
           {file |> Path.dirname() |> Path.basename(), decode(file)}
@@ -97,7 +99,7 @@ defmodule BubbleEx.PrivacyPrivateFixtureTest do
       docs = path |> Path.join("{pages,api,element-definitions}/**/*.json") |> Path.wildcard()
       {%{"user_types" => types}, Stream.map(docs, &decode/1)}
     else
-      app = decode(path)
+      app = SplitExport.load(path)
       {app, [Map.take(app, ~w(pages element_definitions api %p3 %ed))]}
     end
   end
