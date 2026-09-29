@@ -88,6 +88,39 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert %{op: :reset_inputs, args: %{within: nil}} = reset_inputs
   end
 
+  test "Go to page sends its data to a page with a type of content (WTF-378)" do
+    send_user = fn app ->
+      edit(
+        app,
+        "wNav",
+        &put_in(&1, ["actions", "0", "properties", "data_to_send"], %{"type" => "CurrentUser"})
+      )
+    end
+
+    typed = put_in(app(), ["pages", "other", "properties", "page_item_type"], "user")
+    [nav] = typed |> send_user.() |> lower() |> workflow("wNav") |> Map.fetch!(:steps)
+    assert %{residue: [], args: %{thing: %{ir: %{op: :current_user}}}} = nav
+
+    # No type of content: Bubble has nowhere to send it, so it is ignored.
+    [nav] = app() |> send_user.() |> lower() |> workflow("wNav") |> Map.fetch!(:steps)
+    assert %{residue: [], args: %{thing: nil}} = nav
+
+    # The index page's path is "/": no segment to read a thing from yet.
+    index =
+      typed
+      |> put_in(["pages", "other", "name"], "index")
+      |> put_in(["pages", "home", "name"], "home")
+      |> send_user.()
+      |> lower()
+
+    assert {:unsupported_option, %{options: ["data_to_send"]}} in (index
+                                                                   |> workflow("wNav")
+                                                                   |> Workflow.residue()
+                                                                   |> Enum.map(
+                                                                     &{&1.reason, &1.detail}
+                                                                   ))
+  end
+
   test "an unsupported action is residue with a diagnostic, never dropped", %{
     lowered: lowered
   } do
@@ -117,7 +150,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
     lowered =
       app()
       |> edit("wCall", &put_in(&1, ["actions", "0", "properties", "custom_event"], "wCardZero"))
-      |> edit("wNav", &put_in(&1, ["actions", "0", "properties", "data_to_send"], "x"))
+      |> edit("wUrl", &put_in(&1, ["actions", "0", "properties", "data_to_send"], "x"))
       |> edit("wState", &put_in(&1, ["actions", "0", "properties", "surprise"], true))
       |> edit("wLoad", &Map.put(&1, "type", "1488796042609x768734193128308700-AAX"))
       |> edit("wCond", &put_in(&1, ["properties", "run_when"], "sometimes"))
@@ -130,7 +163,8 @@ defmodule BubbleEx.Workflows.FrontendTest do
 
     # A custom event of another page or reusable element.
     assert {:unresolved_reference, %{reference: "workflow"}} in reasons.("wCall")
-    assert {:unsupported_option, %{options: ["data_to_send"]}} in reasons.("wNav")
+    # Data sent to the current page (its path is known at run time only).
+    assert {:unsupported_option, %{options: ["data_to_send"]}} in reasons.("wUrl")
     assert {:unsupported_option, %{options: ["surprise"]}} in reasons.("wState")
 
     assert {:plugin_event, %{plugin: "1488796042609x768734193128308700"}} in reasons.("wLoad")

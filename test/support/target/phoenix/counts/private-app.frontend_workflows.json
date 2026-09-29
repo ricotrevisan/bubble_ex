@@ -3,15 +3,15 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 376,
+          "native": 402,
           "total": 1375
         },
         "condition_true": {
-          "native": 7,
+          "native": 8,
           "total": 102
         },
         "custom_event": {
-          "native": 168,
+          "native": 180,
           "total": 496
         },
         "do_every": {
@@ -31,7 +31,7 @@
           "total": 6
         },
         "page_load": {
-          "native": 10,
+          "native": 15,
           "total": 32
         },
         "popup_closed": {
@@ -49,15 +49,15 @@
       },
       "by_surface": {
         "page": {
-          "native": 187,
+          "native": 216,
           "total": 658
         },
         "reusable": {
-          "native": 376,
+          "native": 391,
           "total": 1647
         }
       },
-      "data": 39,
+      "data": 50,
       "residue_reasons": {
         "api_connector_action": 32,
         "auth_action": 14,
@@ -65,12 +65,12 @@
         "plugin_event": 259,
         "target_not_rendered": 1,
         "trigger_in_runtime_template": 195,
-        "unavailable_input": 879,
-        "uncompiled_expression": 789,
+        "unavailable_input": 904,
+        "uncompiled_expression": 792,
         "unresolved_reference": 45,
         "unsupported_action": 223,
         "unsupported_event": 17,
-        "unsupported_option": 81
+        "unsupported_option": 11
       },
       "step_ops": {
         "call": 454,
@@ -80,7 +80,7 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 172,
+        "navigate": 212,
         "open_url": 17,
         "refresh": 5,
         "reset_group": 108,
@@ -96,31 +96,31 @@
         "update_current_user": 14
       },
       "steps": {
-        "native": 1910,
-        "residue": 2144,
+        "native": 1950,
+        "residue": 2104,
         "total": 4054
       },
       "workflows": {
         "client": 101,
-        "native": 563,
-        "native_own_body": 711,
-        "residue": 1742,
+        "native": 607,
+        "native_own_body": 743,
+        "residue": 1698,
         "total": 2305,
-        "wired": 390
+        "wired": 420
       }
     },
     "ir": {
       "by_kind": {
         "click": {
-          "native": 835,
+          "native": 877,
           "total": 1375
         },
         "condition_true": {
-          "native": 38,
+          "native": 39,
           "total": 102
         },
         "custom_event": {
-          "native": 247,
+          "native": 260,
           "total": 496
         },
         "do_every": {
@@ -140,7 +140,7 @@
           "total": 6
         },
         "page_load": {
-          "native": 19,
+          "native": 21,
           "total": 32
         },
         "popup_closed": {
@@ -158,11 +158,11 @@
       },
       "by_surface": {
         "page": {
-          "native": 385,
+          "native": 406,
           "total": 658
         },
         "reusable": {
-          "native": 782,
+          "native": 819,
           "total": 1647
         }
       },
@@ -171,11 +171,11 @@
         "auth_action": 14,
         "plugin_action": 622,
         "plugin_event": 259,
-        "uncompiled_expression": 620,
+        "uncompiled_expression": 621,
         "unresolved_reference": 45,
         "unsupported_action": 223,
         "unsupported_event": 2,
-        "unsupported_option": 81
+        "unsupported_option": 11
       },
       "step_ops": {
         "call": 633,
@@ -185,7 +185,7 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 229,
+        "navigate": 295,
         "open_url": 25,
         "refresh": 7,
         "reset_group": 108,
@@ -203,14 +203,14 @@
         "update_list": 2
       },
       "steps": {
-        "native": 2599,
-        "residue": 1455,
+        "native": 2665,
+        "residue": 1389,
         "total": 4054
       },
       "workflows": {
         "disabled": 54,
-        "native": 1167,
-        "residue": 1138,
+        "native": 1225,
+        "residue": 1080,
         "total": 2305
       }
     },

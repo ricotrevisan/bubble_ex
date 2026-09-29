@@ -109,22 +109,22 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 642,
+          "generated": 680,
           "reasons": {
             "residue:api_connector_action": 53,
             "residue:auth_action": 7,
-            "residue:blocked_by_callee": 154,
-            "residue:plugin_action": 320,
+            "residue:blocked_by_callee": 142,
+            "residue:plugin_action": 321,
             "residue:plugin_event": 259,
             "residue:trigger_in_runtime_template": 195,
-            "residue:unavailable_input": 427,
-            "residue:uncompiled_expression": 700,
+            "residue:unavailable_input": 428,
+            "residue:uncompiled_expression": 702,
             "residue:unresolved_reference": 16,
-            "residue:unsupported_action": 109,
+            "residue:unsupported_action": 111,
             "residue:unsupported_event": 17,
-            "residue:unsupported_option": 65
+            "residue:unsupported_option": 33
           },
-          "residue": 2322,
+          "residue": 2284,
           "total": 2964,
           "uncovered": 0
         }
@@ -276,22 +276,22 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 642,
+          "generated": 680,
           "reasons": {
             "residue:api_connector_action": 53,
             "residue:auth_action": 7,
-            "residue:blocked_by_callee": 154,
-            "residue:plugin_action": 320,
+            "residue:blocked_by_callee": 142,
+            "residue:plugin_action": 321,
             "residue:plugin_event": 259,
             "residue:trigger_in_runtime_template": 195,
-            "residue:unavailable_input": 427,
-            "residue:uncompiled_expression": 700,
+            "residue:unavailable_input": 428,
+            "residue:uncompiled_expression": 702,
             "residue:unresolved_reference": 16,
-            "residue:unsupported_action": 109,
+            "residue:unsupported_action": 111,
             "residue:unsupported_event": 17,
-            "residue:unsupported_option": 65
+            "residue:unsupported_option": 33
           },
-          "residue": 2322,
+          "residue": 2284,
           "total": 2964,
           "uncovered": 0
         }

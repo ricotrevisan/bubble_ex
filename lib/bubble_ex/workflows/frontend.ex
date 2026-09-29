@@ -49,7 +49,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
   | Set state(s) (`SetCustomState`) | `:set_state` | `element`, `states` (`%{state, value}`, state `custom.<id>`) |
-  | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `keep_params?`, `replace?`, `new_tab?` |
+  | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, when the page has a type of content), `keep_params?`, `replace?`, `new_tab?` |
   | Open an external website (`OpenURL`) | `:open_url` | `url`, `new_tab?` |
   | Refresh the page | `:refresh` | |
   | Log the user out | `:log_out` | |
@@ -234,6 +234,7 @@ defmodule BubbleEx.Workflows.Frontend do
       tree: tree,
       surfaces: surfaces,
       pages: for({id, %{kind: :page}} <- surfaces, into: %{}, do: {bubble(id), id}),
+      page_things: page_things(app, surfaces),
       custom_events: custom_events,
       api_workflows: api_workflows(app)
     }
@@ -575,20 +576,19 @@ defmodule BubbleEx.Workflows.Frontend do
         }
       end)
 
+    {thing, thing_residue} = data_to_send(props["data_to_send"], page, path, id, env, ctx)
+
     residue =
       residue ++
         if(Enum.any?(params, &is_nil(&1.key)),
           do: Lowering.option_residue(id, ["url_parameters"]),
           else: []
-        ) ++
-        if(props["data_to_send"] != nil,
-          do: Lowering.option_residue(id, ["data_to_send"]),
-          else: []
-        )
+        ) ++ thing_residue
 
     {%{
        page: page,
        params: Enum.reject(params, &is_nil(&1.key)),
+       thing: thing,
        keep_params?: props["keep_current_page_params"] == true,
        replace?: props["replace_history"] == true,
        new_tab?: props["open_in_new_tab"] == true
@@ -867,6 +867,37 @@ defmodule BubbleEx.Workflows.Frontend do
   defp step_path(w, subject), do: Enum.find_value(w.steps, w.path, &(&1.id == subject && &1.path))
 
   # --- helpers -------------------------------------------------------------------------
+
+  # "Go to page"'s data to send (WTF-378): the destination page's thing,
+  # sent as the path segment after the page's own (`/<page>/<unique id>`).
+  # A destination with no type of content has no such segment: Bubble
+  # sends nothing, so a value left there from an earlier type of content is
+  # ignored (unverified). The current page (its path is only known at run
+  # time) and the index page (whose path is `/`) are not lowered yet.
+  defp data_to_send(nil, _page, _path, _id, _env, _ctx), do: {nil, []}
+
+  defp data_to_send(value, page, path, id, env, ctx) when is_binary(page) do
+    case ctx.page_things[page] do
+      %{type: nil} -> {nil, []}
+      %{index?: false} -> {Lowering.expr(value, path ++ ["data_to_send"], env), []}
+      _ -> {nil, Lowering.option_residue(id, ["data_to_send"])}
+    end
+  end
+
+  defp data_to_send(_value, _page, _path, id, _env, _ctx),
+    do: {nil, Lowering.option_residue(id, ["data_to_send"])}
+
+  # Each page's type of content and whether it is the index page, by
+  # Bubble ID.
+  defp page_things(app, surfaces) do
+    for {id, %{kind: :page} = s} <- surfaces, into: %{} do
+      raw = at(app, s.path)
+      props = if is_map(raw), do: map(raw["properties"]), else: %{}
+
+      {bubble(id),
+       %{type: text(props["page_item_type"]), index?: is_map(raw) and raw["name"] == "index"}}
+    end
+  end
 
   defp bubble(symbol_id),
     do: symbol_id |> String.split(":", parts: 2) |> List.last() |> unescape()

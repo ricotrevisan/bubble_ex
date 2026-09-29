@@ -17,6 +17,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
   defp app, do: @fixture |> File.read!() |> Jason.decode!()
 
   defp render(app, opts \\ []) do
+    {page_data?, opts} = Keyword.pop(opts, :page_data, false)
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
@@ -34,11 +35,19 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     {:ok, backend} =
       BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Shop")
 
+    page_data =
+      if page_data? do
+        {:ok, page_data} = BubbleEx.PageData.build(app, model)
+        [page_data: page_data]
+      else
+        []
+      end
+
     {:ok, spec} =
-      FrontendWorkflows.map(lowered, project,
-        namespace: "Shop",
-        frontend: frontend,
-        backend: backend
+      FrontendWorkflows.map(
+        lowered,
+        project,
+        [namespace: "Shop", frontend: frontend, backend: backend] ++ page_data
       )
 
     opts =
@@ -147,6 +156,60 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
              ~s|Runtime.schedule(run, "aSchedule1", "wApiNote", page_data_current_date_time|
 
     assert module =~ ~s|BubbleWorkflows.backend(ctx, fn run ->|
+  end
+
+  describe "Go to page with data to send (WTF-378)" do
+    # Page `other` with a type of content, and wNav sending it the current user.
+    defp with_thing(app, page_type) do
+      app
+      |> put_in(["pages", "other", "properties", "page_item_type"], page_type)
+      |> put_in(
+        ["pages", "home", "workflows", "wNav", "actions", "0", "properties", "data_to_send"],
+        %{"type" => "CurrentUser"}
+      )
+    end
+
+    test "sends the thing as the path segment the page reads it from" do
+      %{files: files, spec: spec} = render(with_thing(app(), "user"), page_data: true)
+      nav = FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav")
+      assert nav.residue == [] and FrontendWorkflows.Spec.native?(nav)
+
+      module = files["lib/shop_web/live/index_live/workflows.ex"]
+
+      assert module =~
+               ~s|BubbleWorkflows.navigate(ctx, "/other", [{"q", "hello"}], false, false, false, current_user)|
+
+      routes = files["lib/shop_web/bubble_routes.ex"]
+      assert routes =~ ~s(live "/other/:bubble_thing", ShopWeb.OtherLive)
+
+      runtime = files["lib/shop_web/bubble_workflows.ex"]
+
+      assert runtime =~
+               "def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\\\ nil) do"
+
+      assert runtime =~ ~s|nil -> path\n        id -> path <> "/" <> id|
+    end
+
+    test "is residue while the page does not load its thing" do
+      %{spec: spec} = render(with_thing(app(), "user"))
+      nav = FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav")
+
+      assert %{reason: :unsupported_option, detail: %{options: ["data_to_send"]}} =
+               nav.steps |> hd() |> Map.fetch!(:residue) |> hd()
+    end
+
+    test "is ignored when the page has no type of content, as Bubble sends nothing" do
+      app =
+        app()
+        |> with_thing("user")
+        |> update_in(["pages", "other", "properties"], &Map.delete(&1, "page_item_type"))
+
+      %{files: files, spec: spec} = render(app, page_data: true)
+      assert FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav").residue == []
+
+      assert files["lib/shop_web/live/index_live/workflows.ex"] =~
+               ~s|BubbleWorkflows.navigate(ctx, "/other", [{"q", "hello"}], false, false, false)\n|
+    end
   end
 
   test "bodies call the runtime; browser-run workflows are JS commands", %{files: files} do
