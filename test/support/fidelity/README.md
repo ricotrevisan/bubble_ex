@@ -92,7 +92,7 @@ current byte-identical full-page screenshots.
 ## Input source validation repair (2026-09-10)
 
 The Integer, extra Input formats, Address/DateInput, and numbers/datetime/FileInput
-cases were repaired and recaptured from authorized branch `83jop`. Earlier
+cases were repaired and recaptured from authorized branch `dev02`. Earlier
 versions contained invalid Bubble enum values and did not prove the advertised
 format support. See [the audit](../../../docs/research/frozen-input-validation-audit.md).
 The gate now rejects invalid control enums and compares captured Input values.

@@ -1,7 +1,7 @@
 {
   "status": "captured",
   "scope": "Controlled Bubble test page",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i32-static-controls",
+  "url": "https://example-plugin.bubbleapps.io/version-test/bubbleex-i32-static-controls",
   "chromium": "140.0.7339.186",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpqqfagk",

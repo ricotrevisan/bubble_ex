@@ -176,6 +176,10 @@ To run integration tests explicitly:
 mix test --only integration
 ```
 
+The live app checks in `test/apps_test.exs` need a real, non-dedicated Bubble
+app of your choosing. Set `BUBBLE_EX_LIVE_APP=<bubble id>` to run them; there
+is no default, so they are skipped without it.
+
 To run a single file or test:
 
 ```bash

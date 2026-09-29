@@ -72,7 +72,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert case_.source.page_path == "bubbleex-complex-demo"
 
       assert case_.source.payload_sha256 ==
-               "5f793038b329654b9705399adad375f54ac60d572205788863e14f94205a1101"
+               "fda628f6c472d2d31b4fbef2d38dbabeffddbdc7aafb3a541d208baf2d4d8b14"
 
       assert case_.viewports == [390, 1512]
       assert case_.export_pages == ["bubbleex-complex-demo", "bubbleex-complex-detail"]
@@ -163,7 +163,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
 
     test "tracks both initially closed overlays without claiming interactive parity" do
       assert {:ok, case_} = Fidelity.load_case("bptvorpv")
-      assert case_.source.app_version == "83jop"
+      assert case_.source.app_version == "dev02"
       assert case_.raw["source_hidden_node_ids"] == ["bptvorpw", "bptvorqc"]
       assert case_.semantics["buttons"] == ["bptvorqa", "bptvorqb"]
     end

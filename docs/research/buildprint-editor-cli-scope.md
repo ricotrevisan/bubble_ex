@@ -65,7 +65,7 @@ not merely a transport wrapper.
 | Foundation | Authenticated editor reads, branch identity, ID/path resolution, plans, preservation of unknown fields, guarded writes, readback and recovery | Rename one existing element; reject a stale expected value; reconcile an ambiguous submission without blindly repeating it |
 | First release | Add/update/remove native web elements; text, size, spacing, appearance, ordering and same-owner reparenting | Create a small responsive demo page, edit nested content, move a child, remove only the intended node; fresh editor read matches |
 | First release | Page and reusable definitions, reusable instances and inputs | Place two instances and verify references and independently owned state; no accidental edits to unrelated pages |
-| First release | Installed plugin element properties, literal/dynamic bindings and conditional overrides | Configure an existing Tiptap/Popover plugin instance using the current plugin schema |
+| First release | Installed plugin element properties, literal/dynamic bindings and conditional overrides | Configure an existing rich-text/Popover plugin instance using the current plugin schema |
 | First release | Custom states, frontend events/actions, conditions and action ordering | Button opens a popup; plugin event updates a state/readout; reusable-owned workflow acts on the correct instance |
 | Next | Data types, fields and option sets | Add a small fixture type and bind it without changing runtime records |
 | Next | Broader expression and workflow support, backend workflow definitions | Author and read back a disabled backend fixture with checked parameter/action references |
@@ -108,7 +108,7 @@ the relevant local projects were found under `~/dev/bubble-plugins`.
 ## Scope of the known protocol evidence
 
 WTF-271 captured editor-originated create, rename, reorder and undo batches on
-`tiptap-plugin`, branch `wtf-271-editor-diff` (`43jvs`). Mutations used
+`example-plugin`, branch `wtf-271-editor-diff` (`dev03`). Mutations used
 `POST /appeditor/write`, with path/value changes plus history and index entries.
 That proves a starting transport shape. It does not yet prove independent CLI
 authentication, safe ID allocation, concurrency guarantees, native recovery,

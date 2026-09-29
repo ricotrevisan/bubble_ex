@@ -3,7 +3,7 @@
 - **Decision date:** 2026-08-13
 - **Issue:** [#28 — Prove responsive layout translation with a vertical slice](https://github.com/ricotrevisan/bubble_ex/issues/28)
 - **Prototype:** [`324c300`](https://github.com/ricotrevisan/bubble_ex/tree/324c300e6229428028ae89c10d75fcd367bc1506/lib/bubble_ex/frontend/prototypes/responsive_layout_vertical_slice) on `prototype/issue-28-responsive-layout`
-- **Controlled Bubble page:** `tiptap-plugin` Test page `bpmkbvvo` at the sanitized path `/version-test/bubbleex-i28-responsive-slice`
+- **Controlled Bubble page:** `example-plugin` Test page `bpmkbvvo` at the sanitized path `/version-test/bubbleex-i28-responsive-slice`
 - **BubbleEx baseline:** [`c2df366`](https://github.com/ricotrevisan/bubble_ex/tree/c2df36680b8726dafae7dde8683c2c6aa77a3f5b)
 
 ## Verdict
@@ -18,13 +18,13 @@ This proves acceptable visual equivalence for the representative subset exercise
 
 ## Controlled evidence
 
-The dedicated conformance page exists only on the authorized `tiptap-plugin` Test branch. No existing page, workflow, data type, plugin, setting, Live branch, or app data was changed. A Buildprint savepoint preceded the page edit.
+The dedicated conformance page exists only on the authorized `example-plugin` Test branch. No existing page, workflow, data type, plugin, setting, Live branch, or app data was changed. A Buildprint savepoint preceded the page edit.
 
 Evidence identity:
 
 - page ID: `bpmkbvvo`;
 - page payload SHA-256: `706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b`;
-- sanitized URL: `https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i28-responsive-slice`;
+- sanitized URL: `https://example-plugin.bubbleapps.io/version-test/bubbleex-i28-responsive-slice`;
 - browser: Chromium 140.0.7339.16, DPR 1, locale `en-US`, reduced motion, viewport height 900;
 - frozen Inter Latin WOFF2 SHA-256: `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62`.
 

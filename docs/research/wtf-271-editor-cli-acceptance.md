@@ -2,8 +2,8 @@
 
 This plan turns the first-release portion of
 [`buildprint-editor-cli-scope.md`](buildprint-editor-cli-scope.md) into bounded,
-observable cases. The authorized live target is `tiptap-plugin`, child app
-version `43jvs` (`wtf-271-editor-diff`). Main/test and live are excluded.
+observable cases. The authorized live target is `example-plugin`, child app
+version `dev03` (`wtf-271-editor-diff`). Main/test and live are excluded.
 
 ## Safety invariants
 
@@ -29,8 +29,8 @@ version `43jvs` (`wtf-271-editor-diff`). Main/test and live are excluded.
 
 | ID | Case | Pass condition | Result |
 | --- | --- | --- | --- |
-| A1 | Authenticated branch read | `versions` identifies `43jvs` as an active child of test; `read` returns an exact subtree and `last_change` without Buildprint. | Passed live |
-| A2 | First property edit | Rename one existing element on `43jvs`; write acknowledgement and fresh readback agree; rollback restores the old value and is read back. | Passed live |
+| A1 | Authenticated branch read | `versions` identifies `dev03` as an active child of test; `read` returns an exact subtree and `last_change` without Buildprint. | Passed live |
+| A2 | First property edit | Rename one existing element on `dev03`; write acknowledgement and fresh readback agree; rollback restores the old value and is read back. | Passed live |
 | A3 | Stale plan | Change the base revision or expected value in a fixture/live plan; `check` and `apply` reject it before transport records a write. | Passed live and offline |
 | A4 | Ambiguous outcome | Simulate timeout-after-commit, timeout-before-commit, and partial application. Reconciliation reports applied, not-applied, and ambiguous respectively and never resubmits. | Passed offline; malformed native savepoint acknowledgement reconciled live |
 | A5 | Unknown preservation | Set a supported leaf on a fixture owner containing unknown keys; the resulting write touches only that leaf and the unknown values remain byte-for-byte equivalent in readback. | Passed by leaf-only write inspection and fresh readback |

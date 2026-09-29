@@ -1,6 +1,6 @@
 {
-  "_id": "tiptap-plugin",
-  "app_version": "83jop",
+  "_id": "example-plugin",
+  "app_version": "dev02",
   "comments": {
     "bpndkqfs": {
       "content": "Controlled BubbleEx two-handle Slider and visible Popup page.",

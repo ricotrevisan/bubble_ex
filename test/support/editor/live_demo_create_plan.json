@@ -1,6 +1,6 @@
 {
-  "appname": "tiptap-plugin",
-  "version": "43jvs",
+  "appname": "example-plugin",
+  "version": "dev03",
   "base_last_change": 65050186379,
   "references": {
     "bpre1ddfb5e4a82": "%ed.modern_popover_row_actions"

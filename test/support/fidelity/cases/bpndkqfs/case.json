@@ -39,12 +39,12 @@
     ]
   },
   "source": {
-    "app_version": "83jop",
-    "bubble_id": "tiptap-plugin",
+    "app_version": "dev02",
+    "bubble_id": "example-plugin",
     "page_id": "bpndkqfs",
     "page_path": "bubbleex-i69-range-popup",
     "page_payload_sha256": "7a503447eb9496b24f887f210742d5dd57149e71ea8c6e889da4759d0487067a",
-    "payload_sha256": "9153bb41ab0f7548eb35d7c1f21b0c50faf045a4e3362418c186fdc40c65cfe2"
+    "payload_sha256": "aab4d0ca30118c302834ac8cd1c208d9430f138d14f3886196c807d7aa44f55d"
   },
   "source_hidden_node_ids": [
     "bplcsjej"

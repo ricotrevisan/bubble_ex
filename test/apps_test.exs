@@ -36,7 +36,7 @@ defmodule BubbleEx.AppsTest do
       :ok
     end
 
-    @app_json ~S({"_id":"abacus-desktop","settings":{"client_safe":{"plugins":{"a":true,"b":{},"c":{}}}}})
+    @app_json ~S({"_id":"acme-desktop","settings":{"client_safe":{"plugins":{"a":true,"b":{},"c":{}}}}})
 
     defp stub_two_stage_fetch do
       Req.Test.stub(__MODULE__, fn conn ->
@@ -58,9 +58,9 @@ defmodule BubbleEx.AppsTest do
     test "fetches and parses an app end-to-end with no network" do
       stub_two_stage_fetch()
 
-      assert {:ok, attrs} = Apps.fetch_app("abacus-desktop")
+      assert {:ok, attrs} = Apps.fetch_app("acme-desktop")
       assert attrs.valid?
-      assert attrs.bubble_id == "abacus-desktop"
+      assert attrs.bubble_id == "acme-desktop"
       assert attrs.app_plan == :paid
       assert attrs.plugin_count == 3
     end
@@ -68,9 +68,9 @@ defmodule BubbleEx.AppsTest do
     test "includes the raw payload when include_payload: true" do
       stub_two_stage_fetch()
 
-      assert {:ok, attrs} = Apps.fetch_app("abacus-desktop", include_payload: true)
+      assert {:ok, attrs} = Apps.fetch_app("acme-desktop", include_payload: true)
       assert is_map(attrs.payload)
-      assert attrs.payload["_id"] == "abacus-desktop"
+      assert attrs.payload["_id"] == "acme-desktop"
     end
 
     test "rejects an unknown foreign_keys mode for a SQL format before any request" do
@@ -78,21 +78,21 @@ defmodule BubbleEx.AppsTest do
 
       for format <- [:postgres, :sqlite, :tsql], mode <- [:bogus, "enforced"] do
         assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
-                 Apps.fetch_app("abacus-desktop", format: format, foreign_keys: mode)
+                 Apps.fetch_app("acme-desktop", format: format, foreign_keys: mode)
       end
     end
 
     test "ignores foreign_keys for a non-SQL format" do
       stub_two_stage_fetch()
 
-      assert {:ok, attrs} = Apps.fetch_app("abacus-desktop", format: :dbml, foreign_keys: :bogus)
+      assert {:ok, attrs} = Apps.fetch_app("acme-desktop", format: :dbml, foreign_keys: :bogus)
       assert attrs.schema =~ "Table"
     end
 
     test "returns an error tuple when the page is not a Bubble app" do
       Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 200, "<html>not bubble</html>") end)
 
-      assert {:error, %BubbleEx.Error{}} = Apps.fetch_app("abacus-desktop")
+      assert {:error, %BubbleEx.Error{}} = Apps.fetch_app("acme-desktop")
     end
   end
 
@@ -122,11 +122,18 @@ defmodule BubbleEx.AppsTest do
     end
   end
 
+  # Live checks target a real, non-dedicated Bubble app that you choose. Set
+  # BUBBLE_EX_LIVE_APP to its bubble ID; there is no default, and these tests
+  # are skipped without it.
+  @live_app System.get_env("BUBBLE_EX_LIVE_APP")
+  @live_skip if(is_nil(@live_app), do: "set BUBBLE_EX_LIVE_APP to run", else: false)
+
   describe "dedicated?/2" do
     @describetag :integration
 
+    @tag skip: @live_skip
     test "non-dedicated apps" do
-      assert {:ok, %{is_dedicated: false}} = Apps.dedicated?("betterlegal")
+      assert {:ok, %{is_dedicated: false}} = Apps.dedicated?(@live_app)
     end
 
     test "returns an error for a non-existent app" do
@@ -137,18 +144,19 @@ defmodule BubbleEx.AppsTest do
   describe "fetch_app/2 (live)" do
     @describetag :integration
 
-    test "abacus-desktop end to end fetches app payload" do
+    @tag skip: @live_skip
+    test "end to end fetches the app payload" do
       assert {:ok, attrs} =
-               Apps.fetch_app("abacus-desktop",
+               Apps.fetch_app(@live_app,
                  include_payload: true,
                  max_retries: 1,
                  retry_base_delay: 100
                )
 
       assert attrs.valid?
-      assert attrs.bubble_id == "abacus-desktop"
-      assert attrs.payload["_id"] == "abacus-desktop"
-      assert attrs.plugin_count == 12
+      assert attrs.bubble_id == @live_app
+      assert attrs.payload["_id"] == @live_app
+      assert is_integer(attrs.plugin_count)
     end
 
     test "returns invalid app attrs for a non-existent app" do

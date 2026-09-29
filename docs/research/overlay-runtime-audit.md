@@ -1,6 +1,6 @@
 # Popup and Group Focus runtime audit — 2026-09-10
 
-The authorized app is `tiptap-plugin`, branch `83jop` (`bubble-ex`). The audit
+The authorized app is `example-plugin`, branch `dev02` (`bubble-ex`). The audit
 adds only `bubbleex-overlay-boundaries` and its three element-only workflows
 on that branch. Test and Live were not changed.
 
@@ -30,7 +30,7 @@ one Popup, one Group Focus referencing a button, and actions to show/hide the
 Popup and toggle Group Focus. No data writes, account changes, or API calls are
 part of those workflows. The source came from a fresh Buildprint snapshot after
 `buildprint check` returned zero diagnostics for the four authored files and
-`buildprint apply` succeeded on `83jop`.
+`buildprint apply` succeeded on `dev02`.
 
 The native browser automation surface had no accessible Brave window during
 this follow-up (`cgWindowNotFound`). Source/compiler validation is not described

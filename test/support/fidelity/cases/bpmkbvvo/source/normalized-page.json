@@ -1,7 +1,7 @@
 {
   "schema_version": "frontend-model-prototype-v0",
   "app_version": {
-    "bubble_id": "tiptap-plugin",
+    "bubble_id": "example-plugin",
     "branch": "test",
     "page_payload_sha256": "706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b",
     "page_id": "bpmkbvvo"

@@ -1,7 +1,7 @@
 # Frozen Input validation audit — 2026-09-10
 
 The user reported seven Bubble editor errors on the generated fixture pages.
-The authorized investigation and repairs used `tiptap-plugin`, branch `83jop`
+The authorized investigation and repairs used `example-plugin`, branch `dev02`
 (`bubble-ex`). No changes were made to Test or Live.
 
 ## Findings
@@ -23,7 +23,7 @@ failed when changed to the real enums; all pass with the corrected mappings.
 | `bpoyzixi` | Numbers-only Input | `numbers` | `numerical_ref` |
 | `bpoyzixi` | Date-and-time picker | `datetime` | `date_time` |
 
-On `83jop`, integer and euro-date had already become plain Text, so they did not
+On `dev02`, integer and euro-date had already become plain Text, so they did not
 appear in the seven-error screenshot. They still needed restoration to match
 their stated cases. Integer now has numeric initial content `12345`; percentage
 has numeric initial content `0.25`, visibly rendered as `25%`.

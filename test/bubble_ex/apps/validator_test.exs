@@ -25,7 +25,7 @@ defmodule BubbleEx.Apps.ValidatorTest do
 
   describe "validate_bubble_id/1" do
     test "accepts a valid slug" do
-      assert :ok = Validator.validate_bubble_id("abacus-desktop")
+      assert :ok = Validator.validate_bubble_id("acme-desktop")
     end
 
     test "rejects an invalid bubble id with an :invalid_input error" do

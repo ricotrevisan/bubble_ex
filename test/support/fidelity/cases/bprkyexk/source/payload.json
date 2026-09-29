@@ -1,5 +1,5 @@
 {
-  "_id": "tiptap-plugin",
+  "_id": "example-plugin",
   "app_version": "test",
   "pages": {
     "bubbleex-i35-image-modes": {
@@ -105,7 +105,7 @@
                   "properties": {
                     "run_mode": "stretch",
                     "stretch_or_rescale": "stretch",
-                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "src": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
                     "alt": "I35__Image_Stretch",
                     "alt_tag": "I35__Image_Stretch",
                     "width": "320px",
@@ -170,7 +170,7 @@
                   "properties": {
                     "run_mode": "rescale",
                     "stretch_or_rescale": "rescale",
-                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "src": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
                     "alt": "I35__Image_Rescale",
                     "alt_tag": "I35__Image_Rescale",
                     "width": "320px",
@@ -235,7 +235,7 @@
                   "properties": {
                     "run_mode": "zoom",
                     "stretch_or_rescale": "zoom",
-                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "src": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
                     "alt": "I35__Image_Zoom",
                     "alt_tag": "I35__Image_Zoom",
                     "width": "320px",
@@ -300,7 +300,7 @@
                   "properties": {
                     "run_mode": "adjust_height",
                     "stretch_or_rescale": "adjust_height",
-                    "src": "https://56ef05cbbe33dc336dbe25cbbc1db6e8.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
+                    "src": "https://0123456789abcdef0123456789abcdef.cdn.bubble.io/f1786840601801x186449647458292600/bubbleex-i35-image-modes.png?ignore_imgix=1",
                     "alt": "I35__Image_Adjust",
                     "alt_tag": "I35__Image_Adjust",
                     "width": "320px",

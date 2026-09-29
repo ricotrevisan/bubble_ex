@@ -1,7 +1,7 @@
 {
   "status": "captured",
   "scope": "authorized-controlled-source",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i53-icon-link",
+  "url": "https://example-plugin.bubbleapps.io/version-test/bubbleex-i53-icon-link",
   "chromium": "140.0.7339.186",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpaupfbj",
