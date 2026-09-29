@@ -67,6 +67,10 @@ defmodule BubbleEx.MixProject do
       {:jason, ">= 0.0.0"},
       {:floki, ">= 0.0.0"},
       {:telemetry, "~> 1.0"},
+      # Optional: only BubbleEx.Buildprint.V5 (Buildprint v5 workspaces, whose
+      # app JSON sits in `.buildprint/index.sqlite`) needs SQLite. Apps that
+      # read `.bubble` JSON or fetch payloads do not pull it in.
+      {:exqlite, "~> 0.41", optional: true},
       {:mock, "~> 0.3", only: :test},
       {:meck, "~> 1.2", only: :test, override: true},
       # bubble_ex itself calls Plug only in tests (Req.Test stubs), but it

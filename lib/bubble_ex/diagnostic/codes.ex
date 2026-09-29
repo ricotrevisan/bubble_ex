@@ -31,6 +31,24 @@ defmodule BubbleEx.Diagnostic.Codes do
     {:call_metadata_inconsistent, :info, :preserved, :read,
      "the call's `ret_value` names a different type than the one resolved"},
 
+    # --- :read — BubbleEx.Buildprint.V5 (Buildprint v5 workspaces) ----------
+    # Counts and section names only: never a key, value or name read from
+    # the workspace.
+    {:buildprint_stub_unresolved, :warning, :degraded, :read,
+     "pages, reusable elements or mobile views that are only stubs in the Buildprint preamble and that no fragment completes; kept as stubs"},
+    {:buildprint_fragment_ignored, :warning, :unresolved, :read,
+     "Buildprint fragment rows or members that are not JSON objects under a known app section; ignored"},
+    {:buildprint_fragment_overlap, :warning, :degraded, :read,
+     "definitions held by more than one Buildprint fragment; the last by root key is kept"},
+    {:buildprint_settings_dropped, :info, :degraded, :read,
+     "app settings other than `client_safe` in a Buildprint snapshot; dropped unread (they may hold secrets)"},
+    {:buildprint_secret_handle, :warning, :degraded, :read,
+     "strings (or keys) holding a Buildprint secret handle (`$bp…`); replaced by an empty string (the key's member dropped)"},
+    {:buildprint_count_mismatch, :warning, :preserved, :read,
+     "a count of loaded definitions (data types, fields, option sets, pages, API calls, workflows) that differs from the Buildprint `symbols` index"},
+    {:buildprint_snapshot_unverified, :info, :preserved, :read,
+     "the Buildprint manifest's `snapshotJsonSha256` is not reproducible from the stored rows; each row's content hash is verified instead"},
+
     # --- :parse — BubbleEx.Expression, BubbleEx.Privacy, BubbleEx.Workflows ---
     {:unknown_operator, :error, :preserved, :parse,
      "an operator outside the expression vocabulary; kept verbatim as `Ast.Raw`"},

@@ -31,8 +31,10 @@ defmodule BubbleEx.Error do
   - `:body_too_large` - a response body exceeded the configured limit
   - `:cli_missing` - an optional external CLI (e.g. trufflehog) is not installed
   - `:cli_failed` - an external CLI ran but exited non-zero / unusable output
+  - `:dependency_missing` - an optional Hex dependency (e.g. `exqlite`) is not installed
   - `:request_failed` - the request never completed (transport/timeout error)
-  - `:unknown_format` - an unrecognized schema/output format was requested
+  - `:unknown_format` - an unrecognized schema/output format was requested, or
+    an input declares a format or schema version outside the supported set
   - `:unsupported_renderer` - the app is not using Bubble's modern responsive renderer
   - `:export_blocked` - a blocking finding (e.g. leaked credential) stopped a frontend export
   """
@@ -47,6 +49,7 @@ defmodule BubbleEx.Error do
           | :body_too_large
           | :cli_missing
           | :cli_failed
+          | :dependency_missing
           | :request_failed
           | :unknown_format
           | :unsupported_renderer
