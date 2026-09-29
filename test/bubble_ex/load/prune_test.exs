@@ -99,6 +99,14 @@ defmodule BubbleEx.Load.PruneTest do
 
   defp app_membership, do: [F.bob(), F.workspace2()]
 
+  # A written record lock's holder line: host, OS pid, Erlang pid.
+  defp holder_line(host, os, pid), do: "#{host} #{os} #{:erlang.pid_to_list(pid)}"
+
+  defp host do
+    {:ok, host} = :inet.gethostname()
+    List.to_string(host)
+  end
+
   # The app's membership acknowledged (the loader wrote 4 members of the
   # list; losing 2 is not "most").
   defp settings(f), do: [acknowledge_unowned: %{members(f) => [app_membership()]}]
@@ -264,7 +272,7 @@ defmodule BubbleEx.Load.PruneTest do
 
       {:ok, other} = delta(f, "other", other_rows)
 
-      assert {:error, %{message: m, context: %{expected: expected}}} =
+      assert {:error, %{message: m, context: context} = refused} =
                Load.run(
                  other,
                  f.model,
@@ -273,7 +281,11 @@ defmodule BubbleEx.Load.PruneTest do
                )
 
       assert m =~ "not the one confirmed"
-      assert expected == dry.prune.sha256
+      assert m =~ "Dry-run"
+      # the refusal does not leak the hash that would confirm the other plan
+      assert context == %{reason: :unconfirmed}
+      {:ok, other_dry} = Load.dry_run(other, f.model, f.target, [prune: s] ++ opts)
+      refute inspect(refused) =~ other_dry.prune.sha256
 
       # a hash that confirms nothing
       assert {:error, %{message: "pruning refused: the prune plan" <> _}} =
@@ -456,7 +468,7 @@ defmodule BubbleEx.Load.PruneTest do
 
       before = Memory.tables(f.target)
 
-      assert {:error, %{context: %{blocked: [:load_join_stale_member]}}} =
+      assert {:error, %{context: %{blocked: [:load_join_stale_member], report: report}}} =
                Load.run(
                  delta,
                  f.model,
@@ -464,6 +476,8 @@ defmodule BubbleEx.Load.PruneTest do
                  [prune: [expect: dry.prune.sha256] ++ s] ++ opts
                )
 
+      # a blocked real run's report carries no hash to confirm with
+      assert report.prune.sha256 == nil
       assert Memory.tables(f.target) == before
 
       # acknowledging another row does not acknowledge it
@@ -525,15 +539,44 @@ defmodule BubbleEx.Load.PruneTest do
       f = loaded(dir)
       lock = Written.path(f.ledger, "memory") <> ".lock"
 
-      File.write!(lock, System.pid())
+      ledger_files = fn -> f.ledger |> Path.join("*") |> Path.wildcard() |> Enum.sort() end
+
+      # a live holder (this OS process, a live Erlang process)
+      holder = spawn(fn -> Process.sleep(:infinity) end)
+      File.write!(lock, holder_line(host(), System.pid(), holder))
+      before = ledger_files.()
 
       assert {:error, %{message: "another load is recording" <> _}} =
                Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
 
-      # a lock whose process is gone is taken over, and released
-      File.write!(lock, "999999999")
+      # the lock is taken before the run's ledger is opened
+      assert ledger_files.() == before
+
+      # another host's lock is never taken over, even with no such process here
+      File.write!(lock, holder_line("another-host.example", "999999999", holder))
+
+      assert {:error, %{message: "another load is recording" <> _}} =
+               Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
+
+      # a takeover in progress (its lock present) is not raced
+      File.write!(lock, holder_line(host(), "999999999", holder))
+      File.write!(lock <> ".takeover", holder_line(host(), System.pid(), holder))
+
+      assert {:error, %{message: "another load is taking over" <> _}} =
+               Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
+
+      File.rm!(lock <> ".takeover")
+
+      # a lock of this host whose process is gone is taken over, and released
       assert {:ok, _} = Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
       refute File.exists?(lock)
+
+      # this OS process, but an Erlang process that died (a killed run)
+      Process.exit(holder, :kill)
+      File.write!(lock, holder_line(host(), System.pid(), holder))
+      assert {:ok, _} = Load.run(f.export, f.model, f.target, ledger_dir: f.ledger)
+      refute File.exists?(lock)
+      assert Path.wildcard(lock <> "*") == []
     end
   end
 
@@ -704,7 +747,7 @@ defmodule BubbleEx.Load.PruneTest do
       path = Written.path(ledger, "db")
       journal = String.replace_suffix(path, ".json", ".journal")
       File.write!(journal, "{\"seq\":", [:append])
-      File.write!(path <> ".lock", "999999999")
+      File.write!(path <> ".lock", holder_line(host(), "999999999", self()))
 
       {:ok, again} = Written.read(ledger, "db")
       assert Written.records(again, "task") == MapSet.new(["b", "c"])

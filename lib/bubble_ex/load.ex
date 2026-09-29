@@ -8,7 +8,12 @@ defmodule BubbleEx.Load do
   the first adapter (Ash on PostgreSQL).
 
       {:ok, export} = BubbleEx.Load.Export.open("exports/mm-137")
-      target = BubbleEx.Target.Ash.Loader.target(project, query: &MyApp.Repo.query/2)
+      # :checkout keeps a real run on the connection that holds its lock.
+      target =
+        BubbleEx.Target.Ash.Loader.target(project,
+          query: &MyApp.Repo.query/2,
+          checkout: &MyApp.Repo.checkout/1
+        )
       # Serve copied files from a separate origin (see BubbleEx.Load.Storage).
       storage = BubbleEx.Load.Storage.Local.new(root: "/srv/uploads", public_url: "https://files.example.com")
 
@@ -184,7 +189,13 @@ defmodule BubbleEx.Load do
     * **The database must be the record's**: its load marker (the
       adapter's `marker/2`, a random UUID the first real load creates in
       `bubble_ex_load_target`) must be the one the record holds; a
-      database recreated at the same address has another, or none.
+      database recreated at the same address has another, or none. The
+      marker and the other bindings guard against **accidents** (a wrong
+      export, a recreated database), not against someone with write access
+      to the database or the ledger directory: a clone of the database
+      (`pg_dump` and restore) carries the marker too, so a record and its
+      clone both match it. Prune only a database you know is the one the
+      record was written into.
     * **Not most of a type or list.** When a type or a join list would
       lose all, or more than half, of the rows the loader wrote there,
       the run blocks (`:load_prune_mass_delete`) unless its type or list
@@ -251,7 +262,8 @@ defmodule BubbleEx.Load do
        database, then dry-run and read the report (schema mismatches,
        dangling references, drift, duplicate emails).
     4. Run with a `:ledger_dir` and the target storage, from the generated
-       project (`query: &Repo.query/2`), against a staging database first.
+       project (`query: &Repo.query/2, checkout: &Repo.checkout/1`),
+       against a staging database first.
     5. At cutover, freeze writes in Bubble (and keep the app closed) and
        export again, completely, with the admin token. WTF-414 has
        landed: the cutover path is pruning. Dry-run the new export with
@@ -418,7 +430,10 @@ defmodule BubbleEx.Load do
     with :ok <- confirm_prune(state), do: load(state)
   end
 
-  defp finish(state, blocked), do: {:error, blocked_error(dry(state, blocked), blocked)}
+  # A blocked real run's report omits the plan's hash: only a dry run
+  # yields what confirms a prune.
+  defp finish(state, blocked),
+    do: {:error, blocked_error(dry(%{state | prune_sha: nil}, blocked), blocked)}
 
   defp check_prune_options(nil, _export, _opts, _dry?), do: :ok
 
@@ -778,6 +793,8 @@ defmodule BubbleEx.Load do
 
   # --- real run -----------------------------------------------------------------------
 
+  # The written record is locked first (before the run's ledger), and
+  # both are closed on every way out.
   defp load(state) do
     ids = %{
       export_sha256: state.export.sha256,
@@ -785,48 +802,56 @@ defmodule BubbleEx.Load do
       target: run_identity(state)
     }
 
-    with {:ok, ledger} <- Ledger.open(Keyword.get(state.opts, :ledger_dir), ids),
-         {:ok, written} <- open_written(state, ledger),
-         # A finished run starts over: every row is re-applied, changing
-         # nothing that did not change.
-         ledger = if(Ledger.complete?(ledger), do: Ledger.restart(ledger), else: ledger),
-         ledger = confirm_in_ledger(state, ledger),
-         {:ok, refs, ledger} <- copy_files(state, ledger),
-         :ok <- clear_emails(state) do
-      {tmod, tconf} = state.target
-
-      result =
-        convert_all(
-          state,
-          %{files: refs},
-          fn table, batch, acc ->
-            write(table.type, &tmod.upsert(tconf, table, &1), recorder(table), batch, acc)
-          end,
-          {ledger, written}
-        )
-
-      with {:ok, issues, acc} <- result,
-           {:ok, acc} <- load_joins(state, acc),
-           {:ok, {ledger, written}} <- prune(state, acc) do
-        written |> Written.loaded(state.export.manifest["created_at"]) |> Written.close()
-        ledger = Ledger.complete(ledger)
-        {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
-      else
-        {:error, error, {ledger, written}} ->
-          Written.close(written)
-          Ledger.close(ledger)
-          {:error, error}
-      end
-    else
-      {:error, error, {ledger, written}} ->
-        Written.close(written)
-        Ledger.close(ledger)
-        {:error, error}
-
-      error ->
-        error
+    with {:ok, written} <- open_written(state),
+         {:ok, ledger} <- open_ledger(state, ids, written) do
+      state |> load_opened(ledger, written) |> closed()
     end
   end
+
+  defp open_ledger(state, ids, written) do
+    with {:error, _} = error <- Ledger.open(Keyword.get(state.opts, :ledger_dir), ids) do
+      Written.close(written)
+      error
+    end
+  end
+
+  defp closed({:error, error, {ledger, written}}) do
+    Written.close(written)
+    Ledger.close(ledger)
+    {:error, error}
+  end
+
+  defp closed(result), do: result
+
+  defp load_opened(state, ledger, written) do
+    # A finished run starts over: every row is re-applied, changing
+    # nothing that did not change.
+    ledger = if Ledger.complete?(ledger), do: Ledger.restart(ledger), else: ledger
+    ledger = confirm_in_ledger(state, ledger)
+    {tmod, tconf} = state.target
+
+    with {:ok, refs, ledger} <- copy_files(state, ledger) |> opened(ledger, written),
+         :ok <- clear_emails(state) |> opened(ledger, written),
+         {:ok, issues, acc} <-
+           convert_all(
+             state,
+             %{files: refs},
+             fn table, batch, acc ->
+               write(table.type, &tmod.upsert(tconf, table, &1), recorder(table), batch, acc)
+             end,
+             {ledger, written}
+           ),
+         {:ok, acc} <- load_joins(state, acc),
+         {:ok, {ledger, written}} <- prune(state, acc) do
+      written |> Written.loaded(state.export.manifest["created_at"]) |> Written.close()
+      ledger = Ledger.complete(ledger)
+      {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
+    end
+  end
+
+  # A step's plain error, with the handles to close.
+  defp opened({:error, %Error{} = error}, ledger, written), do: {:error, error, {ledger, written}}
+  defp opened(result, _ledger, _written), do: result
 
   # Records the IDs of a table's written rows (`BubbleEx.Load.Written`).
   defp recorder(table),
@@ -838,7 +863,7 @@ defmodule BubbleEx.Load do
   # (created by the first real load) and the export's app and base URL,
   # with the join rows found gone forgotten. Refused when the record
   # changed since it was planned from (another run in between).
-  defp open_written(state, ledger) do
+  defp open_written(state) do
     dir = Keyword.get(state.opts, :ledger_dir)
     {tmod, tconf} = state.target
 
@@ -858,14 +883,7 @@ defmodule BubbleEx.Load do
         end
       end
 
-    case result do
-      {:ok, written} ->
-        {:ok, written}
-
-      error ->
-        Ledger.close(ledger)
-        error
-    end
+    result
   end
 
   defp bind(written, nil, _tmod, _tconf, _state), do: {:ok, written}

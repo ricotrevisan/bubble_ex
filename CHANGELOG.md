@@ -39,7 +39,14 @@ All notable changes to this project are documented here.
     the old record's email is cleared before the upserts, and the record
     is pruned.
   - A real run holds the target's lock (`with_lock/2`, a PostgreSQL
-    advisory lock).
+    advisory lock). The Ash adapter now requires `checkout:`
+    (`&Repo.checkout/1`) for a real run, so every statement of the run
+    stays on the connection that holds the lock. The lock records that
+    connection's `pg_backend_pid()`: each prune statement fails on any
+    other backend, and so does the unlock.
+  - The marker and the other bindings guard against accidents, not
+    against someone with write access: a `pg_dump` clone carries the
+    marker too.
   - New adapter callbacks: `keys/2`, `delete/3` and `prune_join/4` (one
     statement per batch), plus `marker/2` and `with_lock/2`.
   - The ledger's snapshot and journal mechanics moved to
@@ -57,6 +64,9 @@ All notable changes to this project are documented here.
     `ASH_COMPILE_CHECK_ALLOW_5432=1` is set
     (`PHOENIX_COMPILE_CHECK_ALLOW_5432=1` for the Phoenix check).
   - Only databases with a check prefix are opened, created or dropped.
+  - Without `PHOENIX_COMPILE_CHECK_DB`, the Phoenix check's scratch test
+    config points at an unresolvable `.invalid` host rather than the
+    template's `localhost:5432`.
   - CI runs PostgreSQL on port 55432.
 
 - **Owner exposure waiver for replay** (WTF-385).

@@ -15,7 +15,9 @@ defmodule BubbleEx.Load.Written do
     * `marker` - the UUID of the target database's marker table
       (`bubble_ex_load_target`, created by the first real load, the
       adapter's `marker/2`): a database recreated at the same address has
-      another marker (or none), so its record does not apply to it
+      another marker (or none), so its record does not apply to it. It
+      guards against accidents, not against anyone with write access: a
+      `pg_dump` clone of the database carries the same marker
     * `app` and `base_url` - the export's app and Data API base URL (the
       manifest's `app` and `source.base_url`): an export of another app,
       or of another version (e.g. the test version), is refused
@@ -39,8 +41,10 @@ defmodule BubbleEx.Load.Written do
 
   Every journal event carries the target identity too, and a record or
   event that does not decode as this format is an error (fail closed).
-  While a run records into it, it is locked (`<record>.lock`, the owning
-  OS and Erlang process IDs; a lock whose process is gone is taken over).
+  While a run records into it, it is locked (`<record>.lock`, created
+  atomically with its content: the owner's host, OS and Erlang process
+  IDs; a lock of this host whose process is gone is taken over, under a
+  second lock; another host's never is).
 
   Bubble IDs only: no stored value, no credential. Files are `0600`; a
   directory it creates is `0700`. A target loaded before WTF-414 has no
@@ -137,59 +141,102 @@ defmodule BubbleEx.Load.Written do
 
   # --- the lock --------------------------------------------------------------------------
 
-  # One writer at a time: `<record>.lock` holds the owner's OS process ID,
-  # created exclusively. A lock whose process no longer runs (a crash) is
-  # taken over.
-  defp lock(path, retry? \\ true) do
+  # One writer at a time: `<record>.lock` holds the owner's host, OS
+  # process ID and Erlang process ID. It is written to a temporary file
+  # and hard-linked into place, so it exists only with its content, and
+  # only one link can win. A lock whose owner is gone (on this host: the
+  # OS process, or in this OS process the Erlang one) is taken over under
+  # a second lock (`<record>.lock.takeover`), after checking it is still
+  # the same stale lock. Another host's lock is never taken over.
+  defp lock(path) do
     lock = path <> ".lock"
+    tmp = "#{lock}.#{System.unique_integer([:positive])}.tmp"
+    File.write!(tmp, holder())
+    File.chmod!(tmp, 0o600)
 
-    case File.open(lock, [:write, :exclusive]) do
-      {:ok, io} ->
-        IO.write(io, System.pid() <> " " <> List.to_string(:erlang.pid_to_list(self())))
-        File.close(io)
-        File.chmod!(lock, 0o600)
-        {:ok, lock}
-
-      {:error, :eexist} ->
-        holder = lock |> File.read!() |> String.trim()
-
-        if retry? and not alive?(holder) do
-          File.rm(lock)
-          lock(path, false)
-        else
-          {:error,
-           Error.new(:invalid_input, "another load is recording into this target", %{
-             lock: Path.basename(lock)
-           })}
-        end
-
-      {:error, reason} ->
-        {:error, Error.new(:invalid_input, "cannot lock the written record", %{reason: reason})}
+    try do
+      case File.ln(tmp, lock) do
+        :ok -> {:ok, lock}
+        {:error, :eexist} -> take_over(lock, tmp)
+        {:error, reason} -> lock_error("cannot lock the written record", %{reason: reason})
+      end
+    after
+      File.rm(tmp)
     end
   end
 
-  # The holder: `<OS pid> <Erlang pid>`. In this OS process, the Erlang
-  # process must be alive (a killed run holds nothing); in another, the
-  # OS process.
-  defp alive?(holder) do
+  defp holder do
+    {:ok, host} = :inet.gethostname()
+    Enum.join([host, System.pid(), :erlang.pid_to_list(self())], " ")
+  end
+
+  defp take_over(lock, tmp) do
+    seen = read_holder(lock)
+
+    cond do
+      not stale?(seen) ->
+        lock_error("another load is recording into this target", %{lock: Path.basename(lock)})
+
+      File.ln(tmp, lock <> ".takeover") != :ok ->
+        lock_error(
+          "another load is taking over this target's stale lock; if none is, remove it",
+          %{
+            lock: Path.basename(lock) <> ".takeover"
+          }
+        )
+
+      true ->
+        try do
+          # still the same stale lock: nobody took it over meanwhile
+          if read_holder(lock) == seen do
+            File.rm(lock)
+
+            if File.ln(tmp, lock) == :ok,
+              do: {:ok, lock},
+              else: lock_error("another load is recording into this target", %{})
+          else
+            lock_error("another load is recording into this target", %{})
+          end
+        after
+          File.rm(lock <> ".takeover")
+        end
+    end
+  end
+
+  defp read_holder(lock) do
+    case File.read(lock) do
+      {:ok, text} -> String.trim(text)
+      _ -> nil
+    end
+  end
+
+  defp lock_error(message, context), do: {:error, Error.new(:invalid_input, message, context)}
+
+  # Stale: this host's, and its process is gone. Anything else (another
+  # host, an unreadable holder) is live.
+  defp stale?(nil), do: false
+
+  defp stale?(holder) do
+    {:ok, host} = :inet.gethostname()
+    host = List.to_string(host)
     me = System.pid()
 
     case String.split(holder, " ") do
-      [^me, erl] -> erlang_alive?(erl)
-      [os | _] -> os_alive?(os)
+      [^host, ^me, erl] -> not erlang_alive?(erl)
+      [^host, os, _erl] -> not os_alive?(os)
+      _ -> false
     end
   end
 
   defp erlang_alive?(erl) do
     erl |> String.to_charlist() |> :erlang.list_to_pid() |> Process.alive?()
   rescue
-    _ -> false
+    _ -> true
   end
 
   defp os_alive?(os) do
     cond do
-      not String.match?(os, ~r/^\d+$/) -> false
-      os == System.pid() -> true
+      not String.match?(os, ~r/^\d+$/) -> true
       File.dir?("/proc/self") -> File.dir?("/proc/" <> os)
       true -> match?({_, 0}, System.cmd("kill", ["-0", os], stderr_to_stdout: true))
     end

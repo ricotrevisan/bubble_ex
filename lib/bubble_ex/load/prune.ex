@@ -412,6 +412,8 @@ defmodule BubbleEx.Load.Prune do
   # plan's hash, or, resuming an interrupted run, the hash of the plan
   # the run's ledger recorded, of which this plan is what is left.
   @spec confirm(t(), String.t(), map() | nil) :: :ok | {:error, Error.t()}
+  # A refusal names neither hash: the confirming one comes only from a dry
+  # run, whose report the caller reads before confirming.
   def confirm(%__MODULE__{} = p, sha, confirmed) do
     expect = p.options.expect
 
@@ -426,9 +428,9 @@ defmodule BubbleEx.Load.Prune do
         {:error,
          Error.new(
            :invalid_input,
-           "pruning refused: the prune plan is not the one confirmed (prune: [expect: ...]); " <>
-             "dry-run again and check report.prune",
-           %{expected: expect, actual: sha}
+           "pruning refused: the prune plan is not the one confirmed (prune: [expect: ...]). " <>
+             "Dry-run with prune: true, check report.prune, and confirm with its sha256",
+           %{reason: :unconfirmed}
          )}
     end
   end

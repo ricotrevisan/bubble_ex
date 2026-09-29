@@ -5,20 +5,27 @@ defmodule BubbleEx.Target.Ash.Loader do
   `BubbleEx.Target.Ash.Project` (migrated by AshPostgres), through a query
   function, so BubbleEx needs no database driver.
 
-      target = BubbleEx.Target.Ash.Loader.target(project, query: &MyApp.Repo.query/2)
+      target =
+        BubbleEx.Target.Ash.Loader.target(project,
+          query: &MyApp.Repo.query/2,
+          checkout: &MyApp.Repo.checkout/1
+        )
       {:ok, report} = BubbleEx.Load.dry_run(export, model, target)
 
   `query` is called as `query.(sql, params)` and returns `{:ok, result}`
   with `result.rows` (`Ecto.Adapters.SQL.query/4`, `Repo.query/2` and
   `Postgrex.query/3` do) or `{:error, reason}`. Options: `:query`
-  (required), `:schema` (default `"public"`), and `:checkout`, a function
-  that runs a function on one database connection (`&Repo.checkout/1`):
-  a real run holds a PostgreSQL advisory lock for its whole length
-  (`with_lock/2`), a session lock, so with a pooled query function
-  (`&Repo.query/2`) pass `checkout: &Repo.checkout/1`, which keeps the
-  run's statements on the connection that holds the lock. A query
-  function of one connection (`Postgrex.query/3` on a connection) needs
-  none.
+  (required), `:schema` (default `"public"`), and `:checkout` (required
+  for a real run), a function that runs a function on one database
+  connection, `&Repo.checkout/1`: a real run holds a PostgreSQL advisory
+  lock for its whole length (`with_lock/2`), a session lock, which holds
+  only on the connection that took it, so every statement of the run must
+  go to that connection. `Repo.checkout/1` does that for `Repo.query/2`
+  (a pooled query function would otherwise spread the run over the pool,
+  and another run could take the lock on the same connection, or leave
+  it held). The lock records the connection's `pg_backend_pid()`: every
+  prune statement fails unless it runs there, and so does the unlock.
+  Without `:checkout` a real run is refused; a dry run needs none.
 
   ## The plan (`BubbleEx.Load.Plan`)
 
@@ -738,31 +745,93 @@ defmodule BubbleEx.Target.Ash.Loader do
     )
   end
 
+  @backend {__MODULE__, :locked_backend}
+
+  # A session lock is only a lock on one connection: a real run needs
+  # `:checkout` (e.g. `&Repo.checkout/1`), which keeps its statements on
+  # the connection that took the lock. The lock is taken with that
+  # connection's `pg_backend_pid()`; every prune statement fails unless it
+  # runs on that backend (`guard_sql/1`), and so does the unlock.
   @impl true
-  def with_lock(%__MODULE__{} = c, fun) do
-    checkout = c.checkout || fn f -> f.() end
-    checkout.(fn -> locked(c, fun) end)
-  end
+  def with_lock(%__MODULE__{checkout: nil}, _fun),
+    do:
+      {:error,
+       Error.new(
+         :invalid_input,
+         "a real load needs the :checkout option (e.g. checkout: &MyApp.Repo.checkout/1): " <>
+           "the advisory lock holds only on one connection",
+         %{reason: :checkout}
+       )}
+
+  def with_lock(%__MODULE__{} = c, fun), do: c.checkout.(fn -> locked(c, fun) end)
 
   defp locked(c, fun) do
     key = lock_key(c.schema)
 
-    case run(c, "SELECT pg_try_advisory_lock($1)", [key]) do
-      {:ok, [[true]]} ->
+    case run(c, "SELECT pg_try_advisory_lock($1), pg_backend_pid()", [key]) do
+      {:ok, [[true, backend]]} ->
+        Process.put(@backend, backend)
+
         try do
-          fun.()
+          result = fun.()
+          unlocked(result, unlock(c, key, backend))
+        catch
+          kind, reason ->
+            unlock(c, key, backend)
+            :erlang.raise(kind, reason, __STACKTRACE__)
         after
-          run(c, "SELECT pg_advisory_unlock($1)", [key])
+          Process.delete(@backend)
         end
 
-      {:ok, _} ->
+      {:ok, [[false, _]]} ->
         {:error,
          Error.new(:invalid_input, "another load holds this target's lock", %{reason: :locked})}
+
+      {:ok, _} ->
+        {:error, Error.new(:request_failed, "unexpected advisory lock result")}
 
       error ->
         error
     end
   end
+
+  defp unlock(c, key, backend) do
+    case run(c, "SELECT pg_advisory_unlock($1), pg_backend_pid()", [key]) do
+      {:ok, [[true, ^backend]]} ->
+        :ok
+
+      _ ->
+        {:error,
+         Error.new(
+           :request_failed,
+           "the advisory lock was not released on the connection that took it " <>
+             "(is :checkout keeping the run on one connection?)",
+           %{reason: :lock_session}
+         )}
+    end
+  end
+
+  defp unlocked(result, :ok), do: result
+  defp unlocked(_result, error), do: error
+
+  # The backend holding the run's lock (nil outside `with_lock/2`).
+  defp locked_backend do
+    case Process.get(@backend) do
+      nil ->
+        {:error,
+         Error.new(:invalid_input, "pruning outside the target's lock", %{reason: :not_locked})}
+
+      backend ->
+        {:ok, backend}
+    end
+  end
+
+  @doc false
+  # A condition that raises (division by zero) unless the statement runs
+  # on the backend that holds the lock, parameter `$n`: a prune statement
+  # on another connection fails before it deletes anything.
+  @spec guard_sql(pos_integer()) :: String.t()
+  def guard_sql(n), do: "1 / (pg_backend_pid() = $#{n}::int)::int = 1"
 
   @doc false
   # The advisory lock's key: per database (advisory locks are) and schema.
@@ -784,18 +853,23 @@ defmodule BubbleEx.Target.Ash.Loader do
   def delete(%__MODULE__{}, %Table{}, []), do: {:ok, 0}
 
   def delete(%__MODULE__{} = c, %Table{} = table, keys) do
-    case run(c, delete_sql(c.schema, table), [keys]) do
-      {:ok, rows} -> {:ok, length(rows)}
-      {:error, %Error{} = e} -> {:error, %{e | context: Map.put(e.context, :type, table.type)}}
+    with {:ok, backend} <- locked_backend() do
+      case run(c, delete_sql(c.schema, table), [keys, backend]) do
+        {:ok, rows} -> {:ok, length(rows)}
+        {:error, %Error{} = e} -> {:error, %{e | context: Map.put(e.context, :type, table.type)}}
+      end
     end
   end
 
   @doc false
-  # One statement per batch, so a batch deletes all or nothing.
+  # One statement per batch, so a batch deletes all or nothing; only on
+  # the locked backend (`$2`).
   @spec delete_sql(String.t(), Table.t()) :: String.t()
   def delete_sql(schema, %Table{} = table) do
     key = ident(table.key)
-    "DELETE FROM #{qualified(schema, table)} WHERE #{key} = ANY($1::text[]) RETURNING #{key}"
+
+    "DELETE FROM #{qualified(schema, table)} WHERE #{key} = ANY($1::text[]) " <>
+      "AND #{guard_sql(2)} RETURNING #{key}"
   end
 
   @impl true
@@ -804,15 +878,17 @@ defmodule BubbleEx.Target.Ash.Loader do
   def prune_join(%__MODULE__{} = c, %Plan.Join{} = join, side, pairs) do
     rows = Enum.map(pairs, fn {l, r} -> %{join.left.column => l, join.right.column => r} end)
 
-    case run(c, prune_join_sql(c.schema, join, side), [Jason.encode!(rows)]) do
-      {:ok, [[deleted, cleared]]} ->
-        {:ok, %{deleted: deleted, cleared: cleared}}
+    with {:ok, backend} <- locked_backend() do
+      case run(c, prune_join_sql(c.schema, join, side), [Jason.encode!(rows), backend]) do
+        {:ok, [[deleted, cleared]]} ->
+          {:ok, %{deleted: deleted, cleared: cleared}}
 
-      {:ok, _} ->
-        {:error, Error.new(:request_failed, "unexpected prune result", %{join: join.id})}
+        {:ok, _} ->
+          {:error, Error.new(:request_failed, "unexpected prune result", %{join: join.id})}
 
-      {:error, %Error{} = e} ->
-        {:error, %{e | context: Map.put(e.context, :join, join.id)}}
+        {:error, %Error{} = e} ->
+          {:error, %{e | context: Map.put(e.context, :join, join.id)}}
+      end
     end
   end
 
@@ -833,7 +909,8 @@ defmodule BubbleEx.Target.Ash.Loader do
         list -> "(" <> Enum.join(list, " OR ") <> ")"
       end
 
-    match = "t.#{l} = b.#{l} AND t.#{r} = b.#{r} AND #{member_sql("t", side)}"
+    match =
+      "t.#{l} = b.#{l} AND t.#{r} = b.#{r} AND #{member_sql("t", side)} AND #{guard_sql(2)}"
 
     "WITH b AS (SELECT #{l}, #{r} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb)), " <>
       "d AS (DELETE FROM #{target} AS t USING b WHERE #{match} AND NOT #{others} RETURNING 1), " <>

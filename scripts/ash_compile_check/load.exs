@@ -48,7 +48,10 @@
 #     column, and the result equals an uninterrupted prune; refused for an
 #     export of another app or version or an older one, a present but
 #     empty type (mass deletion), another database (its load marker) and
-#     while another connection holds the target's advisory lock; a user
+#     while another connection holds the target's advisory lock; on a pool
+#     of 4 connections, a query function without :checkout is refused, and
+#     while one run holds the lock three concurrent runs are refused, and
+#     no advisory lock is left held; a user
 #     deleted in Bubble whose email a new signup reused loads with prune
 #
 # Before that, the loader's schema check (BubbleEx.Target.Ash.Loader)
@@ -92,12 +95,44 @@ defmodule LoadCheck do
       else: fail!(fixture, "#{what}: expected #{inspect(expected)}, got #{inspect(actual)}")
   end
 
-  def query(conn), do: fn sql, params -> Postgrex.query(conn, sql, params) end
+  # Every connection is a pool of 4: a real run keeps its statements on
+  # one connection through :checkout (DBConnection.run pins it for this
+  # process; the query function uses the pinned one), as Repo.checkout/1
+  # does for Repo.query/2.
+  def query(pool),
+    do: fn sql, params -> Postgrex.query(Process.get({__MODULE__, pool}, pool), sql, params) end
+
+  def checkout(pool) do
+    fn fun ->
+      DBConnection.run(
+        pool,
+        fn conn ->
+          Process.put({__MODULE__, pool}, conn)
+
+          try do
+            fun.()
+          after
+            Process.delete({__MODULE__, pool})
+          end
+        end,
+        timeout: :infinity
+      )
+    end
+  end
+
+  def target(project, pool, opts \\ []) do
+    Loader.target(
+      project,
+      [query: Keyword.get(opts, :query, query(pool)), checkout: checkout(pool)] ++
+        Keyword.drop(opts, [:query])
+    )
+  end
 
   # Fails the Nth INSERT of rows (not the load marker's), as a crash
   # mid-run would.
   def failing(conn, n) do
     counter = :counters.new(1, [])
+    pass = query(conn)
 
     fn sql, params ->
       if String.starts_with?(sql, "INSERT") and not String.contains?(sql, "bubble_ex_load_target") do
@@ -105,9 +140,9 @@ defmodule LoadCheck do
 
         if :counters.get(counter, 1) == n,
           do: {:error, :injected_crash},
-          else: Postgrex.query(conn, sql, params)
+          else: pass.(sql, params)
       else
-        Postgrex.query(conn, sql, params)
+        pass.(sql, params)
       end
     end
   end
@@ -152,18 +187,21 @@ end
 
 # --- the schema check over every fixture database ----------------------------------------
 
-connect = fn database ->
+connect_pool = fn database, size ->
   {:ok, conn} =
     Postgrex.start_link(
       hostname: base.host,
       port: base.port,
       username: URI.decode(user),
       password: URI.decode(password),
-      database: CheckDb.database!(database)
+      database: CheckDb.database!(database),
+      pool_size: size
     )
 
   conn
 end
+
+connect = &connect_pool.(&1, 4)
 
 faithful = fn app ->
   fn ->
@@ -328,7 +366,7 @@ loaded =
     {:ok, project} = F.project(which, privacy: :unverified)
     dir = Path.join(work, fixture)
     {:ok, export} = F.export(which, Path.join(dir, "export"))
-    target = Loader.target(project, query: LoadCheck.query(conn))
+    target = LoadCheck.target(project, conn)
     {Loader, config} = target
     {:ok, plan} = Loader.plan(config, model)
     storage = Local.new(root: Path.join(dir, "storage"), public_url: "https://files.example.test")
@@ -357,14 +395,14 @@ loaded =
     LoadCheck.check!(fixture, not File.exists?(ledger), "the dry run wrote a ledger")
 
     # --- a schema lacking the tables: reported, and a real run refused ------------------
-    wrong = Loader.target(project, query: LoadCheck.query(conn), schema: "no_such_schema")
+    wrong = LoadCheck.target(project, conn, schema: "no_such_schema")
     {:ok, wrong_dry} = Load.dry_run(export, model, wrong, base_opts)
     LoadCheck.eq!(fixture, wrong_dry.blocked, [:load_schema_mismatch], "missing schema")
     {:error, refused} = Load.run(export, model, wrong, opts)
     LoadCheck.eq!(fixture, refused.context.blocked, [:load_schema_mismatch], "refused run")
 
     # --- interrupted, then resumed ------------------------------------------------------------
-    crashing = Loader.target(project, query: LoadCheck.failing(conn, 3))
+    crashing = LoadCheck.target(project, conn, query: LoadCheck.failing(conn, 3))
     {:error, crash} = Load.run(export, model, crashing, opts)
     LoadCheck.eq!(fixture, crash.context[:reason], :injected_crash, "crash error")
     partial = LoadCheck.snapshot(conn, plan) |> Map.values() |> List.flatten() |> length()
@@ -931,7 +969,7 @@ loaded =
         LoadCheck.eq!(fixture, moved.context[:reason], :marker_mismatch, "another database refused")
         Postgrex.query!(conn, ~s[UPDATE "public"."bubble_ex_load_target" SET id = $1::text::uuid], [marker])
 
-        holder = connect.(database)
+        holder = connect_pool.(database, 1)
         key = Loader.lock_key("public")
         Postgrex.query!(holder, "SELECT pg_advisory_lock($1)", [key])
         {:error, locked} = Load.run(prune_export, model, target, confirmed ++ prune_opts)
@@ -940,20 +978,80 @@ loaded =
         GenServer.stop(holder)
         LoadCheck.eq!(fixture, LoadCheck.snapshot(conn, plan), before_prune, "refused runs wrote rows")
 
+        # On a real pool of 4 connections: a pooled query function alone
+        # (Repo.query/2 without :checkout) is refused; with it, while one
+        # run holds the lock, runs started meanwhile (other connections of
+        # the pool) are refused, and no lock is left held afterwards.
+        LoadCheck.truncate(conn, plan)
+        pooled_only = Loader.target(project, query: fn sql, p -> Postgrex.query(conn, sql, p) end)
+        {:error, bare} = Load.run(export, model, pooled_only, [ledger_dir: Path.join(dir, "pool0")] ++ base_opts)
+        LoadCheck.eq!(fixture, bare.context[:reason], :checkout, "a pooled query function without :checkout")
+
+        parent = self()
+        pinned = LoadCheck.query(conn)
+
+        pausing =
+          LoadCheck.target(project, conn,
+            query: fn sql, params ->
+              if String.starts_with?(sql, "INSERT") and not String.contains?(sql, "bubble_ex_load_target") and
+                   Process.get(:paused) == nil do
+                Process.put(:paused, true)
+                send(parent, {:holding, self()})
+                receive do: (:go -> :ok)
+              end
+
+              pinned.(sql, params)
+            end
+          )
+
+        first =
+          Task.async(fn ->
+            Load.run(export, model, pausing, [ledger_dir: Path.join(dir, "pool1")] ++ base_opts)
+          end)
+
+        receive do
+          {:holding, runner} ->
+            others =
+              for n <- 2..4 do
+                Task.async(fn ->
+                  Load.run(export, model, target, [ledger_dir: Path.join(dir, "pool#{n}")] ++ base_opts)
+                end)
+              end
+
+            reasons = others |> Task.await_many(60_000) |> Enum.map(fn {:error, e} -> e.context[:reason] end)
+            LoadCheck.eq!(fixture, reasons, [:locked, :locked, :locked], "concurrent runs on a pool")
+            send(runner, :go)
+        after
+          60_000 -> LoadCheck.fail!(fixture, "the first pooled run never wrote")
+        end
+
+        {:ok, _} = Task.await(first, 120_000)
+
+        %{rows: [[advisory]]} =
+          Postgrex.query!(conn, "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'", [])
+
+        LoadCheck.eq!(fixture, advisory, 0, "no advisory lock left held")
+        {:ok, _} = Load.run(export, model, target, [ledger_dir: Path.join(dir, "pool1")] ++ base_opts)
+
+        # back to the state the prune checks start from
+        fresh_load.(prune_ledger)
+
         # Interrupted: the 3rd prune statement fails (a crash mid-prune).
         counter = :counters.new(1, [])
 
+        pass = LoadCheck.query(conn)
+
         crashing_prune =
-          Loader.target(project,
+          LoadCheck.target(project, conn,
             query: fn sql, params ->
               if String.starts_with?(sql, "DELETE") or String.starts_with?(sql, "WITH b AS") do
                 :counters.add(counter, 1, 1)
 
                 if :counters.get(counter, 1) == 3,
                   do: {:error, :injected_crash},
-                  else: Postgrex.query(conn, sql, params)
+                  else: pass.(sql, params)
               else
-                Postgrex.query(conn, sql, params)
+                pass.(sql, params)
               end
             end
           )
@@ -1103,7 +1201,7 @@ loaded =
     IO.puts(
       "load check passed (#{fixture}): #{records} records, dry run, resume, rerun, delta sync" <>
         if(which == :cut3,
-          do: ", prune (dry run and hash, refusals, interrupted and resumed, app rows kept, reused email)",
+          do: ", prune (dry run and hash, refusals, advisory lock on a pool of 4, interrupted and resumed, app rows kept, reused email)",
           else: ""
         )
     )
