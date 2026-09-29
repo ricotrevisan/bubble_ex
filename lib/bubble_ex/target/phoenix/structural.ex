@@ -58,7 +58,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
                "an owner decision, a diagnostic or an exclusion), that generated files are " <>
                "intact and deterministic, and where authorization is bypassed in lib/ " <>
                "(authorize? not literally true, Runtime.start bypasses, bypass policies, " <>
-               "authorize modes, empty authorizers, Repo and Ecto.Adapters.SQL calls). It " <>
+               "authorize modes, always-authorizing policies, missing or empty authorizers, " <>
+               "Repo, Ecto.Adapters.SQL, Ash.Seed, Ash.DataLayer and Code.eval calls). It " <>
                "does not see every bypass (not_run lists the forms it misses), and it " <>
                "does not show that the " <>
                "app behaves like the Bubble app: privacy, workflows, pages and data are " <>
@@ -85,13 +86,13 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   ]
 
   @unseen {"bypass_inventory (not seen)",
-           "bypasses built at runtime without a literal authorize? key (Keyword.merge/2 " <>
-             "of a variable, put_in/2 with runtime keys, apply/3), Repo reached through an " <>
-             "alias, import, apply/3 or a variable, Runtime.start/4 through an alias, " <>
-             "`policy always()` with `authorize_if always()`, owned resources with no " <>
-             "authorizer, queries through other libraries, code outside lib/. A hand-written " <>
-             "`# bubble:workflow` comment in owned code passes for a workflow body, and a " <>
-             "decision:<key> marker accepts any active owner decision (WTF-424)"}
+           "options merged from a variable or built by another function (Keyword.merge/2, " <>
+             "Enum.into/2 of a runtime value), a local call after import, apply/2,3 whose " <>
+             "module and function both cannot be read, policies that authorize everything " <>
+             "under other conditions or checks, authorizers added by a Spark fragment, a " <>
+             "__using__ wrapper's callers, Repo calls in ~H and .heex templates, queries " <>
+             "through other libraries, code outside lib/, aliases a dependency's macro injects, a wrapper of a " <>
+             "Repo wrapper"}
 
   @typedoc """
   A run: its results, its counts (aggregates only), the checks it did not
@@ -204,9 +205,15 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   Options: `:app` and `:now` (required), `:actor` (default
   `"mix wtf.verify"`), `:cmd` (`(args, env) -> {output, status}` running
   `mix` in `root`), `:git_sha`, `:resolved` (a
-  `BubbleEx.Decision.Resolved` of the app's decisions: its active owner
-  decisions, drops excepted (WTF-422), are what `decision:<key>` markers
-  may cite; without it they count as unlisted). Advisory, like everything run in the owner's
+  `BubbleEx.Decision.Resolved` of the app's decisions) and `:owners` (the
+  trusted owners' author IDs; anchoring this list is WTF-411). A
+  `decision:<key>` marker cites a privacy exception: an active, accepted
+  `parity_exception` whose `checks` include a privacy check
+  (`BubbleEx.Verify.Check`), authored by an owner in `:owners`, whose
+  `scope` names the module (`"Acme.Owned"`) or function
+  (`"Acme.Owned.run/2"`) it allows. Without both options, or for any
+  other decision (a finding, a rename, an owner's drop of a symbol), a
+  marker counts as unlisted. Advisory, like everything run in the owner's
   repository.
   """
   @spec project(Path.t(), keyword()) :: {:ok, report()} | {:error, Error.t()}
@@ -229,7 +236,9 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       }
 
       base = put_build(base, opts[:git_sha], manifest_json)
-      {bypass, bypass_counts} = owned_bypasses(root, manifest, opts[:resolved])
+
+      {bypass, bypass_counts} =
+        owned_bypasses(root, manifest, privacy_exceptions(opts[:resolved], opts[:owners]))
 
       specs = [
         manifest_result(Manifest.check(manifest_json, root)),
@@ -240,12 +249,22 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       ]
 
       decisions =
-        if opts[:resolved],
-          do: [],
-          else: [
-            {"bypass_inventory (decision markers)",
-             "no decision store here: decision:<key> markers count as unlisted"}
-          ]
+        cond do
+          is_nil(opts[:resolved]) ->
+            [
+              {"bypass_inventory (decision markers)",
+               "no decision store here: decision:<key> markers count as unlisted"}
+            ]
+
+          opts[:owners] in [nil, []] ->
+            [
+              {"bypass_inventory (decision markers)",
+               "no trusted owners list (WTF-411): decision:<key> markers count as unlisted"}
+            ]
+
+          true ->
+            []
+        end
 
       with {:ok, results} <- results(specs, base) do
         {:ok,
@@ -493,7 +512,10 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       inventory =
         Bypasses.inventory(lib,
           workflows: bypassed,
-          scaffold: expected_scaffold(lib, inputs.project)
+          bodies: spec_bodies(spec, files),
+          app_repo: app_repo(manifest(files)),
+          scaffold: expected_scaffold(lib, inputs.project),
+          generated: generated_paths(files)
         )
 
       diff =
@@ -515,6 +537,30 @@ defmodule BubbleEx.Target.Phoenix.Structural do
          "lowered" => length(bypassed),
          "sites" => site_counts(inventory)
        }, not_run}
+    end
+  end
+
+  defp spec_bodies(%WorkflowSpec{} = spec, files),
+    do: Bypasses.bodies(spec.names, spec.namespace, manifest(files)["app"])
+
+  defp spec_bodies(_spec, _files), do: %{}
+
+  # The rendered files the manifest hashes (generated, not owned).
+  defp generated_paths(files), do: files |> manifest() |> Map.get("generated", %{}) |> Map.keys()
+
+  # The generated app's Repo module, the one `use Ecto.Repo` not a site.
+  defp app_repo(%{"module" => module}) when is_binary(module), do: module <> ".Repo"
+  defp app_repo(_manifest), do: nil
+
+  # The rendered manifest, or an empty one.
+  defp manifest(nil), do: %{}
+
+  defp manifest(files) do
+    with json when is_binary(json) <- files[Manifest.path()],
+         {:ok, manifest} <- Manifest.decode(json) do
+      manifest
+    else
+      _ -> %{}
     end
   end
 
@@ -645,7 +691,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
 
   # Owned code in the owner's repository (generated files are skipped:
   # their hashes are checked), held to the generated allowlist.
-  defp owned_bypasses(root, manifest, resolved) do
+  defp owned_bypasses(root, manifest, decisions) do
     generated = Map.get(manifest, "generated", %{})
 
     files =
@@ -667,13 +713,15 @@ defmodule BubbleEx.Target.Phoenix.Structural do
           {%{}, [%{op: "bypass_unlisted", path: Bypasses.path(), detail: "not readable"}]}
       end
 
-    workflows = allowed_workflows(root)
+    {workflows, names} = generated_workflows(root)
 
     inventory =
       Bypasses.inventory(files,
         workflows: workflows,
+        bodies: Bypasses.bodies(names, manifest["module"], manifest["app"]),
+        app_repo: app_repo(manifest),
         scaffold: scaffold,
-        decisions: owner_decisions(resolved)
+        decisions: decisions
       )
 
     {%{
@@ -687,26 +735,34 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   defp ok_or_nil({:ok, value}), do: value
   defp ok_or_nil(_), do: nil
 
-  # A drop (WTF-422) never authorizes a bypass: dropping must never widen
-  # access.
-  defp owner_decisions(%Resolved{entries: entries}),
-    do:
-      for(
-        %{state: :active, decision: %{author: %{kind: :owner}, kind: kind, key: key}} <- entries,
-        kind != :drop,
-        do: key
-      )
+  # The decisions a `decision:<key>` marker may cite, key => scope: active,
+  # accepted parity exceptions excusing a privacy check, authored by a
+  # trusted owner, scoped to a module or function. A finding (including
+  # an owner's drop of a symbol, WTF-422) or a rename authorizes no bypass.
+  defp privacy_exceptions(%Resolved{entries: entries}, [_ | _] = owners) do
+    for %{state: :active, decision: d} <- entries,
+        d.kind == :parity_exception and d.choice == :accept,
+        match?(%{kind: :owner, id: id} when is_binary(id), d.author),
+        d.author.id in owners,
+        Enum.any?(Map.get(d.params, :checks, []), &privacy_check?/1),
+        scope = Map.get(d.params, :scope),
+        Bypasses.decision_scope(scope) != :error,
+        into: %{},
+        do: {d.key, scope}
+  end
 
-  defp owner_decisions(_), do: []
+  defp privacy_exceptions(_resolved, _owners), do: %{}
 
-  # The workflows the generator bypasses (`.wtf/workflows.json`, generated
-  # and hash-checked), or none.
-  defp allowed_workflows(root) do
+  defp privacy_check?(check), do: match?({:ok, {_, :privacy}}, BubbleEx.Verify.Check.fetch(check))
+
+  # The workflows the generator bypasses and its name map
+  # (`.wtf/workflows.json`, generated and hash-checked), or none.
+  defp generated_workflows(root) do
     with {:ok, json} <- File.read(Path.join(root, ".wtf/workflows.json")),
-         {:ok, %{"privacy_bypasses" => list}} when is_list(list) <- Jason.decode(json) do
-      Enum.filter(list, &is_binary/1)
+         {:ok, %{"privacy_bypasses" => list} = map} when is_list(list) <- Jason.decode(json) do
+      {Enum.filter(list, &is_binary/1), map["names"]}
     else
-      _ -> []
+      _ -> {[], nil}
     end
   end
 

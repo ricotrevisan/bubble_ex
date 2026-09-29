@@ -14,7 +14,10 @@ defmodule BubbleEx.Load.Report do
       (`:load_prune_mass_delete`). The diagnostic's
       `details.stale_members` lists them (`table`, `left_column`,
       `right_column`, `membership_column`, `rows` as `[left ID, right
-      ID]`). An `allow_partial` run in which an owner type failed blocks
+      ID]`, at most `BubbleEx.Load.Issues.stale_rows/0` of them;
+      `rows_total` counts them all and `truncated` says the list was
+      capped: the rest are the table's rows of that list the export does
+      not hold). An `allow_partial` run in which an owner type failed blocks
       this way when that type owns join rows (all of them look stale):
       re-export it instead (pruning refuses a partial export)
     * `run` - the ledger's run key (nil for a dry run)
@@ -48,7 +51,8 @@ defmodule BubbleEx.Load.Report do
       stores the status)
     * `diagnostics` - the `:load` diagnostics (and the target's schema
       diagnostics), normalized; counts and sample record IDs, never stored
-      values
+      values, except the stale join rows (record IDs only, capped) in the
+      details of `:load_join_stale_member` and `:load_prune_unowned`
 
   `to_map/1` is its JSON form.
   """

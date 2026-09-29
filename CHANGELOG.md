@@ -6,6 +6,62 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Structural bypass inventory hardened** (WTF-424). A workflow body is
+  now the function the generated name map binds it to, in its scaffolded
+  file (`Structural.Bypasses.bodies/3`:
+  `<App>.Workflows.<Folder>.Bodies.<action>/2` in
+  `lib/<app>/workflows/<folder>/bodies.ex`, and its step and condition
+  helpers), read from the Spec at generation and from
+  `.wtf/workflows.json` in the owner's repository: a hand-written
+  `# bubble:workflow` comment, a `defmodule` name forged through an
+  alias, or the body module defined in another file (`:body_module`, a
+  site) is no body. `decision:<key>` markers count only for a privacy
+  exception: an active, accepted `parity_exception` whose `checks`
+  include a privacy check, authored by an owner listed in
+  `Structural.project/2`'s new `:owners` option (trusted list; its anchor
+  is WTF-411), and only inside the module or function its `scope` names
+  (module names resolved as Elixir does; code in a `quote` is in no
+  scope); any other decision (an owner's drop of a symbol included)
+  authorizes no bypass. Pipes are rewritten as plain calls before
+  matching, and modules are read from aliases (with any options),
+  `:"Elixir.X"` atoms, `__MODULE__` and module attributes, with aliases
+  (`alias` and `require ..., as:`) and attributes scoped to their block as
+  Elixir scopes them. New sites:
+  Repo and `Ecto.Adapters.SQL` calls through an alias, an `import`,
+  `apply/3`, `:erlang.apply/3`, `Function.capture/3`, `defdelegate`, an
+  attribute or an unreadable module (`:repo_unverifiable`); every module
+  defined with `use Ecto.Repo` / `use AshPostgres.Repo` is a Repo whatever
+  its name, and each such definition but the generated app's Repo is a
+  site; `Runtime.start/4`
+  through an alias, an attribute, `apply/3` or `import`; `put_in` /
+  `update_in` of an `:authorize?` path and `false` under a runtime key
+  (`put_in`, `Keyword.put/3`, `Map.put/3`, `[{k, false}]` and
+  `%{k => false}` literals); always-true policies with an always-true
+  `authorize_if` (`:policy_always`: `always()`, `Builtins.always()`,
+  `expr(true)`, lists); owned `use Ash.Resource` without
+  `Ash.Policy.Authorizer` (`:unauthorized_resource`; generated resources
+  stay hash-checked, `__using__` wrappers' `unquote`d options are their
+  callers'); `Ash.Seed` and `Ash.DataLayer` / `AshPostgres.DataLayer` reads
+  and writes (`:data_layer_call`); `Code.eval_*`, `Module.eval_quoted`,
+  `EEx.eval_*` and `EEx.compile_*` (`:code_eval`); in a `quote` (what
+  `__using__` injects), an `alias`, `require ..., as:` or `use` of a Repo,
+  Runtime or data layer module, and every quoted `use Ecto.Repo` (the
+  app's Repo included; modules using such a wrapper are Repos); an
+  `alias` or `require ..., as:` nested in an expression or another
+  macro's block (`:nested_alias`, it binds after its statement as in
+  Elixir). The `not_run`
+  "bypass_inventory (not seen)" text lists only what remains.
+- **LiveView patch releases** (WTF-425). bubble_ex requires
+  `phoenix_live_view ~> 1.2.12` (was `== 1.2.12`), so apps using it can
+  take patch and security releases. `Target.Phoenix.render/2` checks the
+  loaded LiveView against the generator's pin
+  (`Target.Phoenix.Formatter.live_view_version/0`, still `==` in the
+  generated `mix.exs`): another patch warns once (rendered HEEx may
+  format differently) and is recorded in the manifest
+  (`inputs.phoenix_live_view`), another minor or major version is
+  refused.
+  `.ex` formatting follows the running Elixir version, which no pin
+  covers.
 - **Owner drop decisions** (WTF-422). An owner can deliberately leave a
   page, data type, field, option set or workflow out of the migration
   with a `BubbleEx.Decision` of the new kind `:drop`: keyed to the symbol
@@ -1040,6 +1096,17 @@ All notable changes to this project are documented here.
   are unchanged on the private mm-137 export.
 
 ### Fixed
+
+- The loader's stale join rows (`details.stale_members` of
+  `:load_join_stale_member` and `:load_prune_unowned`) are capped at
+  `Load.Issues.stale_rows/0` rows, with `rows_total` and `truncated`: an
+  `allow_partial` run could list a whole join (WTF-425). `Load.Report`'s
+  docs say so.
+- The written record's lock error for another host's lock names the lock
+  file and says a crashed run's lock must be removed by hand (WTF-425).
+- `docs/page-data.md`: writes that bypass Ash are not picked up by the
+  next click since reads are stale-gated, and a "do every" workflow that
+  changes nothing leaves sources using Current date/time frozen (WTF-425).
 
 - **Pages read their data again only when it is stale** (post-audit of
   WTF-420). `<Web>.BubbleData` keeps `@bubble_data_stale`, set by a

@@ -9,6 +9,10 @@ defmodule BubbleEx.Load.Issues do
 
   @samples 5
 
+  # Stale join rows listed in a diagnostic's details: an `allow_partial`
+  # run can make a whole join look stale, so the list is capped.
+  @stale_rows 1_000
+
   @type t :: %{optional({atom(), String.t() | nil, String.t() | nil}) => map()}
 
   @spec new() :: t()
@@ -69,6 +73,29 @@ defmodule BubbleEx.Load.Issues do
         acc
     end
   end
+
+  @doc false
+  # The `stale_members` details of a join list's stale rows (`[{left,
+  # right}]`, sorted): the table and columns, the first `stale_rows/0`
+  # rows as `[left ID, right ID]`, `rows_total` and whether it was capped.
+  @spec stale_members(map(), map(), [{String.t(), String.t()}]) :: map()
+  def stale_members(join, side, pairs) do
+    %{
+      stale_members: %{
+        table: join.table,
+        left_column: join.left.column,
+        right_column: join.right.column,
+        membership_column: side.column,
+        rows: pairs |> Enum.take(@stale_rows) |> Enum.map(fn {l, r} -> [l, r] end),
+        rows_total: length(pairs),
+        truncated: length(pairs) > @stale_rows
+      }
+    }
+  end
+
+  @doc false
+  @spec stale_rows() :: pos_integer()
+  def stale_rows, do: @stale_rows
 
   defp entry(id, detail),
     do: %{count: 1, samples: sample([], id), reasons: reason(%{}, detail)}

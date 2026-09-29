@@ -174,6 +174,14 @@ defmodule BubbleEx.Load.Written do
     seen = read_holder(lock)
 
     cond do
+      other_host?(seen) ->
+        lock_error(
+          "another host holds this target's lock (#{lock}): its load may still be recording; " <>
+            "a lock left by a crashed run on another host is never taken over, so if no load " <>
+            "runs there, remove the lock file by hand",
+          %{lock: Path.basename(lock), host: seen |> String.split(" ") |> hd()}
+        )
+
       not stale?(seen) ->
         lock_error("another load is recording into this target", %{lock: Path.basename(lock)})
 
@@ -211,6 +219,17 @@ defmodule BubbleEx.Load.Written do
   end
 
   defp lock_error(message, context), do: {:error, Error.new(:invalid_input, message, context)}
+
+  defp other_host?(nil), do: false
+
+  defp other_host?(holder) do
+    {:ok, host} = :inet.gethostname()
+
+    case String.split(holder, " ") do
+      [holder_host, _os, _erl] -> holder_host != List.to_string(host)
+      _ -> false
+    end
+  end
 
   # Stale: this host's, and its process is gone. Anything else (another
   # host, an unreadable holder) is live.

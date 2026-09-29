@@ -76,14 +76,16 @@ defmodule BubbleEx.MixProject do
       # (scripts/ash_compile_check/load.exs); the library itself takes a
       # query function (e.g. the generated app's `Repo.query/2`).
       {:postgrex, "== 0.22.4", only: :test},
-      # Format rendered HEEx with the same formatter as the generated app,
-      # which pins `== 1.2.12` (BubbleEx.Target.Phoenix.deps/1) and checks
-      # `mix format --check-formatted`. Keep the exact pin: HTMLFormatter
-      # output changes in patch releases (1.2.11 changed which expressions
-      # it migrates, html_algebra.ex `safe_to_migrate?/2`, #4409), and a
-      # fresh render formatted by another patch would fail the app's lint
-      # and its manifest hashes. Bump it with Target.Phoenix's pin.
-      {:phoenix_live_view, "== 1.2.12"},
+      # Formats rendered HEEx with the same formatter as the generated app,
+      # which pins `== 1.2.12` (BubbleEx.Target.Phoenix.Formatter
+      # .live_view_version/0) and checks `mix format --check-formatted`.
+      # HTMLFormatter output changes in patch releases (1.2.11 changed which
+      # expressions it migrates, html_algebra.ex `safe_to_migrate?/2`,
+      # #4409), so Formatter checks the loaded version at render: another
+      # patch warns, another minor refuses. `~>` (not `==`) so apps using
+      # bubble_ex can take LiveView patch and security releases; mix.lock
+      # keeps this repository at the pin. Bump both with the Formatter pin.
+      {:phoenix_live_view, "~> 1.2.12"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # usage_rules is a dev-only helper for consulting docs and rules

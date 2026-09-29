@@ -10,9 +10,11 @@
 #     `mix ash.codegen --check` and the owned-code bypass inventory, and the
 #     output says it is structural and advisory
 #   * a hand edit of a generated file fails generated_unchanged
-#   * an unmarked `authorize?: false` in owned code fails bypass_inventory;
-#     marked with `# bubble:ignores_privacy <workflow id>` inside the body
-#     of a workflow that ignores privacy rules in Bubble, it passes
+#   * an unmarked `authorize?: false` in owned code fails bypass_inventory,
+#     and so does one marked under a hand-written `# bubble:workflow`
+#     comment (WTF-424); marked with `# bubble:ignores_privacy <workflow
+#     id>` inside the body of a workflow that ignores privacy rules in
+#     Bubble (the function .wtf/workflows.json binds it to), it passes
 #   * a resource change without its migration fails migrations_in_sync
 #   * --out writes the results (Verify.Result JSON) and the summary
 #
@@ -69,10 +71,37 @@ ELIXIR
 if out="$(verify 2>&1)"; then rm -f "$owned"; fail "an unmarked bypass passed"; fi
 grep -q 'bypass_unlisted .*lib/phx_check/owned_bypass.ex:3' <<<"$out" || fail "the bypass is not reported"
 
+# A hand-written `# bubble:workflow` comment does not make owned code the
+# workflow's body (WTF-424): the marked bypass still fails.
+cat > "$owned" <<ELIXIR
+defmodule PhxCheck.OwnedBypass do
+  @moduledoc false
+  # bubble:workflow $listed
+  def read(query) do
+    # bubble:ignores_privacy $listed
+    Ash.read!(query, authorize?: false)
+  end
+end
+ELIXIR
+if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a forged workflow body passed"; fi
+grep -q "bypass_unlisted detail=.*outside that workflow's body path=lib/phx_check/owned_bypass.ex:6" <<<"$out" ||
+  { rm -f "$owned"; echo "$out"; fail "the forged workflow body is not reported"; }
+
+# The body's module forged through an alias, or defined in another file,
+# is no body either (review of #156).
+bodies="$(grep -rl "Runtime.start(input, context, \"$listed\", false)" "$scratch/lib")"
+{ echo "alias PhxCheck.Owned.Forged, as: PhxCheck, warn: false"; cat "$bodies"; } > "$owned"
+if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a body forged through an alias passed"; fi
+grep -q "not in the workflow's own body path=lib/phx_check/owned_bypass.ex:" <<<"$out" ||
+  { rm -f "$owned"; echo "$out"; fail "the body forged through an alias is not reported"; }
+cp "$bodies" "$owned"
+if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a body module defined elsewhere passed"; fi
+grep -q "outside its scaffolded file path=lib/phx_check/owned_bypass.ex:1" <<<"$out" ||
+  { rm -f "$owned"; echo "$out"; fail "the body module defined elsewhere is not reported"; }
+
 rm -f "$owned"
 
 # Marked with the listed workflow inside that workflow's own body, it passes.
-bodies="$(grep -rl "Runtime.start(input, context, \"$listed\", false)" "$scratch/lib")"
 cp "$bodies" "$scratch/bodies.orig"
 sed -i "/Runtime.start(input, context, \"$listed\", false)/a\\    # bubble:ignores_privacy $listed\\n    _ = [authorize?: false]" "$bodies"
 out="$(verify --out "$scratch/_structural" 2>&1 || true)"

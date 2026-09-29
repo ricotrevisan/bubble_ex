@@ -96,9 +96,11 @@ defmodule BubbleEx.Load do
       load keeps its row, and with it any access a privacy rule grants
       through the list; each such row (including one whose owner was
       deleted in Bubble) is reported (`:load_join_stale_member`, an error:
-      counts, sample owner IDs, and in its details `stale_members` every
-      stale row, `[left ID, right ID]`, with the join's table and columns;
-      the message names no record) and blocks a real run before any
+      counts, sample owner IDs, and in its details `stale_members` the
+      stale rows, `[left ID, right ID]`, up to
+      `BubbleEx.Load.Issues.stale_rows/0` (`rows_total` counts them all,
+      `truncated` says the list was capped), with the join's table and
+      columns; the message names no record) and blocks a real run before any
       writes. With `prune: true` the rows the loader wrote are pruned
       (their list's column cleared, the row deleted when no list holds
       it) and the others kept and reported (see "Pruning"). An
@@ -662,19 +664,17 @@ defmodule BubbleEx.Load do
         Issues.add(issues, :load_join_stale_member, side.type, side.field, owner, :not_listed_now)
       end)
 
-    # Every stale row (details only: the message names no record), for
-    # pruning by hand, or to acknowledge (`acknowledge_unowned`). Its
+    # The stale rows, capped (details only: the message names no record),
+    # for pruning by hand, or to acknowledge (`acknowledge_unowned`). Its
     # list's rows are those of `table` whose `membership_column` marks a
     # member.
-    Issues.put_details(issues, :load_join_stale_member, side.type, side.field, %{
-      stale_members: %{
-        table: join.table,
-        left_column: join.left.column,
-        right_column: join.right.column,
-        membership_column: side.column,
-        rows: Enum.map(stale, fn {l, r} -> [l, r] end)
-      }
-    })
+    Issues.put_details(
+      issues,
+      :load_join_stale_member,
+      side.type,
+      side.field,
+      Issues.stale_members(join, side, stale)
+    )
   end
 
   defp fold(nil), do: nil
