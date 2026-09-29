@@ -163,8 +163,13 @@ Settings → API → enable **Workflow API**. Then, in Backend workflows:
         unique id.
 - [ ] `wtf_replay_login`: same exposure, same parameters.
       - Step 1: **Log the user in** with `email` and `password`.
-      - Step 2: **Return data from API**: `token`, `user_id` and `expires`
-        from the login step.
+      - No other step. With no "Return data from API" step, Bubble answers
+        a workflow that logs a user in with `token`, `user_id` and
+        `expires` itself (observed on a branch, WTF-385). Buildprint's
+        BubbleScript exposes no result for the login step, so a return
+        step can't read it anyway.
+- [ ] If you edit the branch with Buildprint, set both workflows'
+      authentication to `adminOnly`, and the marker's to `none`.
 - [ ] The preflight reads `/version-<branch ID>/api/1.1/meta` (as admin,
       after the marker check) and, for a seed with users, needs the
       sign-up and login names among the exposed workflows.
@@ -203,10 +208,46 @@ No email reaches a real person.
   that as not visible. This rests on one observation (logged-out callers,
   rules that grant nothing): a rule granting search or some fields without
   "view all" may produce the same ID-only answer, so "not visible" may
-  merge "hidden" with "findable but no field visible" (unverified; listed
-  on WTF-358).
+  merge "hidden" with "findable but no field visible". A later run
+  observed that merge: an `everyone` rule granting search and two
+  listed fields, both empty on the record, answered `GET` with `_id`
+  only (the built-in dates weren't listed, so they were hidden too), and
+  the search found the record. So "not visible" from an ID-only answer
+  can mean "readable, but no granted field holds a value". Use a search
+  op to tell the two apart.
 - A branch's Data API setting and type list are its own: exposing or
   hiding types on the replay branch leaves `test` unchanged.
+- **Creating a record as a persona needs "Create via API".** By default
+  the seeder creates a record whose `Created By` is a seeded user with
+  that user's token, so Bubble sets the creator. Bubble answered such a
+  create with 401 on a type none of whose privacy rules grants "Create
+  via API" (that app grants it nowhere). The same run's admin-token
+  creates worked. The run then stops at seeding with
+  `reason: :user_create_refused` and the type. That is a strong hint,
+  not proof: an expired persona token gets the same answer. A refusal
+  without Bubble's JSON (a firewall's page) is `:user_create_not_bubble`.
+  An admin-token create can't stand in for it: Bubble refused a create
+  that set `Created By` explicitly (400 `ERROR`, nothing stored). So a
+  seed record whose creator is a persona can only be created where the
+  type grants "Create via API". Changing privacy rules on the branch
+  would make the recording worthless, so leave such records, and the
+  scenarios that depend on them, out of the run.
+- The sign-up workflow's "Return data from API" of step 1's unique ID
+  returns the new user's ID, and the login workflow above returns a
+  working token (observed while seeding six personas).
+
+## Editing the branch with Buildprint
+
+- Ticking a type for the Data API changes that type's file, and
+  `buildprint check` then re-validates the whole file, **including its
+  unchanged privacy rules**. Buildprint refuses (BSP8020) a rule that
+  grants search when its condition reads "This Thing's X's Y", and there
+  is no way to suppress that. Such a type can't be exposed through
+  Buildprint without editing the rule, which this checklist forbids.
+  Leave such types out of the run: tick them in the editor only if you
+  can also untick them there afterwards.
+- Behind a custom domain, a firewall may answer some Data API paths
+  itself: `/obj/fileupload` got an HTML 403, not Bubble's JSON.
 
 ## 5. Dry run, then record
 

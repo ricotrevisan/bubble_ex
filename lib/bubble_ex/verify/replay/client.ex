@@ -312,12 +312,12 @@ defmodule BubbleEx.Verify.Replay.Client do
   rests on one observation: logged-out callers on three mm-137 types whose
   rules grant nothing (no `view_all`, no `view_fields`, no search). Admin
   reads of readable records carried `Created Date` and `Modified Date`.
-  Not yet observed: a rule granting search or `view_fields` without
-  `view_all`. Bubble may answer such a record ("findable, but no visible
-  field") with the same ID-only body, so `visible: false` here can merge
-  "hidden" with "findable but no field visible". A recording relying on
-  that difference needs a search op, or a replay that exercises such a
-  rule first.
+  Also observed (WTF-385, a later run): an `everyone` rule granting
+  search and `view_fields` without `view_all`, on a record whose listed
+  fields were all empty, answered with the same ID-only body, and a
+  search found the record. So `visible: false` here merges "hidden" with
+  "readable, but no granted field holds a value". A recording relying on
+  that difference needs a search op.
   """
   @spec get(t(), String.t(), String.t(), auth()) ::
           {:ok, {:found, map()} | :not_found} | {:error, Error.t()}
@@ -353,10 +353,35 @@ defmodule BubbleEx.Verify.Replay.Client do
           {:ok, id}
 
         other ->
-          unexpected(other, "Data API create")
+          other |> unexpected("Data API create") |> create_context(type, auth)
       end
     end
   end
+
+  # Which type, and as whom (never the token). A persona's create refused
+  # with 401/403 in Bubble's JSON (a short `bubble` code) is
+  # `:user_create_refused`: on a real app (WTF-385) Bubble answered 401 to
+  # a Data API create with a user token on a type none of whose privacy
+  # rules grants "Create via API", while the admin token's creates of the
+  # same run succeeded. That is a strong hint, not proof: an expired or
+  # revoked persona token is refused the same way. A 401/403 without
+  # Bubble's JSON (a firewall's HTML page) is `:user_create_not_bubble`.
+  defp create_context({:error, %Error{context: context} = error}, type, auth) do
+    as = auth_kind(auth)
+
+    reason =
+      cond do
+        as != :user or context[:status] not in [401, 403] -> %{}
+        context[:bubble] != nil -> %{reason: :user_create_refused}
+        true -> %{reason: :user_create_not_bubble}
+      end
+
+    {:error, %{error | context: context |> Map.merge(%{type: type, as: as}) |> Map.merge(reason)}}
+  end
+
+  defp auth_kind(:admin), do: :admin
+  defp auth_kind(:none), do: :none
+  defp auth_kind({:user, _token}), do: :user
 
   @doc "Updates the ledger record `key` (never another) with Data API `body`, as admin."
   @spec update_seeded(t(), Ledger.t(), String.t(), map()) :: :ok | {:error, Error.t()}

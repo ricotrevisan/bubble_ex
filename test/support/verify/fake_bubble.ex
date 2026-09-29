@@ -73,7 +73,9 @@ defmodule BubbleEx.Test.FakeBubble do
       host: Keyword.get(opts, :host, host()),
       # :lost_signup (create the user, answer 502), :odd_user_id,
       # :ignore_constraints, :leak (task titles echo the caller's credentials),
-      # :refuse_clear (a PATCH setting a field to null answers 400)
+      # :refuse_clear (a PATCH setting a field to null answers 400),
+      # :refuse_user_create (a create with a user token answers 401),
+      # :edge_block_user_create (… answers a firewall's HTML 403)
       quirks: Keyword.get(opts, :quirks, [])
     }
 
@@ -294,15 +296,22 @@ defmodule BubbleEx.Test.FakeBubble do
   end
 
   defp route(pid, conn, "POST", ["obj", type], body, viewer) when viewer != :none do
-    creator = with {:user, id} <- viewer, do: id
-    creator = if creator == :admin, do: nil, else: creator
+    quirks = Agent.get(pid, & &1.quirks)
 
-    id =
-      Agent.get_and_update(pid, fn s ->
-        insert(s, type, Map.merge(Map.get(s.defaults, type, %{}), body), creator)
-      end)
+    user? = match?({:user, _}, viewer)
 
-    json(conn, 201, %{"status" => "success", "id" => id})
+    cond do
+      :refuse_user_create in quirks and user? ->
+        json(conn, 401, %{"body" => %{"status" => "UNAUTHORIZED"}})
+
+      :edge_block_user_create in quirks and user? ->
+        conn
+        |> Conn.put_resp_content_type("text/html")
+        |> Conn.send_resp(403, "<!DOCTYPE html><html>blocked</html>")
+
+      true ->
+        create(pid, conn, type, body, viewer, quirks)
+    end
   end
 
   defp route(pid, conn, "PATCH", ["obj", type, id], body, :admin) do
@@ -340,6 +349,18 @@ defmodule BubbleEx.Test.FakeBubble do
       end)
 
     if found, do: Conn.send_resp(conn, 204, ""), else: json(conn, 404, %{})
+  end
+
+  defp create(pid, conn, type, body, viewer, _quirks) do
+    creator = with {:user, id} <- viewer, do: id
+    creator = if creator == :admin, do: nil, else: creator
+
+    id =
+      Agent.get_and_update(pid, fn s ->
+        insert(s, type, Map.merge(Map.get(s.defaults, type, %{}), body), creator)
+      end)
+
+    json(conn, 201, %{"status" => "success", "id" => id})
   end
 
   defp exposed?(pid, type), do: type in Agent.get(pid, & &1.exposed)
