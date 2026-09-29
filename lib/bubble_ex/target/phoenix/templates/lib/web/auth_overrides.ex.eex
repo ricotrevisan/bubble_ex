@@ -1,0 +1,19 @@
+defmodule <%= @web %>.AuthOverrides do
+  @moduledoc """
+  Overrides of the AshAuthentication sign-in pages, listed before
+  `AshAuthentication.Phoenix.Overrides.Default` in the router (the first
+  override that sets a value wins). The default banner loads its logo from
+  ash-hq.org; the sign-in page loads nothing from a third party, so the
+  banner is text only. This file is yours: brand the pages here.
+  """
+
+  use AshAuthentication.Phoenix.Overrides
+
+  alias AshAuthentication.Phoenix.Components
+
+  override Components.Banner do
+    set :image_url, nil
+    set :dark_image_url, nil
+    set :text, <%= BubbleEx.Target.Phoenix.Templates.source(@name) %>
+  end
+end

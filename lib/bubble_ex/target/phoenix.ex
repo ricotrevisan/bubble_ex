@@ -931,6 +931,7 @@ defmodule BubbleEx.Target.Phoenix do
       "#{web}/router.ex" => "lib/web/router.ex",
       "#{web}/telemetry.ex" => "lib/web/telemetry.ex",
       "#{web}/live_user_auth.ex" => "lib/web/live_user_auth.ex",
+      "#{web}/auth_overrides.ex" => "lib/web/auth_overrides.ex",
       "#{web}/components/layouts.ex" => "lib/web/components/layouts.ex",
       "#{web}/components/layouts/root.html.heex" => "lib/web/components/layouts/root.html.heex",
       "#{web}/controllers/error_html.ex" => "lib/web/controllers/error_html.ex",
