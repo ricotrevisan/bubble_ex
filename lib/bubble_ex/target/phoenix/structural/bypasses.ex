@@ -10,9 +10,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   calls (`a |> f(b)` is `f(a, b)`); a site's line is the line of the
   nearest enclosing node that has one, and two sites on one line stay two
   sites. A call's module is read from an alias (resolved through the
-  file's `alias`es, with any options, read for the whole file, not per
-  lexical scope), an `:"Elixir.Mod"` atom, `__MODULE__`, or a module
-  attribute holding a module (`@repo Acme.Repo`); any other module
+  `alias`es and `require ..., as:` in scope, with any options, scoped as
+  Elixir scopes them: to the rest of their block), an `:"Elixir.Mod"`
+  atom, `__MODULE__`, or a module attribute holding a module
+  (`@repo Acme.Repo`, from its definition on); any other module
   expression (a variable, an unknown attribute, `Module.concat/1`) cannot
   be read. A `defmodule` name is resolved the way Elixir does (an aliased
   head through its alias, an unaliased nested one under its parent).
@@ -28,10 +29,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   | `:authorize_mode` | `authorize` with anything but `:by_default` or `:always` (`:never`, `:when_requested`, a variable) |
   | `:no_authorizers` | `authorizers: []` |
   | `:unauthorized_resource` | `use Ash.Resource` without `Ash.Policy.Authorizer` in a literal `authorizers:` (embedded resources excepted; in a `quote` whose options are `unquote`d, a `__using__` wrapper, its callers are the ones to check). Generated resources are hash-checked, and with `privacy: :omit` have none by design: `inventory/2`'s `:generated` skips them |
-  | `:repo_call` | a call on a `*.Repo` module or `Ecto.Adapters.SQL` (also through `apply/3`, `:erlang.apply/3`, `Kernel.apply/3`, `Function.capture/3`, `defdelegate ..., to:`), an `import` of one, or `use Ecto.Repo` / `use AshPostgres.Repo` in a module not named `*Repo`: data access that no Ash policy sees |
+  | `:repo_call` | a call on a Repo (a `*.Repo` module, `Ecto.Adapters.SQL`, or any module the files define with `use Ecto.Repo` / `use AshPostgres.Repo`, whatever its name), also through `apply/3`, `:erlang.apply/3`, `Kernel.apply/3`, `Function.capture/3`, `defdelegate ..., to:`; an `import` of one; and every `use Ecto.Repo` / `use AshPostgres.Repo` but the generated app's Repo (`:app_repo`, by its exact name): data access that no Ash policy sees |
   | `:repo_unverifiable` | a call of an `Ecto.Repo` function on a module that cannot be read (`repo.all(q)`, `@unknown.all(q)`, `Module.concat(...).all(q)`, `apply(repo, :all, [q])`): it may reach a Repo |
-  | `:data_layer_call` | `Ash.Seed` and `Ash.DataLayer.run_query/2` (and its other reads and writes): no action, no policy |
-  | `:code_eval` | `Code.eval_*`, `Code.compile_*`, `Code.require_file/1`: code no one can read here |
+  | `:data_layer_call` | `Ash.Seed`, and `run_query/2` (and the other reads and writes) of `Ash.DataLayer` or `AshPostgres.DataLayer`: no action, no policy |
+  | `:code_eval` | `Code.eval_*`, `Code.compile_*`, `Code.require_file/1`, `Module.eval_quoted/2,3`, `EEx.eval_*`, `EEx.compile_*`: code no one can read here |
   | `:body_module` | a `defmodule` of a workflow body module (`bodies/3`) in any other file than the body's scaffolded one |
 
   ## Markers
@@ -74,9 +75,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   a custom check); authorizers added by a Spark fragment; a `__using__`
   wrapper's callers' options; Repo calls in `~H` sigils and `.heex`
   templates (not Elixir code here); queries through Postgrex or another
-  library; files outside `lib/` (tests). Aliases apply to the whole file,
-  so a name may resolve where Elixir would not (more sites, never fewer).
-  It is an inventory, not a proof.
+  library; files outside `lib/` (tests); aliases a macro injects (a
+  `use` whose `__using__` aliases). It is an inventory, not a proof.
   """
 
   @marker ~r/#\s*bubble:ignores_privacy\s+(\S+)/
@@ -166,6 +166,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
       keys allows nothing
     * `:generated` - paths of generated (hash-checked) files: their
       `:unauthorized_resource` sites are skipped
+    * `:app_repo` - the generated app's Repo module (`"Acme.Repo"`): the
+      only `use Ecto.Repo` / `use AshPostgres.Repo` module that is not a
+      site. Every such module in `files` is a Repo: calls on it are
+      `:repo_call` sites, whatever its name
 
   Returns the sites and the paths that do not parse (reported, never
   skipped silently).
@@ -175,6 +179,13 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
           unparsable: [String.t()]
         }
   def inventory(files, opts) do
+    files =
+      files
+      |> Enum.filter(fn {path, _} -> Path.extname(path) in [".ex", ".exs"] end)
+      |> Enum.sort()
+
+    scan_opts = [repos: repo_modules(files), app_repo: Keyword.get(opts, :app_repo)]
+
     ctx = %{
       workflows: opts |> Keyword.get(:workflows, []) |> MapSet.new(),
       scaffold: Keyword.get(opts, :scaffold, %{}),
@@ -184,11 +195,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     }
 
     {sites, unparsable} =
-      files
-      |> Enum.filter(fn {path, _} -> Path.extname(path) in [".ex", ".exs"] end)
-      |> Enum.sort()
-      |> Enum.reduce({[], []}, fn {path, source}, {sites, bad} ->
-        case scan(source) do
+      Enum.reduce(files, {[], []}, fn {path, source}, {sites, bad} ->
+        case scan(source, scan_opts) do
           {:ok, found} ->
             {[classify_file(path, owned_sites(found, path, ctx), ctx) | sites], bad}
 
@@ -200,6 +208,15 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     %{sites: sites |> Enum.reverse() |> Enum.concat(), unparsable: Enum.reverse(unparsable)}
   end
 
+  # The modules `files` define with `use Ecto.Repo` / `use AshPostgres.Repo`.
+  defp repo_modules(files) do
+    for {_path, source} <- files,
+        {:ok, found} <- [scan(source, [])],
+        %{kind: :defines_repo, module: m} <- found,
+        into: MapSet.new(),
+        do: m
+  end
+
   # A generated resource is hash-checked: its missing authorizer is the
   # generator's (`privacy: :omit`), not a bypass of the owner's. A module
   # definition is a site only when it defines a workflow body module
@@ -208,7 +225,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     body_paths = for {_, {_, _, p, m}} <- ctx.bodies, into: %{}, do: {m, p}
 
     found
-    |> Enum.reject(&(&1.kind == :unauthorized_resource and MapSet.member?(ctx.generated, path)))
+    |> Enum.reject(
+      &(&1.kind == :defines_repo or
+          (&1.kind == :unauthorized_resource and MapSet.member?(ctx.generated, path)))
+    )
     |> Enum.flat_map(fn
       %{kind: :defines, module: m} = site ->
         if Map.has_key?(body_paths, m) and body_paths[m] != path,
@@ -463,21 +483,28 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
                            create update destroy upsert bulk_create update_query
                            destroy_query)a
 
+  # `Code`, `Module.eval_quoted/2,3` and `EEx`: code evaluated at runtime.
   @eval_functions ~w(eval_string eval_quoted eval_quoted_with_env eval_file compile_string
                      compile_quoted compile_file require_file)a
 
   @doc """
   The sites of one source text, each with the marker on or above its line,
   its enclosing module and function; `:error` when it does not parse.
+  Options: `:app_repo` (see `inventory/2`); the Repo modules are those the
+  source defines.
   """
-  @spec sites(String.t()) :: {:ok, [site()]} | :error
-  def sites(source) do
-    with {:ok, found} <- scan(source),
-         do: {:ok, Enum.reject(found, &(&1.kind == :defines))}
+  @spec sites(String.t(), keyword()) :: {:ok, [site()]} | :error
+  def sites(source, opts \\ []) do
+    with {:ok, first} <- scan(source, []),
+         repos = for(%{kind: :defines_repo, module: m} <- first, into: MapSet.new(), do: m),
+         {:ok, found} <- scan(source, Keyword.put(opts, :repos, repos)),
+         do: {:ok, Enum.reject(found, &(&1.kind in [:defines, :defines_repo]))}
   end
 
-  # The sites plus a `:defines` entry per module definition.
-  defp scan(source) do
+  # The sites plus a `:defines` entry per module definition and a
+  # `:defines_repo` entry per Repo module. Options: `:repos` (module
+  # names), `:app_repo`.
+  defp scan(source, opts) do
     case Code.string_to_quoted_with_comments(source, emit_warnings: false) do
       {:ok, ast, comments} ->
         markers =
@@ -486,17 +513,18 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
               into: %{},
               do: {line, marker(token)}
 
-        ast = unpipe(ast)
-        aliases = aliases(ast)
-
         ctx = %{
           line: nil,
           fun: nil,
           module: nil,
           quoted?: false,
-          aliases: aliases,
-          attributes: attributes(ast, aliases)
+          aliases: %{},
+          attributes: %{},
+          repos: Keyword.get(opts, :repos, MapSet.new()),
+          app_repo: Keyword.get(opts, :app_repo)
         }
+
+        ast = unpipe(ast)
 
         {:ok,
          ast
@@ -533,71 +561,74 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     end)
   end
 
-  # The file's aliases (`alias A.B`, `alias A.B, as: C`, `alias A.{B, C}`,
-  # with any other options), short name => full parts. Read for the whole
-  # file, not per lexical scope: an alias that resolves somewhere resolves
-  # everywhere, so a site is found more often, never less.
-  defp aliases(ast) do
-    {_, acc} =
-      Macro.prewalk(ast, %{}, fn
-        {:alias, _, [target | rest]} = node, acc -> {node, add_alias(target, rest, acc)}
-        node, acc -> {node, acc}
-      end)
+  # Aliases and module attributes are lexical, as in Elixir: `alias`,
+  # `require ..., as:` and `@attr Module` bind for the statements after
+  # them in the same block (and what those contain), never outside it: an
+  # alias in one module does not reach a sibling module, nor one in an
+  # `if` or `case` clause the code after it. A nested `defmodule Inner`
+  # aliases `Inner` for the rest of its parent's body.
+  defp bind({:alias, _, [target | rest]}, ctx),
+    do: %{ctx | aliases: add_alias(target, rest, ctx)}
 
-    acc
+  defp bind({:require, _, [target, opts]}, ctx) when is_list(opts) do
+    if Keyword.has_key?(opts, :as),
+      do: %{ctx | aliases: add_alias(target, [opts], ctx)},
+      else: ctx
   end
 
-  defp add_alias({:__aliases__, _, parts}, rest, acc) when is_list(parts) do
-    if Enum.all?(parts, &is_atom/1) do
-      short =
-        case rest do
-          [opts] when is_list(opts) -> Keyword.get(opts, :as)
-          _ -> nil
-        end
-
-      case short do
-        {:__aliases__, _, [name]} when is_atom(name) -> Map.put(acc, name, resolve(parts, acc))
-        nil -> Map.put(acc, List.last(parts), resolve(parts, acc))
-        _ -> acc
-      end
-    else
-      acc
+  defp bind({:@, _, [{name, _, [value]}]}, ctx) when is_atom(name) do
+    case module_of(value, ctx) do
+      {:known, parts} -> %{ctx | attributes: Map.put(ctx.attributes, name, parts)}
+      _ -> %{ctx | attributes: Map.delete(ctx.attributes, name)}
     end
   end
 
-  defp add_alias({{:., _, [{:__aliases__, _, base}, :{}]}, _, children}, _rest, acc)
-       when is_list(base) do
-    Enum.reduce(children, acc, fn
-      {:__aliases__, _, parts}, acc when is_list(parts) ->
-        Map.put(acc, List.last(parts), resolve(base ++ parts, acc))
-
-      _, acc ->
-        acc
-    end)
+  defp bind({:defmodule, _, [{:__aliases__, _, [head]} | _]}, %{module: module} = ctx)
+       when is_atom(head) and is_binary(module) do
+    if Map.has_key?(ctx.aliases, head),
+      do: ctx,
+      else: %{ctx | aliases: Map.put(ctx.aliases, head, module_parts(module) ++ [head])}
   end
 
-  defp add_alias(_target, _rest, acc), do: acc
+  defp bind(_expr, ctx), do: ctx
 
-  # Module attributes holding a module (`@repo Acme.Repo`), name => parts.
-  defp attributes(ast, aliases) do
-    {_, acc} =
-      Macro.prewalk(ast, %{}, fn
-        {:@, _, [{name, _, [{:__aliases__, _, parts}]}]} = node, acc
-        when is_atom(name) and is_list(parts) ->
-          {node, Map.put(acc, name, resolve(parts, aliases))}
+  defp add_alias({:__aliases__, _, _} = target, rest, ctx) do
+    short =
+      case rest do
+        [opts] when is_list(opts) -> Keyword.get(opts, :as)
+        _ -> nil
+      end
 
-        {:@, _, [{name, _, [atom]}]} = node, acc when is_atom(name) and is_atom(atom) ->
-          case elixir_module(atom) do
-            nil -> {node, acc}
-            parts -> {node, Map.put(acc, name, parts)}
-          end
+    case {module_of(target, ctx), short} do
+      {{:known, parts}, {:__aliases__, _, [name]}} when is_atom(name) ->
+        Map.put(ctx.aliases, name, parts)
 
-        node, acc ->
-          {node, acc}
-      end)
+      {{:known, parts}, nil} ->
+        Map.put(ctx.aliases, target |> elem(2) |> List.last() |> alias_head(parts), parts)
 
-    acc
+      _ ->
+        ctx.aliases
+    end
   end
+
+  defp add_alias({{:., _, [base, :{}]}, _, children}, _rest, ctx) do
+    case module_of(base, ctx) do
+      {:known, base} ->
+        for {:__aliases__, _, parts} <- children,
+            is_list(parts) and Enum.all?(parts, &is_atom/1),
+            into: ctx.aliases,
+            do: {List.last(parts), base ++ parts}
+
+      _ ->
+        ctx.aliases
+    end
+  end
+
+  defp add_alias(_target, _rest, ctx), do: ctx.aliases
+
+  # `alias __MODULE__` aliases the module's last segment.
+  defp alias_head(last, _parts) when is_atom(last), do: last
+  defp alias_head(_last, parts), do: List.last(parts)
 
   defp resolve([head | rest] = parts, aliases) when is_atom(head) do
     case Map.fetch(aliases, head) do
@@ -658,8 +689,12 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
   defp module_of(_expr, _ctx), do: :dynamic
 
-  defp repo?(parts),
-    do: List.last(parts) == :Repo or Enum.take(parts, 3) == [:Ecto, :Adapters, :SQL]
+  # A `*.Repo`, `Ecto.Adapters.SQL`, or any module the files define with
+  # `use Ecto.Repo` / `use AshPostgres.Repo`.
+  defp repo?(parts, ctx),
+    do:
+      List.last(parts) == :Repo or Enum.take(parts, 3) == [:Ecto, :Adapters, :SQL] or
+        MapSet.member?(ctx.repos, module_name(parts))
 
   defp runtime?(parts), do: List.last(parts) == :Runtime
 
@@ -674,6 +709,20 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     acc = [%{site(:defines, ctx) | module: name} | acc]
     acc = node_sites(node, ctx, acc)
     walk(rest, ctx, acc)
+  end
+
+  # A block's statements in order: each sees the aliases and attributes
+  # the statements before it bound.
+  defp walk({:__block__, meta, exprs} = node, ctx, acc) when is_list(meta) and is_list(exprs) do
+    ctx = %{ctx | line: Keyword.get(meta, :line, ctx.line)}
+    acc = node_sites(node, ctx, acc)
+
+    {acc, _ctx} =
+      Enum.reduce(exprs, {acc, ctx}, fn expr, {acc, ctx} ->
+        {walk(expr, ctx, acc), bind(expr, ctx)}
+      end)
+
+    acc
   end
 
   # A clause's patterns are not values: `{key, false} -> ...` sets nothing.
@@ -789,7 +838,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     case module_of(module, ctx) do
       {:known, parts} ->
         cond do
-          repo?(parts) -> [site(:repo_call, ctx) | acc]
+          repo?(parts, ctx) -> [site(:repo_call, ctx) | acc]
           runtime?(parts) -> [site(:runtime_unverifiable, ctx) | acc]
           true -> acc
         end
@@ -812,8 +861,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
   # `use Ash.Resource` without `Ash.Policy.Authorizer` (embedded resources
   # are read through their parent; a `__using__` wrapper passing its
-  # options on is its callers' to check); `use Ecto.Repo` in a module not
-  # named `*Repo`, whose calls would not be seen.
+  # options on is its callers' to check); `use Ecto.Repo` in any module
+  # but the generated app's Repo (`:app_repo`): a second Repo.
   defp node_sites({:use, _, [module | opts]}, ctx, acc) do
     case module_of(module, ctx) do
       {:known, [:Ash, :Resource]} ->
@@ -822,7 +871,9 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
           else: [site(:unauthorized_resource, ctx) | acc]
 
       {:known, parts} when parts in [[:Ecto, :Repo], [:AshPostgres, :Repo]] ->
-        if ctx.module && String.ends_with?(ctx.module, "Repo"),
+        acc = [%{site(:defines_repo, ctx) | module: ctx.module} | acc]
+
+        if ctx.module != nil and ctx.module == ctx.app_repo,
           do: acc,
           else: [site(:repo_call, ctx) | acc]
 
@@ -886,7 +937,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     if runtime?(parts) and fun == :start and length(args) == 4 do
       runtime_site(args, ctx, acc)
     else
-      case call_kind(parts, fun) do
+      case call_kind(parts, fun, ctx) do
         nil -> access_sites(parts, fun, args, ctx, acc)
         kind -> [site(kind, ctx) | acc]
       end
@@ -895,14 +946,18 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
   # The site kind of a call on a known module (`fun` nil when unknown, as
   # in `apply/3` of a variable function), or nil.
-  defp call_kind([:Ash, :Seed], _fun), do: :data_layer_call
+  defp call_kind([:Ash, :Seed], _fun, _ctx), do: :data_layer_call
 
-  defp call_kind([:Ash, :DataLayer], fun)
-       when fun in @data_layer_functions or fun == nil,
+  defp call_kind(parts, fun, _ctx)
+       when parts in [[:Ash, :DataLayer], [:AshPostgres, :DataLayer]] and
+              (fun in @data_layer_functions or fun == nil),
        do: :data_layer_call
 
-  defp call_kind([:Code], fun) when fun in @eval_functions or fun == nil, do: :code_eval
-  defp call_kind(parts, _fun), do: if(repo?(parts), do: :repo_call)
+  defp call_kind([mod], fun, _ctx)
+       when mod in [:Code, :Module, :EEx] and (fun in @eval_functions or fun == nil),
+       do: :code_eval
+
+  defp call_kind(parts, _fun, ctx), do: if(repo?(parts, ctx), do: :repo_call)
 
   # A call on a module that cannot be read.
   defp dynamic_call(fun, args, ctx, acc) do
@@ -941,7 +996,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
 
     kind =
       case module_of(module, ctx) do
-        {:known, parts} -> applied_kind(parts, fun)
+        {:known, parts} -> applied_kind(parts, fun, ctx)
         :dynamic when fun in @repo_functions or fun == :start -> :repo_unverifiable
         _ -> nil
       end
@@ -949,10 +1004,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     if kind, do: [site(kind, ctx) | acc], else: acc
   end
 
-  defp applied_kind(parts, fun) do
+  defp applied_kind(parts, fun, ctx) do
     if runtime?(parts) and fun in [:start, nil],
       do: :runtime_unverifiable,
-      else: call_kind(parts, fun)
+      else: call_kind(parts, fun, ctx)
   end
 
   # `Keyword.put(opts, key, false)`, `Map.put/3`, `*.put_new/3` with a key

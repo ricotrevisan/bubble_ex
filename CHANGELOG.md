@@ -24,11 +24,15 @@ All notable changes to this project are documented here.
   scope); any other decision (an owner's drop of a symbol included)
   authorizes no bypass. Pipes are rewritten as plain calls before
   matching, and modules are read from aliases (with any options),
-  `:"Elixir.X"` atoms, `__MODULE__` and module attributes. New sites:
+  `:"Elixir.X"` atoms, `__MODULE__` and module attributes, with aliases
+  (`alias` and `require ..., as:`) and attributes scoped to their block as
+  Elixir scopes them. New sites:
   Repo and `Ecto.Adapters.SQL` calls through an alias, an `import`,
   `apply/3`, `:erlang.apply/3`, `Function.capture/3`, `defdelegate`, an
-  attribute or an unreadable module (`:repo_unverifiable`), and
-  `use Ecto.Repo` in a module not named `*Repo`; `Runtime.start/4`
+  attribute or an unreadable module (`:repo_unverifiable`); every module
+  defined with `use Ecto.Repo` / `use AshPostgres.Repo` is a Repo whatever
+  its name, and each such definition but the generated app's Repo is a
+  site; `Runtime.start/4`
   through an alias, an attribute, `apply/3` or `import`; `put_in` /
   `update_in` of an `:authorize?` path and `false` under a runtime key
   (`put_in`, `Keyword.put/3`, `Map.put/3`, `[{k, false}]` and
@@ -37,8 +41,9 @@ All notable changes to this project are documented here.
   `expr(true)`, lists); owned `use Ash.Resource` without
   `Ash.Policy.Authorizer` (`:unauthorized_resource`; generated resources
   stay hash-checked, `__using__` wrappers' `unquote`d options are their
-  callers'); `Ash.Seed` and `Ash.DataLayer` reads and writes
-  (`:data_layer_call`); `Code.eval_*` (`:code_eval`). The `not_run`
+  callers'); `Ash.Seed` and `Ash.DataLayer` / `AshPostgres.DataLayer` reads
+  and writes (`:data_layer_call`); `Code.eval_*`, `Module.eval_quoted`,
+  `EEx.eval_*` and `EEx.compile_*` (`:code_eval`). The `not_run`
   "bypass_inventory (not seen)" text lists only what remains.
 - **LiveView patch releases** (WTF-425). bubble_ex requires
   `phoenix_live_view ~> 1.2.12` (was `== 1.2.12`), so apps using it can

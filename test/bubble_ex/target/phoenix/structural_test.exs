@@ -823,7 +823,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       end
       """
 
-      assert {:ok, sites} = Bypasses.sites(source)
+      assert {:ok, sites} = Bypasses.sites(source, app_repo: "Acme.Repo")
 
       assert Enum.map(sites, &{&1.line, &1.kind}) == [
                {7, :repo_call},
@@ -842,6 +842,129 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                {20, :repo_unverifiable},
                {21, :runtime_unverifiable},
                {25, :repo_call}
+             ]
+    end
+
+    # Re-review of #156.
+    test "require ..., as: aliases, and eval and data layer calls" do
+      source = """
+      defmodule A do
+        require Acme.Repo, as: DB
+        require Acme.Workflows.Runtime, warn: false, as: RT
+        def a(q), do: DB.all(q)
+        def b(i, c), do: RT.start(i, c, "wA", false)
+        def c(q), do: AshPostgres.DataLayer.run_query(q, X)
+        def d(q), do: Module.eval_quoted(__MODULE__, q)
+        def e(s), do: EEx.eval_string(s)
+        def f(s), do: EEx.compile_string(s)
+        def none(q), do: {AshPostgres.DataLayer.repo(q, :read), EEx.Engine}
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {4, :repo_call},
+               {5, :runtime_start},
+               {6, :data_layer_call},
+               {7, :code_eval},
+               {8, :code_eval},
+               {9, :code_eval}
+             ]
+    end
+
+    test "every use Ecto.Repo module is a Repo, whatever its name; only the app's is exempt" do
+      repos = """
+      defmodule Acme.Repo do
+        use AshPostgres.Repo, otp_app: :acme
+      end
+      defmodule Acme.ShadowRepo do
+        use Ecto.Repo, otp_app: :acme, adapter: Ecto.Adapters.Postgres
+      end
+      defmodule Acme.Store do
+        use Ecto.Repo, otp_app: :acme, adapter: Ecto.Adapters.Postgres
+      end
+      """
+
+      calls = """
+      defmodule Acme.Calls do
+        alias Acme.Store
+        def a(q), do: Store.all(q)
+        def b(q), do: Acme.Store.delete_all(q)
+        def c(q), do: apply(Acme.Store, :all, [q])
+      end
+      """
+
+      inventory =
+        Bypasses.inventory(%{"lib/repos.ex" => repos, "lib/calls.ex" => calls},
+          app_repo: "Acme.Repo"
+        )
+
+      assert Enum.map(inventory.sites, &{&1.path, &1.line, &1.kind}) == [
+               {"lib/calls.ex", 3, :repo_call},
+               {"lib/calls.ex", 4, :repo_call},
+               {"lib/calls.ex", 5, :repo_call},
+               {"lib/repos.ex", 5, :repo_call},
+               {"lib/repos.ex", 8, :repo_call}
+             ]
+    end
+
+    # Aliases are lexical: one in a module or a clause does not reach a
+    # sibling module or the code after the clause.
+    test "aliases are scoped to their block, as in Elixir" do
+      body = "lib/acme/workflows/folder_f/bodies.ex"
+
+      forged = """
+      defmodule Helper do
+        alias Acme.Workflows.FolderF.Bodies, as: Forged
+        def f, do: :ok
+      end
+      defmodule Forged do
+        def close(i, c), do: Runtime.start(i, c, "wClose", false)
+      end
+      defmodule Acme.Workflows.FolderF.Bodies do
+        def close(i, c), do: Runtime.start(i, c, "wClose", false)
+      end
+      """
+
+      spoof = """
+      defmodule H do
+        alias Acme.Decided, as: D
+        def f, do: :ok
+      end
+      defmodule D do
+        # bubble:ignores_privacy decision:module
+        def g(q), do: Ash.read!(q, authorize?: false)
+      end
+      defmodule Acme.Decided do
+        def h(q) do
+          if q do
+            alias Acme.Repo, as: DB
+            :ok
+          end
+
+          alias Acme.Repo, as: Later
+          # bubble:ignores_privacy decision:module
+          {DB.all(q), Later.all(q)}
+        end
+      end
+      """
+
+      names = %{"actions" => %{"wClose" => %{"resource" => "FolderF", "action" => "close"}}}
+
+      inventory =
+        Bypasses.inventory(%{body => forged, "lib/acme/spoof.ex" => spoof},
+          workflows: ["wClose"],
+          bodies: Bypasses.bodies(names, "Acme", "acme"),
+          decisions: %{"module" => "Acme.Decided"}
+        )
+
+      assert Enum.map(inventory.sites, &{&1.path, &1.line, &1.kind, &1.class}) == [
+               {"lib/acme/spoof.ex", 7, :authorize_false, :unlisted},
+               # `DB` is out of scope here: `DB.all/1` calls a module `DB`
+               {"lib/acme/spoof.ex", 18, :repo_call, :marked},
+               {body, 6, :runtime_start, :unlisted},
+               {body, 9, :runtime_start, :listed}
              ]
     end
 

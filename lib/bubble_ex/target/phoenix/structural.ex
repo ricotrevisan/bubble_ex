@@ -91,7 +91,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
              "module and function both cannot be read, policies that authorize everything " <>
              "under other conditions or checks, authorizers added by a Spark fragment, a " <>
              "__using__ wrapper's callers, Repo calls in ~H and .heex templates, queries " <>
-             "through other libraries, code outside lib/"}
+             "through other libraries, code outside lib/, aliases a macro injects"}
 
   @typedoc """
   A run: its results, its counts (aggregates only), the checks it did not
@@ -512,6 +512,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
         Bypasses.inventory(lib,
           workflows: bypassed,
           bodies: spec_bodies(spec, files),
+          app_repo: app_repo(manifest(files)),
           scaffold: expected_scaffold(lib, inputs.project),
           generated: generated_paths(files)
         )
@@ -545,6 +546,10 @@ defmodule BubbleEx.Target.Phoenix.Structural do
 
   # The rendered files the manifest hashes (generated, not owned).
   defp generated_paths(files), do: files |> manifest() |> Map.get("generated", %{}) |> Map.keys()
+
+  # The generated app's Repo module, the one `use Ecto.Repo` not a site.
+  defp app_repo(%{"module" => module}) when is_binary(module), do: module <> ".Repo"
+  defp app_repo(_manifest), do: nil
 
   # The rendered manifest, or an empty one.
   defp manifest(nil), do: %{}
@@ -713,6 +718,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       Bypasses.inventory(files,
         workflows: workflows,
         bodies: Bypasses.bodies(names, manifest["module"], manifest["app"]),
+        app_repo: app_repo(manifest),
         scaffold: scaffold,
         decisions: decisions
       )
