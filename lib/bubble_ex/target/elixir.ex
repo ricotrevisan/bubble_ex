@@ -145,6 +145,8 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp lookup(project) do
+    dangling = BubbleEx.Target.Ash.Project.dangling(project)
+
     primary_keys =
       Map.new(project.resources, fn resource ->
         {resource.module, Enum.find(resource.attributes, & &1.primary_key?).name}
@@ -156,8 +158,13 @@ defmodule BubbleEx.Target.Elixir do
         rels = Map.new(belongs_to, &{&1.source.field, &1.name})
         pk = Enum.find(resource.attributes, & &1.primary_key?)
 
+        # A field referencing what an owner dropped (WTF-422) is not read:
+        # a condition or value reading it is residue.
         fields =
-          for a <- resource.attributes, a.source[:field], into: %{} do
+          for a <- resource.attributes,
+              a.source[:field],
+              not MapSet.member?(dangling, {resource.source.type, a.source.field}),
+              into: %{} do
             {a.source.field,
              %{
                attribute: a.name,

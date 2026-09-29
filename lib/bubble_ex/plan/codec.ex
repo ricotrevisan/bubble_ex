@@ -26,7 +26,7 @@ defmodule BubbleEx.Plan.Codec do
   alias BubbleEx.{CanonicalJson, Error, Plan}
   alias BubbleEx.Plan.{Criteria, Residue, Task}
 
-  @kinds ~w(generate remove_writes delete_workflows setup_secrets auth styles_residue decision
+  @kinds ~w(generate remove_writes delete_workflows drop setup_secrets auth styles_residue decision
             plugin surface fragment workflow backend cycle api_group api_call api_clients_residue
             acceptance data replay delivery cutover)a
   @actors ~w(generator agent reviewer owner loader harness)a

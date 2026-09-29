@@ -106,12 +106,21 @@ defmodule BubbleEx.Target.Ash.Workflows do
     with {:ok, namespace} <- namespace(opts) do
       locked = locked(Keyword.get(opts, :names))
       lookup = lookup(project)
+      dropped = Project.dropped(project)
+      # Workflows an owner dropped (WTF-422) are not bound; calls to them
+      # are residue (`step/2`).
+      backend = %{
+        backend
+        | workflows:
+            Enum.reject(backend.workflows, &MapSet.member?(dropped.workflows, &1.bubble_id))
+      }
 
       ctx = %{
         namespace: namespace,
         runtime: namespace <> ".Bubble.Runtime",
         project: project,
         lookup: lookup,
+        dropped: dropped,
         workflows: Map.new(backend.workflows, &{&1.id, &1})
       }
 
@@ -381,7 +390,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
         true -> true
       end
 
-    residue = Residue.sort(w.residue ++ arg_residue ++ cond_residue)
+    residue = Residue.sort(w.residue ++ arg_residue ++ cond_residue ++ dropped_trigger(w, ctx))
 
     %{
       workflow: w.bubble_id,
@@ -492,6 +501,17 @@ defmodule BubbleEx.Target.Ash.Workflows do
 
   # --- steps -----------------------------------------------------------------------------
 
+  # A database trigger on a data type an owner dropped can never fire:
+  # residue, never a silently unwired trigger.
+  defp dropped_trigger(%Workflow{kind: :database_trigger, trigger_type: type} = w, ctx)
+       when is_binary(type) do
+    if MapSet.member?(ctx.dropped.types, type),
+      do: [Residue.entry(w.id, :uses_dropped, %{symbol: "data_type:" <> type})],
+      else: []
+  end
+
+  defp dropped_trigger(_w, _ctx), do: []
+
   defp step(%Step{} = s, ctx) do
     base = %{
       index: s.index,
@@ -504,13 +524,34 @@ defmodule BubbleEx.Target.Ash.Workflows do
       residue: s.residue
     }
 
-    if s.residue != [] do
-      base
-    else
-      {condition, cr} = compile(s.condition, s.id, ctx)
-      {args, ar} = step_args(s.op, s.args, s.id, ctx)
-      %{base | condition: condition, args: args, residue: Residue.sort(cr ++ ar)}
+    dropped = dropped_callee(s, ctx)
+
+    cond do
+      # A call or schedule of a workflow an owner dropped (WTF-422): the
+      # step is residue, so the caller refuses to run before step 1.
+      dropped != nil ->
+        entry = Residue.entry(s.id, :uses_dropped, %{symbol: "workflow:" <> dropped})
+        %{base | residue: Residue.sort([entry | s.residue])}
+
+      s.residue != [] ->
+        base
+
+      true ->
+        bound_step(s, base, ctx)
     end
+  end
+
+  defp dropped_callee(%Step{op: op, args: %{workflow: id}}, ctx)
+       when op in [:call, :schedule, :schedule_list] and is_binary(id) do
+    if MapSet.member?(ctx.dropped.workflows, id), do: id
+  end
+
+  defp dropped_callee(_s, _ctx), do: nil
+
+  defp bound_step(s, base, ctx) do
+    {condition, cr} = compile(s.condition, s.id, ctx)
+    {args, ar} = step_args(s.op, s.args, s.id, ctx)
+    %{base | condition: condition, args: args, residue: Residue.sort(cr ++ ar)}
   end
 
   defp step_args(op, args, id, ctx)

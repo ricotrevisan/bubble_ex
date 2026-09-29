@@ -38,6 +38,10 @@ defmodule BubbleEx.Target.Ash.Project do
       "Decisions"), sorted by key: `%{key, kind, transform, subject, target,
       finding_id, automatic, params, proposal_sha256, basis_sha256,
       rewrite_reads}`, so a manifest, plan or verification can cite them.
+      An owner's drop (WTF-422, `BubbleEx.Decision.Drop`) is one too
+      (`kind: :drop`, `transform: :drop`, `params: %{symbol, dangling}`):
+      the frontend and workflow bindings read the dropped pages and
+      workflows from it (`dropped/1`)
       `rewrite_reads` lists the symbols whose reads a lowering must rewrite
       (`derive_reverse_relationship`: the finding's `rewrite_reads`, reads
       of the dropped list), else `[]`. No audit metadata (the record ID):
@@ -176,6 +180,50 @@ defmodule BubbleEx.Target.Ash.Project do
   @doc "The Project format version; it changes whenever `to_map/1` does."
   @spec schema_version() :: pos_integer()
   def schema_version, do: @schema_version
+
+  @doc """
+  What the owner's drops in `applied` remove (WTF-422), as sets of Bubble
+  IDs: `types`, `fields` (`{type, field}`), `option_sets`, `pages` and
+  `workflows`. A dropped type's fields are not listed: its whole type is.
+  """
+  @spec dropped(t()) :: %{atom() => MapSet.t()}
+  def dropped(%__MODULE__{applied: applied}) do
+    drops =
+      for %{kind: :drop, params: %{symbol: symbol}, subject: subject} <- applied,
+          do: {symbol, subject}
+
+    of = fn symbol, fun ->
+      for {^symbol, subject} <- drops, into: MapSet.new(), do: fun.(subject)
+    end
+
+    %{
+      types: of.(:data_type, & &1.type),
+      fields: of.(:field, &{&1.type, &1.field}),
+      option_sets: of.(:option_set, & &1.option_set),
+      pages: of.(:page, & &1.page),
+      workflows: of.(:workflow, & &1.workflow)
+    }
+  end
+
+  @doc """
+  The kept fields whose values reference a data type or option set an
+  owner dropped (WTF-422), accepted in the drop or not, as `{type or
+  option set, field}` Bubble IDs: their attributes hold bare Bubble IDs
+  of records or options that are no longer mapped, so no generated
+  expression may read them (a privacy rule or workflow condition reading
+  one denies or is residue: an ID left behind must never grant access).
+  Read from the Project's `:ash_drop_dangling_reference` and
+  `:ash_drop_reference_accepted` diagnostics.
+  """
+  @spec dangling(t()) :: MapSet.t({String.t(), String.t()})
+  def dangling(%__MODULE__{diagnostics: diagnostics}) do
+    for %{code: code, subject: subject} <- diagnostics,
+        code in [:ash_drop_dangling_reference, :ash_drop_reference_accepted],
+        owner = subject[:type] || subject[:option_set],
+        is_binary(owner) and is_binary(subject[:field]),
+        into: MapSet.new(),
+        do: {owner, subject.field}
+  end
 
   @doc """
   JSON form: string keys and JSON values only. Atoms become strings, tuples

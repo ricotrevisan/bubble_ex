@@ -1310,7 +1310,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
             %{decision | choice: :withdraw},
             # A finding (an owner's drop of a symbol, WTF-422, included) is
             # not a bypass authorization.
-            %{decision | kind: :finding, choice: :accept, params: %{}}
+            %{decision | kind: :finding, choice: :accept, params: %{}},
+            %{decision | kind: :drop, choice: :accept, params: %{symbol: "type"}}
           ] do
         {:ok, report} = check.(d, ["o"])
         assert status(report, "structural.bypass_inventory") == :fail, inspect(d)

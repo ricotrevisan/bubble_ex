@@ -233,7 +233,7 @@ schema_fixtures =
       path <- pattern |> Path.wildcard() |> Enum.sort() do
     {prefix <> Path.basename(path, ".json"), faithful.(path |> File.read!() |> Jason.decode!())}
   end ++
-    for set <- [:combined, :locked, :count, :cut2, :cut3] do
+    for set <- [:combined, :locked, :count, :cut2, :cut3, :drop] do
       {"decided_#{set}", decided.(set)}
     end
 

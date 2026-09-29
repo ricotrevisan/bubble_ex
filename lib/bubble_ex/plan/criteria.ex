@@ -75,7 +75,7 @@ defmodule BubbleEx.Plan.Criteria do
   end
 
   defp checks_for(%Task{kind: kind, closed_by: key}, _facts)
-       when kind in [:remove_writes, :delete_workflows],
+       when kind in [:remove_writes, :delete_workflows, :drop],
        do: [{:decision_recorded, %{key: key}}, {:generated_unchanged, %{}}]
 
   defp checks_for(%Task{kind: :setup_secrets, subjects: subjects}, _facts),

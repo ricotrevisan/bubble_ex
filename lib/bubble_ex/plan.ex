@@ -28,6 +28,7 @@ defmodule BubbleEx.Plan do
   |------|---------|-------|--------|
   | `:generate` | generator output group: `schema`, `option_sets`, `policies`, `styles`, `api_clients`, `routes`, `surfaces`, `workflow_entry_points` (`generate:api_clients` holds its residue API calls' residue; its `request_shape` lists only the generated calls) | generator | auto |
   | `:remove_writes`, `:delete_workflows` | applied finding (accepted, or a hint applied by default) that removes writes or workflows | generator | closed by the decision |
+  | `:drop` | owner drop decision (WTF-422, `BubbleEx.Decision.Drop`): `drop:<symbol id>`, its subjects the dropped symbol and everything it contains | generator | closed by the decision |
   | `:setup_secrets` | app, when an API Connector value is private | owner | open |
   | `:auth` | app; subjects are the log-in, sign-up and credential workflows | agent | open |
   | `:styles_residue` | app, when a named style is residue | agent | open |
@@ -77,6 +78,22 @@ defmodule BubbleEx.Plan do
   every task covering the plugin, one of its uses or a read of one, so deciding (or
   changing the decision) changes those tasks' `source_sha256`.
 
+  ## Owner drops (WTF-422)
+
+  An active drop (`BubbleEx.Decision.Drop`: a page, data type, field,
+  option set or workflow the owner leaves out) removes the symbol and its
+  descendants from the plan: a dropped page is no surface (its elements
+  and workflows go with it), a dropped workflow no subtask, dropped data
+  types, fields and option sets are not in `generate:schema` or
+  `generate:option_sets`. Each drop is one `:drop` task, closed by the
+  decision (`closed_by`, actor `generator`), whose subjects list what it
+  removed. Every kept symbol that reads, writes, calls, schedules,
+  navigates to or listens to a removed one gets `:uses_dropped` residue
+  (`detail.symbol`), so its task stays open, and that task has a
+  `:decision` edge to the drop task. A field referencing a dropped type is
+  the drop's dangling reference (it blocks, `Decision.Resolved.blocking/1`),
+  not residue.
+
   A workflow that calls itself stays in its owner's task. Workflows removed
   by an accepted `delete_workflows` get no subtask, and actions an accepted
   decision drops (`remove_calls`, or every field write in `remove_writes`)
@@ -94,7 +111,8 @@ defmodule BubbleEx.Plan do
       and `styles:residue`
     * `:secrets` - an API group (or `api_clients:residue`) with a private
       value on `setup:secrets`
-    * `:decision` - a workflow on the decision node removing its actions;
+    * `:decision` - a workflow on the decision node removing its actions; a
+      task with `:uses_dropped` residue on the closed drop task;
       a plugin task on its plugin's `decision:plugin/<id>` task; a task that
       lost a use to a plugin `drop` on the closed plugin task
     * `:reusable` - a host surface (or fragment) on the surface and
@@ -172,7 +190,7 @@ defmodule BubbleEx.Plan do
   """
 
   alias BubbleEx.{CanonicalJson, Error, Index, Model}
-  alias BubbleEx.Decision.{Applied, Resolved}
+  alias BubbleEx.Decision.{Applied, Drop, Resolved}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Plan.{Builder, Content, Diff, Residue, Task}
 
@@ -244,7 +262,7 @@ defmodule BubbleEx.Plan do
              is_list(opts) do
     threshold = Keyword.get(opts, :fragment_threshold, @fragment_threshold)
 
-    with :ok <- check_applied(applied),
+    with :ok <- check_applied(applied, index),
          {:ok, extra} <- check_residue(Keyword.get(opts, :residue, [])),
          {:ok, content} <- check_content(Keyword.get(opts, :content)),
          {:ok, resolved} <- check_resolved(Keyword.get(opts, :resolved)),
@@ -287,10 +305,20 @@ defmodule BubbleEx.Plan do
          "expected a Model, its Index, a normalized frontend or nil, a list of applied decisions and options"
        )}
 
-  defp check_applied(applied) do
+  defp check_applied(applied, index) do
     cond do
       not Enum.all?(applied, &is_struct(&1, Applied)) ->
         error("applied must be BubbleEx.Decision.Applied entries from Decision.applicable/2")
+
+      drop = Enum.find(applied, &(&1.kind == :drop and Drop.check_applied(&1, index) != :ok)) ->
+        {:error, reason} = Drop.check_applied(drop, index)
+
+        {:error,
+         Error.new(
+           :invalid_input,
+           "the drop is stale or forged (#{reason}): resolve the decisions against this snapshot",
+           %{key: drop.key}
+         )}
 
       stale = Enum.find(applied, &stale?/1) ->
         {:error,
