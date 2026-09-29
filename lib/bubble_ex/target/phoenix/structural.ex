@@ -59,7 +59,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
                "intact and deterministic, and where authorization is bypassed in lib/ " <>
                "(authorize? not literally true, Runtime.start bypasses, bypass policies, " <>
                "authorize modes, always-authorizing policies, missing or empty authorizers, " <>
-               "Repo and Ecto.Adapters.SQL calls). It " <>
+               "Repo, Ecto.Adapters.SQL, Ash.Seed, Ash.DataLayer and Code.eval calls). It " <>
                "does not see every bypass (not_run lists the forms it misses), and it " <>
                "does not show that the " <>
                "app behaves like the Bubble app: privacy, workflows, pages and data are " <>
@@ -86,12 +86,12 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   ]
 
   @unseen {"bypass_inventory (not seen)",
-           "options merged from a variable or built by another function, a Repo reached " <>
-             "through a module computed at runtime, a local call after import or apply/3 " <>
-             "with neither a literal module nor a literal Repo function, " <>
-             "Runtime.start/4 called locally or through a variable module, policies that " <>
-             "authorize everything under a condition other than always(), authorizers " <>
-             "added by a Spark fragment, queries through other libraries, code outside lib/"}
+           "options merged from a variable or built by another function (Keyword.merge/2, " <>
+             "Enum.into/2 of a runtime value), a local call after import, apply/2,3 whose " <>
+             "module and function both cannot be read, policies that authorize everything " <>
+             "under other conditions or checks, authorizers added by a Spark fragment, a " <>
+             "__using__ wrapper's callers, Repo calls in ~H and .heex templates, queries " <>
+             "through other libraries, code outside lib/"}
 
   @typedoc """
   A run: its results, its counts (aggregates only), the checks it did not
@@ -511,7 +511,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       inventory =
         Bypasses.inventory(lib,
           workflows: bypassed,
-          bodies: spec_bodies(spec),
+          bodies: spec_bodies(spec, files),
           scaffold: expected_scaffold(lib, inputs.project),
           generated: generated_paths(files)
         )
@@ -538,18 +538,23 @@ defmodule BubbleEx.Target.Phoenix.Structural do
     end
   end
 
-  defp spec_bodies(%WorkflowSpec{} = spec), do: Bypasses.bodies(spec.names, spec.namespace)
-  defp spec_bodies(_), do: %{}
+  defp spec_bodies(%WorkflowSpec{} = spec, files),
+    do: Bypasses.bodies(spec.names, spec.namespace, manifest(files)["app"])
+
+  defp spec_bodies(_spec, _files), do: %{}
 
   # The rendered files the manifest hashes (generated, not owned).
-  defp generated_paths(nil), do: []
+  defp generated_paths(files), do: files |> manifest() |> Map.get("generated", %{}) |> Map.keys()
 
-  defp generated_paths(files) do
+  # The rendered manifest, or an empty one.
+  defp manifest(nil), do: %{}
+
+  defp manifest(files) do
     with json when is_binary(json) <- files[Manifest.path()],
          {:ok, manifest} <- Manifest.decode(json) do
-      manifest |> Map.get("generated", %{}) |> Map.keys()
+      manifest
     else
-      _ -> []
+      _ -> %{}
     end
   end
 
@@ -707,7 +712,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
     inventory =
       Bypasses.inventory(files,
         workflows: workflows,
-        bodies: Bypasses.bodies(names, manifest["module"]),
+        bodies: Bypasses.bodies(names, manifest["module"], manifest["app"]),
         scaffold: scaffold,
         decisions: decisions
       )

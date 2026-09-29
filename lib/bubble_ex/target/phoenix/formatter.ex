@@ -10,9 +10,10 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
   patch and security releases; `live_view_check/1` compares the loaded
   version with the generator's pin (`live_view_version/0`, the version the
   generated `mix.exs` pins): another minor or major version is refused
-  (`render/2` returns the error), another patch is allowed with a warning,
-  since a fresh render may then differ from one made at the pin (hashes,
-  the generated app's `mix format --check-formatted`).
+  (`render/2` returns the error), another patch is allowed with a warning
+  and recorded in the manifest (`inputs.phoenix_live_view`), since a fresh
+  render may then differ from one made at the pin (hashes, the generated
+  app's `mix format --check-formatted`).
 
   `.ex` formatting follows the running Elixir version, which no pin
   covers: two Elixir versions may format the same source differently.
@@ -65,22 +66,27 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
   end
 
   @doc false
-  # `render/2`'s guard: refuses a mismatch, warns once per VM for a patch.
-  @spec ensure_live_view() :: :ok | {:error, Error.t()}
-  def ensure_live_view do
-    case live_view_check() do
+  # `render/2`'s guard: refuses a mismatch; for another patch release warns
+  # once per VM and returns the loaded version, which `render/2` records
+  # in the manifest (`inputs.phoenix_live_view`); `{:ok, nil}` at the pin.
+  @spec ensure_live_view(String.t() | nil) :: {:ok, String.t() | nil} | {:error, Error.t()}
+  def ensure_live_view(loaded \\ loaded_live_view()) do
+    case live_view_check(loaded) do
+      :ok ->
+        {:ok, nil}
+
       {:warn, message} ->
         key = {__MODULE__, :warned}
 
-        unless :persistent_term.get(key, false) do
+        if not :persistent_term.get(key, false) do
           :persistent_term.put(key, true)
           Logger.warning(message)
         end
 
-        :ok
+        {:ok, loaded}
 
-      other ->
-        other
+      error ->
+        error
     end
   end
 

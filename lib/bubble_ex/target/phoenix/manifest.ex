@@ -34,7 +34,11 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       `frontend` identifies the normalized frontend the pages were
       rendered from (nil without one, WTF-370);
       `api_clients_sha256`, present when API clients were rendered, is the
-      SHA-256 of the `BubbleEx.Target.ApiClients.Spec`'s canonical JSON
+      SHA-256 of the `BubbleEx.Target.ApiClients.Spec`'s canonical JSON;
+      `phoenix_live_view`, present only when the render's LiveView was not
+      the generator's pin (another patch release,
+      `BubbleEx.Target.Phoenix.Formatter`), is the loaded version its
+      HEEx was formatted with
     * `generated` - every generated file (path → SHA-256 of its content).
       Regeneration overwrites them; `check/2` finds hand edits. The
       manifest does not list itself
@@ -101,13 +105,17 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           "privacy" => Atom.to_string(project.privacy),
           "frontend" => Map.get(ctx, :frontend)
         }
-        |> put_api_clients(Map.get(ctx, :api_clients)),
+        |> put_api_clients(Map.get(ctx, :api_clients))
+        |> put_live_view(Map.get(ctx, :live_view)),
       "generated" => hashes(generated),
       "owned" => hashes(owned)
     }
     |> put_routes(ctx)
     |> put_extensions(project, ctx)
   end
+
+  defp put_live_view(inputs, nil), do: inputs
+  defp put_live_view(inputs, loaded), do: Map.put(inputs, "phoenix_live_view", loaded)
 
   defp put_extensions(manifest, %Project{extensions: [_ | _] = extensions}, ctx) do
     Map.put(manifest, "extensions", %{

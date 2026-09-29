@@ -7,33 +7,48 @@ All notable changes to this project are documented here.
 ### Added
 
 - **Structural bypass inventory hardened** (WTF-424). A workflow body is
-  now the function the generated name map binds it to
-  (`Structural.Bypasses.bodies/2`: `<App>.Workflows.<Folder>.Bodies.<action>/2`
-  and its step and condition helpers), read from the Spec at generation
-  and from `.wtf/workflows.json` in the owner's repository: a hand-written
-  `# bubble:workflow` comment no longer makes owned code a body.
-  `decision:<key>` markers count only for a privacy exception: an active,
-  accepted `parity_exception` whose `checks` include a privacy check,
-  authored by an owner listed in `Structural.project/2`'s new `:owners`
-  option (trusted list; its anchor is WTF-411), and only inside the
-  module or function its `scope` names; any other decision (an owner's
-  drop of a symbol included) authorizes no bypass. New sites: Repo and
-  `Ecto.Adapters.SQL` calls through an alias, an `import`, `apply/3` or a
-  variable module (`:repo_unverifiable`), `Runtime.start/4` through an
-  alias, `apply/3` or `import`, `put_in`/`update_in` of an `:authorize?`
-  path and `false` under a runtime key (`put_in`, `Keyword.put/3`,
-  `Map.put/3`, `Keyword.merge/2`/`Map.merge/2` of a literal),
-  `policy always()` with `authorize_if always()` (`:policy_always`), and
-  owned `use Ash.Resource` without `Ash.Policy.Authorizer`
-  (`:unauthorized_resource`; generated resources stay hash-checked). The
-  `not_run` "bypass_inventory (not seen)" text lists only what remains.
+  now the function the generated name map binds it to, in its scaffolded
+  file (`Structural.Bypasses.bodies/3`:
+  `<App>.Workflows.<Folder>.Bodies.<action>/2` in
+  `lib/<app>/workflows/<folder>/bodies.ex`, and its step and condition
+  helpers), read from the Spec at generation and from
+  `.wtf/workflows.json` in the owner's repository: a hand-written
+  `# bubble:workflow` comment, a `defmodule` name forged through an
+  alias, or the body module defined in another file (`:body_module`, a
+  site) is no body. `decision:<key>` markers count only for a privacy
+  exception: an active, accepted `parity_exception` whose `checks`
+  include a privacy check, authored by an owner listed in
+  `Structural.project/2`'s new `:owners` option (trusted list; its anchor
+  is WTF-411), and only inside the module or function its `scope` names
+  (module names resolved as Elixir does; code in a `quote` is in no
+  scope); any other decision (an owner's drop of a symbol included)
+  authorizes no bypass. Pipes are rewritten as plain calls before
+  matching, and modules are read from aliases (with any options),
+  `:"Elixir.X"` atoms, `__MODULE__` and module attributes. New sites:
+  Repo and `Ecto.Adapters.SQL` calls through an alias, an `import`,
+  `apply/3`, `:erlang.apply/3`, `Function.capture/3`, `defdelegate`, an
+  attribute or an unreadable module (`:repo_unverifiable`), and
+  `use Ecto.Repo` in a module not named `*Repo`; `Runtime.start/4`
+  through an alias, an attribute, `apply/3` or `import`; `put_in` /
+  `update_in` of an `:authorize?` path and `false` under a runtime key
+  (`put_in`, `Keyword.put/3`, `Map.put/3`, `[{k, false}]` and
+  `%{k => false}` literals); always-true policies with an always-true
+  `authorize_if` (`:policy_always`: `always()`, `Builtins.always()`,
+  `expr(true)`, lists); owned `use Ash.Resource` without
+  `Ash.Policy.Authorizer` (`:unauthorized_resource`; generated resources
+  stay hash-checked, `__using__` wrappers' `unquote`d options are their
+  callers'); `Ash.Seed` and `Ash.DataLayer` reads and writes
+  (`:data_layer_call`); `Code.eval_*` (`:code_eval`). The `not_run`
+  "bypass_inventory (not seen)" text lists only what remains.
 - **LiveView patch releases** (WTF-425). bubble_ex requires
   `phoenix_live_view ~> 1.2.12` (was `== 1.2.12`), so apps using it can
   take patch and security releases. `Target.Phoenix.render/2` checks the
   loaded LiveView against the generator's pin
   (`Target.Phoenix.Formatter.live_view_version/0`, still `==` in the
   generated `mix.exs`): another patch warns once (rendered HEEx may
-  format differently), another minor or major version is refused.
+  format differently) and is recorded in the manifest
+  (`inputs.phoenix_live_view`), another minor or major version is
+  refused.
   `.ex` formatting follows the running Elixir version, which no pin
   covers.
 

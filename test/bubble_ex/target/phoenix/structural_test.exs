@@ -589,6 +589,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
              ]
     end
 
+    @body "lib/acme/workflows/folder_f/bodies.ex"
+
     test "classifies listed, marked, scaffold and unlisted sites" do
       # A workflow body is the function the generated name map binds it
       # to; the `# bubble:workflow` comment is only a reading aid.
@@ -672,7 +674,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       inventory =
         Bypasses.inventory(
           %{
-            "a.ex" => body,
+            "lib/acme/workflows/folder_f/bodies.ex" => body,
             "b.ex" => scaffold,
             "c.ex" => decided,
             "d.txt" => scaffold,
@@ -680,7 +682,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
             "f.ex" => forged
           },
           workflows: ["wClose"],
-          bodies: Bypasses.bodies(names, "Acme"),
+          bodies: Bypasses.bodies(names, "Acme", "acme"),
           scaffold: %{{"b.ex", "confirm_email", nil} => 1, {"e.ex", "confirm_email", "c/0"} => 1},
           decisions: %{
             "parity_exception:module" => "Acme.Decided",
@@ -690,12 +692,6 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
         )
 
       assert Enum.map(inventory.sites, &{&1.path, &1.line, &1.kind, &1.class}) == [
-               {"a.ex", 4, :runtime_start, :listed},
-               {"a.ex", 6, :authorize_false, :marked},
-               {"a.ex", 11, :authorize_false, :unlisted},
-               {"a.ex", 12, :runtime_start, :unlisted},
-               {"a.ex", 16, :authorize_false, :marked},
-               {"a.ex", 17, :runtime_start, :unlisted},
                {"b.ex", 2, :authorize_false, :scaffold},
                {"b.ex", 4, :authorize_false, :unlisted},
                {"b.ex", 6, :authorize_false, :unlisted},
@@ -708,7 +704,13 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                {"e.ex", 5, :authorize_false, :scaffold},
                {"e.ex", 9, :authorize_false, :unlisted},
                {"f.ex", 4, :runtime_start, :unlisted},
-               {"f.ex", 6, :authorize_false, :unlisted}
+               {"f.ex", 6, :authorize_false, :unlisted},
+               {@body, 4, :runtime_start, :listed},
+               {@body, 6, :authorize_false, :marked},
+               {@body, 11, :authorize_false, :unlisted},
+               {@body, 12, :runtime_start, :unlisted},
+               {@body, 16, :authorize_false, :marked},
+               {@body, 17, :runtime_start, :unlisted}
              ]
 
       detail =
@@ -759,6 +761,207 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
              ]
 
       assert Enum.find(sites, &(&1.line == 11)).workflow == "wClose"
+    end
+
+    # Review of #156: piped calls are matched like any other.
+    test "finds piped Runtime.start, Keyword.put, Map.merge, put_in and apply" do
+      source = """
+      defmodule P do
+        def a(i, c), do: i |> Runtime.start(c, "wClose", false)
+        def b(o, k), do: o |> Keyword.put(k, false)
+        def c(o, k), do: o |> Map.merge(%{k => false})
+        def d(o), do: o |> put_in([:authorize?], false)
+        def e(m), do: m |> apply(:all, [Acme.Thing])
+        def f(q), do: q |> Acme.Repo.all()
+        def g(o), do: o |> Keyword.put(:authorize?, false) |> Ash.read!()
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {2, :runtime_start},
+               {3, :authorize_unverifiable},
+               {4, :authorize_unverifiable},
+               {5, :authorize_false},
+               {6, :repo_unverifiable},
+               {7, :repo_call},
+               {8, :authorize_false}
+             ]
+    end
+
+    test "resolves aliases with any options, attributes, atoms and other call forms" do
+      source = """
+      defmodule Q do
+        alias Acme.Repo, warn: false, as: Store
+        alias Acme.Workflows.Runtime, as: Engine, warn: false
+        @repo Acme.Repo
+        @rt Acme.Workflows.Runtime
+        @atom_repo :"Elixir.Acme.Repo"
+        def a, do: Store.all(X)
+        def b(i, c), do: Engine.start(i, c, "wA", false)
+        def c, do: @repo.all(X)
+        def d(i, c), do: @rt.start(i, c, "wB", false)
+        def e, do: :"Elixir.Acme.Repo".all(X)
+        def f, do: @atom_repo.all(X)
+        def g, do: :erlang.apply(Acme.Repo, :all, [X])
+        defdelegate h(q), to: Acme.Repo, as: :all
+        def i, do: Function.capture(Acme.Repo, :all, 1)
+        def j, do: Ash.Seed.seed!(X, %{})
+        def k(q), do: Ash.DataLayer.run_query(q, X)
+        def l(s), do: Code.eval_string(s)
+        def m, do: Module.concat([Acme, Repo]).all(X)
+        def n, do: @unknown.all(X)
+        def o(x, c), do: x.start(1, c, "w", false)
+        def none(s), do: {s.assigns, :ets.lookup(:t, 1), %{{"a", "b"} => false}, [{{"c", 1}, false}]}
+      end
+      defmodule Acme.Store do
+        use Ecto.Repo, otp_app: :acme
+      end
+      defmodule Acme.Repo do
+        use AshPostgres.Repo, otp_app: :acme
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {7, :repo_call},
+               {8, :runtime_start},
+               {9, :repo_call},
+               {10, :runtime_start},
+               {11, :repo_call},
+               {12, :repo_call},
+               {13, :repo_call},
+               {14, :repo_call},
+               {15, :repo_call},
+               {16, :data_layer_call},
+               {17, :data_layer_call},
+               {18, :code_eval},
+               {19, :repo_unverifiable},
+               {20, :repo_unverifiable},
+               {21, :runtime_unverifiable},
+               {25, :repo_call}
+             ]
+    end
+
+    test "finds always-authorizing policies however always is spelled" do
+      source = """
+      defmodule R do
+        policies do
+          policy expr(true) do
+            authorize_if always()
+          end
+          policy [always(), always()] do
+            authorize_if Builtins.always()
+          end
+          policy always() do
+            authorize_if Ash.Policy.Check.Builtins.always()
+          end
+          policy always() do
+            authorize_if expr(true)
+          end
+          policy [always(), actor_present()] do
+            authorize_if always()
+          end
+        end
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) ==
+               Enum.map([3, 6, 9, 12], &{&1, :policy_always})
+    end
+
+    # A `__using__` wrapper passes its options on: its callers are checked.
+    test "a __using__ wrapper around use Ash.Resource is not a site" do
+      source = """
+      defmodule Acme.Base do
+        defmacro __using__(opts) do
+          quote do
+            use Ash.Resource, unquote(opts)
+          end
+        end
+      end
+      """
+
+      assert Bypasses.sites(source) == {:ok, []}
+    end
+
+    # Review of #156: a body is its module in its scaffolded file, the
+    # module name as Elixir resolves it; code in a quote is in no scope.
+    test "forged bodies through an alias or another file, and quoted markers, fail" do
+      body = "lib/acme/workflows/folder_f/bodies.ex"
+
+      forged_alias = """
+      alias Evil.Forged, as: Acme, warn: false
+      defmodule Acme.Workflows.FolderF.Bodies do
+        def close(i, c) do
+          Runtime.start(i, c, "wClose", false)
+        end
+      end
+      """
+
+      elsewhere = """
+      defmodule Acme.Workflows.FolderF.Bodies do
+        def close(i, c) do
+          Runtime.start(i, c, "wClose", false)
+        end
+      end
+      """
+
+      quoted = """
+      defmodule Acme.Decided do
+        defmacro __using__(_) do
+          quote do
+            # bubble:ignores_privacy decision:module
+            def f(q), do: Ash.read!(q, authorize?: false)
+          end
+        end
+        # bubble:ignores_privacy decision:module
+        def g(q), do: Ash.read!(q, authorize?: false)
+      end
+      """
+
+      aliased_scope = """
+      alias Evil.Forged, as: Acme, warn: false
+      defmodule Acme.Decided do
+        # bubble:ignores_privacy decision:module
+        def g(q), do: Ash.read!(q, authorize?: false)
+      end
+      """
+
+      names = %{"actions" => %{"wClose" => %{"resource" => "FolderF", "action" => "close"}}}
+
+      inventory =
+        Bypasses.inventory(
+          %{
+            "lib/acme/forged.ex" => forged_alias,
+            "lib/acme/elsewhere.ex" => elsewhere,
+            "lib/acme/quoted.ex" => quoted,
+            "lib/acme/scope.ex" => aliased_scope,
+            body => elsewhere
+          },
+          workflows: ["wClose"],
+          bodies: Bypasses.bodies(names, "Acme", "acme"),
+          decisions: %{"module" => "Acme.Decided"}
+        )
+
+      assert Enum.map(inventory.sites, &{&1.path, &1.line, &1.kind, &1.class, &1.detail}) == [
+               {"lib/acme/elsewhere.ex", 1, :body_module, :unlisted,
+                "defines a workflow body module outside its scaffolded file"},
+               {"lib/acme/elsewhere.ex", 3, :runtime_start, :unlisted,
+                "not in the workflow's own body"},
+               {"lib/acme/forged.ex", 4, :runtime_start, :unlisted,
+                "not in the workflow's own body"},
+               {"lib/acme/quoted.ex", 5, :authorize_false, :unlisted,
+                "inside a quote: it runs where it is injected"},
+               {"lib/acme/quoted.ex", 9, :authorize_false, :marked, nil},
+               {"lib/acme/scope.ex", 4, :authorize_false, :unlisted,
+                "outside the decision's scope"},
+               {body, 3, :runtime_start, :listed, nil}
+             ]
     end
 
     test "finds runtime keys set to false, always-authorizing policies and unauthorized resources" do

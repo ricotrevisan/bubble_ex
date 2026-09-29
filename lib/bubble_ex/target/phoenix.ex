@@ -346,8 +346,9 @@ defmodule BubbleEx.Target.Phoenix do
   def render(project, opts \\ [])
 
   def render(%Project{privacy: :omit} = project, opts) when is_list(opts) do
-    with :ok <- Formatter.ensure_live_view(),
+    with {:ok, live_view} <- Formatter.ensure_live_view(),
          {:ok, ctx} <- context(project, opts),
+         ctx = Map.put(ctx, :live_view, live_view),
          {:ok, clients} <- api_clients(opts),
          {:ok, user, email, confirmed_at} <- user(project),
          :ok <- check_claims(project, clients),

@@ -87,10 +87,21 @@ if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a forged workflow body passe
 grep -q "bypass_unlisted detail=.*outside that workflow's body path=lib/phx_check/owned_bypass.ex:6" <<<"$out" ||
   { rm -f "$owned"; echo "$out"; fail "the forged workflow body is not reported"; }
 
+# The body's module forged through an alias, or defined in another file,
+# is no body either (review of #156).
+bodies="$(grep -rl "Runtime.start(input, context, \"$listed\", false)" "$scratch/lib")"
+{ echo "alias PhxCheck.Owned.Forged, as: PhxCheck, warn: false"; cat "$bodies"; } > "$owned"
+if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a body forged through an alias passed"; fi
+grep -q "not in the workflow's own body path=lib/phx_check/owned_bypass.ex:" <<<"$out" ||
+  { rm -f "$owned"; echo "$out"; fail "the body forged through an alias is not reported"; }
+cp "$bodies" "$owned"
+if out="$(verify 2>&1)"; then rm -f "$owned"; fail "a body module defined elsewhere passed"; fi
+grep -q "outside its scaffolded file path=lib/phx_check/owned_bypass.ex:1" <<<"$out" ||
+  { rm -f "$owned"; echo "$out"; fail "the body module defined elsewhere is not reported"; }
+
 rm -f "$owned"
 
 # Marked with the listed workflow inside that workflow's own body, it passes.
-bodies="$(grep -rl "Runtime.start(input, context, \"$listed\", false)" "$scratch/lib")"
 cp "$bodies" "$scratch/bodies.orig"
 sed -i "/Runtime.start(input, context, \"$listed\", false)/a\\    # bubble:ignores_privacy $listed\\n    _ = [authorize?: false]" "$bodies"
 out="$(verify --out "$scratch/_structural" 2>&1 || true)"
