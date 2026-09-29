@@ -6,6 +6,51 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Owner drop decisions** (WTF-422). An owner can deliberately leave a
+  page, data type, field, option set or workflow out of the migration
+  with a `BubbleEx.Decision` of the new kind `:drop`: keyed to the symbol
+  (`drop:<hash of the symbol ID>`), with a required rationale, its
+  subject's kind in `params.symbol` and a `basis.basis_sha256` over the
+  symbol (`Decision.drop/4` builds one from the index;
+  `Decision.Drop.impact/2` lists what it would break, for an impact
+  preview). `Decision.resolve/3` makes a drop `:stale` when its symbol
+  changed or cannot be dropped (the User type, built-in fields, mobile
+  views), `:orphaned` when it is gone, and marks an active drop of a data
+  type or option set that a kept field still references with
+  `:dangling_references`. **Fail-safe default: a dangling reference
+  blocks** (`Resolved.blocking/1`, and an `:ash_drop_dangling_reference`
+  error in the Project) until the field is dropped too or the owner lists
+  it in the drop's `params.dangling` (it then keeps its Bubble IDs as
+  strings, with no relationship, and no generated expression reads it: a
+  privacy rule testing it, empty, not empty or compared, denies, and a
+  workflow condition on it is residue, so stale IDs never grant access).
+  Only the owner's drop applies: an accepted drop by another author
+  resolves `:stale` with `:author_not_owner` (blocking); anyone may
+  withdraw one. A dangling entry that does not reference the dropped
+  symbol makes the drop `:stale` (`:params_invalid`); a dropped page's or
+  workflow's contents are part of its basis; an owner's finding decision
+  or rename about a dropped symbol is `:conflicts_with_drop` (blocking,
+  applies nothing). Generators omit what is dropped:
+  `Target.Ash` drops the type with its fields and every relationship to
+  it (`:ash_dropped_omitted`), and a privacy rule reading a dropped field
+  compiles to deny (`:ash_policy_reads_dropped`: dropping never widens
+  access); the Phoenix target neither routes nor renders a dropped page;
+  the workflow bindings omit dropped workflows and make every step that
+  calls, schedules or navigates to what was dropped `:uses_dropped`
+  residue, so its workflow refuses to run. `BubbleEx.Plan` closes one
+  `:drop` task per drop (`drop:<symbol id>`, subjects everything it
+  removes), gives kept symbols using a removed one `:uses_dropped`
+  residue and a `:decision` edge to it; structural verification counts
+  the removed symbols in the `decision` bucket (`owner_drop`), and a drop
+  never authorizes a `decision:<key>` bypass marker. The loader skips
+  dropped types and fields and reports them as counts only
+  (`:load_type_dropped`, `:load_dropped_field_data`: no sample IDs, no
+  values). Stale or forged drops (a key, parameters or basis that do not
+  match, or a symbol that changed) are refused by `Target.Ash.map/3`
+  (which requires `index:` with a drop) and `Plan.build/5`. The capability probe's contract
+  holds: a drop whose subject is missing gets "subject is not in the
+  Model".
+
 - **V5 calibration applied: Bubble semantics vs. the target policy**
   (WTF-426). The privacy interpreter's defaults are now Bubble's reading
   as calibrated: `actor_empty_denies` is `false` (Bubble treats an empty

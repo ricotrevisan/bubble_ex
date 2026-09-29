@@ -1,0 +1,1621 @@
+{
+  "actor_loads": [],
+  "applied": [
+    {
+      "automatic": false,
+      "basis_sha256": "0c1572bb41ecf184e4b6ee1cb780b11dc9a8cc8948c63f1005e70a4636f785c3",
+      "finding_id": null,
+      "key": "drop:170140a8b34d8d99",
+      "kind": "drop",
+      "params": {
+        "dangling": [],
+        "symbol": "field"
+      },
+      "proposal_sha256": null,
+      "rewrite_reads": [],
+      "subject": {
+        "field": "members_list_user",
+        "type": "workspace"
+      },
+      "target": null,
+      "transform": "drop"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "403056360a9cdeb216537985191dbdc3ed36025d6975eebbd6b0fdd6c6ec8e47",
+      "finding_id": null,
+      "key": "drop:3b02d010789f11d9",
+      "kind": "drop",
+      "params": {
+        "dangling": [],
+        "symbol": "field"
+      },
+      "proposal_sha256": null,
+      "rewrite_reads": [],
+      "subject": {
+        "field": "tasks_list_custom_task",
+        "type": "project"
+      },
+      "target": null,
+      "transform": "drop"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "4e7802de66f66b7188c4fdcc5601213b8f4dfe6bb5cfebeda762c3090883f835",
+      "finding_id": null,
+      "key": "drop:59a52042d0ea1be3",
+      "kind": "drop",
+      "params": {
+        "dangling": [],
+        "symbol": "workflow"
+      },
+      "proposal_sha256": null,
+      "rewrite_reads": [],
+      "subject": {
+        "workflow": "wSyncOnly"
+      },
+      "target": null,
+      "transform": "drop"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "fd47a2c933f7f3132803b5319397191c40086bf367bb14aeb82fba8f89428e23",
+      "finding_id": null,
+      "key": "drop:ddd21b1bede71af8",
+      "kind": "drop",
+      "params": {
+        "dangling": [
+          "field:project/legacy_tasks_list_custom_task",
+          "field:user/pinned_tasks_list_custom_task",
+          "field:user/starred_tasks_list_custom_task"
+        ],
+        "symbol": "data_type"
+      },
+      "proposal_sha256": null,
+      "rewrite_reads": [],
+      "subject": {
+        "type": "task"
+      },
+      "target": null,
+      "transform": "drop"
+    },
+    {
+      "automatic": false,
+      "basis_sha256": "4ff0f5729ecf05edc02c6a8a1904630c5fbeef981a6d5de4ec578faa3e24ed32",
+      "finding_id": null,
+      "key": "drop:f90269f920d57f72",
+      "kind": "drop",
+      "params": {
+        "dangling": [],
+        "symbol": "field"
+      },
+      "proposal_sha256": null,
+      "rewrite_reads": [],
+      "subject": {
+        "field": "note_text",
+        "type": "project"
+      },
+      "target": null,
+      "transform": "drop"
+    }
+  ],
+  "applied_sha256": "6a1626ec6adf659742ff28bb5590c5b5fea51c5ef7176b1b960dd651f5995ddd",
+  "authorization_bypasses": [],
+  "bubble_id": "synthfindings",
+  "decisions_sha256": "160f7fc2201f8fba2b49514fca4952c398673eded7439ce7dcd22f8e4149105a",
+  "deferred": [],
+  "diagnostics": [
+    {
+      "code": "ash_drop_reference_accepted",
+      "details": {
+        "drop": "drop:ddd21b1bede71af8",
+        "fallback": "string",
+        "target": "task",
+        "target_kind": "data_type"
+      },
+      "message": "project.legacy_tasks_list_custom_task references data type \"task\", which an owner dropped accepting this reference; its Bubble IDs are kept as strings, with no relationship",
+      "outcome": "degraded",
+      "path": "/user_types/project/fields/legacy_tasks_list_custom_task",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "legacy_tasks_list_custom_task",
+        "type": "project"
+      }
+    },
+    {
+      "code": "ash_drop_reference_accepted",
+      "details": {
+        "drop": "drop:ddd21b1bede71af8",
+        "fallback": "string",
+        "target": "task",
+        "target_kind": "data_type"
+      },
+      "message": "user.pinned_tasks_list_custom_task references data type \"task\", which an owner dropped accepting this reference; its Bubble IDs are kept as strings, with no relationship",
+      "outcome": "degraded",
+      "path": "/user_types/user/fields/pinned_tasks_list_custom_task",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "pinned_tasks_list_custom_task",
+        "type": "user"
+      }
+    },
+    {
+      "code": "ash_drop_reference_accepted",
+      "details": {
+        "drop": "drop:ddd21b1bede71af8",
+        "fallback": "string",
+        "target": "task",
+        "target_kind": "data_type"
+      },
+      "message": "user.starred_tasks_list_custom_task references data type \"task\", which an owner dropped accepting this reference; its Bubble IDs are kept as strings, with no relationship",
+      "outcome": "degraded",
+      "path": "/user_types/user/fields/starred_tasks_list_custom_task",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "field": "starred_tasks_list_custom_task",
+        "type": "user"
+      }
+    },
+    {
+      "code": "ash_privacy_omitted",
+      "details": {
+        "rules": 4,
+        "types": [
+          "project",
+          "workspace"
+        ],
+        "unavailable": []
+      },
+      "message": "privacy rules were not compiled (privacy: :omit): 4 rules on 2 data types; the generated resources have no authorization",
+      "outcome": "degraded",
+      "path": "",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {}
+    },
+    {
+      "code": "ash_dropped_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "field \"note_text\" is dropped by an owner decision and is not mapped",
+      "outcome": "degraded",
+      "path": "/user_types/project/fields/note_text",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "note_text",
+        "type": "project"
+      }
+    },
+    {
+      "code": "ash_deleted_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "deleted field \"old_flag_boolean\" is omitted",
+      "outcome": "degraded",
+      "path": "/user_types/project/fields/old_flag_boolean",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "old_flag_boolean",
+        "type": "project"
+      }
+    },
+    {
+      "code": "ash_dropped_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "field \"tasks_list_custom_task\" is dropped by an owner decision and is not mapped",
+      "outcome": "degraded",
+      "path": "/user_types/project/fields/tasks_list_custom_task",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "tasks_list_custom_task",
+        "type": "project"
+      }
+    },
+    {
+      "code": "ash_dropped_omitted",
+      "details": {
+        "kind": "data_type"
+      },
+      "message": "data_type \"task\" is dropped by an owner decision and is not mapped",
+      "outcome": "degraded",
+      "path": "/user_types/task",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "type": "task"
+      }
+    },
+    {
+      "code": "ash_dropped_omitted",
+      "details": {
+        "kind": "field"
+      },
+      "message": "field \"members_list_user\" is dropped by an owner decision and is not mapped",
+      "outcome": "degraded",
+      "path": "/user_types/workspace/fields/members_list_user",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "field": "members_list_user",
+        "type": "workspace"
+      }
+    }
+  ],
+  "enums": [],
+  "extensions": [],
+  "joins": [],
+  "names": {
+    "enums": {},
+    "external_types": {},
+    "resources": {
+      "project": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "backup_title_text": "backup_title",
+          "external_ref_text": "external_ref",
+          "external_user_id_text": "external_user_id",
+          "legacy_task_id_text": "legacy_task_id",
+          "legacy_tasks_list_custom_task": "legacy_tasks",
+          "location_geographic_address": "location",
+          "owner_id_text": "owner_id",
+          "score_number": "score",
+          "sort_workspace_name_text": "sort_workspace_name",
+          "summary_text": "summary",
+          "task_count_number": "task_count",
+          "title_text": "title",
+          "viewers_list_user": "viewers",
+          "workspace_created_date": "workspace_created",
+          "workspace_custom_workspace": "workspace_id"
+        },
+        "module": "Project",
+        "relationships": {
+          "Created By": "creator",
+          "workspace_custom_workspace": "workspace"
+        },
+        "table": "project"
+      },
+      "user": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "authentication.email.email_confirmed": "confirmed_at",
+          "email": "email",
+          "favorites_list_custom_project": "favorites",
+          "name_text": "name",
+          "pinned_tasks_list_custom_task": "pinned_tasks",
+          "starred_tasks_list_custom_task": "starred_tasks",
+          "workspaces_list_custom_workspace": "workspaces"
+        },
+        "module": "User",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "user"
+      },
+      "workspace": {
+        "attributes": {
+          "Created By": "creator_id",
+          "Created Date": "created_date",
+          "Modified Date": "modified_date",
+          "Slug": "slug",
+          "_id": "id",
+          "name_text": "name",
+          "projects_list_custom_project": "projects"
+        },
+        "module": "Workspace",
+        "relationships": {
+          "Created By": "creator"
+        },
+        "table": "workspace"
+      }
+    },
+    "version": 1
+  },
+  "policies_verified": false,
+  "privacy": "omit",
+  "resources": [
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "project"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "project"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "backup_title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "backup_title_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "external_ref",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "external_ref_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "external_user_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "external_user_id_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "legacy_task_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "legacy_task_id_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.task",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "legacy_tasks",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "task"
+          },
+          "source": {
+            "field": "legacy_tasks_list_custom_task",
+            "type": "project"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "geographic_address",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "location",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "location_geographic_address",
+            "type": "project"
+          },
+          "type": [
+            "module",
+            "Types.GeographicAddress"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "owner_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "owner_id_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "score",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "score_number",
+            "type": "project"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "sort_workspace_name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "sort_workspace_name_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "summary",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "summary_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "task_count",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "task_count_number",
+            "type": "project"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "title",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "title_text",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.user",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "viewers",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "user"
+          },
+          "source": {
+            "field": "viewers_list_user",
+            "type": "project"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "workspace_created",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "workspace_created_date",
+            "type": "project"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "custom.workspace",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "workspace_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "workspace"
+          },
+          "source": {
+            "field": "workspace_custom_workspace",
+            "type": "project"
+          },
+          "type": "string",
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Project",
+      "calculations": [],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [],
+      "join": null,
+      "migration_types": [],
+      "module": "Project",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "membership": null,
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "project"
+          },
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        },
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "Workspace",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "membership": null,
+          "name": "workspace",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "workspace_custom_workspace",
+            "type": "project"
+          },
+          "source_attribute": "workspace_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        }
+      ],
+      "source": {
+        "type": "project"
+      },
+      "synthesized": false,
+      "table": "project"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "email",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "email",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": null,
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "confirmed_at",
+          "primary_key?": false,
+          "public?": false,
+          "references": null,
+          "source": {
+            "auth": "confirmed_at",
+            "type": "user"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.project",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "favorites",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "project"
+          },
+          "source": {
+            "field": "favorites_list_custom_project",
+            "type": "user"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "user"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.task",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "pinned_tasks",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "task"
+          },
+          "source": {
+            "field": "pinned_tasks_list_custom_task",
+            "type": "user"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.task",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "starred_tasks",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "task"
+          },
+          "source": {
+            "field": "starred_tasks_list_custom_task",
+            "type": "user"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.workspace",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "workspaces",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "workspace"
+          },
+          "source": {
+            "field": "workspaces_list_custom_workspace",
+            "type": "user"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "User",
+      "calculations": [],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [],
+      "join": null,
+      "migration_types": [],
+      "module": "User",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "membership": null,
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "user"
+          },
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        }
+      ],
+      "source": {
+        "type": "user"
+      },
+      "synthesized": false,
+      "table": "user"
+    },
+    {
+      "actions": [
+        "read",
+        "destroy",
+        [
+          "create",
+          "*"
+        ],
+        [
+          "update",
+          "*"
+        ]
+      ],
+      "aggregates": [],
+      "attributes": [
+        {
+          "allow_nil?": false,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "id",
+          "primary_key?": true,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "_id",
+            "type": "workspace"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "created_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Created Date",
+            "type": "workspace"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "date",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "modified_date",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Modified Date",
+            "type": "workspace"
+          },
+          "type": "utc_datetime_usec",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "user",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "creator_id",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "one",
+            "target": "user"
+          },
+          "source": {
+            "field": "Created By",
+            "type": "workspace"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "slug",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "Slug",
+            "type": "workspace"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "name",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "field": "name_text",
+            "type": "workspace"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "list.custom.project",
+          "column": null,
+          "constraints": [
+            [
+              "items",
+              [
+                [
+                  "trim?",
+                  false
+                ],
+                [
+                  "allow_empty?",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "default": null,
+          "name": "projects",
+          "primary_key?": false,
+          "public?": true,
+          "references": {
+            "cardinality": "many",
+            "target": "project"
+          },
+          "source": {
+            "field": "projects_list_custom_project",
+            "type": "workspace"
+          },
+          "type": [
+            "array",
+            "string"
+          ],
+          "writable?": true
+        }
+      ],
+      "bubble_name": "Workspace",
+      "calculations": [],
+      "description": null,
+      "extra_actions": [],
+      "field_policies": [],
+      "identities": [],
+      "indexes": [],
+      "join": null,
+      "migration_types": [],
+      "module": "Workspace",
+      "policies": [],
+      "privacy": null,
+      "privacy_relationships": [],
+      "relationships": [
+        {
+          "allow_nil?": true,
+          "attribute_type": "string",
+          "db_reference": "ignore",
+          "define_attribute?": false,
+          "destination": "User",
+          "destination_attribute": "id",
+          "destination_attribute_on_join_resource": null,
+          "gate": null,
+          "join_relationship": null,
+          "kind": "belongs_to",
+          "membership": null,
+          "name": "creator",
+          "public?": true,
+          "sortable?": true,
+          "source": {
+            "field": "Created By",
+            "type": "workspace"
+          },
+          "source_attribute": "creator_id",
+          "source_attribute_on_join_resource": null,
+          "through": null
+        }
+      ],
+      "source": {
+        "type": "workspace"
+      },
+      "synthesized": false,
+      "table": "workspace"
+    }
+  ],
+  "schema_version": 7,
+  "typed_structs": [
+    {
+      "bubble_name": null,
+      "description": "A Bubble geographic address.",
+      "fields": [
+        {
+          "allow_nil?": true,
+          "bubble_type": "text",
+          "column": null,
+          "constraints": [
+            [
+              "trim?",
+              false
+            ],
+            [
+              "allow_empty?",
+              true
+            ]
+          ],
+          "default": null,
+          "name": "formatted_address",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "formatted_address",
+            "structured": "geographic_address"
+          },
+          "type": "string",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "lat",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "lat",
+            "structured": "geographic_address"
+          },
+          "type": "float",
+          "writable?": true
+        },
+        {
+          "allow_nil?": true,
+          "bubble_type": "number",
+          "column": null,
+          "constraints": [],
+          "default": null,
+          "name": "lng",
+          "primary_key?": false,
+          "public?": true,
+          "references": null,
+          "source": {
+            "component": "lng",
+            "structured": "geographic_address"
+          },
+          "type": "float",
+          "writable?": true
+        }
+      ],
+      "kind": "typed_struct",
+      "metadata": {},
+      "module": "Types.GeographicAddress",
+      "source": {
+        "structured": "geographic_address"
+      }
+    }
+  ],
+  "types": []
+}

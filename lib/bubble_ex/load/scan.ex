@@ -37,7 +37,12 @@ defmodule BubbleEx.Load.Scan do
 
     Enum.reduce(plan.tables, acc, fn table, acc ->
       type = Model.data_type(model, table.type)
-      keys = keys(type, Map.get(overrides, table.type, %{}))
+
+      keys =
+        type
+        |> keys(Map.get(overrides, table.type, %{}))
+        |> skip(for(%{field: f, reason: :dropped} <- table.skipped, do: f))
+
       acc = %{acc | keys: Map.put(acc.keys, table.type, keys)}
 
       ctx = %{
@@ -89,6 +94,22 @@ defmodule BubbleEx.Load.Scan do
 
   def keys(nil, _overrides), do: %{}
 
+  # Keys of fields an owner dropped (WTF-422, the table's `skipped`) are
+  # reported, not loaded, like a deleted field's.
+  defp skip(keys, []), do: keys
+
+  defp skip(keys, dropped) do
+    dropped = MapSet.new(dropped)
+
+    Map.new(keys, fn
+      {key, {:field, f}} ->
+        {key, if(MapSet.member?(dropped, f), do: {:dropped, f}, else: {:field, f})}
+
+      other ->
+        other
+    end)
+  end
+
   @doc false
   # Checks the owner's key map: `%{type => %{row key => live field ID}}`.
   def check_keys(%Model{} = model, overrides) when is_map(overrides) do
@@ -126,12 +147,13 @@ defmodule BubbleEx.Load.Scan do
 
   @doc false
   # The row as field ID => stored value, and the keys that name a deleted
-  # field, no field, or several fields.
+  # (or dropped: `{:dropped, field}`) field, no field, or several fields.
   def fields(row, keys) do
     Enum.reduce(row, {%{}, [], [], []}, fn {key, v}, {fields, deleted, unknown, ambiguous} ->
       case Map.get(keys, key) do
         {:field, f} -> {Map.put(fields, f, v), deleted, unknown, ambiguous}
         {:deleted, f} -> {fields, [f | deleted], unknown, ambiguous}
+        {:dropped, f} -> {fields, [{:dropped, f} | deleted], unknown, ambiguous}
         {:ambiguous, _} -> {fields, deleted, unknown, [key | ambiguous]}
         nil when key in @not_fields -> {fields, deleted, unknown, ambiguous}
         nil -> {fields, deleted, [key | unknown], ambiguous}
@@ -150,6 +172,10 @@ defmodule BubbleEx.Load.Scan do
         cond do
           entry["status"] != "complete" ->
             Issues.add(acc, :load_export_partial, entry["type"], nil, nil, :failed)
+
+          # counted as exported, 0 included: a dropped type is reported
+          entry["type"] in plan.dropped ->
+            Issues.put_count(acc, :load_type_dropped, entry["type"], nil, rows(entry))
 
           not MapSet.member?(planned, entry["type"]) ->
             Issues.add_count(
@@ -171,6 +197,9 @@ defmodule BubbleEx.Load.Scan do
         else: Issues.add(acc, :load_type_not_exported, t.type, nil, nil, :missing)
     end)
   end
+
+  defp rows(%{"rows" => n}) when is_integer(n) and n >= 0, do: n
+  defp rows(_entry), do: 0
 
   # Types whose privacy rules do not let every user view attached files.
   defp restricted_types(model) do
@@ -251,10 +280,14 @@ defmodule BubbleEx.Load.Scan do
   end
 
   defp row_issues(acc, t, id, deleted, unknown, ambiguous) do
-    acc = Enum.reduce(deleted, acc, &issue(&2, :load_deleted_field_data, t, &1, id, :deleted))
+    acc = Enum.reduce(deleted, acc, &gone(&2, t, &1, id))
     acc = Enum.reduce(ambiguous, acc, &issue(&2, :load_ambiguous_key, t, nil, id, {:keys, &1}))
     Enum.reduce(unknown, acc, &issue(&2, :load_unmapped_key, t, nil, id, {:keys, &1}))
   end
+
+  # A dropped field's data is counted only: no sample record IDs.
+  defp gone(acc, t, {:dropped, f}, _id), do: issue(acc, :load_dropped_field_data, t, f, nil, nil)
+  defp gone(acc, t, f, id), do: issue(acc, :load_deleted_field_data, t, f, id, :deleted)
 
   defp issue(%__MODULE__{} = acc, code, type, field, id, detail),
     do: %{acc | issues: Issues.add(acc.issues, code, type, field, id, detail)}

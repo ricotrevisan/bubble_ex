@@ -3,24 +3,25 @@ defmodule BubbleEx.Decision.Applied do
   One change a generator may apply, from `BubbleEx.Decision.applicable/2`.
 
     * `key` - the decision key (`"finding:<finding id>"`, `"rename:…"`)
-    * `kind` - `:finding` or `:rename`
+    * `kind` - `:finding`, `:rename` or `:drop`
     * `decision_id` - the applied record's `id`; `nil` for a hint applied
       by default
     * `automatic` - true for a hint finding nobody decided, applied by
       default
     * `finding_id` - the finding's ID (finding kinds only)
-    * `transform` - the finding transform to apply (after `modify`), or
-      `:rename`
+    * `transform` - the finding transform to apply (after `modify`),
+      `:rename` or `:drop`
     * `subject` - Bubble IDs, as on the decision
     * `target` - the target stack of a rename (`"ash"`), else `nil`
     * `proposal` - the finding's proposal with the `modify` parameters
       merged in (`BubbleEx.Decision.Params.apply/2`); `%{}` for a rename
     * `params` - the decision's parameters as recorded
     * `proposal_sha256`, `basis_sha256` - the finding's current hashes
-      (finding kinds only)
+      (finding kinds only); a drop's `basis_sha256` is the hash of its
+      symbols it was resolved active against (`BubbleEx.Decision.Drop`)
     * `basis` - the hashes the decision was recorded against
       (`%{proposal_sha256, basis_sha256}`); `nil` for a hint applied by
-      default and for a rename. `applicable/2` only lists active decisions,
+      default and for a rename; `%{basis_sha256}` for a drop. `applicable/2` only lists active decisions,
       so they equal the finding's; a generator rejects an entry where they
       differ (a stale decision)
 
@@ -34,7 +35,7 @@ defmodule BubbleEx.Decision.Applied do
 
   @type t :: %__MODULE__{
           key: String.t(),
-          kind: :finding | :rename,
+          kind: :finding | :rename | :drop,
           decision_id: String.t() | nil,
           automatic: boolean(),
           finding_id: String.t() | nil,
@@ -45,7 +46,7 @@ defmodule BubbleEx.Decision.Applied do
           params: map(),
           proposal_sha256: String.t() | nil,
           basis_sha256: String.t() | nil,
-          basis: %{proposal_sha256: String.t(), basis_sha256: String.t()} | nil
+          basis: %{optional(atom()) => String.t()} | nil
         }
 
   @enforce_keys [:key, :kind, :transform, :subject]

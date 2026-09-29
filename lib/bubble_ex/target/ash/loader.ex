@@ -44,6 +44,12 @@ defmodule BubbleEx.Target.Ash.Loader do
   | `Types.JsonValue` | JSON, verbatim | `jsonb` |
   | `{:array, t}` | an array of t | `t[]` |
 
+  Owner drops (WTF-422): a dropped data type has no table and is the
+  plan's `dropped`; a dropped field of a kept type is its table's
+  `skipped` (`:dropped`). Their exported data is not loaded and is
+  reported as counts only (`:load_type_dropped`, `:load_dropped_field_data`:
+  no sample record IDs, never a value).
+
   Owner decisions, as `project.applied` and the resources record them:
   `text_to_reference` attributes are converted (`text_ref`); a list whose
   length a `derive_count` calculation counts drops dangling IDs; derived
@@ -171,9 +177,19 @@ defmodule BubbleEx.Target.Ash.Loader do
     by_module = Map.new(project.resources, &{&1.module, &1})
     ctx = %{project: project, model: model, by_module: by_module}
 
+    dropped = Project.dropped(project)
+    ctx = Map.put(ctx, :dropped, dropped)
     tables = Enum.map(project.resources, &table(&1, ctx))
     joins = Enum.map(project.joins, &join/1)
-    {:ok, %Plan{target: "ash_postgres", tables: tables, auth: auth(project), joins: joins}}
+
+    {:ok,
+     %Plan{
+       target: "ash_postgres",
+       tables: tables,
+       auth: auth(project),
+       joins: joins,
+       dropped: dropped.types |> MapSet.to_list() |> Enum.sort()
+     }}
   rescue
     e in [KeyError, MatchError, FunctionClauseError] ->
       {:error,
@@ -237,6 +253,11 @@ defmodule BubbleEx.Target.Ash.Loader do
       table: r.table,
       key: column_name(pk),
       columns: columns,
+      skipped:
+        for(
+          {^type, f} <- ctx.dropped.fields |> MapSet.to_list() |> Enum.sort(),
+          do: %{field: f, reason: :dropped}
+        ),
       derived: derived(r, ctx),
       joined:
         for(%Relationship{kind: :many_to_many} = rel <- r.relationships, do: rel.source.field)

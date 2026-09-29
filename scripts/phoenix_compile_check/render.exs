@@ -16,7 +16,7 @@
 # fixture, every frozen fidelity case's payload (`fidelity_<case>`, with its
 # pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), three
 # frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`,
-# `hostile_workflows`), plus `private_app` and `private_cut3` (every cut-2
+# `hostile_workflows`, `hostile_drop`: owner drops, WTF-422), plus `private_app` and `private_cut3` (every cut-2
 # and cut-3 finding accepted) when BUBBLE_EX_PRIVATE_EXPORT is set (never
 # committed). An
 # app with a frontend renders its pages (WTF-370), with the bindings the
@@ -177,6 +177,37 @@ fixtures =
       app
       |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
       |> app_fixture.()
+    end,
+    # Owner drops (WTF-422) over the cut-1 export: a dropped type, fields
+    # and a backend workflow its caller can no longer run (residue).
+    "decided_drop" => fn ->
+      app = BubbleEx.Test.DecidedFixture.app(:drop)
+      {:ok, model} = BubbleEx.Model.build(app)
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:drop, privacy: :omit)
+      backend = workflows.(app, model, project, true)
+      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
+    end,
+    # The frontend workflows fixture with every ID hostile and a page, a
+    # page workflow (a custom event another one triggers) and a backend
+    # workflow (a page schedules it) dropped: omitted, their callers residue.
+    "hostile_drop" => fn ->
+      app =
+        "test/support/target/phoenix/frontend_workflows.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      hostile = &BubbleEx.Test.HostileIds.hostile/1
+      app = BubbleEx.Test.HostileIds.rename(app, BubbleEx.Test.HostileIds.ids(app))
+
+      %{model: model, project: project} =
+        BubbleEx.Test.DecidedFixture.dropped(app, [
+          BubbleEx.Index.Symbol.id(:page, hostile.("bOther")),
+          BubbleEx.Index.Symbol.id(:workflow, hostile.("wEvt")),
+          BubbleEx.Index.Symbol.id(:workflow, hostile.("wApiNote"))
+        ], privacy: :omit)
+
+      backend = workflows.(app, model, project, true)
+      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
     end,
     "decided_combined" => fn ->
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :omit)

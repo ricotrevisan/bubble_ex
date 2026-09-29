@@ -339,6 +339,32 @@ defmodule BubbleEx.Target.Ash do
   `replace_plugin` decisions (`:plugin` findings) do not concern the
   schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
 
+  **Drops (WTF-422).** An applied `:drop` (`BubbleEx.Decision.Drop`)
+  removes a data type (its fields and every relationship to it), a field
+  or an option set from the Project (`:ash_dropped_omitted`, info) and is
+  recorded in `project.applied`; page and workflow drops are recorded
+  only (the frontend and workflow bindings read them,
+  `Project.dropped/1`). A kept field referencing a dropped type or set
+  keeps its Bubble IDs as strings: `:ash_drop_reference_accepted`
+  (warning) when the drop lists it in `dangling`, else
+  `:ash_drop_dangling_reference` (error; the drop blocks publication).
+  Either way no generated expression reads such a field
+  (`Project.dangling/1`): its IDs may name records that are no longer
+  mapped, so a rule testing it (empty, not empty, compared) denies and a
+  workflow condition on it is residue. `:index` is required with a drop.
+  A privacy rule whose condition reads a dropped field no longer
+  compiles, so it grants nothing (`:ash_policy_rule_denied`, with
+  `:ash_policy_reads_dropped` saying why): dropping never widens access.
+  A dropped workflow is no authorization bypass. The contract: an applied
+  drop must be consistent with itself (`Drop.check_applied/2`: key,
+  parameters, `basis` equal to its `basis_sha256`) and with the index
+  (else "stale or forged"); its data-model subject must be
+  in the Model ("the decision's subject is not in the Model", as for a
+  finding) and droppable (not the User type or a built-in field); an
+  owner's decision about a dropped symbol is an error (withdraw one), a
+  hint applied by default about one applies nothing, and an index over a
+  dropped field of a kept type is deferred.
+
   **Renames.** `slot` names what is renamed; the name must be valid for it
   and not reserved (`BubbleEx.Target.Ash.Naming.reserved/1`, Elixir and
   library namespaces, the generated `Privacy` module), must not be taken in
@@ -394,6 +420,7 @@ defmodule BubbleEx.Target.Ash do
   """
 
   alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
+  alias BubbleEx.Index.Symbol
   alias BubbleEx.Model.{DataType, ExternalType, Field, OptionSet, OptionValue, Structured, Type}
 
   alias BubbleEx.Target.Ash.{
@@ -470,6 +497,8 @@ defmodule BubbleEx.Target.Ash do
       `privacy: :unverified`, its workflows that run ignoring privacy rules
       become `authorization_bypasses` (with `:omit` nothing is authorized,
       so there is nothing to bypass)
+    * `:index` is required when `decisions` hold a drop (WTF-422): each
+      drop is checked against it
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records `decisions` were resolved from, recorded as
       `project.decisions_sha256`. Required when `decisions` is not empty
@@ -481,8 +510,9 @@ defmodule BubbleEx.Target.Ash do
     with {:ok, privacy} <- validate_privacy(Keyword.get(opts, :privacy, :omit)),
          {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})),
          {:ok, index} <- validate_index(Keyword.get(opts, :index)),
+         :ok <- index_for_drops(index, decisions),
          {:ok, sha} <- validate_decisions_sha256(Keyword.get(opts, :decisions_sha256), decisions),
-         {:ok, plan} <- Decisions.plan(model, decisions, names) do
+         {:ok, plan} <- Decisions.plan(model, decisions, names, index) do
       project = build(model, plan, index, privacy, sha)
 
       undisplaced(
@@ -516,6 +546,21 @@ defmodule BubbleEx.Target.Ash do
 
   defp validate_index(_),
     do: {:error, Error.new(:invalid_input, "the :index option must be a BubbleEx.Index")}
+
+  # A drop is checked against the snapshot it was resolved on: never
+  # applied without its index.
+  defp index_for_drops(nil, decisions) do
+    if Enum.any?(decisions, &match?(%{kind: :drop}, &1)),
+      do:
+        {:error,
+         Error.new(
+           :invalid_input,
+           "drops need the :index option (the BubbleEx.Index they were resolved against)"
+         )},
+      else: :ok
+  end
+
+  defp index_for_drops(_index, _decisions), do: :ok
 
   defp validate_decisions_sha256(nil, []), do: {:ok, nil}
 
@@ -559,6 +604,10 @@ defmodule BubbleEx.Target.Ash do
 
     {types, type_diags} = live(model.data_types, &type_subject/1, "data_type")
     {sets, set_diags} = live(model.option_sets, &%{option_set: &1.id}, "option_set")
+    {types, dropped_type_diags} = undropped(types, plan.drops.types, &type_subject/1, "data_type")
+
+    {sets, dropped_set_diags} =
+      undropped(sets, plan.drops.sets, &%{option_set: &1.id}, "option_set")
 
     ctx = %{
       model: model,
@@ -566,7 +615,8 @@ defmodule BubbleEx.Target.Ash do
       sets: Map.new(sets, &{&1.id, &1}),
       externals: Map.new(model.external_types, &{&1.id, &1}),
       names: names,
-      text_ref: plan.text_ref
+      text_ref: plan.text_ref,
+      drops: plan.drops
     }
 
     ctx = assign_modules(ctx, types, sets)
@@ -600,7 +650,13 @@ defmodule BubbleEx.Target.Ash do
       decisions_sha256: decisions_sha256
     }
 
+    # The mapping's own diagnostics first: the policies read which fields
+    # dangle from them (`Project.dangling/1`); replaced by the full list below.
+    project = %{project | diagnostics: resource_diags ++ enum_diags}
     {project, privacy_diags} = privacy(privacy, project, model, types, index)
+    {project, privacy_diags} = without_dropped_bypasses(project, privacy_diags, plan.drops)
+    drops = Map.put(plan.drops, :dangling, Project.dangling(project))
+    privacy_diags = privacy_diags ++ dropped_reads(privacy_diags, model, drops)
 
     %{
       project
@@ -609,6 +665,8 @@ defmodule BubbleEx.Target.Ash do
             model.diagnostics ++
               type_diags ++
               set_diags ++
+              dropped_type_diags ++
+              dropped_set_diags ++
               enum_diags ++
               resource_diags ++ external_diags ++ privacy_diags ++ plan.diagnostics
           )
@@ -711,6 +769,105 @@ defmodule BubbleEx.Target.Ash do
   end
 
   defp omission(_item, _subject, _details), do: nil
+
+  # --- drops (WTF-422) --------------------------------------------------------------
+
+  # Data types and option sets an owner dropped are not mapped: diagnosed
+  # (info), like a deleted one.
+  defp undropped(items, dropped, subject, kind) do
+    {gone, kept} = Enum.split_with(items, &MapSet.member?(dropped, &1.id))
+    {kept, Enum.map(gone, &dropped_diag(&1, subject.(&1), kind))}
+  end
+
+  defp dropped_diag(item, subject, kind) do
+    Diagnostic.new(
+      :ash_dropped_omitted,
+      item.path,
+      "#{kind} #{inspect(item.id)} is dropped by an owner decision and is not mapped",
+      target: :ash,
+      subject: subject,
+      details: %{kind: kind}
+    )
+  end
+
+  # A backend workflow an owner dropped is not generated: it bypasses
+  # nothing.
+  defp without_dropped_bypasses(project, diags, %{workflows: []}), do: {project, diags}
+
+  defp without_dropped_bypasses(project, diags, drops) do
+    dropped = MapSet.new(drops.workflows)
+
+    {%{
+       project
+       | authorization_bypasses:
+           Enum.reject(project.authorization_bypasses, &MapSet.member?(dropped, &1.workflow))
+     },
+     Enum.reject(diags, fn d ->
+       d.code == :ash_policy_bypass_required and MapSet.member?(dropped, d.subject[:workflow])
+     end)}
+  end
+
+  # A privacy rule of a kept type whose condition reads a dropped field or
+  # type, or a field referencing one (accepted or not), does not compile (the field is not in the Project), so the rule
+  # grants nothing (fail-safe, `:ash_policy_rule_denied`). Say why: for each
+  # denied rule whose condition names what was dropped.
+  defp dropped_reads(diags, model, drops) do
+    denied =
+      for %{code: :ash_policy_rule_denied, subject: %{type: t, rule: r}} <- diags,
+          into: MapSet.new(),
+          do: {t, r}
+
+    if MapSet.size(denied) == 0 do
+      []
+    else
+      for type <- model.data_types,
+          rule <- type.rules,
+          MapSet.member?(denied, {type.id, rule.id}),
+          reads = rule_dropped_reads(rule, drops),
+          reads != [] do
+        Diagnostic.new(
+          :ash_policy_reads_dropped,
+          rule.path || type.path,
+          "privacy rule #{inspect(rule.id)} of #{inspect(type.id)} reads what an owner dropped " <>
+            "(#{length(reads)} symbols); it compiles to deny: it grants nothing",
+          target: :ash,
+          subject: %{type: type.id, rule: rule.id},
+          details: %{reads: reads}
+        )
+      end
+    end
+  end
+
+  # The dropped symbols a rule's condition names, as symbol IDs, sorted.
+  defp rule_dropped_reads(rule, drops) do
+    rule
+    |> Map.get(:condition)
+    |> strings([])
+    |> Enum.flat_map(&dropped_names(&1, drops))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp strings(%_{} = struct, acc), do: struct |> Map.from_struct() |> strings(acc)
+  defp strings(map, acc) when is_map(map), do: map |> Map.values() |> Enum.reduce(acc, &strings/2)
+  defp strings(list, acc) when is_list(list), do: Enum.reduce(list, acc, &strings/2)
+  defp strings({a, b}, acc), do: strings(b, strings(a, acc))
+  defp strings(s, acc) when is_binary(s), do: [s | acc]
+  defp strings(_, acc), do: acc
+
+  # A field key of a dropped field (on any type: a rule reads through
+  # references), a dropped type or a dropped option set.
+  # A field referencing a dropped type or set (`Project.dangling/1`) reads
+  # as dropped too: its IDs are no longer mapped.
+  defp dropped_names(name, drops) do
+    fields =
+      for {t, ^name} <- MapSet.union(drops.fields, drops.dangling),
+          do: Symbol.id(:field, [t, name])
+
+    types = if MapSet.member?(drops.types, name), do: ["data_type:" <> name], else: []
+    sets = if MapSet.member?(drops.sets, name), do: ["option_set:" <> name], else: []
+    fields ++ types ++ sets
+  end
 
   # --- module names ------------------------------------------------------------
 
@@ -846,7 +1003,15 @@ defmodule BubbleEx.Target.Ash do
   end
 
   defp resource(%DataType{} = type, ctx) do
-    fields = type.system_fields ++ confirmation(type) ++ type.fields
+    {dropped, fields} =
+      Enum.split_with(
+        type.system_fields ++ confirmation(type) ++ type.fields,
+        &(is_struct(&1, Field) and MapSet.member?(ctx.drops.fields, {type.id, &1.id}))
+      )
+
+    dropped_diags =
+      Enum.map(dropped, &dropped_diag(&1, %{type: type.id, field: &1.id}, "field"))
+
     entry = get_in(ctx.names, ["resources", type.id])
     scope = scope(entry)
     check_unique!(scope.locked, scope_ids(fields), "attributes of #{type.id}")
@@ -874,7 +1039,7 @@ defmodule BubbleEx.Target.Ash do
     }
 
     names = put_in(ctx.names, ["resources", type.id], entry)
-    {resource, Enum.reverse(diags), %{ctx | names: names}}
+    {resource, dropped_diags ++ Enum.reverse(diags), %{ctx | names: names}}
   end
 
   # AshPostgres migrates `{:array, :utc_datetime_usec}` as `{:array,
@@ -1223,6 +1388,59 @@ defmodule BubbleEx.Target.Ash do
   end
 
   defp unresolved(type, ctx, subject, path) do
+    if dropped_target?(type, ctx),
+      do: dangling(type, ctx, subject, path),
+      else: unresolved_diag(type, ctx, subject, path)
+  end
+
+  defp dropped_target?(%Type{kind: :ref, target: t}, ctx), do: MapSet.member?(ctx.drops.types, t)
+
+  defp dropped_target?(%Type{kind: :option, target: s}, ctx),
+    do: MapSet.member?(ctx.drops.sets, s)
+
+  defp dropped_target?(_type, _ctx), do: false
+
+  # A kept field referencing a dropped data type or option set keeps its
+  # Bubble IDs as strings. Unless the drop accepts it (`dangling`), it is
+  # an error: the drop blocks publication (`BubbleEx.Decision.Resolved`).
+  defp dangling(type, ctx, subject, path) do
+    {symbol_kind, kind} =
+      if type.kind == :ref, do: {:data_type, "data_type"}, else: {:option_set, "option_set"}
+
+    target = Symbol.id(symbol_kind, type.target)
+    symbol = referencing_symbol(subject)
+    details = %{target: type.target, target_kind: kind, drop: ctx.drops.keys[target]}
+
+    if MapSet.member?(ctx.drops.accepted, {target, symbol}) do
+      Diagnostic.new(
+        :ash_drop_reference_accepted,
+        path,
+        "#{describe(subject)} references #{kind |> String.replace("_", " ")} " <>
+          "#{inspect(type.target)}, which an owner dropped accepting this reference; its " <>
+          "Bubble IDs are kept as strings, with no relationship",
+        target: :ash,
+        subject: subject,
+        details: Map.put(details, :fallback, :string)
+      )
+    else
+      Diagnostic.new(
+        :ash_drop_dangling_reference,
+        path,
+        "#{describe(subject)} references #{kind |> String.replace("_", " ")} " <>
+          "#{inspect(type.target)}, which an owner dropped; drop this field too or accept " <>
+          "the dangling reference in the drop (its Bubble IDs are kept as strings meanwhile)",
+        target: :ash,
+        subject: subject,
+        details: Map.put(details, :fallback, :string)
+      )
+    end
+  end
+
+  defp referencing_symbol(%{type: t, field: f}), do: Symbol.id(:field, [t, f])
+  defp referencing_symbol(%{option_set: s, field: f}), do: Symbol.id(:option_attribute, [s, f])
+  defp referencing_symbol(_), do: nil
+
+  defp unresolved_diag(type, ctx, subject, path) do
     {kind, known} =
       if type.kind == :ref,
         do: {"data_type", ctx.model.data_types},

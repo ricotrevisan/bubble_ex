@@ -43,6 +43,19 @@ defmodule BubbleEx.Load.Issues do
   end
 
   @doc false
+  # Adds `n` (0 included) occurrences of a type-level issue: reported even
+  # when there are none.
+  @spec put_count(t(), atom(), String.t(), String.t() | nil, non_neg_integer()) :: t()
+  def put_count(acc, code, type, field, n) when is_integer(n) and n >= 0 do
+    Map.update(
+      acc,
+      {code, type, field},
+      %{count: n, samples: [], reasons: %{}},
+      &%{&1 | count: &1.count + n}
+    )
+  end
+
+  @doc false
   # Merges `extra` into the details of an issue already added (e.g. the
   # full list of stale join rows, for pruning by hand). Details only: a
   # diagnostic's message never names a record.
@@ -123,6 +136,26 @@ defmodule BubbleEx.Load.Issues do
   defp build(:load_export_partial, s, d),
     do:
       Diagnostic.new(:load_export_partial, "", "#{where(s)} did not export completely",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_type_dropped, s, d),
+    do:
+      Diagnostic.new(
+        :load_type_dropped,
+        "",
+        "#{d.count} exported rows of #{where(s)} are not loaded: an owner dropped the data type",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_dropped_field_data, s, d),
+    do:
+      Diagnostic.new(
+        :load_dropped_field_data,
+        "",
+        "#{d.count} rows hold values of #{where(s)}, which an owner dropped; not loaded",
         subject: s,
         details: d
       )

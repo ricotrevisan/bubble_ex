@@ -229,6 +229,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   defp lookup(%Project{} = project) do
     modules = Map.new(project.resources, &{&1.module, &1.source.type})
+    # A field referencing what an owner dropped holds IDs no longer mapped:
+    # unreadable, so a rule reading it denies (WTF-422).
+    dangling = Project.dangling(project)
 
     types =
       Map.new(project.resources, fn resource ->
@@ -237,7 +240,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
         pk = Enum.find(resource.attributes, & &1.primary_key?)
 
         fields =
-          for a <- resource.attributes, a.source[:field], into: %{} do
+          for a <- resource.attributes,
+              a.source[:field],
+              not MapSet.member?(dangling, {resource.source.type, a.source.field}),
+              into: %{} do
             {a.source.field,
              %{
                attribute: a.name,
