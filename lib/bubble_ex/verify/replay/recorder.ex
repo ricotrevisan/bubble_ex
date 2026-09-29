@@ -472,8 +472,13 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     }
   end
 
+  # Status, Bubble's short code, type and auth kind: never a body or a token.
   defp error_summary(%Error{kind: kind, message: message, context: context}),
-    do: %{kind: kind, message: message, reason: Map.get(context, :reason)}
+    do:
+      Map.merge(
+        %{kind: kind, message: message, reason: Map.get(context, :reason)},
+        Map.take(context, [:status, :bubble, :type, :as])
+      )
 
   defp one_run(client, seed, scenarios, run_id, now, opts) do
     started = now.() |> DateTime.truncate(:second)

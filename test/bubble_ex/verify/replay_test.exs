@@ -1514,6 +1514,38 @@ defmodule BubbleEx.Verify.ReplayTest do
       assert {:error, _} = Ledger.new(target(), "j1", dir: d)
     end
 
+    test "a persona's refused create is reported as :user_create_refused, with no token" do
+      start_fake(script: [{"POST", "/obj/task", 401, []}])
+      seed = seed()
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], ledger_dir: dir())
+
+      assert [
+               %{
+                 error: %{
+                   kind: :unauthorized,
+                   reason: :user_create_refused,
+                   status: 401,
+                   type: "custom.task",
+                   as: :user
+                 }
+               }
+             ] = result.report.runs
+
+      refute inspect(result.report) =~ @admin
+    end
+
+    test "an admin create refused keeps its status and type, without the persona reason" do
+      start_fake(script: [{"POST", "/obj/workspace", 401, []}])
+
+      assert {:error, %Error{kind: :unauthorized, context: context}} =
+               Client.create(client(), "custom.workspace", %{"Name" => "x"}, :admin)
+
+      assert %{status: 401, type: "custom.workspace", as: :admin} = context
+      refute Map.has_key?(context, :reason)
+    end
+
     test "a create whose answer is lost stays unconfirmed and is reported, never searched" do
       fake = start_fake(script: [{"POST", "/obj/task", 502, []}])
       d = dir()

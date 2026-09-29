@@ -163,8 +163,13 @@ Settings → API → enable **Workflow API**. Then, in Backend workflows:
         unique id.
 - [ ] `wtf_replay_login`: same exposure, same parameters.
       - Step 1: **Log the user in** with `email` and `password`.
-      - Step 2: **Return data from API**: `token`, `user_id` and `expires`
-        from the login step.
+      - No other step. With no "Return data from API" step, Bubble answers
+        a workflow that logs a user in with `token`, `user_id` and
+        `expires` itself (observed on a branch, WTF-385). Buildprint's
+        BubbleScript exposes no result for the login step, so a return
+        step can't read it anyway.
+- [ ] If you edit the branch with Buildprint, set both workflows'
+      authentication to `adminOnly`, and the marker's to `none`.
 - [ ] The preflight reads `/version-<branch ID>/api/1.1/meta` (as admin,
       after the marker check) and, for a seed with users, needs the
       sign-up and login names among the exposed workflows.
@@ -207,6 +212,32 @@ No email reaches a real person.
   on WTF-358).
 - A branch's Data API setting and type list are its own: exposing or
   hiding types on the replay branch leaves `test` unchanged.
+- **Creating a record as a persona needs "Create via API".** The seeder
+  creates a record whose `Created By` is a seeded user with that user's
+  token, so Bubble sets the creator. Bubble answered such a create with
+  401 on a type none of whose privacy rules grants "Create via API"
+  (that app grants it nowhere). The same run's admin-token creates worked.
+  The run then stops at seeding (`reason: :user_create_refused`, with the
+  type). Before recording, check that the types of the seed's
+  persona-created records grant it. Changing privacy rules on the branch
+  would make the recording worthless, so if they don't grant it, leave
+  those records out.
+- The sign-up workflow's "Return data from API" of step 1's unique ID
+  returns the new user's ID, and the login workflow above returns a
+  working token (observed while seeding six personas).
+
+## Editing the branch with Buildprint
+
+- Ticking a type for the Data API changes that type's file, and
+  `buildprint check` then re-validates the whole file, **including its
+  unchanged privacy rules**. Buildprint refuses (BSP8020) a rule that
+  grants search when its condition reads "This Thing's X's Y", and there
+  is no way to suppress that. Such a type can't be exposed through
+  Buildprint without editing the rule, which this checklist forbids.
+  Leave such types out of the run: tick them in the editor only if you
+  can also untick them there afterwards.
+- Behind a custom domain, a firewall may answer some Data API paths
+  itself: `/obj/fileupload` got an HTML 403, not Bubble's JSON.
 
 ## 5. Dry run, then record
 
