@@ -6,6 +6,30 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Opt-in pruning for the data loader** (WTF-414). `BubbleEx.Load.run/4`
+  and `dry_run/4` take `prune: true`: after the upserts, the loader
+  deletes what a new complete export no longer holds among the rows it
+  wrote itself, and nothing else. `BubbleEx.Load.Written` records the
+  Bubble IDs (and join rows) the loader wrote into a target across its
+  runs, in the ledger directory (`written/`), after each successful
+  batch. Pruning deletes those records (`load_prune_record`) and clears
+  the membership column of join members a list no longer holds
+  (`load_prune_join_member`); a row is deleted only when no other list's
+  column is still set. Stale members no longer block a pruning run. Rows
+  the loader did not write (created in the app after go-live) are kept
+  and reported as `load_prune_unowned` (a warning). A user deleted in
+  Bubble whose email a new signup reused now loads: the old record's
+  email is cleared before the upserts and the record is pruned. Pruning
+  is refused with `allow_partial`, on a partial export, without
+  `:ledger_dir`, and when the export lacks a type the loader wrote. The
+  dry run reports the counts per type and list (`report.prune`). Each
+  batch is one statement (the adapter's new `keys/2`, `delete/3` and
+  `prune_join/4`), and an interrupted prune resumes when you rerun it.
+  The ledger's snapshot and journal mechanics moved to
+  `BubbleEx.Load.Journal`, shared with the written record. The cutover
+  path (`BubbleEx.Load`, step 5 of a live run) is now `prune: true`.
+  `scripts/ash_compile_check/load.exs` checks this in PostgreSQL.
+
 - **Owner exposure waiver for replay** (WTF-385).
   `BubbleEx.Verify.Replay.ExposureWaiver` lets the replay preflight accept
   `:exposed` and `:may_leak` anonymous-exposure findings for named types,

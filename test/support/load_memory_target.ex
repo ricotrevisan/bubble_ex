@@ -17,7 +17,14 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
   def start(project, opts \\ []) do
     {:ok, agent} =
       Agent.start_link(fn ->
-        %{tables: %{}, calls: 0, fail_on: Keyword.get(opts, :fail_on), auth: auth(project)}
+        %{
+          tables: %{},
+          calls: 0,
+          fail_on: Keyword.get(opts, :fail_on),
+          prunes: 0,
+          fail_prune: nil,
+          auth: auth(project)
+        }
       end)
 
     {__MODULE__, %__MODULE__{project: project, agent: agent}}
@@ -25,6 +32,10 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
 
   def fail_on({__MODULE__, %__MODULE__{agent: a}}, n),
     do: Agent.update(a, &%{&1 | fail_on: n, calls: 0})
+
+  # Makes the Nth delete/prune_join call fail (a crash mid-prune).
+  def fail_prune({__MODULE__, %__MODULE__{agent: a}}, n),
+    do: Agent.update(a, &%{&1 | fail_prune: n, prunes: 0})
 
   def tables({__MODULE__, %__MODULE__{agent: a}}), do: Agent.get(a, & &1.tables)
 
@@ -134,6 +145,64 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
       end
     end)
   end
+
+  # Pruning (WTF-414). `fail_prune/2` makes the Nth `delete/3` or
+  # `prune_join/4` call fail (a crash mid-prune); a failing batch changes
+  # nothing, as one statement would not.
+  @impl true
+  def keys(%__MODULE__{agent: a}, table),
+    do: {:ok, a |> Agent.get(&Map.get(&1.tables, table.table, %{})) |> Map.keys() |> Enum.sort()}
+
+  @impl true
+  def delete(%__MODULE__{agent: a}, table, ids) do
+    failing(a, fn state ->
+      current = Map.get(state.tables, table.table, %{})
+      gone = Enum.count(ids, &Map.has_key?(current, &1))
+      {{:ok, gone}, put_table(state, table.table, Map.drop(current, ids))}
+    end)
+  end
+
+  @impl true
+  def prune_join(%__MODULE__{agent: a}, join, side, pairs) do
+    others = for s <- join.sides, s.column != side.column, do: s
+
+    failing(a, fn state ->
+      zero = {%{deleted: 0, cleared: 0}, Map.get(state.tables, join.table, %{})}
+      {counts, current} = Enum.reduce(pairs, zero, &remove_member(&1, &2, side, others))
+      {{:ok, counts}, put_table(state, join.table, current)}
+    end)
+  end
+
+  # One list's row: its column cleared, or the row deleted when no other
+  # list holds it.
+  defp remove_member(pair, {counts, t}, side, others) do
+    row = Map.get(t, pair)
+
+    cond do
+      row == nil or not member?(row[side.column], side.kind) ->
+        {counts, t}
+
+      Enum.any?(others, &member?(row[&1.column], &1.kind)) ->
+        {%{counts | cleared: counts.cleared + 1},
+         Map.put(t, pair, Map.put(row, side.column, nil))}
+
+      true ->
+        {%{counts | deleted: counts.deleted + 1}, Map.delete(t, pair)}
+    end
+  end
+
+  defp failing(agent, fun) do
+    Agent.get_and_update(agent, fn state ->
+      state = %{state | prunes: state.prunes + 1}
+
+      if state.fail_prune == state.prunes,
+        do:
+          {{:error, Error.new(:request_failed, "injected failure", %{reason: :injected})}, state},
+        else: fun.(state)
+    end)
+  end
+
+  defp put_table(state, name, rows), do: %{state | tables: Map.put(state.tables, name, rows)}
 
   # One list's row: inserted, or only the list's column updated.
   defp put_member(row, {c, t}, k, column) do

@@ -15,6 +15,10 @@ defmodule BubbleEx.Load do
       {:ok, report} = BubbleEx.Load.dry_run(export, model, target)
       {:ok, report} = BubbleEx.Load.run(export, model, target, storage: storage, ledger_dir: "loads")
 
+      # At cutover, a new complete export of the same app: dry-run, then prune.
+      {:ok, report} = BubbleEx.Load.dry_run(final, model, target, prune: true, ledger_dir: "loads")
+      {:ok, report} = BubbleEx.Load.run(final, model, target, storage: storage, ledger_dir: "loads", prune: true)
+
   ## Steps
 
     1. **Open** the export and check its checksums; ask the adapter for its
@@ -29,17 +33,21 @@ defmodule BubbleEx.Load do
        private files stay private. Failures are collected, not fatal.
     4. **Rows**: convert each row by the plan (`BubbleEx.Load.Convert`) and
        upsert it in batches (`:batch_size`, default 500), recording each
-       batch in the ledger (`BubbleEx.Load.Ledger`).
-    5. **Report** (`BubbleEx.Load.Report`): counts, and diagnostics for all
+       batch in the ledger (`BubbleEx.Load.Ledger`) and the IDs it wrote
+       in the target's written record (`BubbleEx.Load.Written`).
+    5. **Prune** (`prune: true` only, WTF-414): after every upsert, delete
+       what the export no longer holds among the rows the loader wrote
+       (see "Pruning").
+    6. **Report** (`BubbleEx.Load.Report`): counts, and diagnostics for all
        that does not fit. A report whose `blocked` lists
-       `:load_join_stale_member` (join rows a list no longer holds) cannot
-       load into this database until WTF-414: see step 5 of a live run
-       below (a fresh, empty database, or pruning the listed rows).
+       `:load_join_stale_member` (join rows a list no longer holds) loads
+       with `prune: true`: see step 5 of a live run below.
 
   A **dry run** (`dry_run/4`) does steps 1, 2 and the conversion of step 4
   without writing anything (no database write, no file copy, no ledger):
   per-type counts, schema mismatches, dangling-reference counts per field,
-  type mismatches, drift of derived fields.
+  type mismatches, drift of derived fields, and with `prune: true` what
+  pruning would delete and keep (the report's `prune`).
 
   ## Semantics
 
@@ -51,7 +59,7 @@ defmodule BubbleEx.Load do
       untouched. Re-running the same export changes nothing; loading a new
       export of the same app (a delta sync at cutover) writes only what
       changed. Records deleted in Bubble since an earlier load are not
-      deleted from the target.
+      deleted from the target, unless the run prunes (`prune: true`).
     * **Resumable.** With `:ledger_dir`, an interrupted run (an error, a
       crash, a killed process) resumes after the last recorded batch and
       file. The ledger is keyed by the export, the plan, the database, the
@@ -75,18 +83,21 @@ defmodule BubbleEx.Load do
       written separately, each setting only its own column, so a member of
       one never becomes a member of the other (`:load_join_asymmetric`
       counts the members one list holds that the other does not list
-      back). The rows upsert idempotently. Nothing is deleted: a member
-      removed from a list in Bubble since an earlier load keeps its row,
-      and with it any access a privacy rule grants through the list; each
-      such row (including one whose owner was deleted in Bubble) is reported
-      (`:load_join_stale_member`, an error: counts, sample owner IDs, and in
-      its details `stale_members` every stale row, `[left ID, right ID]`,
-      with the join's table and columns; the message names no record). A
-      dry run reports it; a real run is blocked before any writes until
-      WTF-414 implements pruning (see step 5 of a live run for the ways
-      forward). An `allow_partial` run in which an owner type failed to
-      export blocks too when that type owns a join's list: none of its
-      stored members is in the export, so every one reads as stale.
+      back). The rows upsert idempotently. Without `prune: true` nothing
+      is deleted: a member removed from a list in Bubble since an earlier
+      load keeps its row, and with it any access a privacy rule grants
+      through the list; each such row (including one whose owner was
+      deleted in Bubble) is reported (`:load_join_stale_member`, an error:
+      counts, sample owner IDs, and in its details `stale_members` every
+      stale row, `[left ID, right ID]`, with the join's table and columns;
+      the message names no record) and blocks a real run before any
+      writes. With `prune: true` the rows the loader wrote are pruned
+      (their list's column cleared, the row deleted when no list holds
+      it) and the others kept and reported (see "Pruning"). An
+      `allow_partial` run in which an owner type failed to export blocks
+      too when that type owns a join's list: none of its stored members
+      is in the export, so every one reads as stale (and pruning refuses
+      a partial export).
     * **Derived fields** (`derive_*` decisions: calculations, aggregates,
       `has_many`) have no column and are not loaded; where the stored
       Bubble value differs from the derived one it is reported as drift.
@@ -111,7 +122,10 @@ defmodule BubbleEx.Load do
       ignoring case stop a real run (the target's identity is unique), and
       so does an exported email that the target gives a record the export
       does not hold (e.g. a user deleted in Bubble whose email a new
-      signup reused: `:load_email_conflict`, IDs only). Users whose email
+      signup reused: `:load_email_conflict`, IDs only), unless pruning
+      deletes that record (`prune: true`, a user the loader wrote): its
+      email is cleared before any row is written and the record deleted
+      after the upserts. Users whose email
       changes (swaps included) lose their old email first, in one
       statement before any row is written, so no batch collides. That
       statement and the batches are separate writes (the loader only has
@@ -134,6 +148,38 @@ defmodule BubbleEx.Load do
 
   Nothing that does not fit is dropped silently: each case is a `:load`
   diagnostic with a count and a few sample record IDs.
+
+  ## Pruning (WTF-414)
+
+  `prune: true` is an explicit opt-in for a new complete export of an app
+  already loaded into the target (a delta sync at cutover). It deletes
+  **only rows the loader itself wrote**: the Bubble IDs (and join rows)
+  recorded in the target's written record (`BubbleEx.Load.Written`, in the
+  `:ledger_dir`, across the target's runs) that the export no longer
+  holds. A row the loader never wrote (created in the app after go-live,
+  or loaded before WTF-414 recorded writes) is never deleted: it is
+  reported (`:load_prune_unowned`, a warning, not a block).
+
+    * **Refused** with `allow_partial`, on an export in which a type
+      failed, without `:ledger_dir`, and when the export lacks a type the
+      loader wrote (pruning would delete all of its records).
+    * **Records**: the target's keys the loader wrote that the export does
+      not hold are deleted (`:load_prune_record`, info).
+    * **Join memberships**, per list: a member the loader wrote that the
+      list no longer holds (`:load_prune_join_member`, info) loses that
+      list's membership column; its row is deleted only when no other
+      list's column is still set. Stale members do not block the run.
+    * **Reused emails**: a pruned user holding an exported email is not a
+      `:load_email_conflict`; its email is cleared before the upserts.
+    * **Order and safety**: planned before any write (read only; the dry
+      run reports the counts in `report.prune`, per type and list), done
+      after every upsert and join write, the lists first, then the
+      records, in batches of `:batch_size`, each one statement (all or
+      nothing). Each batch is forgotten in the written record, and
+      counted in the run's ledger, after it succeeded; an interrupted run
+      resumes (rerun with `prune: true`: what is left is found again from
+      the target). A crash can only leave rows undeleted, never delete a
+      row the loader did not write.
 
   ## Safety
 
@@ -169,22 +215,18 @@ defmodule BubbleEx.Load do
        dangling references, drift, duplicate emails).
     4. Run with a `:ledger_dir` and the target storage, from the generated
        project (`query: &Repo.query/2`), against a staging database first.
-    5. At cutover, freeze writes in Bubble and export again. Dry-run the
-       new export first, then load it into the same database: only what
-       changed is written. A member removed from a normalized list since
-       the earlier load (`:load_join_stale_member`) blocks that load
-       until WTF-414 implements pruning. Until then, either
-         * load the final export into a fresh, empty database (migrated
-           from the same project; nothing is stale there), or
-         * delete the stale rows by hand: each diagnostic's
-           `details.stale_members` names the join `table`, its
-           `left_column` and `right_column` and every stale row
-           (`rows`, `[left ID, right ID]`); delete those rows (or, for a
-           table two lists share, clear that list's `membership_column`
-           on them), then dry-run again until nothing is stale.
-       An `allow_partial` export in which an owner type failed blocks the
-       same way when that type owns join rows: re-export that type rather
-       than pruning, since its rows only look stale.
+    5. At cutover, freeze writes in Bubble (and keep the app closed) and
+       export again, completely. Dry-run the new export with
+       `prune: true` and the same `:ledger_dir` first and read
+       `report.prune` (the records and memberships it deletes, per type
+       and list) and the `:load_prune_unowned` warnings (rows it keeps:
+       the loader did not write them). Then load it into the same
+       database with `prune: true` (WTF-414 has landed): only what
+       changed is written, then records deleted in Bubble and members
+       removed from normalized lists are pruned (stale members
+       (`:load_join_stale_member`) block a load without `prune: true`).
+       Rerun until it completes if it is interrupted. An `allow_partial`
+       export cannot prune: re-export the failed types instead.
 
     6. After the cutover, delete the export:
        `mix bubble.export.delete exports/mm-137` (`Export.delete/1`).
@@ -196,7 +238,20 @@ defmodule BubbleEx.Load do
   """
 
   alias BubbleEx.{Diagnostic, Error, Model}
-  alias BubbleEx.Load.{Convert, Export, Files, Issues, Joins, Ledger, Plan, Report, Scan}
+
+  alias BubbleEx.Load.{
+    Convert,
+    Export,
+    Files,
+    Issues,
+    Joins,
+    Ledger,
+    Plan,
+    Prune,
+    Report,
+    Scan,
+    Written
+  }
 
   @blocking [
     :load_schema_mismatch,
@@ -218,6 +273,7 @@ defmodule BubbleEx.Load do
           | {:file_timeout, pos_integer()}
           | {:allow_unmapped_keys, boolean()}
           | {:app_hosts, [String.t()]}
+          | {:prune, boolean()}
 
   @doc "A dry run: `run/4` writing nothing."
   @spec dry_run(Export.t() | Path.t(), Model.t(), target(), [option()]) ::
@@ -246,6 +302,9 @@ defmodule BubbleEx.Load do
     * `:allow_unmapped_keys` - load despite row keys that name no field
     * `:app_hosts` - the app's own hosts besides the export's Data API
       host (custom domains), where its private files live
+    * `:prune` - delete what the export no longer holds among the rows
+      the loader wrote (WTF-414; see "Pruning"). Needs a complete export
+      (refused with `allow_partial`) and `:ledger_dir`
 
   A real run that is blocked (see `BubbleEx.Load.Report`) returns
   `{:error, %Error{kind: :invalid_input, context: %{blocked: codes, report: report}}}`
@@ -256,8 +315,10 @@ defmodule BubbleEx.Load do
           {:ok, Report.t()} | {:error, Error.t()}
   def run(export, %Model{} = model, {tmod, tconf}, opts \\ []) do
     dry? = Keyword.get(opts, :dry_run, false)
+    prune? = Keyword.get(opts, :prune, false) == true
 
     with {:ok, export} <- open(export),
+         :ok <- if(prune?, do: Prune.check_options(export, opts), else: :ok),
          :ok <- Scan.check_keys(model, Keyword.get(opts, :keys, %{})),
          {:ok, plan} <- tmod.plan(tconf, model),
          :ok <- check_plan(plan, model),
@@ -265,9 +326,12 @@ defmodule BubbleEx.Load do
          {:ok, schema_diags} <- tmod.check_schema(tconf, plan),
          opts = Keyword.put(opts, :app_hosts, app_hosts(export, opts)),
          scan = Scan.run(export, model, plan, opts),
-         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags),
+         {:ok, prune} <-
+           plan_prune(prune?, export, plan, scan, identity, {tmod, tconf}, schema_diags, opts),
+         {:ok, issues, clears} <- emails(scan, plan, {tmod, tconf}, schema_diags, prune),
          {joins, issues} = Joins.build(plan, scan, issues),
-         {:ok, issues} <- stale_members(joins, {tmod, tconf}, schema_diags, issues) do
+         {:ok, issues, prune} <- stale_members(joins, {tmod, tconf}, schema_diags, issues, prune) do
+      issues = if prune, do: Prune.issues(prune, joins, issues), else: issues
       issues = Scan.drift(%{scan | issues: issues}, plan, model)
       issues = auth_status(issues, scan, plan)
 
@@ -283,7 +347,8 @@ defmodule BubbleEx.Load do
         schema: schema_diags,
         issues: issues,
         joins: joins,
-        clears: clears
+        clears: clears,
+        prune: prune
       }
 
       blocked = blocked(state)
@@ -314,32 +379,54 @@ defmodule BubbleEx.Load do
     Enum.uniq(exported ++ Enum.map(Keyword.get(opts, :app_hosts, []), &String.downcase/1))
   end
 
+  # With `prune: true`: what pruning deletes and keeps (`BubbleEx.Load.Prune`),
+  # from the rows the loader wrote (`BubbleEx.Load.Written`, read only) and
+  # the target's keys. Not read when the schema check failed.
+  defp plan_prune(false, _export, _plan, _scan, _identity, _target, _schema, _opts),
+    do: {:ok, nil}
+
+  defp plan_prune(true, export, plan, scan, identity, target, schema, opts) do
+    with {:ok, written} <- Written.read(Keyword.fetch!(opts, :ledger_dir), identity) do
+      if Enum.any?(schema, &(&1.code == :load_schema_mismatch)),
+        do: {:ok, %Prune{written: written}},
+        else: Prune.plan(written, plan, scan, export, target)
+    end
+  end
+
   # The exported users' emails against the target's (its unique email
   # identity): an email held by a target record the export does not hold
-  # blocks the run (`:load_email_conflict`); users whose email changes
-  # are cleared first (`clears`), so swaps and reuses between exported
-  # users cannot collide within or across batches.
+  # blocks the run (`:load_email_conflict`), unless pruning deletes that
+  # record (a user deleted in Bubble whose email a new signup reused);
+  # users whose email changes, and such pruned holders, are cleared first
+  # (`clears`), so swaps and reuses cannot collide within or across
+  # batches.
   defp emails(
          scan,
          %Plan{auth: %Plan.Auth{type: type, email_column: column}} = plan,
-         {tmod, tconf}
+         {tmod, tconf},
+         prune
        )
        when is_binary(column) do
     table = Plan.table(plan, type)
+    pruned = Prune.deleting(prune, type)
 
     with {:ok, existing} <- tmod.existing(tconf, table, column) do
       exported = Map.get(scan.ids, type, MapSet.new())
       target = Map.new(existing, fn {id, email} -> {id, fold(email)} end)
       holders = Enum.group_by(target, &elem(&1, 1), &elem(&1, 0))
 
-      conflicts =
+      held =
         for {id, %{email: email}} <- scan.auth,
             email != nil,
             holder <- Map.get(holders, email, []),
             holder != id,
             not MapSet.member?(exported, holder),
-            uniq: true,
-            do: id
+            do: {id, holder}
+
+      conflicts =
+        for {id, holder} <- held, not MapSet.member?(pruned, holder), uniq: true, do: id
+
+      reused = for {_id, holder} <- held, MapSet.member?(pruned, holder), uniq: true, do: holder
 
       issues =
         conflicts
@@ -355,47 +442,57 @@ defmodule BubbleEx.Load do
             old != get_in(scan.auth, [id, :email]),
             do: id
 
-      {:ok, issues, Enum.sort(clears)}
+      {:ok, issues, Enum.sort(clears ++ reused)}
     end
   end
 
-  defp emails(scan, _plan, _target), do: {:ok, scan.issues, []}
+  defp emails(scan, _plan, _target, _prune), do: {:ok, scan.issues, []}
 
   # Not read when the schema check failed (the table may not exist; the
   # run is blocked anyway).
-  defp emails(scan, plan, target, schema) do
+  defp emails(scan, plan, target, schema, prune) do
     if Enum.any?(schema, &(&1.code == :load_schema_mismatch)),
       do: {:ok, scan.issues, []},
-      else: emails(scan, plan, target)
+      else: emails(scan, plan, target, prune)
   end
 
   # Members a list held at an earlier load that it no longer holds: the
   # target's rows of the list that the export does not give it, including
-  # rows whose owner is absent from the complete delta export. Nothing deletes
-  # them (WTF-414), and they keep any access a rule grants through the list,
-  # so each blocks a real run before writes
-  # (`:load_join_stale_member`, the owner's ID). Not read when the schema
+  # rows whose owner is absent from the complete delta export. They keep
+  # any access a rule grants through the list, so without `prune: true`
+  # each blocks a real run before writes (`:load_join_stale_member`, the
+  # owner's ID); with it, those the loader wrote are pruned and the others
+  # kept and reported (`BubbleEx.Load.Prune`). Not read when the schema
   # check failed.
-  defp stale_members(joins, {tmod, tconf}, schema, issues) do
+  defp stale_members(joins, {tmod, tconf}, schema, issues, prune) do
     if Enum.any?(schema, &(&1.code == :load_schema_mismatch)) do
-      {:ok, issues}
+      {:ok, issues, prune}
     else
-      Enum.reduce_while(joins, {:ok, issues}, fn built, {:ok, issues} ->
+      Enum.reduce_while(joins, {:ok, issues, prune}, fn built, {:ok, issues, prune} ->
         stored = tmod.join_members(tconf, built.join, built.side, :all)
-        stale_step(stored, built, issues)
+        stale_step(stored, built, issues, prune)
       end)
     end
   end
 
-  defp stale_step({:ok, stored}, built, issues),
-    do: {:cont, {:ok, add_stale(issues, built, stored)}}
+  defp stale_step({:ok, stored}, built, issues, nil),
+    do: {:cont, {:ok, add_stale(issues, built, stored), nil}}
 
-  defp stale_step({:error, _} = error, _built, _issues), do: {:halt, error}
+  defp stale_step({:ok, stored}, built, issues, prune) do
+    {loaded, stale} = stale(built, stored)
+    {:cont, {:ok, issues, Prune.stale(prune, built, stale, loaded, stored)}}
+  end
+
+  defp stale_step({:error, _} = error, _built, _issues, _prune), do: {:halt, error}
+
+  defp stale(%{join: join, rows: rows}, stored) do
+    loaded = MapSet.new(rows, &{&1[join.left.column], &1[join.right.column]})
+    {loaded, stored |> Enum.reject(&MapSet.member?(loaded, &1)) |> Enum.sort()}
+  end
 
   defp add_stale(issues, built, stored) do
-    %{join: join, side: side, rows: rows} = built
-    loaded = MapSet.new(rows, &{&1[join.left.column], &1[join.right.column]})
-    stale = stored |> Enum.reject(&MapSet.member?(loaded, &1)) |> Enum.sort()
+    %{join: join, side: side} = built
+    {_loaded, stale} = stale(built, stored)
 
     issues =
       Enum.reduce(stale, issues, fn {l, r}, issues ->
@@ -403,9 +500,9 @@ defmodule BubbleEx.Load do
         Issues.add(issues, :load_join_stale_member, side.type, side.field, owner, :not_listed_now)
       end)
 
-    # Every stale row, for pruning by hand before WTF-414 (details only:
-    # the message names no record). Its list's rows are those of `table`
-    # whose `membership_column` marks a member.
+    # Every stale row (details only: the message names no record), for
+    # pruning by hand when `prune: true` is not an option. Its list's rows
+    # are those of `table` whose `membership_column` marks a member.
     Issues.put_details(issues, :load_join_stale_member, side.type, side.field, %{
       stale_members: %{
         table: join.table,
@@ -503,13 +600,12 @@ defmodule BubbleEx.Load do
     )
   end
 
-  # Stale join members block every delta load until WTF-414 prunes them.
+  # Stale join members block a delta load unless it prunes them.
   defp hint(blocked) do
     if :load_join_stale_member in blocked,
       do:
-        " (stale join members: until WTF-414, load the final export into a fresh, empty " <>
-          "database, or delete the rows each :load_join_stale_member diagnostic lists in " <>
-          "details.stale_members and load again)",
+        " (stale join members: load with prune: true to remove those the loader wrote; " <>
+          "see the :load_join_stale_member diagnostics' details.stale_members)",
       else: ""
   end
 
@@ -541,7 +637,10 @@ defmodule BubbleEx.Load do
       target: run_identity(state)
     }
 
-    with {:ok, ledger} <- Ledger.open(Keyword.get(state.opts, :ledger_dir), ids),
+    dir = Keyword.get(state.opts, :ledger_dir)
+
+    with {:ok, ledger} <- Ledger.open(dir, ids),
+         {:ok, written} <- open_written(dir, state.identity, ledger),
          # A finished run starts over: every row is re-applied, changing
          # nothing that did not change.
          ledger = if(Ledger.complete?(ledger), do: Ledger.restart(ledger), else: ledger),
@@ -553,41 +652,78 @@ defmodule BubbleEx.Load do
         convert_all(
           state,
           %{files: refs},
-          fn table, batch, ledger ->
-            write(table.type, &tmod.upsert(tconf, table, &1), batch, ledger)
+          fn table, batch, acc ->
+            write(table.type, &tmod.upsert(tconf, table, &1), recorder(table), batch, acc)
           end,
-          ledger
+          {ledger, written}
         )
 
-      with {:ok, issues, ledger} <- result,
-           {:ok, ledger} <- load_joins(state, ledger) do
+      with {:ok, issues, acc} <- result,
+           {:ok, acc} <- load_joins(state, acc),
+           {:ok, {ledger, written}} <- prune(state, acc) do
+        Written.close(written)
         ledger = Ledger.complete(ledger)
         {:ok, report(state, issues, [], files_summary(state, refs), ledger)}
       else
-        {:error, error, ledger} ->
+        {:error, error, {ledger, written}} ->
+          Written.close(written)
           Ledger.close(ledger)
           {:error, error}
       end
     end
   end
 
+  # Records the IDs of a table's written rows (`BubbleEx.Load.Written`).
+  defp recorder(table),
+    do: fn written, rows ->
+      Written.wrote(written, table.type, Enum.map(rows, & &1[table.key]))
+    end
+
+  defp open_written(dir, identity, ledger) do
+    case Written.open(dir, identity) do
+      {:ok, written} ->
+        {:ok, written}
+
+      error ->
+        Ledger.close(ledger)
+        error
+    end
+  end
+
+  # After every upsert: what the export no longer holds among the rows the
+  # loader wrote (`prune: true`, `BubbleEx.Load.Prune`).
+  defp prune(%{prune: nil}, acc), do: {:ok, acc}
+
+  defp prune(state, acc),
+    do:
+      Prune.run(
+        state.prune,
+        state.target,
+        state.plan,
+        state.joins,
+        Keyword.get(state.opts, :batch_size, 500),
+        acc
+      )
+
   # The join tables (after every data type's table), one list at a time:
   # its rows upserted in batches recorded in the ledger under
-  # `<join ID>/<type>/<field>`. Nothing is deleted (WTF-414).
-  defp load_joins(state, ledger) do
+  # `<join ID>/<type>/<field>`. Nothing is deleted here (see `prune/2`).
+  defp load_joins(state, acc) do
     {tmod, tconf} = state.target
     size = Keyword.get(state.opts, :batch_size, 500)
 
-    Enum.reduce_while(state.joins, {:ok, ledger}, fn built, {:ok, ledger} ->
+    Enum.reduce_while(state.joins, {:ok, acc}, fn built, {:ok, acc} ->
       upsert = &tmod.upsert_join(tconf, built.join, built.side, &1)
+      %{left: %{column: l}, right: %{column: r}} = built.join
+      record = &Written.wrote_join(&1, built.key, Enum.map(&2, fn row -> {row[l], row[r]} end))
 
       built.rows
       |> Enum.with_index()
       |> Enum.chunk_every(size)
-      |> Enum.reduce_while({:ok, ledger}, &write_batch(built.key, upsert, &1, &2))
+      |> Enum.reduce_while({:ok, acc}, &write_batch(built.key, upsert, record, &1, &2))
       |> case do
-        {:ok, ledger} ->
-          {:cont, {:ok, Ledger.type_complete(ledger, built.key, length(built.rows))}}
+        {:ok, {ledger, written}} ->
+          {:cont, {:ok, {Ledger.type_complete(ledger, built.key, length(built.rows)), written}}}
 
         error ->
           {:halt, error}
@@ -595,10 +731,10 @@ defmodule BubbleEx.Load do
     end)
   end
 
-  defp write_batch(key, upsert, batch, {:ok, ledger}) do
-    case write(key, upsert, batch, ledger) do
-      {:ok, ledger} -> {:cont, {:ok, ledger}}
-      {:error, error} -> {:halt, {:error, error, ledger}}
+  defp write_batch(key, upsert, record, batch, {:ok, acc}) do
+    case write(key, upsert, record, batch, acc) do
+      {:ok, acc} -> {:cont, {:ok, acc}}
+      {:error, error} -> {:halt, {:error, error, acc}}
     end
   end
 
@@ -653,7 +789,9 @@ defmodule BubbleEx.Load do
 
   # Writes one batch of `{row, index}` of a table (or join table) keyed
   # `key` in the ledger with `upsert`, skipping the rows the ledger has.
-  defp write(key, upsert, batch, ledger) do
+  # The written rows go to `Written` (`record`) once the batch succeeded,
+  # before the ledger counts it: a crash in between replays the batch.
+  defp write(key, upsert, record, batch, {ledger, written}) do
     done = Ledger.rows_done(ledger, key)
     {skip, todo} = Enum.split_with(batch, fn {_row, idx} -> idx < done end)
     last = batch |> List.last() |> elem(1)
@@ -668,10 +806,12 @@ defmodule BubbleEx.Load do
 
     case result do
       {:ok, counts} ->
+        written = if rows == [], do: written, else: record.(written, rows)
+
         ledger =
           if last + 1 > done, do: Ledger.batch(ledger, key, last + 1, counts), else: ledger
 
-        {:ok, Ledger.resumed(ledger, key, resumed)}
+        {:ok, {Ledger.resumed(ledger, key, resumed), written}}
 
       {:error, %Error{} = error} ->
         {:error, error}
@@ -701,9 +841,9 @@ defmodule BubbleEx.Load do
 
   defp finish_table(_state, _table, nil), do: nil
 
-  defp finish_table(state, table, %Ledger{} = ledger) do
+  defp finish_table(state, table, {%Ledger{} = ledger, written}) do
     rows = get_in(state.scan.types, [table.type, :rows]) || 0
-    Ledger.type_complete(ledger, table.type, rows)
+    {Ledger.type_complete(ledger, table.type, rows), written}
   end
 
   defp convert_table(state, table, ctx, size, sink, issues, acc) do
@@ -832,6 +972,7 @@ defmodule BubbleEx.Load do
           {built.key, Map.merge(%{rows: length(built.rows)}, written(ledger, built.key))}
         end),
       files: files,
+      prune: Prune.summary(state.prune, state.plan, state.joins, ledger),
       auth: auth_summary(state),
       diagnostics: Diagnostic.normalize(state.schema ++ Issues.diagnostics(issues))
     }

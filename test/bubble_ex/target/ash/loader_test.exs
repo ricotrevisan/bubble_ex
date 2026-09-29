@@ -323,6 +323,61 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       refute position_sql =~ "ANY($1)"
     end
 
+    test "pruning (WTF-414): keys, deletes by key and per-list join removal, one statement per batch" do
+      table = Plan.table(plan(:cut3), "task")
+      join = Enum.find(plan(:cut3).joins, &(&1.table == "favorite_project"))
+      flag = Enum.find(join.sides, &(&1.kind == :flag))
+      position = Enum.find(join.sides, &(&1.kind == :position))
+      test = self()
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params})
+
+        rows =
+          cond do
+            String.starts_with?(sql, "WITH") -> [[1, 2]]
+            String.starts_with?(sql, "DELETE") -> [["1x1"]]
+            true -> [["1x1"], ["1x2"]]
+          end
+
+        {:ok, %{rows: rows}}
+      end
+
+      {:ok, project} = F.project(:cut3)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, ["1x1", "1x2"]} = Loader.keys(config, table)
+      assert_received {:query, ~s(SELECT "id" FROM "public"."task"), []}
+
+      assert {:ok, 1} = Loader.delete(config, table, ["1x1", "1x3"])
+      assert_received {:query, sql, [["1x1", "1x3"]]}
+
+      assert sql ==
+               ~s|DELETE FROM "public"."task" WHERE "id" = ANY($1::text[]) RETURNING "id"|
+
+      assert {:ok, 0} = Loader.delete(config, table, [])
+      refute_received {:query, _, _}
+
+      assert {:ok, %{deleted: 1, cleared: 2}} =
+               Loader.prune_join(config, join, flag, [{"1x1", "1x2"}])
+
+      assert_received {:query, sql, [json]}
+      assert [%{} = row] = Jason.decode!(json)
+      assert Map.values(row) |> Enum.sort() == ["1x1", "1x2"]
+      # this list's rows: deleted when the other list does not hold them,
+      # else only this list's column cleared
+      assert sql =~ ~s|t."viewers_listed" IS TRUE AND NOT (t."favorites_position" IS NOT NULL)|
+      assert sql =~ ~s(SET "viewers_listed" = NULL)
+      assert sql =~ ~s|t."viewers_listed" IS TRUE AND (t."favorites_position" IS NOT NULL)|
+
+      sql = Loader.prune_join_sql("public", join, position)
+      assert sql =~ ~s(SET "favorites_position" = NULL)
+      assert sql =~ ~s|NOT (t."viewers_listed" IS TRUE)|
+
+      # a join of one list deletes its rows
+      own = Enum.find(plan(:cut3).joins, &(length(&1.sides) == 1))
+      assert Loader.prune_join_sql("public", own, hd(own.sides)) =~ "AND NOT FALSE"
+    end
+
     test "quotes identifiers" do
       table = %Plan.Table{type: "x", table: ~s(we"ird), key: "id", columns: []}
       assert Loader.upsert_sql("public", table) =~ ~s("we""ird")

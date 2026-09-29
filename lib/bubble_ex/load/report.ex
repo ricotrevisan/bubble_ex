@@ -6,14 +6,15 @@ defmodule BubbleEx.Load.Report do
     * `blocked` - the codes of diagnostics that stop a real run
       (a schema mismatch, stale join membership, duplicate emails, an
       incomplete export without `allow_partial: true`); `[]` when it may run.
-      Stale join membership (`:load_join_stale_member`) blocks every load
-      into a database holding join rows the export no longer lists, until
-      WTF-414 prunes them; meanwhile load into a fresh, empty database, or
-      delete the rows the diagnostic's `details.stale_members` lists
-      (`table`, `left_column`, `right_column`, `membership_column`, `rows`
-      as `[left ID, right ID]`) and load again. An `allow_partial` run in
-      which an owner type failed blocks this way when that type owns join
-      rows (all of them look stale): re-export it instead
+      Stale join membership (`:load_join_stale_member`) blocks a load into
+      a database holding join rows the export no longer lists, unless it
+      runs with `prune: true` (WTF-414), which removes those the loader
+      wrote and keeps (and reports) the others. The diagnostic's
+      `details.stale_members` lists them (`table`, `left_column`,
+      `right_column`, `membership_column`, `rows` as `[left ID, right
+      ID]`). An `allow_partial` run in which an owner type failed blocks
+      this way when that type owns join rows (all of them look stale):
+      re-export it instead (pruning refuses a partial export)
     * `run` - the ledger's run key (nil for a dry run)
     * `export_sha256`, `plan_sha256`, `target` - what was loaded, by what
       plan, into which database (its credential-free identity)
@@ -28,6 +29,16 @@ defmodule BubbleEx.Load.Report do
     * `files` - `referenced` (distinct Bubble file URLs in file fields),
       `public`, `private`, `copied` (verified in the target storage, or
       would be for a dry run), `failed`
+    * `prune` - nil unless `prune: true`; else what pruning deletes and
+      keeps, from the target as this invocation found it: `types` per data
+      type, `delete` (records the loader wrote that the export no longer
+      holds) and `unowned` (records the export does not hold that the
+      loader did not write: kept, `:load_prune_unowned`); `joins` per list
+      (keyed as `joins`), `remove` (members the loader wrote that the list
+      no longer holds) and `unowned`. A real run adds `deleted` (rows
+      deleted) and `cleared` (join rows kept with the list's column
+      cleared, another list holding them), over the run's ledger. Counts
+      only; the diagnostics hold sample IDs
     * `auth` - `users`, `with_email`, `confirmed`, `unconfirmed`, `unknown`
       (no confirmed status), and `confirmed_column` (whether the target
       stores the status)
@@ -49,6 +60,7 @@ defmodule BubbleEx.Load.Report do
             types: %{},
             joins: %{},
             files: %{},
+            prune: nil,
             auth: %{},
             diagnostics: []
 
@@ -62,6 +74,7 @@ defmodule BubbleEx.Load.Report do
           types: %{String.t() => map()},
           joins: %{String.t() => map()},
           files: map(),
+          prune: map() | nil,
           auth: map(),
           diagnostics: [Diagnostic.t()]
         }

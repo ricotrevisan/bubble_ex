@@ -10,7 +10,7 @@ defmodule BubbleEx.Load.Joins do
   # list back is reported. Dangling IDs are kept (no foreign key; they
   # load nothing through the relationship) and reported, like references
   # (WTF-338); a member a list repeats is one row, at its first index,
-  # reported. Nothing is deleted. Deterministic: rows sorted by the two
+  # reported. Nothing is deleted here (pruning is `BubbleEx.Load.Prune`). Deterministic: rows sorted by the two
   # IDs, so a resumed run batches them as the interrupted one did.
 
   alias BubbleEx.Load.{Convert, Issues, Plan, Scan}

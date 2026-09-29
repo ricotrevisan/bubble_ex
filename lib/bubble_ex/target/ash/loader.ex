@@ -85,10 +85,32 @@ defmodule BubbleEx.Target.Ash.Loader do
       WHERE t."members_position" IS DISTINCT FROM EXCLUDED."members_position"
       RETURNING (xmax = 0)
 
-  Nothing is deleted from a join table: a member removed from a list in
-  Bubble since an earlier load keeps its row (WTF-414), and the loader
-  reports it (`join_members/4`, `:load_join_stale_member`) and blocks the
-  real run before any writes.
+  The upserts delete nothing: a member removed from a list in Bubble since
+  an earlier load keeps its row, and the loader reports it
+  (`join_members/4`, `:load_join_stale_member`) and blocks the real run
+  before any writes, unless it prunes.
+
+  ## Pruning (WTF-414)
+
+  With `prune: true` the loader deletes rows it wrote that the export no
+  longer holds (`BubbleEx.Load`, "Pruning"), after the upserts, one
+  statement per batch (so each batch is one transaction): records by key
+  (`delete/3`),
+
+      DELETE FROM "public"."task" WHERE "id" = ANY($1::text[]) RETURNING "id"
+
+  and join rows per list (`prune_join/4`): a row that is a member of the
+  list and of no other is deleted, one another list holds loses only this
+  list's column,
+
+      WITH b AS (SELECT "user_id", "workspace_id" FROM jsonb_populate_recordset(NULL::"public"."user_workspaces", $1::text::jsonb)),
+      d AS (DELETE FROM ... t USING b WHERE <the pair> AND t."members_position" IS NOT NULL
+            AND NOT (t."workspaces_position" IS NOT NULL) RETURNING 1),
+      c AS (UPDATE ... t SET "members_position" = NULL FROM b WHERE <the pair>
+            AND t."members_position" IS NOT NULL AND (t."workspaces_position" IS NOT NULL) RETURNING 1)
+      SELECT (SELECT count(*) FROM d)::int, (SELECT count(*) FROM c)::int
+
+  (the two touch disjoint rows). `keys/2` reads a table's keys, to plan it.
   """
 
   @behaviour BubbleEx.Load.Target
@@ -633,6 +655,82 @@ defmodule BubbleEx.Target.Ash.Loader do
         {:error, %{e | context: Map.put(e.context, :join, join.id)}}
     end
   end
+
+  # --- pruning (WTF-414) -----------------------------------------------------------------
+
+  @impl true
+  def keys(%__MODULE__{} = c, %Table{} = table) do
+    sql = "SELECT #{ident(table.key)} FROM #{qualified(c.schema, table)}"
+    with {:ok, rows} <- run(c, sql, []), do: {:ok, Enum.map(rows, fn [k] -> k end)}
+  end
+
+  @impl true
+  def delete(%__MODULE__{}, %Table{}, []), do: {:ok, 0}
+
+  def delete(%__MODULE__{} = c, %Table{} = table, keys) do
+    case run(c, delete_sql(c.schema, table), [keys]) do
+      {:ok, rows} -> {:ok, length(rows)}
+      {:error, %Error{} = e} -> {:error, %{e | context: Map.put(e.context, :type, table.type)}}
+    end
+  end
+
+  @doc false
+  # One statement per batch, so a batch deletes all or nothing.
+  @spec delete_sql(String.t(), Table.t()) :: String.t()
+  def delete_sql(schema, %Table{} = table) do
+    key = ident(table.key)
+    "DELETE FROM #{qualified(schema, table)} WHERE #{key} = ANY($1::text[]) RETURNING #{key}"
+  end
+
+  @impl true
+  def prune_join(%__MODULE__{}, %Plan.Join{}, _side, []), do: {:ok, %{deleted: 0, cleared: 0}}
+
+  def prune_join(%__MODULE__{} = c, %Plan.Join{} = join, side, pairs) do
+    rows = Enum.map(pairs, fn {l, r} -> %{join.left.column => l, join.right.column => r} end)
+
+    case run(c, prune_join_sql(c.schema, join, side), [Jason.encode!(rows)]) do
+      {:ok, [[deleted, cleared]]} ->
+        {:ok, %{deleted: deleted, cleared: cleared}}
+
+      {:ok, _} ->
+        {:error, Error.new(:request_failed, "unexpected prune result", %{join: join.id})}
+
+      {:error, %Error{} = e} ->
+        {:error, %{e | context: Map.put(e.context, :join, join.id)}}
+    end
+  end
+
+  @doc false
+  # Removes rows from one list of a join table in one statement (so one
+  # transaction): a row that is a member of the list and of no other is
+  # deleted; one another list also holds keeps that list's column and
+  # loses this list's. The two sub-statements touch disjoint rows.
+  @spec prune_join_sql(String.t(), Plan.Join.t(), Plan.Join.side()) :: String.t()
+  def prune_join_sql(schema, %Plan.Join{} = join, side) do
+    target = qualified(schema, join)
+    {l, r} = {ident(join.left.column), ident(join.right.column)}
+    col = ident(side.column)
+
+    others =
+      case for(s <- join.sides, s.column != side.column, do: member_sql("t", s)) do
+        [] -> "FALSE"
+        list -> "(" <> Enum.join(list, " OR ") <> ")"
+      end
+
+    match = "t.#{l} = b.#{l} AND t.#{r} = b.#{r} AND #{member_sql("t", side)}"
+
+    "WITH b AS (SELECT #{l}, #{r} FROM jsonb_populate_recordset(NULL::#{target}, $1::text::jsonb)), " <>
+      "d AS (DELETE FROM #{target} AS t USING b WHERE #{match} AND NOT #{others} RETURNING 1), " <>
+      "c AS (UPDATE #{target} AS t SET #{col} = NULL FROM b WHERE #{match} AND #{others} RETURNING 1) " <>
+      "SELECT (SELECT count(*) FROM d)::int, (SELECT count(*) FROM c)::int"
+  end
+
+  # A row is a member of a list when its position is set or its flag is true.
+  defp member_sql(alias, %{column: column, kind: :flag}),
+    do: "#{alias}.#{ident(column)} IS TRUE"
+
+  defp member_sql(alias, %{column: column, kind: :position}),
+    do: "#{alias}.#{ident(column)} IS NOT NULL"
 
   @doc false
   # The upsert statement of one list of a join table: keyed by its two ID
