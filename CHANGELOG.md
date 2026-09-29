@@ -6,6 +6,35 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Vertical slice script** (`scripts/vertical_slice/`, WTF-378): takes one
+  page of an app end to end and records what works. `run.sh EXPORT
+  DECISIONS SLUG [PAGE]` picks the median page (`pages.exs`: own elements
+  plus those of the reusables it renders, workflows and data sources, each
+  as a percentile rank; the page closest to the median on all three, with
+  at least one workflow and one data source), renders the project with the
+  owner's decisions (`privacy: :omit`, the plan, the determinism result,
+  the generation-time structural summary), compiles it with
+  `--warnings-as-errors`, generates and checks its migrations, migrates a
+  throwaway PostgreSQL (docker, an explicit port, never 5432, `slice_`
+  databases only, for dev and test), loads synthetic records for every data
+  type through the data loader (`seed.exs`), serves it with the data-access
+  opt-in and every API client pointed at a closed local port, drives the
+  page in the pinned Chromium (`drive.mjs`: signed out, a magic-link
+  sign-in from the local mailbox, then every wired element, with the
+  server log lines each click caused; every other origin is aborted), then
+  runs `mix wtf.task` and `mix wtf.verify structural`. Output stays in
+  `$SLICE_ROOT/<slug>` (0700); the server and the database are removed on
+  exit.
+- **"Go to page" sends its data** (WTF-378). The data to send of a "Go to
+  page" step to a page with a type of content is lowered (`Step.args.thing`)
+  and bound: the generated `navigate/7` puts the thing's unique ID as the
+  path segment the page reads its thing from (`/<page>/<unique id>`), when
+  that page loads its thing; otherwise, and to the current or the index
+  page, it stays `:unsupported_option` residue. A data to send to a page
+  with no type of content is ignored, as Bubble has nowhere to send it
+  (unverified). On the private fixture app this clears all 70
+  `data_to_send` residue entries: native frontend workflows 563 to 607.
+
 - **Buildprint v5 workspaces** (`BubbleEx.Buildprint.V5`). Buildprint
   retired its v4 JSON export; a v5 workspace (`buildprint project clone`)
   keeps Bubble's raw app JSON in `.buildprint/index.sqlite`.
@@ -1122,6 +1151,16 @@ All notable changes to this project are documented here.
   are unchanged on the private fixture export.
 
 ### Fixed
+
+- A modal Popup with an authored HTML ID rendered two `id` attributes on
+  its `<.focus_wrap>`, which fails `mix compile --warnings-as-errors`
+  ("key :id will be overridden in map"). It now takes the authored ID
+  (unique on the page) and the generated `bubble-overlay-…` ID only when it
+  has none (WTF-378).
+- The generated sign-in pages loaded AshAuthentication's default banner
+  logo from ash-hq.org, a third-party request on every sign-in. The
+  scaffold now includes an owned `<Web>.AuthOverrides` (a text banner with
+  the project's name), listed first in the router's `overrides` (WTF-378).
 
 - The loader's stale join rows (`details.stale_members` of
   `:load_join_stale_member` and `:load_prune_unowned`) are capped at
