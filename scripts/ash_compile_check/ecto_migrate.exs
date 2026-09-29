@@ -5,9 +5,14 @@
 # keeps tables and indexes in one namespace and cuts identifiers to 63
 # bytes) fails the migration.
 #
-#     ASH_COMPILE_CHECK_DB=ecto://postgres:postgres@localhost:5432 mix run ecto_migrate.exs
+#     ASH_COMPILE_CHECK_DB=ecto://postgres:postgres@127.0.0.1:55432 mix run ecto_migrate.exs
+#
+# The URL is checked by check_db.exs (copied next to this project): an
+# explicit port, never 5432 unless ASH_COMPILE_CHECK_ALLOW_5432=1; only
+# ecto_check_ databases are created and dropped.
 
-base = System.fetch_env!("ASH_COMPILE_CHECK_DB")
+Code.require_file(Path.expand("check_db.exs", __DIR__))
+base = CheckDb.url!()
 {:ok, modules} = :application.get_key(:ash_compile_check, :modules)
 
 groups =
@@ -18,7 +23,10 @@ groups =
   |> Enum.group_by(&hd(String.split(&1, ".Repo.Migrations.")))
 
 for {namespace, migrations} <- Enum.sort(groups) do
-  database = "ecto_check_" <> (namespace |> String.downcase() |> String.replace(".", "_"))
+  database =
+    CheckDb.database!(
+      "ecto_check_" <> (namespace |> String.downcase() |> String.replace(".", "_"))
+    )
   config =
     Ecto.Repo.Supervisor.parse_url(base <> "/" <> database) ++ [pool_size: 2, log: false]
 

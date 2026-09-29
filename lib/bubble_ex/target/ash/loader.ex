@@ -11,7 +11,14 @@ defmodule BubbleEx.Target.Ash.Loader do
   `query` is called as `query.(sql, params)` and returns `{:ok, result}`
   with `result.rows` (`Ecto.Adapters.SQL.query/4`, `Repo.query/2` and
   `Postgrex.query/3` do) or `{:error, reason}`. Options: `:query`
-  (required), `:schema` (default `"public"`).
+  (required), `:schema` (default `"public"`), and `:checkout`, a function
+  that runs a function on one database connection (`&Repo.checkout/1`):
+  a real run holds a PostgreSQL advisory lock for its whole length
+  (`with_lock/2`), a session lock, so with a pooled query function
+  (`&Repo.query/2`) pass `checkout: &Repo.checkout/1`, which keeps the
+  run's statements on the connection that holds the lock. A query
+  function of one connection (`Postgrex.query/3` on a connection) needs
+  none.
 
   ## The plan (`BubbleEx.Load.Plan`)
 
@@ -123,9 +130,14 @@ defmodule BubbleEx.Target.Ash.Loader do
   @json {:module, "Types.JsonValue"}
 
   @enforce_keys [:project, :query]
-  defstruct [:project, :query, schema: "public"]
+  defstruct [:project, :query, :checkout, schema: "public"]
 
-  @type t :: %__MODULE__{project: Project.t(), query: function(), schema: String.t()}
+  @type t :: %__MODULE__{
+          project: Project.t(),
+          query: function(),
+          checkout: function() | nil,
+          schema: String.t()
+        }
 
   @doc "The loader target (`{module, config}`) for `project`; see the moduledoc."
   @spec target(Project.t(), keyword()) :: {module(), t()}
@@ -133,8 +145,16 @@ defmodule BubbleEx.Target.Ash.Loader do
     query = Keyword.fetch!(opts, :query)
     true = is_function(query, 2)
 
+    checkout = Keyword.get(opts, :checkout)
+    true = checkout == nil or is_function(checkout, 1)
+
     {__MODULE__,
-     %__MODULE__{project: project, query: query, schema: Keyword.get(opts, :schema, "public")}}
+     %__MODULE__{
+       project: project,
+       query: query,
+       checkout: checkout,
+       schema: Keyword.get(opts, :schema, "public")
+     }}
   end
 
   # --- the plan ----------------------------------------------------------------------
@@ -654,6 +674,102 @@ defmodule BubbleEx.Target.Ash.Loader do
       {:error, %Error{} = e} ->
         {:error, %{e | context: Map.put(e.context, :join, join.id)}}
     end
+  end
+
+  # --- the marker and the lock (WTF-414) ---------------------------------------------------
+
+  @marker "bubble_ex_load_target"
+
+  @impl true
+  def marker(%__MODULE__{} = c, mode) do
+    table = ident(c.schema) <> "." <> ident(@marker)
+
+    with {:ok, [[exists]]} <- run(c, "SELECT to_regclass($1) IS NOT NULL", [table]) do
+      cond do
+        exists -> read_marker(c, table)
+        mode == :read -> {:ok, nil}
+        true -> create_marker(c, table)
+      end
+    end
+  end
+
+  defp read_marker(c, table) do
+    case run(c, "SELECT id::text FROM #{table}", []) do
+      {:ok, [[id]]} -> {:ok, id}
+      {:ok, []} -> {:ok, nil}
+      {:ok, _} -> {:error, Error.new(:invalid_input, "the load marker table holds several rows")}
+      error -> error
+    end
+  end
+
+  # One row, ever: the singleton column's unique constraint keeps a second
+  # insert out (the run holds the advisory lock anyway).
+  defp create_marker(c, table) do
+    with {:ok, _} <-
+           run(
+             c,
+             "CREATE TABLE IF NOT EXISTS #{table} (id uuid PRIMARY KEY, " <>
+               "singleton boolean NOT NULL DEFAULT true UNIQUE CHECK (singleton))",
+             []
+           ),
+         {:ok, _} <-
+           run(
+             c,
+             "INSERT INTO #{table} (id) VALUES ($1::text::uuid) ON CONFLICT (singleton) DO NOTHING",
+             [uuid()]
+           ),
+         do: read_marker(c, table)
+  end
+
+  defp uuid do
+    <<a::48, _::4, b::12, _::2, d::62>> = :crypto.strong_rand_bytes(16)
+    <<u::128>> = <<a::48, 4::4, b::12, 2::2, d::62>>
+    hex = u |> Integer.to_string(16) |> String.pad_leading(32, "0") |> String.downcase()
+
+    Enum.join(
+      [
+        binary_part(hex, 0, 8),
+        binary_part(hex, 8, 4),
+        binary_part(hex, 12, 4),
+        binary_part(hex, 16, 4),
+        binary_part(hex, 20, 12)
+      ],
+      "-"
+    )
+  end
+
+  @impl true
+  def with_lock(%__MODULE__{} = c, fun) do
+    checkout = c.checkout || fn f -> f.() end
+    checkout.(fn -> locked(c, fun) end)
+  end
+
+  defp locked(c, fun) do
+    key = lock_key(c.schema)
+
+    case run(c, "SELECT pg_try_advisory_lock($1)", [key]) do
+      {:ok, [[true]]} ->
+        try do
+          fun.()
+        after
+          run(c, "SELECT pg_advisory_unlock($1)", [key])
+        end
+
+      {:ok, _} ->
+        {:error,
+         Error.new(:invalid_input, "another load holds this target's lock", %{reason: :locked})}
+
+      error ->
+        error
+    end
+  end
+
+  @doc false
+  # The advisory lock's key: per database (advisory locks are) and schema.
+  @spec lock_key(String.t()) :: integer()
+  def lock_key(schema) do
+    <<key::signed-64, _::binary>> = :crypto.hash(:sha256, "bubble_ex.load:" <> schema)
+    key
   end
 
   # --- pruning (WTF-414) -----------------------------------------------------------------

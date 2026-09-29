@@ -378,6 +378,72 @@ defmodule BubbleEx.Target.Ash.LoaderTest do
       assert Loader.prune_join_sql("public", own, hd(own.sides)) =~ "AND NOT FALSE"
     end
 
+    test "the load marker: read writes nothing, ensure creates one row" do
+      test = self()
+      exists = :counters.new(1, [])
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params})
+
+        cond do
+          sql =~ "to_regclass" -> {:ok, %{rows: [[:counters.get(exists, 1) == 1]]}}
+          sql =~ "CREATE TABLE" -> {:ok, %{rows: []}}
+          sql =~ "INSERT" -> :counters.put(exists, 1, 1) && {:ok, %{rows: []}}
+          sql =~ "SELECT id::text" -> {:ok, %{rows: [["00000000-0000-4000-8000-000000000001"]]}}
+        end
+      end
+
+      {:ok, project} = F.project(:cut3)
+      {Loader, config} = Loader.target(project, query: query)
+      assert {:ok, nil} = Loader.marker(config, :read)
+      assert_received {:query, _, [~s("public"."bubble_ex_load_target")]}
+      refute_received {:query, _, _}
+
+      assert {:ok, "00000000-0000-4000-8000-000000000001"} = Loader.marker(config, :ensure)
+      assert_received {:query, _, _}
+      assert_received {:query, create, []}
+      assert create =~ ~s(CREATE TABLE IF NOT EXISTS "public"."bubble_ex_load_target")
+      assert_received {:query, insert, [uuid]}
+      assert insert =~ "ON CONFLICT (singleton) DO NOTHING"
+      assert uuid =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    end
+
+    test "a real run's advisory lock: on the checked-out connection, refused when held" do
+      test = self()
+      held = :counters.new(1, [])
+
+      query = fn sql, params ->
+        send(test, {:query, sql, params, Process.get(:checked_out)})
+
+        cond do
+          sql =~ "pg_try_advisory_lock" -> {:ok, %{rows: [[:counters.get(held, 1) == 0]]}}
+          sql =~ "pg_advisory_unlock" -> {:ok, %{rows: [[true]]}}
+        end
+      end
+
+      checkout = fn fun ->
+        Process.put(:checked_out, true)
+
+        try do
+          fun.()
+        after
+          Process.delete(:checked_out)
+        end
+      end
+
+      {:ok, project} = F.project(:cut3)
+      {Loader, config} = Loader.target(project, query: query, checkout: checkout)
+      key = Loader.lock_key("public")
+      assert Loader.with_lock(config, fn -> :ran end) == :ran
+      assert_received {:query, "SELECT pg_try_advisory_lock($1)", [^key], true}
+      assert_received {:query, "SELECT pg_advisory_unlock($1)", [^key], true}
+
+      :counters.put(held, 1, 1)
+
+      assert {:error, %{context: %{reason: :locked}}} =
+               Loader.with_lock(config, fn -> flunk("ran without the lock") end)
+    end
+
     test "quotes identifiers" do
       table = %Plan.Table{type: "x", table: ~s(we"ird), key: "id", columns: []}
       assert Loader.upsert_sql("public", table) =~ ~s("we""ird")

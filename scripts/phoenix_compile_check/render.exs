@@ -335,8 +335,12 @@ case System.argv() do
       blank when blank in [nil, ""] ->
         :ok
 
-      url ->
-        uri = URI.parse(url)
+      _url ->
+        # Fail closed (scripts/check_db.exs): an explicit port, never 5432
+        # unless PHOENIX_COMPILE_CHECK_ALLOW_5432=1, and a check database
+        # (the smoke tests drop and create it).
+        Code.require_file("scripts/check_db.exs")
+        uri = URI.parse(CheckDb.url!("PHOENIX_COMPILE_CHECK_DB", "PHOENIX_COMPILE_CHECK_ALLOW_5432"))
         [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
 
         File.write!(
@@ -345,9 +349,10 @@ case System.argv() do
 
           config :phx_check, PhxCheck.Repo,
             hostname: #{inspect(uri.host)},
-            port: #{uri.port || 5432},
+            port: #{uri.port},
             username: #{inspect(user)},
-            password: #{inspect(password)}
+            password: #{inspect(password)},
+            database: #{inspect(CheckDb.database!("phx_check_test"))}
           """,
           [:append]
         )

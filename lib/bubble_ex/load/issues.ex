@@ -348,6 +348,19 @@ defmodule BubbleEx.Load.Issues do
         details: d
       )
 
+  defp build(:load_prune_mass_delete, s, d),
+    do:
+      Diagnostic.new(
+        :load_prune_mass_delete,
+        "",
+        "pruning would delete #{d.count} of the #{d.owned} rows of #{where(s)} the loader " <>
+          "wrote: all or most of them. An export read with a non-admin token, or of another " <>
+          "app or version, looks like this. Check the export; to prune anyway, name it in " <>
+          "prune: [allow_mass_delete: [\"#{d.key}\"]]",
+        subject: s,
+        details: d
+      )
+
   defp build(:load_prune_unowned, s, d),
     do:
       Diagnostic.new(

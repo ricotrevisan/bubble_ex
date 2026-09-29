@@ -49,6 +49,16 @@ defmodule BubbleEx.Load.Target do
       then a member of no list is deleted. Returns `%{deleted: n, cleared:
       n}` (rows deleted, rows kept with the column cleared). Called only
       with rows the loader wrote
+    * `marker/2` - the database's load marker (WTF-414): a random UUID
+      in a table of its own, which binds the loader's written record
+      (`BubbleEx.Load.Written`) to this database rather than to its
+      address. `:read` returns it (nil when there is none) and writes
+      nothing; `:ensure` creates it when there is none (the first real
+      load) and returns it
+    * `with_lock/2` - runs a function holding the target's exclusive load
+      lock (e.g. a PostgreSQL advisory lock), for a whole real run, and
+      returns its result; `{:error, _}` without running it when another
+      load holds the lock
 
   `BubbleEx.Target.Ash.Loader` is the Ash/PostgreSQL adapter.
   """
@@ -81,6 +91,10 @@ defmodule BubbleEx.Load.Target do
               {:ok, [{String.t(), String.t()}]} | {:error, Error.t()}
   @callback upsert_join(config :: term(), Plan.Join.t(), Plan.Join.side(), [map()]) ::
               {:ok, counts()} | {:error, Error.t()}
+  @callback marker(config :: term(), :read | :ensure) ::
+              {:ok, String.t() | nil} | {:error, Error.t()}
+  @callback with_lock(config :: term(), (-> result)) :: result | {:error, Error.t()}
+            when result: term()
   @callback keys(config :: term(), Plan.Table.t()) :: {:ok, [String.t()]} | {:error, Error.t()}
   @callback delete(config :: term(), Plan.Table.t(), [String.t()]) ::
               {:ok, non_neg_integer()} | {:error, Error.t()}

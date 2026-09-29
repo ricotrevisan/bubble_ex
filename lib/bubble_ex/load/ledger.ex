@@ -8,8 +8,8 @@ defmodule BubbleEx.Load.Ledger do
   event per line with a sequence number, each appended and `fsync`ed as
   it happens (a copied file, a written batch, a finished type). Opening a ledger reads the
   snapshot and replays the journal events its sequence number does not
-  cover (a torn last line, from a crash in the middle of a write, ends
-  the replay), then writes a new snapshot and empties the journal, so
+  cover (a torn last line, from a crash in the middle of a write, is
+  skipped; any other line that does not decode fails the open: fail closed), then writes a new snapshot and empties the journal, so
   nothing is ever appended after a torn line. Every `:compact_every` events (default
   1,000) the state is written to a new snapshot (a temporary file,
   `fsync`, rename, directory sync) and the journal is emptied, so writes stay linear in
@@ -23,8 +23,10 @@ defmodule BubbleEx.Load.Ledger do
                           "inserted": 1400, "updated": 100, "unchanged": 0}},
        "pruned": {"task": {"rows_deleted": 3, "cleared": 0}}}
 
-  (`pruned`, WTF-414: counts only. Which rows the loader wrote, and so
-  may prune, is `BubbleEx.Load.Written`, kept across runs.)
+  (`pruned`, WTF-414: counts. A pruning run also records `prune_plan`,
+  the plan it was confirmed with: its hash and the Bubble IDs it deletes.
+  Which rows the loader wrote, and so may prune, is
+  `BubbleEx.Load.Written`, kept across runs.)
 
   The run key is the SHA-256 of the export's identity, the plan's and the
   target's (the database, the storage and the `:keys` option; see
@@ -35,7 +37,7 @@ defmodule BubbleEx.Load.Ledger do
   makes a rerun safe.
 
   A ledger holds no stored value and no credential: counts, Bubble file
-  URLs and storage references only. Its files are `0600`; a directory the
+  URLs, storage references and (a confirmed prune plan) Bubble IDs only. Its files are `0600`; a directory the
   ledger creates is `0700` (an existing one is left as it is).
 
   The journal's file descriptor belongs to the process that opened the
@@ -83,9 +85,8 @@ defmodule BubbleEx.Load.Ledger do
     key = run_key(ids.export_sha256, ids.plan_sha256, ids.target)
     path = Path.join(dir, key <> ".json")
 
-    with {:ok, data} <- read_snapshot(path, key, ids) do
-      {data, events} = Journal.replay(path, data, &apply_event/2)
-
+    with {:ok, data} <- read_snapshot(path, key, ids),
+         {:ok, data, events} <- Journal.replay(path, data, &apply_event/2) do
       ledger = %__MODULE__{
         path: path,
         data: data,
@@ -149,10 +150,9 @@ defmodule BubbleEx.Load.Ledger do
   def read(path) do
     key = Path.basename(path, ".json")
 
-    with {:ok, data} <- read_snapshot(path, key, nil) do
-      {data, _events} = Journal.replay(path, data, &apply_event/2)
-      {:ok, data}
-    end
+    with {:ok, data} <- read_snapshot(path, key, nil),
+         {:ok, data, _events} <- Journal.replay(path, data, &apply_event/2),
+         do: {:ok, data}
   end
 
   @doc "The run key."
@@ -208,6 +208,26 @@ defmodule BubbleEx.Load.Ledger do
   @doc "The prune counts recorded for `key` (`\"rows_deleted\"`, `\"cleared\"`)."
   @spec pruned_counts(t(), String.t()) :: map()
   def pruned_counts(%__MODULE__{data: d}, key), do: get_in(d, ["pruned", key]) || %{}
+
+  @doc """
+  Records the prune plan a run was confirmed with (`prune: [expect:
+  sha256]`, WTF-414): the hash the caller confirmed and the records and
+  join rows it deletes (Bubble IDs), so a resumed run may prune what is
+  left of it under the same confirmation.
+  """
+  @spec prune_plan(t(), String.t(), map(), map()) :: t()
+  def prune_plan(%__MODULE__{} = l, sha256, records, lists) do
+    record(l, %{
+      "prune_plan" => sha256,
+      "records" => records,
+      "lists" => Map.new(lists, fn {k, pairs} -> {k, Enum.map(pairs, &Tuple.to_list/1)} end)
+    })
+  end
+
+  @doc "The confirmed prune plan recorded in a ledger or its data (nil when none)."
+  @spec confirmed_prune(map() | t()) :: map() | nil
+  def confirmed_prune(%__MODULE__{data: d}), do: confirmed_prune(d)
+  def confirmed_prune(%{} = d), do: d["prune_plan"]
 
   @doc "Starts a finished run over: forgets its types, files and prune counts."
   @spec restart(t()) :: t()
@@ -271,8 +291,19 @@ defmodule BubbleEx.Load.Ledger do
     Map.put(d, "pruned", Map.put(Map.get(d, "pruned", %{}), key, entry))
   end
 
+  defp apply_event(d, %{"prune_plan" => sha} = e),
+    do:
+      Map.put(d, "prune_plan", %{
+        "sha256" => sha,
+        "records" => e["records"],
+        "lists" => e["lists"]
+      })
+
   defp apply_event(d, %{"restart" => true}),
-    do: Map.merge(d, %{"status" => "running", "types" => %{}, "files" => %{}, "pruned" => %{}})
+    do:
+      d
+      |> Map.merge(%{"status" => "running", "types" => %{}, "files" => %{}, "pruned" => %{}})
+      |> Map.delete("prune_plan")
 
   defp apply_event(d, %{"complete" => true}), do: Map.put(d, "status", "complete")
   defp apply_event(d, _unknown), do: d

@@ -56,12 +56,14 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
+        # A port of its own: the check scripts refuse 5432
+        # (scripts/check_db.exs).
         ports:
-          - 5432:5432
+          - 55432:5432
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      ASH_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:5432
+      ASH_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:55432
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -85,7 +87,7 @@ jobs:
           mix test --only ddl_postgres
         env:
           MIX_ENV: test
-          BUBBLE_EX_DDL_PG: postgres://postgres:postgres@localhost:5432
+          BUBBLE_EX_DDL_PG: postgres://postgres:postgres@localhost:55432
 
   phoenix-compile-check:
     # Renders every fixture through BubbleEx.Target.Phoenix as a complete
@@ -111,12 +113,14 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
+        # A port of its own: the check scripts refuse 5432
+        # (scripts/check_db.exs).
         ports:
-          - 5432:5432
+          - 55432:5432
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      PHOENIX_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:5432
+      PHOENIX_COMPILE_CHECK_DB: ecto://postgres:postgres@localhost:55432
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1

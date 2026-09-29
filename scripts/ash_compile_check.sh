@@ -13,8 +13,11 @@
 #     condition (rendered as expr(...) into <namespace>.PrivacyFilters and
 #     compiled above) builds an AshPostgres query, logged out and with a
 #     sample actor
-#   * with ASH_COMPILE_CHECK_DB set (a PostgreSQL URL without a database,
-#     e.g. ecto://postgres:postgres@localhost:5432): generates and runs the
+#   * with ASH_COMPILE_CHECK_DB (required: a PostgreSQL URL without a
+#     database, with an explicit port that is not 5432 unless
+#     ASH_COMPILE_CHECK_ALLOW_5432=1, e.g.
+#     ecto://postgres:postgres@127.0.0.1:55432; scripts/check_db.exs):
+#     generates and runs the
 #     migrations in one database per fixture, then scripts/ash_compile_check/
 #     runtime.exs inserts and reads back sample rows for every resource and
 #     runs every privacy filter against them for each actor; then it seeds
@@ -60,8 +63,7 @@
 # an owner downloads) into a second scratch project pinned to
 # versions(privacy: :omit) (no PicoSAT): render.exs fails on any policy
 # machinery in the source; it must compile with --warnings-as-errors and
-# generate migrations without foreign keys, and with ASH_COMPILE_CHECK_DB
-# its migrations run, runtime.exs round-trips the sample rows,
+# generate migrations without foreign keys, and its migrations run, runtime.exs round-trips the sample rows,
 # scripts/ash_compile_check/omit.exs checks that no resource has an
 # authorizer, policies or private relationships and that every row reads
 # back with authorization on and no actor; then decisions.exs checks the
@@ -76,7 +78,14 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 scratch="${ASH_COMPILE_CHECK_DIR:-$root/_build/ash_compile_check}"
 
+# The database is required and checked (scripts/check_db.exs): a URL with
+# an explicit port, never 5432 unless ASH_COMPILE_CHECK_ALLOW_5432=1; only
+# databases with a check prefix are created and dropped.
+: "${ASH_COMPILE_CHECK_DB:?set ASH_COMPILE_CHECK_DB to a PostgreSQL URL with an explicit port, e.g. ecto://postgres:postgres@127.0.0.1:55432}"
+elixir -r "$root/scripts/check_db.exs" -e 'CheckDb.url!()'
+
 mkdir -p "$scratch"
+cp "$root/scripts/check_db.exs" "$scratch/"
 cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
   "$root/scripts/ash_compile_check/filters.exs" \
   "$root/scripts/ash_compile_check/policies.exs" \
@@ -91,12 +100,9 @@ MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$scratch" unverified
 
 # The privacy-matrix tests (slow to synthesize) render in the background
 # while the scratch project compiles; waited for before `mix test`.
-matrix_pid=""
-if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
-  MIX_ENV=test mix run scripts/ash_compile_check/matrix_render.exs "$scratch" \
-    >"$scratch/matrix_render.log" 2>&1 &
-  matrix_pid=$!
-fi
+MIX_ENV=test mix run scripts/ash_compile_check/matrix_render.exs "$scratch" \
+  >"$scratch/matrix_render.log" 2>&1 &
+matrix_pid=$!
 
 cd "$scratch"
 mix deps.get
@@ -139,57 +145,54 @@ echo "ash compile check passed: generated migrations create $tables tables"
 # Compiled privacy-rule conditions (WTF-368) resolve against the resources.
 mix run filters.exs
 
-if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
-  mix ash.codegen compile_check >/dev/null
-  mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
-  mix ecto.create --quiet
-  mix ecto.migrate --quiet
-  mix run runtime.exs
-  mix run policies.exs
-  mix run ecto_migrate.exs
-  mix run decisions.exs
+mix ash.codegen compile_check >/dev/null
+mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
+mix ecto.create --quiet
+mix ecto.migrate --quiet
+mix run runtime.exs
+mix run policies.exs
+mix run ecto_migrate.exs
+mix run decisions.exs
 
-  # The data loader (WTF-357), end to end: load.exs (from the bubble_ex
-  # root) loads fixture exports into three of these databases (dry run,
-  # interrupted and resumed run, rerun, delta sync), then loaded.exs reads
-  # them back through Ash.
-  (cd "$root" && MIX_ENV=test mix run scripts/ash_compile_check/load.exs "$scratch")
-  mix run loaded.exs
+# The data loader (WTF-357), end to end: load.exs (from the bubble_ex
+# root) loads fixture exports into three of these databases (dry run,
+# interrupted and resumed run, rerun, delta sync), then loaded.exs reads
+# them back through Ash.
+(cd "$root" && MIX_ENV=test mix run scripts/ash_compile_check/load.exs "$scratch")
+mix run loaded.exs
 
-  # Generated privacy-matrix tests (WTF-383): scored even when some fail, so
-  # the counts and diffs are printed; then any failure fails the check.
-  MIX_ENV=test mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
-  MIX_ENV=test mix ecto.create --quiet
-  MIX_ENV=test mix ecto.migrate --quiet
-  matrix_render_status=0
-  wait "$matrix_pid" || matrix_render_status=$?
-  cat "$scratch/matrix_render.log"
+# Generated privacy-matrix tests (WTF-383): scored even when some fail, so
+# the counts and diffs are printed; then any failure fails the check.
+MIX_ENV=test mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
+MIX_ENV=test mix ecto.create --quiet
+MIX_ENV=test mix ecto.migrate --quiet
+matrix_render_status=0
+wait "$matrix_pid" || matrix_render_status=$?
+cat "$scratch/matrix_render.log"
 
-  if [[ "$matrix_render_status" != 0 ]]; then
-    echo "rendering the privacy-matrix tests failed" >&2
-    exit 1
-  fi
+if [[ "$matrix_render_status" != 0 ]]; then
+  echo "rendering the privacy-matrix tests failed" >&2
+  exit 1
+fi
 
-  rm -rf observations
-  matrix_status=0
-  WTF_VERIFY_OBSERVATIONS="$scratch/observations" MIX_ENV=test mix test --warnings-as-errors ||
-    matrix_status=$?
-  (cd "$root" && MIX_ENV=test mix run scripts/ash_compile_check/matrix_results.exs "$scratch")
+rm -rf observations
+matrix_status=0
+WTF_VERIFY_OBSERVATIONS="$scratch/observations" MIX_ENV=test mix test --warnings-as-errors ||
+  matrix_status=$?
+(cd "$root" && MIX_ENV=test mix run scripts/ash_compile_check/matrix_results.exs "$scratch")
 
-  if [[ "$matrix_status" != 0 ]]; then
-    echo "the generated privacy-matrix tests failed" >&2
-    exit 1
-  fi
-else
-  echo "runtime check skipped: set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
+if [[ "$matrix_status" != 0 ]]; then
+  echo "the generated privacy-matrix tests failed" >&2
+  exit 1
 fi
 
 # privacy: :omit, the default: the same fixtures without policies, in a
 # project without PicoSAT.
 omit="${scratch}_omit"
 mkdir -p "$omit"
-cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/runtime.exs" \
-  "$root/scripts/ash_compile_check/omit.exs" "$root/scripts/ash_compile_check/decisions.exs" "$omit/"
+cp "$root/scripts/check_db.exs" "$root/scripts/ash_compile_check/mix.lock" \
+  "$root/scripts/ash_compile_check/runtime.exs" "$root/scripts/ash_compile_check/omit.exs" \
+  "$root/scripts/ash_compile_check/decisions.exs" "$omit/"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$omit" omit
@@ -214,14 +217,10 @@ no_foreign_keys "$codegen"
 tables="$(grep -c "create table(" <<<"$codegen" || true)"
 echo "ash compile check passed (privacy: :omit): generated migrations create $tables tables"
 
-if [[ -n "${ASH_COMPILE_CHECK_DB:-}" ]]; then
-  mix ash.codegen compile_check >/dev/null
-  mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
-  mix ecto.create --quiet
-  mix ecto.migrate --quiet
-  mix run runtime.exs
-  mix run omit.exs
-  mix run decisions.exs
-else
-  echo "runtime check skipped (privacy: :omit): set ASH_COMPILE_CHECK_DB to a PostgreSQL URL"
-fi
+mix ash.codegen compile_check >/dev/null
+mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
+mix ecto.create --quiet
+mix ecto.migrate --quiet
+mix run runtime.exs
+mix run omit.exs
+mix run decisions.exs

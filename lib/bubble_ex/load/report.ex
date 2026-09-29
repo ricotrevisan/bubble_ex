@@ -7,9 +7,11 @@ defmodule BubbleEx.Load.Report do
       (a schema mismatch, stale join membership, duplicate emails, an
       incomplete export without `allow_partial: true`); `[]` when it may run.
       Stale join membership (`:load_join_stale_member`) blocks a load into
-      a database holding join rows the export no longer lists, unless it
-      runs with `prune: true` (WTF-414), which removes those the loader
-      wrote and keeps (and reports) the others. The diagnostic's
+      a database holding join rows the export no longer lists, unless the
+      run prunes them (WTF-414: those the loader wrote) or acknowledges
+      them by name (`acknowledge_unowned`). A prune that would delete all
+      or most of a type or list the loader wrote blocks too
+      (`:load_prune_mass_delete`). The diagnostic's
       `details.stale_members` lists them (`table`, `left_column`,
       `right_column`, `membership_column`, `rows` as `[left ID, right
       ID]`). An `allow_partial` run in which an owner type failed blocks
@@ -29,16 +31,18 @@ defmodule BubbleEx.Load.Report do
     * `files` - `referenced` (distinct Bubble file URLs in file fields),
       `public`, `private`, `copied` (verified in the target storage, or
       would be for a dry run), `failed`
-    * `prune` - nil unless `prune: true`; else what pruning deletes and
-      keeps, from the target as this invocation found it: `types` per data
-      type, `delete` (records the loader wrote that the export no longer
-      holds) and `unowned` (records the export does not hold that the
-      loader did not write: kept, `:load_prune_unowned`); `joins` per list
-      (keyed as `joins`), `remove` (members the loader wrote that the list
-      no longer holds) and `unowned`. A real run adds `deleted` (rows
-      deleted) and `cleared` (join rows kept with the list's column
+    * `prune` - nil unless the run prunes (`prune:`); else the plan, from
+      the target as this invocation found it: `sha256` (what a real run
+      confirms with `prune: [expect: sha256]`), `types` per data type,
+      `delete` (records the loader wrote that the export no longer holds),
+      `owned` (the loader's records the target holds) and `unowned`
+      (records the export does not hold that the loader did not write:
+      kept, `:load_prune_unowned`); `joins` per list (keyed as `joins`),
+      `remove` (members the loader wrote that the list no longer holds),
+      `owned` and `unowned` (acknowledged ones). A real run adds `deleted`
+      (rows deleted) and `cleared` (join rows kept with the list's column
       cleared, another list holding them), over the run's ledger. Counts
-      only; the diagnostics hold sample IDs
+      and a hash only; the diagnostics hold sample IDs
     * `auth` - `users`, `with_email`, `confirmed`, `unconfirmed`, `unknown`
       (no confirmed status), and `confirmed_column` (whether the target
       stores the status)

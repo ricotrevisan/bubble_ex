@@ -23,6 +23,8 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
           fail_on: Keyword.get(opts, :fail_on),
           prunes: 0,
           fail_prune: nil,
+          marker: nil,
+          locked: nil,
           auth: auth(project)
         }
       end)
@@ -32,6 +34,60 @@ defmodule BubbleEx.Test.LoadMemoryTarget do
 
   def fail_on({__MODULE__, %__MODULE__{agent: a}}, n),
     do: Agent.update(a, &%{&1 | fail_on: n, calls: 0})
+
+  # The database's load marker: `set_marker(target, nil)` drops it, as a
+  # recreated database would not have it.
+  def set_marker({__MODULE__, %__MODULE__{agent: a}}, marker),
+    do: Agent.update(a, &%{&1 | marker: marker})
+
+  def marker_of({__MODULE__, %__MODULE__{agent: a}}), do: Agent.get(a, & &1.marker)
+
+  # Another load (process `pid`) holding the lock; nil releases it.
+  def hold_lock({__MODULE__, %__MODULE__{agent: a}}, pid),
+    do: Agent.update(a, &%{&1 | locked: pid})
+
+  @impl true
+  def marker(%__MODULE__{agent: a}, :read), do: {:ok, Agent.get(a, & &1.marker)}
+
+  def marker(%__MODULE__{agent: a}, :ensure) do
+    Agent.get_and_update(a, fn
+      %{marker: nil} = s ->
+        m =
+          "00000000-0000-4000-8000-" <>
+            String.pad_leading("#{System.unique_integer([:positive])}", 12, "0")
+
+        {{:ok, m}, %{s | marker: m}}
+
+      s ->
+        {{:ok, s.marker}, s}
+    end)
+  end
+
+  @impl true
+  def with_lock(%__MODULE__{agent: a}, fun) do
+    # As a session lock: a process that died (killed mid-run) holds none.
+    taken =
+      Agent.get_and_update(a, fn
+        %{locked: pid} = s when is_pid(pid) and pid != self() ->
+          if Process.alive?(pid), do: {false, s}, else: {true, %{s | locked: self()}}
+
+        s ->
+          {true, %{s | locked: self()}}
+      end)
+
+    if taken do
+      try do
+        fun.()
+      after
+        Agent.update(a, &%{&1 | locked: nil})
+      end
+    else
+      {:error,
+       BubbleEx.Error.new(:invalid_input, "another load holds this target's lock", %{
+         reason: :locked
+       })}
+    end
+  end
 
   # Makes the Nth delete/prune_join call fail (a crash mid-prune).
   def fail_prune({__MODULE__, %__MODULE__{agent: a}}, n),

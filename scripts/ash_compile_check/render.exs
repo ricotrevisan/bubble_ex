@@ -647,7 +647,7 @@ domains = Enum.map_join(rendered, ", ", &elem(&1, 0))
 
 repo_config =
   Enum.map_join(rendered, "\n", fn {_namespace, repo, name} ->
-    "config :ash_compile_check, #{repo}, url: base <> \"/#{database_prefix}#{name}\", pool_size: 2, log: false"
+    "config :ash_compile_check, #{repo}, url: base <> \"/\" <> CheckDb.database!(\"#{database_prefix}#{name}\"), pool_size: 2, log: false"
   end)
 
 # The test environment runs the privacy-matrix tests only: their repos, in
@@ -656,14 +656,17 @@ matrix_repos = Enum.map_join(matrix, ", ", & &1.repo)
 
 matrix_config =
   Enum.map_join(matrix, "\n", fn %{repo: repo, name: name} ->
-    "  config :ash_compile_check, #{repo}, url: base <> \"/ash_matrix_#{name}\", " <>
+    "  config :ash_compile_check, #{repo}, url: base <> \"/\" <> CheckDb.database!(\"ash_matrix_#{name}\"), " <>
       "pool: Ecto.Adapters.SQL.Sandbox, pool_size: 2, log: false"
   end)
 
 File.write!(Path.join(dir, "config/config.exs"), """
 import Config
 
-base = System.get_env("ASH_COMPILE_CHECK_DB", "ecto://postgres:postgres@localhost:5432")
+# Fail closed (scripts/check_db.exs, copied next to this project): the URL
+# is required, names its port, and only check databases are touched.
+Code.require_file(Path.expand("../check_db.exs", __DIR__))
+base = CheckDb.url!()
 
 config :ash_compile_check, ecto_repos: [#{repos}], ash_domains: [#{domains}]
 # Required since Ash 3.33 (EEF-CVE-2026-82752); the generated source sets no
