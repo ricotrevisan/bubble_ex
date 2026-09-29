@@ -43,7 +43,13 @@ All notable changes to this project are documented here.
   stay hash-checked, `__using__` wrappers' `unquote`d options are their
   callers'); `Ash.Seed` and `Ash.DataLayer` / `AshPostgres.DataLayer` reads
   and writes (`:data_layer_call`); `Code.eval_*`, `Module.eval_quoted`,
-  `EEx.eval_*` and `EEx.compile_*` (`:code_eval`). The `not_run`
+  `EEx.eval_*` and `EEx.compile_*` (`:code_eval`); in a `quote` (what
+  `__using__` injects), an `alias`, `require ..., as:` or `use` of a Repo,
+  Runtime or data layer module, and every quoted `use Ecto.Repo` (the
+  app's Repo included; modules using such a wrapper are Repos); an
+  `alias` or `require ..., as:` nested in an expression or another
+  macro's block (`:nested_alias`, it binds after its statement as in
+  Elixir). The `not_run`
   "bypass_inventory (not seen)" text lists only what remains.
 - **LiveView patch releases** (WTF-425). bubble_ex requires
   `phoenix_live_view ~> 1.2.12` (was `== 1.2.12`), so apps using it can

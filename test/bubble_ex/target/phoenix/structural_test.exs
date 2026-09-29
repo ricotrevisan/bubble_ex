@@ -968,6 +968,109 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
              ]
     end
 
+    # Third review of #156: what a `__using__` quote injects.
+    test "a quoted alias, require or use of a Repo, Runtime or data layer is a site" do
+      source = """
+      defmodule AcmeWeb do
+        def html_helpers do
+          quote do
+            use Phoenix.Component
+            alias Acme.Repo, as: DB, warn: false
+            require Acme.Workflows.Runtime, as: RT
+            alias Ash.DataLayer
+            alias Phoenix.LiveView.JS
+            use Acme.Repo
+          end
+        end
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {5, :repo_call},
+               {6, :runtime_unverifiable},
+               {7, :data_layer_call},
+               {9, :repo_call}
+             ]
+    end
+
+    test "a quoted use Ecto.Repo is a site, the app's Repo included; its users are Repos" do
+      repo = """
+      defmodule Acme.Repo do
+        use AshPostgres.Repo, otp_app: :acme
+        defmacro __using__(_) do
+          quote do
+            use AshPostgres.Repo, otp_app: :acme
+          end
+        end
+      end
+      """
+
+      store = """
+      defmodule Acme.Store do
+        use Acme.Repo
+      end
+      defmodule Acme.Calls do
+        def a(q), do: Acme.Store.all(q)
+      end
+      """
+
+      inventory =
+        Bypasses.inventory(%{"lib/repo.ex" => repo, "lib/store.ex" => store},
+          app_repo: "Acme.Repo"
+        )
+
+      assert Enum.map(inventory.sites, &{&1.path, &1.line, &1.kind}) == [
+               {"lib/repo.ex", 5, :repo_call},
+               {"lib/store.ex", 2, :repo_call},
+               {"lib/store.ex", 5, :repo_call}
+             ]
+    end
+
+    # An alias in an expression binds after its statement, as in Elixir;
+    # one that is not a statement of a known scope is a site.
+    test "aliases nested in expressions bind after them and are sites" do
+      source = """
+      defmodule L do
+        def a(q) do
+          _ = (alias Acme.Repo, as: M)
+          M.all(q)
+        end
+        def b(q) do
+          x = (alias Acme.Repo, as: N; 1)
+          {x, N.all(q)}
+        end
+        def c(q) do
+          IO.inspect(alias(Acme.Repo, as: C))
+          C.all(q)
+        end
+        def d(q) do
+          Enum.map([q], fn q -> alias Acme.Repo, as: F; F.all(q) end)
+          F.all(q)
+        end
+      end
+      defmodule Dsl do
+        actions do
+          alias Acme.Repo, as: G
+        end
+      end
+      """
+
+      assert {:ok, sites} = Bypasses.sites(source)
+
+      assert Enum.map(sites, &{&1.line, &1.kind}) == [
+               {3, :nested_alias},
+               {4, :repo_call},
+               {7, :nested_alias},
+               {8, :repo_call},
+               {11, :nested_alias},
+               {12, :repo_call},
+               {15, :repo_call},
+               {21, :nested_alias}
+             ]
+    end
+
     test "finds always-authorizing policies however always is spelled" do
       source = """
       defmodule R do

@@ -91,7 +91,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
              "module and function both cannot be read, policies that authorize everything " <>
              "under other conditions or checks, authorizers added by a Spark fragment, a " <>
              "__using__ wrapper's callers, Repo calls in ~H and .heex templates, queries " <>
-             "through other libraries, code outside lib/, aliases a macro injects"}
+             "through other libraries, code outside lib/, aliases a dependency's macro injects, a wrapper of a " <>
+             "Repo wrapper"}
 
   @typedoc """
   A run: its results, its counts (aggregates only), the checks it did not
