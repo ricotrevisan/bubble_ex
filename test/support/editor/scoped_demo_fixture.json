@@ -1,5 +1,5 @@
 {
-  "plugin_group": "1787127143284x497506916809310200_current",
+  "plugin_group": "1600000000013x200000000000000013_current",
   "page_key": "wtf_271_cli_demo",
   "page": {
     "%x": "Page",
@@ -69,7 +69,7 @@
     },
     "%el": {
       "controller": {
-        "%x": "1787127143284x497506916809310200_current-AEA",
+        "%x": "1600000000013x200000000000000013_current-AEA",
         "id": "wtf271plugin001",
         "%nm": "Popover CLI",
         "%p": {
@@ -95,7 +95,7 @@
         "%p": {"%ei": "wtf271button001"},
         "actions": {
           "0": {
-            "%x": "1787127143284x497506916809310200_current-AED",
+            "%x": "1600000000013x200000000000000013_current-AED",
             "id": "wtf271action001",
             "%p": {"%ei": "wtf271plugin001"}
           },
@@ -111,7 +111,7 @@
         }
       },
       "plugin_opened": {
-        "%x": "1787127143284x497506916809310200_current-AEG",
+        "%x": "1600000000013x200000000000000013_current-AEG",
         "id": "wtf271workflow2",
         "%p": {"%ei": "wtf271plugin001"},
         "actions": {

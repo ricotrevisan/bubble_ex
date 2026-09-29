@@ -72,7 +72,7 @@ defmodule BubbleEx.Frontend.FidelityTest do
       assert case_.source.page_path == "bubbleex-complex-demo"
 
       assert case_.source.payload_sha256 ==
-               "95e3393ef9c9dbc38634e59c0e776322b373a6b4b906ea9bf2618528fb6b2209"
+               "fda628f6c472d2d31b4fbef2d38dbabeffddbdc7aafb3a541d208baf2d4d8b14"
 
       assert case_.viewports == [390, 1512]
       assert case_.export_pages == ["bubbleex-complex-demo", "bubbleex-complex-detail"]

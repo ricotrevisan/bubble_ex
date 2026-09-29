@@ -153,7 +153,7 @@ This follow-up did not repeat the entire demo runtime exercise recorded above.
 
 Reproduction: run `mix bubble.editor schema example-plugin dev03` with the two
 plugin groups from `live_plugin_property_plan.json` and the rich-text group
-`1670612027178x122079323974008830_current`. Refresh the plan's base revision and
+`1600000000004x200000000000000004_current`. Refresh the plan's base revision and
 schema pin from fresh reads before check/apply; the checked-in live fixture is
 historical and deliberately stale after rollback. Retain an apply receipt and
 use `rollback RECEIPT --receipt NEW_RECEIPT` to restore. Temporary receipts for
