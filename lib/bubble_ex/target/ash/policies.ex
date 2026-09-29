@@ -89,6 +89,97 @@ defmodule BubbleEx.Target.Ash.Policies do
     {project, List.flatten(diags)}
   end
 
+  @doc false
+  # `privacy: :enforced` (WTF-423, Rico's option A): the policies of
+  # `apply/2`, plus one policy per default write action authorizing the
+  # writes of the generated workflow runtime (`:workflow_write`). Other
+  # writes stay forbidden. The "not verified" warning becomes the warning
+  # that writes are not checked against the privacy rules.
+  @spec enforce(Project.t(), [Diagnostic.t()]) :: {Project.t(), [Diagnostic.t()]}
+  def enforce(%Project{} = project, diags) do
+    project = %{
+      project
+      | resources: Enum.map(project.resources, &(&1 |> workflow_writes() |> attachments())),
+        joins: Enum.map(project.joins, &workflow_writes/1)
+    }
+
+    diags = Enum.reject(diags, &(&1.code == :ash_policies_unverified))
+    {project, writes_unchecked(project) ++ diags}
+  end
+
+  defp workflow_writes(%Resource{policies: []} = resource), do: resource
+
+  defp workflow_writes(%Resource{} = resource) do
+    writes =
+      for action <- ~w(create update destroy) do
+        %Policy{
+          action: action,
+          permission: :workflow_write,
+          description:
+            "Writes by the generated workflow runtime: the workflow's conditions guard them, " <>
+              "as in Bubble (not checked against the privacy rules)",
+          checks: [
+            %PolicyCheck{
+              kind: :authorize_if,
+              test: :workflow_write,
+              source: %{decision: "WTF-423"}
+            }
+          ]
+        }
+      end
+
+    %{resource | policies: resource.policies ++ writes}
+  end
+
+  # Bubble's "view attached files" as a keyed read action, `:attachments`,
+  # on a resource with file fields: the generated app reads the record a
+  # private file is attached to through it (by primary key), with the
+  # actor, to decide whether to serve the file. Its policy is the
+  # permission's checks.
+  defp attachments(%Resource{privacy: %ResourcePrivacy{file_fields: [_ | _]} = p} = r) do
+    action = %Action{
+      type: :read,
+      name: "attachments",
+      description:
+        "Bubble's \"view attached files\": the record, by primary key, when the user may " <>
+          "open the files attached to it"
+    }
+
+    policies = [
+      %Policy{
+        action: "attachments",
+        permission: :keyed,
+        description: "Attached files are reached through their record's primary key",
+        checks: [%PolicyCheck{kind: :authorize_if, test: :keyed}]
+      },
+      %Policy{
+        action: "attachments",
+        permission: :view_attachments,
+        description: "The user may view the files attached to the record",
+        checks: p.attachments
+      }
+    ]
+
+    %{r | extra_actions: r.extra_actions ++ [action], policies: r.policies ++ policies}
+  end
+
+  defp attachments(resource), do: resource
+
+  defp writes_unchecked(%Project{resources: []}), do: []
+
+  defp writes_unchecked(%Project{}) do
+    [
+      Diagnostic.new(
+        :ash_writes_not_policy_checked,
+        "",
+        "privacy: :enforced - reads follow the compiled privacy rules; writes are not checked " <>
+          "against them: a write the generated workflow runtime makes is authorized (its " <>
+          "conditions guard it, as in Bubble), any other write is forbidden",
+        target: :ash
+      )
+    ]
+  end
+
   # Ash field policies do not apply to aggregates (count, min, max, sum,
   # list, first, ...) over a field: diagnosed wherever some field is not
   # visible to everyone, since a policy cannot tell an aggregate from a read.

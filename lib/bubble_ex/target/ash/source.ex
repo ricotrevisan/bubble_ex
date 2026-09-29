@@ -26,7 +26,13 @@ defmodule BubbleEx.Target.Ash.Source do
       notifiers: [module], dsl: source}` (each key optional). The
       extensions, `Spark.Dsl.Fragment`s and notifiers are added to its `use
       Ash.Resource` and the DSL source is printed at the end of the
-      resource, verbatim. Default `%{}`
+      resource, verbatim. `policy_bypasses: [{check, purpose}]` (a
+      resource with policies) puts `bypass <check> do authorize_if
+      always() end` first in its policies and, with field policies,
+      `field_policy_bypass :*, <check>` first in them (private fields then
+      `:include`d, so the bypass reaches them; no other field policy names
+      one), each marked `# bubble:ignores_privacy scaffold:<purpose>` for
+      the structural bypass inventory. Default `%{}`
     * `:extra_resources` - fully qualified modules of resources defined
       elsewhere that the domain lists after the Project's, default `[]`
   """
@@ -141,7 +147,8 @@ defmodule BubbleEx.Target.Ash.Source do
   @type extension :: %{
           optional(:extensions) => [String.t()],
           optional(:fragments) => [String.t()],
-          optional(:dsl) => String.t()
+          optional(:dsl) => String.t(),
+          optional(:policy_bypasses) => [{String.t(), String.t()}]
         }
   @type option ::
           {:namespace, String.t()}
@@ -171,7 +178,8 @@ defmodule BubbleEx.Target.Ash.Source do
         domain: domain,
         repo: repo,
         extend: extend,
-        extra_resources: extra_resources
+        extra_resources: extra_resources,
+        privacy: project.privacy
       }
 
       modules =
@@ -180,6 +188,7 @@ defmodule BubbleEx.Target.Ash.Source do
           Enum.map(project.typed_structs, &typed_struct(&1, ctx)) ++
           keyed_read_module(project, ctx) ++
           search_fields_module(project, ctx) ++
+          workflow_write_module(project, ctx) ++
           Enum.map(project.resources ++ project.joins, &resource(&1, ctx)) ++
           [domain_module(project, ctx)] ++ privacy_module(project, ctx)
 
@@ -215,9 +224,12 @@ defmodule BubbleEx.Target.Ash.Source do
     extensions = Map.get(entry, :extensions, [])
     fragments = Map.get(entry, :fragments, [])
     notifiers = Map.get(entry, :notifiers, [])
+    bypasses = Map.get(entry, :policy_bypasses, [])
+    purposes_ok? = Enum.all?(bypasses, &match?({m, p} when is_binary(m) and is_binary(p), &1))
 
     cond do
-      Map.keys(entry) -- [:extensions, :fragments, :notifiers, :dsl] != [] or
+      not purposes_ok? or
+        Map.keys(entry) -- [:extensions, :fragments, :notifiers, :dsl, :policy_bypasses] != [] or
           not is_binary(Map.get(entry, :dsl, "")) ->
         {:error, Error.new(:invalid_input, "invalid extend entry #{inspect({module, entry})}")}
 
@@ -227,6 +239,7 @@ defmodule BubbleEx.Target.Ash.Source do
       true ->
         with :ok <- check_aliases(:extend, extensions),
              :ok <- check_aliases(:extend, fragments),
+             :ok <- check_aliases(:extend, Enum.map(bypasses, &elem(&1, 0))),
              do: check_aliases(:extend, notifiers)
     end
   end
@@ -386,7 +399,7 @@ defmodule BubbleEx.Target.Ash.Source do
         defaults #{literal(resource.actions)}
     #{Enum.map_join(resource.extra_actions, "\n", &action(&1, ctx))}
       end
-    #{policies(resource, ctx)}#{field_policies(resource.field_policies, ctx)}#{extra_dsl(resource, ctx)}end
+    #{policies(resource, ctx)}#{field_policies(resource.field_policies, resource.module, ctx)}#{extra_dsl(resource, ctx)}end
     """
   end
 
@@ -503,10 +516,59 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp policies(%Resource{policies: []}, _ctx), do: ""
 
-  defp policies(%Resource{policies: policies}, ctx) do
+  @enforced_header """
+  # Privacy rules compiled from Bubble by bubble_ex (WTF-356), ENFORCED
+  # (privacy: :enforced, WTF-423). Reads follow the compiled rules, checked
+  # by the privacy matrix against the calibrated reading of Bubble; where a
+  # condition reads an empty value on the user's side (logged out, or a
+  # user without the value) they deny what Bubble may grant (stricter by
+  # design). WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES: a write the
+  # generated workflow runtime makes is authorized (Privacy.WorkflowWrite:
+  # the workflow's conditions guard it, as in Bubble); any other write is
+  # forbidden. Load the actor with the Privacy module's load_actor/1 on
+  # every request and LiveView mount. Enumerate records only through
+  # :search; :read returns records by primary key. Field policies do not
+  # guard code: a filter, sort or calculation written in code (not *_input)
+  # that reads a field the actor may not view still sees its value, nor do
+  # they cover aggregates: never aggregate a field the actor may not view.
+  """
+
+  defp policies(%Resource{policies: policies} = resource, ctx) do
+    header = if ctx[:privacy] == :enforced, do: @enforced_header, else: @policies_header
+
     "\n" <>
-      @policies_header <>
-      "policies do\n" <> Enum.map_join(policies, "\n", &policy(&1, ctx)) <> "\nend\n"
+      header <>
+      "policies do\n" <>
+      policy_bypasses(resource, ctx) <>
+      Enum.map_join(policies, "\n", &policy(&1, ctx)) <> "\nend\n"
+  end
+
+  # Bypasses a renderer puts first (`extend`'s `:policy_bypasses`: `{check
+  # module, scaffold purpose}`), e.g. AshAuthentication's own interactions
+  # with the User; marked for the structural bypass inventory.
+  defp policy_bypasses(%Resource{module: module}, ctx) do
+    for {check, purpose} <- get_in(ctx.extend, [module, :policy_bypasses]) || [], into: "" do
+      """
+      #{@scaffold_marker}#{purpose}
+      bypass #{check} do
+        authorize_if always()
+      end
+
+      """
+    end
+  end
+
+  # The same checks bypass the field policies (every field), first.
+  defp field_policy_bypasses(module, ctx) do
+    for {check, purpose} <- get_in(ctx.extend, [module, :policy_bypasses]) || [], into: "" do
+      """
+      #{@scaffold_marker}#{purpose}
+      field_policy_bypass :*, #{check} do
+        authorize_if always()
+      end
+
+      """
+    end
   end
 
   defp policy(%Policy{} = policy, ctx) do
@@ -530,9 +592,9 @@ defmodule BubbleEx.Target.Ash.Source do
     """
   end
 
-  defp field_policies([], _ctx), do: ""
+  defp field_policies([], _module, _ctx), do: ""
 
-  defp field_policies(policies, ctx) do
+  defp field_policies(policies, module, ctx) do
     body =
       Enum.map_join(policies, "\n", fn %FieldPolicy{} = policy ->
         """
@@ -542,7 +604,13 @@ defmodule BubbleEx.Target.Ash.Source do
         """
       end)
 
-    "\nfield_policies do\nprivate_fields :hide\n\n" <> body <> "\nend\n"
+    # With a bypass, private fields are subject to the field policies
+    # (`:include`) so the bypass reaches them; no other field policy names
+    # one, so they stay hidden from everyone else, as with `:hide`.
+    bypasses = field_policy_bypasses(module, ctx)
+    private = if bypasses == "", do: ":hide", else: ":include"
+
+    "\nfield_policies do\nprivate_fields #{private}\n\n" <> bypasses <> body <> "\nend\n"
   end
 
   defp checks(checks, ctx), do: Enum.map_join(checks, "\n", &check(&1, ctx))
@@ -554,6 +622,9 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp check(%PolicyCheck{kind: kind, test: :search_fields}, ctx),
     do: "#{kind} #{ctx.namespace}.Privacy.SearchFields"
+
+  defp check(%PolicyCheck{kind: kind, test: :workflow_write}, ctx),
+    do: "#{kind} #{ctx.namespace}.Privacy.WorkflowWrite"
 
   defp check(%PolicyCheck{kind: kind, test: {:calculation, name}}, _ctx),
     do: "#{kind} expr(#{identifier!(name)})"
@@ -709,6 +780,44 @@ defmodule BubbleEx.Target.Ash.Source do
     """
   end
 
+  # The check authorizing the writes of the generated workflow runtime
+  # (`privacy: :enforced`, WTF-423): the action's context says so.
+  defp workflow_write_module(project, ctx) do
+    if Enum.any?(project.resources ++ project.joins, fn r ->
+         Enum.any?(r.policies, &(&1.permission == :workflow_write))
+       end) do
+      [
+        """
+        defmodule #{ctx.namespace}.Privacy.WorkflowWrite do
+          @moduledoc \"\"\"
+          Policy check: the write is made by the generated workflow runtime,
+          which marks its data steps with the context
+          `%{bubble: %{workflow_write: true}}`. As in Bubble, the workflow's
+          own conditions are what guard its writes: they are not checked
+          against the privacy rules. Any other write (owned code, a form, an
+          API) is forbidden unless it bypasses authorization.
+          Generated by bubble_ex (WTF-423).
+          \"\"\"
+          use Ash.Policy.SimpleCheck
+
+          @impl true
+          def describe(_opts), do: "the generated workflow runtime makes the write"
+
+          @impl true
+          def match?(_actor, %{changeset: %{context: context}}, _opts), do: workflow_write?(context)
+          def match?(_actor, %{subject: %{context: context}}, _opts), do: workflow_write?(context)
+          def match?(_actor, _context, _opts), do: false
+
+          defp workflow_write?(%{bubble: %{workflow_write: true}}), do: true
+          defp workflow_write?(_context), do: false
+        end
+        """
+      ]
+    else
+      []
+    end
+  end
+
   # The policy check of every keyed `:read`: the read, or
   # aggregate, selects records by primary key at the top level (`id == x`,
   # `id in [...]`, and-ed with anything), or loads a relationship.
@@ -725,7 +834,7 @@ defmodule BubbleEx.Target.Ash.Source do
           relationship; direct view in Bubble reaches a record through a
           reference, never by listing. Otherwise it is forbidden. Enumerate
           and count with `:search`.
-          Generated by bubble_ex (WTF-356); NOT VERIFIED AGAINST BUBBLE.
+          Generated by bubble_ex (WTF-356)#{if ctx.privacy == :enforced, do: ".", else: "; NOT VERIFIED AGAINST BUBBLE."}
           \"\"\"
           use Ash.Policy.SimpleCheck
 
@@ -992,14 +1101,10 @@ defmodule BubbleEx.Target.Ash.Source do
       """
       defmodule #{ctx.namespace}.Privacy do
         @moduledoc \"\"\"
-        Privacy rules compiled from Bubble to Ash policies by bubble_ex (WTF-356).
-
-        NOT VERIFIED AGAINST BUBBLE. The policies rest on Bubble semantics not
-        yet confirmed by replaying the app (WTF-384/385): do not ship them to
-        users until they are. See `verified?/0`.
+        #{Regex.replace(~r/\n(?=.)/, privacy_doc(project.privacy), "\n  ")}
         \"\"\"
 
-        @doc "Whether the generated policies are verified against Bubble: not yet."
+      #{mode_fun(project.privacy)}        @doc "Whether the generated policies are verified against Bubble: not yet."
         def verified?, do: #{literal(project.policies_verified)}
 
         @doc "The relationships of the actor that the policies read."
@@ -1007,6 +1112,46 @@ defmodule BubbleEx.Target.Ash.Source do
       #{load_actor}end
       """
     ]
+  end
+
+  # `mode/0` only with `:enforced` (an `:unverified` source is unchanged).
+  defp mode_fun(:enforced),
+    do: """
+    @doc "The privacy mode the policies were generated with: enforced (WTF-423)."
+    def mode, do: :enforced
+
+    """
+
+  defp mode_fun(_unverified), do: ""
+
+  defp privacy_doc(:enforced) do
+    """
+    Privacy rules compiled from Bubble to Ash policies by bubble_ex (WTF-356),
+    ENFORCED (`privacy: :enforced`, WTF-423).
+
+    Reads follow the compiled rules. They are checked by the privacy matrix
+    against the calibrated reading of Bubble, not proved: `verified?/0` is
+    false. Where a condition reads an empty value on the user's side (logged
+    out, or a user without the value), the policies deny what Bubble may
+    grant (stricter by design; verification lists each case).
+
+    WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES. A write the generated
+    workflow runtime makes is authorized (the `WorkflowWrite` check): the
+    workflow's own conditions guard it, as in Bubble. Any other write is
+    forbidden unless it bypasses authorization.
+    """
+    |> String.trim_trailing()
+  end
+
+  defp privacy_doc(_unverified) do
+    """
+    Privacy rules compiled from Bubble to Ash policies by bubble_ex (WTF-356).
+
+    NOT VERIFIED AGAINST BUBBLE. The policies rest on Bubble semantics not
+    yet confirmed by replaying the app (WTF-384/385): do not ship them to
+    users until they are. See `verified?/0`.
+    """
+    |> String.trim_trailing()
   end
 
   # [["a", "b"], ["a"], ["c"]] -> "[a: [b: []], c: []]"

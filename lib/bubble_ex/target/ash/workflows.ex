@@ -37,7 +37,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
 
   **What that is worth depends on the project's privacy mode.**
 
-    * `privacy: :omit` - the only mode `BubbleEx.Target.Phoenix` renders:
+    * `privacy: :omit` - `BubbleEx.Target.Phoenix`'s default:
       no resource has an authorizer, so `authorize?` changes nothing and
       the actor restricts nothing. Any caller of a workflow can read and
       write any record, including records of other users whose IDs it
@@ -49,9 +49,16 @@ defmodule BubbleEx.Target.Ash.Workflows do
     * `privacy: :unverified` - the generated policies (WTF-356) authorize
       reads only: no policy authorizes `create`, `update` or `destroy`
       (see `BubbleEx.Target.Ash`, "writes by workflows"), so every
-      generated write with `authorize?: true` is forbidden. Bubble's
-      privacy rules do not govern writes; how workflow writes should be
-      authorized is an open question for the owner, not decided here.
+      generated write with `authorize?: true` is forbidden.
+    * `privacy: :enforced` - the same read policies, enforced (WTF-423):
+      reads follow the compiled privacy rules for the workflow's actor.
+      Writes follow Rico's option A: the generated runtime marks its data
+      steps (`%{bubble: %{workflow_write: true}}` in the action context)
+      and the `WorkflowWrite` policy authorizes them, so the workflow's
+      conditions guard its writes, as in Bubble; writes are not checked
+      against the privacy rules. The workflow API stays off until the
+      owner opts in (`serve_workflow_api: true`), with a
+      `:workflow_endpoint_not_served` info per exposed workflow.
 
   ## Coverage
 
@@ -225,6 +232,17 @@ defmodule BubbleEx.Target.Ash.Workflows do
         do: id
   end
 
+  defp not_served_reason(:omit),
+    do:
+      "with privacy: :omit no resource has authorization, so any caller could read and " <>
+        "write any record through it. Add policies, then set serve_workflow_api: true"
+
+  defp not_served_reason(:enforced),
+    do:
+      "the workflow API is opt-in (serve_workflow_api: true). With privacy: :enforced its " <>
+        "reads follow the privacy rules for the caller, and its writes are guarded only by " <>
+        "the workflow's own conditions, as in Bubble"
+
   # Exposed workflows: with `privacy: :omit` (no authorization at all) the
   # workflow API is not served until the owner turns it on; an endpoint
   # name used twice serves the workflow with the lower Bubble ID.
@@ -232,13 +250,12 @@ defmodule BubbleEx.Target.Ash.Workflows do
     exposed = actions |> Enum.filter(& &1.exposed) |> Enum.sort_by(& &1.workflow)
 
     disabled =
-      for a <- exposed, project.privacy == :omit do
+      for a <- exposed, project.privacy in [:omit, :enforced] do
         Diagnostic.new(
           :workflow_endpoint_not_served,
           "",
-          "exposed as /api/1.1/wf/#{a.exposed.endpoint} in Bubble, but not served: with " <>
-            "privacy: :omit no resource has authorization, so any caller could read and " <>
-            "write any record through it. Add policies, then set serve_workflow_api: true",
+          "exposed as /api/1.1/wf/#{a.exposed.endpoint} in Bubble, but not served: " <>
+            not_served_reason(project.privacy),
           target: :ash,
           subject: %{workflow: a.workflow},
           details: %{auth: Atom.to_string(a.exposed.auth), bypass: a.authorize == false}

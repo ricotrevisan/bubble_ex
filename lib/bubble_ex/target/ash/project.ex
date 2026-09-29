@@ -16,8 +16,8 @@ defmodule BubbleEx.Target.Ash.Project do
     * `names` - the per-app name map (see "Name map"), updated with every
       name this mapping derived
     * `privacy` - the privacy mode it was mapped with (`:omit`, the
-      default, or `:unverified`; see `BubbleEx.Target.Ash`, "Privacy
-      modes"). With `:omit` no resource has policies, field policies,
+      default, `:unverified` or `:enforced`; see `BubbleEx.Target.Ash`,
+      "Privacy modes"). With `:omit` no resource has policies, field policies,
       privacy calculations, extra actions or `privacy_relationships`, and
       `actor_loads` and `authorization_bypasses` are empty
     * `policies_verified` - always `false`: the generated policies (each
@@ -164,7 +164,7 @@ defmodule BubbleEx.Target.Ash.Project do
           types: [CustomType.t()],
           typed_structs: [TypedStruct.t()],
           names: map(),
-          privacy: :omit | :unverified,
+          privacy: :omit | :unverified | :enforced,
           policies_verified: false,
           actor_loads: [[String.t()]],
           authorization_bypasses: [Bypass.t()],
@@ -631,7 +631,9 @@ defmodule BubbleEx.Target.Ash.PolicyCheck do
       check: the read selects by primary key or loads a relationship);
       `:search_fields` (the `<namespace>.Privacy.SearchFields` filter
       check: where the read's filter or sort names a field some users may
-      not search by, only the records where the actor may); or
+      not search by, only the records where the actor may);
+      `:workflow_write` (the `<namespace>.Privacy.WorkflowWrite` check: the
+      generated workflow runtime makes the write, `privacy: :enforced`); or
       `{:calculation, name}`: the resource's boolean calculation `name` is
       true for the record
     * `source` - what grants it: `%{rules: [rule_id]}` for a rule,
@@ -646,7 +648,7 @@ defmodule BubbleEx.Target.Ash.PolicyCheck do
 
   @type t :: %__MODULE__{
           kind: :authorize_if | :forbid_if,
-          test: :always | :keyed | :search_fields | {:calculation, String.t()},
+          test: :always | :keyed | :search_fields | :workflow_write | {:calculation, String.t()},
           source: map()
         }
 end
@@ -666,8 +668,9 @@ defmodule BubbleEx.Target.Ash.Policy do
     * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
     * `permission` - the Bubble permission it enforces (`:view`,
       `:search_for`, `:auto_binding`, `:search_fields` for fields some
-      users may not search by), or `:keyed` for the key requirement of the
-      primary `:read`
+      users may not search by), `:keyed` for the key requirement of the
+      primary `:read`, or `:workflow_write` for the writes of the
+      generated workflow runtime (`privacy: :enforced`)
   """
 
   alias BubbleEx.Target.Ash.PolicyCheck

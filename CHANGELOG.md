@@ -6,6 +6,22 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`privacy: :enforced` in Target.Ash** (WTF-423). `BubbleEx.Target.Ash.map/3`
+  takes `privacy: :enforced`: the policies of `:unverified` (reads follow
+  the compiled Bubble rules; stricter than Bubble on empty user-side
+  values, `actor_empty_denies`), plus Rico's write policy (option A):
+  `policy action(:create | :update | :destroy)` authorizing
+  `<Namespace>.Privacy.WorkflowWrite`, a check that passes only for writes
+  marked `%{bubble: %{workflow_write: true}}` (the generated workflow
+  runtime's); any other write is forbidden. Every such project carries
+  `:ash_writes_not_policy_checked` (writes are not checked against the
+  privacy rules) instead of `:ash_policies_unverified`, and the rendered
+  source says so. Types with file fields get a keyed `:attachments` read
+  action guarded by "view attached files". `Privacy.mode/0` returns
+  `:enforced`; PicoSAT is pinned as with `:unverified`. `Target.Ash.Source`'s
+  `extend:` takes `policy_bypasses: [{check, purpose}]`: marked bypasses
+  a renderer puts first (policies and field policies, private fields then
+  `:include`d). `MatrixTests.render/3` accepts `:enforced` projects.
 - **Non-filterable fields in privacy rules.** `BubbleEx.Privacy.Permissions`
   reads Bubble's `non_filterable_fields` (fields users matching a rule may
   not search by) as `non_filterable_fields`, so it is no longer an
@@ -1150,6 +1166,13 @@ All notable changes to this project are documented here.
   are unchanged on the private fixture export.
 
 ### Fixed
+
+- **The `everyone` rule's reach negates an emptiness test exactly**
+  (WTF-430). Its record-value guard (every value the negated rules read
+  must be non-empty) turned the negation of `This Thing's X is not empty`
+  into `X is empty and X is not empty`, always false. A value read only as
+  the operand of an emptiness test is no longer guarded, in the policy
+  generator and the privacy interpreter alike.
 
 - The loader's stale join rows (`details.stale_members` of
   `:load_join_stale_member` and `:load_prune_unowned`) are capped at

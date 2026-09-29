@@ -159,6 +159,106 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
     end
   end
 
+  describe "privacy: :enforced (WTF-423, option A)" do
+    setup %{app: app} do
+      {:ok, index} = Index.build(app)
+      %{enforced: project!(app, index: index, privacy: :enforced)}
+    end
+
+    test "the same read policies, plus a write policy per default write action",
+         %{project: unverified, enforced: enforced} do
+      for {u, e} <- Enum.zip(unverified.resources, enforced.resources), u.policies != [] do
+        {writes, others} = Enum.split_with(e.policies, &(&1.permission == :workflow_write))
+        {attachments, reads} = Enum.split_with(others, &(&1.action == "attachments"))
+        assert reads == u.policies
+
+        # Bubble's "view attached files" as a keyed read (types with files)
+        if u.privacy.file_fields == [] do
+          assert attachments == []
+        else
+          assert [%{permission: :keyed}, %{permission: :view_attachments, checks: checks}] =
+                   attachments
+
+          assert checks == u.privacy.attachments
+          assert Enum.any?(e.extra_actions, &(&1.name == "attachments"))
+        end
+
+        assert e.field_policies == u.field_policies
+        assert Enum.map(writes, & &1.action) == ~w(create update destroy)
+
+        for w <- writes,
+            do: assert(tests(w.checks) == [authorize_if: :workflow_write])
+
+        # :omit / :unverified authorize no write
+        refute Enum.any?(u.policies, &(&1.permission == :workflow_write))
+      end
+    end
+
+    test "joins get the write policy too" do
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: :enforced)
+      assert project.joins != []
+
+      for j <- project.joins,
+          do: assert(Enum.count(j.policies, &(&1.permission == :workflow_write)) == 3)
+    end
+
+    test "warns that writes are not policy-checked instead of 'unverified'",
+         %{enforced: enforced} do
+      codes = Enum.map(enforced.diagnostics, & &1.code)
+      assert :ash_writes_not_policy_checked in codes
+      refute :ash_policies_unverified in codes
+      assert enforced.privacy == :enforced
+      refute enforced.policies_verified
+    end
+
+    test "the source renders the WorkflowWrite check and the mode", %{enforced: enforced} do
+      {:ok, source} = Source.render(enforced, namespace: "Acme")
+      assert source =~ "defmodule Acme.Privacy.WorkflowWrite do"
+      assert source =~ "authorize_if Acme.Privacy.WorkflowWrite"
+      assert source =~ "def mode, do: :enforced"
+      assert source =~ "WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES"
+      refute source =~ "NOT VERIFIED AGAINST BUBBLE"
+      assert source =~ "defp workflow_write?(%{bubble: %{workflow_write: true}}), do: true"
+    end
+
+    test "a renderer's policy bypasses come first, marked, and reach private fields",
+         %{enforced: enforced} do
+      user = Enum.find(enforced.resources, &(&1.source.type == "user"))
+      check = {"AshAuthentication.Checks.AshAuthenticationInteraction", "ash_authentication"}
+
+      {:ok, source} =
+        Source.render(enforced,
+          namespace: "Acme",
+          extend: %{user.module => %{policy_bypasses: [check]}}
+        )
+
+      [_, user_source] = String.split(source, "defmodule Acme.#{user.module} do", parts: 2)
+      [user_source | _] = String.split(user_source, "\ndefmodule ", parts: 2)
+
+      assert user_source =~
+               ~r/policies do\n\s+# bubble:ignores_privacy scaffold:ash_authentication\n\s+bypass AshAuthentication.Checks.AshAuthenticationInteraction do/
+
+      if user.field_policies != [] do
+        assert user_source =~ "private_fields :include"
+
+        assert user_source =~
+                 "field_policy_bypass :*, AshAuthentication.Checks.AshAuthenticationInteraction do"
+      end
+
+      # Other resources keep private fields hidden.
+      refute String.replace(source, user_source, "") =~ "private_fields :include"
+
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+               Source.render(enforced,
+                 extend: %{user.module => %{policy_bypasses: ["NoPurpose"]}}
+               )
+    end
+
+    test "pins PicoSAT like :unverified" do
+      assert Ash.versions(privacy: :enforced) == Ash.versions(privacy: :unverified)
+    end
+  end
+
   describe "the everyone rule" do
     test "grants to users no other rule matches, as a fail-safe negation", %{project: project} do
       note = resource(project, "note")
