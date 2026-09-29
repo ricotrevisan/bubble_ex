@@ -310,7 +310,7 @@ defmodule BubbleEx.Test.FakeBubble do
         |> Conn.send_resp(403, "<!DOCTYPE html><html>blocked</html>")
 
       true ->
-        create(pid, conn, type, body, viewer, quirks)
+        create(pid, conn, type, body, viewer)
     end
   end
 
@@ -351,7 +351,7 @@ defmodule BubbleEx.Test.FakeBubble do
     if found, do: Conn.send_resp(conn, 204, ""), else: json(conn, 404, %{})
   end
 
-  defp create(pid, conn, type, body, viewer, _quirks) do
+  defp create(pid, conn, type, body, viewer) do
     creator = with {:user, id} <- viewer, do: id
     creator = if creator == :admin, do: nil, else: creator
 

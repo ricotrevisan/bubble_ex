@@ -317,7 +317,8 @@ defmodule BubbleEx.Verify.Replay.Client do
   fields were all empty, answered with the same ID-only body, and a
   search found the record. So `visible: false` here merges "hidden" with
   "readable, but no granted field holds a value". A recording relying on
-  that difference needs a search op.
+  that difference needs a search op. `BubbleEx.Verify.DataApi` models the
+  ambiguity for comparisons (`answer/3`).
   """
   @spec get(t(), String.t(), String.t(), auth()) ::
           {:ok, {:found, map()} | :not_found} | {:error, Error.t()}

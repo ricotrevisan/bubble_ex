@@ -765,7 +765,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "public_default"
+        "source": "public_default",
+        "stricter_rules": []
       },
       "privacy_relationships": [],
       "relationships": [
@@ -1102,7 +1103,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "unavailable"
+        "source": "unavailable",
+        "stricter_rules": []
       },
       "privacy_relationships": [
         {
@@ -1431,7 +1433,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "public_default"
+        "source": "public_default",
+        "stricter_rules": []
       },
       "privacy_relationships": [],
       "relationships": [

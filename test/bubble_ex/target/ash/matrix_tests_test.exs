@@ -9,7 +9,7 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
   alias BubbleEx.Model
   alias BubbleEx.Target.Ash
   alias BubbleEx.Target.Ash.MatrixTests
-  alias BubbleEx.Verify.{Matrix, Observation, Recording, Result, Seed}
+  alias BubbleEx.Verify.{DataApi, Difference, Matrix, Observation, Recording, Result, Seed}
 
   @policy_app "test/support/target/ash/policies.json" |> File.read!() |> Jason.decode!()
   @opts [namespace: "Fixtures.TargetPolicies", repo: "Fixtures.TargetPoliciesRepo"]
@@ -206,22 +206,120 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
   end
 
   describe "results" do
-    test "observations matching the model recording pass, never Bubble-verified",
+    test "observations matching the target policy pass or are intended differences, never Bubble-verified",
          %{matrix: matrix} do
-      observed = Map.new(matrix.recordings, &{&1.scenario.id, &1.observations})
+      # what the generated policies should observe: the model recording,
+      # stricter where the target policy is stricter than Bubble
+      observed =
+        Map.new(matrix.recordings, fn r ->
+          cases = Difference.for_scenario(matrix.differences, r.scenario.id)
+          {r.scenario.id, Difference.to_target(r.observations, cases)}
+        end)
+
       {:ok, results} = MatrixTests.results(matrix, observed, app: "fixture-app", ran_at: @now)
 
       assert length(results) == length(matrix.scenarios)
-      assert Enum.all?(results, &(&1.status == :pass))
+      statuses = Enum.frequencies_by(results, & &1.status)
+      assert statuses |> Map.keys() |> Enum.sort() == [:intended_difference, :pass]
+
+      assert statuses.intended_difference ==
+               matrix.differences |> Enum.map(& &1.scenario) |> Enum.uniq() |> length()
 
       for r <- results do
         assert {:ok, %{passing: true, bubble_verified: false}} =
                  Result.evaluate(r, %Resolved{entries: []},
                    now: @now,
                    app: "fixture-app",
-                   recording: MatrixTests.recording_for(matrix, r.id)
+                   recording: MatrixTests.recording_for(matrix, r.id),
+                   differences: matrix.differences
                  )
       end
+
+      # the owner's list
+      list = Result.intended_differences(results)
+      assert list != []
+      assert Enum.all?(list, &(&1.intended == ["actor_empty_denies"]))
+    end
+
+    test "policies granting what Bubble grants where the target is stricter fail",
+         %{matrix: matrix} do
+      observed = Map.new(matrix.recordings, &{&1.scenario.id, &1.observations})
+      {:ok, results} = MatrixTests.results(matrix, observed, app: "fixture-app", ran_at: @now)
+      stricter = matrix.differences |> Enum.map(& &1.scenario) |> Enum.uniq()
+
+      for r <- results do
+        if r.id in stricter,
+          do: assert(r.status == :fail and Enum.all?(r.diff, &(&1[:detail] =~ "stricter"))),
+          else: assert(r.status == :pass)
+      end
+    end
+
+    test "the generated tests expect the target policy and list its differences",
+         %{matrix: matrix, out: out} do
+      n = length(matrix.differences)
+      scenarios = matrix.differences |> Enum.map(& &1.scenario) |> Enum.uniq()
+
+      assert out.counts["stricter_than_bubble"] == %{
+               "observations" => n,
+               "scenarios" => length(scenarios)
+             }
+
+      assert out.source =~ "stricter than Bubble by design"
+      assert out.source =~ "@tag stricter_than_bubble:"
+
+      assert out.source =~
+               "# stricter than Bubble (actor_empty_denies): get.e.board visible via lead_"
+
+      # the empty board: Bubble shows it to a logged-out user, the policies must not
+      [_, board] = String.split(out.source, ~s(test "privacy_read.custom.board.anonymous"))
+      [board | _] = String.split(board, "\n  test ")
+      assert board =~ ~s({"get.e.board", :visible, "e.board", false})
+      refute out.source =~ "@held"
+    end
+
+    test "against a Bubble recording, both sides are compared through the Data API",
+         %{project: project, matrix: matrix} do
+      id = "privacy_read.custom.board.anonymous"
+      model = recording(matrix, id)
+      cases = Difference.for_scenario(matrix.differences, id)
+      held = DataApi.held_map(matrix.seed)
+
+      # Bubble answers only held fields
+      {:ok, bubble} =
+        %{
+          model
+          | oracle: :bubble,
+            source: %{app: "fixture-app", branch: "wtfreplay"},
+            observations: DataApi.project(model.observations, held)
+        }
+        |> Map.from_struct()
+        |> Recording.new()
+
+      {:ok, out} = MatrixTests.render(project, matrix, @opts ++ [recordings: [bubble]])
+      assert out.source =~ "@held %{"
+      assert out.source =~ "defp data_api_view(observed)"
+
+      # the policies see empty fields too, and stay stricter
+      observed = %{id => Difference.to_target(model.observations, cases)}
+
+      {:ok, results} =
+        MatrixTests.results(matrix, observed,
+          app: "fixture-app",
+          ran_at: @now,
+          recordings: [bubble]
+        )
+
+      result = Enum.find(results, &(&1.id == id))
+      assert result.status == :intended_difference
+      assert result.oracle.kind == :bubble
+
+      assert {:ok, %{passing: true, bubble_verified: true, intended: [_ | _]}} =
+               Result.evaluate(result, %Resolved{entries: []},
+                 now: @now,
+                 app: "fixture-app",
+                 recording: bubble,
+                 differences: matrix.differences
+               )
     end
 
     test "a leaked field fails with a diff; a scenario not run is an error", %{matrix: matrix} do

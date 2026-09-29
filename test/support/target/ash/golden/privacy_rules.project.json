@@ -69,6 +69,23 @@
       }
     },
     {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "draft: privacy rule \"Reviewers\" (reviewers_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/draft/privacy_role/reviewers_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "reviewers_",
+        "type": "draft"
+      }
+    },
+    {
       "code": "ash_policy_data_api_unmapped",
       "details": {},
       "message": "note is exposed through Bubble's Data API; no API actions are generated (the Data API is out of scope unless requested)",
@@ -77,6 +94,40 @@
       "severity": "info",
       "stage": "target:ash",
       "subject": {
+        "type": "note"
+      }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "note: privacy rule \"Admins\" (admins_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/note/privacy_role/admins_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "admins_",
+        "type": "note"
+      }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "note: privacy rule \"Owner\" (owner_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/note/privacy_role/owner_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "owner_",
         "type": "note"
       }
     }
@@ -476,7 +527,10 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "reviewers_"
+        ]
       },
       "privacy_relationships": [
         {
@@ -1089,7 +1143,12 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "admins_",
+          "owner_",
+          "everyone"
+        ]
       },
       "privacy_relationships": [
         {
@@ -1424,7 +1483,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "public_default"
+        "source": "public_default",
+        "stricter_rules": []
       },
       "privacy_relationships": [],
       "relationships": [
@@ -1764,7 +1824,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "public_default"
+        "source": "public_default",
+        "stricter_rules": []
       },
       "privacy_relationships": [],
       "relationships": [

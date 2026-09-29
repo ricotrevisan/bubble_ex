@@ -11,7 +11,7 @@ defmodule BubbleEx.Verify.Check do
   | `structural` (L0) | `generated_unchanged`, `deterministic`, `compiles`, `lint`, `boundary`, `migrations_in_sync`, `symbol_coverage`, `policy_coverage`, `bypass_inventory`, `secrets_absent` | none: fix it, or change the generator or a decision |
   | `traceability` (L1) | `traceability.source`, `traceability.rendered` | a finding decision (`decided_difference`) only |
   | `attested` (L1) | `acceptance` | finding decision; parity exception; waiver by an agent or reviewer with a reason |
-  | `privacy` (L2, L4) | `privacy_read`, `privacy_spot_check` | the owner's finding decision or parity exception only, **never a waiver or quarantine** |
+  | `privacy` (L2, L4) | `privacy_read`, `privacy_spot_check` | the owner's finding decision or parity exception only, **never a waiver or quarantine**; where the target policy is stricter than Bubble by design (`BubbleEx.Verify.Difference`), the result is `intended_difference`, checked against the difference record, not accepted |
   | `data` (L4) | `row_counts`, `row_hashes`, `dangling_refs`, `files` | as `privacy` |
   | `auth` (L4) | `auth_users` | as `privacy` |
   | `behavior` (L2, L3) | `workflow_side_effects`, `api_workflow`, `dom_text`, `journey` | finding decision; parity exception; waiver by a reviewer; an agent may only quarantine (at most 7 days from the first quarantine) |

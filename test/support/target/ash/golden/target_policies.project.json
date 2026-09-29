@@ -263,6 +263,23 @@
       }
     },
     {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "board: privacy rule \"Owned by my team's lead\" (lead_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/board/privacy_role/lead_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "lead_",
+        "type": "board"
+      }
+    },
+    {
       "code": "ash_policy_data_api_unmapped",
       "details": {},
       "message": "doc is exposed through Bubble's Data API; no API actions are generated (the Data API is out of scope unless requested)",
@@ -271,6 +288,40 @@
       "severity": "info",
       "stage": "target:ash",
       "subject": {
+        "type": "doc"
+      }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "doc: privacy rule \"Admin\" (admin_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/doc/privacy_role/admin_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "admin_",
+        "type": "doc"
+      }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "doc: privacy rule \"Owner\" (owner_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/doc/privacy_role/owner_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "owner_",
         "type": "doc"
       }
     },
@@ -317,6 +368,40 @@
       "subject": {
         "rule": "everyone",
         "type": "note"
+      }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "note: privacy rule \"Mine\" (mine_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/note/privacy_role/mine_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "mine_",
+        "type": "note"
+      }
+    },
+    {
+      "code": "ash_policy_stricter_than_bubble",
+      "details": {
+        "flags": [
+          "actor_empty_denies"
+        ]
+      },
+      "message": "user: privacy rule \"Me\" (me_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
+      "outcome": "degraded",
+      "path": "/user_types/user/privacy_role/me_",
+      "severity": "info",
+      "stage": "target:ash",
+      "subject": {
+        "rule": "me_",
+        "type": "user"
       }
     }
   ],
@@ -855,7 +940,10 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "lead_"
+        ]
       },
       "privacy_relationships": [
         {
@@ -1752,7 +1840,12 @@
           "attachment"
         ],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "admin_",
+          "owner_",
+          "everyone"
+        ]
       },
       "privacy_relationships": [
         {
@@ -2151,7 +2244,8 @@
         ],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": []
       },
       "privacy_relationships": [
         {
@@ -2689,7 +2783,11 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "mine_",
+          "everyone"
+        ]
       },
       "privacy_relationships": [
         {
@@ -3054,7 +3152,8 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "public_default"
+        "source": "public_default",
+        "stricter_rules": []
       },
       "privacy_relationships": [],
       "relationships": [
@@ -3561,7 +3660,11 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
-        "source": "rules"
+        "source": "rules",
+        "stricter_rules": [
+          "me_",
+          "everyone"
+        ]
       },
       "privacy_relationships": [
         {

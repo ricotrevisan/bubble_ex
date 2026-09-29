@@ -56,6 +56,23 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
   (`BubbleEx.Verify.Staleness.recording/3`); anything else is an error,
   never a silent fallback to the model.
 
+  ## Stricter than Bubble by design
+
+  The policies are held to the **target policy**, not to Bubble where
+  the owner decided they stay stricter (`BubbleEx.Verify.Difference`,
+  WTF-426): each scenario's expected observations are its recording with
+  the plan's intended differences applied (`Difference.to_target/2`). Such
+  tests are tagged `stricter_than_bubble: <observations>` and list the
+  differences in a comment; the module doc counts them. A policy that
+  grants what Bubble grants there (reproducing the empty-value leak)
+  fails. `results/3` reports those scenarios as `intended_difference`.
+
+  Against a Bubble recording, both sides are compared as the Data API
+  shows them (`BubbleEx.Verify.DataApi`): fields restricted to those the
+  seed record holds, and a readable record with no held field as
+  ID-only. The generated module carries the held fields (`@held`) for
+  that.
+
   ## Scope
 
   `privacy_read` scenarios with unsorted `search` ops and `get` ops that
@@ -74,11 +91,26 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
     * `:module` - the test module, default `"<namespace>.PrivacyMatrixTest"`
     * `:ledger` - `%{seed key => Bubble ID}`; keys it lacks get synthetic IDs
     * `:recordings` - Bubble recordings, preferred over the matrix's
+    * `:differences` - intended differences (`BubbleEx.Verify.Difference`
+      cases), default the plan's `differences` (a `BubbleEx.Verify.Matrix`
+      has them; `plan/1` decodes them)
   """
 
   alias BubbleEx.Error
   alias BubbleEx.Target.Ash.{Attribute, Project, Resource}
-  alias BubbleEx.Verify.{Json, Matrix, Observation, Recording, Result, Scenario, Seed, Staleness}
+
+  alias BubbleEx.Verify.{
+    DataApi,
+    Difference,
+    Json,
+    Matrix,
+    Observation,
+    Recording,
+    Result,
+    Scenario,
+    Seed,
+    Staleness
+  }
 
   @observations_format "bubble_ex.verify.observations"
   @env "WTF_VERIFY_OBSERVATIONS"
@@ -87,6 +119,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
           required(:seed) => Seed.t(),
           required(:scenarios) => [Scenario.t()],
           required(:recordings) => [Recording.t()],
+          optional(:differences) => [Difference.t()],
           optional(atom()) => term()
         }
 
@@ -106,7 +139,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
   `BubbleEx.Verify.Matrix` or any map with `seed`, `scenarios` and
   `recordings`). Returns the formatted `source`, the test `module`, the
   `ids` (seed key => primary key) and `counts` (scenarios, ops,
-  observations, records, personas, and scenarios per oracle).
+  observations, records, personas, scenarios per oracle, and the intended
+  differences: `stricter_than_bubble` observations and scenarios).
   """
   @spec render(Project.t(), plan(), keyword()) :: {:ok, rendered()} | {:error, Error.t()}
   def render(project, plan, opts \\ [])
@@ -126,7 +160,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
          {:ok, ids} <- ids(seed, Keyword.get(opts, :ledger, %{})),
          {:ok, expected} <- expected(plan, Keyword.get(opts, :recordings, [])),
          {:ok, rows} <- rows(seed, ids, ctx),
-         {:ok, tests} <- tests(expected, seed, ctx) do
+         {:ok, tests} <- tests(expected, seed, differences(plan, opts), ctx) do
       source = source(ctx, seed, ids, rows, tests)
 
       {:ok,
@@ -134,7 +168,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
          source: source,
          module: ctx.module,
          ids: ids,
-         counts: counts(seed, expected)
+         counts: counts(seed, expected, tests)
        }}
     end
   end
@@ -426,20 +460,38 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
   # --- tests ---------------------------------------------------------------------------------
 
-  defp tests(expected, seed, ctx) do
+  defp tests(expected, seed, differences, ctx) do
+    held = DataApi.held_map(seed)
+
     map_ok(expected, fn {scenario, recording} ->
       with {:ok, resource} <- resource(ctx, scenario.subjects.type, scenario.id),
            :ok <- personas(scenario, seed) do
+        cases = Difference.for_scenario(differences, scenario.id)
+
         {:ok,
          %{
            scenario: scenario,
            recording: recording,
+           expected: target_expectation(recording, cases, held),
+           cases: cases,
+           held_only: recording.oracle == :bubble,
            module: module(resource, ctx),
            fields: fields(resource)
          }}
       end
     end)
   end
+
+  # The recording held to the target policy; a Bubble recording through
+  # the Data API's view.
+  defp target_expectation(%{oracle: :bubble} = recording, cases, held),
+    do: DataApi.project(Difference.to_target(recording.observations, cases, held), held)
+
+  defp target_expectation(recording, cases, _held),
+    do: Difference.to_target(recording.observations, cases)
+
+  defp differences(plan, opts),
+    do: Keyword.get_lazy(opts, :differences, fn -> Map.get(plan, :differences, []) end)
 
   # Maps `fun` (returning {:ok, v} or {:error, e}) over `list`, stopping at
   # the first error.
@@ -481,8 +533,12 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
   # --- counts --------------------------------------------------------------------------------
 
-  defp counts(seed, expected) do
+  defp counts(seed, expected, tests) do
     %{
+      "stricter_than_bubble" => %{
+        "observations" => tests |> Enum.map(&length(&1.cases)) |> Enum.sum(),
+        "scenarios" => Enum.count(tests, &(&1.cases != []))
+      },
       "scenarios" => length(expected),
       "ops" => expected |> Enum.map(fn {s, _} -> length(s.ops) end) |> Enum.sum(),
       "observations" =>
@@ -497,6 +553,29 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
   defp source(ctx, seed, ids, rows, tests) do
     oracles = tests |> Enum.map(& &1.recording.oracle) |> Enum.uniq() |> Enum.sort()
+    held_only = Enum.any?(tests, & &1.held_only)
+    stricter = Enum.filter(tests, &(&1.cases != []))
+
+    stricter_text =
+      if stricter == [],
+        do: "",
+        else:
+          " Where the target policy is stricter than Bubble by design " <>
+            "(BubbleEx.Verify.Difference: #{Enum.map_join(Difference.flags(), ", ", &Atom.to_string/1)}), " <>
+            "#{stricter |> Enum.map(&length(&1.cases)) |> Enum.sum()} observations in " <>
+            "#{length(stricter)} scenarios (tagged stricter_than_bubble), the tests expect " <>
+            "the stricter value."
+
+    held_attr =
+      if held_only,
+        do:
+          "\n  # Seed key => the fields its record holds (the Data API omits empty ones).\n" <>
+            "  @held %{\n" <>
+            (DataApi.held_map(seed)
+             |> Enum.sort()
+             |> Enum.map_join(",\n", fn {k, fields} -> "#{lit(k)} => #{lit(fields)}" end)) <>
+            "\n  }\n",
+        else: ""
 
     field_map =
       tests
@@ -539,7 +618,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
       @moduledoc \"\"\"
       Privacy-matrix tests generated by bubble_ex (BubbleEx.Target.Ash.MatrixTests,
       WTF-383) from seed #{lit(seed.id)} (sha256 #{Seed.sha256(seed)}) and #{length(tests)}
-      privacy_read scenarios. Expectations: #{Enum.map_join(oracles, ", ", &oracle_text/1)}.
+      privacy_read scenarios. Expectations: #{Enum.map_join(oracles, ", ", &oracle_text/1)}.#{stricter_text}
       Regenerate instead of editing.
 
       `setup_all` loads the seed records (primary keys are Bubble IDs) into
@@ -574,7 +653,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
       @fields %{
     #{field_map}
       }
-
+    #{held_attr}
       setup_all do
         :ok = Sandbox.checkout(@repo)
         Sandbox.mode(@repo, {:shared, self()})
@@ -594,7 +673,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
       # Runs the ops as the persona, writes the observations when
       # #{@env} is set, and requires the expected ones.
-      defp verify(scenario, persona, resource, ops, expected) do
+      defp verify(scenario, persona, resource, ops, expected#{if held_only, do: ", held_only \\\\ false", else: ""}) do
         actor = actor(persona)
 
         observed =
@@ -603,7 +682,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
           |> Enum.sort()
 
         write(scenario, observed)
-        expected = Enum.sort(expected)
+    #{if held_only, do: "    observed = if held_only, do: data_api_view(observed), else: observed\n", else: ""}        expected = Enum.sort(expected)
 
         assert observed == expected,
                "\#{scenario}: the policies disagree with the expected recording " <>
@@ -680,6 +759,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
         Enum.sort(fields)
       end
 
+    #{if held_only, do: data_api_view_source(), else: ""}
       defp write(scenario, observed) do
         case System.get_env(#{lit(@env)}) do
           dir when dir in [nil, ""] ->
@@ -718,7 +798,31 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
   defp oracle_text(:bubble), do: "Bubble recordings (oracle bubble)"
 
-  defp test_source(%{scenario: s, recording: r, module: mod}) do
+  # Observations as the Data API shows them (BubbleEx.Verify.DataApi): a
+  # get shows the held fields it may view, and a readable record with none
+  # answers ID-only (not visible).
+  defp data_api_view_source do
+    """
+      defp data_api_view(observed) do
+        answers =
+          for {op, :visible_fields, record, fields} <- observed, into: %{} do
+            visible = Enum.any?(observed, &match?({^op, :visible, ^record, true}, &1))
+            shown = Enum.filter(fields, &(&1 in Map.get(@held, record, [])))
+            {{op, record}, if(visible and shown != [], do: shown, else: nil)}
+          end
+
+        observed
+        |> Enum.map(fn
+          {op, :visible, record, _} -> {op, :visible, record, answers[{op, record}] != nil}
+          {op, :visible_fields, record, _} -> {op, :visible_fields, record, answers[{op, record}] || []}
+          other -> other
+        end)
+        |> Enum.sort()
+      end
+    """
+  end
+
+  defp test_source(%{scenario: s, recording: r, module: mod} = t) do
     persona = s.persona
 
     ops =
@@ -728,7 +832,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
       end)
 
     expected =
-      r.observations
+      t.expected
       |> Observation.sort()
       |> Enum.map_join(",\n", fn
         %Observation{kind: :record_set} = o ->
@@ -738,16 +842,33 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
           "{#{lit(o.op)}, :#{o.kind}, #{lit(o.record)}, #{lit(o.value)}}"
       end)
 
+    stricter = stricter_tag(t.cases)
+
     """
     @tag oracle: :#{r.oracle}
-    test #{lit(s.id)} do
+    #{stricter}test #{lit(s.id)} do
       verify(#{lit(s.id)}, #{lit(persona)}, #{mod}, [
     #{ops}
       ], [
     #{expected}
-      ])
+      ]#{if t.held_only, do: ", true", else: ""})
     end
     """
+  end
+
+  # The tag and a comment per intended difference of a test.
+  defp stricter_tag([]), do: ""
+
+  defp stricter_tag(cases),
+    do:
+      "@tag stricter_than_bubble: #{length(cases)}\n" <>
+        Enum.map_join(cases, "", &stricter_line/1)
+
+  defp stricter_line(c) do
+    via = if c.rules != [], do: " via " <> Enum.join(c.rules, ", "), else: ""
+
+    "# stricter than Bubble (#{Enum.map_join(c.flags, ", ", &Atom.to_string/1)}): " <>
+      "#{c.op} #{c.kind}#{via}\n"
   end
 
   defp term({:lit, v}), do: lit(v)
@@ -806,18 +927,22 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
   One `privacy_read` `BubbleEx.Verify.Result` per scenario of `plan`, from
   what the generated tests `observed` (`read_observations/1`), compared
   with the same expected recording `render/3` chose
-  (`BubbleEx.Verify.Matrix.result/4`): `pass` or `fail` with a diff, and
-  `error` for a scenario with no observations (not run). Score them with
-  `BubbleEx.Verify.Result.evaluate/3` and the recording (`recording_for/3`):
-  a `model` oracle passes but is never Bubble-verified.
+  (`BubbleEx.Verify.Matrix.result/4`, held to the target policy): `pass`,
+  `intended_difference` (stricter than Bubble by design) or `fail` with a
+  diff, and `error` for a scenario with no observations (not run). Score
+  them with `BubbleEx.Verify.Result.evaluate/3`, the recording
+  (`recording_for/3`) and the plan's differences: a `model` oracle passes
+  but is never Bubble-verified.
 
-  Options: `:app` and `:ran_at` (required), `:recordings` (as for
-  `render/3`), `:actor`.
+  Options: `:app` and `:ran_at` (required), `:recordings` and
+  `:differences` (as for `render/3`), `:actor`.
   """
   @spec results(plan(), %{String.t() => [Observation.t()]}, keyword()) ::
           {:ok, [Result.t()]} | {:error, Error.t()}
-  def results(%{seed: %Seed{}} = plan, observed, opts) do
+  def results(%{seed: %Seed{} = seed} = plan, observed, opts) do
     with {:ok, expected} <- expected(plan, Keyword.get(opts, :recordings, [])) do
+      opts = Keyword.merge(opts, differences: differences(plan, opts), seed: seed)
+
       map_ok(expected, fn {scenario, recording} ->
         result(scenario, recording, Map.get(observed, scenario.id), opts)
       end)
@@ -843,7 +968,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
         scenario,
         recording,
         observations,
-        Keyword.take(opts, [:app, :ran_at, :actor])
+        Keyword.take(opts, [:app, :ran_at, :actor, :differences, :seed])
       )
 
   @doc "The recording `render/3` and `results/3` compare `scenario_id` with."
@@ -856,7 +981,9 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
   @doc """
   A plan from owner-repo files (`BubbleEx.Verify.Matrix.files/1`'s shape:
   `[{path, json}]`): the one seed under `seeds/`, the scenarios under
-  `scenarios/privacy_read/` and the recordings under `recordings/`.
+  `scenarios/privacy_read/`, the recordings under `recordings/` and the
+  intended differences under `differences/` (none when absent; a file for
+  another seed version is `:invalid_input`).
   """
   @spec plan([{String.t(), String.t()}]) :: {:ok, plan()} | {:error, Error.t()}
   def plan(files) do
@@ -869,15 +996,33 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
     with {:ok, seeds} <- decode.("seeds/", &Seed.from_json/1),
          {:ok, scenarios} <- decode.("scenarios/privacy_read/", &Scenario.from_json/1),
-         {:ok, recordings} <- decode.("recordings/", &Recording.from_json/1) do
-      case seeds do
-        [seed] ->
-          {:ok, %{seed: seed, scenarios: scenarios, recordings: recordings}}
+         {:ok, recordings} <- decode.("recordings/", &Recording.from_json/1),
+         {:ok, differences} <- decode.("differences/", &Difference.from_json/1) do
+      plan_from(seeds, scenarios, recordings, differences)
+    end
+  end
 
-        _ ->
-          {:error,
-           Error.new(:invalid_input, "expected exactly one seed", %{seeds: length(seeds)})}
-      end
+  defp plan_from([seed], scenarios, recordings, differences) do
+    with {:ok, cases} <- plan_differences(differences, seed),
+         do:
+           {:ok, %{seed: seed, scenarios: scenarios, recordings: recordings, differences: cases}}
+  end
+
+  defp plan_from(seeds, _scenarios, _recordings, _differences),
+    do: {:error, Error.new(:invalid_input, "expected exactly one seed", %{seeds: length(seeds)})}
+
+  defp plan_differences(docs, seed) do
+    sha = Seed.sha256(seed)
+
+    case Enum.reject(docs, &(&1.seed.id == seed.id and &1.seed.sha256 == sha)) do
+      [] ->
+        {:ok, docs |> Enum.flat_map(& &1.cases) |> Difference.sort()}
+
+      _ ->
+        {:error,
+         Error.new(:invalid_input, "the differences are for another seed version", %{
+           seed: seed.id
+         })}
     end
   end
 end

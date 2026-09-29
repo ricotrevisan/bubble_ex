@@ -8,15 +8,17 @@
 # it decodes the matrix files (<scratch>/matrix/<name>/.wtf/verification),
 # turns the observations into one BubbleEx.Verify.Result per scenario
 # (MatrixTests.results/3), writes them to <scratch>/matrix/<name>/results/
-# and scores each with Result.evaluate/3 against its recording and no
-# decisions. It prints scenarios, ops, compared observations, results by
-# status, passing and Bubble-verified counts (always 0: the oracle is the
-# model) and the ops the interpreter could not decide (left out of the
-# matrix), and fails unless every result passes.
+# and scores each with Result.evaluate/3 against its recording, the
+# matrix's intended differences (BubbleEx.Verify.Difference, WTF-426) and
+# no decisions. It prints scenarios, ops, compared observations, results
+# by status, passing and Bubble-verified counts (always 0: the oracle is
+# the model), the ops the interpreter could not decide (left out of the
+# matrix) and where the policies are stricter than Bubble by design (per
+# type and rule), and fails unless every result passes.
 
 alias BubbleEx.Decision.Resolved
 alias BubbleEx.Target.Ash.MatrixTests
-alias BubbleEx.Verify.Result
+alias BubbleEx.Verify.{Difference, Result}
 
 [dir] = System.argv()
 index = Path.join(dir, "matrix_index.json") |> File.read!() |> Jason.decode!()
@@ -51,7 +53,8 @@ failures =
           Result.evaluate(result, %Resolved{entries: []},
             now: now,
             app: app,
-            recording: MatrixTests.recording_for(plan, result.id)
+            recording: MatrixTests.recording_for(plan, result.id),
+            differences: plan.differences
           )
 
         verdict
@@ -69,6 +72,27 @@ failures =
         "(oracle model); undecided by the interpreter, left out: #{skipped["gets"]} gets, " <>
         "#{skipped["searches"]} searches"
     )
+
+    # The owner's list: where the policies are stricter than Bubble by design.
+    intended = Result.intended_differences(results)
+
+    if intended != [] do
+      by_rule =
+        intended
+        |> Enum.flat_map(fn e -> for r <- if(e.rules == [], do: ["?"], else: e.rules), do: {e.type, r} end)
+        |> Enum.frequencies()
+
+      IO.puts(
+        "privacy matrix #{name}: stricter than Bubble by design (#{Enum.join(Difference.flags(), ", ")}): " <>
+          "#{length(intended)} differences in " <>
+          "#{intended |> Enum.map(& &1.result) |> Enum.uniq() |> length()} scenarios, " <>
+          "#{map_size(by_rule)} rules"
+      )
+
+      # A private export's type and rule IDs are not printed (CI logs).
+      if name != "private_app",
+        do: for({{type, rule}, n} <- Enum.sort(by_rule), do: IO.puts("  #{type}/#{rule}: #{n}"))
+    end
 
     for %{result: r, passing: false} <- verdicts do
       "#{name} #{r.id}: #{r.status} #{r.reason || ""}#{inspect(Enum.take(r.diff, 5))}"

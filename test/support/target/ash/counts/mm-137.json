@@ -31,6 +31,7 @@
       "ash_policy_data_api_unmapped": 2,
       "ash_policy_default_rule_negated": 2,
       "ash_policy_field_unmapped": 8,
+      "ash_policy_stricter_than_bubble": 74,
       "ash_unresolved_reference": 5,
       "exact_type_definition_missing": 7,
       "external_type_unresolved_root": 6,

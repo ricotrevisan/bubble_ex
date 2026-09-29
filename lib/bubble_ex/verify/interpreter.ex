@@ -28,16 +28,23 @@ defmodule BubbleEx.Verify.Interpreter do
   when listed; `search` is `search_for`. A type listed without rules has
   Bubble's public defaults (everything visible and searchable).
 
-  Every Bubble semantic the model has not verified is a named flag of
-  `BubbleEx.Verify.Interpreter.Assumptions`, defaulting to the compiler's
-  fail-safe reading. `access/4` reports in `assumptions` the flags its
-  verdict depends on: those consulted whose flip changes the verdict.
+  Every Bubble semantic is a named flag of
+  `BubbleEx.Verify.Interpreter.Assumptions`. The defaults are **Bubble's
+  reading**, calibrated against Bubble recordings (V5, WTF-426): the
+  compiler's fail-safe reading, with the flags calibration refuted
+  flipped (`actor_empty_denies`: Bubble treats an empty user-side value as
+  equal to an empty record value). `target/1` gives the interpreter under
+  the **generated policies' reading** (`Assumptions.target/0`), which is
+  stricter than Bubble by the owner's decision; `BubbleEx.Verify.Difference`
+  records where the two differ. `access/4` reports in `assumptions` the
+  flags its verdict depends on: those consulted whose flip changes the
+  verdict.
 
   ## What it shares with the Ash target (scope of the cross-check)
 
   The interpreter evaluates the IR of the shared expression compiler
   (`BubbleEx.Expression.Typing` / `Compiler`), the same IR the Ash backend
-  lowers. Its agreement with the generated policies
+  lowers. Its agreement (under `target/1`) with the generated policies
   (`scripts/ash_compile_check.sh`) therefore checks the IR-to-Ash lowering
   and the policy generator, **not the compiler**: a typing or lowering bug
   in the compiler would reach both sides alike. The hand-authored
@@ -157,6 +164,14 @@ defmodule BubbleEx.Verify.Interpreter do
   end
 
   def new(_, _), do: {:error, Error.new(:invalid_input, "expected a BubbleEx.Model")}
+
+  @doc """
+  The same interpreter under the generated policies' reading
+  (`Assumptions.target/0`): it predicts what the compiled Ash policies
+  select.
+  """
+  @spec target(t()) :: t()
+  def target(%__MODULE__{} = interpreter), do: %{interpreter | assumptions: Assumptions.target()}
 
   @doc "The same interpreter under other assumptions (overrides of the defaults)."
   @spec with_assumptions(t(), map() | keyword()) :: {:ok, t()} | {:error, Error.t()}

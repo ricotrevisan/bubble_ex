@@ -202,7 +202,8 @@ No email reaches a real person.
   create with the stored key (`db_value`) is refused (400 `INVALID_DATA`).
 - A create stores the fields' defaults; `PATCH` with a field set to `null`
   clears it (204, and the field is gone when read back).
-- A Data API create with the admin token sets `Created By`.
+- A Data API create with the admin token sets `Created By` itself;
+  naming a creator is refused.
 - A record the privacy rules hide from the caller answers `GET` by ID with
   200 and only `_id`, not 404; a search leaves it out. The driver records
   that as not visible. This rests on one observation (logged-out callers,
@@ -217,8 +218,8 @@ No email reaches a real person.
   op to tell the two apart.
 - A branch's Data API setting and type list are its own: exposing or
   hiding types on the replay branch leaves `test` unchanged.
-- **Creating a record as a persona needs "Create via API".** By default
-  the seeder creates a record whose `Created By` is a seeded user with
+- **Creating a record as a persona needs "Create via API".** The
+  seeder creates a record whose `Created By` is a seeded user with
   that user's token, so Bubble sets the creator. Bubble answered such a
   create with 401 on a type none of whose privacy rules grants "Create
   via API" (that app grants it nowhere). The same run's admin-token
@@ -232,6 +233,13 @@ No email reaches a real person.
   type grants "Create via API". Changing privacy rules on the branch
   would make the recording worthless, so leave such records, and the
   scenarios that depend on them, out of the run.
+- **An empty value on the user's side equals an empty record value.**
+  A logged-out user, or a user without the value a condition reads,
+  matches a record whose value is empty too: `Current User's workspace =
+  This Thing's workspace` grants a logged-out user the records with no
+  workspace (the calibration refuted the fail-safe reading, 14 ops
+  agreeing and 69 not). The interpreter now predicts this; the generated
+  policies deliberately keep denying (see step 6).
 - The sign-up workflow's "Return data from API" of step 1's unique ID
   returns the new user's ID, and the login workflow above returns a
   working token (observed while seeding six personas).
@@ -277,3 +285,32 @@ No email reaches a real person.
 4. If the process died mid-run, run `Replay.Cleanup.resume/2` on the run's
    journal. It deletes only the IDs the journal confirms, and finds
    unconfirmed sign-ups by their exact per-run email.
+
+## 6. Compare with the interpreter and the generated app
+
+- **Calibrate the interpreter.** `BubbleEx.Verify.Calibration.compare/4`
+  compares the recordings with what the privacy interpreter predicts,
+  per op and per assumption flag (the ops that depend on it, how many
+  agree, and what flipping it would fix or break), with a suggested
+  verdict. It compares as the Data API shows records
+  (`BubbleEx.Verify.DataApi`): only the fields the record holds (empty
+  fields are omitted), and a readable record with no field to show as
+  the ID-only answer a hidden record gets. It counts those ambiguous
+  answers, and how many the scenario's search resolved. It never changes
+  a flag: flipping one is a code change to
+  `BubbleEx.Verify.Interpreter.Assumptions`, with the counts recorded in
+  its `evidence/0`. Flags with too few samples stay as they are; the
+  privacy matrix adds witnesses for them, so the next run has more.
+- **Refresh the export first.** Disagreements also come from privacy
+  rules changed since the export the matrix was built from (68 of the
+  first run's 154). Build the matrix from a fresh export before a run.
+- **Stricter than Bubble by design.** Where Bubble grants access through
+  an empty user-side value, the generated policies deny, by the owner's
+  decision (`BubbleEx.Verify.Difference`). Verification reports each
+  such case as a known, intended difference, never as a failure:
+  `matrix.differences` (and `.wtf/verification/differences/`), the
+  generated matrix tests (tagged `stricter_than_bubble`, expecting the
+  stricter value), results with status `intended_difference`
+  (`Result.intended_differences/1` lists them), and the structural
+  report's `intended_differences`. A generated app that grants what
+  Bubble grants there fails.

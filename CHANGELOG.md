@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **V5 calibration applied: Bubble semantics vs. the target policy**
+  (WTF-426). The privacy interpreter's defaults are now Bubble's reading
+  as calibrated: `actor_empty_denies` is `false` (Bubble treats an empty
+  user-side value, logged out or missing, as equal to an empty record
+  value). `Interpreter.Assumptions.target/0` (and `Interpreter.target/1`)
+  keep the compiler's fail-safe reading, which the generated Ash policies
+  implement and which stays stricter by the owner's decision.
+  `Assumptions.evidence/0` records each flag's calibration verdict (the
+  leaning flags are not flipped; `unsettled/0` lists the flags that need
+  more samples, and the privacy matrix now looks for up to three
+  witnesses per type for each). `BubbleEx.Verify.Difference` holds the
+  target policy and the per-case record of intended differences:
+  `Matrix` computes them (`matrix.differences`, the owner-repo file
+  `.wtf/verification/differences/<seed>.json`, and the report's
+  `intended_differences` list), the generated matrix tests expect the
+  stricter value (tagged `stricter_than_bubble`), `Matrix.result/4`
+  reports such scenarios with the new result status
+  `intended_difference` (counted as passing by `Result.evaluate/3` only
+  when its `:differences` list every entry; `Result.intended_differences/1`
+  is the owner's list), and the structural report and a new
+  `:ash_policy_stricter_than_bubble` diagnostic list the rules.
+  `BubbleEx.Verify.DataApi` models what the Data API shows (only fields
+  the record holds; the ambiguous ID-only answer), the default for every
+  comparison with a Bubble recording, and `BubbleEx.Verify.Calibration`
+  compares Bubble recordings with the interpreter per op and per flag.
+
 - **Opt-in pruning for the data loader** (WTF-414). `BubbleEx.Load` can
   now delete what a new complete export no longer holds among the rows the
   loader wrote itself, and nothing else. It works in two steps:

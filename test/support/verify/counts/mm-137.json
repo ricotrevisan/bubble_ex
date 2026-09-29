@@ -1,27 +1,39 @@
 {
   "assumptions": {
+    "calibration": {
+      "absent_permission_denied": "not_exercised",
+      "actor_empty_denies": "refuted",
+      "builtin_fields_hidden_unless_listed": "supported",
+      "dangling_ref_is_empty": "not_exercised",
+      "defaults_applied_at_creation": "not_exercised",
+      "empty_equals_empty": "not_exercised",
+      "empty_item_not_contained": "not_exercised",
+      "empty_list_contains_nothing": "not_exercised",
+      "empty_text_contains_nothing": "not_exercised",
+      "empty_yes_no_is_no": "leaning_flipped",
+      "everyone_exclusive": "leaning_flipped",
+      "everyone_guards_record_values": "unclear",
+      "logged_out_user_is_empty": "leaning_flipped",
+      "no_visible_field_unreadable": "supported",
+      "ordering_with_empty_false": "not_exercised",
+      "search_independent_of_view": "supported"
+    },
     "changed": [],
     "dependent_checks": {
-      "actor_empty_denies": 110,
-      "builtin_fields_hidden_unless_listed": 49,
-      "defaults_applied_at_creation": 2,
-      "empty_yes_no_is_no": 4,
-      "everyone_exclusive": 37,
-      "everyone_guards_record_values": 15,
-      "logged_out_user_is_empty": 8,
-      "no_visible_field_unreadable": 631,
-      "search_independent_of_view": 45
+      "actor_empty_denies": 129,
+      "builtin_fields_hidden_unless_listed": 63,
+      "empty_equals_empty": 115,
+      "empty_list_contains_nothing": 16,
+      "empty_yes_no_is_no": 13,
+      "everyone_exclusive": 34,
+      "everyone_guards_record_values": 32,
+      "logged_out_user_is_empty": 32,
+      "no_visible_field_unreadable": 680,
+      "search_independent_of_view": 43
     },
     "jointly_dependent_checks": {
-      "empty_equals_empty": {
-        "actor_empty_denies": 55
-      },
       "empty_item_not_contained": {
-        "everyone_guards_record_values": 6
-      },
-      "empty_list_contains_nothing": {
-        "actor_empty_denies": 10,
-        "everyone_guards_record_values": 3
+        "everyone_guards_record_values": 9
       }
     },
     "outcomes": {
@@ -29,10 +41,10 @@
       "actor_empty_denies": "exercised",
       "builtin_fields_hidden_unless_listed": "exercised",
       "dangling_ref_is_empty": "not exercised: seeds cannot hold a reference to a missing record (V1 seed references must resolve)",
-      "defaults_applied_at_creation": "exercised",
-      "empty_equals_empty": "exercised only jointly with actor_empty_denies (55 checks)",
-      "empty_item_not_contained": "exercised only jointly with everyone_guards_record_values (6 checks)",
-      "empty_list_contains_nothing": "exercised only jointly with actor_empty_denies (10 checks), everyone_guards_record_values (3 checks)",
+      "defaults_applied_at_creation": "not exercised: the seed writes every modeled default out (as Bubble stores records after creation), so no recording can tell the readings apart; a Data API create was seen storing defaults (WTF-385)",
+      "empty_equals_empty": "exercised",
+      "empty_item_not_contained": "exercised only jointly with everyone_guards_record_values (9 checks)",
+      "empty_list_contains_nothing": "exercised",
       "empty_text_contains_nothing": "not exercised: no supported rule reads what it governs",
       "empty_yes_no_is_no": "exercised",
       "everyone_exclusive": "exercised",
@@ -41,29 +53,54 @@
       "no_visible_field_unreadable": "exercised",
       "ordering_with_empty_false": "not exercised: no supported rule reads what it governs",
       "search_independent_of_view": "exercised"
-    }
+    },
+    "unsettled": [
+      "empty_equals_empty",
+      "empty_yes_no_is_no",
+      "empty_list_contains_nothing",
+      "dangling_ref_is_empty",
+      "everyone_exclusive",
+      "everyone_guards_record_values",
+      "absent_permission_denied",
+      "empty_text_contains_nothing",
+      "ordering_with_empty_false",
+      "empty_item_not_contained",
+      "logged_out_user_is_empty",
+      "defaults_applied_at_creation"
+    ]
   },
-  "checks": 1554,
+  "checks": 1704,
   "defaults": {
-    "explicit_empties": 3,
+    "explicit_empties": 9,
     "fields": 185,
-    "seed_values_equal_to_default": 642,
+    "seed_values_equal_to_default": 814,
     "unmodeled": 0
   },
-  "observations": 2550,
+  "differences": {
+    "observations": 183,
+    "policy": [
+      "actor_empty_denies"
+    ],
+    "rules": 31,
+    "scenarios": 45,
+    "types": 28,
+    "unintended": 0
+  },
+  "observations": 2850,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 166,
+  "records": 191,
   "rules": {
     "conditional": 77,
     "everyone": 48,
-    "false_branch_only_via_actor_guard": 3,
-    "observable": 77,
-    "observable_percent": 61.6,
-    "solved": 120,
-    "solved_percent": 96.0,
+    "false_branch_only_via_actor_guard": 0,
+    "observable": 76,
+    "observable_percent": 60.8,
+    "solved": 117,
+    "solved_percent": 93.6,
     "total": 125,
-    "unsolved": 5
+    "true_branch_only_via_empty_actor": 0,
+    "unsolved": 8
   },
   "scenarios": 558,
   "seed_values_from_condition_literals": 0,
@@ -80,11 +117,12 @@
   },
   "unobservable_by_reason": {
     "grants_nothing": 33,
-    "masked": 10,
-    "unsolved": 5
+    "masked": 8,
+    "unsolved": 8
   },
   "unsolved_by_reason": {
     "deleted_type": 2,
+    "no_false_witness": 3,
     "no_true_witness": 3
   }
 }
