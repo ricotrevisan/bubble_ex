@@ -638,6 +638,65 @@ defmodule BubbleEx.Verify.InterpreterTest do
     end
   end
 
+  # WTF-430: an emptiness test's negation is exact, so the everyone rule's
+  # record-value guard does not cover a value read only by one (it made
+  # the reach `text is empty and text is not empty`); the compiled policy
+  # is the same (PoliciesTest).
+  test "the everyone rule's reach negates an emptiness test exactly" do
+    rule = fn op ->
+      %{
+        "display" => "Filled",
+        "condition" => %{
+          "type" => "InjectedValue",
+          "next" => %{
+            "type" => "Message",
+            "name" => "text_text",
+            "next" => %{"type" => "Message", "name" => op}
+          }
+        },
+        "permissions" => %{"view_all" => false, "search_for" => false}
+      }
+    end
+
+    app = fn op ->
+      %{
+        "_id" => "emptiness",
+        "user_types" => %{
+          "note" => %{
+            "display" => "Note",
+            "fields" => %{"text_text" => %{"display" => "Text", "value" => "text"}},
+            "privacy_role" => %{
+              "everyone" => %{
+                "display" => "everyone",
+                "permissions" => %{"search_for" => true, "view_all" => true}
+              },
+              "filled_" => rule.(op)
+            }
+          }
+        }
+      }
+    end
+
+    {:ok, ds} =
+      Dataset.new([
+        {"u", "user", %{}},
+        {"blank", "note", %{"text_text" => nil}},
+        {"full", "note", %{"text_text" => {:text, "x"}}}
+      ])
+
+    for reading <- [Assumptions.defaults(), Assumptions.target()] do
+      {:ok, model} = Model.build(app.("is_not_empty"))
+      {:ok, i} = Interpreter.new(model, assumptions: reading)
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == true
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "full") == false
+
+      {:ok, model} = Model.build(app.("is_empty"))
+      {:ok, i} = Interpreter.new(model, assumptions: reading)
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == false
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "full") == true
+    end
+  end
+
   test "deterministic, and errors for unknown input", %{pmodel: model, pds: ds} do
     interpreter = interpreter(model)
 

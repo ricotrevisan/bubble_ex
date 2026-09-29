@@ -107,7 +107,10 @@ defmodule BubbleEx.Target.Ash do
   lacks it. Because a compiled condition is fail-safe only on the actor
   side (record-side emptiness is not verified), the negation also requires
   every record value the negated conditions read to be non-empty: it can
-  only under-grant. Field lists union the same way.
+  only under-grant. A value they read only through an emptiness test
+  (`is empty`, `is not empty`) is not guarded: that test negates exactly,
+  and the guard would make the negation contradict itself (`x is empty
+  and x is not empty`, WTF-430). Field lists union the same way.
 
   **Defaults.** A type the source lists without rules gets Bubble's public
   defaults: view all, search and attachments for everyone, no auto-binding,

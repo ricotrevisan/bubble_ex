@@ -531,9 +531,24 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
 
   @doc """
   The outermost field chains of `ir` read from the rule's record (`This
-  Thing's a's b`), without source paths.
+  Thing's a's b`), without source paths, that the `everyone` rule's
+  record-value guard covers (`everyone_guards_record_values`). A chain
+  read only as the operand of an emptiness test (`is empty`, `is not
+  empty`, `= empty`) is not listed: negating that test is exact, so
+  guarding it would make the negation contradict itself (`x is empty
+  and x is not empty`, WTF-430). A chain also read elsewhere is listed.
   """
   @spec record_values(term()) :: [IR.t()]
+  def record_values(%IR{op: :is_empty, args: [%IR{op: :field}]}), do: []
+
+  def record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) and match?(%IR{op: :field}, r) -> []
+      match?(%IR{op: :empty}, r) and match?(%IR{op: :field}, l) -> []
+      true -> record_values(l) ++ record_values(r)
+    end
+  end
+
   def record_values(%IR{op: :field, args: [base | _]} = ir) do
     if record_based?(base), do: [IR.strip_paths(ir)], else: []
   end

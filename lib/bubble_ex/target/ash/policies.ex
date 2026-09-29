@@ -1128,8 +1128,23 @@ defmodule BubbleEx.Target.Ash.Policies do
     end
   end
 
-  # The outermost field chains read from the rule's record (`This Thing's
-  # a's b`), not from the actor.
+  # The outermost field chains read from the rule's record (`This
+  # Thing's a's b`), not from the actor. A chain read only as the operand
+  # of an emptiness test (`is empty`, `is not empty`, `= empty`) is not
+  # guarded: that test's negation is exact (`is empty` is Bubble's
+  # emptiness, a dangling reference empty), and guarding it made the
+  # negation `x is empty and x is not empty`, always false (WTF-430). The
+  # interpreter lists the same chains (`Verify.Interpreter.Eval.record_values/1`).
+  defp record_values(%IR{op: :is_empty, args: [%IR{op: :field}]}), do: []
+
+  defp record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) and match?(%IR{op: :field}, r) -> []
+      match?(%IR{op: :empty}, r) and match?(%IR{op: :field}, l) -> []
+      true -> record_values(l) ++ record_values(r)
+    end
+  end
+
   defp record_values(%IR{op: :field, args: [base | _]} = ir) do
     if record_based?(base), do: [strip_path(ir)], else: []
   end
