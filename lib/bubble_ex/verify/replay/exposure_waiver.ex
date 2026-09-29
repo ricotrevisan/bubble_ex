@@ -13,23 +13,35 @@ defmodule BubbleEx.Verify.Replay.ExposureWaiver do
 
   ## Where a waiver comes from
 
-  **The driver never writes a waiver, and no function builds one from
-  arguments.** The app owner, or an operator acting on the owner's
-  explicit approval, writes it by hand as a JSON file at a private path
-  outside any git checkout, for example
+  **The file is the consent record, and nothing proves who wrote it.**
+  Any process running as this user can write one, agents included. The
+  checks below keep the file private and out of repositories; they do
+  not authenticate its author. So a waiver may be written only **after**
+  the owner's approval has been recorded (a message, a ticket comment),
+  and that approval is quoted, with its date, in `approval_reference`.
+  Writing a waiver without that recorded approval is a breach of the
+  owner's trust, whatever the driver accepts.
+
+  The driver never writes a waiver, and no function builds one from
+  arguments. The app owner, or an operator acting on the owner's recorded
+  approval, writes it by hand as a JSON file at a private path outside
+  any git checkout, for example
   `~/.local/share/wtf-v5/waivers/<name>.json`:
 
-    * the directory is mode `0700`, the file `0600`, both owned by the
-      user running the driver, neither a symlink
-    * no directory from the file up to `/` holds a `.git` entry (a
-      waiver is never committed)
+    * the directory is mode `0700`, the file `0600` with a single link
+      (no hard link), both owned by the user running the driver, neither
+      a symlink
+    * no directory from the file's real (symlink-resolved) directory up to
+      `/` holds a `.git` entry (a waiver is never committed)
+    * the file is read, then checked again: a file whose inode, size or
+      modification time changed between the check and the read is refused
 
   `load_waiver/1` is the only way to obtain one. Every later use
   (`plan/4`, `record/4`, the preflight, before each run and between
   scenarios) reads the file again and refuses unless it is still private,
-  byte-for-byte what was loaded, in scope and unexpired. A struct built in
-  code, or a loaded one edited in memory, therefore authorizes nothing:
-  it does not match its file. Deleting or editing the file revokes the
+  byte-for-byte what was loaded, in scope and unexpired. A waiver cannot
+  be forged in memory: a struct built in code, or a loaded one edited,
+  does not match its file, and the file is the only authority. Deleting or editing the file revokes the
   waiver at the next check, and the run stops (cleanup still runs).
 
   ## Format
@@ -122,9 +134,10 @@ defmodule BubbleEx.Verify.Replay.ExposureWaiver do
   @spec load_waiver(String.t()) :: {:ok, t()} | {:error, Error.t()}
   def load_waiver(path) when is_binary(path) do
     with :ok <- absolute(path),
-         :ok <- private(path),
+         {:ok, stat} <- private(path),
          :ok <- outside_repository(Path.dirname(path)),
          {:ok, bytes} <- read(path),
+         :ok <- stable(path, stat, bytes),
          {:ok, fields} <- decode(bytes) do
       {:ok,
        struct!(
@@ -204,9 +217,9 @@ defmodule BubbleEx.Verify.Replay.ExposureWaiver do
   defp private(path) do
     with {:ok, uid} <- uid(),
          {:ok, dir} <- File.lstat(Path.dirname(path)),
-         {:ok, file} <- File.lstat(path),
+         {:ok, file} <- File.lstat(path, time: :posix),
          true <- private_stat?(dir, file, uid) do
-      :ok
+      {:ok, file}
     else
       {:error, %Error{}} = error ->
         error
@@ -216,7 +229,8 @@ defmodule BubbleEx.Verify.Replay.ExposureWaiver do
 
       false ->
         invalid(
-          "an exposure waiver must be a 0600 file in a 0700 directory, both owned by this user",
+          "an exposure waiver must be a 0600 file with one link in a 0700 directory, " <>
+            "both owned by this user",
           :not_private
         )
     end
@@ -228,8 +242,31 @@ defmodule BubbleEx.Verify.Replay.ExposureWaiver do
   def private_stat?(%File.Stat{} = dir, %File.Stat{} = file, uid) do
     match?(%File.Stat{type: :directory, uid: ^uid}, dir) and
       Bitwise.band(dir.mode, 0o7777) == 0o700 and
-      match?(%File.Stat{type: :regular, uid: ^uid}, file) and
+      match?(%File.Stat{type: :regular, uid: ^uid, links: 1}, file) and
       Bitwise.band(file.mode, 0o7777) == 0o600
+  end
+
+  # The file read is the file checked: same inode, size and mtime after
+  # the read as at the permission check (and the size is what was read).
+  defp stable(path, before, bytes) do
+    case File.lstat(path, time: :posix) do
+      {:ok, now} ->
+        if stable?(before, now, bytes),
+          do: :ok,
+          else: invalid("the exposure waiver changed while it was read", :changed)
+
+      {:error, _} ->
+        invalid("no exposure waiver at that path", :unreadable)
+    end
+  end
+
+  @doc false
+  @spec stable?(File.Stat.t(), File.Stat.t(), binary()) :: boolean()
+  def stable?(%File.Stat{} = before, %File.Stat{} = now, bytes) do
+    {before.inode, before.major_device, before.size, before.mtime, before.mode, before.uid,
+     before.links} ==
+      {now.inode, now.major_device, now.size, now.mtime, now.mode, now.uid, now.links} and
+      now.size == byte_size(bytes)
   end
 
   # The effective user ID of this OS process.
@@ -251,15 +288,51 @@ defmodule BubbleEx.Verify.Replay.ExposureWaiver do
     _ -> invalid("cannot tell which user runs the driver", :not_private)
   end
 
+  # Walks up from the directory's real path, so a symlinked ancestor
+  # cannot hide the checkout it points into.
   defp outside_repository(dir) do
-    ancestors =
-      dir
-      |> Path.split()
-      |> Enum.scan(&Path.join(&2, &1))
+    case real_path(dir) do
+      {:ok, real} ->
+        ancestors = real |> Path.split() |> Enum.scan(&Path.join(&2, &1))
 
-    if Enum.any?(ancestors, &File.exists?(Path.join(&1, ".git"))),
-      do: invalid("an exposure waiver must live outside any git checkout", :in_repository),
-      else: :ok
+        if Enum.any?(ancestors, &File.exists?(Path.join(&1, ".git"))),
+          do: invalid("an exposure waiver must live outside any git checkout", :in_repository),
+          else: :ok
+
+      :error ->
+        invalid("cannot resolve the exposure waiver's directory", :unreadable)
+    end
+  end
+
+  @doc false
+  # The path with every symlink resolved (at most 40), `.` and `..` applied
+  # to the resolved prefix.
+  @spec real_path(String.t()) :: {:ok, String.t()} | :error
+  def real_path("/" <> _ = path), do: resolve("/", tl(Path.split(path)), 0)
+  def real_path(_), do: :error
+
+  defp resolve(acc, [], _hops), do: {:ok, acc}
+  defp resolve(_acc, _rest, hops) when hops > 40, do: :error
+  defp resolve(acc, ["." | rest], hops), do: resolve(acc, rest, hops)
+  defp resolve(acc, [".." | rest], hops), do: resolve(Path.dirname(acc), rest, hops)
+
+  defp resolve(acc, [segment | rest], hops) do
+    candidate = Path.join(acc, segment)
+
+    case File.lstat(candidate) do
+      {:ok, %File.Stat{type: :symlink}} ->
+        case File.read_link(candidate) do
+          {:ok, "/" <> _ = target} -> resolve("/", tl(Path.split(target)) ++ rest, hops + 1)
+          {:ok, target} -> resolve(acc, Path.split(target) ++ rest, hops + 1)
+          {:error, _} -> :error
+        end
+
+      {:ok, _} ->
+        resolve(candidate, rest, hops)
+
+      {:error, _} ->
+        :error
+    end
   end
 
   defp read(path) do

@@ -94,12 +94,20 @@ included, to anonymous callers as soon as it was exposed on a branch. So:
       type's development data, so this is not a privacy fix. It needs an
       owner exposure waiver (`BubbleEx.Verify.Replay.ExposureWaiver`),
       which the driver never writes:
-      - The owner, or an operator acting on the owner's explicit
+      - **The file is the consent record, and nothing proves who wrote
+        it.** Any process running as your user can write one, agents
+        included. The driver checks that it is private and outside any
+        repository, not who wrote it. Write it only **after** the owner's
+        approval has been recorded (a message, a ticket comment), and
+        quote that approval, with its date, in `approval_reference`.
+      - The owner, or an operator acting on the owner's recorded
         approval, writes it by hand as a JSON file in a private directory
-        outside any git checkout, for example
+        outside any git checkout (the directory's real path is checked, so
+        a symlink into a checkout is refused), for example
         `~/.local/share/wtf-v5/waivers/<name>.json`. The directory must be
-        `0700`, the file `0600`, both owned by the user running the
-        driver.
+        `0700`, the file `0600` with a single link (no hard link), both
+        owned by the user running the driver. A file that changes while it
+        is read is refused.
       - It names the exact `app`, `branch`, `branch_id` and `host` of the
         target and the exact type descriptors with their Data API paths
         (`"types": {"user": "user"}`), with no wildcard. `live` and `test`

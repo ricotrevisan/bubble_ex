@@ -9,17 +9,23 @@ All notable changes to this project are documented here.
 - **Owner exposure waiver for replay** (WTF-385).
   `BubbleEx.Verify.Replay.ExposureWaiver` lets the replay preflight accept
   `:exposed` and `:may_leak` anonymous-exposure findings for named types,
-  and nothing else. The app owner, or an operator acting on the owner's
-  explicit approval, writes the waiver by hand. It is a JSON file in a
-  `0700` directory outside any git checkout, with mode `0600` and owned
-  by the user running the driver. It names the exact app, branch, branch
+  and nothing else. The file is the consent record, and nothing proves
+  who wrote it: any process running as this user, agents included, can
+  write one. So it may be written only after the owner's approval has
+  been recorded, and that approval is quoted, with its date, in
+  `approval_reference`. The app owner, or an operator acting on that
+  recorded approval, writes it by hand. It is a JSON file with mode `0600`
+  and a single link, in a `0700` directory whose real path is outside any
+  git checkout, owned by the user running the driver. A file that changes
+  while it is read is refused. It names the exact app, branch, branch
   ID, host, types with their Data API paths and a window of at most 24
   hours, plus `approved_by` and a dated `approval_reference`.
   `load_waiver/1` is the only way to obtain one; nothing builds one in
   code. The file is read again at every use: at `plan/4`, before the
-  preflight, before each run and between scenarios. A struct forged or
-  edited in memory, an edited or deleted file, a scope mismatch or
-  expiry refuses the run, or stops it with cleanup. The probe's actual
+  preflight, before each run and between scenarios. A waiver cannot be
+  forged in memory; the file is the only authority. A struct built or
+  edited in code, an edited or deleted file, a scope mismatch or expiry
+  refuses the run, or stops it with cleanup. The probe's actual
   findings stay in the report with warnings. The file's SHA-256 is bound
   into the plan hash, the report and each ledger journal header.
   Fail-closed stays the default, and target verification still runs

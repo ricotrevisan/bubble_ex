@@ -1853,7 +1853,7 @@ defmodule BubbleEx.Verify.ReplayTest do
       refute anonymous_check(report.checks, "user")
     end
 
-    test "cannot be forged in memory: there is no constructor, and every use re-reads the file" do
+    test "cannot be forged in memory; the file is the only authority" do
       refute Enum.any?(
                ExposureWaiver.__info__(:functions),
                fn {name, _} -> name in [:new, :build, :from_map, :accept, :owner_accepted] end
@@ -1933,11 +1933,40 @@ defmodule BubbleEx.Verify.ReplayTest do
                dir_stat.uid
              )
 
+      # A hard link: two names for one file.
+      File.ln!(path, Path.join(dir, "hard.json"))
+      assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_not_private
+      File.rm!(Path.join(dir, "hard.json"))
+      assert {:ok, _} = ExposureWaiver.load_waiver(path)
+
       # Inside a git checkout (never committed).
       repo = Path.dirname(dir)
       File.mkdir_p!(Path.join(repo, ".git"))
       assert reason(ExposureWaiver.load_waiver(path)) == :exposure_waiver_in_repository
       File.rm_rf!(Path.join(repo, ".git"))
+
+      # Reached through a symlink into a checkout's subdirectory: the real
+      # path is walked, so the checkout's .git is found.
+      checkout = Path.join(repo, "checkout")
+      inner = Path.join([checkout, "sub", "waivers"])
+      File.mkdir_p!(Path.join(checkout, ".git"))
+      File.mkdir_p!(inner)
+      File.chmod!(inner, 0o700)
+      write_waiver(inner, waiver_doc())
+      File.ln_s!(Path.join(checkout, "sub"), Path.join(repo, "outside"))
+      via_link = Path.join([repo, "outside", "waivers", "run.json"])
+      assert {:ok, real} = ExposureWaiver.real_path(Path.dirname(via_link))
+      assert real == inner
+      assert reason(ExposureWaiver.load_waiver(via_link)) == :exposure_waiver_in_repository
+
+      # The file read must be the file checked (inode, size, mtime).
+      {:ok, before} = File.lstat(path, time: :posix)
+      bytes = File.read!(path)
+      assert ExposureWaiver.stable?(before, before, bytes)
+      refute ExposureWaiver.stable?(before, %{before | inode: before.inode + 1}, bytes)
+      refute ExposureWaiver.stable?(before, %{before | mtime: before.mtime + 1}, bytes)
+      refute ExposureWaiver.stable?(before, %{before | size: before.size + 1}, bytes)
+      refute ExposureWaiver.stable?(before, before, bytes <> " ")
 
       # Relative, unnormalized, missing.
       assert reason(ExposureWaiver.load_waiver("waivers/run.json")) == :exposure_waiver_malformed
@@ -2186,6 +2215,25 @@ defmodule BubbleEx.Verify.ReplayTest do
                ) == :plan_not_confirmed
 
         assert FakeBubble.log(fake) == []
+      end
+    end
+
+    test "the admin token never appears in a waived run's report or ledgers" do
+      seed = seed()
+      exposed_user_fake()
+      {waiver, _} = load!()
+
+      assert {:ok, result} =
+               record(client(), seed, [privacy_scenario(seed, "alice")], exposure_waiver: waiver)
+
+      refute inspect(result.report, limit: :infinity, printable_limit: :infinity) =~ @admin
+      assert result.report.exposure_waiver.sha256 == waiver.sha256
+
+      for ledger <- result.ledgers do
+        refute inspect(ledger, limit: :infinity, printable_limit: :infinity) =~ @admin
+        refute ledger |> Ledger.to_map() |> Jason.encode!() =~ @admin
+        refute File.read!(ledger.path) =~ @admin
+        assert {:ok, _} = Ledger.to_json(ledger, [@admin])
       end
     end
 
