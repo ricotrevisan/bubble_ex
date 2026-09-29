@@ -47,17 +47,29 @@ defmodule BubbleEx.Verify.Replay.Ledger do
           branch: String.t(),
           branch_id: String.t() | nil,
           host: String.t() | nil,
+          exposure_waiver_sha256: String.t() | nil,
           path: String.t() | nil,
           entries: [entry()]
         }
 
   @enforce_keys [:run_id, :app, :branch]
-  defstruct [:run_id, :app, :branch, :branch_id, :host, :path, entries: []]
+  defstruct [
+    :run_id,
+    :app,
+    :branch,
+    :branch_id,
+    :host,
+    :exposure_waiver_sha256,
+    :path,
+    entries: []
+  ]
 
   @doc """
   A new ledger for run `run_id` on `target`. With `dir:`, its journal is
   created there (a journal that already exists is an error: run IDs are
-  never reused).
+  never reused). `exposure_waiver_sha256:` records the SHA-256 of the
+  owner exposure waiver the run was made under
+  (`BubbleEx.Verify.Replay.ExposureWaiver`), in the header.
 
   **Owner-only.** A journal holds Bubble IDs and per-run sign-up emails.
   `dir` is created (or, when it exists, set) to mode 0700 and checked
@@ -77,7 +89,8 @@ defmodule BubbleEx.Verify.Replay.Ledger do
       app: target.app,
       branch: target.branch,
       branch_id: target.branch_id,
-      host: target.host
+      host: target.host,
+      exposure_waiver_sha256: Keyword.get(opts, :exposure_waiver_sha256)
     }
 
     case Keyword.get(opts, :dir) do
@@ -98,7 +111,8 @@ defmodule BubbleEx.Verify.Replay.Ledger do
                  "app" => target.app,
                  "branch" => target.branch,
                  "branch_id" => target.branch_id,
-                 "host" => target.host
+                 "host" => target.host,
+                 "exposure_waiver_sha256" => ledger.exposure_waiver_sha256
                }) do
           {:ok, ledger}
         end
@@ -338,6 +352,7 @@ defmodule BubbleEx.Verify.Replay.Ledger do
             branch: b,
             branch_id: string_or_nil(h["branch_id"]),
             host: string_or_nil(h["host"]),
+            exposure_waiver_sha256: string_or_nil(h["exposure_waiver_sha256"]),
             path: path
           }}
 
@@ -380,6 +395,7 @@ defmodule BubbleEx.Verify.Replay.Ledger do
       "branch" => l.branch,
       "branch_id" => l.branch_id,
       "host" => l.host,
+      "exposure_waiver_sha256" => l.exposure_waiver_sha256,
       "entries" =>
         Enum.map(l.entries, fn e ->
           %{

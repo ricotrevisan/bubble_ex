@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Owner exposure waiver for replay** (WTF-385).
+  `BubbleEx.Verify.Replay.ExposureWaiver` lets the replay preflight accept
+  `:exposed` and `:may_leak` anonymous-exposure findings for named types,
+  and nothing else. The app owner, or an operator acting on the owner's
+  explicit approval, writes the waiver by hand. It is a JSON file in a
+  `0700` directory outside any git checkout, with mode `0600` and owned
+  by the user running the driver. It names the exact app, branch, branch
+  ID, host, types with their Data API paths and a window of at most 24
+  hours, plus `approved_by` and a dated `approval_reference`.
+  `load_waiver/1` is the only way to obtain one; nothing builds one in
+  code. The file is read again at every use: at `plan/4`, before the
+  preflight, before each run and between scenarios. A struct forged or
+  edited in memory, an edited or deleted file, a scope mismatch or
+  expiry refuses the run, or stops it with cleanup. The probe's actual
+  findings stay in the report with warnings. The file's SHA-256 is bound
+  into the plan hash, the report and each ledger journal header.
+  Fail-closed stays the default, and target verification still runs
+  before any token is sent.
+
 - **Page data** (WTF-420; see `docs/page-data.md`). `BubbleEx.PageData`
   lowers, stack-neutrally, a page's "Type of content" and the data
   sources of groups, repeating groups (with their page size) and

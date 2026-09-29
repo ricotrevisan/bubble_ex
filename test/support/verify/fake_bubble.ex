@@ -61,6 +61,8 @@ defmodule BubbleEx.Test.FakeBubble do
       meta: Keyword.get(opts, :meta, true),
       meta_types: Keyword.get(opts, :meta_types),
       captions: Keyword.get(opts, :captions, true),
+      # Users visible to logged-out callers (an unsafe exposure an owner may waive).
+      user_anonymous: Keyword.get(opts, :user_anonymous, false),
       marker: %{
         "branch" => Keyword.get(opts, :marker_branch, @branch),
         "nonce" => Keyword.get(opts, :marker_nonce, @nonce)
@@ -359,6 +361,7 @@ defmodule BubbleEx.Test.FakeBubble do
 
   defp visible?(_s, _r, :admin), do: true
   defp visible?(_s, %{type: "workspace"}, _viewer), do: true
+  defp visible?(%{user_anonymous: true}, %{type: "user"}, :none), do: true
   defp visible?(_s, %{type: "user"}, {:user, _id}), do: true
   defp visible?(_s, %{type: "user"}, _), do: false
 
