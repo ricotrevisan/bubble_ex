@@ -106,8 +106,19 @@ defmodule BubbleEx.Decision.DropPrivateFixtureTest do
     drops = drops(index, symbols, true)
     all = records ++ drops
 
+    # a recorded decision may no longer resolve against a newer export (it
+    # blocks on its own); the drops add no blocking entry
+    {:ok, recorded} = Decision.resolve(records, findings, index: index, now: @now)
+    recorded_blocking = MapSet.new(Resolved.blocking(recorded), & &1.decision.id)
+
     {:ok, resolved} = Decision.resolve(all, findings, index: index, now: @now)
-    assert Resolved.blocking(resolved) == []
+
+    assert Enum.reject(
+             Resolved.blocking(resolved),
+             &MapSet.member?(recorded_blocking, &1.decision.id)
+           ) ==
+             []
+
     for %{decision: %{kind: :drop}} = e <- resolved.entries, do: assert(e.state == :active)
 
     applied = Decision.applicable(resolved, findings)

@@ -1,24 +1,24 @@
 {
   "columns": {
-    "custom boolean": 162,
-    "custom custom": 13,
-    "custom enum": 110,
+    "custom boolean": 169,
+    "custom custom": 14,
+    "custom enum": 112,
     "custom enum[]": 19,
     "custom external": 6,
-    "custom float": 67,
+    "custom float": 72,
     "custom float[]": 1,
     "custom opaque_external": 6,
-    "custom reference": 389,
-    "custom reference[]": 99,
-    "custom string": 536,
+    "custom reference": 411,
+    "custom reference[]": 113,
+    "custom string": 566,
     "custom string[]": 7,
-    "custom utc_datetime_usec": 278,
+    "custom utc_datetime_usec": 291,
     "option boolean": 68,
     "option custom": 5,
     "option enum": 19,
     "option enum[]": 14,
-    "option float": 31,
-    "option string": 467,
+    "option float": 35,
+    "option string": 474,
     "option string[]": 1,
     "option utc_datetime_usec": 2
   },
@@ -34,8 +34,8 @@
   },
   "formats": {
     "convex": {
-      "bytes": 113006,
-      "lines": 3012,
+      "bytes": 118190,
+      "lines": 3138,
       "target_diagnostics": {
         "db_converted_name_suffixed": 7,
         "db_name_suffixed": 1,
@@ -44,8 +44,8 @@
       }
     },
     "dbml": {
-      "bytes": 118393,
-      "lines": 3655,
+      "bytes": 124553,
+      "lines": 3819,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
@@ -54,8 +54,8 @@
       }
     },
     "ecto": {
-      "bytes": 391184,
-      "lines": 10964,
+      "bytes": 408393,
+      "lines": 11373,
       "target_diagnostics": {
         "db_converted_name_suffixed": 9,
         "db_name_suffixed": 1,
@@ -64,8 +64,8 @@
       }
     },
     "postgres": {
-      "bytes": 202977,
-      "lines": 4270,
+      "bytes": 212455,
+      "lines": 4451,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
@@ -73,8 +73,8 @@
       }
     },
     "sqlite": {
-      "bytes": 119624,
-      "lines": 3756,
+      "bytes": 125130,
+      "lines": 3913,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
@@ -83,8 +83,8 @@
       }
     },
     "tsql": {
-      "bytes": 140180,
-      "lines": 3757,
+      "bytes": 146737,
+      "lines": 3914,
       "target_diagnostics": {
         "db_name_suffixed": 1,
         "db_reference_to_omitted": 1,
@@ -93,8 +93,8 @@
       }
     },
     "xano": {
-      "bytes": 304975,
-      "lines": 13722,
+      "bytes": 319036,
+      "lines": 14329,
       "target_diagnostics": {
         "db_converted_name_suffixed": 5,
         "db_name_suffixed": 1,
@@ -103,8 +103,8 @@
       }
     },
     "zod": {
-      "bytes": 145328,
-      "lines": 3706,
+      "bytes": 151778,
+      "lines": 3853,
       "target_diagnostics": {
         "db_converted_name_suffixed": 3,
         "db_name_suffixed": 1,
@@ -113,19 +113,19 @@
       }
     }
   },
-  "option_values": 678,
+  "option_values": 1142,
   "relationships": {
     "custom many_to_many unresolved": 1,
     "custom many_to_one unresolved": 4,
-    "custom->custom many_to_many": 98,
-    "custom->custom many_to_one": 386,
+    "custom->custom many_to_many": 112,
+    "custom->custom many_to_one": 408,
     "custom->option many_to_many": 19,
-    "custom->option many_to_one": 109,
+    "custom->option many_to_one": 111,
     "option->option many_to_many": 14,
     "option->option many_to_one": 19
   },
   "tables": {
-    "custom": 93,
-    "option": 141
+    "custom": 97,
+    "option": 144
   }
 }

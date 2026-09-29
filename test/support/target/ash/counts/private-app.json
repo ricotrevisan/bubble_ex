@@ -1,79 +1,82 @@
 {
   "counts": {
     "applied": {},
-    "attributes": 1694,
+    "attributes": 1788,
     "attributes_by_type": {
       "array enum": 19,
       "array float": 1,
-      "array string": 106,
-      "boolean": 162,
-      "enum": 109,
-      "float": 67,
+      "array string": 120,
+      "boolean": 169,
+      "enum": 111,
+      "float": 72,
       "json_value": 12,
-      "string": 935,
+      "string": 988,
       "typed_struct": 4,
-      "utc_datetime_usec": 279
+      "utc_datetime_usec": 292
     },
     "db_references": {
-      "ignore": 386
+      "ignore": 408
     },
     "deferred": {},
     "derived_aggregates": 0,
     "derived_calculations": 0,
     "diagnostics": {
-      "ash_deleted_omitted": 24,
+      "ash_deleted_omitted": 25,
       "ash_expr_unmapped_reference": 1,
+      "ash_expr_unsupported": 16,
       "ash_opaque_value": 6,
       "ash_policies_unverified": 1,
-      "ash_policy_aggregates_unguarded": 38,
-      "ash_policy_attachments_unenforced": 5,
-      "ash_policy_bypass_required": 207,
-      "ash_policy_data_api_unmapped": 2,
+      "ash_policy_aggregates_unguarded": 44,
+      "ash_policy_attachments_unenforced": 6,
+      "ash_policy_bypass_required": 227,
+      "ash_policy_data_api_unmapped": 6,
       "ash_policy_default_rule_negated": 2,
-      "ash_policy_field_unmapped": 8,
-      "ash_policy_stricter_than_bubble": 74,
+      "ash_policy_field_unmapped": 6,
+      "ash_policy_rule_denied": 4,
+      "ash_policy_stricter_than_bubble": 84,
       "ash_unresolved_reference": 5,
       "exact_type_definition_missing": 7,
       "external_type_unresolved_root": 6,
       "invalid_descriptor": 8,
       "model_option_key_missing": 9,
       "model_undeclared_option_attribute_value": 40,
-      "model_unresolved_target": 4
+      "model_unresolved_target": 4,
+      "unknown_permission": 6
     },
-    "enum_values": 678,
-    "enums": 141,
+    "enum_values": 1142,
+    "enums": 144,
     "extensions": [],
     "indexes": {},
     "join_sides": 0,
     "joins": 0,
     "privacy": {
       "actor_loads": 2,
-      "authorization_bypasses": 207,
+      "authorization_bypasses": 227,
       "auto_bind_actions": 25,
-      "calculations": 75,
+      "calculations": 85,
       "checks": {
-        "authorize_if always": 174,
-        "authorize_if calculation": 520,
-        "authorize_if keyed": 93,
-        "forbid_if always": 3
+        "authorize_if always": 168,
+        "authorize_if calculation": 525,
+        "authorize_if keyed": 97,
+        "forbid_if always": 16
       },
-      "field_policies": 100,
-      "gated_relationships": 220,
-      "policies": 507,
-      "private_twins": 220,
+      "field_policies": 107,
+      "gated_relationships": 256,
+      "policies": 513,
+      "private_twins": 256,
       "resources": {
-        "public_default": 46,
-        "rules": 47
+        "public_default": 45,
+        "rules": 52
       },
       "rules": {
-        "compiled": 76,
-        "denied": 0
+        "compiled": 86,
+        "denied": 4
       }
     },
     "relationships": {
-      "belongs_to": 386
+      "belongs_to": 408
     },
-    "resources": 93,
+    "resources": 97,
     "synthesized_resources": 0,
     "typed_structs": {
       "structured": 3

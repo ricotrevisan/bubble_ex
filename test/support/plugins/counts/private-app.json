@@ -13,7 +13,7 @@
     },
     "total": 33,
     "workflows_event_only": 7,
-    "workflows_to_rewire_on_drop": 251
+    "workflows_to_rewire_on_drop": 252
   },
   "inventory": {
     "features_used": 156,
@@ -30,12 +30,12 @@
     },
     "used_not_installed": 2,
     "uses": {
-      "actions": 620,
+      "actions": 637,
       "data_types": 3,
-      "elements": 717,
-      "events": 258,
-      "state_reads": 458,
-      "step_reads": 43
+      "elements": 725,
+      "events": 259,
+      "state_reads": 468,
+      "step_reads": 49
     },
     "uses_per_plugin": {
       "0": 3,
@@ -46,8 +46,8 @@
   },
   "plan": {
     "all_dropped": {
-      "actions_removed": 620,
-      "decision_edges": 1055,
+      "actions_removed": 637,
+      "decision_edges": 1077,
       "plugin_edges": 0,
       "plugins": {
         "dropped": 30,
@@ -55,58 +55,58 @@
         "undecided": 0
       },
       "residue": {
-        "reads_dropped_plugin": 363,
-        "trigger_dropped": 227
+        "reads_dropped_plugin": 373,
+        "trigger_dropped": 228
       },
       "top_level": {
-        "auto": 131,
+        "auto": 132,
         "closed": 30,
-        "open": 290,
-        "total": 451
+        "open": 295,
+        "total": 457
       },
       "workflows_removed": 31
     },
     "suggestions_accepted": {
       "actions_removed": 0,
       "decision_edges": 0,
-      "plugin_edges": 1046,
+      "plugin_edges": 1066,
       "plugins": {
         "dropped": 0,
         "tasks": 30,
         "undecided": 0
       },
       "residue": {
-        "plugin_action": 620,
-        "plugin_element": 717,
-        "plugin_event": 258
+        "plugin_action": 637,
+        "plugin_element": 725,
+        "plugin_event": 259
       },
       "top_level": {
-        "auto": 100,
+        "auto": 102,
         "closed": 0,
-        "open": 351,
-        "total": 451
+        "open": 355,
+        "total": 457
       },
       "workflows_removed": 0
     },
     "undecided": {
       "actions_removed": 0,
       "decision_edges": 30,
-      "plugin_edges": 1046,
+      "plugin_edges": 1066,
       "plugins": {
         "dropped": 0,
         "tasks": 30,
         "undecided": 30
       },
       "residue": {
-        "plugin_action": 620,
-        "plugin_element": 717,
-        "plugin_event": 258
+        "plugin_action": 637,
+        "plugin_element": 725,
+        "plugin_event": 259
       },
       "top_level": {
-        "auto": 100,
+        "auto": 102,
         "closed": 0,
-        "open": 381,
-        "total": 481
+        "open": 385,
+        "total": 487
       },
       "workflows_removed": 0
     }

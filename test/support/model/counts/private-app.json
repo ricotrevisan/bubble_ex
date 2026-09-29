@@ -1,22 +1,22 @@
 {
   "counts": {
-    "api_calls": 203,
-    "api_calls_named": 202,
-    "api_calls_with_host": 202,
-    "api_connectors": 30,
+    "api_calls": 204,
+    "api_calls_named": 203,
+    "api_calls_with_host": 203,
+    "api_connectors": 31,
     "api_parameters": {
-      "body": 418,
+      "body": 440,
       "header": 137,
       "param": 22,
       "query": 47,
-      "url": 115
+      "url": 116
     },
-    "api_parameters_named": 666,
+    "api_parameters_named": 689,
     "api_parameters_private": 73,
     "cycle_cuts": 0,
-    "data_types": 97,
+    "data_types": 101,
     "deleted_data_types": 4,
-    "deleted_fields": 14,
+    "deleted_fields": 15,
     "deleted_option_sets": 4,
     "deleted_option_values": 8,
     "diagnostics": {
@@ -24,46 +24,47 @@
       "invalid_descriptor": 8,
       "model_option_key_missing": 9,
       "model_undeclared_option_attribute_value": 40,
-      "model_unresolved_target": 4
+      "model_unresolved_target": 4,
+      "unknown_permission": 6
     },
     "external_fields": 0,
     "external_types": {
       "opaque": 5
     },
-    "fields": 1257,
+    "fields": 1332,
     "fields_by_kind": {
       "external": 3,
-      "file_ref": 9,
+      "file_ref": 11,
       "list external": 4,
       "list opaque": 1,
       "list option": 19,
-      "list ref": 100,
+      "list ref": 114,
       "list scalar": 9,
       "opaque": 7,
-      "option": 114,
-      "ref": 304,
-      "scalar": 683,
+      "option": 116,
+      "ref": 322,
+      "scalar": 722,
       "structured": 4
     },
     "malformed_data_types": 0,
-    "option_attributes": 328,
+    "option_attributes": 333,
     "option_attributes_by_kind": {
       "file_ref": 5,
       "list option": 14,
       "list scalar": 1,
       "option": 19,
-      "scalar": 289
+      "scalar": 294
     },
-    "option_sets": 145,
-    "option_values": 694,
-    "privacy_rules": 125,
+    "option_sets": 148,
+    "option_values": 1158,
+    "privacy_rules": 144,
     "relationships": {
-      "many": 99,
-      "one": 298,
+      "many": 113,
+      "one": 316,
       "unresolved": 4
     },
     "synthesized_data_types": 0,
-    "system_fields": 486
+    "system_fields": 506
   },
   "schema_version": 4
 }

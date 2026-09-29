@@ -9,7 +9,9 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
   # With a split export or `.bubble` file there it does nothing. It checks
   # that the Model built from the workspace matches the workspace's own
   # `symbols` index and stays close to the counts recorded from the private
-  # fixture app's last split (v4) export, which predates later app changes.
+  # fixture app's last split (v4) export, which predates later app changes
+  # (pinned below: the count snapshots are now recorded from the v5
+  # workspace).
   # It prints aggregates only, never names or IDs.
   use ExUnit.Case, async: true
 
@@ -19,7 +21,16 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @v4_counts "test/support/model/counts/private-app.json"
+  # `BubbleEx.Model.summary/1` of the last split (v4) export.
+  @v4_counts %{
+    "data_types" => 97,
+    "fields" => 1257,
+    "option_sets" => 145,
+    "api_connectors" => 30,
+    "api_calls" => 203,
+    "option_values" => 694,
+    "privacy_rules" => 125
+  }
   # The v4 counts predate app changes; each kind stays within this share.
   @v4_tolerance 0.1
   # Where Bubble's JSON holds entries the index leaves out (e.g. a call entry
@@ -95,7 +106,7 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
   test "the Model stays close to the split export's counts", %{result: result} = context do
     if result do
       summary = Model.summary(context.model)
-      v4 = @v4_counts |> File.read!() |> Jason.decode!() |> Map.fetch!("counts")
+      v4 = @v4_counts
 
       # Option values and privacy rules are printed only: app edits since the
       # split export changed them by more than the tolerance (a new option
