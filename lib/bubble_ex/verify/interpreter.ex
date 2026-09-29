@@ -25,8 +25,13 @@ defmodule BubbleEx.Verify.Interpreter do
   lacking it matches", evaluated as the negated conditions with their
   guards). `view` (direct view by ID) needs `view_all` or a non-empty list
   of existing visible fields; each field is visible under `view_all` or
-  when listed; `search` is `search_for`. A type listed without rules has
-  Bubble's public defaults (everything visible and searchable).
+  when listed; `search` is `search_for`. A field some rule lists as
+  non-filterable may be used in a search (a constraint or sort on it,
+  `filterable`) under a rule that grants `search_for` and does not list
+  it; a search constrained on it finds a record only where the user may
+  (`search/5`, `non_filterable_constraint_excludes`). A type listed
+  without rules has Bubble's public defaults (everything visible and
+  searchable).
 
   Every Bubble semantic is a named flag of
   `BubbleEx.Verify.Interpreter.Assumptions`. The defaults are **Bubble's
@@ -86,6 +91,9 @@ defmodule BubbleEx.Verify.Interpreter do
       * `fields` - the field IDs it may view (sorted; `_id` is implied when
         visible); `unknown_fields` those an unsupported rule could decide
       * `searchable` - found by searches
+      * `filterable` - of the fields some rule lists as non-filterable,
+        those the persona may use in a search on this record (sorted);
+        `unknown_filterable` those an unsupported rule could decide
       * `assumptions` - the `BubbleEx.Verify.Interpreter.Assumptions` flags
         whose flip would change this verdict
       * `reason` - why a verdict is unknown, or nil
@@ -99,6 +107,8 @@ defmodule BubbleEx.Verify.Interpreter do
       searchable: :unknown,
       fields: [],
       unknown_fields: [],
+      filterable: [],
+      unknown_filterable: [],
       assumptions: []
     ]
 
@@ -109,6 +119,8 @@ defmodule BubbleEx.Verify.Interpreter do
             searchable: boolean() | :unknown,
             fields: [String.t()],
             unknown_fields: [String.t()],
+            filterable: [String.t()],
+            unknown_filterable: [String.t()],
             assumptions: [atom()],
             reason: String.t() | nil
           }
@@ -128,6 +140,7 @@ defmodule BubbleEx.Verify.Interpreter do
           status: :rules | :public | {:unknown, String.t()},
           fields: [%{id: String.t(), builtin: boolean()}],
           field_ids: MapSet.t(),
+          nonfilterable: [String.t()],
           rules: [rule_info()],
           default: Rule.t() | nil
         }
@@ -188,13 +201,22 @@ defmodule BubbleEx.Verify.Interpreter do
           do: %{id: f.id, builtin: not is_nil(f.system)}
 
     fields = fields |> Enum.uniq_by(& &1.id) |> Enum.sort_by(& &1.id)
+    field_ids = MapSet.new(fields, & &1.id)
     {default, others} = Enum.split_with(type.rules, & &1.default?)
+
+    nonfilterable =
+      for %{permissions: %{} = p} <- type.rules,
+          f <- p.non_filterable_fields || [],
+          MapSet.member?(field_ids, f),
+          uniq: true,
+          do: f
 
     %{
       type: type,
       status: type_status(type),
       fields: fields,
-      field_ids: MapSet.new(fields, & &1.id),
+      field_ids: field_ids,
+      nonfilterable: Enum.sort(nonfilterable),
       rules: Enum.map(others, &rule_info(&1, type, model)),
       default: List.first(default)
     }
@@ -307,7 +329,8 @@ defmodule BubbleEx.Verify.Interpreter do
         do: flag
   end
 
-  defp observable(%Access{} = a), do: {a.visible, a.fields, a.unknown_fields, a.searchable}
+  defp observable(%Access{} = a),
+    do: {a.visible, a.fields, a.unknown_fields, a.searchable, a.filterable, a.unknown_filterable}
 
   # A logged-out user is empty, or (`logged_out_user_is_empty: false`)
   # Bubble's temporary user: a key no record has, so its fields are empty
@@ -353,9 +376,10 @@ defmodule BubbleEx.Verify.Interpreter do
     {view, f1} = view(info, results, ctx)
     {search, f2} = search_grant(info, results, ctx, view)
     {fields, unknown, f3} = fields(info, results, view, ctx)
+    {filterable, unknown_filterable, f4} = filterable(info, results, ctx)
 
     reason =
-      if :unknown in [view, search] or unknown != [],
+      if :unknown in [view, search] or unknown != [] or unknown_filterable != [],
         do: unsupported_reason(results)
 
     access = %{
@@ -364,10 +388,12 @@ defmodule BubbleEx.Verify.Interpreter do
         searchable: search,
         fields: fields,
         unknown_fields: unknown,
+        filterable: filterable,
+        unknown_filterable: unknown_filterable,
         reason: reason
     }
 
-    {access, Enum.uniq(f1 ++ f2 ++ f3)}
+    {access, Enum.uniq(f1 ++ f2 ++ f3 ++ f4)}
   end
 
   defp unsupported_reason(results) do
@@ -434,6 +460,28 @@ defmodule BubbleEx.Verify.Interpreter do
       true ->
         {true, [:builtin_fields_hidden_unless_listed | flags]}
     end
+  end
+
+  # The non-filterable fields (listed by some rule) the user may search by
+  # on this record: a rule they match grants `search_for` and does not
+  # list the field.
+  defp filterable(info, results, ctx) do
+    Enum.reduce(info.nonfilterable, {[], [], []}, fn id, {yes, unknown, flags} ->
+      {v, more} = grant(info, results, ctx, &filter_field(&1, &2, id))
+
+      case v do
+        true -> {yes ++ [id], unknown, flags ++ more}
+        false -> {yes, unknown, flags ++ more}
+        :unknown -> {yes, unknown ++ [id], flags ++ more}
+      end
+    end)
+  end
+
+  defp filter_field(nil, _ctx, _id), do: {false, []}
+
+  defp filter_field(perms, ctx, id) do
+    {search, flags} = flag(perms, :search_for, ctx)
+    {search and id not in (perms.non_filterable_fields || []), flags}
   end
 
   # --- grants ---------------------------------------------------------------------
@@ -602,6 +650,55 @@ defmodule BubbleEx.Verify.Interpreter do
      }}
   end
 
+  @doc """
+  The records of type `type_id` that `user` finds in a search constrained
+  on field `field` by a constraint every value meets (`field is empty`,
+  together with `field is not empty`): those found by searches where the
+  user may search by the field. A field no rule lists as non-filterable
+  constrains nothing. Where the user may not, the record is not found
+  (`non_filterable_constraint_excludes`), or, under the flag's `false`
+  reading, found as by an unconstrained search. Same result shape as
+  `search/4`.
+  """
+  @spec search(t(), Dataset.t(), String.t() | nil, String.t(), String.t()) ::
+          {:ok, %{records: [String.t()], unknown: [String.t()], assumptions: [atom()]}}
+  def search(%__MODULE__{} = interpreter, %Dataset{} = ds, user, type_id, field) do
+    excludes = interpreter.assumptions.non_filterable_constraint_excludes
+
+    results =
+      for key <- Dataset.keys(ds, type_id) do
+        {:ok, access} = access(interpreter, ds, user, key)
+
+        cond do
+          access.searchable != true ->
+            {access.searchable, access, []}
+
+          field in access.unknown_filterable ->
+            {:unknown, access, []}
+
+          field in access.filterable or not listed?(interpreter, type_id, field) ->
+            {true, access, []}
+
+          true ->
+            {not excludes, access, [:non_filterable_constraint_excludes]}
+        end
+      end
+
+    {:ok,
+     %{
+       records: for({true, a, _} <- results, do: a.record),
+       unknown: for({:unknown, a, _} <- results, do: a.record),
+       assumptions:
+         results
+         |> Enum.flat_map(fn {_, a, flags} -> a.assumptions ++ flags end)
+         |> Enum.uniq()
+         |> Enum.sort_by(&Enum.find_index(Assumptions.names(), fn n -> n == &1 end))
+     }}
+  end
+
+  defp listed?(interpreter, type_id, field),
+    do: field in (type(interpreter, type_id) || %{nonfilterable: []}).nonfilterable
+
   @doc "Whether an access verdict is fully determined (no unknown part)."
   @spec determined?(Access.t()) :: boolean()
   def determined?(%Access{visible: v, searchable: s, unknown_fields: u}),
@@ -639,7 +736,7 @@ defmodule BubbleEx.Verify.Interpreter do
   def observe(%__MODULE__{} = interpreter, ds, user, key) do
     %{type: type_id} = Dataset.fetch(ds, key)
     {access, _} = verdict(interpreter, ds, user, key, type_id, interpreter.assumptions)
-    observable(access)
+    {access.visible, access.fields, access.unknown_fields, access.searchable}
   end
 
   @doc """

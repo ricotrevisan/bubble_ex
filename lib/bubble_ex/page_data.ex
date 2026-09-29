@@ -42,9 +42,12 @@ defmodule BubbleEx.PageData do
   ## Residue
 
   On the element (`element:<id>`) or page (`page:<id>`) symbol:
-  `:uncompiled_expression` (the data source does not compile to IR) and
+  `:uncompiled_expression` (the data source does not compile to IR),
   `:unsupported_option` (`detail.options`: `["page_item_type"]` for a page
-  whose type of content is not a data type).
+  whose type of content is not a data type) and `:search_field_restricted`
+  (`detail.fields`: a search whose constraints or sort name fields a
+  privacy rule of the searched type keeps out of searches, which Bubble
+  limits per user and the generated page cannot).
 
   ## Coverage
 
@@ -290,9 +293,63 @@ defmodule BubbleEx.PageData do
       value: expr,
       cell: at.cell,
       page_size: if(kind == :list, do: page_size(props)),
-      residue: Lowering.expr_residue(symbol, [expr]),
+      residue:
+        Lowering.expr_residue(symbol, [expr]) ++ search_fields(symbol, expr, ctx.env.model),
       path: Diagnostic.pointer(vpath)
     }
+  end
+
+  # A search whose constraints or sort name a field some privacy rule of
+  # the searched type keeps out of searches (non-filterable): Bubble limits
+  # it per user, which the generated page cannot tell, so it is residue.
+  defp search_fields(symbol, %Lowering.Expr{ir: %IR{} = ir}, %Model{} = model) do
+    fields =
+      for {type, field} <- searched_fields(ir),
+          field in non_filterable(model, type),
+          uniq: true,
+          do: field
+
+    if fields == [],
+      do: [],
+      else: [Residue.entry(symbol, :search_field_restricted, %{fields: Enum.sort(fields)})]
+  end
+
+  defp search_fields(_symbol, _expr, _model), do: []
+
+  # `{data type, field}` for each field a search's constraints read from
+  # the searched item, and its sort field.
+  defp searched_fields(%IR{op: :sort, args: [inner, field, _desc]} = ir) do
+    sorted =
+      case inner do
+        %IR{op: :search, args: [type, _]} when is_binary(field) -> [{type, field}]
+        _ -> []
+      end
+
+    sorted ++ Enum.flat_map(ir.args, &searched_fields/1)
+  end
+
+  defp searched_fields(%IR{op: :search, args: [type, pred]}),
+    do: for(field <- item_fields(pred), do: {type, field}) ++ searched_fields(pred)
+
+  defp searched_fields(%IR{args: args}), do: Enum.flat_map(args, &searched_fields/1)
+  defp searched_fields(_other), do: []
+
+  defp item_fields(%IR{op: :field, args: [%IR{op: :this, args: [:filter_item]}, _type, field]}),
+    do: [field]
+
+  defp item_fields(%IR{args: args}), do: Enum.flat_map(args, &item_fields/1)
+  defp item_fields(_other), do: []
+
+  defp non_filterable(model, type) do
+    case Enum.find(model.data_types, &(&1.id == type)) do
+      nil ->
+        []
+
+      data_type ->
+        for %{permissions: %{} = p} <- data_type.rules,
+            f <- p.non_filterable_fields || [],
+            do: f
+    end
   end
 
   # The value's type: the element's type of content (a list of it for a

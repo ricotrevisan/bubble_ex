@@ -42,7 +42,7 @@ defmodule BubbleEx.Target.Elixir do
   | `empty?(x)` | `is empty`: nil, `""` or `[]` |
   | `compare(op, a, b)` | `>`, `<`, `>=`, `<=`; false when either side is empty |
   | `add/sub/mul/div/mod(a, b)` | arithmetic; dates plus intervals |
-  | `default(x, d)` | `defaulting to` |
+  | `default(x, d)` | `defaulting to`: `x` unless it is empty (as `empty?/1`; a reference is its loaded record, nil when unset or gone), else `d`; a field of it reads through whichever holds |
   | `lowercase/uppercase/trim/capitalize_words/text_length/json_encode/url_encode/is_email/abs/round/to_text/to_number(x)` | the operators |
   | `format_date(x, format)`, `format_number(x, options)`, `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `date_add(x, n, unit)`, `date_floor(x, unit)`, `date_part(x, unit)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the formatting and date operators (stubs until the runtime is written) |
 
@@ -486,8 +486,7 @@ defmodule BubbleEx.Target.Elixir do
   defp id_value(%IR{type: type} = ir, st) do
     if record_type?(type) do
       case ir do
-        %IR{op: :field} -> path(ir, [], :id, st)
-        %IR{op: op} when op in [:this, :current_user] -> path(ir, [], :id, st)
+        %IR{op: op} when op in [:field, :this, :current_user, :fallback] -> path(ir, [], :id, st)
         _ -> value(ir, st)
       end
     else
@@ -510,12 +509,15 @@ defmodule BubbleEx.Target.Elixir do
   # Whether `ir` is read from the current user (directly or through fields).
   defp actor?(%IR{op: :current_user}), do: true
   defp actor?(%IR{op: :field, args: [base | _]}), do: actor?(base)
+  defp actor?(%IR{op: :fallback, args: args}), do: Enum.any?(args, &actor?/1)
   defp actor?(_ir), do: false
 
   defp record_type?(type), do: match?(%Type{kind: :ref, cardinality: :one}, classify(type))
 
   # A list whose items are values or Bubble IDs: a list-of-things field is
   # an array of IDs, other lists of records (inputs, searches) hold records.
+  defp member_list?(%IR{op: :fallback, args: args}), do: Enum.all?(args, &member_list?/1)
+
   defp member_list?(%IR{op: op, type: type}) do
     case classify(type) do
       %Type{cardinality: :many, kind: :ref} -> op in [:field, :literal]
@@ -543,7 +545,30 @@ defmodule BubbleEx.Target.Elixir do
     access(base, var, steps, mode, st)
   end
 
+  # A field chain over `x defaulting to d`: the chain over `x` unless `x`
+  # is empty (a reference is its loaded record, nil when unset or gone),
+  # else the chain over `d`.
+  defp path(%IR{op: :fallback, args: [x, d]}, steps, mode, st) do
+    {xv, st} = value(x, st)
+    {empty, st} = runtime(st, :empty?, [xv])
+    {[a, b], st} = Enum.map_reduce([x, d], st, &chain(&1, steps, mode, &2))
+    {all_ok("(if #{empty}, do: #{b}, else: #{a})", [empty, a, b]), st}
+  end
+
   defp path(%IR{op: op}, _steps, _mode, st), do: unsupported(st, {"a field of #{op}", nil})
+
+  # `steps` (`{data_type, field}` from the base outwards) over `base`.
+  defp chain(base, [], :id, st), do: id_value(base, st)
+  defp chain(base, [], _mode, st), do: value(base, st)
+
+  defp chain(base, steps, mode, st) do
+    ir =
+      Enum.reduce(steps, base, fn {type, field}, acc ->
+        IR.node(:field, [acc, type, field], nil)
+      end)
+
+    path(ir, [], mode, st)
+  end
 
   defp access(%IR{} = base, var, steps, mode, st) do
     {_, st} = if var in ["this", "current_user"], do: value(base, st), else: {var, st}

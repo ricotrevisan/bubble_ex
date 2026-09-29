@@ -137,7 +137,9 @@ defmodule BubbleEx.Verify.Replay.Client do
   read: an empty `ids` makes no call, and a result outside `ids` (Bubble
   ignored the constraint) stops the search with `:invalid_input`
   (`reason: :constraint_ignored`). `:sort` is `%{key: api_key,
-  descending: bool}`. Returns the result objects.
+  descending: bool}`; `:constraints` adds Data API constraints (maps with
+  `key`, `constraint_type` and optionally `value`). Returns the result
+  objects.
   """
   @spec search(t(), String.t(), auth(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
   def search(%__MODULE__{} = c, type, auth, opts) do
@@ -261,7 +263,7 @@ defmodule BubbleEx.Verify.Replay.Client do
   defp constrained(c, type, auth, constraint, allowed?, opts) do
     with {:ok, path} <- Names.type_path(c.names, type),
          {:ok, url} <- Target.data_url(c.target, path),
-         {:ok, constraints} <- encode([constraint]) do
+         {:ok, constraints} <- encode([constraint | Keyword.get(opts, :constraints, [])]) do
       sort =
         case Keyword.get(opts, :sort) do
           nil -> []

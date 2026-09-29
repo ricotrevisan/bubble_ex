@@ -267,6 +267,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "a data type exposed through Bubble's Data API; no API actions or policies are generated (out of scope unless requested)"},
     {:ash_policy_aggregates_unguarded, :warning, :degraded, :target,
      "a data type with fields some users may not view; Ash field policies do not apply to aggregates (count, min, max, sum, ...) over them, so generated code must not aggregate them for those users"},
+    {:ash_policy_search_fields_restricted, :warning, :degraded, :target,
+     "a data type with fields some users may not search by (Bubble's non-filterable fields); a read whose filter or sort names one returns only the records where the actor may, but aggregates over them are not guarded, so generated code must not aggregate them for those users"},
     {:ash_policy_bypass_required, :info, :degraded, :target,
      "a workflow that runs ignoring privacy rules; lowered, its reads need an explicit authorization bypass (`authorize?: false`)"},
 

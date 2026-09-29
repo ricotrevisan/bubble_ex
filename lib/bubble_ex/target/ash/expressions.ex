@@ -37,6 +37,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
   | `+`, `-`, `*`, `/` on numbers | the operator |
+  | `x defaulting to d` | `if(<x is empty>, d, x)`, emptiness as `is empty` tests it (nil, `""`, `[]`, a reference whose record is gone); `(x defaulting to d)'s a` is the chain over `x` when it is not empty, else over `d`; `(x defaulting to d) is empty` is both empty |
   | a context input (element value, parameter, …) | `^arg(:name)`, listed in `arguments`, where allowed (`inputs: :arguments`); unsupported in privacy rules |
 
   ## Empty values and the actor
@@ -69,7 +70,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   ## Diagnostics
 
   Anything else (a path through a list of things, a field of a context
-  input, list algebra, counts, fallbacks, text operators other than
+  input, list algebra, counts, text operators other than
   lowercase, searches inside a filter) is not compiled: the result has
   `expr: nil` and an `:ash_expr_unsupported` diagnostic (stage
   `{:target, :ash}`) listing each construct in `details.constructs`. A
@@ -647,14 +648,69 @@ defmodule BubbleEx.Target.Ash.Expressions do
     end
   end
 
-  defp empty(%IR{op: :field} = x, st) do
+  # `(x defaulting to d)` is empty when both are; a field chain over it is
+  # the chain over `x` when `x` is not empty, else the chain over `d`.
+  defp empty(%IR{op: op} = x, st) when op in [:field, :fallback] do
+    case fallback_chain(x) do
+      {:ok, fx, fd, :self} ->
+        {[ex, ed], st} =
+          Enum.map_reduce([fx, fd], st, &within(&1, &2, fn ir, st -> empty(ir, st) end))
+
+        {all_ok({:and, [ex, ed]}, [ex, ed]), st}
+
+      {:ok, fx, fd, rebuild} ->
+        {[ex, cx, cd], st} =
+          Enum.map_reduce(
+            [fx, rebuild.(fx), rebuild.(fd)],
+            st,
+            &within(&1, &2, fn ir, st -> empty(ir, st) end)
+          )
+
+        {all_ok({:or, [{:and, [negate(ex), cx]}, {:and, [ex, cd]}]}, [ex, cx, cd]), st}
+
+      :no ->
+        empty_plain(x, st)
+    end
+  end
+
+  defp empty(x, st), do: empty_value(x, st)
+
+  defp empty_plain(%IR{op: :field} = x, st) do
     case has_many(x, st) do
       {:ok, ref, st} -> {{:not, {:call, "exists", [ref, {:value, true}]}}, st}
       :no -> empty_field(x, st)
     end
   end
 
-  defp empty(x, st), do: empty_value(x, st)
+  defp empty_plain(x, st), do: empty_value(x, st)
+
+  # `x defaulting to d` (Bubble's `defaulting to`): `x` unless it is empty
+  # (as `is empty` tests it: nil, `""`, `[]`, or a reference whose record
+  # is gone), else `d`. A field chain over it (`(x defaulting to d)'s a`)
+  # is `{:ok, x, d, rebuild}`, where `rebuild` puts another base under the
+  # chain; the fallback itself is `{:ok, x, d, :self}`.
+  defp fallback_chain(%IR{op: :fallback, args: [x, d]}), do: {:ok, x, d, :self}
+
+  defp fallback_chain(%IR{op: :field, args: [base, type, field]} = ir) do
+    case fallback_chain(base) do
+      {:ok, x, d, :self} -> {:ok, x, d, &%{ir | args: [&1, type, field]}}
+      {:ok, x, d, rebuild} -> {:ok, x, d, &%{ir | args: [rebuild.(&1), type, field]}}
+      :no -> :no
+    end
+  end
+
+  defp fallback_chain(_ir), do: :no
+
+  # The value of `x defaulting to d`, or of a field chain over it: the
+  # chain over `x` when `x` is not empty, else over `d`. `if(empty, d, x)`
+  # (the emptiness test is never NULL).
+  defp fallback_value(ir, st) do
+    {:ok, x, d, rebuild} = fallback_chain(ir)
+    {a, b} = if rebuild == :self, do: {x, d}, else: {rebuild.(x), rebuild.(d)}
+    {e, st} = within(x, st, fn ir, st -> empty(ir, st) end)
+    {[va, vb], st} = values([a, b], st)
+    {all_ok({:call, "if", [e, vb, va]}, [e, va, vb]), st}
+  end
 
   defp empty_field(x, st) do
     case {classify(x.type), path(x, [], st, :relationship)} do
@@ -786,7 +842,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
        do: path(ir, [], st)
 
   defp value_(%IR{op: :current_user} = ir, st), do: path(ir, [], st)
-  defp value_(%IR{op: :field} = ir, st), do: path(ir, [], st)
+  defp value_(%IR{op: :fallback} = ir, st), do: fallback_value(ir, st)
+
+  defp value_(%IR{op: :field} = ir, st) do
+    case fallback_chain(ir) do
+      {:ok, _x, _d, _rebuild} -> fallback_value(ir, st)
+      :no -> path(ir, [], st)
+    end
+  end
 
   defp value_(%IR{op: :input, args: [kind, ref], type: type}, %{inputs: :arguments} = st) do
     case Map.get(st.args, {kind, ref}) do

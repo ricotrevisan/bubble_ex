@@ -9,6 +9,10 @@ defmodule BubbleEx.Privacy.Permissions do
       lists the fields that may be modified
     * `create_via_api` / `modify_via_api` / `delete_via_api` - Data API
       permissions, nil when the source does not include them
+    * `non_filterable_fields` - fields users matching the rule may not use
+      in searches (a search constraint or sort on them), even where they
+      find the record (`search_for`) and may view the field; nil when the
+      source does not list any (every field may be searched by)
 
   Field lists hold field IDs in source order, or nil when absent. Unmodeled
   permission members are kept in `extra` and diagnosed.
@@ -26,7 +30,11 @@ defmodule BubbleEx.Privacy.Permissions do
     "modify_api" => :modify_via_api,
     "delete_api" => :delete_via_api
   }
-  @lists %{"view_fields" => :view_fields, "binding_fields" => :binding_fields}
+  @lists %{
+    "view_fields" => :view_fields,
+    "binding_fields" => :binding_fields,
+    "non_filterable_fields" => :non_filterable_fields
+  }
 
   defstruct [
     :view_all,
@@ -38,6 +46,7 @@ defmodule BubbleEx.Privacy.Permissions do
     :delete_via_api,
     view_fields: nil,
     binding_fields: nil,
+    non_filterable_fields: nil,
     extra: %{}
   ]
 
@@ -51,6 +60,7 @@ defmodule BubbleEx.Privacy.Permissions do
           delete_via_api: boolean() | nil,
           view_fields: [String.t()] | nil,
           binding_fields: [String.t()] | nil,
+          non_filterable_fields: [String.t()] | nil,
           extra: map()
         }
 

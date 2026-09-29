@@ -904,6 +904,47 @@ defmodule BubbleEx.Verify.ReplayTest do
       end
     end
 
+    test "a constrained search records its constraint's two halves, together" do
+      fake = start_fake()
+      seed = seed()
+
+      {:ok, scenario} =
+        Scenario.new(
+          id: "privacy_read.custom.task.alice",
+          kind: :privacy_read,
+          check: "privacy_read",
+          seed: %{id: seed.id, sha256: Seed.sha256(seed)},
+          persona: "alice",
+          subjects: %{type: "custom.task"},
+          ops: [
+            %{
+              id: "search.1.secret_text",
+              op: :search,
+              type: "custom.task",
+              sort: nil,
+              constrain: "secret_text",
+              observe: [:record_set]
+            }
+          ],
+          source_sha256: String.duplicate("5", 64)
+        )
+
+      assert {:ok, %{recordings: [rec]}} = record(client(), seed, [scenario])
+
+      # alice finds her own task (whose secret is set); bob's is hidden
+      assert [%{op: "search.1.secret_text", value: %{ordered: false, records: ["task_a"]}}] =
+               rec.observations
+
+      halves =
+        for %{method: "GET", path: @prefix <> "obj/task", query: %{"constraints" => c}} <-
+              FakeBubble.log(fake),
+            [_, %{"constraint_type" => type}] <- [Jason.decode!(c)],
+            uniq: true,
+            do: type
+
+      assert Enum.sort(halves) == ["is_empty", "is_not_empty"]
+    end
+
     test "delete-after-seed leaves dangling references and reports what they calibrate" do
       fake = start_fake()
       seed = seed()

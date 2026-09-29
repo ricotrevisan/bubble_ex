@@ -302,7 +302,8 @@ defmodule BubbleEx.Target.Ash.Project do
   `denied`: a condition that does not compile, so the rule grants nothing),
   policies, their checks by test, field policies, privacy calculations,
   gated relationships, private `*_for_privacy` twins (of the gated
-  relationships and of those a derived field reads through),
+  relationships and of those a derived field reads through), fields
+  restricted in searches (`search_fields`),
   auto-binding actions, actor loads and authorization bypasses.
   """
   @spec privacy_summary(t()) :: map()
@@ -326,6 +327,7 @@ defmodule BubbleEx.Target.Ash.Project do
         (project.resources ++ project.joins)
         |> Enum.flat_map(& &1.calculations)
         |> Enum.count(&(&1.kind == :privacy)),
+      "search_fields" => privacy |> Enum.map(&map_size(&1.search_fields)) |> Enum.sum(),
       "gated_relationships" =>
         project.resources |> Enum.flat_map(& &1.relationships) |> Enum.count(&(&1.gate != nil)),
       "private_twins" =>
@@ -341,6 +343,7 @@ defmodule BubbleEx.Target.Ash.Project do
 
   defp check_key(%{kind: kind, test: :always}), do: "#{kind} always"
   defp check_key(%{kind: kind, test: :keyed}), do: "#{kind} keyed"
+  defp check_key(%{kind: kind, test: :search_fields}), do: "#{kind} search_fields"
   defp check_key(%{kind: kind, test: {:calculation, _}}), do: "#{kind} calculation"
 
   defp module_kinds(project) do
@@ -625,7 +628,10 @@ defmodule BubbleEx.Target.Ash.PolicyCheck do
 
     * `kind` - `:authorize_if` or `:forbid_if`
     * `test` - `:always`; `:keyed` (the `<namespace>.Privacy.KeyedRead`
-      check: the read selects by primary key or loads a relationship); or
+      check: the read selects by primary key or loads a relationship);
+      `:search_fields` (the `<namespace>.Privacy.SearchFields` filter
+      check: where the read's filter or sort names a field some users may
+      not search by, only the records where the actor may); or
       `{:calculation, name}`: the resource's boolean calculation `name` is
       true for the record
     * `source` - what grants it: `%{rules: [rule_id]}` for a rule,
@@ -640,7 +646,7 @@ defmodule BubbleEx.Target.Ash.PolicyCheck do
 
   @type t :: %__MODULE__{
           kind: :authorize_if | :forbid_if,
-          test: :always | :keyed | {:calculation, String.t()},
+          test: :always | :keyed | :search_fields | {:calculation, String.t()},
           source: map()
         }
 end
@@ -659,8 +665,9 @@ defmodule BubbleEx.Target.Ash.Policy do
     * `description` - the policy's `description`
     * `checks` - `BubbleEx.Target.Ash.PolicyCheck`s
     * `permission` - the Bubble permission it enforces (`:view`,
-      `:search_for`, `:auto_binding`), or `:keyed` for the key requirement
-      of the primary `:read`
+      `:search_for`, `:auto_binding`, `:search_fields` for fields some
+      users may not search by), or `:keyed` for the key requirement of the
+      primary `:read`
   """
 
   alias BubbleEx.Target.Ash.PolicyCheck
@@ -725,6 +732,13 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     * `relationship_checks` - `%{relationship name => checks}`: who may
       view the list a derived `has_many` replaces (a relationship has no
       field policy; its `gate` follows these checks)
+    * `search_fields` - `%{name => [checks]}`: the fields (attributes,
+      derived fields, relationships and their private twins) some users
+      may not search by (Bubble's non-filterable fields), and what reads
+      through them; each list of checks must authorize (one of its checks)
+      for a read whose filter or sort names the field to return the record
+      (`<namespace>.Privacy.SearchFields`). Fields every user may search by
+      are not listed
   """
 
   @enforce_keys [:source]
@@ -736,7 +750,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     attachments: [],
     file_fields: [],
     data_api: %{exposed: nil, create: [], modify: [], delete: []},
-    relationship_checks: %{}
+    relationship_checks: %{},
+    search_fields: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -747,7 +762,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
           attachments: [BubbleEx.Target.Ash.PolicyCheck.t()],
           file_fields: [String.t()],
           data_api: map(),
-          relationship_checks: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]}
+          relationship_checks: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]},
+          search_fields: %{String.t() => [[BubbleEx.Target.Ash.PolicyCheck.t()]]}
         }
 end
 
