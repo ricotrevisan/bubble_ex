@@ -7,7 +7,7 @@ defmodule BubbleEx.Target.ApiClientsPrivateFixtureTest do
   # The Spec's counts (`BubbleEx.Target.ApiClients.Spec.summary/1`: calls
   # generated and in residue, residue reasons, environment variables by
   # kind) are compared with a committed count snapshot, by default
-  # mm-137's. The snapshot holds counts only. Update it with a reason:
+  # the private fixture app's. The snapshot holds counts only. Update it with a reason:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
   #
@@ -24,7 +24,7 @@ defmodule BubbleEx.Target.ApiClientsPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/target/api_clients/counts/mm-137.json"
+  @default_snapshot "test/support/target/api_clients/counts/private-app.json"
 
   setup_all do
     path =

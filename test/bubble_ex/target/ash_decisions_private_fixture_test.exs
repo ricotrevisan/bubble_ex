@@ -8,7 +8,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   #       mix test --only private_fixture
   #
   # The decision file is a JSON array of `BubbleEx.Decision.to_map/1`
-  # records made against that export (for mm-137: accept the
+  # records made against that export (for the private fixture app: accept the
   # denormalized-field finding "40. Sort: Thing Title" on "00. Thing - Join",
   # and reject the search-index hints, which apply by default from cut 2).
   # A cut-2 run (WTF-405) also accepts every finding whose transform is a
@@ -41,7 +41,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     @moduletag skip: "set BUBBLE_EX_PRIVATE_DECISIONS to a decision file for the export"
   end
 
-  @default_snapshot "test/support/target/ash/counts/mm-137.decided.json"
+  @default_snapshot "test/support/target/ash/counts/private-app.decided.json"
   @now ~U[2026-09-26 00:00:00Z]
 
   setup_all do

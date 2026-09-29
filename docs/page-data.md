@@ -202,10 +202,10 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
-### mm-137 (test version), 2026-09-27
+### Private fixture app (test version), 2026-09-27
 
 Counts only; the snapshot is
-`test/support/target/phoenix/counts/mm-137.frontend_workflows.json`.
+`test/support/target/phoenix/counts/private-app.frontend_workflows.json`.
 
 | | before | after |
 |-|------:|------:|
@@ -232,7 +232,7 @@ are in a cell.
   Bubble's default is not verified; **do not set a global default merely to
   increase coverage**: verify the app's ignore-empty behavior first.
   Such a search with a constraint whose value may be empty is residue
-  (149 on mm-137, and every source reading them). `BubbleEx.PageData.build/3` takes the default
+  (149 on the private fixture app, and every source reading them). `BubbleEx.PageData.build/3` takes the default
   (`ignore_empty_constraints:`); it is left unset until replay (WTF-358)
   or the owner decides.
 * A page's thing is read from the path segment after the page name; a

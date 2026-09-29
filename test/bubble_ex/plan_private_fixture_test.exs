@@ -5,8 +5,8 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
   # `BubbleEx.Plan` coverage (aggregate counts only: no names or IDs) is
-  # compared with a committed snapshot, by default the mm-137 test
-  # version's, for two residue settings:
+  # compared with a committed snapshot, by default the private fixture
+  # app's test version, for two residue settings:
   #
   #   * `neutral` - expressions residue when they do not compile to the
   #     stack-neutral IR
@@ -34,7 +34,7 @@ defmodule BubbleEx.PlanPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/plan/counts/mm-137.json"
+  @default_snapshot "test/support/plan/counts/private-app.json"
   @now ~U[2026-09-26 00:00:00Z]
   @key :crypto.hash(:sha256, "bubble_ex private fixture plan key")
 

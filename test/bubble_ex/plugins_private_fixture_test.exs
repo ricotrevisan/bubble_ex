@@ -5,7 +5,7 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
   # Aggregate counts only (no plugin IDs, names or symbol IDs) are compared
-  # with a committed snapshot, by default the mm-137 test version's: how
+  # with a committed snapshot, by default the private fixture app's test version: how
   # many plugins are installed and used, how uses spread over plugins, the
   # findings per suggested option and confidence, and the plan's plugin
   # units with every plugin undecided, with every suggestion accepted and
@@ -24,7 +24,7 @@ defmodule BubbleEx.PluginsPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/plugins/counts/mm-137.json"
+  @default_snapshot "test/support/plugins/counts/private-app.json"
   @now ~U[2026-09-26 00:00:00Z]
 
   setup_all do

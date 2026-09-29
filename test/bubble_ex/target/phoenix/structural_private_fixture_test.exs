@@ -7,7 +7,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
   # The summary's counts and statuses (no names or Bubble IDs) are compared
-  # with a committed snapshot, by default the mm-137 test version's. With
+  # with a committed snapshot, by default the private fixture app's test version. With
   # BUBBLE_EX_PRIVATE_DECISIONS the `decided` summary (the owner's decisions
   # applied) is compared too. A changed count means updating the snapshot,
   # with the reason in the PR:
@@ -30,7 +30,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/verify/counts/structural.mm-137.json"
+  @default_snapshot "test/support/verify/counts/structural.private-app.json"
   @now ~U[2026-09-27 00:00:00Z]
 
   setup_all do

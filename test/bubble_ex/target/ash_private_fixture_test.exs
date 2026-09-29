@@ -5,8 +5,8 @@ defmodule BubbleEx.Target.AshPrivateFixtureTest do
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
   # The Project's aggregate counts (`BubbleEx.Target.Ash.Project.summary/1`)
-  # are compared with a committed count snapshot, by default the mm-137 test
-  # version's. The snapshot holds counts only, never names or IDs. A changed
+  # are compared with a committed count snapshot, by default the private fixture
+  # app's test version. The snapshot holds counts only, never names or IDs. A changed
   # count means updating the snapshot, with the reason in the PR:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
@@ -24,7 +24,7 @@ defmodule BubbleEx.Target.AshPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/target/ash/counts/mm-137.json"
+  @default_snapshot "test/support/target/ash/counts/private-app.json"
   @budget_ms 10_000
 
   setup_all do

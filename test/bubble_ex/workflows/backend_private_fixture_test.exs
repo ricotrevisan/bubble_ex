@@ -5,7 +5,7 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
   # Counts only (no names or IDs) are compared with a committed snapshot,
-  # by default the mm-137 test version's: the IR-level coverage of
+  # by default the private fixture app's test version: the IR-level coverage of
   # `BubbleEx.Workflows.Backend.coverage/1` and the generated-code coverage
   # of `BubbleEx.Target.Ash.Workflows.Spec.coverage/1` (see their docs for
   # the metric). A changed count means updating the snapshot, with the
@@ -28,7 +28,7 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/target/workflows/counts/mm-137.json"
+  @default_snapshot "test/support/target/workflows/counts/private-app.json"
 
   setup_all do
     path =

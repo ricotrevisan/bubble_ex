@@ -1,6 +1,6 @@
 defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
   # Privacy-matrix coverage on a real app (WTF-382; the WTF-358 exit
-  # criterion: at least 90% of mm-137's 125 privacy rules solved). Real-app
+  # criterion: at least 90% of a private production app's 125 privacy rules solved). Real-app
   # captures stay private, so this reads a local export and is excluded by
   # default:
   #
@@ -11,8 +11,8 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
   # the checks that depend on each assumption.
   #
   # The report's counts (no names or Bubble IDs; `Matrix.counts/1`) are
-  # compared with a committed snapshot, by default the mm-137 test
-  # version's. A changed count means updating the snapshot, with the reason
+  # compared with a committed snapshot, by default the private fixture
+  # app's test version. A changed count means updating the snapshot, with the reason
   # in the PR:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
@@ -29,7 +29,7 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/verify/counts/mm-137.json"
+  @default_snapshot "test/support/verify/counts/private-app.json"
 
   setup_all do
     path =

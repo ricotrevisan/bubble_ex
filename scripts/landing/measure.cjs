@@ -3,11 +3,14 @@ const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 const {chromium} = require('../../test/support/fidelity/node_modules/playwright');
 const root = path.resolve(process.argv[2]);
+// The customer site has no default: set LANDING_CUSTOMER_URL.
+const customerUrl = process.env.LANDING_CUSTOMER_URL;
+if (!customerUrl) throw Error('Set LANDING_CUSTOMER_URL to the customer site URL');
 (async()=>{
  const browser=await chromium.launch({headless:true});
  const report={browser:browser.version(),platform:process.platform,arch:process.arch,results:[]};
  try {
-  for(const [site,url] of [['mochary','https://beta.mocharymethod.com/'],['bubble','https://bubble.io/']]) {
+  for(const [site,url] of [['customer',customerUrl],['bubble','https://bubble.io/']]) {
    for(const mode of ['redacted-export']) {
     const html=path.join(root,site+'-redacted','pages/index/index.html');
     if(mode==='export'&&!fs.existsSync(html)){report.results.push({site,mode,error:'export_not_created'});continue;}

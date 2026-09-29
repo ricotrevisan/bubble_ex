@@ -60,7 +60,7 @@ and checked report entry counts. All comparisons passed.
 
 | Authorized landing page | Workflows | Actions | Preserved conditions | Reference records | Availability |
 | --- | ---: | ---: | ---: | ---: | --- |
-| beta.mocharymethod.com | 38 | 65 | 19 | 99 | partial |
+| example-customer.test | 38 | 65 | 19 | 99 | partial |
 | bubble.io | 502 | 1,155 | 427 | 2,231 | partial |
 | betterlegal.bubbleapps.io | 44 | 83 | 27 | 133 | partial |
 | app.voicediq.com | 10 | 19 | 6 | 22 | partial |

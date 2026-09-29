@@ -70,7 +70,7 @@
 # decided fixtures.
 #
 # Set BUBBLE_EX_PRIVATE_EXPORT to also check a private app export (e.g.
-# mm-137). The scratch projects live in _build/ash_compile_check and
+# the private fixture app). The scratch projects live in _build/ash_compile_check and
 # _build/ash_compile_check_omit (or $ASH_COMPILE_CHECK_DIR and
 # $ASH_COMPILE_CHECK_DIR_omit) and are never committed.
 set -euo pipefail

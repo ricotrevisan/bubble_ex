@@ -23,7 +23,7 @@ failing elements were introduced. The source PNG is never an exporter input.
 | kroki-pay.bubbleapps.io | 100% | 100% | 100% | 0.064893% / 0.043387% / 0.029181% |
 
 All twelve final views pass every assertion, the normal decoded credential
-publication gate, and the zero-external-request check. The six original Mochary
+publication gate, and the zero-external-request check. The six original customer
 and Bubble snapshot views also remain 100% against their original locked inputs,
 with identical pixel differences. Findings still report unused or unsupported
 resources and source-page errors; a passing grade does not mean zero findings,
@@ -96,7 +96,8 @@ final captures do not erase the two recorded acquisition failures.
 ## Reproduction
 
 The capture harness now accepts an optional JSON file of unique `[slug, URL]`
-pairs; omitting it still selects the original Mochary and Bubble pages:
+pairs; omitting it selects the customer page (URL from `LANDING_CUSTOMER_URL`,
+which has no default) and the Bubble page:
 
 ```json
 [
