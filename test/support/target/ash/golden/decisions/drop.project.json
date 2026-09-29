@@ -41,7 +41,7 @@
     },
     {
       "automatic": false,
-      "basis_sha256": "00de3ac05493b5221e6dfc793c1537b238728e3bd6a02040f8c99dc36e3c6474",
+      "basis_sha256": "4e7802de66f66b7188c4fdcc5601213b8f4dfe6bb5cfebeda762c3090883f835",
       "finding_id": null,
       "key": "drop:59a52042d0ea1be3",
       "kind": "drop",
@@ -99,10 +99,10 @@
       "transform": "drop"
     }
   ],
-  "applied_sha256": "0d50161609afe6f72c1377f1912b3a6993e0e98ae40ee8c821a958b057810069",
+  "applied_sha256": "6a1626ec6adf659742ff28bb5590c5b5fea51c5ef7176b1b960dd651f5995ddd",
   "authorization_bypasses": [],
   "bubble_id": "synthfindings",
-  "decisions_sha256": "8931fc254b6cbbd0087041a7cbad388a54c7ec6095c0f8f1b4ae9e1c8ce14154",
+  "decisions_sha256": "160f7fc2201f8fba2b49514fca4952c398673eded7439ce7dcd22f8e4149105a",
   "deferred": [],
   "diagnostics": [
     {

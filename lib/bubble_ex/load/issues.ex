@@ -43,6 +43,19 @@ defmodule BubbleEx.Load.Issues do
   end
 
   @doc false
+  # Adds `n` (0 included) occurrences of a type-level issue: reported even
+  # when there are none.
+  @spec put_count(t(), atom(), String.t(), String.t() | nil, non_neg_integer()) :: t()
+  def put_count(acc, code, type, field, n) when is_integer(n) and n >= 0 do
+    Map.update(
+      acc,
+      {code, type, field},
+      %{count: n, samples: [], reasons: %{}},
+      &%{&1 | count: &1.count + n}
+    )
+  end
+
+  @doc false
   # Merges `extra` into the details of an issue already added (e.g. the
   # full list of stale join rows, for pruning by hand). Details only: a
   # diagnostic's message never names a record.

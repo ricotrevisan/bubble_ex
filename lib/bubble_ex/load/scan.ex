@@ -173,14 +173,9 @@ defmodule BubbleEx.Load.Scan do
           entry["status"] != "complete" ->
             Issues.add(acc, :load_export_partial, entry["type"], nil, nil, :failed)
 
+          # counted as exported, 0 included: a dropped type is reported
           entry["type"] in plan.dropped ->
-            Issues.add_count(
-              acc,
-              :load_type_dropped,
-              entry["type"],
-              nil,
-              max(entry["rows"] || 0, 1)
-            )
+            Issues.put_count(acc, :load_type_dropped, entry["type"], nil, rows(entry))
 
           not MapSet.member?(planned, entry["type"]) ->
             Issues.add_count(
@@ -202,6 +197,9 @@ defmodule BubbleEx.Load.Scan do
         else: Issues.add(acc, :load_type_not_exported, t.type, nil, nil, :missing)
     end)
   end
+
+  defp rows(%{"rows" => n}) when is_integer(n) and n >= 0, do: n
+  defp rows(_entry), do: 0
 
   # Types whose privacy rules do not let every user view attached files.
   defp restricted_types(model) do

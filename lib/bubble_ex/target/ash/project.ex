@@ -206,6 +206,26 @@ defmodule BubbleEx.Target.Ash.Project do
   end
 
   @doc """
+  The kept fields whose values reference a data type or option set an
+  owner dropped (WTF-422), accepted in the drop or not, as `{type or
+  option set, field}` Bubble IDs: their attributes hold bare Bubble IDs
+  of records or options that are no longer mapped, so no generated
+  expression may read them (a privacy rule or workflow condition reading
+  one denies or is residue: an ID left behind must never grant access).
+  Read from the Project's `:ash_drop_dangling_reference` and
+  `:ash_drop_reference_accepted` diagnostics.
+  """
+  @spec dangling(t()) :: MapSet.t({String.t(), String.t()})
+  def dangling(%__MODULE__{diagnostics: diagnostics}) do
+    for %{code: code, subject: subject} <- diagnostics,
+        code in [:ash_drop_dangling_reference, :ash_drop_reference_accepted],
+        owner = subject[:type] || subject[:option_set],
+        is_binary(owner) and is_binary(subject[:field]),
+        into: MapSet.new(),
+        do: {owner, subject.field}
+  end
+
+  @doc """
   JSON form: string keys and JSON values only. Atoms become strings, tuples
   lists (`{:array, :string}` is `["array", "string"]`) and a `DateTime` its
   ISO 8601 text.

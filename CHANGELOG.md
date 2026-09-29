@@ -21,7 +21,16 @@ All notable changes to this project are documented here.
   blocks** (`Resolved.blocking/1`, and an `:ash_drop_dangling_reference`
   error in the Project) until the field is dropped too or the owner lists
   it in the drop's `params.dangling` (it then keeps its Bubble IDs as
-  strings, with no relationship). Generators omit what is dropped:
+  strings, with no relationship, and no generated expression reads it: a
+  privacy rule testing it, empty, not empty or compared, denies, and a
+  workflow condition on it is residue, so stale IDs never grant access).
+  Only the owner's drop applies: an accepted drop by another author
+  resolves `:stale` with `:author_not_owner` (blocking); anyone may
+  withdraw one. A dangling entry that does not reference the dropped
+  symbol makes the drop `:stale` (`:params_invalid`); a dropped page's or
+  workflow's contents are part of its basis; an owner's finding decision
+  or rename about a dropped symbol is `:conflicts_with_drop` (blocking,
+  applies nothing). Generators omit what is dropped:
   `Target.Ash` drops the type with its fields and every relationship to
   it (`:ash_dropped_omitted`), and a privacy rule reading a dropped field
   compiles to deny (`:ash_policy_reads_dropped`: dropping never widens
@@ -37,8 +46,8 @@ All notable changes to this project are documented here.
   dropped types and fields and reports them as counts only
   (`:load_type_dropped`, `:load_dropped_field_data`: no sample IDs, no
   values). Stale or forged drops (a key, parameters or basis that do not
-  match, or, with an index, a symbol that changed) are refused by
-  `Target.Ash.map/3` and `Plan.build/5`. The capability probe's contract
+  match, or a symbol that changed) are refused by `Target.Ash.map/3`
+  (which requires `index:` with a drop) and `Plan.build/5`. The capability probe's contract
   holds: a drop whose subject is missing gets "subject is not in the
   Model".
 

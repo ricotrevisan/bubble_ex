@@ -115,7 +115,9 @@ defmodule BubbleEx.Test.DecidedFixture do
 
   @doc "The mapped Project of a decision set (`opts` go to `Target.Ash.map/3`)."
   def project(set, opts \\ []) do
-    %{model: model, applied: applied, decisions_sha256: sha} = build(set)
+    %{model: model, index: index, applied: applied, decisions_sha256: sha} = build(set)
+    # drops are checked against their index (WTF-422)
+    opts = if set in @drops, do: Keyword.put_new(opts, :index, index), else: opts
     Ash.map(model, applied, Keyword.put(opts, :decisions_sha256, sha))
   end
 

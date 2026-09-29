@@ -92,7 +92,8 @@ defmodule BubbleEx.Decision.DropPrivateFixtureTest do
     |> Enum.reject(&(&1.kind == :field and MapSet.member?(types, &1.parent)))
     |> Enum.map(fn s ->
       {:ok, impact} = Drop.impact(index, s.id)
-      opts = if accept?, do: [dangling: impact.dangling], else: []
+      opts = [author: %{kind: :owner, id: "user:fixture", via: :form}]
+      opts = if accept?, do: [{:dangling, impact.dangling} | opts], else: opts
       {:ok, d} = Decision.drop(index, s.id, "Private fixture drop.", opts)
       d
     end)

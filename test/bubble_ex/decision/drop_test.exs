@@ -31,8 +31,12 @@ defmodule BubbleEx.Decision.DropTest do
     %{app: app, model: model, index: index}
   end
 
+  @owner %{kind: :owner, id: "user:owner", via: :form}
+
   defp drop!(index, symbol, opts \\ []) do
-    {:ok, d} = Decision.drop(index, symbol, "Not migrated.", opts)
+    {:ok, d} =
+      Decision.drop(index, symbol, "Not migrated.", Keyword.put_new(opts, :author, @owner))
+
     d
   end
 
@@ -214,7 +218,8 @@ defmodule BubbleEx.Decision.DropTest do
             choice: :accept,
             params: %{symbol: symbol},
             basis: %{basis_sha256: Index.subject_sha256(index, [id])},
-            rationale: "x"
+            rationale: "x",
+            author: @owner
           )
 
         resolved = resolve!([record], index)
@@ -308,6 +313,7 @@ defmodule BubbleEx.Decision.DropTest do
 
     test "keeps the capability probe's missing-subject error" do
       {:ok, empty} = Model.build(%{"_id" => "probe", "user_types" => %{}})
+      {:ok, empty_index} = Index.build(%{"_id" => "probe", "user_types" => %{}}, model: empty)
       sha = String.duplicate("0", 64)
 
       for {symbol, subject} <- [
@@ -326,7 +332,7 @@ defmodule BubbleEx.Decision.DropTest do
         }
 
         assert {:error, %{kind: :invalid_input, message: m, context: context}} =
-                 Ash.map(empty, [a], privacy: :omit, decisions_sha256: sha)
+                 Ash.map(empty, [a], privacy: :omit, decisions_sha256: sha, index: empty_index)
 
         assert m =~ "subject is not in the Model"
         assert context.subject == subject and not Map.has_key?(context, :transform)
@@ -337,16 +343,17 @@ defmodule BubbleEx.Decision.DropTest do
       d = drop!(index, "field:project/note_text")
       [a] = [d] |> resolve!(index) |> Decision.applicable([])
       sha = Decision.decisions_sha256([d])
-      map = &Ash.map(model, &1, Keyword.merge([decisions_sha256: sha], &2))
+      map = &Ash.map(model, &1, Keyword.merge([decisions_sha256: sha, index: index], &2))
 
-      assert {:ok, _} = map.([a], index: index)
+      assert {:ok, _} = map.([a], [])
+      # a drop is never applied without the index it was resolved against
+      assert Ash.map(model, [a], decisions_sha256: sha) |> message() =~ ":index"
       assert map.([%{a | key: "drop:0000000000000000"}], []) |> message() =~ "malformed"
       assert map.([%{a | basis: nil}], []) |> message() =~ "stale or forged"
 
       other = String.duplicate("1", 64)
       forged = %{a | basis_sha256: other, basis: %{basis_sha256: other}}
-      assert {:ok, _} = map.([forged], [])
-      assert map.([forged], index: index) |> message() =~ "stale or forged"
+      assert map.([forged], []) |> message() =~ "stale or forged"
 
       # an owner's decision about a dropped symbol: withdraw one
       rename = rename_applied(%{type: "project", field: "note_text"}, "attribute", "memo")
@@ -368,12 +375,20 @@ defmodule BubbleEx.Decision.DropTest do
       hints = for f <- findings, f.category == :hint, f.subject[:type] == "card", do: f
       assert hints != []
 
-      {:ok, d} = Decision.drop(index, "data_type:card", "x", dangling: dangling(index, "card"))
+      {:ok, d} =
+        Decision.drop(index, "data_type:card", "x",
+          dangling: dangling(index, "card"),
+          author: @owner
+        )
+
       {:ok, resolved} = Decision.resolve([d], findings, index: index, now: @now)
       applied = Decision.applicable(resolved, findings)
 
       assert {:ok, project} =
-               Ash.map(model, applied, decisions_sha256: Decision.decisions_sha256([d]))
+               Ash.map(model, applied,
+                 decisions_sha256: Decision.decisions_sha256([d]),
+                 index: index
+               )
 
       refute Enum.any?(project.applied, &(&1.subject[:type] == "card" and &1.kind != :drop))
     end
@@ -655,6 +670,297 @@ defmodule BubbleEx.Decision.DropTest do
       assert {:ok, decoded} = Plan.decode(json)
       assert Plan.to_json(decoded) == json
     end
+  end
+
+  describe "review fixes" do
+    # "This Project's workspace" (a reference to Workspace) tested three
+    # ways by privacy rules, and in a backend workflow's only-when
+    # condition. Workspace is then dropped, the reference accepted.
+    setup do
+      app = widened_app()
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, %{dangling: dangling}} = Drop.impact(index, "data_type:workspace")
+      assert "field:project/workspace_custom_workspace" in dangling
+      drop = drop!(index, "data_type:workspace", dangling: dangling)
+      %{wapp: app, wmodel: model, windex: index, wdrop: drop}
+    end
+
+    test "an accepted dangling reference never widens privacy (empty, not empty, compared)", %{
+      wmodel: model,
+      windex: index,
+      wdrop: drop
+    } do
+      {:ok, faithful} = Ash.map(model, [], privacy: :unverified)
+      rules = ~w(ws_set_ ws_unset_ ws_same_)
+      denied = &MapSet.new(codes(&1, [:ash_policy_rule_denied]), fn d -> d.subject.rule end)
+
+      # before the drop the three rules compile
+      for r <- rules, do: refute(MapSet.member?(denied.(faithful), r))
+
+      {:ok, project} = map!(model, [drop], index, privacy: :unverified)
+
+      assert project
+             |> Project.dangling()
+             |> MapSet.member?({"project", "workspace_custom_workspace"})
+
+      reads =
+        for d <- codes(project, [:ash_policy_reads_dropped]),
+            into: %{},
+            do: {d.subject.rule, d.details.reads}
+
+      for r <- rules do
+        assert MapSet.member?(denied.(project), r), r
+        assert "field:project/workspace_custom_workspace" in reads[r], r
+      end
+
+      # no calculation reads the dangling IDs
+      source = project |> Ash.Source.render() |> elem(1)
+      refute source =~ ~r/is_nil\(workspace\b/
+      refute source =~ "workspace_id"
+
+      for r <- project.resources do
+        before = Enum.find(faithful.resources, &(&1.source == r.source))
+        assert length(authorize_ifs(r)) <= length(authorize_ifs(before)), r.module
+      end
+    end
+
+    test "a workflow condition on an accepted dangling reference is residue", %{
+      wapp: app,
+      wmodel: model,
+      windex: index,
+      wdrop: drop
+    } do
+      {:ok, faithful} = Ash.map(model, [])
+      {:ok, project} = map!(model, [drop], index)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+
+      step = fn project ->
+        {:ok, spec} = Ash.Workflows.map(backend, project, namespace: "Acme")
+        a = Enum.find(Ash.Workflows.actions(spec), &(&1.workflow == "wCondWs"))
+        hd(a.steps)
+      end
+
+      assert %{condition: %{}, residue: []} = step.(faithful)
+      assert %{condition: nil, residue: [%{reason: :uncompiled_expression}]} = step.(project)
+    end
+
+    test "a dangling entry that does not reference the dropped symbol is stale", %{
+      index: index,
+      model: model
+    } do
+      # Task's reference, listed by the Workspace drop (a forged record)
+      {:ok, d} =
+        Decision.new(
+          kind: :drop,
+          subject: %{type: "workspace"},
+          choice: :accept,
+          params: %{symbol: :data_type, dangling: ["field:project/tasks_list_custom_task"]},
+          basis: %{
+            basis_sha256:
+              Index.subject_sha256(index, [
+                "data_type:workspace",
+                "field:project/tasks_list_custom_task"
+              ])
+          },
+          rationale: "x",
+          author: @owner
+        )
+
+      resolved = resolve!([d], index)
+      assert states(resolved) == [stale: [:params_invalid]]
+      assert [_] = Resolved.blocking(resolved)
+
+      # the same entry applied anyway is refused: accepted references are
+      # the dropped symbol's own
+      a = %Applied{
+        key: d.key,
+        kind: :drop,
+        transform: :drop,
+        subject: d.subject,
+        params: d.params,
+        basis_sha256: d.basis.basis_sha256,
+        basis: %{basis_sha256: d.basis.basis_sha256}
+      }
+
+      task = drop!(index, "data_type:task")
+      [t] = [task] |> resolve!(index) |> Decision.applicable([])
+
+      assert Ash.map(model, [a, t],
+               decisions_sha256: Decision.decisions_sha256([d, task]),
+               index: index
+             )
+             |> message() =~ "stale or forged"
+
+      {:ok, project} = map!(model, [task], index)
+
+      assert Enum.any?(
+               codes(project, [:ash_drop_dangling_reference]),
+               &(&1.subject.field == "tasks_list_custom_task")
+             )
+    end
+
+    test "only the owner's accepted drop applies; anyone may withdraw", %{index: index} do
+      for author <- [
+            nil,
+            %{kind: :agent, id: "agent:1", via: :chat},
+            %{kind: :wtf_staff, id: "s", via: :cli}
+          ] do
+        {:ok, d} = Decision.drop(index, "field:project/note_text", "x", author: author)
+        resolved = resolve!([d], index)
+        assert states(resolved) == [stale: [:author_not_owner]]
+        assert [_] = Resolved.blocking(resolved)
+        assert Decision.applicable(resolved, []) == []
+      end
+
+      d = drop!(index, "field:project/note_text")
+      {:ok, w} = Decision.withdraw(d, author: %{kind: :agent, id: "agent:1", via: :chat})
+      assert states(resolve!([d, w], index)) == [superseded: [:newer_revision], withdrawn: []]
+    end
+
+    test "a finding decision or rename about a dropped symbol blocks and applies nothing" do
+      %{index: index, findings: findings, records: records} = DecidedFixture.build(:refine)
+      accept = Enum.find(records, &(&1.choice == :accept and &1.subject[:type] == "project"))
+      assert accept
+
+      drop = drop!(index, "data_type:project", dangling: dangling(index, "project"))
+
+      {:ok, rename} =
+        Decision.new(
+          kind: :rename,
+          target: "ash",
+          subject: %{type: "project", field: "title_text"},
+          choice: :accept,
+          params: %{slot: :attribute, name: "headline"}
+        )
+
+      {:ok, resolved} =
+        Decision.resolve(records ++ [drop, rename], findings, index: index, now: @now)
+
+      conflicts =
+        for e <- resolved.entries, :conflicts_with_drop in e.reasons, do: e.decision.key
+
+      assert accept.key in conflicts and rename.key in conflicts
+      blocking = resolved |> Resolved.blocking() |> Enum.map(& &1.decision.key)
+      assert accept.key in blocking and rename.key in blocking
+
+      applied = Decision.applicable(resolved, findings)
+      refute Enum.any?(applied, &(&1.key in [accept.key, rename.key]))
+      assert Enum.any?(applied, &(&1.key == drop.key))
+    end
+
+    test "a dropped page or workflow that gains content is stale", %{app: app, index: index} do
+      d = drop!(index, "workflow:wSyncOnly")
+      # the dropped workflow's actions are part of its basis
+      {:ok, %{removed: removed}} = Drop.impact(index, "workflow:wSyncOnly")
+      assert d.basis.basis_sha256 == Index.subject_sha256(index, removed)
+
+      [{key, _}] =
+        app["api"] |> Enum.filter(fn {_, w} -> w["id"] == "wSyncOnly" end)
+
+      grown =
+        put_in(app, ["api", key, "actions", "99"], %{
+          "id" => "aAdded",
+          "type" => "ChangeThing",
+          "properties" => %{}
+        })
+
+      {:ok, model2} = Model.build(grown)
+      {:ok, index2} = Index.build(grown, model: model2)
+      assert states(resolve!([d], index2)) == [stale: [:basis_changed]]
+    end
+
+    @tag :tmp_dir
+    test "a dropped type with no exported rows is reported with a count of 0", %{tmp_dir: dir} do
+      alias BubbleEx.Test.LoadFixture, as: F
+      {:ok, project} = F.project(:drop)
+      rows = Map.put(F.rows(:drop), "task", [])
+      {:ok, export} = F.export(:drop, Path.join(dir, "export"), rows)
+      target = BubbleEx.Test.LoadMemoryTarget.start(project)
+      {:ok, report} = BubbleEx.Load.dry_run(export, F.model(:drop), target)
+
+      assert %{details: %{count: 0}} =
+               Enum.find(report.diagnostics, &(&1.code == :load_type_dropped))
+    end
+  end
+
+  defp widened_app do
+    app = DecidedFixture.app()
+
+    ws = fn op ->
+      %{
+        "type" => "InjectedValue",
+        "next" => %{"name" => "workspace_custom_workspace", "type" => "Message", "next" => op}
+      }
+    end
+
+    grant = %{"view_all" => true, "search_for" => true}
+
+    same = %{
+      "name" => "equals",
+      "type" => "Message",
+      "args" => %{
+        "type" => "InjectedValue",
+        "next" => %{"name" => "workspace_custom_workspace", "type" => "Message"}
+      }
+    }
+
+    rules = %{
+      "ws_set_" => %{
+        "display" => "Set",
+        "condition" => ws.(%{"name" => "is_not_empty", "type" => "Message"}),
+        "permissions" => grant
+      },
+      "ws_unset_" => %{
+        "display" => "Unset",
+        "condition" => ws.(%{"name" => "is_empty", "type" => "Message"}),
+        "permissions" => grant
+      },
+      "ws_same_" => %{"display" => "Same", "condition" => ws.(same), "permissions" => grant}
+    }
+
+    condition = %{
+      "type" => "APIEventParameter",
+      "properties" => %{"btype_id" => "custom.project", "param_id" => "project"},
+      "next" => %{
+        "name" => "workspace_custom_workspace",
+        "type" => "Message",
+        "next" => %{"name" => "is_not_empty", "type" => "Message"}
+      }
+    }
+
+    workflow = %{
+      "id" => "wCondWs",
+      "type" => "APIEvent",
+      "properties" => %{
+        "expose" => false,
+        "wf_name" => "cond-ws",
+        "parameters" => %{"0" => %{"key" => "project", "value" => "custom.project"}}
+      },
+      "actions" => %{
+        "0" => %{
+          "id" => "aCondWs",
+          "type" => "ChangeThing",
+          "properties" => %{
+            "condition" => condition,
+            "to_change" => %{
+              "type" => "APIEventParameter",
+              "properties" => %{"btype_id" => "custom.project", "param_id" => "project"}
+            },
+            "changes" => %{
+              "0" => %{
+                "key" => "backup_title_text",
+                "value" => %{"entries" => %{"0" => "x"}, "type" => "TextExpression"}
+              }
+            }
+          }
+        }
+      }
+    }
+
+    app
+    |> update_in(["user_types", "project", "privacy_role"], &Map.merge(&1, rules))
+    |> put_in(["api", "wfCondWs"], workflow)
   end
 
   # --- helpers ------------------------------------------------------------------

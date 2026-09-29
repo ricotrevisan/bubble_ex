@@ -94,7 +94,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
           types: MapSet.t(String.t()),
           fields: MapSet.t(field_key()),
           sets: MapSet.t(String.t()),
-          accepted: MapSet.t(String.t()),
+          accepted: MapSet.t({String.t(), String.t()}),
           pages: [String.t()],
           workflows: [String.t()],
           keys: %{String.t() => String.t()}
@@ -266,7 +266,15 @@ defmodule BubbleEx.Target.Ash.Decisions do
       types: types,
       fields: MapSet.new(fields),
       sets: MapSet.new(of.(:option_set), & &1.subject.option_set),
-      accepted: drops |> Enum.flat_map(&Map.get(&1.params, :dangling, [])) |> MapSet.new(),
+      # `{dropped symbol, field symbol}`: a reference is accepted by the
+      # drop of what it references, not by another drop's acceptance
+      accepted:
+        for(
+          a <- drops,
+          field <- Map.get(a.params, :dangling, []),
+          into: MapSet.new(),
+          do: {Drop.symbol_id(a.params.symbol, a.subject), field}
+        ),
       pages: of.(:page) |> Enum.map(& &1.subject.page) |> Enum.sort(),
       workflows: of.(:workflow) |> Enum.map(& &1.subject.workflow) |> Enum.sort(),
       keys: Map.new(drops, fn a -> {Drop.symbol_id(a.params.symbol, a.subject), a.key} end)

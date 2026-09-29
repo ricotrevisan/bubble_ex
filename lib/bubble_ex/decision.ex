@@ -976,7 +976,7 @@ defmodule BubbleEx.Decision do
       {{:ok, finding}, choice} ->
         case changes(d, finding, ctx.index) do
           [] when choice == :acknowledge -> entry(d, :acknowledged, [])
-          [] -> entry(d, :active, [])
+          [] -> entry(d, :active, dropped_conflict(d, finding, ctx))
           reasons -> entry(d, :stale, reasons ++ analyzer(d, ctx))
         end
 
@@ -1010,7 +1010,7 @@ defmodule BubbleEx.Decision do
   defp current(%{kind: :rename} = d, ctx) do
     if subject_presence(d.subject, ctx.index) == :subject_gone,
       do: entry(d, :orphaned, [:subject_gone]),
-      else: entry(d, :active, [])
+      else: entry(d, :active, dropped_conflict(d, nil, ctx))
   end
 
   defp current(%{kind: :parity_exception} = d, ctx) do
@@ -1026,6 +1026,42 @@ defmodule BubbleEx.Decision do
     if reasons == [], do: entry(d, :active, []), else: entry(d, :expired, reasons)
   end
 
+  # An accepted finding or rename about what an active drop removes (its
+  # subject, or a data-model symbol its proposal names; an index is only
+  # deferred): the owner decided both, one must go. It applies nothing
+  # and blocks (`:conflicts_with_drop`).
+  defp dropped_conflict(%{kind: kind, choice: choice} = d, finding, ctx)
+       when (kind == :finding and choice in [:accept, :modify]) or kind == :rename do
+    proposal =
+      case finding do
+        %Finding{proposal: %{transform: t} = p} when t != :add_indexes -> proposal_symbols(p)
+        _ -> []
+      end
+
+    ids = Subject.symbol_ids(d.subject) ++ proposal
+
+    if Enum.any?(ids, &MapSet.member?(ctx.dropped, &1)),
+      do: [:conflicts_with_drop],
+      else: []
+  end
+
+  defp dropped_conflict(_d, _finding, _ctx), do: []
+
+  @model_symbols ~w(data_type field option_set option_value option_attribute)
+
+  defp proposal_symbols(value) when is_binary(value) do
+    case String.split(value, ":", parts: 2) do
+      [kind, _] when kind in @model_symbols -> [value]
+      _ -> []
+    end
+  end
+
+  defp proposal_symbols(value) when is_map(value) and not is_struct(value),
+    do: value |> Map.values() |> Enum.flat_map(&proposal_symbols/1)
+
+  defp proposal_symbols(value) when is_list(value), do: Enum.flat_map(value, &proposal_symbols/1)
+  defp proposal_symbols(_), do: []
+
   defp drop_validity(d, index) do
     case Drop.refusal(index, d.params.symbol, d.subject) do
       :subject_gone ->
@@ -1035,9 +1071,19 @@ defmodule BubbleEx.Decision do
         {:stale, [:params_invalid]}
 
       nil ->
-        if Index.subject_sha256(index, Drop.symbols(d)) == d.basis[:basis_sha256],
-          do: :ok,
-          else: {:stale, [:basis_changed]}
+        cond do
+          not match?(%{kind: :owner}, d.author) ->
+            {:stale, [:author_not_owner]}
+
+          d.params.dangling -- Drop.referencing(index, d, MapSet.new()) != [] ->
+            {:stale, [:params_invalid]}
+
+          Index.subject_sha256(index, Drop.basis_symbols(index, d)) != d.basis[:basis_sha256] ->
+            {:stale, [:basis_changed]}
+
+          true ->
+            :ok
+        end
     end
   end
 
@@ -1122,7 +1168,8 @@ defmodule BubbleEx.Decision do
       for %{state: s, decision: d} <- entries, s != :superseded, into: MapSet.new(), do: d.key
 
     decisions =
-      for %{state: :active, decision: d} <- entries,
+      for %{state: :active, decision: d, reasons: reasons} <- entries,
+          :conflicts_with_drop not in reasons,
           applied = applied(d, by_id),
           do: applied
 

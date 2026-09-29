@@ -35,9 +35,24 @@ defmodule BubbleEx.Decision.Drop do
 
   ## Basis
 
-  `basis.basis_sha256` is `BubbleEx.Index.subject_sha256/2` of `symbols/1`
-  (the dropped symbol and the accepted dangling fields), so a drop made
-  against another version of them is `:stale`.
+  `basis.basis_sha256` is `BubbleEx.Index.subject_sha256/2` of
+  `basis_symbols/2` (the dropped symbol, the accepted dangling fields and,
+  for a page or workflow, its contents), so a drop made against another
+  version of them is `:stale`. Each accepted dangling field must reference
+  the dropped symbol, or the drop is `:stale` (`:params_invalid`).
+
+  ## Who may drop
+
+  An accepted drop must be the owner's (`author.kind == :owner`); any
+  other author (or none) resolves `:stale` with `:author_not_owner`, which
+  blocks publication. Anyone may withdraw one.
+
+  ## Reused IDs
+
+  A drop is keyed to the symbol's Bubble ID. If Bubble reuses an ID (a
+  data type deleted and recreated with the same key), the drop names the
+  new symbol: its content hash differs, so the drop is `:stale` until the
+  owner decides again. It never silently applies to the new symbol.
   """
 
   alias BubbleEx.Index
@@ -115,14 +130,25 @@ defmodule BubbleEx.Decision.Drop do
   def symbols(%{params: %{symbol: symbol} = params, subject: subject}),
     do: Enum.sort(Enum.uniq([symbol_id(symbol, subject) | Map.get(params, :dangling, [])]))
 
+  @doc """
+  The symbols a drop's `basis_sha256` hashes in `index`: `symbols/1`, plus,
+  for a page or a workflow, everything it contains (elements, workflows,
+  actions), so a page or workflow that gained or changed content since
+  makes the drop `:stale`.
+  """
+  @spec basis_symbols(Index.t(), map()) :: [String.t()]
+  def basis_symbols(%Index{} = index, %{params: %{symbol: symbol}} = drop)
+      when symbol in [:page, :workflow],
+      do: Enum.sort(Enum.uniq(symbols(drop) ++ MapSet.to_list(removed(index, [drop]))))
+
+  def basis_symbols(%Index{}, drop), do: symbols(drop)
+
   @doc "`basis_sha256` of a drop of `symbol` with `dangling` in `index`."
   @spec basis_sha256(Index.t(), atom(), map(), [String.t()]) :: String.t()
-  def basis_sha256(%Index{} = index, symbol, subject, dangling),
-    do:
-      Index.subject_sha256(
-        index,
-        symbols(%{params: %{symbol: symbol, dangling: dangling}, subject: subject})
-      )
+  def basis_sha256(%Index{} = index, symbol, subject, dangling) do
+    drop = %{params: %{symbol: symbol, dangling: dangling}, subject: subject}
+    Index.subject_sha256(index, basis_symbols(index, drop))
+  end
 
   @doc """
   Why the symbol cannot be dropped in `index`, or nil: `:subject_gone` (not
@@ -205,7 +231,8 @@ defmodule BubbleEx.Decision.Drop do
   against itself and, with an index, against the snapshot: its key is the
   drop's of its subject, its parameters fit, its `basis` is the
   `basis_sha256` it carries and, with `index`, the symbol is in the index,
-  droppable, and hashes to it. Anything else is stale or forged
+  droppable, each accepted dangling field references it, and it hashes to
+  its basis. Anything else is stale or forged
   (`{:error, reason}`); generators refuse it.
   """
   @spec check_applied(struct(), Index.t() | nil) :: :ok | {:error, atom()}
@@ -245,11 +272,20 @@ defmodule BubbleEx.Decision.Drop do
   # The applied drop against the snapshot: droppable there, and hashing to
   # its basis.
   defp against(a, index) do
+    dangling = Map.get(a.params, :dangling, [])
+
     case refusal(index, a.params.symbol, a.subject) do
       nil ->
-        if Index.subject_sha256(index, symbols(a)) == a.basis_sha256,
-          do: :ok,
-          else: {:error, :basis_changed}
+        cond do
+          dangling -- referencing(index, a, MapSet.new()) != [] ->
+            {:error, :params_invalid}
+
+          Index.subject_sha256(index, basis_symbols(index, a)) != a.basis_sha256 ->
+            {:error, :basis_changed}
+
+          true ->
+            :ok
+        end
 
       why ->
         {:error, why}
