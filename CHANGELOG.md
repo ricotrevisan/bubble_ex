@@ -11,9 +11,13 @@ All notable changes to this project are documented here.
   keeps Bubble's raw app JSON in `.buildprint/index.sqlite`.
   `BubbleEx.Buildprint.V5.load/2` opens that index read-only and immutable,
   checks `formatVersion`/`schemaVersion` (and the manifest version) against
-  an allowlist (`:unknown_format` otherwise), verifies every row's content
-  hash against the manifest, applies the fragment rows onto the preamble
-  (each definition a fragment holds replaces the preamble's stub whole),
+  an allowlist (`:unknown_format` otherwise), refuses an index with a
+  pending write-ahead log or journal (which an immutable open would ignore)
+  or over `:max_index_bytes` (default 512 MB), verifies every row's content
+  hash against the manifest (unique root keys, each listed once), applies
+  the fragment rows onto the preamble (each definition a fragment holds
+  replaces the preamble's stub whole; a fragment writes only the sections
+  its root path owns),
   drops Buildprint's own members (`__bp_*`, `_index`) and every setting
   but `client_safe`, and returns the app in the shape `BubbleEx.Model`
   reads. It compares the loaded data types, fields, option sets, pages, API
@@ -23,7 +27,8 @@ All notable changes to this project are documented here.
   manifest's snapshot hash, which is not reproducible from the rows
   (`:buildprint_snapshot_unverified`); diagnostics hold counts only. SQLite
   comes from `exqlite`, an **optional** dependency: without it `load/2`
-  returns the new `:dependency_missing` error kind. The private-fixture
+  returns the new `:dependency_missing` error kind (after adding it, run
+  `mix deps.compile bubble_ex --force`). The private-fixture
   loader (`BUBBLE_EX_PRIVATE_EXPORT`) detects v5 workspaces and still reads
   split (v4) export directories and `.bubble` files.
 

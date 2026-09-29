@@ -21,11 +21,19 @@ defmodule BubbleEx.Buildprint.V5 do
       allowlist (`supported_versions/0`); anything else is an
       `:unknown_format` error rather than a best-effort read.
     * **Integrity.** Every row's `content_sha256` must be the SHA-256 of its
-      JSON, and the manifest must list exactly the rows it describes.
+      JSON, root keys must be unique, and the manifest must list exactly the
+      rows it describes, each once. An index with a pending write-ahead log
+      (a non-empty `index.sqlite-wal`) or a rollback journal
+      (`index.sqlite-journal`) is refused: an immutable open would silently
+      ignore them and read stale data. An index larger than
+      `:max_index_bytes` (default 512 MB) is refused too.
     * **Merge.** Fragments are applied onto the preamble and win: each
       definition a fragment holds (a data type, option set, page, reusable
       element, workflow, style, API Connector group, ...) replaces the
-      preamble's copy as a whole, so a stub or a `deleted` flag the fragment
+      preamble's copy as a whole, provided the fragment's root key (its
+      source path) owns that section (`data-types/` writes `user_types`,
+      `api-connector/` writes `settings.client_safe.apiconnector2`, ...;
+      other members are ignored), so a stub or a `deleted` flag the fragment
       does not carry does not survive. Deleted definitions are kept with
       their `deleted` flag, as Bubble and `BubbleEx.Model` expect. Buildprint's
       own top-level members (`__bp_*`, `_index`) are dropped, and of
@@ -52,7 +60,10 @@ defmodule BubbleEx.Buildprint.V5 do
 
   SQLite access needs the optional `exqlite` dependency. Without it,
   `load/2` returns a `:dependency_missing` error; add
-  `{:exqlite, "~> 0.41"}` to the application's dependencies.
+  `{:exqlite, "~> 0.41"}` to the application's dependencies. bubble_ex
+  decides at compile time whether `exqlite` is present, so after adding it
+  to an application that already compiled bubble_ex, recompile it with
+  `mix deps.compile bubble_ex --force`.
   """
 
   alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
@@ -71,8 +82,27 @@ defmodule BubbleEx.Buildprint.V5 do
   @stub_sections ~w(pages element_definitions mobile_views)
   @owner_sections ~w(pages element_definitions mobile_views)
 
+  # Which app members a fragment may write, by its root key's first path
+  # segment: whole sections, and keys of `settings.client_safe`
+  # (`:connector` = only `apiconnector2`, `:any` = any but `apiconnector2`).
+  @fragment_owners %{
+    "api-connector" => {[], :connector},
+    "backend-workflows" => {~w(api comments), ~w(api_wf_folder_list)},
+    "comments" => {~w(comments), []},
+    "data-types" => {~w(user_types comments), []},
+    "mobile-views" => {~w(mobile_views comments), []},
+    "option-sets" => {~w(option_sets comments), []},
+    "pages" => {~w(pages comments), []},
+    "reusable-elements" => {~w(element_definitions comments), []},
+    "settings" => {[], :any},
+    "styles" =>
+      {~w(styles comments), ~w(color_tokens color_tokens_user font_tokens font_tokens_user)}
+  }
+
   @state_limit 1_000_000
-  @secret_handle ~r/\$bp[A-Za-z0-9]/
+  @max_index_bytes 512 * 1024 * 1024
+  @secret_handle ~r/\$bp/
+  @sha256_hex ~r/\A[0-9a-f]{64}\z/
 
   defstruct app: %{},
             model: nil,
@@ -94,8 +124,8 @@ defmodule BubbleEx.Buildprint.V5 do
           diagnostics: [Diagnostic.t()]
         }
 
-  @typedoc "A decoded fragment row: a partial app object."
-  @type fragment :: map()
+  @typedoc "A fragment row: its root key and its decoded JSON (a partial app object)."
+  @type fragment :: {String.t(), term()}
 
   @doc "The accepted `formatVersion`, `schemaVersion` and manifest `version` values."
   @spec supported_versions() :: %{
@@ -125,12 +155,21 @@ defmodule BubbleEx.Buildprint.V5 do
   snapshot hash check and normalized diagnostics. Fails with
   `:dependency_missing` (no `exqlite`), `:invalid_input` (not a
   workspace), `:unknown_format` (a version outside the allowlist) or
-  `:parse_failed` (a missing table, a malformed or tampered row).
+  `:parse_failed` (a missing table, a malformed or tampered row, a pending
+  write-ahead log or journal) or `:body_too_large` (an index larger than
+  the limit).
+
+  ## Options
+
+    * `:max_index_bytes` - the largest `index.sqlite` read (default 512 MB)
   """
   @spec load(Path.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
-  def load(path, _opts \\ []) when is_binary(path) do
+  def load(path, opts \\ []) when is_binary(path) and is_list(opts) do
     with :ok <- ensure_available(),
          :ok <- ensure_workspace(path),
+         :ok <- ensure_settled(index_path(path)),
+         :ok <-
+           ensure_size(index_path(path), Keyword.get(opts, :max_index_bytes, @max_index_bytes)),
          {:ok, state_format} <- read_state(path),
          {:ok, read} <- Sqlite.read(index_path(path)),
          {:ok, format, schema} <- check_versions(read.metadata, state_format),
@@ -138,7 +177,11 @@ defmodule BubbleEx.Buildprint.V5 do
          {app, merge_diagnostics} = merge(preamble, fragments),
          {:ok, model} <- Model.build(app) do
       counts = counts(app, model)
-      expected = manifest["snapshotJsonSha256"] || read.metadata["snapshotJsonSha256"]
+
+      expected =
+        sha256_hex(manifest["snapshotJsonSha256"]) ||
+          sha256_hex(read.metadata["snapshotJsonSha256"])
+
       reproduced = is_binary(expected) and CanonicalJson.sha256(app) == expected
 
       diagnostics =
@@ -161,7 +204,8 @@ defmodule BubbleEx.Buildprint.V5 do
 
   @doc """
   Applies `fragments` onto `preamble` (see the moduledoc) and returns the
-  app with its diagnostics. Pure; `load/2` calls it after reading the index.
+  app with its diagnostics. `fragments` are `{root_key, decoded JSON}` pairs,
+  applied in order. Pure; `load/2` calls it after reading the index.
   """
   @spec merge(map(), [fragment() | term()]) :: {map(), [Diagnostic.t()]}
   def merge(preamble, fragments) when is_map(preamble) and is_list(fragments) do
@@ -263,6 +307,51 @@ defmodule BubbleEx.Buildprint.V5 do
       else: {:error, Error.new(:invalid_input, "not a Buildprint v5 workspace")}
   end
 
+  # `immutable=1` makes SQLite ignore a write-ahead log or hot journal, so
+  # committed changes still in one would silently be missing.
+  defp ensure_settled(index) do
+    wal = File.stat(index <> "-wal")
+
+    cond do
+      match?({:ok, %File.Stat{size: size}} when size > 0, wal) ->
+        {:error, pending("write-ahead log (index.sqlite-wal)")}
+
+      File.exists?(index <> "-journal") ->
+        {:error, pending("rollback journal (index.sqlite-journal)")}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp pending(what),
+    do:
+      Error.new(
+        :parse_failed,
+        "the Buildprint index has a pending #{what}; let Buildprint finish (or checkpoint it) and retry",
+        %{reason: :pending_writes}
+      )
+
+  defp ensure_size(index, limit) when is_integer(limit) and limit > 0 do
+    case File.stat(index) do
+      {:ok, %File.Stat{size: size}} when size <= limit ->
+        :ok
+
+      {:ok, %File.Stat{size: size}} ->
+        {:error,
+         Error.new(:body_too_large, "the Buildprint index exceeds :max_index_bytes", %{
+           size: size,
+           limit: limit
+         })}
+
+      {:error, _} ->
+        {:error, Error.new(:parse_failed, "cannot read the Buildprint index")}
+    end
+  end
+
+  defp ensure_size(_index, _limit),
+    do: {:error, Error.new(:invalid_input, ":max_index_bytes must be a positive integer")}
+
   defp buildprint_dir(path) do
     if Path.basename(path) == ".buildprint", do: path, else: Path.join(path, ".buildprint")
   end
@@ -323,18 +412,36 @@ defmodule BubbleEx.Buildprint.V5 do
   defp printable(_), do: "(unprintable)"
 
   defp split_roots(roots) do
-    with :ok <- verify_hashes(roots),
+    with :ok <- verify_rows(roots),
+         :ok <- verify_hashes(roots),
          {:ok, manifest} <- manifest(roots),
          :ok <- verify_manifest(manifest, roots),
          {:ok, preamble} <- preamble(roots) do
       fragments =
         for %{root_key: key, json: json} <- roots,
             key not in ["__preamble__", "__manifest__"],
-            do: decode_fragment(json)
+            do: {key, decode_fragment(json)}
 
-      if Enum.any?(fragments, &match?({:error, _}, &1)),
+      if Enum.any?(fragments, &match?({_, {:error, _}}, &1)),
         do: {:error, Error.new(:parse_failed, "a Buildprint snapshot row is not valid JSON")},
         else: {:ok, preamble, fragments, manifest}
+    end
+  end
+
+  # Text columns only (SQLite's typing is per value), each root key once.
+  defp verify_rows(roots) do
+    cond do
+      not Enum.all?(
+        roots,
+        &(is_binary(&1.root_key) and is_binary(&1.json) and is_binary(&1.content_sha256))
+      ) ->
+        {:error, Error.new(:parse_failed, "a Buildprint snapshot row is not text")}
+
+      length(Enum.uniq_by(roots, & &1.root_key)) != length(roots) ->
+        {:error, Error.new(:parse_failed, "a Buildprint snapshot root key appears twice")}
+
+      true ->
+        :ok
     end
   end
 
@@ -365,6 +472,8 @@ defmodule BubbleEx.Buildprint.V5 do
   defp to_string_safe(value), do: value
 
   defp verify_manifest(%{"roots" => listed}, roots) when is_list(listed) do
+    keys = Enum.map(listed, &(is_map(&1) && &1["rootKey"]))
+
     listed =
       MapSet.new(listed, fn
         %{"rootKey" => key, "contentSha256" => sha} -> {key, sha}
@@ -377,7 +486,7 @@ defmodule BubbleEx.Buildprint.V5 do
           into: MapSet.new(),
           do: {key, sha}
 
-    if MapSet.equal?(listed, stored),
+    if length(Enum.uniq(keys)) == length(keys) and MapSet.equal?(listed, stored),
       do: :ok,
       else:
         {:error,
@@ -405,31 +514,41 @@ defmodule BubbleEx.Buildprint.V5 do
 
   # --- merging --------------------------------------------------------------
 
-  defp apply_fragment(fragment, acc) when is_map(fragment) do
+  defp apply_fragment({root_key, fragment}, acc) when is_binary(root_key) and is_map(fragment) do
+    case owner(root_key) do
+      {sections, client_safe} -> apply_members(fragment, sections, client_safe, acc)
+      nil -> %{acc | ignored: acc.ignored + max(map_size(fragment), 1)}
+    end
+  end
+
+  defp apply_fragment(_, acc), do: %{acc | ignored: acc.ignored + 1}
+
+  defp owner(root_key) do
+    case String.split(root_key, "/", parts: 2) do
+      [prefix, _] -> Map.get(@fragment_owners, prefix)
+      _ -> nil
+    end
+  end
+
+  defp apply_members(fragment, sections, client_safe, acc) do
     Enum.reduce(fragment, acc, fn
       {section, entries}, acc when section in @entity_sections and is_map(entries) ->
-        put_entities(acc, [section], entries)
+        if section in sections,
+          do: put_entities(acc, [section], entries),
+          else: %{acc | ignored: acc.ignored + 1}
 
-      {"settings", settings}, acc when is_map(settings) ->
-        apply_settings(settings, acc)
+      {"settings", settings}, acc when is_map(settings) and client_safe != [] ->
+        apply_settings(settings, client_safe, acc)
 
       _, acc ->
         %{acc | ignored: acc.ignored + 1}
     end)
   end
 
-  defp apply_fragment(_, acc), do: %{acc | ignored: acc.ignored + 1}
-
-  defp apply_settings(settings, acc) do
+  defp apply_settings(settings, allowed, acc) do
     Enum.reduce(settings, acc, fn
       {"client_safe", client_safe}, acc when is_map(client_safe) ->
-        Enum.reduce(client_safe, acc, fn
-          {"apiconnector2", groups}, acc when is_map(groups) ->
-            put_entities(acc, ["settings", "client_safe", "apiconnector2"], groups)
-
-          {key, value}, acc ->
-            put_entities(acc, ["settings", "client_safe"], %{key => value})
-        end)
+        Enum.reduce(client_safe, acc, &apply_client_safe(&1, allowed, &2))
 
       {"client_safe", _}, acc ->
         %{acc | ignored: acc.ignored + 1}
@@ -438,6 +557,20 @@ defmodule BubbleEx.Buildprint.V5 do
         %{acc | dropped_settings: acc.dropped_settings + 1}
     end)
   end
+
+  defp apply_client_safe({"apiconnector2", groups}, :connector, acc) when is_map(groups),
+    do: put_entities(acc, ["settings", "client_safe", "apiconnector2"], groups)
+
+  defp apply_client_safe({key, value}, allowed, acc) do
+    if client_safe_key?(key, allowed),
+      do: put_entities(acc, ["settings", "client_safe"], %{key => value}),
+      else: %{acc | ignored: acc.ignored + 1}
+  end
+
+  defp client_safe_key?("apiconnector2", _allowed), do: false
+  defp client_safe_key?(_key, :any), do: true
+  defp client_safe_key?(key, allowed) when is_list(allowed), do: key in allowed
+  defp client_safe_key?(_key, _allowed), do: false
 
   # Each entry replaces the app's entry at `path ++ [key]` as a whole.
   defp put_entities(acc, path, entries) do
@@ -561,6 +694,11 @@ defmodule BubbleEx.Buildprint.V5 do
 
   defp objects(%{} = map), do: Map.filter(map, fn {_, v} -> is_map(v) end)
   defp objects(_), do: %{}
+
+  defp sha256_hex(value) when is_binary(value),
+    do: if(value =~ @sha256_hex, do: value)
+
+  defp sha256_hex(_), do: nil
 
   defp sha256(data), do: :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
 end

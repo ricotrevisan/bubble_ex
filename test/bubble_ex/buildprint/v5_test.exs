@@ -195,11 +195,37 @@ defmodule BubbleEx.Buildprint.V5Test do
 
     {:ok, conn} = Sqlite3.open(Path.join(bp, "index.sqlite"))
 
+    create_tables(conn, opts)
+
+    for {k, v} <- metadata, do: insert(conn, "INSERT INTO metadata VALUES (?, ?)", [k, v])
+
+    for {key, json, sha} <- rows,
+        do: insert(conn, "INSERT INTO snapshot_roots VALUES (?, ?, ?, ?)", [key, key, json, sha])
+
+    :ok = Sqlite3.close(conn)
+
+    case Keyword.get(opts, :state, %{"formatVersion" => "bubblescript-31", "kind" => "app"}) do
+      nil -> :ok
+      state -> File.write!(Path.join(bp, "state.json"), Jason.encode!(state))
+    end
+
+    ws
+  end
+
+  defp create_tables(conn, opts) do
+    # `loose: true` drops the constraints, so rows may be NULL or repeated.
+    roots_table =
+      if Keyword.get(opts, :loose, false),
+        do: "CREATE TABLE snapshot_roots (root_key, identity_key, json, content_sha256);",
+        else: """
+        CREATE TABLE snapshot_roots (root_key text PRIMARY KEY NOT NULL, identity_key text NOT NULL,
+          json text NOT NULL, content_sha256 text NOT NULL);
+        """
+
     :ok =
       Sqlite3.execute(conn, """
       CREATE TABLE metadata (key text PRIMARY KEY NOT NULL, value text NOT NULL);
-      CREATE TABLE snapshot_roots (root_key text PRIMARY KEY NOT NULL, identity_key text NOT NULL,
-        json text NOT NULL, content_sha256 text NOT NULL);
+      #{roots_table}
       """)
 
     unless Keyword.get(opts, :drop_symbols, false) do
@@ -217,20 +243,6 @@ defmodule BubbleEx.Buildprint.V5Test do
         ])
       end
     end
-
-    for {k, v} <- metadata, do: insert(conn, "INSERT INTO metadata VALUES (?, ?)", [k, v])
-
-    for {key, json, sha} <- rows,
-        do: insert(conn, "INSERT INTO snapshot_roots VALUES (?, ?, ?, ?)", [key, key, json, sha])
-
-    :ok = Sqlite3.close(conn)
-
-    case Keyword.get(opts, :state, %{"formatVersion" => "bubblescript-31", "kind" => "app"}) do
-      nil -> :ok
-      state -> File.write!(Path.join(bp, "state.json"), Jason.encode!(state))
-    end
-
-    ws
   end
 
   defp insert(conn, sql, args) do
@@ -484,6 +496,102 @@ defmodule BubbleEx.Buildprint.V5Test do
       end
     end
 
+    test "a NULL or non-text row fails without raising", %{tmp_dir: dir} do
+      for {name, bad} <- [a: nil, b: 42] do
+        tamper =
+          &Enum.map(&1, fn
+            {"data-types/user.ts", _json, sha} -> {"data-types/user.ts", bad, sha}
+            row -> row
+          end)
+
+        assert {:error, %Error{kind: :parse_failed}} =
+                 dir
+                 |> write_workspace(name: to_string(name), loose: true, tamper: tamper)
+                 |> V5.load()
+      end
+
+      null_sha =
+        &Enum.map(&1, fn
+          {"data-types/user.ts", json, _} -> {"data-types/user.ts", json, nil}
+          row -> row
+        end)
+
+      assert {:error, %Error{kind: :parse_failed}} =
+               dir |> write_workspace(name: "c", loose: true, tamper: null_sha) |> V5.load()
+    end
+
+    test "a repeated root key fails", %{tmp_dir: dir} do
+      json = ~s({"user_types":{"user":{"display":"Other","fields":{}}}})
+      tamper = &(&1 ++ [{"data-types/user.ts", json, sha256(json)}])
+
+      assert {:error, %Error{kind: :parse_failed}} =
+               dir |> write_workspace(loose: true, tamper: tamper) |> V5.load()
+    end
+
+    test "a root the manifest lists twice fails", %{tmp_dir: dir} do
+      conn_rows = [{"__preamble__", preamble()} | fragments()]
+
+      roots =
+        for {key, doc} <- conn_rows do
+          json = Jason.encode!(doc)
+          %{"rootKey" => key, "identityKey" => key, "contentSha256" => sha256(json)}
+        end
+
+      manifest = %{
+        "version" => 5,
+        "snapshotJsonSha256" => nil,
+        "roots" => roots ++ [List.last(roots)]
+      }
+
+      assert {:error, %Error{kind: :parse_failed}} =
+               dir |> write_workspace(manifest: manifest) |> V5.load()
+    end
+
+    test "refuses an index with a pending write-ahead log or journal", %{tmp_dir: dir} do
+      ws = write_workspace(dir)
+      index = Path.join([ws, ".buildprint", "index.sqlite"])
+
+      # An empty WAL holds nothing uncommitted to the main file.
+      File.write!(index <> "-wal", "")
+      assert {:ok, _} = V5.load(ws)
+
+      File.write!(index <> "-wal", "frames")
+
+      assert {:error, %Error{kind: :parse_failed, context: %{reason: :pending_writes}} = e} =
+               V5.load(ws)
+
+      assert e.message =~ "write-ahead log"
+
+      File.rm!(index <> "-wal")
+      File.write!(index <> "-journal", "")
+
+      assert {:error, %Error{kind: :parse_failed, context: %{reason: :pending_writes}} = e} =
+               V5.load(ws)
+
+      assert e.message =~ "journal"
+    end
+
+    test "refuses an index over the size limit", %{tmp_dir: dir} do
+      ws = write_workspace(dir)
+
+      assert {:error, %Error{kind: :body_too_large, context: %{limit: 1024}}} =
+               V5.load(ws, max_index_bytes: 1024)
+
+      assert {:error, %Error{kind: :invalid_input}} = V5.load(ws, max_index_bytes: 0)
+      assert {:ok, _} = V5.load(ws, max_index_bytes: 10_000_000)
+    end
+
+    test "a snapshot hash that is not 64 hex characters is not kept", %{tmp_dir: dir} do
+      for {name, sha} <- [a: "not-a-hash", b: String.duplicate("A", 64), c: @handle] do
+        {:ok, result} =
+          dir
+          |> write_workspace(name: to_string(name), metadata: %{"snapshotJsonSha256" => sha})
+          |> V5.load()
+
+        assert result.snapshot == %{expected: nil, reproduced: false}
+      end
+    end
+
     test "invalid JSON in a fragment fails", %{tmp_dir: dir} do
       fragments = fragments() ++ [{"data-types/bad.ts", "{not json"}]
 
@@ -503,17 +611,29 @@ defmodule BubbleEx.Buildprint.V5Test do
       fragments =
         fragments() ++
           [
+            # Not an object, or under no known root.
             {"weird/array.ts", [1, 2, 3]},
-            {"weird/scalar.ts", "\"just a string\""},
-            {"weird/foreign.ts",
+            {"data-types/scalar.ts", "\"just a string\""},
+            {"weird/unknown.ts",
+             %{
+               "user_types" => %{"evil" => %{"display" => "Evil", "fields" => %{}}},
+               "option_sets" => %{"evil" => %{"display" => "Evil", "values" => %{}}}
+             }},
+            # Members outside the sections the root owns.
+            {"data-types/foreign.ts",
              %{
                "_index" => %{"id_to_path" => %{}},
                "__bp_plugins__" => %{"p" => %{}},
                "history" => %{"entry" => %{"secret" => "sk-live-history"}},
                "user_types" => "not an object",
+               "pages" => %{"px" => %{"id" => "px", "name" => "planted"}}
+             }},
+            {"api-connector/Other.ts",
+             %{
                "settings" => %{
                  "secure" => %{"token" => "sk-live-fragment-value"},
                  "client_safe" => %{
+                   "text" => "overwritten",
                    "apiconnector2" => %{
                      "g2" => %{
                        "human" => "Other",
@@ -523,13 +643,14 @@ defmodule BubbleEx.Buildprint.V5Test do
                            "headers" => %{"h" => %{"key" => "Authorization", "value" => @handle}}
                          }
                        },
-                       "shared_headers" => %{@handle => %{"value" => "x"}}
+                       "shared_headers" => %{@handle => %{"value" => "x"}},
+                       "note" => "uses $bp-something"
                      }
                    }
                  }
                }
              }},
-            {"weird/keys.ts",
+            {"option-sets/keys.ts",
              %{
                "option_sets" => %{
                  "../../etc/passwd" => %{"display" => "Traversal", "values" => %{}},
@@ -552,27 +673,43 @@ defmodule BubbleEx.Buildprint.V5Test do
       refute Map.has_key?(app, "_index")
       assert Map.keys(app["settings"]) == ["client_safe"]
       assert is_map(app["user_types"]["task"])
+      refute Map.has_key?(app["user_types"], "evil")
+      refute Map.has_key?(app["option_sets"], "evil")
+      refute Map.has_key?(app["pages"], "px")
+      assert app["settings"]["client_safe"]["text"] == "keep"
       # A fragment's page replaces a malformed preamble section.
       assert is_map(app["pages"]["pg1"])
       # Hostile keys are data: kept as keys, never interpreted as paths.
       assert Map.has_key?(app["option_sets"], "../../etc/passwd")
-      assert app["option_sets"]["status"]["display"] == "Status again"
+      # Overlapping definitions: the last fragment by root key wins
+      # (`option-sets/status.ts` after `option-sets/keys.ts`).
+      assert app["option_sets"]["status"]["display"] == "Status"
 
       call = app["settings"]["client_safe"]["apiconnector2"]["g2"]["calls"]["c2"]
       assert call["headers"]["h"]["value"] == ""
       assert app["settings"]["client_safe"]["apiconnector2"]["g2"]["shared_headers"] == %{}
+      assert app["settings"]["client_safe"]["apiconnector2"]["g2"]["note"] == ""
 
       by_code = Map.new(result.diagnostics, &{&1.code, &1.details})
-      assert by_code[:buildprint_fragment_ignored] == %{count: 6}
+      assert by_code[:buildprint_fragment_ignored] == %{count: 10}
       assert by_code[:buildprint_fragment_overlap] == %{count: 1}
       assert by_code[:buildprint_settings_dropped] == %{count: 2}
-      assert by_code[:buildprint_secret_handle] == %{count: 2}
+      assert by_code[:buildprint_secret_handle] == %{count: 3}
 
       assert {:ok, _model} = Model.build(app)
 
       text = inspect(result.diagnostics) <> Jason.encode!(result.diagnostics)
 
-      for leaked <- ["$bp", "sk-live", "etc/passwd", "Traversal", "Other", "Authorization"],
+      for leaked <- [
+            "$bp",
+            "sk-live",
+            "etc/passwd",
+            "Traversal",
+            "Other",
+            "Authorization",
+            "evil",
+            "planted"
+          ],
           do: refute(text =~ leaked, "diagnostics echo #{leaked}")
 
       refute inspect(app) =~ "$bp"
@@ -612,7 +749,7 @@ defmodule BubbleEx.Buildprint.V5Test do
 
   describe "merge/2" do
     test "is pure and needs no SQLite" do
-      {app, diagnostics} = V5.merge(preamble(), Enum.map(fragments(), &elem(&1, 1)))
+      {app, diagnostics} = V5.merge(preamble(), fragments())
       assert app["user_types"]["task"]["display"] == "Task"
       assert diagnostics == []
     end
