@@ -8,7 +8,7 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
   # (`BubbleEx.Workflows.Frontend.coverage/1`) and in generated code
   # (`BubbleEx.Target.Elixir.FrontendWorkflows.coverage/1`, the metric
   # defined in `docs/frontend-workflows.md`), is compared with a committed
-  # count snapshot, by default mm-137's. The snapshot holds counts only.
+  # count snapshot, by default the private fixture app's. The snapshot holds counts only.
   # Update it with a reason:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture
@@ -25,7 +25,7 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/target/phoenix/counts/mm-137.frontend_workflows.json"
+  @default_snapshot "test/support/target/phoenix/counts/private-app.frontend_workflows.json"
 
   setup_all do
     path =

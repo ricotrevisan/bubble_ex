@@ -309,7 +309,7 @@ defmodule BubbleEx.Verify.Replay.Client do
   that way, not with a 404.
 
   **Evidence is thin (WTF-385, listed as unverified on WTF-358).** This
-  rests on one observation: logged-out callers on three mm-137 types whose
+  rests on one observation: logged-out callers on three types of a private production app whose
   rules grant nothing (no `view_all`, no `view_fields`, no search). Admin
   reads of readable records carried `Created Date` and `Modified Date`.
   Also observed (WTF-385, a later run): an `everyone` rule granting

@@ -153,7 +153,7 @@ BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
 ```
 
 The backend-workflow coverage snapshot
-(`test/support/target/workflows/counts/mm-137.json`, counts only) is part of
+(`test/support/target/workflows/counts/private-app.json`, counts only) is part of
 that run; refresh it with `BUBBLE_EX_UPDATE_COUNTS=1` and give the reason in
 the PR.
 
@@ -161,7 +161,7 @@ With `BUBBLE_EX_PRIVATE_DECISIONS` naming a JSON array of decision records
 made against that export (kept outside the repository: it names private
 Bubble IDs), the run also maps the export with those decisions and compares
 the Project's hash and counts with
-`test/support/target/ash/counts/mm-137.decided.json`.
+`test/support/target/ash/counts/private-app.decided.json`.
 
 To run integration tests explicitly:
 

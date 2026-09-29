@@ -241,7 +241,7 @@ All notable changes to this project are documented here.
   `Ash.Notifier.PubSub` to `<App>.Bubble.Changes` (topic names only, per
   type and per record) and the pages reload. A source that is not loaded,
   and a binding that reads one, is a `TODO(bubble:<id>)` marker, never an
-  empty value; new residue reason `:page_data_in_cell`. mm-137: 805 of
+  empty value; new residue reason `:page_data_in_cell`. Private fixture app: 805 of
   1,980 sources loaded; frontend workflows 553 native (was 531), 380
   wired (was 361), unavailable inputs 858 (was 1,027).
   `Target.Ash.Source.filter/1` prints a bare filter with `{:pin, var}`
@@ -355,7 +355,7 @@ All notable changes to this project are documented here.
   workflow or API call is residue only through residue on itself or its
   own actions. `Verify.Result` diff entries may name `option_set` and
   `page`. `scripts/phoenix_compile_check/structural.sh` runs the task end
-  to end; `test/support/verify/counts/structural.mm-137.json` is mm-137's
+  to end; `test/support/verify/counts/structural.private-app.json` is the private fixture app's
   counts snapshot (private fixture).
 - **Safe serving of migrated files** (WTF-415). The generated Phoenix app
   serves the files the data loader copied at `/uploads/<sha256>/<name>`
@@ -408,7 +408,7 @@ All notable changes to this project are documented here.
   runtime moves to one hook (`<Web>.Bubble.runtime/1`, `overlay_keys/1`
   kept) that fixes T5's latent issues: reopening an open overlay no longer
   saves the focus twice, element steps target one instance, and a modal's
-  focus falls back past an opener hidden since. mm-137: 531 of 2,275
+  focus falls back past an opener hidden since. Private fixture app: 531 of 2,275
   frontend workflows native (361 wired to a page trigger, 15.9%; 648 own
   body), 1,152 at IR level.
 - **Backend workflow lowering** (WTF-373, T7 of WTF-359).
@@ -471,7 +471,7 @@ All notable changes to this project are documented here.
   non-text values, and runs caller-supplied regexes with a time limit.
   Coverage is defined by `Backend.coverage/1` (IR level) and
   `Workflows.Spec.coverage/1` (generated code, including callees); the
-  mm-137 counts are in `test/support/target/workflows/counts/mm-137.json`.
+  The private fixture app's counts are in `test/support/target/workflows/counts/private-app.json`.
   The Phoenix compile check renders the workflow fixtures (including
   `hostile_ids`) and the private export with their workflows and runs
   behavior tests on `workflows_backend`. `Expression.Sites.workflow_env/4`
@@ -600,7 +600,7 @@ All notable changes to this project are documented here.
   they sort) and a derived `has_many` is gated like the list it replaces
   (`privacy.relationship_checks`). New `Aggregate` and `Index` structs,
   `Resource.aggregates`/`indexes`, `Relationship` kind `:has_many`;
-  Project schema version 5. mm-137 with every cut-2 finding accepted: 55
+  Project schema version 5. The private fixture app with every cut-2 finding accepted: 55
   of 55 index hints apply (302 indexes: 289 btree, 8 GIN, 3 trigram, 2
   full text, none deferred), 15 `has_many`, 1 count and 1 text reference.
 
@@ -633,7 +633,7 @@ All notable changes to this project are documented here.
   Bubble stores them after creation: omitted defaulted fields are written
   out, and a defaulted field a branch needs empty is `null` (listed in
   `report.explicit_empties`: a loader must clear it after creation);
-  `report.defaults` counts them. On mm-137: 185 defaulted fields,
+  `report.defaults` counts them. On the private fixture app: 185 defaulted fields,
   166 records, 1,554 checks; rules solved and observable unchanged
   (120 / 77).
 - **API Connector → Req clients** (WTF-374, T8 of WTF-359).
@@ -669,7 +669,7 @@ All notable changes to this project are documented here.
   runs their tests, each tagged `bubble: "api_call:<group>/<call>"` (the
   plan's subject); for `phoenix_api_clients` it also completes the plan's
   `api_call` tasks with `mix wtf.task`, whose `request_shape` check runs
-  those tests. On the mm-137 test export, 198 of 203 calls are generated,
+  those tests. On the private fixture app's test export, 198 of 203 calls are generated,
   194 of them reading environment variables (residue: 2 non-JSON bodies,
   1 file parameter, 1 call without a URL, 1 query name that is not a
   plain name); 18 of 35 hosts are configured from the environment.
@@ -762,7 +762,7 @@ All notable changes to this project are documented here.
   listening to an element of such a template is the new
   `:trigger_in_runtime_template`; plan element coverage counts template
   elements as `in_runtime_template` / `generated_in_runtime_template`, never
-  `generated`. mm-137 plan coverage: elements generated 3,359 → 5,360 of
+  `generated`. Private fixture app plan coverage: elements generated 3,359 → 5,360 of
   8,455 (1,288 more in runtime templates), not normalized 3,620 → 1,
   workflows blocked by `trigger_not_normalized` 832 → 0 (203 now
   `trigger_in_runtime_template`), frontend workflows auto 824 → 1,179 of
@@ -888,7 +888,7 @@ All notable changes to this project are documented here.
   `decisions_sha256` of every task covering a use or read.
   `coverage.units.plugins` is now `%{tasks, undecided, dropped}`.
   `Target.Ash.map/3` skips plugin decisions. Finding IDs and hashes of the
-  other kinds are unchanged (mm-137: 147).
+  other kinds are unchanged (private fixture app: 147).
 
 - **Privacy interpreter and matrix synthesis** (WTF-382, V2 of the WTF-358
   verification proposal). `BubbleEx.Verify.Interpreter` evaluates
@@ -915,7 +915,7 @@ All notable changes to this project are documented here.
   On the fixtures the interpreter agrees with the compiled conditions and
   generated policies in PostgreSQL (`scripts/ash_compile_check.sh` compares
   them; it covers IR-to-Ash lowering and the policy generator, not the
-  shared expression compiler). On mm-137: 120 of 125 rules solved, 77
+  shared expression compiler). On the private fixture app: 120 of 125 rules solved, 77
   observable. Counts snapshot in `test/support/verify/counts/`.
 - **Per-task semantic hashes and `needs_reverify`** (WTF-367, T2 of
   WTF-359). `Plan.Content.digests(app, model, index, key: key)` makes keyed
@@ -972,7 +972,7 @@ All notable changes to this project are documented here.
   the index, the normalized frontend, expressions (IR compile, with an
   optional target check) and named styles. Private opt-in dry run
   (`test/bubble_ex/plan_private_fixture_test.exs`) with a counts-only
-  mm-137 snapshot (`test/support/plan/counts/mm-137.json`).
+  private fixture app snapshot (`test/support/plan/counts/private-app.json`).
 - Index workflow symbols carry `folder` (the Bubble `wf_folder` ID);
   `Index.schema_version/0` is 2. The test split-export loader restores
   `wf_folder` from folder directories and loads named styles.
@@ -1067,7 +1067,7 @@ All notable changes to this project are documented here.
   indexed columns, not the pages running the searches), set by
   `Findings.analyze/2` and included in `Finding.to_map/1`. It changes when
   e.g. a copied field's type changes and not on caption edits. Finding IDs
-  and `proposal_sha256` are unchanged on every fixture and on mm-137.
+  and `proposal_sha256` are unchanged on every fixture and on the private fixture app.
 
 - **API Connector call names from live payloads, URL hosts and header and
   parameter names** (WTF-396). `Model.ConnectorCall` reads its name in both
@@ -1091,9 +1091,9 @@ All notable changes to this project are documented here.
   `:malformed` instead of the malformed text, `raw` the JSON type of a call
   that is not an object instead of its content, and `returns` only a
   string. External types, their diagnostics and the data types are
-  identical on every fixture and on mm-137; `source_sha256` still hashes
+  identical on every fixture and on the private fixture app; `source_sha256` still hashes
   the app input. Finding IDs and proposal hashes
-  are unchanged on the private mm-137 export.
+  are unchanged on the private fixture export.
 
 ### Fixed
 
@@ -1184,7 +1184,7 @@ All notable changes to this project are documented here.
   `Model.Type` descriptor helpers (`reference/1`, `list_item/1`, `list?/1`,
   `listed/1`, `record/1`); `Model.schema_version/0` is 2. Index, Findings,
   Workflows and expression outputs are unchanged on every fixture and on the
-  private mm-137 export, except that an option value whose `db_value` is
+  private fixture export, except that an option value whose `db_value` is
   `""` is now keyed by its Bubble ID in the index, as the Model keys it
   (`:model_option_key_missing`), instead of by the empty string, and calls
   placed directly in their group are now `:api_call` symbols (their
@@ -1487,7 +1487,7 @@ All notable changes to this project are documented here.
 ### Fixed
 
 - **Replay driver against a real Bubble branch** (WTF-385, V5 of
-  WTF-358). The first run on mm-137's replay branch found where the driver
+  WTF-358). The first run on the private fixture app's replay branch found where the driver
   disagreed with Bubble:
   - Data API type paths keep dots, colons and emoji (`00.thing`,
     `🎙️msgs`) and are now percent-encoded instead of refused. A path must
@@ -1521,13 +1521,13 @@ All notable changes to this project are documented here.
   out** (WTF-412). Its `request_shape` criterion listed every API call,
   including residue calls with no generated test, so
   `mix wtf.task complete generate:api_clients` failed whenever one existed
-  (5 of 203 calls on mm-137). It now lists only the generated calls, and
+  (5 of 203 calls on the private fixture app). It now lists only the generated calls, and
   the task carries the residue calls' residue (part of its
   `source_sha256`, so a call turning residue re-verifies it). Residue
   calls stay visible: a used one is an open `api_call` task (four on
-  mm-137, which were wrongly `auto` before), and those nothing kept uses
+  the private fixture app, which were wrongly `auto` before), and those nothing kept uses
   are the new `api_clients:residue` task (kind `:api_clients_residue`,
-  agent, open, one `attested` criterion; one on mm-137), after
+  agent, open, one `attested` criterion; one on the private fixture app), after
   `generate:api_clients` and before `replay:app`. The plan and the
   generator now share one stack-neutral decision,
   `BubbleEx.Model.ConnectorSupport.unsupported/2` (malformed call,
@@ -1541,7 +1541,7 @@ All notable changes to this project are documented here.
   marked a call with a malformed `types` registry (which is generated,
   untyped) as residue. The three reasons still decode. Surfaces and workflows had no such check: their
   generator tasks run no tagged tests, and their residue is already
-  surface and workflow task work. Plan coverage snapshots for mm-137 are
+  surface and workflow task work. Plan coverage snapshots for the private fixture app are
   re-recorded (plan and plugins). `scripts/phoenix_compile_check/task_cli.sh`
   completes `generate:api_clients` and `api_clients:residue` on
   `phoenix_api_clients` (three residue calls).
@@ -1553,7 +1553,7 @@ All notable changes to this project are documented here.
   against another column (strpos). The cut-2 fixture's Card has a Creator
   read rule, and `scripts/ash_compile_check.sh` loads the derived
   `has_many` through its public relationship with authorization on (a
-  non-creator sees `[]`, the creator only their child). The mm-137 encoder
+  non-creator sees `[]`, the creator only their child). The private fixture app's encoder
   count snapshot records the Postgres DDL size after WTF-393's
   `COMMENT ON COLUMN`.
 

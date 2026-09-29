@@ -1,7 +1,9 @@
 const fs = require('node:fs');
 module.exports = file => {
+  // Without a file, the customer site comes from LANDING_CUSTOMER_URL (no default).
+  if (!file && !process.env.LANDING_CUSTOMER_URL) throw Error('Pass a sites file or set LANDING_CUSTOMER_URL');
   const sites = file ? JSON.parse(fs.readFileSync(file,'utf8')) : [
-    ['mochary','https://beta.mocharymethod.com/'], ['bubble','https://bubble.io/']
+    ['customer', process.env.LANDING_CUSTOMER_URL], ['bubble','https://bubble.io/']
   ];
   if (!Array.isArray(sites) || sites.length === 0) throw Error('Expected a nonempty list of [site, URL] pairs');
   const names = new Set();

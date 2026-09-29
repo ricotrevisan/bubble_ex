@@ -11,7 +11,7 @@ const original = JSON.parse(fs.readFileSync(path.join(baseline, 'comparison.json
 const source = original.results.filter(r => r.mode === 'source');
 const lockPath = path.join(baseline, 'grading-baseline-lock.json');
 const snapshot = original.mode === 'snapshot';
-const files = ['comparison.json', ...(snapshot ? source.filter(s => !s.error).map(s => `${s.site}-${s.width}-snapshot.json`) : ['mochary', 'bubble'].map(s => `${s}-redacted-payload.json`)),
+const files = ['comparison.json', ...(snapshot ? source.filter(s => !s.error).map(s => `${s.site}-${s.width}-snapshot.json`) : ['customer', 'bubble'].map(s => `${s}-redacted-payload.json`)),
   ...source.filter(r => !r.error).map(r => `comparison/${r.site}/source-${r.width}.png`)];
 const revisionPath = path.join(baseline, 'benchmark-revision.json');
 const benchmarkRevision = fs.existsSync(revisionPath) ? JSON.parse(fs.readFileSync(revisionPath)) : {revision: 1};

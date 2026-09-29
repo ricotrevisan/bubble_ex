@@ -133,7 +133,7 @@ defmodule BubbleEx.Plan do
   top-level tasks. Candidate edges are added by rule priority: `generate`,
   `release`, `early` and `secrets`, `decision`, `reusable` and
   `acceptance`, `fragment`, `plugin`, `api`, then `calls` last. An edge
-  that would close a cycle with those already added (on mm-137, only
+  that would close a cycle with those already added (on a private production app, only
   `calls` edges between backend folders that call each other both ways) is
   kept as a non-blocking `:coordinate` edge instead: ordering ignores it,
   the calling task's `unit_test` criterion lists the callee in

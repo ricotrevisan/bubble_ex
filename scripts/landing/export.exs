@@ -1,4 +1,7 @@
-# Usage: mix run scripts/landing/export.exs BASELINE_DIR OUTPUT_DIR [SOURCE_STYLES_DIR]
+# Usage: LANDING_CUSTOMER_URL=https://customer.example/ \
+#          mix run scripts/landing/export.exs BASELINE_DIR OUTPUT_DIR [SOURCE_STYLES_DIR]
+# LANDING_CUSTOMER_URL is the customer site captured under the `customer` slug;
+# it has no default.
 # Only the captured, credential-redacted payload is rendered. Roots are requested
 # once to discover safe font stylesheet URLs; no source application is modified.
 alias BubbleEx.Frontend
@@ -40,8 +43,10 @@ end
 source_styles_dir = List.first(extra)
 File.mkdir_p!(output)
 
+customer_url = System.fetch_env!("LANDING_CUSTOMER_URL")
+
 for {site, url} <- [
-      {"mochary", "https://beta.mocharymethod.com/"},
+      {"customer", customer_url},
       {"bubble", "https://bubble.io/"}
     ] do
   payload =

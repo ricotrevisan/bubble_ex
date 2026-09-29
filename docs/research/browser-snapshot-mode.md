@@ -71,9 +71,9 @@ Final page evidence is `_build/snapshot-iteration-6/grades.json`:
 
 | Landing page | Width | Grade | Pixel difference |
 | --- | ---: | ---: | ---: |
-| beta.mocharymethod.com | 390 | 100% | 0.009946% |
-| beta.mocharymethod.com | 768 | 100% | 0.006345% |
-| beta.mocharymethod.com | 1440 | 100% | 0.002963% |
+| example-customer.test | 390 | 100% | 0.009946% |
+| example-customer.test | 768 | 100% | 0.006345% |
+| example-customer.test | 1440 | 100% | 0.002963% |
 | bubble.io | 390 | 100% | 0.061261% |
 | bubble.io | 768 | 100% | 0.025673% |
 | bubble.io | 1440 | 100% | 0.016065% |
@@ -83,7 +83,7 @@ and full-page pixel assertion. All six decoded credential gates pass, and the
 exported pages make zero external requests during measurement. Source capture
 warnings and unused/unsupported resource findings remain in the manifests;
 100% refers to these fixed checks, not zero findings or application equivalence.
-The historical app-data result remains 70.53% overall (Mochary 100%, Bubble
+The historical app-data result remains 70.53% overall (customer 100%, Bubble
 41.25/41.72/40.23); its captures and credential gate were not changed.
 
 ## Scan boundary
@@ -102,6 +102,7 @@ obtain a passing result.
 Install the pinned parser/browser dependencies, then run:
 
 ```sh
+export LANDING_CUSTOMER_URL=https://example-customer.test/  # the customer site; no default
 node scripts/landing/capture-snapshot.cjs NEW_PRIVATE_BASELINE SNAPSHOT_RUNTIME
 mix run scripts/landing/export-snapshot.exs PRIVATE_BASELINE NEW_OUTPUT SNAPSHOT_RUNTIME
 node scripts/landing/measure-snapshot.cjs NEW_OUTPUT

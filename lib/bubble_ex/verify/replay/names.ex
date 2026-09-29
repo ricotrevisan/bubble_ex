@@ -15,7 +15,7 @@ defmodule BubbleEx.Verify.Replay.Names do
   an error, never a guess at request time.
 
   **Option values.** The Data API reads and writes an option-set value by
-  its **display text**, not its stored key (`db_value`): on mm-137 a
+  its **display text**, not its stored key (`db_value`): on a private production app a
   create with `"sent"` for a value displayed `Sent` was refused, `"Sent"`
   accepted (WTF-385). `options` maps, per type and option field, each key
   to its display text; `to_api/4` and `from_api/4` translate seed and

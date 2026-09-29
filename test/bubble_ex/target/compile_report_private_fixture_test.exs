@@ -5,8 +5,8 @@ defmodule BubbleEx.Target.CompileReportPrivateFixtureTest do
   #     BUBBLE_EX_PRIVATE_EXPORT=path/to/export mix test --only private_fixture
   #
   # `BubbleEx.Target.CompileReport.build/4` counts (no names or IDs) are
-  # compared with a committed snapshot, by default the mm-137 test
-  # version's, for each setting of `ignore_empty_constraints` (Bubble's
+  # compared with a committed snapshot, by default the private fixture
+  # app's test version, for each setting of `ignore_empty_constraints` (Bubble's
   # default for searches that do not state it is not verified). A changed
   # count means updating the snapshot, with the reason in the PR:
   #
@@ -25,7 +25,7 @@ defmodule BubbleEx.Target.CompileReportPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/expression/counts/mm-137.json"
+  @default_snapshot "test/support/expression/counts/private-app.json"
   @settings [{"unknown", nil}, {"ignored", true}, {"compared", false}]
 
   setup_all do

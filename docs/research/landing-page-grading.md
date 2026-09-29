@@ -1,6 +1,6 @@
 # Landing-page acceptance rubric (version 1)
 
-Scope: the anonymous initial landing pages of `https://beta.mocharymethod.com/`
+Scope: the anonymous initial landing pages of `https://example-customer.test/`
 and `https://bubble.io/`, at viewport widths 390, 768 and 1440 CSS pixels,
 height 900, DPR 1, Chromium 140 / Playwright 1.55.1 on Linux. No form
 submissions, login, or navigation beyond these pages is authorized.
@@ -58,7 +58,7 @@ JavaScript `null` as a literal `/null` URL, creating false dangling-file failure
 The anchor still participates in the label/destination comparison. Thresholds,
 categories, and references are unchanged; prior scores are retained in the audit.
 
-Reference revision 2 (September 11): the original Mochary 1440-pixel screenshot
+Reference revision 2 (September 11): the original customer 1440-pixel screenshot
 shows a different layout from its paired DOM audit. Fresh captures reproduce the
 original audit exactly at all three widths, and reproduce the original 390- and
 768-pixel PNGs byte for byte. Hashes of the source page, shared styles, reusables,
@@ -72,27 +72,27 @@ the same consistency check and were not substituted.
 
 Checkpoint scores (iteration 14; same candidate measured against both references):
 
-| Reference | Mochary 390 / 768 / 1440 | Bubble 390 / 768 / 1440 | Combined |
+| Reference | Customer 390 / 768 / 1440 | Bubble 390 / 768 / 1440 | Combined |
 |---|---|---|---|
 | Original | 100 / 100 / 83.33 | 30.51 / 35.02 / 33.50 | 63.72 |
 | Revision 2 | 100 / 100 / 100 | 30.51 / 35.02 / 33.50 | 66.50 |
 
-Mochary passes the diagnostic page tests at revision 2. Bubble and the independent
+The customer page passes the diagnostic page tests at revision 2. Bubble and the independent
 release gates are not accepted. These scores describe the captured pages, not
 general application functionality or interactive workflow parity.
 
-Iteration 20, with the same revision 2 reference: Mochary remains 100 at all
+Iteration 20, with the same revision 2 reference: the customer page remains 100 at all
 widths; Bubble scores 35.08 / 35.54 / 34.14, for a combined 67.45. This iteration
 adds Phosphor icons, shared-style breakpoints, margin-aware fill sizing, and
 reusable instance sizing corrections. Missing runtime content still fails.
 
-Iteration 21 adds bounded literal horizontal lists. Mochary remains 100 at all
+Iteration 21 adds bounded literal horizontal lists. The customer page remains 100 at all
 widths; Bubble scores 35.25 / 35.70 / 34.28, for a combined 67.53. The fourteen
 logo images have matching cell dimensions, but their animated positions still
 fail, as do missing runtime content and reusable parameter values.
 
 Iteration 23 resolves literal reusable parameters and restores acceptance of
-inert Message editor metadata. Mochary remains 100; Bubble scores
+inert Message editor metadata. The customer page remains 100; Bubble scores
 40.93 / 41.38 / 39.95, for a combined 70.37. All visible exported images load;
 their total count still differs from the reference. Iteration 22 exposed a
 regression introduced after the iteration 21 capture: stricter argument checks
@@ -102,13 +102,13 @@ tests now include that observed metadata and keep unknown arguments rejected.
 
 Iteration 26 fixes stale image-height bounds and icon styles overriding initial
 visibility, and supports showing native elements at authored breakpoints.
-Mochary remains 100; Bubble scores 41.04 / 41.46 / 40.00, for a combined 70.41.
+The customer page remains 100; Bubble scores 41.04 / 41.46 / 40.00, for a combined 70.41.
 The corrected image is 24 × 24 at all three widths, matching fresh source
 observations. Source content generated from group data, database searches, and
 plugins still differs; none of those failures is excluded from the score.
 
 Iteration 28 adds typed literal group data and explicit parent-data forwarding.
-Mochary remains 100; Bubble scores 41.11 / 41.60 / 40.11, for a combined 70.47.
+The customer page remains 100; Bubble scores 41.11 / 41.60 / 40.11, for a combined 70.47.
 This iteration also exposed intermittent `bpqqfagk` frozen screenshot failures:
 the dropdown text sometimes shifts down by one pixel. Its exported HTML and CSS
 are identical to the preceding implementation, geometry remains exact, and
@@ -124,11 +124,11 @@ their bounds. Bubble's two mobile background images now have the observed
 changes. Page height improves from 14,073 to 13,609 px at 390 px and from 12,773
 to 12,605 px at 768 px. The combined score remains 70.47 because complete box
 comparisons still fail on position; no fractional credit was added for improving
-only some coordinates. Mochary remains 100 at all widths.
+only some coordinates. The customer page remains 100 at all widths.
 
 Iteration 31 retains authored element IDs and supported inline head CSS. Bubble's
 document widths now match 390 / 768 / 1440 rather than 590 / 1168 / 1980, and its
-document heights become 13,409 / 12,405 / 11,333. Mochary remains 100; Bubble
+document heights become 13,409 / 12,405 / 11,333. The customer page remains 100; Bubble
 scores 41.12 / 41.60 / 40.12, with the combined score still truncated to 70.47.
 The visual category still fails. Its percentage of differing pixels rises as
 the excess canvas width is removed; that percentage alone must not be described
@@ -138,13 +138,13 @@ The page styles are additional rendering inputs captured from the two authorized
 landing URLs. They are held separately from the reference captures and locked
 by SHA-256; a second fetch reproduced their discovered style blocks exactly.
 The input hashes are `85375431a3416accff5a9f388f5488fa722979e146bd64e204ffe3de02321d90`
-for `mochary.json` and `210bd1f33239dea9d0edb7a72ab4781b25f81c849db2fea66ff788ac41933405`
+for `customer.json` and `210bd1f33239dea9d0edb7a72ab4781b25f81c849db2fea66ff788ac41933405`
 for `bubble.json`. No existing reference PNG, DOM audit, payload, or baseline lock
 was edited. Pass the private source-style directory as the optional third
 argument to `scripts/landing/export.exs` to reproduce this iteration; omit it
 to repeat the older app-payload-only export input. The script verifies its
 separate `lock.json` before reading these inputs.
-The final parser hardening was exported again as iteration 32. All 28 Mochary
+The final parser hardening was exported again as iteration 32. All 28 customer
 and 170 Bubble HTML/CSS/asset files are byte-identical to iteration 31, so the
 measured rendering is unchanged. The local frozen run again encountered the
 documented dropdown shift; that case's HTML, page CSS, and shared CSS remain
@@ -157,7 +157,7 @@ images load and their boxes are identical to iteration 32. The remaining mobile
 16 px vertical offset is unchanged. Alternate files use the existing asset
 download and credential protections; overlapping sources follow the last matching
 authored condition. Runtime expressions and compound conditions remain unresolved.
-Mochary remains 100 at all widths. Bubble remains 41.12 / 41.60 / 40.12 and the
+The customer page remains 100 at all widths. Bubble remains 41.12 / 41.60 / 40.12 and the
 combined score remains 70.47: correcting two images does not pass the complete
 visual assertion. No reference, category, or threshold changed.
 
@@ -174,7 +174,7 @@ symbol because inline SVG IDs collided. Iteration 35 gives each rendered icon a
 stable instance-specific symbol ID; the same probe then reports zero conflicts.
 All 22 icon asset findings are gone. Thirteen original/sanitized glyph pairs at
 16 / 24 / 32 px produce 39 byte-identical Chromium screenshots. The full page
-grade remains 70.47 (Mochary 100 at every width; Bubble 41.12 / 41.60 / 40.12).
+grade remains 70.47 (customer 100 at every width; Bubble 41.12 / 41.60 / 40.12).
 These focused corrections do not pass the complete visual or content assertions.
 
 Iterations 38–39 resolve the header spacer's supported geometry style. Its source
@@ -192,7 +192,7 @@ Dependent styles therefore start inactive and activate only with valid reference
 Missing, ambiguous, transformed, placeholder, or self-resizing measurements leave
 them inactive. Tests cover those cases and viewport changes. The mobile spacer
 and hero now start at 80 px, and document height changes from 13,409 to 13,393 px.
-Mochary remains 100; Bubble scores 41.24 / 41.60 / 40.12, for a combined 70.49.
+The customer page remains 100; Bubble scores 41.24 / 41.60 / 40.12, for a combined 70.49.
 The complete appearance/content and normal-source credential gates still fail.
 
 Iterations 40–41 correct child document order inside positioned containers.
@@ -211,7 +211,7 @@ supported. Substituting only the supported operation in a private probe restored
 the text. Direct year extraction now uses the recorded snapshot time, retains
 the original binding, and rejects additional arguments, timezone overrides, and
 operation chains. A fetched reusable export test covers the UTC year boundary.
-The copyright line matches at all three widths. Mochary remains 100; Bubble
+The copyright line matches at all three widths. The customer page remains 100; Bubble
 scores 41.25 / 41.62 / 40.14, for a combined 70.50. Runtime content and appearance
 gaps and the original credential gates remain.
 
@@ -231,13 +231,14 @@ the tablet and desktop fields 28 / 25 px too short. The renderer now leaves an
 authored minimum intact, while retaining the zero default for unbounded fields.
 A browser regression checks minimum/maximum bounds, the mobile breakpoint, and
 clearing after content growth. The prompt wrapper and aspect spacer now match
-their complete source boxes on tablet and desktop. Mochary remains 100; Bubble
+their complete source boxes on tablet and desktop. The customer page remains 100; Bubble
 scores 41.25 / 41.72 / 40.23, for a combined 70.53. The user's selected next
 direction is a browser-captured snapshot mode; the grading checks remain fixed.
 
 To repeat a candidate with the private captured inputs:
 
 ```sh
+export LANDING_CUSTOMER_URL=https://example-customer.test/  # the customer site; no default
 mix run scripts/landing/export.exs "$BASELINE_DIR" _build/landing-candidate
 # Run the next command inside the pinned Linux Playwright 1.55.1 image,
 # mounting this repository at the same absolute path.

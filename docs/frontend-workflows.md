@@ -220,7 +220,7 @@ mobile views):
   Steps are counted the same way. Residue reasons are counted per entry (a
   workflow can have several).
 
-### mm-137 (test version), 2026-09-27
+### Private fixture app (test version), 2026-09-27
 
 With page data (WTF-420): 553 native (24.3%), 380 wired (16.7%), 702 own
 body, 1,877 native steps, 858 unavailable inputs; see
@@ -228,7 +228,7 @@ body, 1,877 native steps, 858 unavailable inputs; see
 before it (WTF-372).
 
 Counts only; the snapshot is
-`test/support/target/phoenix/counts/mm-137.frontend_workflows.json`.
+`test/support/target/phoenix/counts/private-app.frontend_workflows.json`.
 
 | | total | native (own body) | native | wired |
 |-|------:|------:|-------:|------:|

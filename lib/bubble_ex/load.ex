@@ -7,7 +7,7 @@ defmodule BubbleEx.Load do
   `BubbleEx.Load.Plan` says where it goes. `BubbleEx.Target.Ash.Loader` is
   the first adapter (Ash on PostgreSQL).
 
-      {:ok, export} = BubbleEx.Load.Export.open("exports/mm-137")
+      {:ok, export} = BubbleEx.Load.Export.open("exports/my-app")
       # :checkout keeps a real run on the connection that holds its lock.
       target =
         BubbleEx.Target.Ash.Loader.target(project,
@@ -242,8 +242,8 @@ defmodule BubbleEx.Load do
 
   ## A live run (needs Rico's approval; not done by any test)
 
-  No test contacts Bubble or uses a token. A live run against an app (e.g.
-  mm-137) would be:
+  No test contacts Bubble or uses a token. A live run against an app would
+  be:
 
     1. In Bubble, enable the Data API for every data type to migrate
        (Settings → API) and create an admin API token. The export reads
@@ -255,7 +255,7 @@ defmodule BubbleEx.Load do
            BUBBLE_API_TOKEN=... mix run -e '
              app = File.read!("app.json") |> Jason.decode!()
              {:ok, model} = BubbleEx.Model.build(app)
-             {:ok, _} = BubbleEx.Load.DataApi.export(model, "exports/mm-137",
+             {:ok, _} = BubbleEx.Load.DataApi.export(model, "exports/my-app",
                app_url: "https://<app host>", version: "live")'
 
        It resumes if interrupted (rerun the same command). Check the
@@ -283,7 +283,7 @@ defmodule BubbleEx.Load do
        instead.
 
     6. After the cutover, delete the export:
-       `mix bubble.export.delete exports/mm-137` (`Export.delete/1`).
+       `mix bubble.export.delete exports/my-app` (`Export.delete/1`).
 
   The export holds personal data (users' emails and whatever the app
   stores) and BubbleEx does not encrypt it: it must live on an encrypted

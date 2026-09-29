@@ -8,7 +8,7 @@ defmodule BubbleEx.ModelPrivateFixtureTest do
   # The path is a decoded `.bubble` app JSON file or a split export directory
   # (see `BubbleEx.Test.SplitExport`). The Model's aggregate counts
   # (`BubbleEx.Model.summary/1`) are compared with a committed count snapshot,
-  # by default the mm-137 test version's. The snapshot holds counts only,
+  # by default the private fixture app's test version. The snapshot holds counts only,
   # never names or IDs. It is not a zero-diagnostic target: a changed count
   # means updating the snapshot, with the reason in the PR:
   #
@@ -23,7 +23,7 @@ defmodule BubbleEx.ModelPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/model/counts/mm-137.json"
+  @default_snapshot "test/support/model/counts/private-app.json"
   # Build-time budget for one Model build of a large app.
   @budget_ms 10_000
 

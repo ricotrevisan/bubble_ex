@@ -7,7 +7,7 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
   #
   # It compares aggregate counts (the projected tables, columns and
   # relationships, and each format's output size and diagnostics) with a
-  # committed snapshot, by default the mm-137 test version's. The snapshot
+  # committed snapshot, by default the private fixture app's test version. The snapshot
   # holds counts only, never names, IDs or output. A changed count means
   # updating the snapshot, with the reason in the PR:
   #
@@ -25,7 +25,7 @@ defmodule BubbleEx.Db.EncodersPrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  @default_snapshot "test/support/db/counts/mm-137.json"
+  @default_snapshot "test/support/db/counts/private-app.json"
   @formats ~w(dbml postgres sqlite tsql ecto zod xano convex)a
 
   setup_all do

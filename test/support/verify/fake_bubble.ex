@@ -285,7 +285,7 @@ defmodule BubbleEx.Test.FakeBubble do
     case s.records[id] do
       %{type: ^type} = r ->
         # Bubble answers a record the privacy rules hide with its ID only
-        # (observed on mm-137, WTF-385), not a 404.
+        # (observed on a private production app, WTF-385), not a 404.
         if visible?(s, r, viewer),
           do: json(conn, 200, %{"response" => view(s, id, r, viewer, conn)}),
           else: json(conn, 200, %{"response" => %{"_id" => id}})
