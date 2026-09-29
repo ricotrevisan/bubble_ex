@@ -294,7 +294,8 @@ defmodule BubbleEx.Verify.Difference do
 
   defp explains?(%{kind: :visible_fields} = c, %{op: "record_visible"} = e, held)
        when is_map(held) do
-    shown = c.target -- (c.target -- Map.get(held, c.record, DataApi.always_held()))
+    record_held = Map.get(held, c.record, DataApi.always_held())
+    shown = Enum.filter(c.target, &(&1 in record_held))
     c.record == e[:record] and e[:expected] == true and e[:actual] == false and shown == []
   end
 

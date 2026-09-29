@@ -67,7 +67,7 @@ defmodule BubbleEx.Verify.DataApi do
   def answer(false, _fields, _held), do: :id_only
 
   def answer(true, fields, held) do
-    case Enum.sort(Enum.uniq(fields)) -- (Enum.sort(Enum.uniq(fields)) -- held) do
+    case fields |> Enum.uniq() |> Enum.filter(&(&1 in held)) |> Enum.sort() do
       [] -> :id_only
       shown -> {:fields, shown}
     end
