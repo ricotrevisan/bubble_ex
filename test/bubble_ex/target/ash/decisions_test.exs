@@ -151,10 +151,23 @@ defmodule BubbleEx.Target.Ash.DecisionsTest do
       check_golden(Path.join(@golden, "combined.unverified.ex.txt"), source)
     end
 
+    test "drop matches its golden Project" do
+      check_golden(
+        Path.join(@golden, "drop.project.json"),
+        golden_json(project!(:drop)) <> "\n"
+      )
+    end
+
+    test "drop renders its golden source (privacy: :unverified)" do
+      {:ok, source} = :drop |> project!(privacy: :unverified) |> Source.render()
+      check_golden(Path.join(@golden, "drop.unverified.ex.txt"), source)
+    end
+
     test "every golden is checked" do
       expected =
         Enum.map(DecidedFixture.sets(), &"#{&1}.ex.txt") ++
           ~w(combined.project.json combined.unverified.ex.txt) ++
+          ~w(drop.project.json drop.unverified.ex.txt) ++
           ~w(cut2.project.json cut2.unverified.ex.txt) ++
           ~w(cut3.project.json cut3.unverified.ex.txt)
 

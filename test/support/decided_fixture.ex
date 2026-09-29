@@ -20,8 +20,14 @@ defmodule BubbleEx.Test.DecidedFixture do
   # with `keep_order: false`, Favorites naming it `favorite_project`);
   # `membership` makes Workspace's Members a membership join (its rules
   # test it) shared with User's Workspaces; `cut3` is both.
+  # Drops (WTF-422, over the cut-1 export, hints rejected): `drop` drops
+  # Task (accepting three of the lists referencing it and dropping the
+  # fourth), Workspace's Members (privacy rules read it: they deny),
+  # Project's Note and the backend workflow wSyncOnly (wSyncNotify
+  # calls it); `drop_dangling` drops Task alone, accepting nothing (four
+  # dangling references: errors that block).
 
-  alias BubbleEx.{Decision, Findings, Index, Model}
+  alias BubbleEx.{CanonicalJson, Decision, Findings, Index, Model}
   alias BubbleEx.Target.Ash
 
   @app "test/support/samples/synthetic_findings_export.json"
@@ -31,7 +37,8 @@ defmodule BubbleEx.Test.DecidedFixture do
   @cut1 ~w(refine derive rename combined)a
   @cut2 ~w(count text_ref reverse indexes cut2)a
   @cut3 ~w(join membership cut3)a
-  @sets @cut1 ++ @cut2 ++ @cut3
+  @drops ~w(drop drop_dangling)a
+  @sets @cut1 ++ @cut2 ++ @cut3 ++ @drops
 
   @doc "The decision sets."
   def sets, do: @sets
@@ -41,6 +48,9 @@ defmodule BubbleEx.Test.DecidedFixture do
 
   @doc "The cut-3 decision sets."
   def cut3_sets, do: @cut3
+
+  @doc "The drop decision sets (WTF-422)."
+  def drop_sets, do: @drops
 
   @doc "The app JSON (of a decision set: the cut-2 sets have their own app)."
   def app(set \\ :refine)
@@ -89,7 +99,7 @@ defmodule BubbleEx.Test.DecidedFixture do
     {:ok, index} = Index.build(app, model: model)
     {:ok, %{findings: findings}} = Findings.analyze(app, model: model, index: index)
 
-    records = records(set, findings)
+    records = records(set, findings, index)
     {:ok, resolved} = Decision.resolve(records, findings, index: index, now: @now)
     applied = Decision.applicable(resolved, findings)
 
@@ -119,6 +129,40 @@ defmodule BubbleEx.Test.DecidedFixture do
     %{model: model, applied: applied, decisions_sha256: sha} = build(:locked)
     {:ok, faithful} = Ash.map(model)
     Ash.map(model, applied, Keyword.merge(opts, names: faithful.names, decisions_sha256: sha))
+  end
+
+  @doc """
+  `app` with the owner dropping `symbols` (WTF-422): `[symbol_id]` or
+  `[{symbol_id, drop options}]` (`Decision.drop/4`'s, e.g. `dangling:`),
+  resolved and mapped. Returns `%{model, index, records, resolved,
+  applied, decisions_sha256, project}`; `opts` go to `Target.Ash.map/3`.
+  """
+  def dropped(app, symbols, opts \\ []) do
+    {:ok, model} = Model.build(app)
+    {:ok, index} = Index.build(app, model: model)
+
+    records =
+      for entry <- symbols do
+        {symbol, drop_opts} = if is_tuple(entry), do: entry, else: {entry, []}
+        drop!(index, symbol, "Not migrated.", drop_opts)
+      end
+
+    {:ok, resolved} = Decision.resolve(records, [], index: index, now: @now)
+    applied = Decision.applicable(resolved, [])
+    sha = Decision.decisions_sha256(records)
+
+    {:ok, project} =
+      Ash.map(model, applied, Keyword.merge([decisions_sha256: sha, index: index], opts))
+
+    %{
+      model: model,
+      index: index,
+      records: records,
+      resolved: resolved,
+      applied: applied,
+      decisions_sha256: sha,
+      project: project
+    }
   end
 
   @cut2_transforms [:derive_count, :text_to_reference, :derive_reverse_relationship]
@@ -163,13 +207,51 @@ defmodule BubbleEx.Test.DecidedFixture do
     {records, Decision.applicable(resolved, findings), Decision.decisions_sha256(records)}
   end
 
-  defp records(set, findings) do
+  defp records(set, findings, index) do
     hints =
       if set in [:indexes, :cut2],
         do: [],
         else: for(f <- findings, f.kind == :search_index, do: finding!(f, :reject))
 
-    Enum.sort_by(hints ++ decided(set, findings), & &1.key)
+    decided = if set in @drops, do: drops(set, index), else: decided(set, findings)
+    Enum.sort_by(hints ++ decided, & &1.key)
+  end
+
+  defp drops(:drop, index) do
+    [
+      drop!(index, "data_type:task", "Tasks move to another tool.",
+        dangling: [
+          "field:project/legacy_tasks_list_custom_task",
+          "field:user/pinned_tasks_list_custom_task",
+          "field:user/starred_tasks_list_custom_task"
+        ]
+      ),
+      drop!(index, "field:project/tasks_list_custom_task", "Goes with Task."),
+      drop!(index, "field:workspace/members_list_user", "Membership is rebuilt."),
+      drop!(index, "field:project/note_text", "Notes are not migrated."),
+      drop!(index, "workflow:wSyncOnly", "Replaced by a database trigger.")
+    ]
+  end
+
+  defp drops(:drop_dangling, index),
+    do: [drop!(index, "data_type:task", "Tasks move to another tool.")]
+
+  defp drop!(index, symbol, rationale, opts \\ []) do
+    {:ok, decision} =
+      Decision.drop(
+        index,
+        symbol,
+        rationale,
+        Keyword.merge(
+          [
+            id: "dec_drop_" <> binary_part(CanonicalJson.sha256(symbol), 0, 12),
+            author: %{"kind" => "owner", "id" => "user:fixture", "via" => "form"}
+          ],
+          opts
+        )
+      )
+
+    decision
   end
 
   defp decided(:refine, findings) do

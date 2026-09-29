@@ -11,7 +11,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   | bucket | meaning | read from |
   |--------|---------|-----------|
   | `generated` | the generator emitted it | data types, fields, option sets and values: a resource, attribute, relationship, enum or enum value of the `BubbleEx.Target.Ash.Project` whose `source` is its Bubble ID **and**, with rendered files, the module and name in the rendered source (read from the AST); pages and reusables: `.wtf/surfaces.json` of the rendered files; workflows: a **native** workflow (its whole body, and its callees', generated) of the `BubbleEx.Target.Ash.Workflows.Spec` (backend) or the `BubbleEx.Target.Elixir.FrontendWorkflows.Spec` (pages and reusables); API calls: a call of the `BubbleEx.Target.ApiClients.Spec` |
-  | `decision` | an applied owner decision replaced or removed it | fields: a derived calculation, count aggregate or `has_many` standing for the field (`derive_*` decisions), rendered like a field; workflows: a closed `delete_workflows` or plugin `drop` task of the plan |
+  | `decision` | an applied owner decision replaced or removed it | fields: a derived calculation, count aggregate or `has_many` standing for the field (`derive_*` decisions), rendered like a field; workflows: a closed `delete_workflows` or plugin `drop` task of the plan; every category: a subject of a closed owner `:drop` task of the plan (WTF-422: the dropped page, data type, field, option set or workflow and everything in it), why `owner_drop` |
   | `residue` | not emitted, and an **open** plan task that is not a generator node carries residue whose subject is the symbol itself or one of its own parts (a workflow's actions): agent work. Never for pages and reusables: the generator emits every surface | the plan's tasks and their `BubbleEx.Plan.Residue` |
   | `diagnosed` | the generator left it out and said why | a `:ash_malformed_omitted` or `:ash_duplicate_enum_value` diagnostic of the Project; a workflow on no page or reusable (`no_surface`) |
   | `excluded` | not part of the app to migrate | deleted in Bubble; mobile views and their workflows (the plan excludes them) |
@@ -72,15 +72,20 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
   def account(inputs) do
     plan = plan_facts(inputs.plan)
     files = Map.get(inputs, :files)
-    ctx = %{project: inputs.project, rendered: rendered(files, inputs.project)}
+
+    ctx = %{
+      project: inputs.project,
+      rendered: rendered(files, inputs.project),
+      dropped: plan.dropped
+    }
 
     %{
       data_types: data_types(inputs.model, ctx),
       fields: fields(inputs.model, ctx),
       option_sets: option_sets(inputs.model, ctx),
       option_values: option_values(inputs.model, ctx),
-      pages: surfaces(inputs.index, :page, surfaces(files)),
-      reusables: surfaces(inputs.index, :reusable, surfaces(files)),
+      pages: surfaces(inputs.index, :page, surfaces(files), plan.dropped),
+      reusables: surfaces(inputs.index, :reusable, surfaces(files), plan.dropped),
       workflows:
         workflows(
           inputs.index,
@@ -208,6 +213,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
       cond do
         type.deleted -> entry(id, :excluded, :deleted, subjects)
+        MapSet.member?(ctx.dropped, id) -> entry(id, :decision, :owner_drop, subjects)
         resource && module(ctx, resource.module) -> entry(id, :generated, nil, subjects)
         resource -> entry(id, :uncovered, :not_rendered, subjects)
         diagnosed?(ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
@@ -229,6 +235,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       cond do
         type.deleted -> entry(id, :excluded, :type_deleted, subjects)
         field.deleted -> entry(id, :excluded, :deleted, subjects)
+        MapSet.member?(ctx.dropped, id) -> entry(id, :decision, :owner_drop, subjects)
         items = stored[key] -> rendered_entry(id, :generated, nil, items, ctx, subjects)
         items = derived[key] -> rendered_entry(id, :decision, :derived, items, ctx, subjects)
         diagnosed?(ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
@@ -287,6 +294,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
       cond do
         set.deleted -> entry(id, :excluded, :deleted, subjects)
+        MapSet.member?(ctx.dropped, id) -> entry(id, :decision, :owner_drop, subjects)
         enum && module(ctx, enum.module) -> entry(id, :generated, nil, subjects)
         enum -> entry(id, :uncovered, :not_rendered, subjects)
         diagnosed?(ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
@@ -323,6 +331,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
     cond do
       set.deleted -> entry(id, :excluded, :option_set_deleted, subjects)
       value.deleted -> entry(id, :excluded, :deleted, subjects)
+      MapSet.member?(known.ctx.dropped, id) -> entry(id, :decision, :owner_drop, subjects)
       emitted = known.generated[key] -> value_entry(id, emitted, known.ctx, subjects)
       MapSet.member?(known.duplicates, key) -> entry(id, :diagnosed, :duplicate_key, subjects)
       diagnosed?(known.ctx.project, subjects) -> entry(id, :diagnosed, :malformed, subjects)
@@ -350,7 +359,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
 
   # --- surfaces -----------------------------------------------------------------------
 
-  defp surfaces(%Index{} = index, kind, rendered) do
+  defp surfaces(%Index{} = index, kind, rendered, dropped) do
     section = if kind == :page, do: "pages", else: "reusables"
     emitted = Map.get(rendered, section, %{})
     key = if kind == :page, do: :page, else: :element
@@ -361,6 +370,9 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
       cond do
         kind == :page and symbol.attrs[:section] == "mobile_views" ->
           entry(symbol.id, :excluded, :mobile_view, subjects)
+
+        MapSet.member?(dropped, symbol.id) ->
+          entry(symbol.id, :decision, :owner_drop, subjects)
 
         Map.has_key?(emitted, symbol.bubble_id) ->
           entry(symbol.id, :generated, nil, subjects)
@@ -544,19 +556,30 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
     open = Enum.filter(tasks, &(&1.status == :open and &1.kind not in ignored))
     residue = open |> Enum.flat_map(& &1.residue) |> Enum.sort_by(& &1.reason)
 
+    dropped =
+      for %{status: :closed, kind: :drop, subjects: subjects} <- tasks,
+          id <- subjects,
+          into: MapSet.new(),
+          do: id
+
     removed =
       for %{status: :closed, kind: kind, subjects: subjects} <- tasks,
-          kind in [:delete_workflows, :plugin],
+          kind in [:delete_workflows, :plugin, :drop],
           id <- subjects,
           String.starts_with?(id, "workflow:"),
           into: %{},
-          do: {id, if(kind == :plugin, do: :plugin_drop, else: :delete_workflows)}
+          do: {id, removal(kind)}
 
     %{
       reasons: residue |> Enum.reverse() |> Map.new(&{&1.subject, &1.reason}),
-      removed: removed
+      removed: removed,
+      dropped: dropped
     }
   end
+
+  defp removal(:plugin), do: :plugin_drop
+  defp removal(:drop), do: :owner_drop
+  defp removal(:delete_workflows), do: :delete_workflows
 
   defp entry(id, bucket, why, subjects),
     do: %{id: id, bucket: bucket, why: why, subjects: subjects}

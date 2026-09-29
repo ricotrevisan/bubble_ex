@@ -12,11 +12,11 @@ defmodule BubbleEx.Decision.Resolved do
 
   | State | Rule |
   |-------|------|
-  | `:active` | the current record of its key and still valid |
-  | `:stale` | a finding decision (any choice) whose finding is present with another `proposal_sha256` or `basis_sha256`, or whose `modify` parameters no longer fit its proposal or the index |
-  | `:orphaned` | a finding decision (not an acknowledgement) whose finding is absent, or a rename whose subject is gone |
+  | `:active` | the current record of its key and still valid (a drop may carry `:dangling_references`) |
+  | `:stale` | a finding decision (any choice) whose finding is present with another `proposal_sha256` or `basis_sha256`, or whose `modify` parameters no longer fit its proposal or the index; a drop whose symbols changed since (`basis_sha256`) or that cannot be dropped (`:params_invalid`) |
+  | `:orphaned` | a finding decision (not an acknowledgement) whose finding is absent, or a rename or drop whose subject is gone |
   | `:acknowledged` | an `acknowledge` whose finding is absent, or present with the recorded hashes; applies nothing |
-  | `:withdrawn` | a withdrawn rename or parity exception; applies nothing |
+  | `:withdrawn` | a withdrawn rename, parity exception or drop; applies nothing |
   | `:superseded` | a newer revision of the key exists |
   | `:expired` | a parity exception past `expires_at`, or whose scenario hash changed or is unknown |
 
@@ -25,14 +25,18 @@ defmodule BubbleEx.Decision.Resolved do
   version differs from the current one, so a UI can say "analyzer updated"
   rather than "Bubble changed"); `:finding_absent` with `:subject_present`
   or `:subject_gone` (orphaned, acknowledged); `:subject_gone` (orphaned
-  rename); `:newer_revision` (superseded); `:expired`, `:scenario_changed`
-  and `:scenario_unknown` (expired).
+  rename or drop); `:newer_revision` (superseded); `:expired`,
+  `:scenario_changed` and `:scenario_unknown` (expired);
+  `:dangling_references` (an active drop of a data type or option set that
+  a kept field references, not accepted in the drop's `dangling`).
 
   ## Publication (WTF-352 D2)
 
   `blocking/1` is exactly what blocks publishing: current accepts and
   modifies that are `:stale`, or `:orphaned` while their subject still
-  exists. The owner re-decides or acknowledges each
+  exists; accepted drops that are `:stale`, or `:active` with
+  `:dangling_references` (WTF-422: fail-safe, a dangling reference is
+  never accepted silently). The owner re-decides or acknowledges each
   (`BubbleEx.Decision.acknowledge/2`). `archived/1` is what is archived
   automatically: orphans whose subject is gone. Stale rejects and
   acknowledgements, expired parity exceptions and renames never block:
@@ -55,6 +59,7 @@ defmodule BubbleEx.Decision.Resolved do
           | :expired
           | :scenario_changed
           | :scenario_unknown
+          | :dangling_references
   @type entry :: %{decision: Decision.t(), state: state(), reasons: [reason()]}
   @type t :: %__MODULE__{entries: [entry()], undecided: [String.t()]}
 
@@ -71,7 +76,9 @@ defmodule BubbleEx.Decision.Resolved do
 
   @doc """
   The entries that block publication: current finding accepts and
-  modifies that are `:stale`, or `:orphaned` with `:subject_present`.
+  modifies that are `:stale`, or `:orphaned` with `:subject_present`;
+  accepted drops that are `:stale`, or `:active` with
+  `:dangling_references`.
   """
   @spec blocking(t()) :: [entry()]
   def blocking(%__MODULE__{entries: entries}) do
@@ -82,6 +89,12 @@ defmodule BubbleEx.Decision.Resolved do
       %{decision: %{kind: :finding, choice: c}, state: :orphaned, reasons: reasons}
       when c in [:accept, :modify] ->
         :subject_present in reasons
+
+      %{decision: %{kind: :drop, choice: :accept}, state: :stale} ->
+        true
+
+      %{decision: %{kind: :drop, choice: :accept}, state: :active, reasons: reasons} ->
+        :dangling_references in reasons
 
       _ ->
         false

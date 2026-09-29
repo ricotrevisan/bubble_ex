@@ -13,7 +13,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
   # `BubbleEx.Target.Ash` ("Decisions").
 
   alias BubbleEx.{Decision, Diagnostic, Error, Finding, Model}
-  alias BubbleEx.Decision.Applied
+  alias BubbleEx.Decision.{Applied, Drop}
   alias BubbleEx.Finding.Kinds
   alias BubbleEx.Findings.Joins
   alias BubbleEx.Index.Symbol
@@ -86,18 +86,35 @@ defmodule BubbleEx.Target.Ash.Decisions do
           applied: [map()],
           deferred: [map()],
           owners: [tuple()],
+          drops: drops(),
           diagnostics: [Diagnostic.t()]
         }
 
+  @type drops :: %{
+          types: MapSet.t(String.t()),
+          fields: MapSet.t(field_key()),
+          sets: MapSet.t(String.t()),
+          accepted: MapSet.t(String.t()),
+          pages: [String.t()],
+          workflows: [String.t()],
+          keys: %{String.t() => String.t()}
+        }
+
   @doc false
-  @spec plan(Model.t(), list(), map()) :: {:ok, plan()} | {:error, Error.t()}
-  def plan(%Model{} = model, decisions, names) when is_list(decisions) do
+  @spec plan(Model.t(), list(), map(), BubbleEx.Index.t() | nil) ::
+          {:ok, plan()} | {:error, Error.t()}
+  def plan(%Model{} = model, decisions, names, index \\ nil) when is_list(decisions) do
     ctx = context(model)
 
     with :ok <- all_applied(decisions),
          :ok <- unique_keys(decisions),
          decisions = decisions |> Enum.reject(&(&1.transform in @not_schema)),
          decisions = Enum.sort_by(decisions, & &1.key),
+         {drops, decisions} = Enum.split_with(decisions, &match?(%Applied{kind: :drop}, &1)),
+         {:ok, drops} <- collect(drops, &check_drop(&1, ctx, index)),
+         dropped = dropped(drops, ctx),
+         {:ok, decisions} <- undropped(decisions, dropped),
+         ctx = Map.put(ctx, :dropped, dropped),
          {:ok, checked} <- collect(decisions, &check(&1, ctx)),
          :ok <- one_per_field(checked),
          {:ok, joins} <- join_groups(checked),
@@ -109,9 +126,13 @@ defmodule BubbleEx.Target.Ash.Decisions do
          {:ok, indexes, index_deferred, index_diags} <- indexes(checked, ctx),
          {:ok, names, rename_diags} <- renames(checked, names, ctx) do
       applied =
-        for {op, a, _, _} <- checked,
-            op != :indexes or Map.has_key?(indexes, a.key),
-            do: record(a)
+        for(
+          {op, a, _, _} <- checked,
+          op != :indexes or Map.has_key?(indexes, a.key),
+          do: record(a)
+        )
+        |> Kernel.++(Enum.map(drops, &record/1))
+        |> Enum.sort_by(& &1.key)
 
       {:ok,
        Map.merge(ops, %{
@@ -121,6 +142,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
          applied: applied,
          deferred: Enum.sort_by(index_deferred, & &1.key),
          owners: for({:rename, a, _, _} <- checked, do: owner(a.params.slot, a.subject)),
+         drops: dropped,
          diagnostics:
            Enum.flat_map(fields, &field_diag(&1, ctx)) ++
              index_diags ++
@@ -173,6 +195,146 @@ defmodule BubbleEx.Target.Ash.Decisions do
       error -> error
     end
   end
+
+  # --- drops (WTF-422) --------------------------------------------------------------
+
+  # An applied drop is consistent with itself (its key is the drop's of its
+  # subject, its parameters fit, its basis is the one it was resolved
+  # active against) and, with an index, with the symbols it hashes; its
+  # data-model subject is in the Model and may be dropped.
+  defp check_drop(%Applied{} = a, ctx, index) do
+    with :ok <- drop_consistent(a, nil),
+         {:ok, a} <- drop_subject(a, ctx),
+         :ok <- if(index, do: drop_consistent(a, index), else: :ok),
+         do: {:ok, a}
+  end
+
+  # `Drop.check_applied/2`: without an index, the entry against itself;
+  # with one, against the snapshot too.
+  defp drop_consistent(a, index) do
+    case Drop.check_applied(a, index) do
+      :ok ->
+        :ok
+
+      {:error, reason} when reason in [:identity, :params, :key] ->
+        error("the drop is malformed (#{reason}): it is not a resolved drop decision", %{
+          key: a.key
+        })
+
+      {:error, reason} ->
+        error(
+          "the drop is stale or forged (#{reason}): resolve the decisions against this " <>
+            "snapshot (BubbleEx.Decision.resolve/3)",
+          %{key: a.key}
+        )
+    end
+  end
+
+  defp drop_subject(%Applied{params: %{symbol: :data_type}, subject: %{type: t}} = a, ctx) do
+    cond do
+      not Map.has_key?(ctx.types, t) -> missing(a)
+      t == "user" -> error("the User data type cannot be dropped", %{key: a.key})
+      true -> {:ok, a}
+    end
+  end
+
+  defp drop_subject(%Applied{params: %{symbol: :field}, subject: %{type: t, field: f}} = a, ctx) do
+    case Map.fetch(ctx.fields, {t, f}) do
+      {:ok, %{system: nil}} -> {:ok, a}
+      {:ok, _} -> error("a built-in field cannot be dropped", %{key: a.key})
+      :error -> missing(a)
+    end
+  end
+
+  defp drop_subject(%Applied{params: %{symbol: :option_set}, subject: %{option_set: s}} = a, ctx) do
+    if Map.has_key?(ctx.sets, s), do: {:ok, a}, else: missing(a)
+  end
+
+  # Pages and workflows are not the schema's: the frontend and workflow
+  # bindings omit them (`BubbleEx.Target.Phoenix`, the workflow specs).
+  defp drop_subject(a, _ctx), do: {:ok, a}
+
+  defp dropped(drops, ctx) do
+    of = fn symbol -> for %{params: %{symbol: ^symbol}} = a <- drops, do: a end
+    types = MapSet.new(of.(:data_type), & &1.subject.type)
+
+    fields =
+      for({{t, _} = key, _} <- ctx.fields, MapSet.member?(types, t), do: key) ++
+        Enum.map(of.(:field), &{&1.subject.type, &1.subject.field})
+
+    %{
+      types: types,
+      fields: MapSet.new(fields),
+      sets: MapSet.new(of.(:option_set), & &1.subject.option_set),
+      accepted: drops |> Enum.flat_map(&Map.get(&1.params, :dangling, [])) |> MapSet.new(),
+      pages: of.(:page) |> Enum.map(& &1.subject.page) |> Enum.sort(),
+      workflows: of.(:workflow) |> Enum.map(& &1.subject.workflow) |> Enum.sort(),
+      keys: Map.new(drops, fn a -> {Drop.symbol_id(a.params.symbol, a.subject), a.key} end)
+    }
+  end
+
+  # A decision about a dropped symbol: a hint applied by default applies
+  # nothing (the symbol is gone); an owner's decision is an error, since
+  # the owner decided both (withdraw one). An index over a dropped field
+  # of a kept type is deferred (`index_method/3`), not an error.
+  defp undropped(decisions, dropped) do
+    Enum.reduce_while(decisions, {:ok, []}, fn a, {:ok, acc} ->
+      case {about_dropped?(a, dropped), a.automatic} do
+        {false, _} ->
+          {:cont, {:ok, [a | acc]}}
+
+        {true, true} ->
+          {:cont, {:ok, acc}}
+
+        {true, false} ->
+          {:halt,
+           error(
+             "the decision applies to a symbol an owner dropped; withdraw the drop or the decision",
+             %{key: a.key, subject: a.subject}
+           )}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
+    end
+  end
+
+  defp about_dropped?(%Applied{} = a, dropped) do
+    subject? =
+      case a.subject do
+        %{type: t, field: f} -> MapSet.member?(dropped.fields, {t, f})
+        %{type: t} -> MapSet.member?(dropped.types, t)
+        %{option_set: s} -> MapSet.member?(dropped.sets, s)
+        _ -> false
+      end
+
+    subject? or
+      (a.transform != :add_indexes and
+         a.proposal |> proposal_symbols() |> Enum.any?(&dropped_symbol?(&1, dropped)))
+  end
+
+  defp proposal_symbols(value) when is_binary(value), do: [value]
+
+  defp proposal_symbols(value) when is_map(value) and not is_struct(value),
+    do: value |> Map.values() |> Enum.flat_map(&proposal_symbols/1)
+
+  defp proposal_symbols(value) when is_list(value), do: Enum.flat_map(value, &proposal_symbols/1)
+  defp proposal_symbols(_), do: []
+
+  defp dropped_symbol?("data_type:" <> t, dropped), do: MapSet.member?(dropped.types, t)
+  defp dropped_symbol?("option_set:" <> s, dropped), do: MapSet.member?(dropped.sets, s)
+
+  defp dropped_symbol?("field:" <> _ = id, dropped) do
+    case id |> String.trim_leading("field:") |> String.split("/") do
+      [t, f] -> MapSet.member?(dropped.fields, {unescape(t), unescape(f)})
+      _ -> false
+    end
+  end
+
+  defp dropped_symbol?(_id, _dropped), do: false
+
+  defp unescape(part), do: part |> String.replace("~1", "/") |> String.replace("~0", "~")
 
   defp check(%Applied{kind: :finding} = a, ctx) do
     with :ok <- known(a),
@@ -847,6 +1009,9 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
       Enum.any?(columns, &MapSet.member?(derived, &1.field)) ->
         {:defer, "a field it covers is derived by a decision and has no column"}
+
+      Enum.any?(columns, &MapSet.member?(ctx.dropped.fields, &1.field)) ->
+        {:defer, "a field it covers is dropped by an owner decision and has no column"}
 
       Enum.all?(access, &(&1 in @btree_access)) ->
         {:ok, :btree}

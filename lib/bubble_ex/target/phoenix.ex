@@ -131,7 +131,8 @@ defmodule BubbleEx.Target.Phoenix do
   `<Web>.BubbleRoutes` (the page routes at their Bubble paths, in an
   `ash_authentication_live_session`; the owned router calls its
   `bubble_routes/0` once, with or without a frontend, so pages added later
-  are routed on regeneration), `assets/css/bubble.css` (`@theme` tokens,
+  are routed on regeneration; a page an owner dropped (WTF-422, a `:drop`
+  in `project.applied`) is neither routed nor rendered), `assets/css/bubble.css` (`@theme` tokens,
   named styles as component classes), `assets/css/bubble_residue.css`,
   `<Web>.Bubble` (overlay JS commands and the Escape hook),
   `.wtf/surfaces.json` (locked page and component names) and a
@@ -350,6 +351,7 @@ defmodule BubbleEx.Target.Phoenix do
          {:ok, user, email, confirmed_at} <- user(project),
          :ok <- check_claims(project, clients),
          {:ok, frontend} <- frontend(opts),
+         frontend = without_dropped_pages(frontend, project),
          :ok <- frontend_workflows(opts, frontend),
          {:ok, workflows} <- workflow_files(Keyword.get(opts, :workflows), ctx),
          ctx =
@@ -462,7 +464,7 @@ defmodule BubbleEx.Target.Phoenix do
   def frontend_report(%Project{} = project, opts) do
     with {:ok, ctx} <- context(project, opts),
          {:ok, %Normalized{} = frontend} <- frontend(opts) do
-      {:ok, pages(frontend, ctx, opts).report}
+      {:ok, pages(without_dropped_pages(frontend, project), ctx, opts).report}
     else
       {:ok, nil} -> invalid("frontend_report/2 needs the frontend: option")
       error -> error
@@ -598,6 +600,24 @@ defmodule BubbleEx.Target.Phoenix do
       _ -> invalid("frontend: must be a BubbleEx.Frontend.Normalized")
     end
   end
+
+  # Pages an owner dropped (WTF-422, `project.applied`) are neither routed
+  # nor rendered: no LiveView, route, surface entry or traceability test.
+  defp without_dropped_pages(nil, _project), do: nil
+
+  defp without_dropped_pages(%Normalized{} = frontend, project) do
+    dropped = Project.dropped(project).pages
+
+    if MapSet.size(dropped) == 0,
+      do: frontend,
+      else: %{
+        frontend
+        | pages: Enum.reject(frontend.pages, &MapSet.member?(dropped, page_id(&1)))
+      }
+  end
+
+  defp page_id(%{source: %{bubble_id: id}}) when is_binary(id) and id != "", do: id
+  defp page_id(%{map_key: key}), do: key
 
   # Frontend workflows run their data steps and schedule backend workflows
   # on the backend workflow runtime (WTF-373), so they need `workflows:`

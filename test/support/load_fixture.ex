@@ -12,6 +12,8 @@ defmodule BubbleEx.Test.LoadFixture do
   #     counts, text references, a derived has_many
   #   * :combined - its :combined set (cut 1): fields derived from related
   #     records, refined number types, renamed table and attributes
+  #   * :drop - its :drop set (WTF-422): the :combined rows, with Task
+  #     dropped and values of dropped fields (counted, never loaded)
   #   * :cut3 - its :cut3 set (WTF-406): lists normalized to join tables,
   #     one of their own and two shared by mirrored lists (with members
   #     one side does not list back, a repeated member and dangling IDs)
@@ -328,6 +330,7 @@ defmodule BubbleEx.Test.LoadFixture do
   def app(:cut2), do: BubbleEx.Test.DecidedFixture.app(:cut2)
   def app(:combined), do: BubbleEx.Test.DecidedFixture.app(:combined)
   def app(:cut3), do: BubbleEx.Test.DecidedFixture.app(:cut3)
+  def app(:drop), do: BubbleEx.Test.DecidedFixture.app(:drop)
 
   def model(which) do
     {:ok, model} = Model.build(app(which))
@@ -338,6 +341,19 @@ defmodule BubbleEx.Test.LoadFixture do
   def rows(:cut2), do: cut2_rows()
   def rows(:combined), do: combined_rows()
   def rows(:cut3), do: cut3_rows()
+
+  # The :combined rows with values of the fields the :drop set drops: a
+  # Note by ID and by display name, Members and Tasks.
+  def rows(:drop) do
+    combined_rows()
+    |> update_in(["project"], fn [first, second] ->
+      [
+        Map.merge(first, %{"note_text" => "secret-note-1", "tasks_list_custom_task" => [todo1()]}),
+        Map.put(second, "Note", "secret-note-2")
+      ]
+    end)
+    |> update_in(["workspace"], fn [w] -> [Map.put(w, "members_list_user", [ada()])] end)
+  end
 
   def files(:field_types), do: field_types_files()
   def files(_which), do: []

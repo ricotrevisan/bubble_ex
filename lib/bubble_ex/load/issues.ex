@@ -127,6 +127,26 @@ defmodule BubbleEx.Load.Issues do
         details: d
       )
 
+  defp build(:load_type_dropped, s, d),
+    do:
+      Diagnostic.new(
+        :load_type_dropped,
+        "",
+        "#{d.count} exported rows of #{where(s)} are not loaded: an owner dropped the data type",
+        subject: s,
+        details: d
+      )
+
+  defp build(:load_dropped_field_data, s, d),
+    do:
+      Diagnostic.new(
+        :load_dropped_field_data,
+        "",
+        "#{d.count} rows hold values of #{where(s)}, which an owner dropped; not loaded",
+        subject: s,
+        details: d
+      )
+
   defp build(:load_type_unmapped, s, d),
     do:
       Diagnostic.new(

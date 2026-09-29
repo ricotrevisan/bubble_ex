@@ -42,7 +42,8 @@ defmodule BubbleEx.Index.Subject do
   @doc """
   The symbol IDs a subject names: the most specific symbol for its type,
   option set or API Connector keys (a field, privacy rule or option set
-  attribute over its parent), plus its workflow and its plugin. The inverse of `of/2` for
+  attribute over its parent), plus its workflow, its plugin and its page
+  (a drop decision's subject, WTF-422). The inverse of `of/2` for
   data-model subjects.
   """
   @spec symbol_ids(Diagnostic.subject()) :: [String.t()]
@@ -51,7 +52,8 @@ defmodule BubbleEx.Index.Subject do
       owner_symbol(subject),
       workflow_symbol(subject),
       external_symbol(subject),
-      plugin_symbol(subject)
+      plugin_symbol(subject),
+      page_symbol(subject)
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.sort()
@@ -72,6 +74,9 @@ defmodule BubbleEx.Index.Subject do
 
   defp plugin_symbol(%{plugin: plugin}), do: Symbol.id(:plugin, plugin)
   defp plugin_symbol(_), do: nil
+
+  defp page_symbol(%{page: page}), do: Symbol.id(:page, page)
+  defp page_symbol(_), do: nil
 
   defp external_symbol(%{external_type: descriptor}) do
     case Types.target(descriptor) do

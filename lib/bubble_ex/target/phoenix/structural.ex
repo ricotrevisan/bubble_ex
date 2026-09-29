@@ -205,8 +205,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   `"mix wtf.verify"`), `:cmd` (`(args, env) -> {output, status}` running
   `mix` in `root`), `:git_sha`, `:resolved` (a
   `BubbleEx.Decision.Resolved` of the app's decisions: its active owner
-  decisions are what `decision:<key>` markers may cite; without it they
-  count as unlisted). Advisory, like everything run in the owner's
+  decisions, drops excepted (WTF-422), are what `decision:<key>` markers
+  may cite; without it they count as unlisted). Advisory, like everything run in the owner's
   repository.
   """
   @spec project(Path.t(), keyword()) :: {:ok, report()} | {:error, Error.t()}
@@ -687,8 +687,15 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   defp ok_or_nil({:ok, value}), do: value
   defp ok_or_nil(_), do: nil
 
+  # A drop (WTF-422) never authorizes a bypass: dropping must never widen
+  # access.
   defp owner_decisions(%Resolved{entries: entries}),
-    do: for(%{state: :active, decision: %{author: %{kind: :owner}, key: key}} <- entries, do: key)
+    do:
+      for(
+        %{state: :active, decision: %{author: %{kind: :owner}, kind: kind, key: key}} <- entries,
+        kind != :drop,
+        do: key
+      )
 
   defp owner_decisions(_), do: []
 

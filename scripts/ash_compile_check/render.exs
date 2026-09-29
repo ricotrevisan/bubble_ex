@@ -155,7 +155,11 @@ decided = [
   {"Fixtures.DecidedCut2", "decided_cut2",
    fn -> BubbleEx.Test.DecidedFixture.project(:cut2, privacy: privacy) end},
   {"Fixtures.DecidedCut3", "decided_cut3",
-   fn -> BubbleEx.Test.DecidedFixture.project(:cut3, privacy: privacy) end}
+   fn -> BubbleEx.Test.DecidedFixture.project(:cut3, privacy: privacy) end},
+  # Owner drops (WTF-422): a dropped type, fields (one read by privacy
+  # rules, which deny) and accepted dangling references kept as IDs.
+  {"Fixtures.DecidedDrop", "decided_drop",
+   fn -> BubbleEx.Test.DecidedFixture.project(:drop, privacy: privacy) end}
 ]
 
 # A mutant of a Project with policies: the join resources' read policy

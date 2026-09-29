@@ -5,7 +5,7 @@ defmodule BubbleEx.Plan.Builder do
   # kinds and dependency rules; this one only computes them.
 
   alias BubbleEx.{CanonicalJson, Decision, Finding, Index}
-  alias BubbleEx.Decision.Applied
+  alias BubbleEx.Decision.{Applied, Drop}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Index.{Graph, Subject, Symbol}
   alias BubbleEx.Plan.{Criteria, Order, Residue, Task}
@@ -43,6 +43,7 @@ defmodule BubbleEx.Plan.Builder do
   def run(input) do
     ctx =
       input
+      |> drops()
       |> scope()
       |> decisions()
       |> residue()
@@ -51,6 +52,7 @@ defmodule BubbleEx.Plan.Builder do
     tasks =
       (generate_tasks(ctx) ++
          decision_tasks(ctx) ++
+         drop_tasks(ctx) ++
          app_tasks(ctx) ++
          surface_tasks(ctx) ++
          workflow_tasks(ctx) ++ api_tasks(ctx) ++ plugin_tasks(ctx) ++ release_tasks(ctx))
@@ -79,6 +81,8 @@ defmodule BubbleEx.Plan.Builder do
   defp scope(%{index: index} = ctx) do
     {pages, mobile} =
       index |> Index.symbols(:page) |> Enum.split_with(&(&1.attrs[:section] != "mobile_views"))
+
+    pages = Enum.reject(pages, &MapSet.member?(ctx.dropped_symbols, &1.id))
 
     surfaces = pages ++ Index.symbols(index, :reusable)
 
@@ -111,6 +115,31 @@ defmodule BubbleEx.Plan.Builder do
         |> Map.new(fn {k, v} -> {k, Enum.sort(v)} end),
       fragments: fragments,
       fragment_of: fragment_of
+    })
+  end
+
+  # --- owner drops (WTF-422) ---------------------------------------------------
+
+  # The owner's drops and every symbol they remove (the dropped symbols and
+  # their descendants): removed symbols are no task's work, and whatever
+  # kept uses them is residue (`:uses_dropped`).
+  defp drops(%{index: index, applied: applied} = ctx) do
+    drops = for %Applied{kind: :drop} = a <- applied, do: a
+
+    removed =
+      Map.new(drops, fn a ->
+        {a.key,
+         index
+         |> Drop.removed([a])
+         |> MapSet.to_list()
+         |> Enum.filter(&Index.symbol(index, &1))
+         |> Enum.sort()}
+      end)
+
+    Map.merge(ctx, %{
+      drops: drops,
+      drop_removed: removed,
+      dropped_symbols: removed |> Map.values() |> List.flatten() |> MapSet.new()
     })
   end
 
@@ -171,6 +200,7 @@ defmodule BubbleEx.Plan.Builder do
     removed_actions =
       for %{kind: :action} = a <- index.symbols,
           MapSet.member?(deleted, a.parent) or MapSet.member?(dropped_calls, a.id) or
+            MapSet.member?(ctx.dropped_symbols, a.id) or
             writes_dropped?(index, a.id, dropped_writes),
           into: MapSet.new(),
           do: a.id
@@ -256,9 +286,9 @@ defmodule BubbleEx.Plan.Builder do
 
   # Every symbol an applied decision names: its subject and every symbol ID
   # in its proposal.
-  defp touched(%Applied{subject: subject, proposal: proposal}, plugin_uses),
+  defp touched(%Applied{subject: subject, proposal: proposal, params: params}, plugin_uses),
     do:
-      (Subject.symbol_ids(subject) ++ symbol_ids(proposal))
+      (Subject.symbol_ids(subject) ++ symbol_ids(proposal) ++ symbol_ids(params))
       |> with_plugin_uses(plugin_uses)
       |> MapSet.new()
 
@@ -282,10 +312,12 @@ defmodule BubbleEx.Plan.Builder do
       ctx.removed_actions
       |> MapSet.union(ctx.deleted_workflows)
       |> MapSet.union(ctx.dropped.elements)
+      |> MapSet.union(ctx.dropped_symbols)
 
     by_subject =
       (Residue.index(ctx.index, ctx.model) ++
-         Residue.frontend(ctx.frontend, ctx.index) ++ ctx.extra ++ drop_residue(ctx))
+         Residue.frontend(ctx.frontend, ctx.index) ++
+         ctx.extra ++ drop_residue(ctx) ++ uses_dropped(ctx))
       |> Enum.reject(&(MapSet.member?(removed, &1.subject) or dropped_plugin?(ctx, &1)))
       |> Enum.uniq()
       |> Residue.sort()
@@ -310,6 +342,18 @@ defmodule BubbleEx.Plan.Builder do
     triggers ++ reads
   end
 
+  # A kept symbol referencing one an owner dropped (reading, writing,
+  # calling, navigating to, listening to it) must be rewritten. A field
+  # referencing a dropped type is the schema's (a dangling reference,
+  # blocking the drop until accepted: `BubbleEx.Decision.Drop`).
+  defp uses_dropped(%{dropped_symbols: dropped} = ctx) do
+    for id <- Enum.sort(dropped),
+        ref <- Index.references_to(ctx.index, id),
+        ref.kind != :field_type,
+        not MapSet.member?(dropped, ref.from),
+        do: Residue.entry(ref.from, :uses_dropped, %{symbol: id})
+  end
+
   # A dropped plugin's elements render nothing and its styles go unused.
   defp dropped_plugin?(ctx, %{reason: reason, detail: %{plugin: plugin}})
        when reason in [:plugin_element, :plugin_action, :plugin_event, :plugin_style],
@@ -326,7 +370,10 @@ defmodule BubbleEx.Plan.Builder do
     {kept, excluded} =
       index
       |> Index.symbols(:workflow)
-      |> Enum.reject(&MapSet.member?(ctx.deleted_workflows, &1.id))
+      |> Enum.reject(
+        &(MapSet.member?(ctx.deleted_workflows, &1.id) or
+            MapSet.member?(ctx.dropped_symbols, &1.id))
+      )
       |> Enum.split_with(
         &(&1.attrs[:backend] == true or MapSet.member?(ctx.surface_ids, &1.parent))
       )
@@ -426,8 +473,9 @@ defmodule BubbleEx.Plan.Builder do
 
   defp generate_tasks(%{index: index} = ctx) do
     subjects = %{
-      "generate:schema" => ids(index, [:data_type, :field]),
-      "generate:option_sets" => ids(index, [:option_set, :option_value, :option_attribute]),
+      "generate:schema" => ids(index, [:data_type, :field], ctx.dropped_symbols),
+      "generate:option_sets" =>
+        ids(index, [:option_set, :option_value, :option_attribute], ctx.dropped_symbols),
       "generate:policies" => ids(index, [:privacy_rule]),
       "generate:styles" => style_subjects(ctx),
       "generate:api_clients" => ids(index, [:api_group, :api_call]),
@@ -468,8 +516,8 @@ defmodule BubbleEx.Plan.Builder do
   defp style_subjects(ctx),
     do: ctx.residue |> Map.keys() |> Enum.filter(&String.starts_with?(&1, "style:"))
 
-  defp ids(index, kinds),
-    do: for(s <- index.symbols, s.kind in kinds, do: s.id)
+  defp ids(index, kinds, dropped \\ MapSet.new()),
+    do: for(s <- index.symbols, s.kind in kinds, not MapSet.member?(dropped, s.id), do: s.id)
 
   # remove_writes / delete_workflows of applied findings (accepted, or
   # hints applied by default): generated nodes the decision closes.
@@ -488,6 +536,24 @@ defmodule BubbleEx.Plan.Builder do
         status: :closed,
         closed_by: a.key,
         subjects: subjects |> Enum.uniq() |> Enum.sort()
+      }
+    end
+  end
+
+  # One closed task per owner drop (WTF-422), closed by the decision; its
+  # subjects are everything the drop removes.
+  defp drop_tasks(ctx) do
+    for a <- ctx.drops do
+      id = Drop.symbol_id(a.params.symbol, a.subject)
+
+      %Task{
+        id: "drop:" <> id,
+        kind: :drop,
+        actor: :generator,
+        status: :closed,
+        closed_by: a.key,
+        subjects: Map.fetch!(ctx.drop_removed, a.key),
+        label: label(ctx, id)
       }
     end
   end
@@ -954,8 +1020,9 @@ defmodule BubbleEx.Plan.Builder do
   defp generate_target(_ctx, %Task{kind: :auth}), do: "generate:policies"
   defp generate_target(_ctx, %Task{kind: :styles_residue}), do: "generate:styles"
 
-  defp generate_target(_ctx, %Task{kind: kind}) when kind in [:remove_writes, :delete_workflows],
-    do: "generate:schema"
+  defp generate_target(_ctx, %Task{kind: kind})
+       when kind in [:remove_writes, :delete_workflows, :drop],
+       do: "generate:schema"
 
   defp generate_target(_ctx, %Task{id: "data:dry_run"}), do: "generate:schema"
 
@@ -1055,12 +1122,38 @@ defmodule BubbleEx.Plan.Builder do
 
   # Workflows whose actions a decision removes wait for its node.
   defp decision_edges(ctx, tasks) do
-    for t <- tasks |> Map.values() |> Enum.sort_by(& &1.id),
-        t.kind in [:remove_writes, :delete_workflows],
-        subject <- t.subjects,
-        %{parent: workflow} <- [Index.symbol(ctx.index, subject)],
-        Map.has_key?(tasks, workflow),
-        do: edge(workflow, t.id, :decision, [subject])
+    removal =
+      for t <- tasks |> Map.values() |> Enum.sort_by(& &1.id),
+          t.kind in [:remove_writes, :delete_workflows],
+          subject <- t.subjects,
+          %{parent: workflow} <- [Index.symbol(ctx.index, subject)],
+          Map.has_key?(tasks, workflow),
+          do: edge(workflow, t.id, :decision, [subject])
+
+    removal ++ owner_drop_edges(ctx, tasks)
+  end
+
+  # A task that must rewrite a use of what an owner dropped (`:uses_dropped`
+  # residue) depends on the closed drop task (WTF-422).
+  defp owner_drop_edges(ctx, tasks) do
+    drop_of =
+      for a <- ctx.drops,
+          id <- Map.fetch!(ctx.drop_removed, a.key),
+          into: %{},
+          do: {id, "drop:" <> Drop.symbol_id(a.params.symbol, a.subject)}
+
+    uses =
+      for {subject, entries} <- ctx.residue,
+          %{reason: :uses_dropped, detail: %{symbol: symbol}} <- entries,
+          drop = drop_of[symbol],
+          drop != nil,
+          do: {subject, drop}
+
+    for {subject, drop} <- Enum.sort(Enum.uniq(uses)),
+        task = subject_task(ctx, subject),
+        Map.has_key?(tasks, task),
+        Map.has_key?(tasks, drop),
+        do: edge(task, drop, :decision, [subject])
   end
 
   # Reusables before consumers; acceptance after the surface, its fragments

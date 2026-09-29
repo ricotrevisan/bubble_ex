@@ -35,7 +35,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
       rules in Bubble, and only inside that workflow's generated body
       (after its `# bubble:workflow <id>` comment and before the next one)
     * `decision:<key>` - an owner's decision, which the caller must have
-      resolved as active and authored by the owner (`:decisions`)
+      resolved as active and authored by the owner (`:decisions`); never a
+      drop (WTF-422: dropping must never widen access)
 
   A `:runtime_start` needs no marker: its workflow must be in the bypass
   list and it must sit in that workflow's body. Anything else is

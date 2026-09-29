@@ -129,6 +129,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   def map(%Frontend{} = lowered, %Project{} = project, opts) when is_list(opts) do
     with {:ok, namespace} <- namespace(opts),
          {:ok, frontend} <- frontend(opts) do
+      dropped = Project.dropped(project)
+      lowered = without_dropped(lowered, dropped)
       present = Residue.normalized_ids(frontend)
       templates = Residue.runtime_template_ids(frontend)
       nodes = native_nodes(frontend)
@@ -151,6 +153,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
       ctx = %{
         backend: backend_actions(Keyword.get(opts, :backend)),
+        dropped: dropped,
         namespace: namespace,
         runtime: namespace <> ".Bubble.Runtime",
         project: project,
@@ -596,15 +599,62 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       residue: s.residue
     }
 
-    if s.residue != [] do
-      base
-    else
-      {condition, cr} = compile(s.condition, s.id, ctx)
-      {args, ar} = args(s.op, s.args, s.id, ctx)
-      step = %{base | condition: condition, args: args}
-      residue = Residue.sort(Enum.uniq(cr ++ ar ++ collisions(step)))
-      %{step | residue: residue}
+    dropped = dropped_target(s, ctx.dropped)
+
+    cond do
+      # A step calling, scheduling or navigating to what an owner dropped
+      # (WTF-422): residue, so the workflow refuses to run before step 1.
+      dropped != nil ->
+        entry = Residue.entry(s.id, :uses_dropped, %{symbol: dropped})
+        %{base | residue: Residue.sort([entry | s.residue])}
+
+      s.residue != [] ->
+        base
+
+      true ->
+        bound_step(s, base, ctx)
     end
+  end
+
+  defp dropped_target(%Step{op: :navigate, args: %{page: page}}, dropped) when is_binary(page),
+    do: if(MapSet.member?(dropped.pages, page), do: "page:" <> page)
+
+  defp dropped_target(%Step{op: op, args: %{workflow: w}}, dropped)
+       when op in [:call, :call_reusable, :schedule_custom, :schedule, :schedule_list] and
+              is_binary(w),
+       do: if(MapSet.member?(dropped.workflows, w), do: "workflow:" <> w)
+
+  defp dropped_target(_step, _dropped), do: nil
+
+  # The page workflows, elements and element states the owner's drops
+  # remove (WTF-422): a dropped page's, and every dropped workflow.
+  defp without_dropped(lowered, %{pages: pages, workflows: workflows}) do
+    if MapSet.size(pages) == 0 and MapSet.size(workflows) == 0 do
+      lowered
+    else
+      page? = fn surface -> MapSet.member?(pages, bubble(surface)) end
+
+      elements = Map.reject(lowered.elements, fn {_id, e} -> page?.(e.surface) end)
+
+      %{
+        lowered
+        | workflows:
+            Enum.reject(
+              lowered.workflows,
+              &(page?.(&1.surface) or MapSet.member?(workflows, &1.bubble_id))
+            ),
+          elements: elements,
+          states: Enum.filter(lowered.states, &Map.has_key?(elements, &1.element))
+      }
+    end
+  end
+
+  defp bound_step(s, base, ctx) do
+    {condition, cr} = compile(s.condition, s.id, ctx)
+    {args, ar} = args(s.op, s.args, s.id, ctx)
+    step = %{base | condition: condition, args: args}
+    residue = Residue.sort(Enum.uniq(cr ++ ar ++ collisions(step)))
+    %{step | residue: residue}
   end
 
   # Two inputs a step reads must not share a variable name.

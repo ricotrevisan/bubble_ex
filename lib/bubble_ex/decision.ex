@@ -3,13 +3,14 @@ defmodule BubbleEx.Decision do
   An owner's decision about a generated project, as a stack-neutral,
   versioned record (WTF-352).
 
-  One envelope, three kinds:
+  One envelope, four kinds:
 
   | `kind` | Key (one current record per key) | Decides |
   |--------|----------------------------------|---------|
   | `:finding` | `"finding:<finding id>"` | accept, reject or modify a `BubbleEx.Finding`'s proposal, or acknowledge that a decision no longer applies |
   | `:rename` | `"rename:<hash>"` of target, slot and subject | a target name overriding the name map |
   | `:parity_exception` | `"parity_exception:<hash>"` of scope and subject | an accepted behavioural difference with no finding |
+  | `:drop` | `"drop:<hash>"` of the dropped symbol's ID | a page, data type, field, option set or workflow deliberately left out of the migration (`BubbleEx.Decision.Drop`, WTF-422) |
 
   Fields:
 
@@ -23,22 +24,31 @@ defmodule BubbleEx.Decision do
     * `target` - the target stack of a `:rename` (`"ash"`), else `nil`
     * `choice` - findings: `:accept`, `:reject`, `:modify` or
       `:acknowledge` (a stale or orphaned decision was seen: stop blocking,
-      keep the faithful mapping; `acknowledge/2`); renames and parity
-      exceptions: `:accept` or `:withdraw` (`withdraw/2`)
+      keep the faithful mapping; `acknowledge/2`); renames, parity
+      exceptions and drops: `:accept` or `:withdraw` (`withdraw/2`)
     * `params` - `%{}` for accept, reject and acknowledge; for `modify`, only what
       `BubbleEx.Decision.Params` allows for the finding's transform. A
       rename's are `%{slot, name}`, a parity exception's
       `%{scope, checks, bubble_behavior, chosen_behavior}`: `scope` is the
       scenario ID it excuses (or, for a check with no scenario, the check
       name), `checks` the non-empty list of `BubbleEx.Verify.Check` names it
-      excuses (sorted, unique; a result of another check is not excused)
+      excuses (sorted, unique; a result of another check is not excused).
+      A drop's are `%{symbol, dangling}`: `symbol` the kind of the dropped
+      symbol (`:data_type`, `:field`, `:option_set`, `:page`,
+      `:workflow`; it must fit the subject) and `dangling` the sorted,
+      unique symbol IDs of the fields referencing a dropped data type or
+      option set whose dangling reference the owner accepts (default
+      `[]`; see `BubbleEx.Decision.Drop`)
     * `basis` - what the decision was made against: `finding_id`,
       `proposal_sha256` and `basis_sha256` (required for findings, see
       `BubbleEx.Finding`), and optionally `source_sha256`,
       `index_semantic_sha256`, `bubble_version`, `bubble_ex` and (parity
-      exceptions) `scenario_sha256`
+      exceptions) `scenario_sha256`. A drop needs `basis_sha256`:
+      `BubbleEx.Index.subject_sha256/2` of the dropped symbol and its
+      accepted dangling references (`drop/4` computes it)
     * `rationale`, `author` (`%{kind: :owner | :agent | :wtf_staff, id,
-      via: :chat | :form | :cli}`), `decided_at` - audit only
+      via: :chat | :form | :cli}`), `decided_at` - audit only; an accepted
+      drop requires a non-blank rationale
     * `expires_at` - optional, parity exceptions only
 
   Only `key`, `kind`, `subject`, `target`, `choice`, `params`,
@@ -85,23 +95,24 @@ defmodule BubbleEx.Decision do
   """
 
   alias BubbleEx.{CanonicalJson, Error, Finding, Index}
-  alias BubbleEx.Decision.{Applied, Params, Resolved}
+  alias BubbleEx.Decision.{Applied, Drop, Params, Resolved}
   alias BubbleEx.Finding.Kinds
   alias BubbleEx.Index.Subject
 
   @schema_version 1
 
-  @kinds [:finding, :rename, :parity_exception]
+  @kinds [:finding, :rename, :parity_exception, :drop]
   @choices [:accept, :reject, :modify, :acknowledge, :withdraw]
   @kind_choices %{
     finding: [:accept, :reject, :modify, :acknowledge],
     rename: [:accept, :withdraw],
-    parity_exception: [:accept, :withdraw]
+    parity_exception: [:accept, :withdraw],
+    drop: [:accept, :withdraw]
   }
   @author_kinds [:owner, :agent, :wtf_staff]
   @vias [:chat, :form, :cli]
   @targets ["ash"]
-  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin]
+  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin, :page]
   @basis_keys [
     :finding_id,
     :proposal_sha256,
@@ -138,7 +149,7 @@ defmodule BubbleEx.Decision do
   @required ~w(schema_version kind revision subject choice)
   @attrs Enum.map(@members, &String.to_atom/1)
 
-  @type kind :: :finding | :rename | :parity_exception
+  @type kind :: :finding | :rename | :parity_exception | :drop
   @type choice :: :accept | :reject | :modify | :acknowledge | :withdraw
   @type author :: %{
           kind: :owner | :agent | :wtf_staff,
@@ -298,11 +309,88 @@ defmodule BubbleEx.Decision do
   @spec withdraw(t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def withdraw(decision, opts \\ [])
 
-  def withdraw(%__MODULE__{kind: kind} = d, opts) when kind in [:rename, :parity_exception],
-    do: next(d, :withdraw, d.params, d.basis, opts)
+  def withdraw(%__MODULE__{kind: kind} = d, opts)
+      when kind in [:rename, :parity_exception, :drop],
+      do: next(d, :withdraw, d.params, d.basis, opts)
 
   def withdraw(%__MODULE__{kind: kind}, _opts),
-    do: error("only renames and parity exceptions are withdrawn; acknowledge a #{kind}", %{})
+    do:
+      error(
+        "only renames, parity exceptions and drops are withdrawn; acknowledge a #{kind}",
+        %{}
+      )
+
+  @doc """
+  A decision dropping the symbol `symbol_id` of `index` (WTF-422; see
+  `BubbleEx.Decision.Drop`): its subject, `params.symbol` and
+  `basis.basis_sha256` come from the index. `rationale` is required (a
+  non-blank string).
+
+  Options: `:dangling` (symbol IDs of the fields referencing a dropped data
+  type or option set whose dangling reference the owner accepts; each
+  must be one of them), `:revision` (default 1), `:id`, `:author`,
+  `:decided_at` and `:basis` (extra informational basis members).
+
+  A symbol that is not in the index, deleted, or not droppable (the User
+  type, a built-in field, a mobile view, a kind other than a page, data
+  type, field, option set or workflow) is `:invalid_input`.
+  """
+  @spec drop(Index.t(), String.t(), String.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def drop(%Index{} = index, symbol_id, rationale, opts \\ []) when is_binary(symbol_id) do
+    dangling = opts |> Keyword.get(:dangling, []) |> Enum.uniq() |> Enum.sort()
+
+    with {:ok, kind, subject} <- drop_subject(index, symbol_id),
+         :ok <- drop_refusal(index, kind, subject, symbol_id),
+         :ok <- drop_dangling(index, kind, subject, dangling) do
+      basis =
+        opts
+        |> Keyword.get(:basis, %{})
+        |> Map.new()
+        |> Map.put(:basis_sha256, Drop.basis_sha256(index, kind, subject, dangling))
+
+      opts
+      |> Keyword.take([:revision, :id, :author, :decided_at])
+      |> Map.new()
+      |> Map.merge(%{
+        kind: :drop,
+        subject: subject,
+        choice: :accept,
+        params: %{symbol: kind, dangling: dangling},
+        basis: basis,
+        rationale: rationale
+      })
+      |> new()
+    end
+  end
+
+  defp drop_subject(index, symbol_id) do
+    with %{} = symbol <- Index.symbol(index, symbol_id),
+         {:ok, kind, subject} <- Drop.subject(symbol) do
+      {:ok, kind, subject}
+    else
+      _ -> error("the symbol is not one a drop can name in this index", %{symbol: symbol_id})
+    end
+  end
+
+  defp drop_refusal(index, kind, subject, symbol_id) do
+    case Drop.refusal(index, kind, subject) do
+      nil -> :ok
+      why -> error("the symbol cannot be dropped (#{why})", %{symbol: symbol_id, reason: why})
+    end
+  end
+
+  defp drop_dangling(index, kind, subject, dangling) do
+    drop = %{params: %{symbol: kind}, subject: subject}
+    referencing = Drop.referencing(index, drop, Drop.removed(index, [drop]))
+
+    case dangling -- referencing do
+      [] ->
+        :ok
+
+      extra ->
+        error("dangling lists symbols that do not reference the dropped one", %{dangling: extra})
+    end
+  end
 
   defp next(d, choice, params, basis, opts) do
     opts
@@ -358,6 +446,9 @@ defmodule BubbleEx.Decision do
 
   def key(%__MODULE__{kind: :parity_exception} = d),
     do: hashed_key(:parity_exception, %{scope: d.params.scope, subject: d.subject})
+
+  def key(%__MODULE__{kind: :drop} = d),
+    do: hashed_key(:drop, %{symbol: Drop.symbol_id(d.params.symbol, d.subject)})
 
   defp hashed_key(kind, identity),
     do: "#{kind}:" <> binary_part(CanonicalJson.sha256(json(identity)), 0, 16)
@@ -598,6 +689,73 @@ defmodule BubbleEx.Decision do
     end
   end
 
+  defp by_kind(%{kind: :drop} = d, params) do
+    with :ok <- choice_of(d),
+         :ok <- absent(d.target, "target", :drop),
+         :ok <- absent(d.expires_at, "expires_at", :drop),
+         :ok <- drop_basis(d.basis),
+         :ok <- drop_rationale(d),
+         {:ok, params} <- params_object(params),
+         :ok <- only(params, ~w(symbol dangling), "drop params"),
+         {:ok, symbol} <- enum(params["symbol"], Drop.symbols(), "drop symbol"),
+         :ok <- drop_shape(symbol, d.subject),
+         {:ok, dangling} <- drop_dangling_param(symbol, Map.get(params, "dangling", [])) do
+      {:ok, %{d | params: %{symbol: symbol, dangling: dangling}}}
+    end
+  end
+
+  # A drop is made against the symbols it hashes; its other basis members
+  # are informational.
+  defp drop_basis(basis) do
+    cond do
+      not Map.has_key?(basis, :basis_sha256) ->
+        error("a drop's basis needs basis_sha256", %{})
+
+      Enum.any?([:finding_id, :proposal_sha256, :scenario_sha256], &Map.has_key?(basis, &1)) ->
+        error("a drop's basis has no finding or scenario members", %{})
+
+      true ->
+        :ok
+    end
+  end
+
+  defp drop_rationale(%{choice: :accept, rationale: r}) when is_binary(r) do
+    if String.trim(r) == "", do: error("a drop needs a rationale", %{}), else: :ok
+  end
+
+  defp drop_rationale(%{choice: :accept}), do: error("a drop needs a rationale", %{})
+  defp drop_rationale(_d), do: :ok
+
+  defp drop_shape(symbol, subject) do
+    shape = subject |> Map.keys() |> Enum.sort()
+
+    if shape == Drop.shape(symbol),
+      do: :ok,
+      else:
+        error("a #{symbol} drop needs a subject of #{inspect(Drop.shape(symbol))}", %{
+          shape: shape
+        })
+  end
+
+  defp drop_dangling_param(symbol, []) when is_atom(symbol), do: {:ok, []}
+
+  defp drop_dangling_param(symbol, list)
+       when symbol in [:data_type, :option_set] and is_list(list) do
+    cond do
+      not Enum.all?(list, &Drop.dangling_id?/1) ->
+        error("drop dangling must be field or option attribute symbol IDs", %{dangling: list})
+
+      Enum.sort(Enum.uniq(list)) != list ->
+        error("drop dangling must be sorted and unique", %{dangling: list})
+
+      true ->
+        {:ok, list}
+    end
+  end
+
+  defp drop_dangling_param(symbol, value),
+    do: error("a #{symbol} drop accepts no dangling references", %{dangling: value})
+
   # The checks a parity exception excuses: registered check names.
   defp parity_checks([_ | _] = checks) do
     known = BubbleEx.Verify.Check.names()
@@ -746,7 +904,10 @@ defmodule BubbleEx.Decision do
   def resolve(decisions, findings, opts) when is_list(decisions) and is_list(findings) do
     with {:ok, latest} <- latest(decisions),
          {:ok, ctx} <- resolve_context(opts) do
-      ctx = Map.put(ctx, :findings, Map.new(findings, &{&1.id, &1}))
+      ctx =
+        ctx
+        |> Map.put(:findings, Map.new(findings, &{&1.id, &1}))
+        |> Map.put(:dropped, dropped(latest, ctx.index))
 
       entries =
         decisions
@@ -829,6 +990,23 @@ defmodule BubbleEx.Decision do
 
   defp current(%{choice: :withdraw} = d, _ctx), do: entry(d, :withdrawn, [])
 
+  # A drop: orphaned when its symbol is gone, stale when it cannot be
+  # dropped or changed since, else active; `:dangling_references` when a
+  # kept field references what it drops and the owner has not accepted it.
+  defp current(%{kind: :drop} = d, ctx) do
+    case drop_validity(d, ctx.index) do
+      :ok ->
+        dangling = Drop.referencing(ctx.index, d, ctx.dropped) -- d.params.dangling
+        entry(d, :active, if(dangling == [], do: [], else: [:dangling_references]))
+
+      {:orphaned, reasons} ->
+        entry(d, :orphaned, reasons)
+
+      {:stale, reasons} ->
+        entry(d, :stale, reasons ++ analyzer(d, ctx))
+    end
+  end
+
   defp current(%{kind: :rename} = d, ctx) do
     if subject_presence(d.subject, ctx.index) == :subject_gone,
       do: entry(d, :orphaned, [:subject_gone]),
@@ -846,6 +1024,32 @@ defmodule BubbleEx.Decision do
       |> Enum.reject(&is_nil/1)
 
     if reasons == [], do: entry(d, :active, []), else: entry(d, :expired, reasons)
+  end
+
+  defp drop_validity(d, index) do
+    case Drop.refusal(index, d.params.symbol, d.subject) do
+      :subject_gone ->
+        {:orphaned, [:subject_gone]}
+
+      :not_droppable ->
+        {:stale, [:params_invalid]}
+
+      nil ->
+        if Index.subject_sha256(index, Drop.symbols(d)) == d.basis[:basis_sha256],
+          do: :ok,
+          else: {:stale, [:basis_changed]}
+    end
+  end
+
+  # Every symbol the current, valid drops remove: a field referencing a
+  # dropped type does not dangle when it is dropped too.
+  defp dropped(latest, index) do
+    drops =
+      for {_key, %{kind: :drop, choice: :accept} = d} <- latest,
+          drop_validity(d, index) == :ok,
+          do: d
+
+    Drop.removed(index, drops)
   end
 
   # What changed between the finding a decision was made on and `finding`.
@@ -902,7 +1106,9 @@ defmodule BubbleEx.Decision do
   @doc """
   What generation may apply, sorted by key: every `:active` accept or
   modify of a finding (its proposal with the parameters merged in), every
-  `:active` rename, and every hint finding with no current record (hints
+  `:active` rename and drop (transform `:drop`; one with
+  `:dangling_references` too: the generators report those references
+  as errors and keep their IDs as plain strings), and every hint finding with no current record (hints
   apply by default and are recorded only when rejected or trimmed; these
   are `automatic`). Rejections, acknowledgements, withdrawals, parity
   exceptions and records in any other state apply nothing: previews fall
@@ -954,6 +1160,19 @@ defmodule BubbleEx.Decision do
       subject: d.subject,
       target: d.target,
       params: d.params
+    }
+  end
+
+  defp applied(%{kind: :drop, choice: :accept} = d, _by_id) do
+    %Applied{
+      key: d.key,
+      kind: :drop,
+      decision_id: d.id,
+      transform: :drop,
+      subject: d.subject,
+      params: d.params,
+      basis_sha256: d.basis.basis_sha256,
+      basis: %{basis_sha256: d.basis.basis_sha256}
     }
   end
 

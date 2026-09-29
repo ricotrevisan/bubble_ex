@@ -15,6 +15,11 @@ defmodule BubbleEx.Load.Plan do
     * `joins` - `BubbleEx.Load.Plan.Join`s: lists of things an owner
       decision normalized to a join table (one row per member), in join
       ID order
+    * `dropped` - the data types an owner dropped (WTF-422,
+      `BubbleEx.Decision.Drop`), sorted: their exported rows are not
+      loaded and are reported as counts only (`:load_type_dropped`). A
+      dropped field of a kept type is in its table's `skipped` (reason
+      `:dropped`; `:load_dropped_field_data`, counts only)
 
   `sha256/1` pins a plan: a loader ledger belongs to one plan.
   """
@@ -23,13 +28,14 @@ defmodule BubbleEx.Load.Plan do
   alias BubbleEx.Load.Plan.{Auth, Join, Table}
 
   @enforce_keys [:target, :tables]
-  defstruct [:target, :auth, tables: [], joins: []]
+  defstruct [:target, :auth, tables: [], joins: [], dropped: []]
 
   @type t :: %__MODULE__{
           target: String.t(),
           tables: [Table.t()],
           auth: Auth.t() | nil,
-          joins: [Join.t()]
+          joins: [Join.t()],
+          dropped: [String.t()]
         }
 
   @typedoc """
@@ -66,9 +72,13 @@ defmodule BubbleEx.Load.Plan do
 
   @doc """
   SHA-256 of the plan's canonical JSON (encodings included), so a ledger
-  written for one plan is never resumed against another.
+  written for one plan is never resumed against another. A plan with no
+  dropped type hashes as before drops existed (no `dropped` member).
   """
   @spec sha256(t()) :: String.t()
+  def sha256(%__MODULE__{dropped: []} = plan),
+    do: plan |> json() |> Map.delete("dropped") |> CanonicalJson.sha256()
+
   def sha256(%__MODULE__{} = plan), do: plan |> json() |> CanonicalJson.sha256()
 
   defp json(%MapSet{} = set), do: set |> MapSet.to_list() |> Enum.sort()
@@ -92,8 +102,8 @@ defmodule BubbleEx.Load.Plan.Table do
       derives, which have no column; the loader reports drift between the
       stored Bubble value and the derived one
     * `skipped` - `%{field: id, reason: atom}` for fields deliberately not
-      stored (e.g. `:deleted`), so their data is reported, not flagged as
-      unknown
+      stored (`:dropped`: an owner dropped it, WTF-422), so their data is
+      reported as counts, not flagged as unknown
     * `joined` - the list fields stored in a join table instead of a
       column (`BubbleEx.Load.Plan.Join`)
   """
