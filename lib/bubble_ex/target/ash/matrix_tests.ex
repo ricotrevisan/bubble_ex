@@ -2,7 +2,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
   @moduledoc """
   Generated privacy-matrix tests for an Ash project (WTF-383, V3 of the
   WTF-358 verification proposal, §3.2 "Phoenix side"): from a
-  `BubbleEx.Target.Ash.Project` mapped with `privacy: :unverified` and a
+  `BubbleEx.Target.Ash.Project` mapped with `privacy: :unverified` (or
+  `:enforced`, as `BubbleEx.Target.Phoenix` renders it) and a
   privacy matrix (a `BubbleEx.Verify.Seed`, its `privacy_read`
   `BubbleEx.Verify.Scenario`s and their expected
   `BubbleEx.Verify.Recording`s, e.g. `BubbleEx.Verify.Matrix.synthesize/2`
@@ -147,7 +148,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
   @spec render(Project.t(), plan(), keyword()) :: {:ok, rendered()} | {:error, Error.t()}
   def render(project, plan, opts \\ [])
 
-  def render(%Project{privacy: :unverified} = project, %{seed: %Seed{} = seed} = plan, opts) do
+  def render(%Project{privacy: privacy} = project, %{seed: %Seed{} = seed} = plan, opts)
+      when privacy in [:unverified, :enforced] do
     namespace = Keyword.get(opts, :namespace, "MyApp")
 
     ctx = %{
@@ -180,7 +182,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
       {:error,
        Error.new(
          :invalid_input,
-         "matrix tests need a project mapped with privacy: :unverified",
+         "matrix tests need a project mapped with privacy: :unverified or :enforced",
          %{
            privacy: privacy
          }

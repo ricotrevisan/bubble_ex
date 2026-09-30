@@ -6,6 +6,49 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Enforced privacy policies in the generated app** (WTF-423).
+  `BubbleEx.Target.Phoenix.render/2` renders `privacy: :enforced` Projects
+  (Target.Ash's policies plus the write policy of option A): PicoSAT is
+  pinned; the User bypasses its policies and field policies for
+  AshAuthentication's own interactions (marked
+  `scaffold:ash_authentication`); page data, frontend and backend
+  workflows, the workflow API and jobs read with the current user loaded
+  afresh by `Privacy.load_actor/1`; searches use `:search`, a refused read
+  shows nothing and a hidden field reads as empty; a page count reads the
+  keys through `:search` (at most `:max_count`: Ash's count aggregate
+  under-counts with policies that read the actor); a page search whose
+  constraints or sort read a field some users may not view is residue
+  (`:search_field_hidden`); the workflow API's
+  admin token bypasses privacy for its run; private files can follow
+  "view attached files" (`private: :privacy_rules`, lookup marked
+  `scaffold:private_file_holders`); README and file headers warn that
+  writes are not policy-checked. The `data_access`, `serve_workflow_api`
+  and private-file switches stay off by default (`docs/page-data.md`,
+  "Enforced privacy", recommends turning them on in enforced mode after
+  review). An `:omit` render is unchanged byte for byte.
+  `scripts/phoenix_compile_check.sh` renders the fixtures with privacy
+  rules, pages and workflows enforced, runs the generated privacy matrix
+  against the app (and the private app), and runs
+  `test/support/target/phoenix/enforced_behavior.exs`, which must pass
+  enforced and fail, every test, against the `:omit` render.
+
+- **`privacy: :enforced` in Target.Ash** (WTF-423). `BubbleEx.Target.Ash.map/3`
+  takes `privacy: :enforced`: the policies of `:unverified` (reads follow
+  the compiled Bubble rules; stricter than Bubble on empty user-side
+  values, `actor_empty_denies`), plus Rico's write policy (option A):
+  `policy action(:create | :update | :destroy)` authorizing
+  `<Namespace>.Privacy.WorkflowWrite`, a check that passes only for writes
+  marked `%{private: %{bubble_workflow_write: true}}` (the generated workflow
+  runtime's); any other write is forbidden. Every such project carries
+  `:ash_writes_not_policy_checked` (writes are not checked against the
+  privacy rules) instead of `:ash_policies_unverified`, and the rendered
+  source says so. Types with file fields get a keyed `:attachments` read
+  action guarded by "view attached files". `Privacy.mode/0` returns
+  `:enforced`; PicoSAT is pinned as with `:unverified`. `Target.Ash.Source`'s
+  `extend:` takes `policy_bypasses: [{check, purpose}]`: marked bypasses
+  a renderer puts first (policies and field policies, private fields then
+  `:include`d). `MatrixTests.render/3` accepts `:enforced` projects.
+
 - **Vertical slice script** (`scripts/vertical_slice/`, WTF-378): takes one
   page of an app end to end and records what works. `run.sh EXPORT
   DECISIONS SLUG [PAGE]` picks the median page (`pages.exs`: own elements
@@ -1223,6 +1266,16 @@ All notable changes to this project are documented here.
   `scripts/phoenix_compile_check/task_cli.sh` checks the refusals and runs
   its tagged tests with `--test-db`.
 
+- **The `everyone` rule's reach negates an emptiness test exactly**
+  (WTF-430). Its record-value guard (every value the negated rules read
+  must be non-empty) turned the negation of `This Thing's X is not empty`
+  into `X is empty and X is not empty`, always false. A value read only as
+  the operand of an emptiness test (also through `defaulting to`) is no
+  longer guarded that way, in the policy generator and the privacy
+  interpreter alike; a reference read so must instead not be dangling (its
+  ID is nil or its record exists), so the reach never depends on the
+  uncalibrated `dangling_ref_is_empty`.
+
 - A modal Popup with an authored HTML ID rendered two `id` attributes on
   its `<.focus_wrap>`, which fails `mix compile --warnings-as-errors`
   ("key :id will be overridden in map"). It now takes the authored ID
@@ -1232,7 +1285,6 @@ All notable changes to this project are documented here.
   logo from ash-hq.org, a third-party request on every sign-in. The
   scaffold now includes an owned `<Web>.AuthOverrides` (a text banner with
   the project's name), listed first in the router's `overrides` (WTF-378).
-
 - The loader's stale join rows (`details.stale_members` of
   `:load_join_stale_member` and `:load_prune_unowned`) are capped at
   `Load.Issues.stale_rows/0` rows, with `rows_total` and `truncated`: an

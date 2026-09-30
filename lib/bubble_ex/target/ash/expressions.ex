@@ -482,6 +482,32 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {all_ok({node, negate(node), logged_in}, [node]), st}
   end
 
+  # Built by the policy generator only (the `everyone` rule's reach, WTF-430):
+  # a record-side reference is not dangling, that is its stored ID is nil
+  # or names a record that exists. Under either reading of a dangling
+  # reference (`dangling_ref_is_empty`) its emptiness is then settled.
+  defp atom_(%IR{op: :not_dangling, args: [x]}, st) do
+    case {classify(x.type), path(x, [], st, :relationship)} do
+      {%Type{kind: :ref, cardinality: :one}, {{:related, rels, rel}, st}} ->
+        {id, st} = value(x, st)
+
+        present =
+          ok(
+            id,
+            &{:or,
+             [{:call, "is_nil", [&1]}, {:call, "exists", [{:ref, rels, rel}, {:value, true}]}]}
+          )
+
+        {all_ok({present, negate(present), []}, [present]), st}
+
+      {_, {:error, st}} ->
+        {:error, st}
+
+      {_, {_, st}} ->
+        {{{:value, true}, {:value, false}, []}, st}
+    end
+  end
+
   defp atom_(%IR{op: :logged_in}, st) do
     missing = {:call, "is_nil", [actor_id(st)]}
     {{{:not, missing}, missing, []}, st}

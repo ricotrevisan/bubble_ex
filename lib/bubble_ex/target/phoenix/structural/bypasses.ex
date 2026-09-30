@@ -24,7 +24,7 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   | `:authorize_unverifiable` | the same with any value but the literal `true` (a variable, `@attr`, `!true`, a function call; `update_in/2,3` of an `:authorize?` path): it may be `false` at runtime. Also `false` under a key that is not a literal: `put_in(opts[key], false)`, `put_in(opts, keys, false)`, `Keyword.put(opts, key, false)`, `Map.put/3`, `*.put_new/3`, and a literal `[{key, false}]` or `%{key => false}` anywhere (merged, `Enum.into/2`, passed as options); clause patterns excepted |
   | `:runtime_start` | a generated workflow body's `Runtime.start(input, context, "<workflow id>", false)` (`BubbleEx.Target.Ash.Workflows`: the workflow ignores privacy rules in Bubble), also through an alias or an attribute |
   | `:runtime_unverifiable` | `Runtime.start/4` whose last argument is not `true`, `false` or `:inherit`, or whose workflow is not a literal; `start/4` on a module that cannot be read; `apply/3` of `Runtime.start`; `import` of a `*.Runtime`; in a `quote`, an `alias`, `require ..., as:` or `use` of one |
-  | `:policy_bypass` | a `bypass ...` policy |
+  | `:policy_bypass` | a `bypass ...` policy, or a `field_policy_bypass ...` field policy |
   | `:policy_always` | a policy whose condition is always true (`always()`, `Builtins.always()` qualified, `expr(true)`, or a list of them) with an `authorize_if` of the same: a bypass under another name |
   | `:authorize_mode` | `authorize` with anything but `:by_default` or `:always` (`:never`, `:when_requested`, a variable) |
   | `:no_authorizers` | `authorizers: []` |
@@ -90,6 +90,10 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
     "workflow_authorize" =>
       "the workflow runtime passes each workflow's own authorize? setting on (Workflows.Runtime)",
     "load_actor" => "the privacy module loads the actor with its privacy loads (Privacy)",
+    "private_file_holders" =>
+      "a private file's request finds the records holding it (IDs only); who may open it is checked with the actor (Uploads, privacy: :enforced)",
+    "ash_authentication" =>
+      "AshAuthentication's own interactions with the User (sign-in, tokens) bypass its policies and field policies (privacy: :enforced)",
     "derived_count" =>
       "a count aggregate an owner's derive_count decision generates (not authorized, as the list it replaces)"
   }
@@ -132,6 +136,8 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   # `authorize?: false`, in the resource body, no function).
   @purpose_kinds Map.new(@expected_sites, fn {p, {_, kind, _}} -> {p, kind} end)
                  |> Map.put("derived_count", :authorize_false)
+                 |> Map.put("ash_authentication", :policy_bypass)
+                 |> Map.put("private_file_holders", :authorize_false)
 
   @doc """
   The fixed scaffold sites the generator writes: purpose => `{path suffix
@@ -989,6 +995,9 @@ defmodule BubbleEx.Target.Phoenix.Structural.Bypasses do
   # `policy always() do authorize_if always() end` (and its spellings).
   defp node_sites({:authorize?, _, [value]}, ctx, acc), do: authorize_site(value, ctx, acc)
   defp node_sites({:bypass, _, [_ | _]}, ctx, acc), do: [site(:policy_bypass, ctx) | acc]
+
+  defp node_sites({:field_policy_bypass, _, [_ | _]}, ctx, acc),
+    do: [site(:policy_bypass, ctx) | acc]
 
   defp node_sites({:authorize, _, [mode]}, ctx, acc) when mode not in [:by_default, :always],
     do: [site(:authorize_mode, ctx) | acc]

@@ -525,6 +525,147 @@ defmodule BubbleEx.Target.PhoenixTest do
     end
   end
 
+  # WTF-423: privacy: :enforced renders the compiled policies and the
+  # runtime that enforces them. Behavior: scripts/phoenix_compile_check.sh
+  # (test/support/target/phoenix/enforced_behavior.exs, and the matrix).
+  # An app with its backend workflows, pages and their workflows, as
+  # scripts/phoenix_compile_check/render.exs renders it.
+  defp full_render(app, privacy) do
+    {:ok, model} = BubbleEx.Model.build(app)
+    {:ok, index} = BubbleEx.Index.build(app, model: model)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: privacy)
+    {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+    {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Acme")
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+
+    {:ok, expressions} =
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+        runtime: "Acme.Bubble.Runtime",
+        namespace: "Acme"
+      )
+
+    {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+    {:ok, page_data} = BubbleEx.PageData.build(app, model)
+
+    {:ok, flows} =
+      BubbleEx.Target.Elixir.FrontendWorkflows.map(lowered, project,
+        namespace: "Acme",
+        frontend: frontend,
+        backend: workflows,
+        page_data: page_data
+      )
+
+    {:ok, files} =
+      Phoenix.render(project,
+        name: "Acme",
+        module: "Acme",
+        workflows: workflows,
+        frontend: frontend,
+        expressions: expressions,
+        frontend_workflows: flows
+      )
+
+    files
+  end
+
+  describe "render/2 with privacy: :enforced" do
+    setup do
+      app = "test/support/target/phoenix/enforced.json" |> File.read!() |> Jason.decode!()
+      %{files: full_render(app, :enforced), omit: full_render(app, :omit)}
+    end
+
+    test "pins PicoSAT and renders the policies, the checks and the Privacy module",
+         %{files: files} do
+      assert files["mix.exs"] =~ ~s({:picosat_elixir, "== 0.2.3"})
+      assert files["lib/acme/task.ex"] =~ "authorizers: [Ash.Policy.Authorizer]"
+      assert files["lib/acme/task.ex"] =~ "authorize_if Acme.Privacy.WorkflowWrite"
+      assert files["lib/acme/task.ex"] =~ "read :attachments do"
+      assert files["lib/acme/privacy/workflow_write.ex"] =~ "bubble_workflow_write: true"
+      assert files["lib/acme/privacy.ex"] =~ "def mode, do: :enforced"
+
+      # Every generated Ash file says writes are not policy-checked.
+      assert files["lib/acme/task.ex"] =~ "WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES"
+      refute files["lib/acme/task.ex"] =~ "NO authorization"
+    end
+
+    test "AshAuthentication's own interactions bypass the User's policies, marked",
+         %{files: files} do
+      user = files["lib/acme/user.ex"]
+
+      assert user =~
+               "# bubble:ignores_privacy scaffold:ash_authentication\n    bypass AshAuthentication.Checks.AshAuthenticationInteraction do"
+
+      assert user =~
+               "field_policy_bypass :*, AshAuthentication.Checks.AshAuthenticationInteraction do"
+
+      assert user =~ "private_fields :include"
+    end
+
+    test "the runtime marks its writes, loads actors and lets the admin token bypass",
+         %{files: files} do
+      runtime = files["lib/acme/workflows/runtime.ex"]
+      assert runtime =~ "private: %{bubble_workflow_write: true}"
+      assert runtime =~ ~r"admin\?\(authorization\) ->\s+\{:ok, nil, true\}"
+      assert runtime =~ "Acme.Privacy.load_actor(actor)"
+      assert runtime =~ "load: Acme.Privacy.actor_loads()"
+      assert runtime =~ "defp visible_lists(record, changes) do"
+
+      data = files["lib/acme_web/bubble_data.ex"]
+      assert data =~ "action: :search, actor: ctx.actor"
+      assert data =~ "defp failed(_query, %Ash.Error.Forbidden{}), do: nil"
+
+      workflows = files["lib/acme_web/bubble_workflows.ex"]
+      assert workflows =~ "def refresh_actor(socket)"
+      assert workflows =~ "actor = current_actor(socket)"
+
+      uploads = files["lib/acme_web/uploads.ex"]
+      assert uploads =~ ~r":privacy_rules ->\s+attachments\?\(actor"
+      assert uploads =~ "def private_files, do: [{Acme.Task, :attachment, false}]"
+    end
+
+    test "the README warns that writes are not policy-checked; defaults stay off",
+         %{files: files} do
+      readme = files["README.md"]
+      assert readme =~ "Warning: writes are not checked against the privacy rules"
+      assert readme =~ "data_access: true"
+      assert files["config/runtime.exs"] =~ "private: false"
+    end
+
+    # Review M2: a search constrained on a field some users may not view
+    # (Task's Done: only watchers) would reveal it (field policies do not
+    # guard a filter in code): residue, not loaded. Sorting by Title (every
+    # user views it) loads.
+    test "a page search over a hidden field is residue", %{files: files, omit: omit} do
+      page = files["lib/acme_web/live/index_live/workflows.ex"]
+      assert page =~ "# TODO(bubble:element:bFirstOpen) not loaded: search_field_hidden"
+      refute page =~ "TODO(bubble:element:bList) not loaded"
+      refute omit["lib/acme_web/live/index_live/workflows.ex"] =~ "search_field_hidden"
+    end
+
+    test "a page count reads keys through :search, capped", %{files: files} do
+      data = files["lib/acme_web/bubble_data.ex"]
+      refute data =~ "Ash.count("
+      assert data =~ "|> Ash.read(action: :search, actor: ctx.actor, authorize?: true)"
+      assert data =~ "def max_count do"
+    end
+
+    test "an :omit render has none of it", %{omit: files} do
+      all = files |> Map.values() |> Enum.join()
+      refute all =~ "workflow_write"
+      refute all =~ "Privacy.load_actor"
+      refute all =~ ":privacy_rules"
+      refute all =~ "AshAuthenticationInteraction"
+      assert files["README.md"] =~ "## Authorization: none yet"
+    end
+
+    test ":unverified projects are refused" do
+      {:ok, model} = BubbleEx.Model.build(%{"_id" => "x", "user_types" => %{}})
+      {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :unverified)
+      assert {:error, %BubbleEx.Error{message: message}} = Phoenix.render(project)
+      assert message =~ ":unverified policies are for inspection only"
+    end
+  end
+
   describe "the manifest" do
     test "records every generated file's hash, the owned files and the inputs" do
       project = representative_project()

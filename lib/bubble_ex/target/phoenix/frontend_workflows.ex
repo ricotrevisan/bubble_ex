@@ -63,7 +63,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     test = "test/#{ctx.app}_web/bubble_frontend_workflows_test.exs"
 
-    assigns = %{web: ctx.web, module: ctx.module, app: ctx.app, join_topics: ctx.join_topics}
+    assigns = %{
+      web: ctx.web,
+      module: ctx.module,
+      app: ctx.app,
+      join_topics: ctx.join_topics,
+      enforced?: Map.get(ctx, :enforced?, false)
+    }
 
     %{
       owned: Map.put(owned, test, format(tests(spec, ctx))),

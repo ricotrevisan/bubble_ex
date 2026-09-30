@@ -43,13 +43,46 @@ then yours. Regeneration never overwrites it.
 - Names are locked in `.wtf/names.json` at first generation, so later caption
   edits in Bubble do not rename code.
 
-## Authorization: none yet
+<%= if @enforced? do %>## Authorization: Bubble's privacy rules, enforced
+
+> **Warning: writes are not checked against the privacy rules.** A write
+> the generated workflow runtime makes (a workflow's "Create a new thing",
+> "Make changes", "Delete") is allowed: as in Bubble, the workflow's own
+> conditions are what guard it. Any other write (your own code, a form,
+> an API) is forbidden unless it bypasses authorization. Review the
+> conditions of the workflows a user can trigger.
+
+The resources are generated with `privacy: :enforced`: Bubble's privacy
+rules are compiled to Ash policies (`<%= @module %>.Privacy`). What that
+guarantees:
+
+- **Reads follow the rules** for the current user (read afresh with what
+  the policies read on every event and page load): a record the user may
+  not view reads as nothing, a hidden field as empty, and searches return
+  only what the user may find in searches. The generated policies are
+  checked by bubble_ex's privacy matrix against its calibrated reading of
+  Bubble; that is evidence, not a proof (`<%= @module %>.Privacy.verified?/0`
+  is false).
+- **Stricter than Bubble on empty values** (a decision): where a rule
+  compares a value of the user's (logged out, or a user without it) with a
+  record's, Bubble may grant when both are empty; these policies deny.
+- **The workflow API's admin token** (`WORKFLOW_API_ADMIN_TOKEN`) ignores
+  privacy, as in Bubble.
+- **Not covered:** code you write (a filter, sort or aggregate in code sees
+  hidden values: field policies guard reads, not code), a search's own
+  constraints on a field the user may not view, and aggregates over hidden
+  fields.
+
+Page data and data workflows still load nothing until you set
+`config :<%= @app %>, <%= @web %>.BubbleWorkflows, data_access: true`, and the
+workflow API answers 503 until `serve_workflow_api: true`.
+<% else %>## Authorization: none yet
 
 The resources are generated with `privacy: :omit`: they have **no
 authorization**. Bubble's privacy rules are not enforced, so any code path
 that reads a resource sees every record. Add Ash policies before exposing
 any resource through an API, a LiveView or a controller.
-
+<% end %>
 ## Migrated files
 
 The data loader copies the Bubble app's files into a storage directory.
@@ -72,11 +105,15 @@ are served (`<%= @web %>.UploadsHostGuard`, first in the endpoint); the
 app compares it with the request's `Host`, so a proxy or CDN must forward
 the original `Host` header.
 
-**Private files are off** (404, no links): the resources have no
+<%= if @enforced? do %>**Private files are off** (404, no links) until you opt in: replace
+`private: false` in `config/runtime.exs` with `private: :privacy_rules`
+to enforce Bubble's "view attached files" rule (a record holding the file
+must allow the user to view its attachments), or with
+`private: {MyModule, :authorize}`<% else %>**Private files are off** (404, no links): the resources have no
 authorization, and nothing yet says which record a private file belongs
 to, so Bubble's "view attached files" rule is not enforced. To serve
 them, replace `private: false` in `config/runtime.exs` with
-`private: {MyModule, :authorize}` (your function gets the user,
+`private: {MyModule, :authorize}`<% end %> (your function gets the user,
 or nil, and the file's `%{sha256, name}` and must return `true`), or
 `private: :signed_in`, which lets **any** signed-in user who has a link
 read the file: weaker than Bubble.

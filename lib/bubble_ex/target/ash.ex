@@ -69,7 +69,12 @@ defmodule BubbleEx.Target.Ash do
       Project carries `:ash_privacy_omitted`. `Project.privacy` is `:omit`.
     * `:unverified` - the policies below are generated. They are **not
       verified against Bubble** ("Not verified" below): opt in only to
-      inspect or test them, never to ship them to an app's users.
+      inspect or test them, never to ship them to an app's users. No
+      policy authorizes a write (`create`, `update`, `destroy`).
+    * `:enforced` - the same policies, to be enforced by a generated app
+      (`BubbleEx.Target.Phoenix` renders it; Rico's decision of
+      2026-09-29, WTF-423), plus the write policy below. What it
+      guarantees and what it does not is under "Enforced" below.
 
   `:omit` is the default because of the ship gate recorded on WTF-356:
   generated policies must not reach an app owner until the Ash policy
@@ -77,7 +82,42 @@ defmodule BubbleEx.Target.Ash do
   semantics they rest on (WTF-384/385) and aggregates have a lowering
   rule. A caller that forgets the option gets output without them.
 
-  ## Privacy rules (WTF-356, `privacy: :unverified`)
+  ## Enforced (`privacy: :enforced`, WTF-423)
+
+  The owner's decisions (Rico, 2026-09-27 and 2026-09-29):
+
+    * **Reads follow the compiled Bubble rules**: the policies below,
+      unchanged. They are checked by the privacy matrix
+      (`BubbleEx.Verify.Matrix`, run against the generated app by
+      `scripts/phoenix_compile_check.sh`) against the interpreter's
+      calibrated reading of Bubble (`BubbleEx.Verify.Interpreter`, V5 of
+      WTF-385). That is evidence, not a proof: the interpreter is not
+      Bubble, and the matrix covers the rules it can solve.
+    * **Stricter than Bubble on empty values**: where a condition reads an
+      empty value on the user's side (logged out, or a user without the
+      value), Bubble may grant and the policies deny (`actor_empty_denies`,
+      `BubbleEx.Verify.Difference`); verification reports each such case
+      as an intended difference.
+    * **Writes (option A)**: a write the generated workflow runtime makes
+      is authorized, as in Bubble, where a workflow's conditions are what
+      guards its writes. Each resource (and join) gets `policy
+      action(:create | :update | :destroy)` with `authorize_if
+      <namespace>.Privacy.WorkflowWrite`, a check that passes only when the
+      action's context carries `%{private: %{bubble_workflow_write: true}}`, which
+      the generated runtime sets on its data steps. Any other call of the
+      write actions (owned code, a form, an API) is forbidden unless it
+      bypasses authorization. **Writes are therefore not checked against
+      the privacy rules**: a workflow a user can trigger writes whatever
+      its steps write. Every project carries `:ash_writes_not_policy_checked`
+      (warning) saying so; the rendered source and README repeat it.
+      `:auto_bind` keeps its own policies (the auto-binding rules).
+    * **Admin-token calls bypass privacy**, like Bubble (the workflow API's
+      admin token; `BubbleEx.Target.Phoenix`).
+
+  `Project.policies_verified` stays `false` (the replay covers a sample,
+  not a proof), and `<namespace>.Privacy.mode/0` returns `:enforced`.
+
+  ## Privacy rules (WTF-356, `privacy: :unverified` and `:enforced`)
 
   Each resource gets Ash policies (`Ash.Policy.Authorizer`) derived from
   its data type's privacy rules (`BubbleEx.Privacy`), as data in the
@@ -107,7 +147,10 @@ defmodule BubbleEx.Target.Ash do
   lacks it. Because a compiled condition is fail-safe only on the actor
   side (record-side emptiness is not verified), the negation also requires
   every record value the negated conditions read to be non-empty: it can
-  only under-grant. Field lists union the same way.
+  only under-grant. A value they read only through an emptiness test
+  (`is empty`, `is not empty`) is not guarded: that test negates exactly,
+  and the guard would make the negation contradict itself (`x is empty
+  and x is not empty`, WTF-430). Field lists union the same way.
 
   **Defaults.** A type the source lists without rules gets Bubble's public
   defaults: view all, search and attachments for everyone, no auto-binding,
@@ -443,7 +486,7 @@ defmodule BubbleEx.Target.Ash do
   @text [trim?: false, allow_empty?: true]
   @json {:module, "Types.JsonValue"}
 
-  @privacy_modes [:omit, :unverified]
+  @privacy_modes [:omit, :unverified, :enforced]
   @names_version 1
 
   # Built-in fields: fixed names, claimed before the defined fields.
@@ -456,7 +499,7 @@ defmodule BubbleEx.Target.Ash do
     email: "email"
   }
 
-  @type privacy :: :omit | :unverified
+  @type privacy :: :omit | :unverified | :enforced
   @type option ::
           {:names, map()}
           | {:index, BubbleEx.Index.t()}
@@ -467,7 +510,7 @@ defmodule BubbleEx.Target.Ash do
   Dependency pins for a project that compiles the generated source, as Mix
   dependency tuples. With `privacy: :omit` (the default, as in `map/3`):
   `[{:ash, "== 3.33.11"}, {:ash_postgres, "== 2.13.1"}]`; with
-  `privacy: :unverified` the policies also need Ash's SAT solver, PicoSAT:
+  `privacy: :unverified` or `:enforced` the policies also need Ash's SAT solver, PicoSAT:
   `{:picosat_elixir, "== 0.2.3"}` is appended. The generated modules need
   nothing else (Ecto and Postgrex come with AshPostgres).
   `scripts/ash_compile_check.sh` compiles and runs the generated source of
@@ -489,7 +532,8 @@ defmodule BubbleEx.Target.Ash do
 
   ## Options
 
-    * `:privacy` - `:omit` (default) or `:unverified`; see "Privacy modes".
+    * `:privacy` - `:omit` (default), `:unverified` or `:enforced`; see
+      "Privacy modes".
       Any other value is an `:invalid_input` error.
     * `:names` - a name map from an earlier mapping (`project.names`); its
       names are kept. An invalid map, or one giving two definitions in the
@@ -537,7 +581,7 @@ defmodule BubbleEx.Target.Ash do
     {:error,
      Error.new(
        :invalid_input,
-       "the :privacy option must be :omit or :unverified, got #{inspect(mode)}",
+       "the :privacy option must be :omit, :unverified or :enforced, got #{inspect(mode)}",
        %{privacy: inspect(mode)}
      )}
   end
@@ -679,6 +723,13 @@ defmodule BubbleEx.Target.Ash do
     if Enum.any?(resources, fn r -> Enum.any?(r.indexes, &(&1.method == :trigram)) end),
       do: ["pg_trgm"],
       else: []
+  end
+
+  # The policies of `:unverified`, plus the write policy of Rico's option A
+  # (WTF-423): what the generated runtime writes is authorized.
+  defp privacy(:enforced, project, model, types, index) do
+    {project, diags} = privacy(:unverified, project, model, types, index)
+    Policies.enforce(project, diags)
   end
 
   defp privacy(:unverified, project, model, _types, index) do

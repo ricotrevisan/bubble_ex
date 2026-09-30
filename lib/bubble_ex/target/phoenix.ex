@@ -61,12 +61,39 @@ defmodule BubbleEx.Target.Phoenix do
       WTF-367), and a smoke test (`mix test`: the endpoint boots, a stored
       user signs in with a magic link)
 
-  Only `privacy: :omit` Projects render (the default and what owners get
-  while generated policies are gated, WTF-356): the policies of
-  `:unverified` would also need a bypass for AshAuthentication. With
+  `privacy: :omit` Projects render (the default) and `privacy: :enforced`
+  ones (WTF-423); `:unverified` is for inspection only and is refused. With
   `:omit` the resources have **no authorization**: the generated Ash files
   and the README say so, and owners must add policies before exposing any
   resource through an API or LiveView.
+
+  ## Enforced privacy (WTF-423)
+
+  With `:enforced` the resources carry the policies compiled from Bubble's
+  privacy rules (`BubbleEx.Target.Ash`, "Enforced") and the app enforces
+  them (`docs/page-data.md`, "Enforced privacy"):
+
+    * **reads** follow the rules: page data, frontend and backend
+      workflows and the workflow API read with the current user (or the
+      bearer token's), read afresh with `<Module>.Privacy.load_actor/1` at
+      every page load, event, API call and job; searches use `:search`; a
+      hidden field reads as empty
+    * **writes** (Rico's option A): the runtime marks its data steps
+      (private context `%{bubble_workflow_write: true}`) and `<Module>.Privacy.
+      WorkflowWrite` authorizes them, so a workflow's conditions guard its
+      writes, as in Bubble; any other write is forbidden. Writes are **not
+      checked against the privacy rules**: the README, the Ash files'
+      headers and a diagnostic say so
+    * the workflow API's **admin token** bypasses privacy (`authorize?:
+      false` for the run and the custom events it triggers)
+    * **AshAuthentication**'s own interactions bypass the User's policies
+      and field policies (a marked `bypass`, as its installer adds)
+    * **private files** can follow "view attached files":
+      `private: :privacy_rules` (`<Web>.Uploads`)
+
+  The `data_access`, `serve_workflow_api` and private-file switches stay
+  off by default, as with `:omit`: turning them on is the owner's call.
+  An `:omit` render is byte for byte what it was.
 
   ## Generated and owned files (WTF-359 Q1)
 
@@ -283,6 +310,12 @@ defmodule BubbleEx.Target.Phoenix do
                       "Add Ash policies before exposing this data through any API,\n" <>
                       "LiveView or controller."
 
+  @enforced_note "privacy: :enforced - reads follow Bubble's privacy rules (compiled to Ash policies;\n" <>
+                   "stricter than Bubble where a condition reads an empty value on the user's side).\n" <>
+                   "WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES: the generated workflow runtime's\n" <>
+                   "writes are allowed (the workflow's conditions guard them, as in Bubble); any\n" <>
+                   "other write is forbidden."
+
   @type option ::
           {:name, String.t() | nil}
           | {:module, String.t()}
@@ -332,7 +365,8 @@ defmodule BubbleEx.Target.Phoenix do
   Project's privacy mode), then the scaffolding. Each is `{app,
   requirement}` or `{app, requirement, options}`.
   """
-  @spec deps(:omit | :unverified) :: [{atom(), String.t()} | {atom(), String.t(), keyword()}]
+  @spec deps(:omit | :unverified | :enforced) ::
+          [{atom(), String.t()} | {atom(), String.t(), keyword()}]
   def deps(privacy \\ :omit), do: Versions.versions(privacy: privacy) ++ @scaffold_deps
 
   @doc "The version of bubble_ex recorded in the manifest."
@@ -346,7 +380,8 @@ defmodule BubbleEx.Target.Phoenix do
   @spec render(Project.t(), [option()]) :: {:ok, files()} | {:error, Error.t()}
   def render(project, opts \\ [])
 
-  def render(%Project{privacy: :omit} = project, opts) when is_list(opts) do
+  def render(%Project{privacy: privacy} = project, opts)
+      when privacy in [:omit, :enforced] and is_list(opts) do
     with {:ok, live_view} <- Formatter.ensure_live_view(),
          {:ok, ctx} <- context(project, opts),
          ctx = Map.put(ctx, :live_view, live_view),
@@ -366,6 +401,7 @@ defmodule BubbleEx.Target.Phoenix do
              workflows: workflows,
              data_resources: data_resources(Keyword.get(opts, :frontend_workflows)),
              join_topics: join_topics(project),
+             private_files: private_files(project, ctx),
              # the PostgreSQL extensions the project's indexes need
              # (`pg_trgm` for trigram indexes), in the scaffolded Repo
              extensions: project.extensions
@@ -426,8 +462,8 @@ defmodule BubbleEx.Target.Phoenix do
   def render(%Project{privacy: privacy}, _opts),
     do:
       invalid(
-        "the Phoenix target renders privacy: :omit projects only, got #{inspect(privacy)} " <>
-          "(generated policies are gated, WTF-356)"
+        "the Phoenix target renders privacy: :omit or :enforced projects, got #{inspect(privacy)} " <>
+          "(:unverified policies are for inspection only, WTF-356)"
       )
 
   def render(_project, _opts),
@@ -517,7 +553,9 @@ defmodule BubbleEx.Target.Phoenix do
            module: module,
            web: module <> "Web",
            app: app,
-           bubble_ex_version: @version
+           bubble_ex_version: @version,
+           privacy: project.privacy,
+           enforced?: project.privacy == :enforced
          }}
       end
     end
@@ -717,11 +755,43 @@ defmodule BubbleEx.Target.Phoenix do
         merge_extend([
           workflow_extend(ctx.workflows),
           data_extend(ctx),
-          %{user.module => %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}}
+          %{user.module => user_extension(project, ctx)}
         ]),
       extra_resources: [ctx.module <> ".Accounts.Token" | workflow_resources(ctx.workflows)]
     )
   end
+
+  # The file fields private files may be attached to (the generated
+  # Uploads' `private_files/0`, `privacy: :enforced`), as source.
+  defp private_files(%Project{} = project, ctx) do
+    for %Resource{privacy: %{file_fields: [_ | _] = fields}} = r <- project.resources,
+        a <- r.attributes,
+        a.name in fields do
+      "{#{ctx.module}.#{r.module}, #{atom_source(a.name)}, #{match?({:array, _}, a.type)}}"
+    end
+    |> then(&("[" <> Enum.join(&1, ", ") <> "]"))
+  end
+
+  # Attribute names are identifiers (BubbleEx.Target.Ash.Naming); quoted
+  # otherwise.
+  defp atom_source(name) do
+    if name =~ ~r/\A[a-z_][a-zA-Z0-9_]*[?!]?\z/, do: ":" <> name, else: ":" <> inspect(name)
+  end
+
+  # The User includes the owned authentication fragment. With enforced
+  # policies, AshAuthentication's own interactions (sign-in, token
+  # lookups, the magic-link request) bypass them, first, as its installer
+  # sets up; everything else follows the privacy rules.
+  defp user_extension(%Project{privacy: :enforced}, ctx),
+    do: %{
+      fragments: [ctx.module <> ".Accounts.UserAuthentication"],
+      policy_bypasses: [
+        {"AshAuthentication.Checks.AshAuthenticationInteraction", "ash_authentication"}
+      ]
+    }
+
+  defp user_extension(_project, ctx),
+    do: %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}
 
   defp email_type(%{name: email} = attribute, email),
     do: %{attribute | type: :ci_string, constraints: [trim?: true, allow_empty?: false]}
@@ -771,7 +841,7 @@ defmodule BubbleEx.Target.Phoenix do
     |> Map.merge(templated)
     |> Map.merge(workflow_code)
     |> Map.new(fn {path, content} ->
-      {path, mark_generated(path, content, Map.has_key?(ash, path))}
+      {path, mark_generated(path, content, Map.has_key?(ash, path), ctx.privacy)}
     end)
     |> Map.merge(workflow_json)
     |> then(fn files ->
@@ -970,7 +1040,7 @@ defmodule BubbleEx.Target.Phoenix do
   defp assigns(ctx) do
     Map.merge(ctx, %{
       workflows?: Map.get(ctx, :workflows) != nil,
-      deps: deps_source(),
+      deps: deps_source(ctx.privacy),
       tailwind: @tailwind,
       esbuild: @esbuild,
       oban_migration: @oban_migration,
@@ -982,8 +1052,9 @@ defmodule BubbleEx.Target.Phoenix do
     })
   end
 
-  defp deps_source do
-    deps()
+  defp deps_source(privacy) do
+    privacy
+    |> deps()
     |> Enum.map_join(",\n", fn
       {app, requirement} ->
         "      {#{inspect(app)}, #{Templates.source(requirement)}}"
@@ -1038,11 +1109,13 @@ defmodule BubbleEx.Target.Phoenix do
     end)
   end
 
-  defp mark_generated(path, content, ash?) do
+  defp mark_generated(path, content, ash?, privacy \\ :omit) do
     header =
-      if ash?,
-        do: @generated_header <> "\n\n" <> @no_authorization,
-        else: @generated_header
+      cond do
+        not ash? -> @generated_header
+        privacy == :enforced -> @generated_header <> "\n\n" <> @enforced_note
+        true -> @generated_header <> "\n\n" <> @no_authorization
+      end
 
     case Path.extname(path) do
       ext when ext in [".ex", ".exs"] ->

@@ -10,7 +10,23 @@ defmodule <%= @web %>.BubbleData do
 
   ## Data access (opt-in)
 
-  The Ash resources are generated with `privacy: :omit`: **no resource has
+<%= if @enforced? do %>  The Ash resources have the privacy policies compiled from Bubble
+  (`privacy: :enforced`, WTF-423). Every read goes through Ash with the
+  current user as the actor (read afresh at each load,
+  `<%= @module %>.Privacy.load_actor/1`) and `authorize?: true`: a record
+  the user may not view reads as nothing, a field as empty
+  (`%Ash.ForbiddenField{}`), and searches run the `:search` action (what
+  the user may find in searches). A read the policies refuse outright
+  (e.g. logged out, where every rule reads the user) reads nothing, as
+  Bubble shows nothing. Pages still load nothing unless the owner opts in,
+  the same switch as the workflows':
+
+      config :<%= @app %>, <%= @web %>.BubbleWorkflows, data_access: true
+
+  **Not guarded:** a search's own constraints are code, and field policies
+  do not apply to code: a constraint on a field the user may not view
+  still matches its value (the record itself must still be findable).
+  Aggregates over hidden fields are not guarded either.<% else %>  The Ash resources are generated with `privacy: :omit`: **no resource has
   an authorizer**, so every read would return every record to anyone who
   can open the page. Pages load nothing unless the owner opts in, the
   same switch as the workflows':
@@ -26,7 +42,7 @@ defmodule <%= @web %>.BubbleData do
   `Current User` is empty, so `X = Current User` is dropped and the
   search returns every record of the type (up to its page size or
   `:max_items`). With no policies nothing stops this; require a signed-in
-  user on such pages or add policies before enabling data access.
+  user on such pages or add policies before enabling data access.<% end %>
 
   ## What a browser can choose
 
@@ -43,7 +59,9 @@ defmodule <%= @web %>.BubbleData do
   A repeating group shows its first page (its rows times its columns); a
   list with no page size, or a larger one, stops at `:max_items`
   (`config :<%= @app %>, <%= @web %>.BubbleData, max_items: 100`). A
-  search's `count` is a count query. A list of things stored as IDs is
+  search's `count` is <%= if @enforced? do %>the number of keys read through `:search`, at most
+  `:max_count` (`max_count/0`: Ash's count aggregate under-counts with
+  policies that read the user)<% else %>a count query<% end %>. A list of things stored as IDs is
   read by ID, at most the page size capped by `:max_items`. A
   relationship the page's bindings read through a record (its related
   list) reads at most `related_cap/0` records (`:max_items`, at most 100)
@@ -102,7 +120,18 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  @doc """
+<%= if @enforced? do %>  @doc """
+  The most records a page `count` reads (`:max_count`, default 10_000): a
+  count reads the keys of what it counts, and shows this cap past it.
+  """
+  def max_count do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_count, 10_000) do
+      n when is_integer(n) and n > 0 -> n
+      _ -> 10_000
+    end
+  end
+
+<% end %>  @doc """
   The unique ID of a page's thing from the URL path parameter
   (`bubble_thing`): a Bubble ID, else nil.
   """
@@ -121,7 +150,8 @@ defmodule <%= @web %>.BubbleData do
   The data is then current (`@bubble_data_stale` false).
   """
   def load(socket, page) do
-    socket = assign(socket, :bubble_data_stale, false)
+    socket = assign(socket, :bubble_data_stale, false)<%= if @enforced? do %>
+    socket = if data_access?(), do: BubbleWorkflows.refresh_actor(socket), else: socket<% end %>
 
     if data_access?() and connected?(socket) do
       # Notifications already delivered were sent after their writes
@@ -250,7 +280,7 @@ defmodule <%= @web %>.BubbleData do
         Runtime.load_page(
           items,
           source.cell_loads,
-          Runtime.root(nil, socket.assigns[:current_user]),
+          Runtime.root(nil, <%= if @enforced? do %>BubbleWorkflows.current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>),
           related_cap(),
           lazy?: true
         )
@@ -265,7 +295,7 @@ defmodule <%= @web %>.BubbleData do
       loaded =
         values
         |> Enum.map(&elem(&1, 1))
-        |> Runtime.load_page(source.loads, Runtime.root(nil, socket.assigns[:current_user]), related_cap())
+        |> Runtime.load_page(source.loads, Runtime.root(nil, <%= if @enforced? do %>BubbleWorkflows.current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>), related_cap())
 
       Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
       |> Enum.reduce({data, topics}, fn {i, value}, {data, topics} ->
@@ -322,13 +352,41 @@ defmodule <%= @web %>.BubbleData do
   A query's result: `take` is `:all` (at most the page size, capped at
   `max_items/0`), `:first`, `{:item, n}`, `{:limit, n}` or `:count`.
   """
-  def read(query, ctx, :count, _page_size) do
+<%= if @enforced? do %>  def read(query, ctx, :count, _page_size) do
+    # Counted by reading the records' keys through `:search`, not with
+    # `Ash.count/2`: Ash's count aggregate under-counts with policies that
+    # read the actor (a record the user finds is not counted). At most
+    # `max_count/0` are read; past it the count is that cap, logged.
+    [pk] = Ash.Resource.Info.primary_key(query.resource)
+    cap = max_count()
+
+    query
+    |> Ash.Query.select([pk])
+    |> Ash.Query.limit(cap + 1)
+    |> Ash.read(action: :search, actor: ctx.actor, authorize?: true)
+    |> case do
+      {:ok, records} when length(records) > cap ->
+        Logger.warning(
+          "bubble page data: a count of #{inspect(query.resource)} reached :max_count " <>
+            "(#{cap}); it shows #{cap}, the true count is larger"
+        )
+
+        cap
+
+      {:ok, records} ->
+        length(records)
+
+      {:error, error} ->
+        failed(query, error)
+    end
+  end
+<% else %>  def read(query, ctx, :count, _page_size) do
     case Ash.count(query, actor: ctx.actor, authorize?: true) do
       {:ok, n} -> n
       {:error, error} -> failed(query, error)
     end
   end
-
+<% end %>
   def read(query, ctx, take, page_size) do
     {offset, limit} =
       case take do
@@ -340,7 +398,7 @@ defmodule <%= @web %>.BubbleData do
 
     query = query |> Ash.Query.offset(offset) |> Ash.Query.limit(limit)
 
-    case Ash.read(query, actor: ctx.actor, authorize?: true) do
+    case Ash.read(query, <%= if @enforced? do %>action: :search, <% end %>actor: ctx.actor, authorize?: true) do
       {:ok, records} when take in [:first] or is_tuple(take) and elem(take, 0) == :item ->
         List.first(records)
 
@@ -356,7 +414,10 @@ defmodule <%= @web %>.BubbleData do
   defp cap(n) when is_integer(n) and n > 0, do: min(n, max_items())
   defp cap(_), do: max_items()
 
-  defp failed(query, error) do
+<%= if @enforced? do %>  # A read the policies refuse outright (e.g. logged out, where every rule
+  # reads the user) shows nothing, as in Bubble: not an error.
+  defp failed(_query, %Ash.Error.Forbidden{}), do: nil
+<% end %>  defp failed(query, error) do
     Logger.error(
       "bubble page data: a read of #{inspect(query.resource)} failed: " <>
         Exception.format_banner(:error, Ash.Error.to_error_class(error))
