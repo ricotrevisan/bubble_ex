@@ -354,6 +354,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
 
   defp on, do: Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
 
+  defp picks(html),
+    do: ~r/Pick: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
   defp cells(html),
     do: ~r/Task: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
 
@@ -361,6 +364,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     {:ok, _view, html} = live(conn, "/")
     assert cells(html) == []
     refute html =~ "First open: B"
+    assert picks(html) == []
 
     {:ok, _view, html} = live(conn, "/task/#{@t1}")
     refute html =~ "Title: Bake"
@@ -377,6 +381,40 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert html =~ "Cell group: Apollo"
     # The first open task, a group's data source.
     assert html =~ "First open: Bake"
+  end
+
+  # Bubble's random sort (WTF-452): ordered by md5(id || seed) in the
+  # database, then limited to the list's 2 rows; a fixed seed gives a
+  # fixed order.
+  test "a randomly sorted list shows a seeded random page of its search", %{conn: conn} do
+    on()
+    tasks = PhxCheck.Task |> Ash.read!(authorize?: false)
+    assert length(tasks) > 2
+
+    for seed <- ["one", "two", "three"] do
+      Application.put_env(:phx_check, PhxCheckWeb.BubbleData, random_seed: seed)
+
+      expected =
+        tasks
+        |> Enum.sort_by(&Base.encode16(:crypto.hash(:md5, &1.id <> seed), case: :lower))
+        |> Enum.take(2)
+        |> Enum.map(& &1.title)
+
+      {:ok, _view, html} = live(conn, "/")
+      assert picks(html) == expected
+      {:ok, _view, html} = live(conn, "/")
+      assert picks(html) == expected
+    end
+
+    # Unseeded: a new order on every read, still one page of the search.
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, [])
+    titles = Enum.map(tasks, & &1.title)
+
+    for _ <- 1..3 do
+      {:ok, _view, html} = live(conn, "/")
+      assert [_, _] = picks = picks(html)
+      assert Enum.all?(picks, &(&1 in titles))
+    end
   end
 
   test "reusable instances keep distinct things in their nested scopes", %{conn: conn} do

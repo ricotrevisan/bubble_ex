@@ -196,6 +196,36 @@
           "properties": {"custom_id": "bCard", "group_type": "custom.task", "order": 6, "width": 300, "height": 40,
             "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": true}, "next": {"type": "Message", "name": "first_element"}}}
         },
+        "bRandom": {
+          "id": "bRandom",
+          "type": "RepeatingGroup",
+          "properties": {
+            "_comment": "Bubble's random sort (WTF-452): two random tasks.",
+            "columns": 1,
+            "rows": 2,
+            "order": 7,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "ignore_empty_constraints": true,
+                "sort_field": "_random_sorting",
+                "descending": false
+              }
+            }
+          },
+          "elements": {
+            "bPickTitle": {
+              "id": "bPickTitle",
+              "type": "Text",
+              "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px",
+                "text": {"type": "TextExpression", "entries": {"0": "Pick: ", "1": {"type": "CurrentDataItem", "next": {"type": "Message", "name": "title_text"}}}}}
+            }
+          }
+        },
         "bOther": {
           "id": "bOther",
           "properties": {

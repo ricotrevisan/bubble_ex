@@ -132,6 +132,23 @@ user) is computed first and **pinned** into the filter as a value
 group's thing, whether a value is empty) is computed in Elixir and
 pinned too.
 
+Bubble's **random sort** (`sort_field: "_random_sorting"`, WTF-452)
+compiles to `sort: [:random]` (`BubbleEx.Target.Ash.Expr`) and is printed
+as `|> BubbleData.random_sort()`: the records ordered by
+`md5(CAST(<primary key> AS text) || seed)` in the database (the first
+column of a composite key only), then limited
+by the page size and `:max_items` as any other search, so the list is a
+random selection of the search, not its first records shuffled. The seed
+is new on every read (the order changes whenever the page reads again,
+change notifications included, as Bubble's does on every load);
+`config :<app>, <Web>.BubbleData, random_seed: "..."` fixes it, and the
+generated `config/test.exs` sets one so tests see a deterministic order.
+It reads no field of the record but its key: with enforced policies it
+runs through `:search` like any other search (what the user may find),
+the search fields check sees the sort, and no field policy is involved
+(no `:search_field_hidden`). Any other sort field that maps to no
+attribute leaves the search uncompiled (residue).
+
 A group inside a repeating group's cell holds a value per cell. A
 repeating group, a reusable instance or a search inside a cell is residue
 (`:page_data_in_cell`): the page would query once per cell.

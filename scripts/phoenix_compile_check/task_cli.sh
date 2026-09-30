@@ -22,9 +22,10 @@
 #     one makes complete refuse, a passing one completes the task, so the
 #     `mix test --only` binding is exercised on every CI Elixir version;
 #     then, on phoenix_api_clients (three API calls the generator leaves
-#     out, WTF-412), complete generate:api_clients passes on the generated
-#     calls' request-shape tests and the residue calls close through the
-#     attested api_clients:residue task
+#     out, WTF-412), complete generate:api_clients runs the generated
+#     calls' request-shape tests in one mix test (WTF-449): refused, naming
+#     the call, with a failing test tagged with one call, then passing; the
+#     residue calls close through the attested api_clients:residue task
 #
 #     scripts/phoenix_compile_check/task_cli.sh <scratch dir> [fixture]
 set -euo pipefail
@@ -137,6 +138,26 @@ ELIXIR
 
   wtf complete generate:option_sets --agent ci --app "$app"
   wtf complete generate:schema --agent ci --app "$app"
+
+  # The generated calls' tests run in one mix test (WTF-449), judged per
+  # call: a failing test tagged with one call fails that call, by name.
+  call="$(grep -rhoE 'bubble: "api_call:[^"]+"' "$scratch/test" | head -1 | sed -E 's/.*"(api_call:[^"]+)"/\1/')"
+  [[ -n "$call" ]] || fail "no generated test is tagged with an API call"
+  cat > "$tagged" <<ELIXIR
+defmodule PhxCheck.WtfTaggedTest do
+  use ExUnit.Case, async: true
+  @moduletag bubble: "$call"
+  test "a broken request shape", do: assert(1 + 1 == 3)
+end
+ELIXIR
+  if out="$(wtf complete generate:api_clients --agent ci --app "$app" --test-db "$test_db" 2>&1)"; then
+    rm -f "$tagged"
+    fail "complete accepted a failing request-shape test"
+  fi
+  rm -f "$tagged"
+  grep -qF "$call: a test failed" <<<"$out" ||
+    { echo "$out" >&2; fail "the batched run did not name $call as failing"; }
+
   wtf complete generate:api_clients --agent ci --app "$app" --test-db "$test_db"
   grep -q 'status done' <<<"$(wtf show generate:api_clients)" ||
     fail "generate:api_clients is not done with residue calls"

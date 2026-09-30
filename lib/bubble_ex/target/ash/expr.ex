@@ -16,7 +16,9 @@ defmodule BubbleEx.Target.Ash.Expr do
       path through an unloaded relationship
     * `arguments` - the context inputs the filter reads as `^arg(:name)`:
       `%{name, input, type}` with the IR's input kind and Bubble IDs
-    * `sort` - `[{attribute, :asc | :desc}]` for a search's sort
+    * `sort` - `[{attribute, :asc | :desc}]` for a search's sort, or
+      `[:random]` for Bubble's random sort (no field: a new order on
+      every read; `BubbleData.random_sort/1` in the generated app)
 
   ## Expression tree
 
@@ -56,7 +58,7 @@ defmodule BubbleEx.Target.Ash.Expr do
           source: map(),
           actor_loads: [[String.t()]],
           arguments: [%{name: String.t(), input: {atom(), map()}, type: String.t() | nil}],
-          sort: [{String.t(), :asc | :desc}]
+          sort: [{String.t(), :asc | :desc}] | [:random]
         }
 
   @doc "JSON form: string keys; tuples become lists, atoms strings."

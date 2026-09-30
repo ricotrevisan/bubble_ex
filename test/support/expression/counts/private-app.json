@@ -10,12 +10,11 @@
         "ir_compiled": 16710,
         "roots": 19505,
         "searches": 619,
-        "searches_ash_compiled": 323,
+        "searches_ash_compiled": 324,
         "unsupported": {
           "ash_search": {
             "ash_expr_unmapped_reference:the data type": 1,
             "ash_expr_unmapped_reference:the option": 1,
-            "ash_expr_unmapped_reference:the sort field": 1,
             "ash_expr_unsupported:a field of filter": 3,
             "ash_expr_unsupported:a field of input": 241,
             "ash_expr_unsupported:contains on a value that is not a list": 1,
@@ -100,12 +99,11 @@
         "ir_compiled": 16710,
         "roots": 19505,
         "searches": 619,
-        "searches_ash_compiled": 323,
+        "searches_ash_compiled": 324,
         "unsupported": {
           "ash_search": {
             "ash_expr_unmapped_reference:the data type": 1,
             "ash_expr_unmapped_reference:the option": 1,
-            "ash_expr_unmapped_reference:the sort field": 1,
             "ash_expr_unsupported:a field of filter": 3,
             "ash_expr_unsupported:a field of input": 241,
             "ash_expr_unsupported:contains on a value that is not a list": 1,
@@ -190,11 +188,10 @@
         "ir_compiled": 16044,
         "roots": 19505,
         "searches": 61,
-        "searches_ash_compiled": 53,
+        "searches_ash_compiled": 54,
         "unsupported": {
           "ash_search": {
             "ash_expr_unmapped_reference:the option": 1,
-            "ash_expr_unmapped_reference:the sort field": 1,
             "ash_expr_unsupported:the condition :text_contains_words": 1,
             "ash_expr_unsupported:the value :concat": 1,
             "ash_expr_unsupported:the value :filter": 1,

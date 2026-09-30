@@ -230,7 +230,7 @@
         },
         "list": {
           "total": 237,
-          "wired": 37
+          "wired": 38
         },
         "page_thing": {
           "total": 3,
@@ -238,19 +238,19 @@
         }
       },
       "reads": {
-        "query": 4,
+        "query": 5,
         "url_thing": 3,
         "value": 809
       },
       "residue_reasons": {
         "page_data_in_cell": 63,
         "unavailable_input": 850,
-        "uncompiled_expression": 288
+        "uncompiled_expression": 287
       },
       "sources": {
-        "residue": 1201,
+        "residue": 1200,
         "total": 2017,
-        "wired": 816
+        "wired": 817
       }
     },
     "page_data_ir": {

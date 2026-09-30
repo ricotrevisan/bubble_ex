@@ -66,7 +66,7 @@ defmodule BubbleEx.PageDataTest do
                {:page_thing, %{"page" => "bTaskPage"}}
              ]
 
-      assert PageData.coverage(pd)["sources"] == %{"total" => 7, "native" => 7, "residue" => 0}
+      assert PageData.coverage(pd)["sources"] == %{"total" => 8, "native" => 8, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -257,10 +257,54 @@ defmodule BubbleEx.PageDataTest do
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 7,
-               "wired" => 7,
+               "total" => 8,
+               "wired" => 8,
                "residue" => 0
              }
+    end
+
+    test "Bubble's random sort is a random order, limited by the page size (WTF-452)" do
+      {spec, project, frontend, app, model} = spec(app())
+
+      assert %{read: {:query, q}, page_size: 2, residue: []} = data(spec, "bRandom")
+      assert q.resource == "Task" and q.take == :all and q.sort == [:random]
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, backend} = BubbleEx.Target.Ash.Workflows.map(lowered, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          module: "Shop",
+          frontend: frontend,
+          workflows: backend,
+          frontend_workflows: spec
+        )
+
+      page = files["lib/shop_web/live/index_live/workflows.ex"]
+      assert page =~ ~r/\|> BubbleData\.random_sort\(\)\n\s*\|> BubbleData\.read\(ctx, :all, 2\)/
+      assert files["lib/shop_web/bubble_data.ex"] =~ "def random_sort(query) do"
+      assert files["config/test.exs"] =~ "config :shop, ShopWeb.BubbleData, random_seed: "
+
+      # Another unknown sort field stays uncompiled.
+      unknown =
+        put_in(
+          app(),
+          [
+            "pages",
+            "index",
+            "elements",
+            "bRandom",
+            "properties",
+            "data_source",
+            "properties",
+            "sort_field"
+          ],
+          "no_such_field_text"
+        )
+
+      {spec, _project, _frontend, _app, _model} = spec(unknown)
+      assert %{read: nil, residue: [%{reason: :uncompiled_expression}]} = data(spec, "bRandom")
     end
 
     test "a source reading one that is not loaded is not loaded either" do
@@ -303,7 +347,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 5
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 6
     end
 
     test "a repeating group in a repeating group's cell is residue" do

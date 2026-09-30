@@ -33,10 +33,22 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       test "the workflow sends the invoice" do …
 
   Every subject `S` must appear as a `bubble: "<S>"` tag in the parsed
-  code of `test/` (a tag in a comment or a string is none). Then
-  `mix test --only bubble:<S>` runs once per subject, and only its exit
-  status counts: non-zero when a test fails or none ran (the summary line
-  is not parsed). A check without subjects uses the task ID.
+  code of `test/` (a tag in a comment or a string is none). A check
+  without subjects uses the task ID. Each subject then needs its own
+  passing tests, judged without parsing the summary line (output the
+  tests control):
+
+    * several subjects run in one `mix test`, an `--only bubble:<S>`
+      filter each (WTF-449; `prefetch/3` gathers those of several tasks),
+      with `BubbleEx.Tasks.TestResults` as a second formatter recording
+      each test's tag and outcome. `S` passes when one of its tests
+      passed and none failed, and the run exited 0 or a failed test of
+      one of the judged subjects explains its status. A run that ends
+      without a result (the database setup, a compile error, a crashed
+      formatter) fails every subject in it
+    * one subject, or one the batch could not judge (the formatter did
+      not load), runs alone, `mix test --only bubble:<S>`, and only its
+      exit status counts: non-zero when a test fails or none ran
 
   ## Test database
 
@@ -62,7 +74,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   alias BubbleEx.Decision.Resolved
   alias BubbleEx.Target.Phoenix.Manifest
-  alias BubbleEx.Tasks.TestDb
+  alias BubbleEx.Tasks.{TestDb, TestResults}
   alias BubbleEx.Verify.{Recording, Result}
 
   @result_checks %{
@@ -321,17 +333,19 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   defp tagged([], ctx, cache), do: tagged([ctx.task.id], ctx, cache)
 
-  # Every subject needs its own passing tests (one run per subject: AND,
-  # not the OR of several --only filters). Only mix's exit status counts:
-  # it is non-zero when a test fails and when no test ran; the summary
-  # line is output the tests control, and its format changes between
-  # Elixir versions.
+  # Every subject needs its own passing tests (AND, not the OR of several
+  # --only filters): the subjects not yet memoized run together (`batch/3`)
+  # and each is judged on its own tests; a subject the batch could not
+  # judge runs alone. Only mix's exit status and the results file count:
+  # never the summary line, output the tests control whose format changes
+  # between Elixir versions.
   defp tagged(subjects, ctx, cache) do
     {tags, cache} = test_tags(ctx, cache)
-    binding = "mix test --only bubble:<subject>, per subject"
+    binding = "mix test --only bubble:<subject>, each subject judged on its own tests"
 
     case Enum.reject(subjects, &MapSet.member?(tags, &1)) do
       [] ->
+        cache = batch(subjects, ctx, cache)
         {outcomes, cache} = Enum.map_reduce(subjects, cache, &subject_tests(&1, ctx, &2))
 
         case Enum.find(outcomes, &(&1.status == :fail)) do
@@ -343,6 +357,164 @@ defmodule BubbleEx.Target.Phoenix.Checks do
         {fail(binding, "no test tagged bubble: " <> summary(untagged)), cache}
     end
   end
+
+  @doc """
+  Runs, in one `mix test`, the tagged tests of every subject the criteria
+  of `tasks` would run (see "Tagged tests") and memoizes each subject's
+  verdict in `cache`, so the criteria read it instead of running `mix
+  test` once per subject (WTF-449). Subjects with no tag in `test/`, or
+  already memoized, are left out; without a test database nothing runs.
+  """
+  @spec prefetch([BubbleEx.Plan.Task.t()], ctx(), map()) :: map()
+  def prefetch(tasks, ctx, cache) do
+    {tags, cache} = test_tags(ctx, cache)
+
+    subjects =
+      for task <- tasks,
+          criterion <- task.criteria,
+          subject <- test_subjects(criterion, task),
+          MapSet.member?(tags, subject),
+          uniq: true,
+          do: subject
+
+    batch(subjects, ctx, cache)
+  end
+
+  # The subjects whose tagged tests a criterion runs (mirrors check/4).
+  defp test_subjects(%{check: :traceability, args: args}, _task),
+    do: Enum.filter(list(args, "elements"), &surface?/1)
+
+  defp test_subjects(%{check: check, args: args}, task)
+       when check in [:render_smoke, :unit_test, :request_shape] do
+    subjects =
+      case check do
+        :render_smoke -> list(args, "surfaces") ++ list(args, "elements")
+        :unit_test -> list(args, "workflows")
+        :request_shape -> list(args, "calls")
+      end
+
+    if subjects == [], do: [task.id], else: subjects
+  end
+
+  defp test_subjects(_criterion, _task), do: []
+
+  # One `mix test` with an `--only bubble:<S>` filter per subject not yet
+  # memoized, and `BubbleEx.Tasks.TestResults` as a second formatter,
+  # which records each test's `bubble` tag and outcome. A subject passes
+  # when at least one of its tests passed and none failed, and the run
+  # exited 0 or its non-zero status is explained by a failed test. When the
+  # run failed before its suite finished, every subject fails with it; when
+  # the formatter never loaded, nothing is memoized and each subject runs
+  # alone (subject_run/3).
+  defp batch(subjects, ctx, cache) do
+    pending = subjects |> Enum.uniq() |> Enum.reject(&Map.has_key?(cache, {:tests, &1}))
+    test_db = Map.get(ctx, :test_db)
+
+    with true <- length(pending) > 1 and test_db != nil,
+         {:ok, outcomes} <- batch_run(pending, ctx, test_db) do
+      Map.merge(cache, Map.new(outcomes, fn {s, o} -> {{:tests, s}, o} end))
+    else
+      _ -> cache
+    end
+  end
+
+  defp batch_run(subjects, ctx, test_db) do
+    # Under _build, which every Mix project ignores; removed afterwards.
+    dir =
+      Path.join([
+        Path.expand(ctx.root),
+        "_build",
+        "wtf_task",
+        "tests-#{System.pid()}-" <>
+          Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
+      ])
+
+    ebin = Path.join(dir, "ebin")
+    results = Path.join(dir, "results.etf")
+
+    try do
+      with flags when is_binary(flags) <- TestResults.erl_flags(ebin),
+           :ok <- TestResults.write_beam(ebin) do
+        env =
+          TestDb.env(test_db) ++
+            [{"ERL_AFLAGS", erl_aflags(flags)}, {TestResults.env(), results}]
+
+        args =
+          ["test", "--formatter", "ExUnit.CLIFormatter", "--formatter", inspect(TestResults)] ++
+            Enum.flat_map(subjects, &["--only", "bubble:" <> &1])
+
+        {output, status} = ctx.cmd.(args, env)
+        attribute(subjects, TestResults.read(results), status, output)
+      else
+        _ -> :error
+      end
+    after
+      File.rm_rf(dir)
+      # Only when empty: another run may be using it.
+      File.rmdir(Path.dirname(dir))
+    end
+  end
+
+  # The caller's ERL_AFLAGS (e.g. shell history) stay.
+  defp erl_aflags(flags) do
+    case System.get_env("ERL_AFLAGS") do
+      blank when blank in [nil, ""] -> flags
+      own -> own <> " " <> flags
+    end
+  end
+
+  defp attribute(_subjects, :error, _status, _output), do: :error
+
+  # The formatter loaded but wrote no result: the run (the database setup,
+  # compiling the tests) or the formatter died before the suite finished.
+  # Every subject fails with the run's output; no run per subject, which
+  # would repeat the same failure once per subject.
+  defp attribute(subjects, :loaded, status, output) do
+    {:ok,
+     Map.new(subjects, fn s ->
+       {s, batch_fail(s, "the run ended without a result (exit status #{status})", output)}
+     end)}
+  end
+
+  defp attribute(subjects, {:ok, tests}, status, output) do
+    outcomes = Enum.group_by(tests, &elem(&1, 0), &elem(&1, 1))
+    judged = MapSet.new(subjects)
+
+    # A non-zero exit is explained only by a failed test of a judged
+    # subject; any other failure (an untagged test, another subject) is not.
+    explained? =
+      status == 0 or
+        Enum.any?(tests, fn {s, o} -> MapSet.member?(judged, s) and o in [:failed, :invalid] end)
+
+    {:ok,
+     Map.new(subjects, fn s ->
+       mine = Map.get(outcomes, s, [])
+
+       outcome =
+         cond do
+           Enum.any?(mine, &(&1 in [:failed, :invalid])) ->
+             batch_fail(s, "a test failed", output)
+
+           :passed not in mine ->
+             batch_fail(s, "no test ran", output)
+
+           not explained? ->
+             batch_fail(
+               s,
+               "exit status #{status}, which no failed test of the judged subjects explains",
+               output
+             )
+
+           true ->
+             pass("mix test --only bubble:" <> s, nil)
+         end
+
+       {s, outcome}
+     end)}
+  end
+
+  defp batch_fail(subject, why, output),
+    do: %{fail("mix test --only bubble:" <> subject, "#{subject}: #{why}") | output: tail(output)}
 
   defp subject_tests(subject, ctx, cache) do
     memo(cache, {:tests, subject}, fn -> subject_run(subject, ctx, Map.get(ctx, :test_db)) end)
