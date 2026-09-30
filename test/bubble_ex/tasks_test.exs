@@ -46,6 +46,18 @@ defmodule BubbleEx.TasksTest do
     def run(c, ctx, cache), do: Pass.run(c, ctx, cache)
   end
 
+  # Passes everything, with the real database classification, recording
+  # the test database of each run.
+  defmodule Guarded do
+    @moduledoc false
+    def run(c, ctx, cache) do
+      send(self(), {:test_db, ctx.test_db})
+      Pass.run(c, ctx, cache)
+    end
+
+    defdelegate needs_database?(criterion), to: BubbleEx.Target.Phoenix.Checks
+  end
+
   defmodule Fail do
     @moduledoc false
     def run(%{check: :compiles}, _ctx, cache),
@@ -449,6 +461,81 @@ defmodule BubbleEx.TasksTest do
 
       assert {:ok, %{reopened: ["workflow:wApiE"]}} =
                Tasks.sync(board(root), smaller, plan, now: @now)
+    end
+  end
+
+  describe "test database (WTF-448)" do
+    @url "ecto://postgres:postgres@127.0.0.1:55432/app_test"
+
+    defp guarded(root, id, opts),
+      do: complete(root, id, Keyword.merge([agent: "a1", checks: Guarded], opts))
+
+    test "a task running mix test is refused without one", %{root: root} do
+      done!(root, @generators)
+
+      assert {:error, %Error{kind: :invalid_input, message: m}} = guarded(root, "auth", [])
+      assert m =~ "auth run mix test"
+      assert m =~ "--test-db URL"
+      assert m =~ "--use-project-test-config"
+      refute_received {:test_db, _}
+      refute File.exists?(Path.join(root, State.path("auth")))
+
+      assert {:ok, _} = guarded(root, "auth", test_db: :project)
+      assert_received {:test_db, :project}
+    end
+
+    test "a subtask running mix test refuses its parent", %{root: root} do
+      done!(root, @generators ++ ["auth"])
+      assert {:error, %Error{message: m}} = guarded(root, "backend:fOne", [])
+      assert m =~ "workflow:wApiA, workflow:wApiD, backend:fOne run mix test"
+    end
+
+    test "a URL needs a config/test.exs reading TEST_DATABASE_URL", %{root: root} do
+      done!(root, @generators)
+      test_db = {:url, @url}
+
+      assert {:error, %Error{message: m}} = guarded(root, "auth", test_db: test_db)
+      assert m =~ "config/test.exs does not read TEST_DATABASE_URL"
+
+      # A mention in a comment reads nothing.
+      File.mkdir_p!(Path.join(root, "config"))
+      File.write!(Path.join(root, "config/test.exs"), "# TEST_DATABASE_URL\nimport Config\n")
+      assert {:error, _} = guarded(root, "auth", test_db: test_db)
+
+      File.write!(
+        Path.join(root, "config/test.exs"),
+        ~s|import Config\nconfig :app, App.Repo, url: System.get_env("TEST_DATABASE_URL")\n|
+      )
+
+      assert {:ok, _} = guarded(root, "auth", test_db: test_db)
+      assert_received {:test_db, {:url, @url}}
+    end
+
+    test "tasks needing no database complete and audit without one", %{root: root} do
+      assert {:ok, _} = guarded(root, "generate:option_sets", [])
+      assert_received {:test_db, nil}
+
+      assert {:ok, %{checked: ["generate:option_sets"]}} =
+               Tasks.audit(board(root), now: @now, checks: Guarded)
+    end
+
+    test "audit refuses done tasks running mix test without one", %{root: root} do
+      done!(root, @generators)
+      {:ok, _} = guarded(root, "auth", test_db: :project)
+
+      assert {:error, %Error{message: m}} =
+               Tasks.audit(board(root), now: @now, checks: Guarded, tasks: ["auth"])
+
+      assert m =~ "auth run mix test"
+      assert board(root).states["auth"].status == :done
+
+      assert {:ok, %{flipped: []}} =
+               Tasks.audit(board(root),
+                 now: @now,
+                 checks: Guarded,
+                 tasks: ["auth"],
+                 test_db: :project
+               )
     end
   end
 

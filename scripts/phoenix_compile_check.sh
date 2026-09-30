@@ -33,7 +33,8 @@
 #     there and fail, every test, against the :omit render of the same app
 #     (PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES overrides the list)
 #   * finally, scripts/phoenix_compile_check/task_cli.sh: mix wtf.task
-#     complete/audit end to end on one generated project (WTF-375), and
+#     complete/audit end to end on one generated project (WTF-375; its
+#     tagged tests on the database named with --test-db, WTF-448), and
 #     scripts/phoenix_compile_check/structural.sh: mix wtf.verify
 #     structural on one (WTF-386)
 #
@@ -48,6 +49,12 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 scratch="${PHOENIX_COMPILE_CHECK_DIR:-$root/_build/phoenix_compile_check}"
 export MIX_ENV=test
+# mix wtf.task names its test database explicitly (WTF-448); it refuses
+# port 5432 unless told otherwise, like the check itself.
+if [[ "${PHOENIX_COMPILE_CHECK_ALLOW_5432:-}" == 1 ]]; then export WTF_TASK_ALLOW_5432=1; fi
+# The generated config/test.exs uses TEST_DATABASE_URL when set: only the
+# check's own database may reach it.
+unset TEST_DATABASE_URL
 
 cd "$root"
 mix compile

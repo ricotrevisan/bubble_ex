@@ -37,7 +37,8 @@ defmodule VerticalSlice.Cli do
 
   # The slice's configuration, appended to the owned config/dev.exs and
   # config/test.exs (the generated project's `mix test`, which `mix
-  # wtf.task complete` runs, must never reach a developer's PostgreSQL on
+  # wtf.task complete` runs with `--test-db` naming the same slice_test
+  # (WTF-448), must never reach a developer's PostgreSQL on
   # localhost:5432): the throwaway database (SLICE_DB, validated by
   # scripts/check_db.exs: explicit port, never 5432, a `slice_` database;
   # unset, a host that cannot resolve) and, in dev, the data-access opt-in

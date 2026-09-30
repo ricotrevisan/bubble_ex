@@ -1232,6 +1232,40 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **`mix wtf.task complete` and `audit` no longer run `mix test` on a
+  database nobody named** (WTF-448). Tagged-test criteria (`unit_test`,
+  `request_shape`, `render_smoke`, and `traceability` of a page or
+  reusable) run `mix test` in the owner's project, whose `test` alias runs
+  `ash.setup` and so created `<app>_test` on whatever PostgreSQL listened
+  on `localhost:5432`. Such a run now needs `WTF_TASK_TEST_DB` or
+  `--test-db URL` (a loopback host unless
+  `WTF_TASK_ALLOW_REMOTE_TEST_DB=1`, an explicit port, not 5432 unless
+  `WTF_TASK_ALLOW_5432=1`, a database ending in `_test` or starting with
+  `wtf_`, no query parameter but `ssl=true|false` (a `socket`,
+  `socket_dir` or `port` parameter would bypass the host and port, and an
+  invalid one makes Ecto print the URL with its password) and no
+  fragment; passed to `mix test` as `TEST_DATABASE_URL` in its
+  environment), or `--use-project-test-config`, which checks nothing
+  (`config/test.exs` as it is: in a generated project `<app>_test` on
+  `localhost:5432`), and is refused up front otherwise; `DATABASE_URL`
+  is stripped from the subprocess's environment either way;
+  tasks whose criteria need no database (manifest, compile, format and
+  Credo, source scans, results, task state) run as before.
+  `BubbleEx.Tasks.TestDb` validates the URL; `BubbleEx.Tasks.complete/3`
+  and `audit/2` take `:test_db`, and
+  `BubbleEx.Target.Phoenix.Checks.needs_database?/1` says which criteria
+  run `mix test`. The generated `config/test.exs` uses `TEST_DATABASE_URL`
+  when it is set (Phoenix's defaults otherwise) and never `DATABASE_URL`,
+  which often points at a development or production database while the
+  test alias creates and migrates its database (an empty
+  `TEST_DATABASE_URL` counts as unset). A `--test-db` URL is refused for
+  a project whose `config/test.exs` never reads it, whose
+  `config/runtime.exs` reads `DATABASE_URL` or sets a Repo's connection
+  outside an `if config_env() == :prod` block, or whose Repo config sets
+  `socket` or `socket_dir` (a check of the code as written).
+  `scripts/phoenix_compile_check/task_cli.sh` checks the refusals and runs
+  its tagged tests with `--test-db`.
+
 - **The `everyone` rule's reach negates an emptiness test exactly**
   (WTF-430). Its record-value guard (every value the negated rules read
   must be non-empty) turned the negation of `This Thing's X is not empty`
@@ -1241,6 +1275,7 @@ All notable changes to this project are documented here.
   interpreter alike; a reference read so must instead not be dangling (its
   ID is nil or its record exists), so the reach never depends on the
   uncalibrated `dangling_ref_is_empty`.
+
 - A modal Popup with an authored HTML ID rendered two `id` attributes on
   its `<.focus_wrap>`, which fails `mix compile --warnings-as-errors`
   ("key :id will be overridden in map"). It now takes the authored ID

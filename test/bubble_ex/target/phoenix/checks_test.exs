@@ -21,6 +21,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
         now: @now,
         reviewers: [],
         resolved: nil,
+        test_db: :project,
         cmd: fn args, env ->
           send(test, {:mix, args, env})
           Process.get(:mix_result, {"1 test, 0 failures", 0})
@@ -151,7 +152,9 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
                run(:traceability, args, ctx(root))
 
       assert detail =~ "rendered by the tests of page:pHome"
-      assert_received {:mix, ["test", "--only", "bubble:page:pHome"], [{"MIX_ENV", "test"}]}
+
+      assert_received {:mix, ["test", "--only", "bubble:page:pHome"],
+                       [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}]}
     end
 
     test "render_smoke refuses placeholders, then runs the tagged tests", %{tmp_dir: root} do
@@ -207,6 +210,41 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
 
       assert_received {:mix, ["test", "--only", "bubble:workflow:wA"], _}
       assert_received {:mix, ["test", "--only", "bubble:workflow:wB"], _}
+    end
+
+    test "tagged tests run only on a chosen test database (WTF-448)", %{tmp_dir: root} do
+      write(root, "test/wf_test.exs", ~s(@tag bubble: "workflow:wA"\n))
+      args = %{"workflows" => ["workflow:wA"]}
+
+      assert %{status: :fail, detail: "workflow:wA: no test database chosen" <> _} =
+               run(:unit_test, args, ctx(root, test_db: nil))
+
+      refute_received {:mix, _, _}
+
+      url = "ecto://postgres:postgres@127.0.0.1:55432/app_test"
+      assert %{status: :pass} = run(:unit_test, args, ctx(root, test_db: {:url, url}))
+
+      # In the environment, never on the command line.
+      assert_received {:mix, ["test", "--only", "bubble:workflow:wA"],
+                       [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}, {"TEST_DATABASE_URL", ^url}]}
+    end
+
+    test "needs_database? names the checks that run mix test" do
+      for check <- ~w(render_smoke unit_test request_shape)a,
+          do: assert(Checks.needs_database?(%{check: check, args: %{}}))
+
+      for check <- ~w(generated_unchanged compiles lint step_order deterministic replay)a,
+          do: refute(Checks.needs_database?(%{check: check, args: %{}}))
+
+      refute Checks.needs_database?(%{
+               check: :traceability,
+               args: %{"elements" => ["element:eA"]}
+             })
+
+      assert Checks.needs_database?(%{
+               check: :traceability,
+               args: %{"elements" => ["element:eA", "reusable:rCard"]}
+             })
     end
 
     test "step_order reads the workflow's step markers in order", %{tmp_dir: root} do

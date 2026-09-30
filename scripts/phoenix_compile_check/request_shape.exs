@@ -3,7 +3,9 @@
 # then claims and completes every api_call task whose call was generated.
 # `complete` runs the task's request_shape check, which runs the tests
 # tagged `bubble: "api_call:<group>/<call>"` (mix test --only …) in the
-# scratch project; it raises unless every criterion passes.
+# scratch project; it raises unless every criterion passes. The tests run
+# on the check's database, named explicitly (`--test-db`, WTF-448): the
+# PHOENIX_COMPILE_CHECK_DB server's phx_check_test.
 #
 #     MIX_ENV=test mix run scripts/phoenix_compile_check/request_shape.exs <dir> <fixture.json>
 
@@ -23,9 +25,21 @@ tasks = for t <- plan.tasks, t.kind == :api_call, MapSet.member?(generated, t.id
 
 if tasks == [], do: raise("no api_call task for a generated call in #{fixture}")
 
+test_db = String.trim_trailing(System.fetch_env!("PHOENIX_COMPILE_CHECK_DB"), "/") <> "/phx_check_test"
+
 for id <- tasks do
   Mix.Task.rerun("wtf.task", ["claim", id, "--agent", "ci", "--root", dir])
-  Mix.Task.rerun("wtf.task", ["complete", id, "--agent", "ci", "--root", dir])
+
+  Mix.Task.rerun("wtf.task", [
+    "complete",
+    id,
+    "--agent",
+    "ci",
+    "--root",
+    dir,
+    "--test-db",
+    test_db
+  ])
 end
 
 IO.puts("wtf.task complete: #{length(tasks)} api_call tasks pass request_shape")

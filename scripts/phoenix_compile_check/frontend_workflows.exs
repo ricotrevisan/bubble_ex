@@ -10,7 +10,8 @@
 # criteria (mix compile --warnings-as-errors, mix format --check-formatted,
 # and step_order: one `# bubble:workflow <id>` marker with one
 # `# bubble:step N <type>` per action, in order); it raises unless every
-# criterion passes. Finally it
+# criterion passes; none of them runs mix test, so no test database is
+# named (WTF-448). Finally it
 # runs the smoke tests tagged with each of those tasks (`mix test --only
 # bubble_smoke:workflow:<id>`; exit status only, as the task CLI's
 # tagged-test binding).

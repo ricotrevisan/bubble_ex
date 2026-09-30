@@ -347,6 +347,11 @@ defmodule BubbleEx.Tasks do
     * `:app` - the Bubble app ID results must be for; `:reviewers` - the
       reviewers whose waivers count; `:resolved` - the
       `BubbleEx.Decision.Resolved` a result's decision is checked against
+    * `:test_db` - the test database tagged tests may use
+      (`BubbleEx.Tasks.TestDb`: `{:url, url}` or `:project`). Without it a
+      run whose criteria would run `mix test` (which creates and migrates
+      the project's test database) is refused up front; the other checks
+      need none
     * `:cmd` - `(args, env) -> {output, status}` running `mix`, `:git` -
       `(args) -> {output, status}` running `git`, in the repository
 

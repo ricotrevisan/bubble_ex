@@ -21,7 +21,8 @@
 #   4. serve it (data access on, API clients pointed at a closed port) and
 #      drive the page in Chromium (drive.mjs): signed out, a magic-link
 #      sign-in from the local mailbox, then every wired element
-#   5. `mix wtf.task` (next, the generator tasks, the page's tasks) and
+#   5. `mix wtf.task` (next, the generator tasks, the page's tasks; their
+#      tests on the throwaway `slice_test`, named with --test-db) and
 #      `mix wtf.verify structural`
 #
 # The server and the database are always stopped and removed on exit
@@ -72,6 +73,11 @@ mkdir -p "$out" "$logs" "$out/artifacts"
 chmod 700 "$out" "$logs" "$out/artifacts"
 
 export SLICE_DB="ecto://postgres:postgres@127.0.0.1:$db_port"
+# mix wtf.task runs the project's tests only on the database it is given
+# (--test-db, passed as TEST_DATABASE_URL, WTF-448): the throwaway
+# slice_test. Nothing from the caller's shell reaches the project's config.
+slice_test_db="$SLICE_DB/slice_test"
+unset TEST_DATABASE_URL DATABASE_URL WTF_TASK_TEST_DB
 server_pid=""
 
 cleanup() {
@@ -191,14 +197,15 @@ step "mix wtf.task"
 wtf() { mix wtf.task "$@" --root "$project"; }
 wtf next --n 20 > "$logs/wtf-task-next.log" 2>&1 || true
 for t in $tasks; do
-  if wtf complete "$t" --agent vertical-slice --app slice > "$logs/wtf-task-$t.log" 2>&1; then
+  if wtf complete "$t" --agent vertical-slice --app slice --test-db "$slice_test_db" \
+    > "$logs/wtf-task-$t.log" 2>&1; then
     echo "done   $t"
   else
     echo "open   $t (logs/wtf-task-$t.log)"
   fi
 done
 wtf show "surface:page/$page_id" > "$logs/wtf-task-surface.log" 2>&1 || true
-wtf audit --app slice > "$logs/wtf-task-audit.log" 2>&1 || true
+wtf audit --app slice --test-db "$slice_test_db" > "$logs/wtf-task-audit.log" 2>&1 || true
 
 step "mix wtf.verify structural"
 mix wtf.verify structural --root "$project" --app slice --out "$out/structural" \
