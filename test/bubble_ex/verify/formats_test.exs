@@ -148,6 +148,26 @@ defmodule BubbleEx.Verify.FormatsTest do
       invalid(Scenario.from_map(raw), "cannot observe")
     end
 
+    test "a search may be constrained on a field, and says so only then" do
+      raw =
+        update_in(raw("scenario.privacy_read.json"), ["ops"], fn [search | rest] ->
+          [search, Map.merge(search, %{"id" => "o9", "constrain" => "text_text"}) | rest]
+        end)
+
+      assert {:ok, s} = Scenario.from_map(raw)
+      assert %{op: :search, constrain: "text_text"} = Scenario.op(s, "o9")
+      refute Map.has_key?(Scenario.op(s, "o1"), :constrain)
+      assert [plain, constrained | _] = Scenario.to_map(s)["ops"]
+      refute Map.has_key?(plain, "constrain")
+      assert constrained["constrain"] == "text_text"
+      assert Scenario.from_map(Scenario.to_map(s)) == {:ok, s}
+
+      bad =
+        update_in(raw, ["ops"], fn [search | rest] -> [Map.put(search, "constrain", 7) | rest] end)
+
+      invalid(Scenario.from_map(bad))
+    end
+
     test "ops need their members and have unique ids" do
       raw =
         update_in(raw("scenario.privacy_read.json"), ["ops"], fn [search, get] ->

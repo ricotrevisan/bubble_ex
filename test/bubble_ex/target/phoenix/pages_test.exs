@@ -57,7 +57,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
                test/shop_web/bubble_surfaces_test.exs),
           do: assert(Map.has_key?(manifest["generated"], path), path)
 
-      assert manifest["inputs"]["frontend"]["bubble_id"] == "tiptap-plugin"
+      assert manifest["inputs"]["frontend"]["bubble_id"] == "example-plugin"
     end
 
     test "every rendered element carries its data-bubble-id", %{files: files} do

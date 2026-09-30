@@ -6,7 +6,7 @@
           "element": 11006,
           "workflow": 8499
         },
-        "elixir_compiled": 15313,
+        "elixir_compiled": 15314,
         "ir_compiled": 16710,
         "roots": 19505,
         "searches": 619,
@@ -17,13 +17,12 @@
             "ash_expr_unmapped_reference:the option": 1,
             "ash_expr_unmapped_reference:the sort field": 1,
             "ash_expr_unsupported:a field of filter": 3,
-            "ash_expr_unsupported:a field of input": 237,
+            "ash_expr_unsupported:a field of input": 241,
             "ash_expr_unsupported:contains on a value that is not a list": 1,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
             "ash_expr_unsupported:the value :concat": 46,
             "ash_expr_unsupported:the value :date_add": 51,
             "ash_expr_unsupported:the value :date_floor": 3,
-            "ash_expr_unsupported:the value :fallback": 2,
             "ash_expr_unsupported:the value :filter": 28,
             "ash_expr_unsupported:the value :first": 17,
             "ash_expr_unsupported:the value :item_at": 3,
@@ -33,7 +32,6 @@
           },
           "elixir": {
             "elixir_expr_unsupported:a field of as_list": 1,
-            "elixir_expr_unsupported:a field of fallback": 1,
             "elixir_expr_unsupported:a field of filter": 10,
             "elixir_expr_unsupported:a field of first": 90,
             "elixir_expr_unsupported:a field of item_at": 4,
@@ -79,19 +77,16 @@
         }
       },
       "privacy": {
-        "ash_compiled": 86,
-        "ash_with_actor_loads": 46,
+        "ash_compiled": 90,
+        "ash_with_actor_loads": 50,
         "conditions": 91,
         "diagnostics": {
-          "ash_expr_unmapped_reference": 1,
-          "ash_expr_unsupported": 16
+          "ash_expr_unmapped_reference": 1
         },
         "rules": 144,
         "rules_without_condition": 53,
         "unsupported": {
-          "ash_expr_unmapped_reference:the data type": 1,
-          "ash_expr_unsupported:a field of fallback": 11,
-          "ash_expr_unsupported:the value :fallback": 5
+          "ash_expr_unmapped_reference:the data type": 1
         }
       }
     },
@@ -101,7 +96,7 @@
           "element": 11006,
           "workflow": 8499
         },
-        "elixir_compiled": 15313,
+        "elixir_compiled": 15314,
         "ir_compiled": 16710,
         "roots": 19505,
         "searches": 619,
@@ -112,13 +107,12 @@
             "ash_expr_unmapped_reference:the option": 1,
             "ash_expr_unmapped_reference:the sort field": 1,
             "ash_expr_unsupported:a field of filter": 3,
-            "ash_expr_unsupported:a field of input": 237,
+            "ash_expr_unsupported:a field of input": 241,
             "ash_expr_unsupported:contains on a value that is not a list": 1,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
             "ash_expr_unsupported:the value :concat": 47,
             "ash_expr_unsupported:the value :date_add": 51,
             "ash_expr_unsupported:the value :date_floor": 3,
-            "ash_expr_unsupported:the value :fallback": 2,
             "ash_expr_unsupported:the value :filter": 29,
             "ash_expr_unsupported:the value :first": 17,
             "ash_expr_unsupported:the value :item_at": 3,
@@ -128,7 +122,6 @@
           },
           "elixir": {
             "elixir_expr_unsupported:a field of as_list": 1,
-            "elixir_expr_unsupported:a field of fallback": 1,
             "elixir_expr_unsupported:a field of filter": 10,
             "elixir_expr_unsupported:a field of first": 90,
             "elixir_expr_unsupported:a field of item_at": 4,
@@ -174,19 +167,16 @@
         }
       },
       "privacy": {
-        "ash_compiled": 86,
-        "ash_with_actor_loads": 46,
+        "ash_compiled": 90,
+        "ash_with_actor_loads": 50,
         "conditions": 91,
         "diagnostics": {
-          "ash_expr_unmapped_reference": 1,
-          "ash_expr_unsupported": 16
+          "ash_expr_unmapped_reference": 1
         },
         "rules": 144,
         "rules_without_condition": 53,
         "unsupported": {
-          "ash_expr_unmapped_reference:the data type": 1,
-          "ash_expr_unsupported:a field of fallback": 11,
-          "ash_expr_unsupported:the value :fallback": 5
+          "ash_expr_unmapped_reference:the data type": 1
         }
       }
     },
@@ -196,7 +186,7 @@
           "element": 11006,
           "workflow": 8499
         },
-        "elixir_compiled": 15313,
+        "elixir_compiled": 15314,
         "ir_compiled": 16044,
         "roots": 19505,
         "searches": 61,
@@ -213,7 +203,6 @@
           },
           "elixir": {
             "elixir_expr_unsupported:a field of as_list": 1,
-            "elixir_expr_unsupported:a field of fallback": 1,
             "elixir_expr_unsupported:a field of filter": 6,
             "elixir_expr_unsupported:a field of first": 37,
             "elixir_expr_unsupported:a field of item_at": 4,
@@ -260,19 +249,16 @@
         }
       },
       "privacy": {
-        "ash_compiled": 86,
-        "ash_with_actor_loads": 46,
+        "ash_compiled": 90,
+        "ash_with_actor_loads": 50,
         "conditions": 91,
         "diagnostics": {
-          "ash_expr_unmapped_reference": 1,
-          "ash_expr_unsupported": 16
+          "ash_expr_unmapped_reference": 1
         },
         "rules": 144,
         "rules_without_condition": 53,
         "unsupported": {
-          "ash_expr_unmapped_reference:the data type": 1,
-          "ash_expr_unsupported:a field of fallback": 11,
-          "ash_expr_unsupported:the value :fallback": 5
+          "ash_expr_unmapped_reference:the data type": 1
         }
       }
     }

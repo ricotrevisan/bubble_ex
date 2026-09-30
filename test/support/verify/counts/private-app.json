@@ -15,20 +15,22 @@
       "everyone_guards_record_values": "unclear",
       "logged_out_user_is_empty": "leaning_flipped",
       "no_visible_field_unreadable": "supported",
+      "non_filterable_constraint_excludes": "not_exercised",
       "ordering_with_empty_false": "not_exercised",
       "search_independent_of_view": "supported"
     },
     "changed": [],
     "dependent_checks": {
       "actor_empty_denies": 121,
-      "builtin_fields_hidden_unless_listed": 76,
+      "builtin_fields_hidden_unless_listed": 85,
       "empty_equals_empty": 107,
       "empty_list_contains_nothing": 16,
       "empty_yes_no_is_no": 13,
       "everyone_exclusive": 34,
       "everyone_guards_record_values": 32,
       "logged_out_user_is_empty": 28,
-      "no_visible_field_unreadable": 803,
+      "no_visible_field_unreadable": 812,
+      "non_filterable_constraint_excludes": 9,
       "search_independent_of_view": 49
     },
     "jointly_dependent_checks": {
@@ -51,6 +53,7 @@
       "everyone_guards_record_values": "exercised",
       "logged_out_user_is_empty": "exercised",
       "no_visible_field_unreadable": "exercised",
+      "non_filterable_constraint_excludes": "exercised",
       "ordering_with_empty_false": "not exercised: no supported rule reads what it governs",
       "search_independent_of_view": "exercised"
     },
@@ -66,14 +69,15 @@
       "ordering_with_empty_false",
       "empty_item_not_contained",
       "logged_out_user_is_empty",
-      "defaults_applied_at_creation"
+      "defaults_applied_at_creation",
+      "non_filterable_constraint_excludes"
     ]
   },
-  "checks": 1776,
+  "checks": 1788,
   "defaults": {
     "explicit_empties": 9,
     "fields": 194,
-    "seed_values_equal_to_default": 865,
+    "seed_values_equal_to_default": 845,
     "unmodeled": 0
   },
   "differences": {
@@ -87,31 +91,31 @@
     "unintended": 0
   },
   "governed_fields": {
-    "held": 2759,
-    "slots": 4265,
-    "unchecked": 1506,
+    "held": 2701,
+    "slots": 4178,
+    "unchecked": 1477,
     "unchecked_by_reason": {
       "condition_reads": 219,
       "explicitly_empty": 11,
-      "no_synthetic_value": 1179,
+      "no_synthetic_value": 1150,
       "persona": 97
     }
   },
-  "observations": 2970,
+  "observations": 2976,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 199,
+  "records": 198,
   "rules": {
     "conditional": 91,
     "everyone": 53,
     "false_branch_only_via_actor_guard": 0,
     "observable": 87,
     "observable_percent": 60.4,
-    "solved": 134,
-    "solved_percent": 93.1,
+    "solved": 133,
+    "solved_percent": 92.4,
     "total": 144,
     "true_branch_only_via_empty_actor": 0,
-    "unsolved": 10
+    "unsolved": 11
   },
   "scenarios": 582,
   "seed_values_from_condition_literals": 0,
@@ -127,13 +131,13 @@
     "with_rules": 52
   },
   "unobservable_by_reason": {
-    "grants_nothing": 40,
+    "grants_nothing": 39,
     "masked": 7,
-    "unsolved": 10
+    "unsolved": 11
   },
   "unsolved_by_reason": {
     "deleted_type": 2,
     "no_false_witness": 3,
-    "no_true_witness": 5
+    "no_true_witness": 6
   }
 }

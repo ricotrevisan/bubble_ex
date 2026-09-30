@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role; owns d4; team t1 whose lead is u2), u2 (owner of d1, creator of n2), u3 (admin; dangling team), u4 (every field empty). reads: per type and action, the records each persona reads and the fields it may view ('all': every attribute but the primary key); 'get' reads each record by primary key (Ash.get), 'search' runs :search, 'list' runs the primary :read without a key. filters (filter_input on :search), sorts (sort_input on :search, then id) and loads (Ash.load of a relationship) probe hidden fields and gated relationships; aggregates (count, exists, max through :read or :search, 'forbidden' when the policy refuses) probe the keyed :read. auto_bind / creates: whether the update or create is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies. Written against these rows only: sorts after the auto_bind updates are not asserted.",
+  "_comment": "Hand-authored expectations for the privacy policies of test/support/target/ash/policies.json (all data invented). Records use the Ash attribute names of the fixture's project; 'gone-' IDs name records that do not exist. Personas: logged out, u1 (no role; owns d4; team t1 whose lead is u2), u2 (owner of d1, creator of n2), u3 (admin; dangling team), u4 (every field empty). reads: per type and action, the records each persona reads and the fields it may view ('all': every attribute but the primary key); 'get' reads each record by primary key (Ash.get), 'search' runs :search, 'list' runs the primary :read without a key. filters (filter_input on :search), sorts (sort_input on :search, then id) and loads (Ash.load of a relationship) probe hidden fields and gated relationships; aggregates (count, exists, max through :read or :search, 'forbidden' when the policy refuses) probe the keyed :read. auto_bind / creates: whether the update or create is authorized. Checked by scripts/ash_compile_check/policies.exs in PostgreSQL through the generated policies. Written against these rows only: sorts after the auto_bind updates are not asserted. Non-filterable fields (search_fields: true): the public rule keeps doc.body, and the everyone rule note.text, out of the searches of the users they apply to; the check also requires the same search without the field restriction (the actor's plain :search, filtered in the database without authorization) to find more, so it fails if the restriction is not enforced.",
   "aggregates": [
     {
       "action": "read",
@@ -105,6 +105,46 @@
       "persona": "logged_out",
       "type": "doc",
       "why": "a keyed count only counts records named by ID, all of which logged-out users may view directly"
+    },
+    {
+      "action": "search",
+      "expected": 0,
+      "filter": {
+        "body": {
+          "is_nil": false
+        }
+      },
+      "kind": "count",
+      "persona": "logged_out",
+      "type": "doc",
+      "why": "a count constrained on body counts only docs the actor may search by body: none for logged-out users (d2 and d4 have one)"
+    },
+    {
+      "action": "search",
+      "expected": 3,
+      "filter": {
+        "and": [
+          {
+            "id": {
+              "in": [
+                "d1",
+                "d2",
+                "d3",
+                "d4"
+              ]
+            }
+          },
+          {
+            "body": {
+              "is_nil": false
+            }
+          }
+        ]
+      },
+      "kind": "count",
+      "persona": "u3",
+      "type": "doc",
+      "why": "admins may search by body: d1, d2 and d4 have one"
     }
   ],
   "auto_bind": [
@@ -291,6 +331,81 @@
       "persona": "u2",
       "type": "doc",
       "why": "the private twin is not accepted as input"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "body": {
+          "eq": "B2"
+        }
+      },
+      "persona": "logged_out",
+      "search_fields": true,
+      "type": "doc",
+      "why": "logged-out users find d2 only through the public rule, which keeps body out of their searches (they may still view it)"
+    },
+    {
+      "expected": [
+        "d4"
+      ],
+      "filter": {
+        "body": {
+          "in": [
+            "B2",
+            "B4"
+          ]
+        }
+      },
+      "persona": "u1",
+      "search_fields": true,
+      "type": "doc",
+      "why": "u1 may search d4 by body (owner) but d2 only through the public rule"
+    },
+    {
+      "expected": [
+        "d2",
+        "d4"
+      ],
+      "filter": {
+        "body": {
+          "in": [
+            "B2",
+            "B4"
+          ]
+        }
+      },
+      "persona": "u3",
+      "type": "doc",
+      "why": "the admin rule does not restrict body"
+    },
+    {
+      "expected": [],
+      "filter": {
+        "text": {
+          "eq": "N1"
+        }
+      },
+      "persona": "logged_out",
+      "search_fields": true,
+      "type": "note",
+      "why": "n1 is found through the everyone rule, which keeps text out of searches"
+    },
+    {
+      "expected": [
+        "n2"
+      ],
+      "filter": {
+        "text": {
+          "in": [
+            "N1",
+            "N2"
+          ]
+        }
+      },
+      "persona": "u2",
+      "search_fields": true,
+      "type": "note",
+      "why": "u2 may search by text only the note it created (mine_); n1 comes from the everyone rule"
     }
   ],
   "loads": [
@@ -966,6 +1081,38 @@
       "sort": "secret,id",
       "type": "doc",
       "why": "u1 finds d2 and d4 and views only d4's secret (owner): d2's secret reads as null (nulls last), so d4 first; a leak of S2 would put d2 first"
+    },
+    {
+      "expected": [
+        "d4"
+      ],
+      "persona": "u1",
+      "search_fields": true,
+      "sort": "body,id",
+      "type": "doc",
+      "why": "sorting by body keeps only the docs u1 may search by body (d4, as owner): d2 would be placed by its body"
+    },
+    {
+      "expected": [
+        "d1",
+        "d2",
+        "d4",
+        "d3"
+      ],
+      "persona": "u3",
+      "sort": "body,id",
+      "type": "doc",
+      "why": "admins may search by body: every doc, empty body last"
+    },
+    {
+      "expected": [
+        "n2"
+      ],
+      "persona": "u2",
+      "search_fields": true,
+      "sort": "-text",
+      "type": "note",
+      "why": "only u2's own note may be ordered by its text"
     }
   ]
 }

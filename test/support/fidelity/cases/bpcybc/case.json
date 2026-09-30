@@ -14,12 +14,12 @@
     "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
   },
   "source": {
-    "bubble_id": "tiptap-plugin",
+    "bubble_id": "example-plugin",
     "app_version": "test",
     "page_id": "bpcybc",
     "page_path": "bubbleex-i38-h4-text",
     "page_payload_sha256": "6b8fd2cb6fe130887477070220531f1bfeedff104133dcaf68c3dbcd28e950fa",
-    "payload_sha256": "5be47e78ddac187533fd913b54b891834f15dfe43b24b7f710d826918ca83389"
+    "payload_sha256": "fcf4da28af9e150fa82e8720ea03b5213b55393dca574099ea733971ed04c166"
   },
   "viewports": [
     390,

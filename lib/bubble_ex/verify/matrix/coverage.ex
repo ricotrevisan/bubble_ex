@@ -47,6 +47,11 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
       "seeds cannot hold a reference to a missing record (V1 seed references must resolve)"
   }
 
+  # Flags only a constrained search depends on (not a get or an
+  # unconstrained search, which the solver looks at): every type with a
+  # non-filterable field gets such searches anyway.
+  @search_only [:non_filterable_constraint_excludes]
+
   # Flags no recording can depend on: dangling references, and (when the
   # seed writes defaults out, as Bubble stores records after creation)
   # whether defaults are applied at creation.
@@ -208,7 +213,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   def exercise_flags(%Interpreter{} = interpreter, ds, personas) do
     unsettled = Assumptions.unsettled()
 
-    for flag <- Assumptions.names(),
+    for flag <- Assumptions.names() -- @search_only,
         not Map.has_key?(unexercisable(interpreter), flag),
         flipped = %{interpreter | assumptions: Assumptions.flip(interpreter.assumptions, flag)},
         {type_id, %{status: :rules} = info} <- Enum.sort(interpreter.types),
@@ -324,7 +329,11 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
     ordering_with_empty_false: [:gt, :lt, :gte, :lte]
   }
 
-  # Whether a type's supported rules read the shape `flag` governs.
+  # Whether a type's supported rules read the shape `flag` governs (for a
+  # search-only flag: whether some rule lists a non-filterable field).
+  defp relevant?(:non_filterable_constraint_excludes, info, _interpreter),
+    do: info.nonfilterable != []
+
   defp relevant?(flag, info, interpreter) do
     irs = for %{status: :ok, ir: ir} <- info.rules, do: ir
 
@@ -402,7 +411,7 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
     types = for {id, %{status: :rules}} <- Enum.sort(interpreter.types), do: id
     recorded = for type <- types, cell <- cells(ds, personas, type), do: cell
 
-    for flag <- flags,
+    for flag <- flags -- @search_only,
         not Map.has_key?(unexercisable(interpreter), flag),
         partners = joint_partners(interpreter, flag, ds, recorded),
         partners != %{},

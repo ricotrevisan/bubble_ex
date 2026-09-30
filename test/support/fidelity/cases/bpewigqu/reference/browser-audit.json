@@ -1,7 +1,7 @@
 {
   "status": "captured",
   "scope": "Controlled Bubble test page",
-  "url": "https://tiptap-plugin.bubbleapps.io/version-test/bubbleex-i37-text-password-input",
+  "url": "https://example-plugin.bubbleapps.io/version-test/bubbleex-i37-text-password-input",
   "chromium": "140.0.7339.16",
   "deviceScaleFactor": 1,
   "sourcePageId": "bpewigqu",

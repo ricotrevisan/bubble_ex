@@ -90,7 +90,7 @@ defmodule BubbleEx.TelemetryTest do
   describe "fetch_app events" do
     alias BubbleEx.Apps
 
-    @app_json ~S({"_id":"abacus","settings":{"client_safe":{"plugins":{}}}})
+    @app_json ~S({"_id":"acme","settings":{"client_safe":{"plugins":{}}}})
 
     setup do
       handler = {__MODULE__, :fetch, System.unique_integer()}
@@ -124,10 +124,10 @@ defmodule BubbleEx.TelemetryTest do
     end
 
     test "emits a fetch_app span with bubble_id and valid?" do
-      assert {:ok, _} = Apps.fetch_app("abacus")
+      assert {:ok, _} = Apps.fetch_app("acme")
 
       assert_received {:telemetry, [:bubble_ex, :apps, :fetch_app, :stop], %{duration: _},
-                       %{input: "abacus", bubble_id: "abacus", valid?: true, error: nil}}
+                       %{input: "acme", bubble_id: "acme", valid?: true, error: nil}}
     end
   end
 

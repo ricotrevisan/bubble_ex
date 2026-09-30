@@ -135,13 +135,13 @@
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
-        "compiled": 86,
-        "denied": 4,
+        "compiled": 90,
+        "denied": 0,
         "everyone": 52,
         "privacy": "unverified",
         "rules": 142,
         "stricter_than_bubble": {
-          "rules": 96,
+          "rules": 100,
           "types": 49
         },
         "types": {
@@ -303,13 +303,13 @@
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
-        "compiled": 86,
-        "denied": 4,
+        "compiled": 90,
+        "denied": 0,
         "everyone": 52,
         "privacy": "unverified",
         "rules": 142,
         "stricter_than_bubble": {
-          "rules": 96,
+          "rules": 100,
           "types": 49
         },
         "types": {

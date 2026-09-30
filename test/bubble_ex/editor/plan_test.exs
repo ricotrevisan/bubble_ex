@@ -170,7 +170,7 @@ defmodule BubbleEx.Editor.PlanTest do
   end
 
   test "an allowlisted installed-plugin property is guarded by the exact node type" do
-    plugin_group = "1787127143284x497506916809310200_current"
+    plugin_group = "1600000000013x200000000000000013_current"
     plugin_type = plugin_group <> "-AEA"
     path = ["%ed", "reusable", "%el", "plugin", "%p", "AFU"]
 
@@ -201,7 +201,7 @@ defmodule BubbleEx.Editor.PlanTest do
   end
 
   test "plugin node suffixes and workflow action roles are bounded" do
-    plugin_group = "1787127143284x497506916809310200_current"
+    plugin_group = "1600000000013x200000000000000013_current"
 
     unknown_plugin = %{"%x" => plugin_group <> "-ZZZ", "id" => "plugin-id"}
 
@@ -332,8 +332,8 @@ defmodule BubbleEx.Editor.PlanTest do
 
   defp plan(operations, plugin_types \\ []) do
     %{
-      "appname" => "tiptap-plugin",
-      "version" => "43jvs",
+      "appname" => "example-plugin",
+      "version" => "dev03",
       "base_last_change" => 41,
       "plugin_types" => plugin_types,
       "operations" => operations
@@ -352,7 +352,7 @@ defmodule BubbleEx.Editor.PlanTest do
 
   defp plugin_schemas do
     raw = File.read!("test/support/editor/discovered_plugin_contracts.json") |> Jason.decode!()
-    group = "1787127143284x497506916809310200_current"
+    group = "1600000000013x200000000000000013_current"
     {:ok, schema} = BubbleEx.Editor.PluginSchema.normalize(group, "current", raw["popover"])
     %{group => schema}
   end
@@ -361,6 +361,11 @@ defmodule BubbleEx.Editor.PlanTest do
     entries =
       Map.new(values, fn {path, value} -> {Snapshot.key(path), %{path: path, value: value}} end)
 
-    %Snapshot{appname: "tiptap-plugin", version: "43jvs", last_change: revision, entries: entries}
+    %Snapshot{
+      appname: "example-plugin",
+      version: "dev03",
+      last_change: revision,
+      entries: entries
+    }
   end
 end

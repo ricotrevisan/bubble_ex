@@ -40,7 +40,7 @@ defmodule BubbleEx.Verify.MatrixTest do
              {"task", "everyone", :blocked_by_unsupported_rule}
            ]
 
-    assert %{total: 38, solved: 34, conditional: 33, everyone: 5} =
+    assert %{total: 43, solved: 39, conditional: 38, everyone: 5} =
              expression.report.rules
 
     assert expression.report.unsolved_by_reason == %{
@@ -127,8 +127,13 @@ defmodule BubbleEx.Verify.MatrixTest do
         obs <- recording.observations do
       case obs.kind do
         :record_set ->
+          type = Dataset.type_id(scenario.subjects.type)
+
           {:ok, search} =
-            Interpreter.search(interpreter, ds, user, Dataset.type_id(scenario.subjects.type))
+            case Scenario.op(scenario, obs.op) do
+              %{constrain: field} -> Interpreter.search(interpreter, ds, user, type, field)
+              _ -> Interpreter.search(interpreter, ds, user, type)
+            end
 
           assert obs.value == %{ordered: false, records: search.records}
 
@@ -156,6 +161,52 @@ defmodule BubbleEx.Verify.MatrixTest do
     assert "privacy_read.custom.doc.admin" in ids
     refute "privacy_read.custom.memo.admin" in ids
     assert matrix.report.checks == matrix.scenarios |> Enum.map(&length(&1.ops)) |> Enum.sum()
+  end
+
+  test "a field some rule keeps out of searches gets a constrained search per persona",
+       %{pmodel: model, policies: matrix} do
+    {:ok, interpreter} = Interpreter.new(model)
+    {:ok, ds} = Dataset.from_seed(matrix.seed)
+
+    notes =
+      for {s, r} <- Enum.zip(matrix.scenarios, matrix.recordings),
+          s.subjects.type == "custom.note",
+          do: {s, r}
+
+    assert notes != []
+
+    # note.text: the everyone rule lists it as non-filterable; the expected
+    # records are those the persona finds and may search by it
+    for {s, r} <- notes do
+      assert %{op: :search, constrain: "text_text", observe: [:record_set]} =
+               Scenario.op(s, "search.1.text_text")
+
+      user = matrix.seed.personas[s.persona].user
+      {:ok, found} = Interpreter.search(interpreter, ds, user, "note", "text_text")
+      observed = Enum.find(r.observations, &(&1.op == "search.1.text_text"))
+      assert observed.value == %{ordered: false, records: Enum.sort(found.records)}
+    end
+
+    assert matrix.dependencies
+           |> Map.values()
+           |> List.flatten()
+           |> Enum.member?(:non_filterable_constraint_excludes)
+
+    # doc.body: only where raw_ (unsupported) cannot decide it, as for an admin
+    personas =
+      for s <- matrix.scenarios,
+          op <- s.ops,
+          Map.get(op, :constrain) == "body_text",
+          do: s.persona
+
+    assert "admin" in personas
+    refute "anonymous" in personas
+
+    # an unconstrained search carries no constrain member (unchanged hashes)
+    {scenario, _} = hd(notes)
+    [search | _] = scenario |> Scenario.to_map() |> Map.fetch!("ops")
+    assert search["op"] == "search" and not Map.has_key?(search, "constrain")
+    assert {:ok, ^scenario} = scenario |> Scenario.to_map() |> Scenario.from_map()
   end
 
   test "dependencies name the assumptions an op's expectations rest on", %{policies: matrix} do
@@ -307,8 +358,12 @@ defmodule BubbleEx.Verify.MatrixTest do
 
     missing = Enum.reject(recording.observations, &(&1.kind == :record_set))
 
-    assert {:ok, %Result{status: :fail, diff: [%{op: "record_set", actual: nil}]}} =
+    assert {:ok, %Result{status: :fail, diff: diff}} =
              Matrix.result(scenario, recording, missing, opts)
+
+    # the search, and the search constrained on note's non-filterable text
+    assert length(diff) == 2
+    assert Enum.all?(diff, &match?(%{op: "record_set", actual: nil}, &1))
   end
 
   describe "observability (mutation coverage) and assumption coverage" do
@@ -365,7 +420,10 @@ defmodule BubbleEx.Verify.MatrixTest do
     end
 
     test "every flag reports whether a check depends on it", %{policies: matrix} do
-      assert map_size(matrix.flags) == 16
+      assert map_size(matrix.flags) == 17
+      # doc's body is non-filterable for the public rule: its constrained
+      # searches depend on the flag
+      assert matrix.flags[:non_filterable_constraint_excludes] == :exercised
       assert matrix.flags[:everyone_guards_record_values] == :exercised
       assert {:not_exercised, "seeds cannot hold" <> _} = matrix.flags[:dangling_ref_is_empty]
 
@@ -442,7 +500,14 @@ defmodule BubbleEx.Verify.MatrixTest do
             assert f == c.target
 
           :record_set ->
-            {:ok, search} = Interpreter.search(target, ds, user, c.type)
+            scenario = Enum.find(matrix.scenarios, &(&1.id == c.scenario))
+
+            {:ok, search} =
+              case Scenario.op(scenario, c.op) do
+                %{constrain: field} -> Interpreter.search(target, ds, user, c.type, field)
+                _ -> Interpreter.search(target, ds, user, c.type)
+              end
+
             assert Enum.sort(search.records) == c.target.records
         end
       end

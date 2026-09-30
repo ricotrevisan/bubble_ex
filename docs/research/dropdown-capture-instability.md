@@ -22,7 +22,7 @@ selection did not correct the latter. Temporarily changing and restoring the
 font family made all twenty use the lower position. That DOM perturbation was
 diagnostic only and is not an adopted rendering fix.
 
-Read-only checks of the authorized `tiptap-plugin` branch `83jop` found the same
+Read-only checks of the authorized `example-plugin` branch `dev02` found the same
 declared control values and dimensions: static Alpha/Beta/Gamma choices, Beta
 default, Inter 16 px / 500, 44 px height, 8 px / 12 px padding, and a 1 px border.
 The source font bytes have the existing pinned SHA-256

@@ -82,7 +82,7 @@ These are **app-payload observations**, not a runtime DOM contract or a complete
 
 ### Controlled conformance evidence
 
-Issue #28 supplies an authorized, deterministic **partial parity fixture** on the Basic-Auth-protected `tiptap-plugin` Test branch. It is not the public, credential-free, complete capture bundle specified by issue #24: it does not commit the decoded JSON, initial HTML/packages, serialized Bubble DOM, timestamps, or an asset manifest. Its hand-normalized fixture does preserve Bubble IDs/source paths and contains 48 correlated nodes: Page ×1, Group ×15, Text ×20, Shape ×7, label-only Button ×4, and Email Input ×1. Group modes are Column ×7, Row ×6, Align to Parent ×1, and Fixed ×1; the Page is a separate Column root with a solid background. Cases cover natural wrapping, min/max/fill sizing, a 1120 px clamp, ordered responsive collapse at resolved width 768, overlap/stacking, local fixed XY placement, group/page gradients, borders, shadows, shape rotation, and bundled-font metrics.[C24][C28]
+Issue #28 supplies an authorized, deterministic **partial parity fixture** on the Basic-Auth-protected `example-plugin` Test branch. It is not the public, credential-free, complete capture bundle specified by issue #24: it does not commit the decoded JSON, initial HTML/packages, serialized Bubble DOM, timestamps, or an asset manifest. Its hand-normalized fixture does preserve Bubble IDs/source paths and contains 48 correlated nodes: Page ×1, Group ×15, Text ×20, Shape ×7, label-only Button ×4, and Email Input ×1. Group modes are Column ×7, Row ×6, Align to Parent ×1, and Fixed ×1; the Page is a separate Column root with a solid background. Cases cover natural wrapping, min/max/fill sizing, a 1120 px clamp, ordered responsive collapse at resolved width 768, overlap/stacking, local fixed XY placement, group/page gradients, borders, shadows, shape rotation, and bundled-font metrics.[C24][C28]
 
 The frozen reference identity is page `bpmkbvvo`, decoded page payload SHA-256 `706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b`; the payload itself is not committed. At 26 behavior-derived widths, the static candidate matched 1,200 source-correlated geometry samples with 0 CSS-pixel error, 614 exact selected typography samples, 48 behaviorally equivalent collapse samples, exact document height, no horizontal overflow, and 26 byte-identical full-page PNG pairs. The generated page contains no scripts or inline event handlers.[C28]
 
@@ -212,7 +212,7 @@ The authorized partial-fixture evidence is committed on prototype branch commit 
 
 | Artifact fact | Value |
 |---|---|
-| Controlled app/page | `tiptap-plugin` Test / `bpmkbvvo` (`bubbleex-i28-responsive-slice`) |
+| Controlled app/page | `example-plugin` Test / `bpmkbvvo` (`bubbleex-i28-responsive-slice`) |
 | Decoded page payload SHA-256 | `706f73ef49c170ab077bfe680403782f5dea94ba36ea5cae3c3878079340701b` |
 | Frozen font SHA-256 | `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62` |
 | Browser contract | Chromium 140.0.7339.16; DPR 1; `en-US`; reduced motion; 900 CSS-pixel viewport height |
@@ -257,8 +257,8 @@ All Bubble manual sources below were retrieved 2026-08-13 as first-party Markdow
 - `[C25]` BubbleEx, [issue #25 resolution](https://github.com/ricotrevisan/bubble_ex/issues/25#issuecomment-5275476241), normalized-model decisions.
 - `[C26]` BubbleEx, [issue #26 resolution](https://github.com/ricotrevisan/bubble_ex/issues/26#issuecomment-5275661171), binding/finding/coverage decisions.
 - `[C28]` BubbleEx, [issue #28 controlled parity result](https://github.com/ricotrevisan/bubble_ex/issues/28#issuecomment-5281111102), [immutable prototype `324c300`](https://github.com/ricotrevisan/bubble_ex/tree/324c300f977ef153937fe3f853457afb9cdefddc/lib/bubble_ex/frontend/prototypes/responsive_layout_vertical_slice), and [decision record `cb17e68`](https://github.com/ricotrevisan/bubble_ex/blob/cb17e689f5980862b238812accb3c34b1c0b53a1/docs/research/responsive-layout-vertical-slice.md).
-- `[C32]` BubbleEx, [issue #32](https://github.com/ricotrevisan/bubble_ex/issues/32), authorized `tiptap-plugin` Test page `bubbleex-i32-static-controls`, and committed frozen case `bpqqfagk`.
-- `[C42]` BubbleEx, [issue #42](https://github.com/ricotrevisan/bubble_ex/issues/42), authorized `tiptap-plugin` Test pages `bubbleex-complex-demo` and `bubbleex-complex-detail`, plus reusable definitions `bubbleex-complex-card` and `bubbleex-complex-badge`.
+- `[C32]` BubbleEx, [issue #32](https://github.com/ricotrevisan/bubble_ex/issues/32), authorized `example-plugin` Test page `bubbleex-i32-static-controls`, and committed frozen case `bpqqfagk`.
+- `[C42]` BubbleEx, [issue #42](https://github.com/ricotrevisan/bubble_ex/issues/42), authorized `example-plugin` Test pages `bubbleex-complex-demo` and `bubbleex-complex-detail`, plus reusable definitions `bubbleex-complex-card` and `bubbleex-complex-badge`.
 - `[R23]` BubbleEx, [modern-renderer observable contract](https://github.com/ricotrevisan/bubble_ex/blob/993ba0e282fae4f58e67986a68490edd17b7fff0/docs/research/modern-renderer-observable-contract.md), immutable commit `993ba0e`.
 - `[REPO]` BubbleEx, [`BubbleEx.Apps`](https://github.com/ricotrevisan/bubble_ex/blob/c2df366/lib/bubble_ex/apps.ex), [`BubbleEx.HTTP`](https://github.com/ricotrevisan/bubble_ex/blob/c2df366/lib/bubble_ex/http.ex), and [`BubbleEx.Apps.Parser`](https://github.com/ricotrevisan/bubble_ex/blob/c2df366/lib/bubble_ex/apps/parser.ex).
 - `[OBS]` Bubble, first-party `https://bubble.io/` HTML, content-addressed dynamic package, and decoded app payload; aggregate-only reproduction ledger above.

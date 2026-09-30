@@ -47,6 +47,15 @@ data access, find such searches on pages a logged-out visitor can open
 (or that a signed-out session can reach), and either require a signed-in
 user there or add policies.
 
+**A search on a field Bubble keeps out of searches is not loaded.** A
+privacy rule can list fields the users it applies to may not search by
+(non-filterable fields). A page data search whose constraints or sort
+name such a field of the searched type is residue
+(`:search_field_restricted`, `detail.fields`): Bubble limits it per user,
+and under `privacy: :omit` nothing would. With policies (`privacy:
+:unverified`), `<App>.Privacy.SearchFields` limits such a read to the
+records where the user may search by the field.
+
 ## Sources
 
 `BubbleEx.PageData.Source`, per page and element of a page or reusable

@@ -6,11 +6,11 @@ defmodule BubbleEx.Apps.ParserTest do
   describe "parse_app_json/1" do
     test "decodes Bubble JSON.parse JavaScript string literals before JSON decoding" do
       js = ~S"""
-      const app = JSON.parse('{"_id":"abacus-desktop","title":"Bob\'s app","emoji":"\uD83D\uDE00","hex":"\x41","settings":{"client_safe":{"plugins":{"a":true,"b":{}}}}}');
+      const app = JSON.parse('{"_id":"acme-desktop","title":"Bob\'s app","emoji":"\uD83D\uDE00","hex":"\x41","settings":{"client_safe":{"plugins":{"a":true,"b":{}}}}}');
       """
 
       assert {:ok, app_json} = Parser.parse_app_json(js)
-      assert app_json["_id"] == "abacus-desktop"
+      assert app_json["_id"] == "acme-desktop"
       assert app_json["title"] == "Bob's app"
       assert app_json["emoji"] == "😀"
       assert app_json["hex"] == "A"

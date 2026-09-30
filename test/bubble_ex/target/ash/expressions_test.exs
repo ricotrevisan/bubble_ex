@@ -53,6 +53,19 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
       ~s|expr(not is_nil(^actor(:name)) and ^actor(:name) != "" and is_distinct_from(title, ^actor(:name)))|,
     {"task", "za_team_not_contained_"} =>
       "expr(not is_nil(^actor(:teams)) and ^actor(:teams) != [] and (is_nil(^actor(:teams)) or is_nil(team_id) or not (team_id in ^actor(:teams))))",
+    # `defaulting to`: the subject unless it is empty (a reference whose
+    # record is gone included), else the default; a field chain over it
+    # reads through whichever holds.
+    {"task", "zb_assignee_or_creator_"} =>
+      "expr(if(not exists(assignee, true), creator_id, assignee_id) == ^actor(:id))",
+    {"task", "zd_team_or_actor_team_"} =>
+      "expr(not is_nil(^actor(:id)) and not (not exists(team, true) and is_nil(^actor([:active_membership, :team]))))",
+    {"task", "ze_title_or_untitled_"} =>
+      ~s|expr(if(is_nil(title) or title == "", "Untitled", title) == "Untitled")|,
+    {"task", "zf_parent_or_self_team_"} =>
+      "expr(if(not exists(parent, true), team_id, parent.team_id) == ^actor([:active_membership, :team_id]))",
+    {"task", "zg_access_or_team_members_"} =>
+      "expr(^actor(:id) in if(is_nil(access) or access == [], team.members, access))",
     {"user", "me_"} => "expr(id == ^actor(:id))",
     {"membership", "mine_"} => "expr(^actor(:active_membership_id) == id)",
     {"membership", "account_"} => "expr(member_id == ^actor(:id))",
@@ -82,7 +95,9 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     assert loads == %{
              "b_team_" => [["active_membership"]],
              "g_active_" => [["active_membership"]],
-             "j_feature_" => [["active_membership", "team"]]
+             "j_feature_" => [["active_membership", "team"]],
+             "zd_team_or_actor_team_" => [["active_membership", "team"]],
+             "zf_parent_or_self_team_" => [["active_membership"]]
            }
   end
 

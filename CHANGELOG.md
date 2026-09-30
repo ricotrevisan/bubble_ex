@@ -44,6 +44,33 @@ All notable changes to this project are documented here.
   silently. On the private fixture app the 70 `data_to_send` entries
   become 35 lowered steps and 35 `data_to_send_untyped_page` entries:
   native frontend workflows 563 to 569, wired 390 to 395.
+- **Non-filterable fields in privacy rules.** `BubbleEx.Privacy.Permissions`
+  reads Bubble's `non_filterable_fields` (fields users matching a rule may
+  not search by) as `non_filterable_fields`, so it is no longer an
+  `unknown_permission`. With `privacy: :unverified`, `BubbleEx.Target.Ash`
+  records per field who may search by it (`ResourcePrivacy.search_fields`:
+  a rule they match grants `search_for` and does not list it, with the
+  usual union and everyone-rule negation) and guards every `:read` and
+  `:search` from which such a field is reachable with the new filter check
+  `<namespace>.Privacy.SearchFields`: a filter or sort naming the field
+  (input or code) returns only the records where the actor may search by
+  it, and one naming a restricted field further along a relationship
+  returns nothing. Aggregates over such a field are not guarded
+  (`:ash_policy_search_fields_restricted`). A page data search constrained
+  or sorted on such a field is residue (`:search_field_restricted`). The
+  privacy interpreter reports the fields a persona may search by
+  (`Access.filterable`) and constrained searches (`Interpreter.search/5`,
+  assumption `non_filterable_constraint_excludes`); the privacy matrix adds
+  a search constrained on each such field (the `search` op's new optional
+  `constrain` member), which the generated matrix tests run as
+  `filter_input` and the replay recorder as `is empty` plus `is not empty`.
+- **`defaulting to` in the Ash and Elixir backends.** `x defaulting to d`
+  (`:fallback`) compiles to `Ash.Expr` as `if(<x is empty>, d, x)`, with
+  Bubble's emptiness (nil, `""`, `[]`, a reference whose record is gone),
+  and so do field chains over it (`(x defaulting to d)'s a`) in both
+  backends; `(x defaulting to d) is empty` is both empty. The interpreter
+  treats a dangling reference as empty there too (`dangling_ref_is_empty`),
+  and the actor guards cover a default read from the current user.
 
 - **Buildprint v5 workspaces** (`BubbleEx.Buildprint.V5`). Buildprint
   retired its v4 JSON export; a v5 workspace (`buildprint project clone`)
@@ -1741,14 +1768,14 @@ All notable changes to this project are documented here.
   their full definitions and reporting the runtime boundary. Do not infer an
   open dialog from `is_visible` or paint Group Focus in the page layout.
 - Restore the actual Popup source in `bpndkqfs`, correlate its closed state,
-  and recapture it on `83jop`. Add initial-state case `bptvorpv` plus separate
+  and recapture it on `dev02`. Add initial-state case `bptvorpv` plus separate
   source-only opening/dismissal observations; update the native support matrix.
 - Reject ambiguous fidelity selectors and withdraw one invalid shared-icon
   collapse sample while retaining both icon instances' structural checks.
 - Keep the range-slider wrapper transparent as in Bubble when restoring the
   complete source styling; retain existing pixel tolerances.
 - Correct Bubble Input/DateInput enum mappings and reject invalid frozen source
-  formats. Repair and recapture four affected cases from authorized branch `83jop`.
+  formats. Repair and recapture four affected cases from authorized branch `dev02`.
 - Preserve explicit control borders/backgrounds over native defaults, render
   static percentage/currency/US phone values, and compare captured Input values
   independently of screenshot tolerances.
@@ -1785,12 +1812,12 @@ All notable changes to this project are documented here.
 - S1 simple SliderInput (`type=range`) and static AutocompleteDropdown
   (`type=search` + `<datalist>`). Dynamic/Google search stays a placeholder.
   Authorized page `bubbleex-i67-slider-search`
-  is on `tiptap-plugin` Test.
+  is on `example-plugin` Test.
 
 - Frozen S1 PictureInput case `bpdimzwm` (`bubbleex-i65-picture-input`)
 
 - S1 PictureInput lowering as `<input type="file" accept="image/*">`.
-  Authorized page `bubbleex-i65-picture-input` is on `tiptap-plugin` Test.
+  Authorized page `bubbleex-i65-picture-input` is on `example-plugin` Test.
 
 - Frozen S1 numbers / datetime / FileInput case `bpoyzixi`
   (`bubbleex-i63-datetime-numbers-file`)
@@ -1799,7 +1826,7 @@ All notable changes to this project are documented here.
   Numbers use `inputmode=numeric`. Datetime stays `type=text` (no
   native picker). FileInput is `<input type="file">` with no upload.
   Authorized page `bubbleex-i63-datetime-numbers-file` is on
-  `tiptap-plugin` Test. Google address autocomplete remains deferred
+  `example-plugin` Test. Google address autocomplete remains deferred
   (needs a live Google contract).
 
 - Frozen S1 Address Input / DateInput case `bpizatjd`
@@ -1807,14 +1834,14 @@ All notable changes to this project are documented here.
 
 - S1 Address Input and DateInput lowering as `type=text` (no Google
   autocomplete, no native date-picker chrome). Authorized page
-  `bubbleex-i61-address-dateinput` is on `tiptap-plugin` Test.
+  `bubbleex-i61-address-dateinput` is on `example-plugin` Test.
 
 - Frozen S1 extra Input formats case `bpjehwxg`
   (`bubbleex-i59-input-formats`)
 
 - S1 decimal / percent / currency / US phone / euro-date Input lowering
   as `type=text` with matching `inputmode`. Authorized page
-  `bubbleex-i59-input-formats` is on `tiptap-plugin` Test; freeze is a
+  `bubbleex-i59-input-formats` is on `example-plugin` Test; freeze is a
   follow-up.
 
 - Frozen S1 date / integer Input case `bpqkcldq`
@@ -1822,7 +1849,7 @@ All notable changes to this project are documented here.
 
 - S1 date and integer Input lowering (`content_format` `date` / `integer`
   as `type=text`, integer `inputmode=numeric`). Authorized page
-  `bubbleex-i57-date-integer-input` is on `tiptap-plugin` Test; freeze is a
+  `bubbleex-i57-date-integer-input` is on `example-plugin` Test; freeze is a
   follow-up.
 
 - Frozen S1 fit-height MultiLineInput case `bpuzekut`
@@ -1830,19 +1857,19 @@ All notable changes to this project are documented here.
 
 - S1 fit-height MultiLineInput lowering (`fit_height` + static content →
   `field-sizing: content`). Authorized page `bubbleex-i55-fit-height-multiline`
-  is on `tiptap-plugin` Test; freeze is a follow-up.
+  is on `example-plugin` Test; freeze is a follow-up.
 
 - Frozen S1 icon Link case `bpaupfbj` (`bubbleex-i53-icon-link`)
 
 - S1 icon / icon+label Link lowering for static Font Awesome 4 icons
   (`show_icon` or `link_type: icon`). Authorized page `bubbleex-i53-icon-link`
-  is on `tiptap-plugin` Test; freeze is a follow-up.
+  is on `example-plugin` Test; freeze is a follow-up.
 
 - Literal newlines in Text become `<br>` so 404 boilerplate keeps its paragraph
   break. Native Input chrome uses `appearance: none`, white fill, and a 1px border.
 
 - S1 icon / icon+label Button lowering for static Font Awesome 4 icons, with frozen
-  case `bpiordvb` on `tiptap-plugin` Test (`bubbleex-i51-icon-button`).
+  case `bpiordvb` on `example-plugin` Test (`bubbleex-i51-icon-button`).
 
 - Theme tokens: export emits `:root` CSS variables from
   `settings.client_safe` color/font tokens. Existing unstyled elements retain
@@ -1857,7 +1884,7 @@ All notable changes to this project are documented here.
   works without Trufflehog. An explicit non-Trufflehog adapter is unchanged.
 
 - Frozen BBCode Text case `bpwipyqn` (#44): controlled `bubbleex-i44-bbcode-text`
-  page on `tiptap-plugin` Test. Block BBCode (`[ul]/[ol]`) exports as a `div`
+  page on `example-plugin` Test. Block BBCode (`[ul]/[ol]`) exports as a `div`
   with Bubble-like list/link CSS; `[b]`, `[url=https]` stay inline.
 
 - Selected live-page hydration (#40): `BubbleEx.export_frontend/3` and

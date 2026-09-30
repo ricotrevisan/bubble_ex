@@ -5,7 +5,7 @@ defmodule BubbleEx.Frontend.Fidelity.Source do
   alias BubbleEx.Frontend.Payload
 
   # Bubble's editor enum values, verified against the generated Buildprint schema
-  # and the corrected tiptap-plugin/83jop source on 2026-09-10.
+  # and the corrected example-plugin/dev02 source on 2026-09-10.
   @input_formats ~w(text email password int_number float_number geographic_address us_phone
     percentage currency date date_2 numerical_ref credit_card_number credit_card_cvc
     credit_card_exp_month credit_card_exp_year appname_validate)

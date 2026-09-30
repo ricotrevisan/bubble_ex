@@ -66,14 +66,14 @@
     ]
   },
   "source": {
-    "app_version": "83jop",
-    "bubble_id": "tiptap-plugin",
+    "app_version": "dev02",
+    "bubble_id": "example-plugin",
     "page_id": "bpoyzixi",
     "page_path": "bubbleex-i63-datetime-numbers-file",
     "page_payload_sha256": "6de22a339de825543753cb36e7e016e800cbc3fbf3ac69437f795c86cbe81aff",
-    "payload_sha256": "e7f88bb581886c8d62203d32a1b60b61447c335c7f3c6a4e0cf53e7cbf5dc7f7",
+    "payload_sha256": "141de48ad029d5f08ec7dfdc77439b421d7dceffa90f5db370a72802f982f8ef",
     "validation": {
-      "branch": "83jop",
+      "branch": "dev02",
       "date": "2026-09-10",
       "method": "Buildprint canonical schema audit and applied branch snapshot"
     }

@@ -34,11 +34,11 @@ defmodule BubbleEx.Characterization.ParserTest do
   describe "JS string-literal decoding (the fragile decoder)" do
     test "decodes surrogate pairs, hex escapes, and apostrophes" do
       js = ~S"""
-      const app = JSON.parse('{"_id":"abacus","title":"Bob\'s app","emoji":"😀","hex":"\x41"}');
+      const app = JSON.parse('{"_id":"acme","title":"Bob\'s app","emoji":"😀","hex":"\x41"}');
       """
 
       assert {:ok, app} = Parser.parse_app_json(js)
-      assert app["_id"] == "abacus"
+      assert app["_id"] == "acme"
       assert app["title"] == "Bob's app"
       assert app["emoji"] == "😀"
       assert app["hex"] == "A"

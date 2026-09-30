@@ -31,6 +31,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:target_not_rendered` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: the element a step shows, hides, focuses, resets or calls into is not rendered by the generated page (in a runtime container's template, or not normalized) (`detail.element`) |
   | `:backend_workflow` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a page scheduling a backend workflow when the backend workflows (WTF-373) are not bound (`detail.workflow`) |
   | `:page_data_in_cell` | element | `BubbleEx.Target.Elixir.FrontendWorkflows` (WTF-420): a data source in a repeating group's cell that the generated page would read once per cell (a repeating group, a reusable instance or a search there; `detail.kind`) |
+  | `:search_field_restricted` | element | `BubbleEx.PageData` (WTF-420): a page data source's search whose constraints or sort name fields a privacy rule of the searched type keeps out of searches (non-filterable); Bubble limits such a search per user, which the generated page cannot (`detail.fields`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
 
   `index/2` and `frontend/2` are computed by `BubbleEx.Plan.build/5` itself;
@@ -55,7 +56,8 @@ defmodule BubbleEx.Plan.Residue do
               trigger_in_runtime_template style_condition
               plugin_style trigger_dropped reads_dropped_plugin api_connector_action
               unsupported_option not_generated unavailable_input backend_workflow
-              target_not_rendered page_data_in_cell uses_dropped data_to_send_untyped_page)a
+              target_not_rendered page_data_in_cell uses_dropped data_to_send_untyped_page
+              search_field_restricted)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded

@@ -24,8 +24,7 @@
       "invalid_descriptor": 8,
       "model_option_key_missing": 9,
       "model_undeclared_option_attribute_value": 40,
-      "model_unresolved_target": 4,
-      "unknown_permission": 6
+      "model_unresolved_target": 4
     },
     "external_fields": 0,
     "external_types": {

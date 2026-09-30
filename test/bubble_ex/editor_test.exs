@@ -100,7 +100,7 @@ defmodule BubbleEx.EditorTest do
   end
 
   test "creates a native savepoint on the resolved child and verifies a new revision" do
-    {:ok, target} = BubbleEx.Editor.Target.new("tiptap-plugin", "43jvs", "session=secret")
+    {:ok, target} = BubbleEx.Editor.Target.new("example-plugin", "dev03", "session=secret")
 
     {post_fun, calls} =
       queued([
@@ -131,7 +131,7 @@ defmodule BubbleEx.EditorTest do
   end
 
   test "lists savepoints without exposing editor user details" do
-    {:ok, target} = BubbleEx.Editor.Target.new("tiptap-plugin", "43jvs", "session=secret")
+    {:ok, target} = BubbleEx.Editor.Target.new("example-plugin", "dev03", "session=secret")
 
     {post_fun, _calls} =
       queued([
@@ -159,7 +159,7 @@ defmodule BubbleEx.EditorTest do
   end
 
   test "reconciles a non-object savepoint acknowledgement from new history without retrying" do
-    {:ok, target} = BubbleEx.Editor.Target.new("tiptap-plugin", "43jvs", "session=secret")
+    {:ok, target} = BubbleEx.Editor.Target.new("example-plugin", "dev03", "session=secret")
 
     {post_fun, calls} =
       queued([
@@ -305,8 +305,8 @@ defmodule BubbleEx.EditorTest do
 
   defp plan(operations) do
     %{
-      "appname" => "tiptap-plugin",
-      "version" => "43jvs",
+      "appname" => "example-plugin",
+      "version" => "dev03",
       "base_last_change" => 100,
       "operations" => operations
     }
@@ -319,7 +319,7 @@ defmodule BubbleEx.EditorTest do
     {:ok,
      %{
        "test" => %{"display" => "Development"},
-       "43jvs" => %{
+       "dev03" => %{
          "display" => "wtf-271-editor-diff",
          "parent_version" => "test",
          "deleted" => false

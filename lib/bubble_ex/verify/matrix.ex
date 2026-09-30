@@ -44,9 +44,12 @@ defmodule BubbleEx.Verify.Matrix do
      value where a record leaves it empty, because the Data API omits
      empty fields: an empty governed field is a visibility no Bubble
      recording can check (`report.governed_fields` counts what is left).
-  5. **Scenarios**, one per (type, persona): a `search` of the type and a
-     `get` of each of its records, observing `record_set`, `visible` and
-     `visible_fields`. An op whose verdict an unsupported rule could
+  5. **Scenarios**, one per (type, persona): a `search` of the type, per
+     field some rule keeps out of searches (non-filterable) a `search`
+     constrained on it (`constrain`: a constraint every value meets, so
+     only the records where the persona may search by it are found,
+     `Interpreter.search/5`), and a `get` of each of its records,
+     observing `record_set`, `visible` and `visible_fields`. An op whose verdict an unsupported rule could
      decide, under Bubble's reading or the target's, is left out (the
      report counts it).
   6. **Recordings**: the interpreter's verdicts under the chosen
@@ -761,8 +764,22 @@ defmodule BubbleEx.Verify.Matrix do
         do: [search_check(search, descriptor)],
         else: []
 
+    fields = Interpreter.type(interpreter, cell.type).nonfilterable
+
+    constrained =
+      for {field, i} <- Enum.with_index(fields, 1),
+          {:ok, s} = Interpreter.search(interpreter, ds, cell.user, cell.type, field),
+          {:ok, t} = Interpreter.search(target, ds, cell.user, cell.type, field),
+          s.unknown == [] and t.unknown == [],
+          do: constrained_check(s, descriptor, field, i)
+
     gets = Enum.map(known, &get_check(&1, descriptor))
-    {searches ++ gets, %{gets: length(unknown), searches: 1 - length(searches)}}
+
+    {searches ++ constrained ++ gets,
+     %{
+       gets: length(unknown),
+       searches: 1 + length(fields) - length(searches) - length(constrained)
+     }}
   end
 
   defp search_check(search, descriptor) do
@@ -772,6 +789,31 @@ defmodule BubbleEx.Verify.Matrix do
       observations: [
         %Observation{
           op: "search",
+          kind: :record_set,
+          value: %{ordered: false, records: Enum.sort(search.records)}
+        }
+      ],
+      assumptions: search.assumptions
+    }
+  end
+
+  # Op IDs are symbols; field IDs may hold spaces (built-in fields).
+  defp constrained_check(search, descriptor, field, i) do
+    op = "search.#{i}." <> String.replace(field, ~r/[^A-Za-z0-9_.:\-]/, "_")
+
+    %{
+      verdict: {:search, field, search.records},
+      op: %{
+        id: op,
+        op: :search,
+        type: descriptor,
+        sort: nil,
+        constrain: field,
+        observe: [:record_set]
+      },
+      observations: [
+        %Observation{
+          op: op,
           kind: :record_set,
           value: %{ordered: false, records: Enum.sort(search.records)}
         }
@@ -856,8 +898,11 @@ defmodule BubbleEx.Verify.Matrix do
     end
   end
 
-  defp op_difference(%{verdict: {:search, records}, op: op}, scenario_id, cell, ds) do
-    target = search_records(cell.readings.target, ds, cell.user, cell.type)
+  defp op_difference(%{verdict: {:search, records}} = check, scenario_id, cell, ds),
+    do: op_difference(%{check | verdict: {:search, nil, records}}, scenario_id, cell, ds)
+
+  defp op_difference(%{verdict: {:search, field, records}, op: op}, scenario_id, cell, ds) do
+    target = search_records(cell.readings.target, ds, cell.user, cell.type, field)
     bubble = Enum.sort(records)
 
     cond do
@@ -865,7 +910,7 @@ defmodule BubbleEx.Verify.Matrix do
         :same
 
       not is_list(target) or
-        target != search_records(cell.readings.intended, ds, cell.user, cell.type) or
+        target != search_records(cell.readings.intended, ds, cell.user, cell.type, field) or
           not Difference.stricter?(:record_set, %{records: bubble}, %{records: target}) ->
         :unintended
 
@@ -909,8 +954,12 @@ defmodule BubbleEx.Verify.Matrix do
 
   defp stricter_get?(_bubble, _target), do: false
 
-  defp search_records(interpreter, ds, user, type_id) do
-    {:ok, search} = Interpreter.search(interpreter, ds, user, type_id)
+  defp search_records(interpreter, ds, user, type_id, field) do
+    {:ok, search} =
+      if field,
+        do: Interpreter.search(interpreter, ds, user, type_id, field),
+        else: Interpreter.search(interpreter, ds, user, type_id)
+
     if search.unknown == [], do: Enum.sort(search.records), else: :unknown
   end
 
