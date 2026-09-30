@@ -12,7 +12,7 @@ All notable changes to this project are documented here.
   values, `actor_empty_denies`), plus Rico's write policy (option A):
   `policy action(:create | :update | :destroy)` authorizing
   `<Namespace>.Privacy.WorkflowWrite`, a check that passes only for writes
-  marked `%{bubble: %{workflow_write: true}}` (the generated workflow
+  marked `%{private: %{bubble_workflow_write: true}}` (the generated workflow
   runtime's); any other write is forbidden. Every such project carries
   `:ash_writes_not_policy_checked` (writes are not checked against the
   privacy rules) instead of `:ash_policies_unverified`, and the rendered
@@ -1171,8 +1171,11 @@ All notable changes to this project are documented here.
   (WTF-430). Its record-value guard (every value the negated rules read
   must be non-empty) turned the negation of `This Thing's X is not empty`
   into `X is empty and X is not empty`, always false. A value read only as
-  the operand of an emptiness test is no longer guarded, in the policy
-  generator and the privacy interpreter alike.
+  the operand of an emptiness test (also through `defaulting to`) is no
+  longer guarded that way, in the policy generator and the privacy
+  interpreter alike; a reference read so must instead not be dangling (its
+  ID is nil or its record exists), so the reach never depends on the
+  uncalibrated `dangling_ref_is_empty`.
 
 - The loader's stale join rows (`details.stale_members` of
   `:load_join_stale_member` and `:load_prune_unowned`) are capped at

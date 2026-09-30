@@ -218,7 +218,11 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
       assert source =~ "def mode, do: :enforced"
       assert source =~ "WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES"
       refute source =~ "NOT VERIFIED AGAINST BUBBLE"
-      assert source =~ "defp workflow_write?(%{bubble: %{workflow_write: true}}), do: true"
+
+      assert source =~
+               "defp workflow_write?(%{private: %{bubble_workflow_write: true}} = context)"
+
+      assert source =~ "defp shared?(%{private: %{bubble_workflow_write: _}}), do: true"
     end
 
     test "a renderer's policy bypasses come first, marked, and reach private fields",
@@ -292,13 +296,63 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
       for {field, op, expected} <- [
             {"text_text", "is_not_empty", ~s|expr((is_nil(text) or text == ""))|},
             {"text_text", "is_empty", ~s|expr(not (is_nil(text) or text == ""))|},
-            {"owner_user", "is_not_empty", "expr(not exists(owner_for_privacy, true))"},
-            {"owner_user", "is_empty", "expr(exists(owner_for_privacy, true))"}
+            # A reference: not dangling too (WTF-430 review M1), so a
+            # dangling owner grants nothing whatever `dangling_ref_is_empty`
+            # says; `is not empty` negates to "no owner ID".
+            {"owner_user", "is_not_empty",
+             "expr(not exists(owner_for_privacy, true) and " <>
+               "(is_nil(owner_id) or exists(owner_for_privacy, true)))"},
+            {"owner_user", "is_empty",
+             "expr(exists(owner_for_privacy, true) and " <>
+               "(is_nil(owner_id) or exists(owner_for_privacy, true)))"}
           ] do
         note = "note" |> then(&resource(project!(emptiness_app(field, op)), &1))
 
         assert Source.expr(calc(note, "privacy_everyone_else").expr) == expected,
                "#{field} #{op}"
+      end
+    end
+
+    # The same bug through `defaulting to` (#165): `(x defaulting to y) is
+    # not empty` negates to both empty, not to a contradiction.
+    test "an emptiness test through defaulting to is negated exactly" do
+      condition = fn op ->
+        %{
+          "type" => "InjectedValue",
+          "next" => %{
+            "type" => "Message",
+            "name" => "text_text",
+            "next" => %{
+              "type" => "Message",
+              "name" => "defaulting_to",
+              "args" => %{
+                "type" => "InjectedValue",
+                "next" => %{"type" => "Message", "name" => "alt_text"}
+              },
+              "next" => %{"type" => "Message", "name" => op}
+            }
+          }
+        }
+      end
+
+      for {op, expected} <- [
+            {"is_not_empty",
+             ~s|expr((is_nil(text) or text == "") and (is_nil(alt) or alt == ""))|},
+            {"is_empty",
+             ~s|expr(not ((is_nil(text) or text == "") and (is_nil(alt) or alt == "")))|}
+          ] do
+        app =
+          "text_text"
+          |> emptiness_app(op)
+          |> put_in(["user_types", "note", "fields", "alt_text"], %{
+            "display" => "Alt",
+            "value" => "text"
+          })
+          |> put_in(["user_types", "note", "privacy_role", "filled_", "condition"], condition.(op))
+
+        source = Source.expr(calc(resource(project!(app), "note"), "privacy_everyone_else").expr)
+        refute source =~ ~s|and not (is_nil(text)|, op
+        assert source == expected, "#{op}: #{source}"
       end
     end
 

@@ -103,7 +103,7 @@ defmodule BubbleEx.Target.Ash do
       guards its writes. Each resource (and join) gets `policy
       action(:create | :update | :destroy)` with `authorize_if
       <namespace>.Privacy.WorkflowWrite`, a check that passes only when the
-      action's context carries `%{bubble: %{workflow_write: true}}`, which
+      action's context carries `%{private: %{bubble_workflow_write: true}}`, which
       the generated runtime sets on its data steps. Any other call of the
       write actions (owned code, a form, an API) is forbidden unless it
       bypasses authorization. **Writes are therefore not checked against

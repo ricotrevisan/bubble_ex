@@ -53,7 +53,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
     * `privacy: :enforced` - the same read policies, enforced (WTF-423):
       reads follow the compiled privacy rules for the workflow's actor.
       Writes follow Rico's option A: the generated runtime marks its data
-      steps (`%{bubble: %{workflow_write: true}}` in the action context)
+      steps (`%{private: %{bubble_workflow_write: true}}` in the action context)
       and the `WorkflowWrite` policy authorizes them, so the workflow's
       conditions guard its writes, as in Bubble; writes are not checked
       against the privacy rules. The workflow API stays off until the
