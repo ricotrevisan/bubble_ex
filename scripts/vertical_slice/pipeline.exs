@@ -5,7 +5,7 @@
 #
 #     app JSON ─► Model, Index, Findings
 #     decisions + findings + index ─► Decision.resolve ─► applicable
-#     Target.Ash.map (privacy: :omit) ─► backend workflows, API clients
+#     Target.Ash.map (privacy: :omit, or :enforced) ─► backend workflows, API clients
 #     Frontend.normalize ─► bindings, frontend workflows, page data
 #     ─► Target.Phoenix.render ─► files; Plan.build ─► .wtf/plan.json
 defmodule VerticalSlice.Pipeline do
@@ -49,9 +49,28 @@ defmodule VerticalSlice.Pipeline do
   end
 
   @doc """
+  The privacy mode of a slice, from `SLICE_PRIVACY`: `omit` (unset or
+  empty, the default) or `enforced` (WTF-423). Anything else stops the
+  slice.
+  """
+  def privacy_mode(value) do
+    case value do
+      blank when blank in [nil, "", "omit"] ->
+        :omit
+
+      "enforced" ->
+        :enforced
+
+      other ->
+        raise ArgumentError, "SLICE_PRIVACY must be omit or enforced, got #{inspect(other)}"
+    end
+  end
+
+  @doc """
   Everything the render and the plan need, from the app and its decisions.
   Returns a map with the intermediate products (for page statistics and
-  the findings report).
+  the findings report). `privacy:` is the Ash target's mode (`:omit`, the
+  default, or `:enforced`).
   """
   def build(app, decisions, opts) do
     module = Keyword.fetch!(opts, :module)
@@ -65,7 +84,11 @@ defmodule VerticalSlice.Pipeline do
     sha = Decision.decisions_sha256(decisions)
 
     {:ok, project} =
-      AshTarget.map(model, applied, privacy: :omit, index: index, decisions_sha256: sha)
+      AshTarget.map(model, applied,
+        privacy: Keyword.get(opts, :privacy, :omit),
+        index: index,
+        decisions_sha256: sha
+      )
 
     {:ok, clients} = ApiClients.map(model)
     {:ok, backend_lowered} = Backend.build(app, model, index)

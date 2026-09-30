@@ -22,6 +22,29 @@ defmodule VerticalSlice.Synthetic do
   def email(i), do: "slice-user-#{i}@example.test"
 
   @doc """
+  The persona the slice signs in as, from `SLICE_PERSONA`: the index of a
+  synthetic user (1, the default, to `n`). Which one matters with enforced
+  privacy: user `i`'s booleans are `rem(i, 2) == 1` (user 1's are true,
+  user 2's false) and its options the `i`-th of their set.
+  """
+  def persona(value, n) do
+    case value do
+      blank when blank in [nil, ""] ->
+        1
+
+      text ->
+        case Integer.parse(text) do
+          {i, ""} when i >= 1 and i <= n ->
+            i
+
+          _ ->
+            raise ArgumentError,
+                  "SLICE_PERSONA must be a user index from 1 to #{n}, got #{inspect(text)}"
+        end
+    end
+  end
+
+  @doc """
   `%{type id => [row]}`: `n` records per live data type, keyed by field ID
   (the loader accepts them), with Data API system members.
   """

@@ -12,7 +12,8 @@
 #
 #   1. a throwaway PostgreSQL (docker, 127.0.0.1:$SLICE_DB_PORT, never
 #      5432) for the slice's `slice_dev` and `slice_test` databases
-#   2. render the project (slice.exs render: privacy :omit, the decisions
+#   2. render the project (slice.exs render: privacy :omit, or
+#      SLICE_PRIVACY=enforced for the compiled policies, the decisions
 #      applied, the plan, the determinism result, the generation-time
 #      structural summary), then compile it with --warnings-as-errors,
 #      check its format, generate and check its migrations, migrate, build
@@ -20,7 +21,8 @@
 #   3. load synthetic records through the data loader (slice.exs seed)
 #   4. serve it (data access on, API clients pointed at a closed port) and
 #      drive the page in Chromium (drive.mjs): signed out, a magic-link
-#      sign-in from the local mailbox, then every wired element
+#      sign-in from the local mailbox (as synthetic user SLICE_PERSONA),
+#      then every wired element
 #   5. `mix wtf.task` (next, the generator tasks, the page's tasks; their
 #      tests on the throwaway `slice_test`, named with --test-db) and
 #      `mix wtf.verify structural`
@@ -36,7 +38,9 @@
 # Environment: SLICE_DB_PORT (required: the throwaway PostgreSQL's port on
 # 127.0.0.1, never 5432), SLICE_ROOT (default
 # ~/.local/share/bubble_ex/slices), SLICE_PORT (4378), SLICE_SEED_N
-# (records per type, 3), SLICE_TASKS (generator tasks to complete, default
+# (records per type, 3), SLICE_PRIVACY (omit, the default, or enforced),
+# SLICE_PERSONA (the synthetic user signed in, 1 to SLICE_SEED_N, default
+# 1), SLICE_TASKS (generator tasks to complete, default
 # "generate:option_sets generate:schema generate:styles").
 set -euo pipefail
 
