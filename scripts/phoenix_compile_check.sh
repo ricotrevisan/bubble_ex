@@ -127,6 +127,17 @@ for fixture in $fixtures; do
         echo "the enforcement tests must all fail without policies (privacy: :omit): $summary" >&2
         exit 1
       fi
+
+      # ... and fail on their assertions: what the policies would have
+      # prevented happened. Not on a missing table, module or function
+      # (a broken fixture fails every test too, proving nothing).
+      asserted="$(grep -cE '^ +(Assertion with |match \(=\) failed|\*\* \(RuntimeError\) expected response with status)' <<<"$out" || true)"
+      if [[ "$asserted" != "$failed" ]] ||
+        grep -qE 'undefined_table|UndefinedFunctionError|Postgrex\.Error|CompileError|KeyError|FunctionClauseError' <<<"$out"; then
+        echo "$out" | tail -60
+        echo "the enforcement tests must fail on their assertions without policies ($asserted of $failed did)" >&2
+        exit 1
+      fi
       echo "enforcement tests without policies: $summary (as required)"
     fi
 

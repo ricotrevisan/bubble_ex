@@ -59,7 +59,9 @@ defmodule <%= @web %>.BubbleData do
   A repeating group shows its first page (its rows times its columns); a
   list with no page size, or a larger one, stops at `:max_items`
   (`config :<%= @app %>, <%= @web %>.BubbleData, max_items: 100`). A
-  search's `count` is a count query. A list of things stored as IDs is
+  search's `count` is <%= if @enforced? do %>the number of keys read through `:search`, at most
+  `:max_count` (`max_count/0`: Ash's count aggregate under-counts with
+  policies that read the user)<% else %>a count query<% end %>. A list of things stored as IDs is
   read by ID, at most the page size capped by `:max_items`. A
   relationship the page's bindings read through a record (its related
   list) reads at most `related_cap/0` records (`:max_items`, at most 100)
@@ -118,7 +120,18 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  @doc """
+<%= if @enforced? do %>  @doc """
+  The most records a page `count` reads (`:max_count`, default 10_000): a
+  count reads the keys of what it counts, and shows this cap past it.
+  """
+  def max_count do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_count, 10_000) do
+      n when is_integer(n) and n > 0 -> n
+      _ -> 10_000
+    end
+  end
+
+<% end %>  @doc """
   The unique ID of a page's thing from the URL path parameter
   (`bubble_thing`): a Bubble ID, else nil.
   """
@@ -339,13 +352,41 @@ defmodule <%= @web %>.BubbleData do
   A query's result: `take` is `:all` (at most the page size, capped at
   `max_items/0`), `:first`, `{:item, n}`, `{:limit, n}` or `:count`.
   """
-  def read(query, ctx, :count, _page_size) do
-    case Ash.count(query, <%= if @enforced? do %>action: :search, <% end %>actor: ctx.actor, authorize?: true) do
+<%= if @enforced? do %>  def read(query, ctx, :count, _page_size) do
+    # Counted by reading the records' keys through `:search`, not with
+    # `Ash.count/2`: Ash's count aggregate under-counts with policies that
+    # read the actor (a record the user finds is not counted). At most
+    # `max_count/0` are read; past it the count is that cap, logged.
+    [pk] = Ash.Resource.Info.primary_key(query.resource)
+    cap = max_count()
+
+    query
+    |> Ash.Query.select([pk])
+    |> Ash.Query.limit(cap + 1)
+    |> Ash.read(action: :search, actor: ctx.actor, authorize?: true)
+    |> case do
+      {:ok, records} when length(records) > cap ->
+        Logger.warning(
+          "bubble page data: a count of #{inspect(query.resource)} reached :max_count " <>
+            "(#{cap}); it shows #{cap}, the true count is larger"
+        )
+
+        cap
+
+      {:ok, records} ->
+        length(records)
+
+      {:error, error} ->
+        failed(query, error)
+    end
+  end
+<% else %>  def read(query, ctx, :count, _page_size) do
+    case Ash.count(query, actor: ctx.actor, authorize?: true) do
       {:ok, n} -> n
       {:error, error} -> failed(query, error)
     end
   end
-
+<% end %>
   def read(query, ctx, take, page_size) do
     {offset, limit} =
       case take do

@@ -13,8 +13,8 @@ defmodule <%= @module %>.Workflows.Runtime do
     * **reads** follow the privacy rules for the workflow's actor (a
       record the actor may not view reads as nothing; a field as
       `%Ash.ForbiddenField{}`)
-    * **writes** are made with the context `%{bubble: %{workflow_write:
-      true}}`, which `<%= @module %>.Privacy.WorkflowWrite` authorizes: as in
+    * **writes** are made with the private context
+      `%{bubble_workflow_write: true}`, which `<%= @module %>.Privacy.WorkflowWrite` authorizes: as in
       Bubble, a workflow's own conditions guard its writes. **Writes are
       not checked against the privacy rules.** Writes outside this runtime
       are forbidden unless they bypass authorization
@@ -588,13 +588,10 @@ defmodule <%= @module %>.Workflows.Runtime do
       actor: ctx.actor,
       authorize?: ctx.authorize?,
 <%= if @enforced? do %>      context: %{
-        bubble: %{
-          chain: ctx.chain,
-          workflow: ctx.workflow,
-          budget: budget,
-          # <%= @module %>.Privacy.WorkflowWrite: the runtime makes this write
-          workflow_write: true
-        }
+        bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget},
+        # <%= @module %>.Privacy.WorkflowWrite: the runtime makes this write
+        # (private context: never passed on to nested actions)
+        private: %{bubble_workflow_write: true}
       }<% else %>      context: %{bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget}}<% end %>
     ]
 

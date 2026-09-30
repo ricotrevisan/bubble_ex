@@ -6,9 +6,14 @@ defmodule <%= @web %>.WorkflowApiController do
   runs here through `<%= @module %>.Workflows.Runtime.call_endpoint/5`,
   **only when the owner turns the API on** (`config :<%= @app %>,
   <%= @module %>.Workflows, serve_workflow_api: true`); until then every request
-  answers 503. As generated, no resource has authorization, so an exposed
+<%= if @enforced? do %>  answers 503. The resources enforce the privacy rules compiled from Bubble
+  (`privacy: :enforced`): a served workflow reads what the rules let the
+  caller (the bearer token's user, or nobody) read, and its writes are
+  guarded by the workflow's own conditions, as in Bubble (not by the
+  privacy rules); the admin token ignores privacy, as in Bubble.
+<% else %>  answers 503. As generated, no resource has authorization, so an exposed
   workflow would let any caller read and write other users' records.
-
+<% end %>
   When served: authentication as the workflow requires (a user's bearer
   token, or the admin token `WORKFLOW_API_ADMIN_TOKEN`), the workflow's
   HTTP method only (POST when it names none; 405 otherwise), its
@@ -43,7 +48,7 @@ defmodule <%= @web %>.WorkflowApiController do
           conn,
           :service_unavailable,
           "NOT_SERVED",
-          "The workflow API is off: add authorization policies, then set serve_workflow_api"
+          <%= if @enforced? do %>"The workflow API is off: set serve_workflow_api to serve it"<% else %>"The workflow API is off: add authorization policies, then set serve_workflow_api"<% end %>
         )
 
       {:error, :not_found} ->

@@ -22,6 +22,7 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
 
   @u1 "1700000000000x900000000000000001"
   @u2 "1700000000000x900000000000000002"
+  @u3 "1700000000000x900000000000000003"
   @p1 "1700000000000x100000000000000001"
   @t1 "1700000000000x200000000000000001"
   @t2 "1700000000000x200000000000000002"
@@ -38,6 +39,7 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
 
     u1 = Ash.Seed.seed!(PhxCheck.User, %{id: @u1, email: "one@example.com"})
     u2 = Ash.Seed.seed!(PhxCheck.User, %{id: @u2, email: "two@example.com"})
+    u3 = Ash.Seed.seed!(PhxCheck.User, %{id: @u3, email: "three@example.com"})
     Ash.Seed.seed!(PhxCheck.Project, %{id: @p1, name: "Apollo"})
 
     for {id, title, watcher} <- [{@t1, "Bake", @u1}, {@t2, "Answer", @u2}, {@t3, "Clean", @u1}],
@@ -51,7 +53,7 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
             attachment: "private/#{@sha}/notes.txt"
           })
 
-    %{u1: u1, u2: u2}
+    %{u1: u1, u2: u2, u3: u3}
   end
 
   # The generated Privacy module exists only with policies: called at
@@ -96,12 +98,28 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
 
     assert {:error, %Ash.Error.Forbidden{}} = Ash.destroy(task, actor: actor(u1))
 
-    # The same write by a workflow (the runtime's context flag): allowed.
+    # The same write by a workflow (the runtime's private context flag):
+    # allowed.
     assert {:ok, %{}} =
              Ash.create(PhxCheck.Task, %{id: Runtime.new_id(), title: "By workflow"},
                actor: actor(u1),
-               context: %{bubble: %{workflow_write: true}}
+               context: %{private: %{bubble_workflow_write: true}}
              )
+
+    # The flag anywhere else does not count: in shared context (which Ash
+    # passes on to nested actions), or outside private context.
+    for context <- [
+          %{shared: %{private: %{bubble_workflow_write: true}}},
+          %{bubble: %{workflow_write: true}},
+          %{bubble_workflow_write: true}
+        ] do
+      assert {:error, %Ash.Error.Forbidden{}} =
+               Ash.create(PhxCheck.Task, %{id: Runtime.new_id(), title: "Forged"},
+                 actor: actor(u1),
+                 context: context
+               ),
+             inspect(context)
+    end
 
     # Direct view reaches records by ID; a listing through :read does not.
     assert {:error, %Ash.Error.Forbidden{}} = Ash.read(PhxCheck.Task, actor: actor(u1))
@@ -125,6 +143,15 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
 
     # Logged out: found nothing (everyone finds nothing).
     assert PhxCheck.Task |> Ash.read!(action: :search, actor: nil) == []
+  end
+
+  # Review M1: Ash's count aggregate under-counts with policies that read
+  # the actor (a watcher found 2 tasks and counted 0): a page count reads
+  # the keys through :search instead.
+  test "a page count counts what the user finds", %{u1: u1} do
+    query = Ash.Query.new(PhxCheck.Task)
+    assert PhxCheckWeb.BubbleData.read(query, %{actor: actor(u1)}, :count, nil) == 2
+    assert PhxCheckWeb.BubbleData.read(query, %{actor: nil}, :count, nil) == 0
   end
 
   test "pages show what the rules let the current user find and view", %{conn: conn, u1: u1} do
@@ -174,6 +201,7 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     conn: conn,
     u1: u1,
     u2: u2,
+    u3: u3,
     tmp_dir: root
   } do
     dir = Path.join([root, "private", @sha])
@@ -189,8 +217,10 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     # u2 watches t2, which holds it too: served.
     assert response(get(sign_in(conn, u2), path), 200) == "secret notes"
 
-    # Nobody else may open it (everyone: no attachments).
+    # Nobody else may open it (everyone: no attachments): logged out, or
+    # signed in without watching any task that holds it.
     assert response(get(conn, path), 404)
+    assert response(get(sign_in(conn, u3), path), 404)
 
     # A file no record holds: nobody.
     other = String.duplicate("cd", 32)

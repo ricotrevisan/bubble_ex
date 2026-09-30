@@ -79,7 +79,7 @@ defmodule BubbleEx.Target.Phoenix do
       every page load, event, API call and job; searches use `:search`; a
       hidden field reads as empty
     * **writes** (Rico's option A): the runtime marks its data steps
-      (`%{bubble: %{workflow_write: true}}`) and `<Module>.Privacy.
+      (private context `%{bubble_workflow_write: true}`) and `<Module>.Privacy.
       WorkflowWrite` authorizes them, so a workflow's conditions guard its
       writes, as in Bubble; any other write is forbidden. Writes are **not
       checked against the privacy rules**: the README, the Ash files'

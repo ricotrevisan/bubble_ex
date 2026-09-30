@@ -559,7 +559,7 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert files["lib/acme/task.ex"] =~ "authorizers: [Ash.Policy.Authorizer]"
       assert files["lib/acme/task.ex"] =~ "authorize_if Acme.Privacy.WorkflowWrite"
       assert files["lib/acme/task.ex"] =~ "read :attachments do"
-      assert files["lib/acme/privacy/workflow_write.ex"] =~ "workflow_write: true"
+      assert files["lib/acme/privacy/workflow_write.ex"] =~ "bubble_workflow_write: true"
       assert files["lib/acme/privacy.ex"] =~ "def mode, do: :enforced"
 
       # Every generated Ash file says writes are not policy-checked.
@@ -583,7 +583,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     test "the runtime marks its writes, loads actors and lets the admin token bypass",
          %{files: files} do
       runtime = files["lib/acme/workflows/runtime.ex"]
-      assert runtime =~ "workflow_write: true"
+      assert runtime =~ "private: %{bubble_workflow_write: true}"
       assert runtime =~ ~r"admin\?\(authorization\) ->\s+\{:ok, nil, true\}"
       assert runtime =~ "Acme.Privacy.load_actor(actor)"
       assert runtime =~ "load: Acme.Privacy.actor_loads()"
@@ -608,6 +608,24 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert readme =~ "Warning: writes are not checked against the privacy rules"
       assert readme =~ "data_access: true"
       assert files["config/runtime.exs"] =~ "private: false"
+    end
+
+    # Review M2: a search constrained on a field some users may not view
+    # (Task's Done: only watchers) would reveal it (field policies do not
+    # guard a filter in code): residue, not loaded. Sorting by Title (every
+    # user views it) loads.
+    test "a page search over a hidden field is residue", %{files: files, omit: omit} do
+      page = files["lib/acme_web/live/index_live/workflows.ex"]
+      assert page =~ "# TODO(bubble:element:bFirstOpen) not loaded: search_field_hidden"
+      refute page =~ "TODO(bubble:element:bList) not loaded"
+      refute omit["lib/acme_web/live/index_live/workflows.ex"] =~ "search_field_hidden"
+    end
+
+    test "a page count reads keys through :search, capped", %{files: files} do
+      data = files["lib/acme_web/bubble_data.ex"]
+      refute data =~ "Ash.count("
+      assert data =~ "|> Ash.read(action: :search, actor: ctx.actor, authorize?: true)"
+      assert data =~ "def max_count do"
     end
 
     test "an :omit render has none of it", %{omit: files} do

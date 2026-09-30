@@ -48,7 +48,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   alias BubbleEx.PageData
   alias BubbleEx.PageData.Source
   alias BubbleEx.Plan.Residue
-  alias BubbleEx.Target.Ash.{Expr, Expressions}
+  alias BubbleEx.Target.Ash.{Expr, Expressions, Project}
   alias BubbleEx.Workflows.Lowering
 
   @doc """
@@ -226,7 +226,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
     case Expressions.search(search, ctx.project) do
       {:ok, %{expr: %Expr{} = expr}} ->
-        pin(s, base, expr, take, hoisted, ctx, fns)
+        case hidden_fields(expr, ctx.project) do
+          [] ->
+            pin(s, base, expr, take, hoisted, ctx, fns)
+
+          fields ->
+            %{base | residue: [Residue.entry(s.id, :search_field_hidden, %{fields: fields})]}
+        end
 
       {:ok, %{diagnostics: diags}} ->
         constructs =
@@ -247,6 +253,60 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         }
     end
   end
+
+  # With enforced policies (WTF-423), the fields a search's filter or sort
+  # reads that some users may not view, as `<Resource>.<field>`, and the
+  # gated relationships it follows (`<Resource>.<relationship>`): field
+  # policies guard `filter_input` and reads, not a filter written in code,
+  # so such a search would reveal what the rules hide. Empty otherwise.
+  defp hidden_fields(%Expr{} = expr, %Project{privacy: :enforced} = project) do
+    modules = Map.new(project.resources ++ project.joins, &{&1.module, &1})
+
+    refs =
+      expr_refs(expr.expr) ++ Enum.map(expr.sort, fn {attribute, _} -> {[], attribute} end)
+
+    refs
+    |> Enum.flat_map(fn {rels, attribute} ->
+      hidden_path(expr.resource, rels, attribute, modules)
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp hidden_fields(_expr, _project), do: []
+
+  defp hidden_path(module, [], attribute, modules) do
+    case modules[module] do
+      nil -> []
+      r -> if visible_to_all?(r, attribute), do: [], else: ["#{module}.#{attribute}"]
+    end
+  end
+
+  defp hidden_path(module, [rel | rest], attribute, modules) do
+    with %{} = r <- modules[module],
+         %{} = relationship <- Enum.find(r.relationships, &(&1.name == rel)) do
+      if relationship.gate == nil,
+        do: hidden_path(relationship.destination, rest, attribute, modules),
+        else: ["#{module}.#{rel}"]
+    else
+      _ -> ["#{module}.#{rel}"]
+    end
+  end
+
+  defp visible_to_all?(resource, attribute) do
+    Enum.all?(resource.field_policies, fn fp ->
+      attribute not in fp.fields or
+        Enum.any?(fp.checks, &match?(%{kind: :authorize_if, test: :always}, &1))
+    end)
+  end
+
+  defp expr_refs({:ref, rels, attribute}) when is_binary(attribute), do: [{rels, attribute}]
+  defp expr_refs({:call, _name, args}), do: Enum.flat_map(args, &expr_refs/1)
+  defp expr_refs({:op, _op, l, r}), do: expr_refs(l) ++ expr_refs(r)
+  defp expr_refs({bool, nodes}) when bool in [:and, :or], do: Enum.flat_map(nodes, &expr_refs/1)
+  defp expr_refs({:not, node}), do: expr_refs(node)
+  defp expr_refs(list) when is_list(list), do: Enum.flat_map(list, &expr_refs/1)
+  defp expr_refs(_node), do: []
 
   # The filter with its context inputs and actor reads as pinned variables.
   defp pin(s, base, expr, take, hoisted, ctx, fns) do

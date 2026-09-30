@@ -184,7 +184,10 @@ while rendering.
   batch across rows, and a record's related list reads at most
   `:max_items`, capped at 100 (`<Web>.BubbleData.related_cap/0`), in all
   when lists nest (two levels read at most 10 × 10); `count` is a count
-  query.
+  query (with `privacy: :enforced`, the number of keys read through
+  `:search`, at most `:max_count`, default 10,000, past which it shows the
+  cap and logs: Ash's count aggregate under-counts with policies that read
+  the user).
 * **Generated text is escaped**: Bubble IDs and app text in generated code
   are `inspect/1`ed without limits (quotes, `#{`, braces escaped); the
   `hostile_page_data` compile-check fixture renames every ID.

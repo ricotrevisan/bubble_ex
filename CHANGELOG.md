@@ -14,7 +14,11 @@ All notable changes to this project are documented here.
   `scaffold:ash_authentication`); page data, frontend and backend
   workflows, the workflow API and jobs read with the current user loaded
   afresh by `Privacy.load_actor/1`; searches use `:search`, a refused read
-  shows nothing and a hidden field reads as empty; the workflow API's
+  shows nothing and a hidden field reads as empty; a page count reads the
+  keys through `:search` (at most `:max_count`: Ash's count aggregate
+  under-counts with policies that read the actor); a page search whose
+  constraints or sort read a field some users may not view is residue
+  (`:search_field_hidden`); the workflow API's
   admin token bypasses privacy for its run; private files can follow
   "view attached files" (`private: :privacy_rules`, lookup marked
   `scaffold:private_file_holders`); README and file headers warn that

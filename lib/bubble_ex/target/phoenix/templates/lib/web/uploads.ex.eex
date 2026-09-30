@@ -69,7 +69,18 @@ defmodule <%= @web %>.Uploads do
       action by the signed-in user (or nobody). The records holding the
       reference are found as the system (a file's key does not say whose it
       is); the rule is then checked with the user as the actor. This is the
-      one that matches Bubble
+      one that matches Bubble.
+
+      **Cost and limit.** Each private file request runs, per file field
+      in `private_files/0`, one query for the records holding the
+      reference (at most 20) and one keyed read per holder found, as the
+      user. Without an index on the file column that query scans the
+      table: add one to the resource's `postgres` block, e.g.
+      `custom_indexes do index [:attachment] end` (a GIN index for a list
+      of files). Only the first 20 holders of one file are checked: when
+      more records hold the same file and none of those 20 lets the user
+      open it, the file is denied even if a later one would (fail-closed,
+      stricter than Bubble)
     * `private: {MyModule, :authorize}`<% else %>  The generated app has **no authorization** (`privacy: :omit`), and a
   private file's key does not say which record it is attached to, so
   Bubble's "view attached files" rule cannot be enforced here yet. Private
