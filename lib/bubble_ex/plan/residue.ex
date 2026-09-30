@@ -26,6 +26,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:uses_dropped` | any symbol | `BubbleEx.Plan.build/5` and the workflow bindings (`BubbleEx.Target.Ash.Workflows`, `BubbleEx.Target.Elixir.FrontendWorkflows`): it reads, writes, calls, schedules, navigates to or is triggered by a symbol an owner dropped (WTF-422, `BubbleEx.Decision.Drop`; `detail.symbol`) |
   | `:api_connector_action` | action | `BubbleEx.Workflows.Backend` and `BubbleEx.Workflows.Frontend` (through `BubbleEx.Workflows.Lowering`): an API Connector call in a backend or page workflow; it waits for the generated Req clients (`detail.call`) |
   | `:unsupported_option` | workflow, action | `BubbleEx.Workflows.Backend`, `BubbleEx.Workflows.Frontend`: an event or action member with no lowering (`detail.options`) |
+  | `:data_to_send_untyped_page` | action | `BubbleEx.Workflows.Frontend` (WTF-378): a "Go to page" step sends data to a page with no type of content; what Bubble does with it is unverified (replay, WTF-358) (`detail.page`) |
   | `:unavailable_input` | workflow, action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a value the generated page does not provide (a page's or cell's thing, a group's data, an element's built-in state; `detail.inputs`) |
   | `:target_not_rendered` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: the element a step shows, hides, focuses, resets or calls into is not rendered by the generated page (in a runtime container's template, or not normalized) (`detail.element`) |
   | `:backend_workflow` | action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a page scheduling a backend workflow when the backend workflows (WTF-373) are not bound (`detail.workflow`) |
@@ -54,7 +55,7 @@ defmodule BubbleEx.Plan.Residue do
               trigger_in_runtime_template style_condition
               plugin_style trigger_dropped reads_dropped_plugin api_connector_action
               unsupported_option not_generated unavailable_input backend_workflow
-              target_not_rendered page_data_in_cell uses_dropped)a
+              target_not_rendered page_data_in_cell uses_dropped data_to_send_untyped_page)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded

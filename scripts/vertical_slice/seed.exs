@@ -119,10 +119,17 @@ defmodule VerticalSlice.Synthetic do
 
   defp value(%Field{type: %Type{kind: :structured, base: base}}, i, _ctx) do
     case base do
-      :geographic_address -> %{"address" => "#{i} Sample Street", "lat" => 50.0 + i / 100, "lng" => 4.0}
-      :date_range -> %{"start" => @base_ms + i * @day, "end" => @base_ms + (i + 1) * @day}
-      :number_range -> %{"min" => i, "max" => i + 10}
-      _ -> nil
+      :geographic_address ->
+        %{"address" => "#{i} Sample Street", "lat" => 50.0 + i / 100, "lng" => 4.0}
+
+      :date_range ->
+        %{"start" => @base_ms + i * @day, "end" => @base_ms + (i + 1) * @day}
+
+      :number_range ->
+        %{"min" => i, "max" => i + 10}
+
+      _ ->
+        nil
     end
   end
 

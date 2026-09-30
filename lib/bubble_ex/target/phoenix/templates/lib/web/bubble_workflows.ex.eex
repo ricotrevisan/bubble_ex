@@ -793,10 +793,12 @@ defmodule <%= @web %>.BubbleWorkflows do
   def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\ nil) do
     path = if to == :current, do: ctx.path, else: to
 
+    # The page's own path without a trailing slash: "/" <> id would be a
+    # scheme-relative URL ("//<id>").
     path =
       case thing_id(thing) do
         nil -> path
-        id -> path <> "/" <> id
+        id -> String.trim_trailing(path, "/") <> "/" <> id
       end
 
     base = if keep?, do: ctx.url, else: %{}

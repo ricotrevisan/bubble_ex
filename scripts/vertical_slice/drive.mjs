@@ -34,8 +34,8 @@ for (const required of ["base", "path", "email", "out"]) {
 }
 
 const base = new URL(args.base);
-if (!["127.0.0.1", "localhost"].includes(base.hostname)) {
-  console.error("--base must be a local server");
+if (base.hostname !== "127.0.0.1") {
+  console.error("--base must be a server on 127.0.0.1");
   process.exit(2);
 }
 
@@ -44,15 +44,31 @@ fs.mkdirSync(out, { recursive: true, mode: 0o700 });
 const pagePath = args.thing ? `${args.path}/${args.thing}` : args.path;
 const result = { page: pagePath, visits: [], sign_in: null, clicks: [], blocked_requests: [] };
 
-const browser = await chromium.launch();
-const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+// Nothing but the slice's own server, three ways: no host name resolves
+// but 127.0.0.1 (a request that escaped the routes below fails DNS), every
+// HTTP request and WebSocket to another origin is aborted and recorded, and
+// no service worker runs (its fetches would bypass the routes).
+const browser = await chromium.launch({
+  args: ["--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"],
+});
+const context = await browser.newContext({
+  viewport: { width: 1280, height: 900 },
+  serviceWorkers: "block",
+});
 
-// Nothing but the slice's own server.
 await context.route("**/*", (route) => {
   const url = new URL(route.request().url());
   if (url.origin === base.origin || url.protocol === "data:") return route.continue();
   result.blocked_requests.push(url.origin);
   return route.abort();
+});
+
+// The LiveView socket is same-origin (ws://127.0.0.1:<port>): passed through.
+await context.routeWebSocket(/.*/, (ws) => {
+  const url = new URL(ws.url());
+  if (url.host === base.host) return ws.connectToServer();
+  result.blocked_requests.push(`${url.protocol}//${url.host}`);
+  return ws.close({ code: 1008, reason: "blocked by the vertical slice" });
 });
 
 // The server's log (--log), to correlate what a click did on the server:

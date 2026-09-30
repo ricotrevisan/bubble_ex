@@ -187,7 +187,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       assert runtime =~
                "def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\\\ nil) do"
 
-      assert runtime =~ ~s|nil -> path\n        id -> path <> "/" <> id|
+      assert runtime =~ ~s|id -> String.trim_trailing(path, "/") <> "/" <> id|
     end
 
     test "is residue while the page does not load its thing" do
@@ -198,17 +198,19 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
                nav.steps |> hd() |> Map.fetch!(:residue) |> hd()
     end
 
-    test "is ignored when the page has no type of content, as Bubble sends nothing" do
+    test "is residue when the page has no type of content (unverified in Bubble)" do
       app =
         app()
         |> with_thing("user")
         |> update_in(["pages", "other", "properties"], &Map.delete(&1, "page_item_type"))
 
       %{files: files, spec: spec} = render(app, page_data: true)
-      assert FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav").residue == []
+      nav = FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav")
+      assert nav.blocked_by == ["action:aNav1"]
+      assert [%{reason: :data_to_send_untyped_page}] = hd(nav.steps).residue
 
       assert files["lib/shop_web/live/index_live/workflows.ex"] =~
-               ~s|BubbleWorkflows.navigate(ctx, "/other", [{"q", "hello"}], false, false, false)\n|
+               ~s|"wNav" => %{run: :wf_w_nav, condition: nil, blocked: ["action:aNav1"], data: false}|
     end
   end
 

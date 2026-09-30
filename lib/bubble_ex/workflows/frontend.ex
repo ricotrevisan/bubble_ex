@@ -49,7 +49,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
   | Set state(s) (`SetCustomState`) | `:set_state` | `element`, `states` (`%{state, value}`, state `custom.<id>`) |
-  | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, when the page has a type of content), `keep_params?`, `replace?`, `new_tab?` |
+  | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, when the page has a type of content; to a page with none, `:data_to_send_untyped_page` residue), `keep_params?`, `replace?`, `new_tab?` |
   | Open an external website (`OpenURL`) | `:open_url` | `url`, `new_tab?` |
   | Refresh the page | `:refresh` | |
   | Log the user out | `:log_out` | |
@@ -70,7 +70,8 @@ defmodule BubbleEx.Workflows.Frontend do
   `action:<id>`), to pass to `BubbleEx.Plan.build/5` as `residue:`:
   `:uncompiled_expression`, `:unsupported_action`, `:api_connector_action`,
   `:plugin_action`, `:auth_action`, `:unsupported_event`, `:plugin_event`,
-  `:unsupported_option` (a member whose semantics are not lowered, e.g. a
+  `:data_to_send_untyped_page` (data sent to a page with no type of
+  content, WTF-378), `:unsupported_option` (a member whose semantics are not lowered, e.g. a
   page's "data to send") and `:unresolved_reference` (an element, page,
   state, field, parameter, return or callee that does not resolve).
 
@@ -870,15 +871,17 @@ defmodule BubbleEx.Workflows.Frontend do
 
   # "Go to page"'s data to send (WTF-378): the destination page's thing,
   # sent as the path segment after the page's own (`/<page>/<unique id>`).
-  # A destination with no type of content has no such segment: Bubble
-  # sends nothing, so a value left there from an earlier type of content is
-  # ignored (unverified). The current page (its path is only known at run
-  # time) and the index page (whose path is `/`) are not lowered yet.
+  # A destination with no type of content has no such segment; what Bubble
+  # does with a value left there (from an earlier type of content) is not
+  # verified, so it is `:data_to_send_untyped_page` residue for replay
+  # (WTF-358) to settle, never dropped silently. The current page (its path
+  # is only known at run time) and the index page (whose path is `/`) are
+  # not lowered yet.
   defp data_to_send(nil, _page, _path, _id, _env, _ctx), do: {nil, []}
 
   defp data_to_send(value, page, path, id, env, ctx) when is_binary(page) do
     case ctx.page_things[page] do
-      %{type: nil} -> {nil, []}
+      %{type: nil} -> {nil, [Residue.entry(id, :data_to_send_untyped_page, %{page: page})]}
       %{index?: false} -> {Lowering.expr(value, path ++ ["data_to_send"], env), []}
       _ -> {nil, Lowering.option_residue(id, ["data_to_send"])}
     end

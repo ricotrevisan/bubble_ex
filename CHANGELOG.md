@@ -15,25 +15,35 @@ All notable changes to this project are documented here.
   owner's decisions (`privacy: :omit`, the plan, the determinism result,
   the generation-time structural summary), compiles it with
   `--warnings-as-errors`, generates and checks its migrations, migrates a
-  throwaway PostgreSQL (docker, an explicit port, never 5432, `slice_`
-  databases only, for dev and test), loads synthetic records for every data
+  throwaway PostgreSQL (the script's own labelled docker container on
+  127.0.0.1:`$SLICE_DB_PORT`, required and never 5432, checked with
+  `docker port` and `pg_isready`; `slice_` databases only, for dev and
+  test), loads synthetic records for every data
   type through the data loader (`seed.exs`), serves it with the data-access
-  opt-in and every API client pointed at a closed local port, drives the
-  page in the pinned Chromium (`drive.mjs`: signed out, a magic-link
+  opt-in and every API client of the rendered Spec pointed at a closed
+  local port (a client module it cannot account for stops the run), drives
+  the page in the pinned Chromium (`drive.mjs`: signed out, a magic-link
   sign-in from the local mailbox, then every wired element, with the
-  server log lines each click caused; every other origin is aborted), then
+  server log lines each click caused; no host resolves but 127.0.0.1,
+  other origins' requests and WebSockets are aborted, service workers are
+  blocked), then
   runs `mix wtf.task` and `mix wtf.verify structural`. Output stays in
   `$SLICE_ROOT/<slug>` (0700); the server and the database are removed on
-  exit.
+  exit. The generated `navigate/7` trims the page path's trailing slash
+  before the thing's segment (never `//<id>`) and takes only a value shaped
+  like a Bubble ID.
 - **"Go to page" sends its data** (WTF-378). The data to send of a "Go to
   page" step to a page with a type of content is lowered (`Step.args.thing`)
   and bound: the generated `navigate/7` puts the thing's unique ID as the
   path segment the page reads its thing from (`/<page>/<unique id>`), when
   that page loads its thing; otherwise, and to the current or the index
   page, it stays `:unsupported_option` residue. A data to send to a page
-  with no type of content is ignored, as Bubble has nowhere to send it
-  (unverified). On the private fixture app this clears all 70
-  `data_to_send` residue entries: native frontend workflows 563 to 607.
+  with no type of content is residue of its own reason,
+  `:data_to_send_untyped_page` (`detail.page`): what Bubble does with it is
+  unverified, so replay (WTF-358) can find these steps; it is never dropped
+  silently. On the private fixture app the 70 `data_to_send` entries
+  become 35 lowered steps and 35 `data_to_send_untyped_page` entries:
+  native frontend workflows 563 to 569, wired 390 to 395.
 
 - **Buildprint v5 workspaces** (`BubbleEx.Buildprint.V5`). Buildprint
   retired its v4 JSON export; a v5 workspace (`buildprint project clone`)

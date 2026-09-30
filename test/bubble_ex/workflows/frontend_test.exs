@@ -101,9 +101,20 @@ defmodule BubbleEx.Workflows.FrontendTest do
     [nav] = typed |> send_user.() |> lower() |> workflow("wNav") |> Map.fetch!(:steps)
     assert %{residue: [], args: %{thing: %{ir: %{op: :current_user}}}} = nav
 
-    # No type of content: Bubble has nowhere to send it, so it is ignored.
+    # No type of content: what Bubble does with it is unverified, so it is
+    # residue of its own kind for replay to find, never dropped silently.
     [nav] = app() |> send_user.() |> lower() |> workflow("wNav") |> Map.fetch!(:steps)
-    assert %{residue: [], args: %{thing: nil}} = nav
+
+    assert %{
+             args: %{thing: nil},
+             residue: [
+               %{
+                 subject: "action:aNav1",
+                 reason: :data_to_send_untyped_page,
+                 detail: %{page: "bOther"}
+               }
+             ]
+           } = nav
 
     # The index page's path is "/": no segment to read a thing from yet.
     index =

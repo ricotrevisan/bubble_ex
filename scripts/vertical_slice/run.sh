@@ -25,14 +25,17 @@
 #      `mix wtf.verify structural`
 #
 # The server and the database are always stopped and removed on exit
-# (SLICE_KEEP=1 keeps them for inspection). Nothing is written outside
-# $SLICE_ROOT/SLUG (mode 0700) and $SLICE_SCRATCH; nothing contacts Bubble
-# or a third-party API (the browser aborts every other origin). Downloading
-# the pinned Tailwind and esbuild binaries is the only other network use.
+# (SLICE_KEEP=1 keeps them for inspection). The script writes only under
+# $SLICE_ROOT/SLUG (created 0700; $SLICE_ROOT itself is created 0700 when
+# missing and never changed otherwise) and the project's own deps/_build;
+# nothing contacts Bubble or a third-party API (the browser resolves no
+# other host and aborts every other origin). Downloading the pinned
+# Tailwind and esbuild binaries is the only other network use.
 #
-# Environment: SLICE_ROOT (default ~/.local/share/bubble_ex/slices),
-# SLICE_DB_PORT (55478), SLICE_PORT (4378), SLICE_SEED_N (records per type,
-# 3), SLICE_TASKS (generator tasks to complete, default
+# Environment: SLICE_DB_PORT (required: the throwaway PostgreSQL's port on
+# 127.0.0.1, never 5432), SLICE_ROOT (default
+# ~/.local/share/bubble_ex/slices), SLICE_PORT (4378), SLICE_SEED_N
+# (records per type, 3), SLICE_TASKS (generator tasks to complete, default
 # "generate:option_sets generate:schema generate:styles").
 set -euo pipefail
 
@@ -51,18 +54,22 @@ slice_root="${SLICE_ROOT:-$HOME/.local/share/bubble_ex/slices}"
 out="$slice_root/$slug"
 project="$out/project"
 logs="$out/logs"
-db_port="${SLICE_DB_PORT:-55478}"
+db_port="${SLICE_DB_PORT:-}"
 http_port="${SLICE_PORT:-4378}"
 seed_n="${SLICE_SEED_N:-3}"
 tasks="${SLICE_TASKS:-generate:option_sets generate:schema generate:styles}"
 container="bubble-ex-slice-${slug//[^A-Za-z0-9_-]/-}-db"
 
 [[ "$slug" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "SLUG: letters, digits, - and _ only" >&2; exit 2; }
-[[ "$db_port" =~ ^[0-9]+$ && "$db_port" != 5432 ]] || { echo "SLICE_DB_PORT must be a number other than 5432" >&2; exit 2; }
+[[ "$db_port" =~ ^[0-9]+$ && "$db_port" != 5432 ]] ||
+  { echo "SLICE_DB_PORT must be set explicitly, to a port other than 5432" >&2; exit 2; }
 [[ "$http_port" =~ ^[0-9]+$ ]] || { echo "SLICE_PORT must be a number" >&2; exit 2; }
 
-mkdir -p "$slice_root" "$out" "$logs" "$out/artifacts"
-chmod 700 "$slice_root" "$out" "$logs" "$out/artifacts"
+# Only what the script creates is made private; an existing $SLICE_ROOT
+# keeps its mode.
+[[ -d "$slice_root" ]] || mkdir -m 700 -p "$slice_root"
+mkdir -p "$out" "$logs" "$out/artifacts"
+chmod 700 "$out" "$logs" "$out/artifacts"
 
 export SLICE_DB="ecto://postgres:postgres@127.0.0.1:$db_port"
 server_pid=""
@@ -84,18 +91,31 @@ step() { echo "== $*"; }
 
 # --- 1. the database ------------------------------------------------------------------------
 step "database $container on 127.0.0.1:$db_port"
-if ss -ltn 2>/dev/null | grep -q "127.0.0.1:$db_port \|:$db_port "; then
-  docker inspect "$container" >/dev/null 2>&1 ||
-    { echo "port $db_port is taken by something else" >&2; exit 1; }
+# The database must be the script's own container: labelled for this
+# slug, and the one publishing 127.0.0.1:$db_port. A port held by anything
+# else (another container, a local PostgreSQL) stops the run.
+owned() {
+  [[ "$(docker inspect -f '{{index .Config.Labels "bubble_ex.slice"}}' "$container" 2>/dev/null)" == "$slug" ]] &&
+    [[ "$(docker port "$container" 5432/tcp 2>/dev/null)" == "127.0.0.1:$db_port" ]]
+}
+if ss -ltn 2>/dev/null | grep -qE "[:.]$db_port\s"; then
+  owned || { echo "port $db_port is taken by something other than $container" >&2; exit 1; }
 else
   docker rm -f "$container" >/dev/null 2>&1 || true
-  docker run -d --name "$container" -e POSTGRES_PASSWORD=postgres \
+  docker run -d --name "$container" --label "bubble_ex.slice=$slug" -e POSTGRES_PASSWORD=postgres \
     -p "127.0.0.1:$db_port:5432" postgres:17 >/dev/null
+  owned || { echo "$container does not publish 127.0.0.1:$db_port" >&2; exit 1; }
 fi
+# Over TCP: the image's init-time server listens on the socket only.
+ready=""
 for _ in $(seq 1 60); do
-  docker exec "$container" pg_isready -U postgres >/dev/null 2>&1 && break
+  if docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
   sleep 1
 done
+[[ -n "$ready" ]] || { echo "$container did not become ready" >&2; exit 1; }
 
 # --- 2. render, compile, migrate --------------------------------------------------------------
 cd "$root"

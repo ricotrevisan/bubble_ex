@@ -44,7 +44,12 @@ defmodule VerticalSlice.Cli do
   # and every generated API client pointed at a closed local port so
   # nothing reaches a third party (a call without its secrets already fails
   # with `:missing_env`).
-  def slice_config(files, env) do
+  #
+  # The clients come from the API client Spec that was rendered, and fail
+  # closed: every group must have its module in the rendered files and
+  # every file under lib/slice/api_clients/ must be one of them, else the
+  # slice stops (a client left unconfigured would call its real host).
+  def slice_config(files, clients_spec, env) do
     database = if env == :test, do: "slice_test", else: "slice_dev"
 
     db =
@@ -53,22 +58,22 @@ defmodule VerticalSlice.Cli do
           ~s(hostname: "slice-db-unset.invalid", port: 1, database: "#{database}")
 
         _ ->
-          uri = URI.parse(CheckDb.url!("SLICE_DB", "SLICE_ALLOW_5432"))
-          [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
+          {host, port, user, password} = db_credentials()
 
-          "hostname: #{inspect(uri.host)}, port: #{uri.port}, username: #{inspect(user)}, " <>
+          "hostname: #{inspect(host)}, port: #{port}, username: #{inspect(user)}, " <>
             "password: #{inspect(password)}, database: #{inspect(CheckDb.database!(database))}"
       end
 
     # In test, the generated API client tests stub every request themselves
     # (Req.Test): their URLs stay the calls' own.
     clients =
-      for {path, content} <- files,
-          env == :dev,
-          String.starts_with?(path, "lib/slice/api_clients/"),
-          [_, mod] <- [Regex.run(~r/^defmodule (Slice\.ApiClients\.\w+) do/m, content)],
-          uniq: true,
-          do: "config :slice, #{mod}, base_url: \"http://127.0.0.1:1\", retry: false\n"
+      if env == :dev,
+        do:
+          for(
+            mod <- client_modules(files, clients_spec),
+            do: "config :slice, #{mod}, base_url: \"http://127.0.0.1:1\", retry: false\n"
+          ),
+        else: []
 
     data_access =
       if env == :dev, do: "config :slice, SliceWeb.BubbleWorkflows, data_access: true\n", else: ""
@@ -76,18 +81,58 @@ defmodule VerticalSlice.Cli do
     config =
       """
       config :slice, Slice.Repo, #{db}
-      #{data_access}#{clients |> Enum.sort() |> Enum.join()}\
+      #{data_access}#{Enum.join(clients)}\
       """
 
     "\n# --- vertical slice (scripts/vertical_slice) ---\n" <>
       IO.iodata_to_binary(Code.format_string!(config)) <> "\n"
   end
 
+  # Host, port, user and password of SLICE_DB (validated), URI-decoded.
+  def db_credentials do
+    uri = URI.parse(CheckDb.url!("SLICE_DB", "SLICE_ALLOW_5432"))
+    [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
+    {uri.host, uri.port, URI.decode(user), URI.decode(password)}
+  end
+
+  defp client_modules(files, %{groups: groups}) do
+    expected = groups |> Enum.map(&("Slice.ApiClients." <> &1.module)) |> Enum.sort()
+
+    defined =
+      for {path, content} <- files,
+          String.starts_with?(path, "lib/slice/api_clients/"),
+          into: %{} do
+        mods =
+          Regex.scan(~r/^defmodule (Slice\.ApiClients\.[\w.]+) do/m, content,
+            capture: :all_but_first
+          )
+
+        {path, List.flatten(mods)}
+      end
+
+    unknown =
+      for {path, mods} <- defined, mods == [] or Enum.any?(mods, &(&1 not in expected)), do: path
+
+    missing = expected -- Enum.flat_map(defined, &elem(&1, 1))
+
+    if unknown != [] or missing != [],
+      do:
+        raise(
+          "API clients not all accounted for: files #{inspect(Enum.sort(unknown))}, " <>
+            "groups without a module #{inspect(missing)}"
+        )
+
+    expected
+  end
+
+  defp client_modules(_files, nil), do: []
+
   def decisions("-"), do: nil
   def decisions(path), do: path
 
   def page_table(rows) do
-    header = ~w(score id elements own reusables workflows steps wired native data data_wired data_wf schedules)
+    header =
+      ~w(score id elements own reusables workflows steps wired native data data_wired data_wf schedules)
 
     lines =
       for r <- rows do
@@ -160,9 +205,10 @@ case System.argv() do
         do:
           File.write!(
             Path.join(project_dir, "config/#{env}.exs"),
-            Cli.slice_config(files, env),
+            Cli.slice_config(files, built.clients, env),
             [:append]
           )
+
     File.cp!("scripts/phoenix_compile_check/mix.lock", Path.join(project_dir, "mix.lock"))
     :ok = BubbleEx.Tasks.Store.write_plan(project_dir, built.plan)
 
@@ -236,15 +282,14 @@ case System.argv() do
     decisions = decisions_path |> Cli.decisions() |> Pipeline.load_decisions()
     built = Pipeline.build(app, decisions, module: "Slice")
 
-    uri = URI.parse(CheckDb.url!("SLICE_DB", "SLICE_ALLOW_5432"))
-    [user, password] = String.split(uri.userinfo || "postgres:postgres", ":", parts: 2)
+    {host, port, user, password} = Cli.db_credentials()
 
     {:ok, pool} =
       Postgrex.start_link(
-        hostname: uri.host,
-        port: uri.port,
-        username: URI.decode(user),
-        password: URI.decode(password),
+        hostname: host,
+        port: port,
+        username: user,
+        password: password,
         database: CheckDb.database!("slice_dev"),
         pool_size: 2
       )
@@ -276,7 +321,11 @@ case System.argv() do
 
     File.write!(Path.join(out, "seed.json"), Jason.encode!(seed, pretty: true))
     File.chmod!(Path.join(out, "seed.json"), 0o600)
-    IO.puts("loaded #{seed["load"]["inserted"]} synthetic records into #{map_size(report.types)} types")
+
+    IO.puts(
+      "loaded #{seed["load"]["inserted"]} synthetic records into #{map_size(report.types)} types"
+    )
+
     IO.inspect(seed["load"]["diagnostics"], label: "loader diagnostics")
 
   # What the browser drive visits: `<path> <thing id or -> <email> <page ID>`.
