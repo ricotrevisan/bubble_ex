@@ -115,7 +115,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       tokens: tokens,
       styles: Map.new(frontend.styles, &{&1.map_key, &1.class_name}),
       expressions: Keyword.get(opts, :expressions, %{}),
-      assets: Keyword.get(opts, :assets, %{}),
+      # The exporter's downloads, served only as verified (WTF-447
+      # review): their bytes checked and SVG sanitized, like the store's.
+      assets: opts |> Keyword.get(:assets, %{}) |> StaticAssets.verified_assets(),
+      # …and as downloaded, for icons: only their symbol is inlined.
+      icon_assets: Keyword.get(opts, :assets, %{}),
       asset_store: Keyword.get(opts, :asset_store),
       overrides: overrides(frontend),
       flows: flows
@@ -166,7 +170,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     generated = Map.merge(generated, flow_files.generated)
 
-    # Downloaded images, served from priv/static/images/bubble (asset_url/1).
+    # Downloaded images, verified above, served from
+    # priv/static/images/bubble (asset_url/1).
     generated =
       for {_id, %{path: path, bytes: bytes}} <- base.assets,
           is_binary(path) and is_binary(bytes),
@@ -1924,7 +1929,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # The exporter's download, else the icon's symbol from the stored icon
   # library (sanitized; WTF-447).
   defp icon_bytes(node, fragment, ctx) do
-    case ctx.assets[node.exporter_id] do
+    case ctx.icon_assets[node.exporter_id] do
       %{bytes: bytes} ->
         bytes
 

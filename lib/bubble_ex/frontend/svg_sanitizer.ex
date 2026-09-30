@@ -12,11 +12,13 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
     * **Attributes**: presentation and geometry attributes only (no event
       handlers, no namespaced attributes). `href` only on `use`, and only
       to a fragment of the same file (`#id`). A value that is not plain
-      text (`javascript:`, `data:`, `expression(`, `@import`, a `url(…)`
-      other than `url(#id)`, a backslash, control characters) drops the
+      text (`javascript:`, `data:`, `expression(`, `@import`, `image-set(`,
+      `src(`, a `url(…)` other than `url(#id)`, a backslash, control
+      characters) drops the
       attribute; so does a `style` attribute or element with such CSS.
     * **Output** is serialized here, not echoed: canonical element and
-      attribute names, escaped values, no comments, processing
+      attribute names, escaped values, text without characters XML does
+      not allow (control characters, decoded `&#0;`), no comments, processing
       instructions or DOCTYPE (entities are never expanded), and the
       SVG namespace on the root.
 
@@ -137,7 +139,9 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
   end
 
   defp child(text, parent, _depth, count) when is_binary(text) do
-    if parent in @text_elements, do: {:ok, escape(text), count}, else: {:ok, [], count}
+    if parent in @text_elements,
+      do: {:ok, text |> xml_chars() |> escape(), count},
+      else: {:ok, [], count}
   end
 
   defp child({"style", attributes, content}, _parent, _depth, count) do
@@ -209,6 +213,7 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
     compact = value |> String.downcase() |> String.replace(~r/\s+/u, "")
 
     String.valid?(value) and not Regex.match?(~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u, value) and
+      xml_chars(value) == value and
       not String.contains?(value, "\\") and
       not String.contains?(compact, [
         "javascript:",
@@ -217,7 +222,9 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
         "expression(",
         "@import",
         "-moz-binding",
-        "behavior:"
+        "behavior:",
+        "image-set(",
+        "src("
       ]) and
       local_urls?(compact)
   end
@@ -235,6 +242,18 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
   defp attrs_xml(attrs) do
     Enum.map(attrs, fn {key, value} -> [" ", key, "=\"", escape(value), "\""] end)
   end
+
+  # Only characters XML allows: text (entities decoded by the parser, as
+  # `&#0;`) loses control characters, noncharacters and surrogates.
+  defp xml_chars(text) do
+    for <<c::utf8 <- text>>, xml_char?(c), into: "", do: <<c::utf8>>
+  end
+
+  defp xml_char?(c) when c in [0x9, 0xA, 0xD], do: true
+  defp xml_char?(c) when c in 0x20..0xD7FF, do: true
+  defp xml_char?(c) when c in 0xE000..0xFFFD, do: true
+  defp xml_char?(c) when c in 0x10000..0x10FFFF, do: true
+  defp xml_char?(_c), do: false
 
   defp escape(text) do
     text

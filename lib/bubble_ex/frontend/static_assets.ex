@@ -257,6 +257,36 @@ defmodule BubbleEx.Frontend.StaticAssets do
     end
   end
 
+  @doc """
+  The exporter's downloads (the `assets:` option of
+  `BubbleEx.Target.Phoenix.render/2`, by exporter ID) as the app may
+  serve them: each one's bytes checked like a fetched image's (`typed/1`:
+  PNG, JPEG, GIF or WebP by their magic bytes, an SVG sanitized), its
+  path content-addressed with the verified type's extension; anything
+  else becomes `%{failed?: true}` (rendered without a source).
+  """
+  @spec verified_assets(map()) :: map()
+  def verified_assets(assets) when is_map(assets) do
+    Map.new(assets, fn
+      {id, %{bytes: bytes} = asset} when is_binary(bytes) ->
+        case typed(bytes) do
+          {:ok, ext, clean} ->
+            sha = sha256(clean)
+
+            {id,
+             %{asset | bytes: clean} |> Map.merge(%{path: "assets/#{sha}.#{ext}", sha256: sha})}
+
+          {:error, _} ->
+            {id, %{failed?: true}}
+        end
+
+      {id, asset} ->
+        {id, asset}
+    end)
+  end
+
+  def verified_assets(_assets), do: %{}
+
   @doc "The app path a stored image is served at."
   @spec src(map()) :: String.t()
   def src(%{file: file}), do: "/images/bubble/" <> file
@@ -450,7 +480,7 @@ defmodule BubbleEx.Frontend.StaticAssets do
        when is_binary(file) and is_binary(sha) and is_integer(size) do
     kind = if raw["kind"] == "icon", do: :icon, else: :image
 
-    with true <- Regex.match?(@stored_file, file) || {:error, "invalid file name"},
+    with :ok <- entry_fields(raw["url"], file),
          {class, ^ref} when class in [:bubble, :icon] <- classify(ref, kind),
          {:ok, bytes} <- read_stored(Path.join(dir, file)),
          true <- sha256(bytes) == sha || {:error, "SHA-256 mismatch"},
@@ -475,6 +505,16 @@ defmodule BubbleEx.Frontend.StaticAssets do
   end
 
   defp load_entry(_dir, _ref, _raw), do: {:error, "invalid entry"}
+
+  # The recorded download URL (reported, never requested) is a string or
+  # absent; the file is a content address.
+  defp entry_fields(url, file) do
+    cond do
+      not (is_nil(url) or (is_binary(url) and String.valid?(url))) -> {:error, "invalid url"}
+      not Regex.match?(@stored_file, file) -> {:error, "invalid file name"}
+      true -> :ok
+    end
+  end
 
   defp read_stored(path) do
     case File.lstat(path) do

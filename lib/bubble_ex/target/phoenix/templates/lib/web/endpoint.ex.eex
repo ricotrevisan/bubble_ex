@@ -17,9 +17,11 @@ defmodule <%= @web %>.Endpoint do
   # On the separate uploads origin only public files are served (WTF-415).
   plug <%= @web %>.UploadsHostGuard
 
-  # The images of the Bubble pages (WTF-447, .wtf/assets.json): raster
-  # images checked by their bytes and sanitized SVG only, served with
-  # nosniff and a sandbox policy, so an image opened on its own runs nothing.
+  # The images of the Bubble pages (WTF-447, .wtf/assets.json): the
+  # generator writes only PNG, JPEG, GIF and WebP checked by their bytes
+  # and sanitized SVG here, named by their SHA-256 and verified type;
+  # served with nosniff and a sandbox policy, so an image opened on its
+  # own runs nothing.
   plug Plug.Static,
     at: "/images/bubble",
     from: {:<%= @app %>, "priv/static/images/bubble"},
