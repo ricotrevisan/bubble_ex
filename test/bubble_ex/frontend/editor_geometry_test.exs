@@ -10,7 +10,7 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
 
   alias BubbleEx.Buildprint.V5
   alias BubbleEx.Frontend
-  alias BubbleEx.Frontend.EditorGeometry
+  alias BubbleEx.Frontend.{EditorGeometry, Payload}
   alias BubbleEx.Frontend.Export.Css
   alias BubbleEx.Target.Phoenix.Tailwind
 
@@ -391,20 +391,32 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
   end
 
   test "plugin elements keep their canvas size and lose only their offsets" do
-    plugin =
-      el("pl", "1488796042609x768734193128308700-AAg", 1, %{
-        "left" => 24,
-        "top" => 40,
-        "width" => 300,
-        "height" => 120
-      })
+    # Marketplace plugins (also a development version) and Bubble's own.
+    for type <- [
+          "1488796042609x768734193128308700-AAg",
+          "1488796042609x768734193128308700_current-AAg",
+          "select2-MultiDropdown",
+          "star_rating-StarRating"
+        ] do
+      plugin =
+        el("pl", type, 1, %{"left" => 24, "top" => 40, "width" => 300, "height" => 120})
 
-    child = only_child(editor_app(column_page(%{"pl" => plugin})))
+      child = only_child(editor_app(column_page(%{"pl" => plugin})))
 
-    assert child.kind == :placeholder
-    assert %{width: 300, height: 120} = child.box
-    refute Map.has_key?(child.box, :x)
-    refute Map.has_key?(child.box, :y)
+      assert child.kind == :placeholder, type
+      assert %{width: 300, height: 120} = child.box
+      refute Map.has_key?(child.box, :x)
+      refute Map.has_key?(child.box, :y)
+    end
+  end
+
+  test "plugin_type? knows marketplace and Bubble plugins, not native types" do
+    assert Payload.plugin_type?("1488796042609x768734193128308700-AAg")
+    assert Payload.plugin_type?("1488796042609x768734193128308700_test-AAg")
+    assert Payload.plugin_type?("progressbar-ProgressBar")
+    refute Payload.plugin_type?("Group")
+    refute Payload.plugin_type?("RepeatingGroup")
+    refute Payload.plugin_type?(nil)
   end
 
   # Assumption until a Bubble capture calibrates it (WTF-358 replay list):
@@ -440,6 +452,61 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
            )
 
     refute Enum.any?(classes(layout.(%{"height" => 0}), "g"), &String.starts_with?(&1, "min-h-"))
+
+    # Never taller than its max height.
+    for max <- [%{"max_height_css" => "200px"}, %{"max_height_px" => 200}] do
+      classes = classes(layout.(max), "g")
+      refute Enum.any?(classes, &String.starts_with?(&1, "min-h-")), inspect(max)
+      assert "max-h-[200px]" in classes
+    end
+
+    assert "min-h-[280px]" in classes(layout.(%{"max_height_css" => "300px"}), "g")
+  end
+
+  test "children of a fixed-height flow container get no canvas min height" do
+    child =
+      el("c", "Group", 1, %{
+        "container_layout" => "column",
+        "left" => 0,
+        "top" => 0,
+        "height" => 280
+      })
+
+    parent = fn props ->
+      el(
+        "p",
+        "Group",
+        1,
+        Map.merge(
+          %{"container_layout" => "column", "left" => 0, "top" => 0, "height" => 300},
+          props
+        ),
+        %{"c" => child}
+      )
+    end
+
+    layout = fn props -> layout(editor_app(column_page(%{"p" => parent.(props)}))) end
+
+    fixed = layout.(%{"single_height" => true, "min_height_css" => "300px"})
+    refute Enum.any?(classes(fixed, "c"), &String.starts_with?(&1, "min-h-"))
+    assert "min-h-[280px]" in classes(layout.(%{}), "c")
+  end
+
+  @tag :tmp_dir
+  test "read_bubble_export/1 decodes a .bubble export and marks it as editor JSON", %{
+    tmp_dir: dir
+  } do
+    path = Path.join(dir, "app.bubble")
+    File.write!(path, ~s({"_id": "a", "pages": {}}))
+    assert {:ok, app} = Frontend.read_bubble_export(path)
+    assert EditorGeometry.editor?(app)
+    assert EditorGeometry.unmark(app) == %{"_id" => "a", "pages" => %{}}
+
+    assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+             Frontend.read_bubble_export(Path.join(dir, "missing.bubble"))
+
+    assert {:error, %BubbleEx.Error{kind: :parse_failed}} = Frontend.decode_bubble_export("[1]")
+    assert {:error, %BubbleEx.Error{kind: :parse_failed}} = Frontend.decode_bubble_export("{")
   end
 
   test "a reusable definition's canvas size does not size its instances" do

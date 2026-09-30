@@ -10,8 +10,8 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   are off. Bubble's runtime payload, which `BubbleEx.Frontend.normalize/2`
   was calibrated on, serves the same values as `%l`/`%t`/`%w`/`%h`. The
   editor JSON cannot be told apart from a readable payload by its shape,
-  so its loader marks it (`mark/1`: `BubbleEx.Buildprint.V5.merge/2`, and a
-  caller that decodes a `.bubble` export) and `normalize/2` converts a
+  so its loader marks it (`mark/1`: `BubbleEx.Buildprint.V5.merge/2`,
+  `BubbleEx.Frontend.read_bubble_export/1`) and `normalize/2` converts a
   marked app with `runtime_shape/2` before it reads it. An unmarked app is
   read as before, byte for byte.
 
@@ -22,12 +22,21 @@ defmodule BubbleEx.Frontend.EditorGeometry do
       `%h`: no canvas offsets in flow, a size only on a fixed axis. A
       missing sizing flag is off, so an element that is neither fixed nor
       fit on an axis fills it between its min and max. Plugin elements
-      (rendered as dimension-preserving placeholders) keep their canvas
-      `width`/`height` and flags as written; only their offsets go.
+      (`BubbleEx.Frontend.Payload.plugin_type?/1`: marketplace and Bubble's
+      own plugins, rendered as dimension-preserving placeholders) keep
+      their canvas `width`/`height` and flags as written; only their
+      offsets go.
     * **Height of an element neither fixed nor fit, without a min height.**
       Its canvas height becomes its `min_height_css`. *Assumption*, not
       yet calibrated by a Bubble capture (on the WTF-358 replay list): it
-      keeps such an element from collapsing without clipping content.
+      keeps such an element from collapsing without clipping content. Not
+      when its max height is below its canvas height (it would render
+      taller than Bubble's max), nor inside a flow container of fixed
+      height (its children share that height; canvas min heights could
+      add up to more and spill over the siblings below).
+      *Known behavior:* min heights the app sets itself are kept, so
+      children whose own min heights add up to more than a fixed-height
+      parent overflow it, as in CSS.
     * **Reusable definitions.** Their `width`/`height` are the canvas size
       (`%w`/`%h`).
     * **Pages.** Their canvas offsets and height are dropped: the page
@@ -43,7 +52,6 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   @mark "__bubble_ex_geometry__"
   @canvas %{"left" => "%l", "top" => "%t", "width" => "%w", "height" => "%h"}
   @flow ["column", "row", "relative", "align_to_parent", "align-to-parent"]
-  @plugin_type ~r/^\d+x\d+-[A-Za-z0-9]+$/
 
   @doc "Marks a decoded app as Bubble editor JSON."
   @spec mark(map()) :: map()
@@ -89,20 +97,30 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   end
 
   defp container(_key, raw, kind) when is_map(raw) do
-    flow? = flow?(raw)
-    raw = if flow?, do: update_props(raw, &container_props(&1, kind)), else: raw
-    update_children(raw, flow?)
+    raw = if flow?(raw), do: update_props(raw, &container_props(&1, kind)), else: raw
+    update_children(raw, parent(raw))
   end
 
   defp container(_key, raw, _kind), do: raw
 
-  defp update_children(raw, parent_flow?) do
+  # How a container lays out its children: nil (Fixed or no layout: the
+  # canvas box stands), :flow, or :fixed_height_flow (a flow container of
+  # fixed height, whose children get no canvas min height).
+  defp parent(raw) do
+    cond do
+      not flow?(raw) -> nil
+      Payload.prop(raw, "single_height") == true -> :fixed_height_flow
+      true -> :flow
+    end
+  end
+
+  defp update_children(raw, parent) do
     case raw["elements"] do
       elements when is_map(elements) ->
         Map.put(
           raw,
           "elements",
-          Map.new(elements, fn {k, child} -> {k, element(child, parent_flow?)} end)
+          Map.new(elements, fn {k, child} -> {k, element(child, parent)} end)
         )
 
       _ ->
@@ -110,13 +128,16 @@ defmodule BubbleEx.Frontend.EditorGeometry do
     end
   end
 
-  defp element(raw, parent_flow?) when is_map(raw) do
-    flow? = flow?(raw)
-    raw = if parent_flow?, do: update_props(raw, &element_props(&1, Payload.type(raw))), else: raw
-    update_children(raw, flow?)
+  defp element(raw, parent) when is_map(raw) do
+    raw =
+      if parent,
+        do: update_props(raw, &element_props(&1, Payload.type(raw), parent)),
+        else: raw
+
+    update_children(raw, parent(raw))
   end
 
-  defp element(raw, _parent_flow?), do: raw
+  defp element(raw, _parent), do: raw
 
   defp flow?(raw), do: Payload.prop(raw, "container_layout") in @flow
 
@@ -136,18 +157,21 @@ defmodule BubbleEx.Frontend.EditorGeometry do
 
   defp container_props(props, :reusable_definition), do: compact(props)
 
-  defp element_props(props, type) do
-    if plugin?(type) do
-      compact(props, ["left", "top"])
-    else
-      props
-      |> compact()
-      |> put_flags()
-      |> put_canvas_min_height()
+  defp element_props(props, type, parent) do
+    cond do
+      Payload.plugin_type?(type) ->
+        compact(props, ["left", "top"])
+
+      parent == :fixed_height_flow ->
+        props |> compact() |> put_flags()
+
+      true ->
+        props
+        |> compact()
+        |> put_flags()
+        |> put_canvas_min_height()
     end
   end
-
-  defp plugin?(type), do: is_binary(type) and Regex.match?(@plugin_type, type)
 
   defp compact(props, keys \\ Map.keys(@canvas)) do
     Enum.reduce(Map.take(@canvas, keys), props, fn {readable, compact}, acc ->
@@ -172,12 +196,30 @@ defmodule BubbleEx.Frontend.EditorGeometry do
 
     if props["fit_height"] != true and props["single_height"] != true and
          is_nil(props["min_height_css"]) and is_nil(props["min_height_px"]) and
-         is_number(height) and height > 0 do
+         is_number(height) and height > 0 and not below?(max_height(props), height) do
       Map.put(props, "min_height_css", px(height))
     else
       props
     end
   end
+
+  # A max height in px (`max_height_px`, or a `max_height_css` in px), or nil.
+  defp max_height(props) do
+    case {props["max_height_px"], props["max_height_css"]} do
+      {px, _} when is_number(px) -> px
+      {_, css} when is_binary(css) -> parse_px(css)
+      _ -> nil
+    end
+  end
+
+  defp parse_px(css) do
+    case Regex.run(~r/^\s*(\d+(?:\.\d+)?)px\s*$/, css, capture: :all_but_first) do
+      [n] -> n |> Float.parse() |> elem(0)
+      _ -> nil
+    end
+  end
+
+  defp below?(max, height), do: is_number(max) and max < height
 
   defp px(value) when is_integer(value), do: "#{value}px"
 

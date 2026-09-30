@@ -21,8 +21,9 @@ defmodule BubbleEx.Test.SplitExport do
   # flattened; each workflow in one gets the folder's directory name (its
   # Bubble folder ID) back as `properties.wf_folder`, where the `.bubble`
   # export keeps it. Layout helper members (`children`, `bp_layout`, `__bp_*`
-  # files) are dropped. A path that is a file is decoded as a `.bubble` JSON
-  # export.
+  # files) are dropped. A path that is a file is read as a `.bubble` JSON
+  # export (`BubbleEx.Frontend.read_bubble_export/1`: marked as editor JSON;
+  # a split export is not).
   #
   # A Buildprint v5 workspace (a directory holding `.buildprint/index.sqlite`,
   # the format that replaced the split export) is detected and read through
@@ -35,7 +36,7 @@ defmodule BubbleEx.Test.SplitExport do
     cond do
       V5.workspace?(path) -> load_v5(path)
       File.dir?(path) -> assemble(path)
-      true -> decode(path)
+      true -> read_bubble_export(path)
     end
   end
 
@@ -173,4 +174,13 @@ defmodule BubbleEx.Test.SplitExport do
 
   defp optional(file), do: if(File.regular?(file), do: decode(file))
   defp decode(file), do: file |> File.read!() |> Jason.decode!()
+
+  # A `.bubble` export is Bubble editor JSON: marked, like a v5 workspace.
+  # A split export (Buildprint v4) is not: its layout is in `bp_layout`.
+  defp read_bubble_export(path) do
+    case BubbleEx.Frontend.read_bubble_export(path) do
+      {:ok, app} -> app
+      {:error, error} -> raise error
+    end
+  end
 end

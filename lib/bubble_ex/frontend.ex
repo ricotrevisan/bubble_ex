@@ -14,7 +14,16 @@ defmodule BubbleEx.Frontend do
   """
 
   alias BubbleEx.{Error, Telemetry}
-  alias BubbleEx.Frontend.{Auth, Export, Fetch, InitialState, Normalize, Normalized}
+
+  alias BubbleEx.Frontend.{
+    Auth,
+    EditorGeometry,
+    Export,
+    Fetch,
+    InitialState,
+    Normalize,
+    Normalized
+  }
 
   @type normalize_option :: {atom(), term()}
   @type export_option ::
@@ -29,8 +38,17 @@ defmodule BubbleEx.Frontend do
   @doc """
   Pure, deterministic normalization of a decoded app payload.
 
-  Always walks the full app version. Takes no v1 options; unknown keys are
-  ignored. Does not scan for secrets.
+  Always walks the full app version. Unknown option keys are ignored. Does
+  not scan for secrets.
+
+  ## Options
+
+    * `:geometry` - `:editor` reads the payload's layout as Bubble editor
+      JSON (a `.bubble` export, a Buildprint v5 workspace), `:runtime` as
+      Bubble's runtime payload (`BubbleEx.Frontend.EditorGeometry`).
+      Default: `:editor` when the payload carries the editor mark
+      (`read_bubble_export/1`, `decode_bubble_export/1` and
+      `BubbleEx.Buildprint.V5.load/2` set it), else `:runtime`.
 
   Returns `{:ok, %Normalized{}}` or `{:error, %BubbleEx.Error{}}` with kind
   `:invalid_input`, `:parse_failed`, or `:unsupported_renderer`.
@@ -41,6 +59,34 @@ defmodule BubbleEx.Frontend do
       result = Normalize.run(payload, opts)
       {result, normalize_stop(result)}
     end)
+  end
+
+  @doc """
+  Reads a `.bubble` export (Bubble's editor JSON) from `path`: the decoded
+  app, marked as editor JSON (`BubbleEx.Frontend.EditorGeometry.mark/1`)
+  so `normalize/2` reads its layout as Bubble does.
+
+  Returns `{:ok, app}` or `{:error, %BubbleEx.Error{}}` with kind
+  `:invalid_input` (unreadable file) or `:parse_failed` (not a JSON object).
+  """
+  @spec read_bubble_export(Path.t()) :: {:ok, map()} | {:error, Error.t()}
+  def read_bubble_export(path) when is_binary(path) do
+    case File.read(path) do
+      {:ok, json} ->
+        decode_bubble_export(json)
+
+      {:error, reason} ->
+        {:error, Error.new(:invalid_input, "cannot read the .bubble export", %{reason: reason})}
+    end
+  end
+
+  @doc "`read_bubble_export/1` for the export's JSON text."
+  @spec decode_bubble_export(binary()) :: {:ok, map()} | {:error, Error.t()}
+  def decode_bubble_export(json) when is_binary(json) do
+    case Jason.decode(json) do
+      {:ok, app} when is_map(app) -> {:ok, EditorGeometry.mark(app)}
+      _ -> {:error, Error.new(:parse_failed, "a .bubble export must be a JSON object", %{})}
+    end
   end
 
   @doc """

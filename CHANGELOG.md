@@ -1253,6 +1253,18 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Editor JSON layout follow-ups** (WTF-446). The canvas min height of
+  an element neither fixed nor fit is not applied when its max height is
+  below its canvas height, nor inside a flow container of fixed height
+  (children whose own min heights add up to more than such a parent
+  still overflow it: documented in `BubbleEx.Frontend.EditorGeometry`).
+  Bubble's own plugin elements (`select2-MultiDropdown`, ...) keep their
+  canvas size like marketplace ones (`BubbleEx.Frontend.Payload.plugin_type?/1`).
+  New `BubbleEx.Frontend.read_bubble_export/1` and `decode_bubble_export/1`
+  decode a `.bubble` export marked as editor JSON (the vertical slice and
+  the private-export test loader use them; split exports stay unmarked);
+  `normalize/2` documents its `:geometry` option.
+
 - **Editor JSON pages lay out in flow** (WTF-446). Bubble's editor JSON
   (a Buildprint v5 workspace, a `.bubble` export) writes every element's
   canvas box as `left`/`top`/`width`/`height`, also inside Column, Row

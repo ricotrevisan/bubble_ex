@@ -59,6 +59,21 @@ defmodule BubbleEx.Frontend.Payload do
     end
   end
 
+  @doc """
+  Whether an element type is a plugin's: a marketplace plugin's
+  (`"<id>-<code>"`, with a `_current`/`_test` version suffix, as
+  `BubbleEx.Index.Plugins.plugin/1` reads it; not called here, the
+  frontend depends on neither the Index nor the workflows) or one of
+  Bubble's own plugins (`"<slug>-<Code>"`, e.g. `select2-MultiDropdown`).
+  Bubble's native element types have no hyphen.
+  """
+  @spec plugin_type?(term()) :: boolean()
+  def plugin_type?(type) when is_binary(type) do
+    Regex.match?(~r/\A(?:\d+x\d+(?:_[a-z]+)?|[a-z][a-z0-9_]*)-[A-Za-z0-9_]+\z/, type)
+  end
+
+  def plugin_type?(_type), do: false
+
   @spec type(map()) :: String.t() | nil
   def type(node) when is_map(node) do
     case Map.get(node, "type") || Map.get(node, "%x") do
