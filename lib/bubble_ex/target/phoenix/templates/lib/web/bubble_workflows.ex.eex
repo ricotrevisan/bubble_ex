@@ -813,10 +813,22 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc """
   Go to page `to` (a path, or `:current`) with `params` (`{key, value}`,
-  shown as text), keeping the current ones when `keep?`.
+  shown as text), keeping the current ones when `keep?`. `thing`, the
+  data sent to a page with a type of content, is a record (or its unique
+  ID): its unique ID is the path segment after the page's own; an empty
+  one (or a value that is not a thing's ID) sends nothing.
   """
-  def navigate(ctx, to, params, keep?, replace?, new_tab?) do
+  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\ nil) do
     path = if to == :current, do: ctx.path, else: to
+
+    # The page's own path without a trailing slash: "/" <> id would be a
+    # scheme-relative URL ("//<id>").
+    path =
+      case thing_id(thing) do
+        nil -> path
+        id -> String.trim_trailing(path, "/") <> "/" <> id
+      end
+
     base = if keep?, do: ctx.url, else: %{}
 
     query =
@@ -835,6 +847,13 @@ defmodule <%= @web %>.BubbleWorkflows do
       true -> {:cont, %{ctx | navigate: {:navigate, url, replace?}}}
     end
   end
+
+  defp thing_id(%{id: id}), do: thing_id(id)
+
+  defp thing_id(id) when is_binary(id),
+    do: if(Regex.match?(~r/\A[0-9]{1,20}x[0-9]{1,24}\z/, id), do: id)
+
+  defp thing_id(_), do: nil
 
   @doc "Open an external website: an http(s) URL or a path of this site; anything else fails the step."
   def open_url(ctx, step, url, new_tab?) do

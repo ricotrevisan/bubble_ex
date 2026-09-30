@@ -277,6 +277,35 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert_patch(view, "/?keep=1&tab=two")
   end
 
+  test "go to page sends only a thing's unique ID as the path segment (WTF-378)" do
+    alias PhxCheckWeb.BubbleWorkflows
+
+    to = fn path, thing ->
+      ctx = %BubbleWorkflows.Ctx{path: "/here", url: %{}}
+
+      {:cont, %{navigate: {_kind, url, _replace?}}} =
+        BubbleWorkflows.navigate(ctx, path, [], false, false, false, thing)
+
+      url
+    end
+
+    id = "1700000000000x000000000000000001"
+    assert to.("/other", %{id: id}) == "/other/" <> id
+    assert to.("/other", id) == "/other/" <> id
+    # Never a scheme-relative URL, a parent path or another host.
+    assert to.("/", %{id: id}) == "/" <> id
+    assert to.("/other/", %{id: id}) == "/other/" <> id
+    assert to.("/other", "../x") == "/other"
+    assert to.("/other", "//evil.example") == "/other"
+    assert to.("/other", %{id: "../x"}) == "/other"
+    assert to.("/other", %{id: id <> "/../x"}) == "/other"
+    assert to.("/other", %{title: "no id"}) == "/other"
+    assert to.("/other", nil) == "/other"
+    assert to.("/other", 42) == "/other"
+    # The current page keeps its own path.
+    assert to.(:current, %{id: id}) == "/here/" <> id
+  end
+
   test "element-only workflows run in the browser: the element carries the commands",
        %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")

@@ -1,5 +1,6 @@
 # The check scripts' database (scripts/ash_compile_check.sh,
-# scripts/phoenix_compile_check.sh): fail closed. The URL comes from the
+# scripts/phoenix_compile_check.sh, scripts/vertical_slice/run.sh): fail
+# closed. The URL comes from the
 # environment and is never defaulted; it must name its port explicitly,
 # and never 5432 (a developer's everyday PostgreSQL) unless
 # ASH_COMPILE_CHECK_ALLOW_5432=1 (PHOENIX_COMPILE_CHECK_ALLOW_5432=1 for
@@ -12,7 +13,7 @@
 defmodule CheckDb do
   @moduledoc false
 
-  @prefixes ~w(ash_check_ ash_omit_check_ ash_matrix_ ecto_check_ phx_check_)
+  @prefixes ~w(ash_check_ ash_omit_check_ ash_matrix_ ecto_check_ phx_check_ slice_)
 
   @doc "The validated URL (no database) in `var`."
   def url!(var \\ "ASH_COMPILE_CHECK_DB", allow \\ "ASH_COMPILE_CHECK_ALLOW_5432") do

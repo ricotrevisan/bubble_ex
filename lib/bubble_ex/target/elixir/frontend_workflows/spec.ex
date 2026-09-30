@@ -125,6 +125,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   defp values(op, args) when op in [:delete, :delete_list], do: [args[:target]]
   defp values(:open_url, args), do: [args[:url]]
 
+  defp values(:navigate, args),
+    do: [args[:thing] | Enum.map(args[:params] || [], & &1.value)]
+
   defp values(op, args) when op in [:schedule, :schedule_list],
     do: [args[:at], args[:list], args[:interval] | Enum.map(args[:params] || [], & &1.value)]
 

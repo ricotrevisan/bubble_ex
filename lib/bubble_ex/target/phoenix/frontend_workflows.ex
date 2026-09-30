@@ -354,8 +354,14 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     to = if args.page == :current, do: ":current", else: literal(page_path(args.page, env.ctx))
     params = Enum.map_join(args.params, ", ", fn p -> "{#{literal(p.key)}, #{src(p.value)}}" end)
 
+    thing =
+      case Map.get(args, :thing) do
+        nil -> ""
+        value -> ", #{src(value)}"
+      end
+
     "BubbleWorkflows.navigate(ctx, #{to}, [#{params}], #{args.keep_params?}, " <>
-      "#{args.replace?}, #{args.new_tab?})"
+      "#{args.replace?}, #{args.new_tab?}#{thing})"
   end
 
   defp op(:open_url, args, id, _env),

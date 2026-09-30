@@ -48,6 +48,45 @@ All notable changes to this project are documented here.
   `extend:` takes `policy_bypasses: [{check, purpose}]`: marked bypasses
   a renderer puts first (policies and field policies, private fields then
   `:include`d). `MatrixTests.render/3` accepts `:enforced` projects.
+
+- **Vertical slice script** (`scripts/vertical_slice/`, WTF-378): takes one
+  page of an app end to end and records what works. `run.sh EXPORT
+  DECISIONS SLUG [PAGE]` picks the median page (`pages.exs`: own elements
+  plus those of the reusables it renders, workflows and data sources, each
+  as a percentile rank; the page closest to the median on all three, with
+  at least one workflow and one data source), renders the project with the
+  owner's decisions (`privacy: :omit`, the plan, the determinism result,
+  the generation-time structural summary), compiles it with
+  `--warnings-as-errors`, generates and checks its migrations, migrates a
+  throwaway PostgreSQL (the script's own labelled docker container on
+  127.0.0.1:`$SLICE_DB_PORT`, required and never 5432, checked with
+  `docker port` and `pg_isready`; `slice_` databases only, for dev and
+  test), loads synthetic records for every data
+  type through the data loader (`seed.exs`), serves it with the data-access
+  opt-in and every API client of the rendered Spec pointed at a closed
+  local port (a client module it cannot account for stops the run), drives
+  the page in the pinned Chromium (`drive.mjs`: signed out, a magic-link
+  sign-in from the local mailbox, then every wired element, with the
+  server log lines each click caused; no host resolves but 127.0.0.1,
+  other origins' requests and WebSockets are aborted, service workers are
+  blocked), then
+  runs `mix wtf.task` and `mix wtf.verify structural`. Output stays in
+  `$SLICE_ROOT/<slug>` (0700); the server and the database are removed on
+  exit. The generated `navigate/7` trims the page path's trailing slash
+  before the thing's segment (never `//<id>`) and takes only a value shaped
+  like a Bubble ID.
+- **"Go to page" sends its data** (WTF-378). The data to send of a "Go to
+  page" step to a page with a type of content is lowered (`Step.args.thing`)
+  and bound: the generated `navigate/7` puts the thing's unique ID as the
+  path segment the page reads its thing from (`/<page>/<unique id>`), when
+  that page loads its thing; otherwise, and to the current or the index
+  page, it stays `:unsupported_option` residue. A data to send to a page
+  with no type of content is residue of its own reason,
+  `:data_to_send_untyped_page` (`detail.page`): what Bubble does with it is
+  unverified, so replay (WTF-358) can find these steps; it is never dropped
+  silently. On the private fixture app the 70 `data_to_send` entries
+  become 35 lowered steps and 35 `data_to_send_untyped_page` entries:
+  native frontend workflows 563 to 569, wired 390 to 395.
 - **Non-filterable fields in privacy rules.** `BubbleEx.Privacy.Permissions`
   reads Bubble's `non_filterable_fields` (fields users matching a rule may
   not search by) as `non_filterable_fields`, so it is no longer an
@@ -1202,7 +1241,15 @@ All notable changes to this project are documented here.
   interpreter alike; a reference read so must instead not be dangling (its
   ID is nil or its record exists), so the reach never depends on the
   uncalibrated `dangling_ref_is_empty`.
-
+- A modal Popup with an authored HTML ID rendered two `id` attributes on
+  its `<.focus_wrap>`, which fails `mix compile --warnings-as-errors`
+  ("key :id will be overridden in map"). It now takes the authored ID
+  (unique on the page) and the generated `bubble-overlay-…` ID only when it
+  has none (WTF-378).
+- The generated sign-in pages loaded AshAuthentication's default banner
+  logo from ash-hq.org, a third-party request on every sign-in. The
+  scaffold now includes an owned `<Web>.AuthOverrides` (a text banner with
+  the project's name), listed first in the router's `overrides` (WTF-378).
 - The loader's stale join rows (`details.stale_members` of
   `:load_join_stale_member` and `:load_prune_unowned`) are capped at
   `Load.Issues.stale_rows/0` rows, with `rows_total` and `truncated`: an
