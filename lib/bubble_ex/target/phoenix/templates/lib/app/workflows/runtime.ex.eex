@@ -7,13 +7,30 @@ defmodule <%= @module %>.Workflows.Runtime do
   Every data access passes the workflow's actor and its `authorize?`:
   `false` only for a workflow that ignores privacy rules in Bubble (see
   `<%= @module %>.Workflows.Registry.privacy_bypasses/0`), the caller's for a
-  custom event, `true` otherwise. **Both only matter once the resources
+<%= if @enforced? do %>  custom event, `true` otherwise. The resources have the privacy policies
+  compiled from Bubble (bubble_ex `privacy: :enforced`, WTF-423):
+
+    * **reads** follow the privacy rules for the workflow's actor (a
+      record the actor may not view reads as nothing; a field as
+      `%Ash.ForbiddenField{}`)
+    * **writes** are made with the private context
+      `%{bubble_workflow_write: true}`, which `<%= @module %>.Privacy.WorkflowWrite` authorizes: as in
+      Bubble, a workflow's own conditions guard its writes. **Writes are
+      not checked against the privacy rules.** Writes outside this runtime
+      are forbidden unless they bypass authorization
+    * a workflow API call with the **admin token** runs with `authorize?:
+      false` (privacy ignored, as in Bubble), and so do the custom events
+      it triggers; the jobs it schedules run as their own (privacy on)
+
+  A list change (add, remove) to a field the actor may not view fails the
+  step instead of overwriting the hidden list.
+<% else %>  custom event, `true` otherwise. **Both only matter once the resources
   have policies**: as generated (bubble_ex `privacy: :omit`) no resource
   has an authorizer, so any workflow can read and write any record. That
   is why the workflow API is off until you turn it on (`:serve_workflow_api`
   below): exposed as is, any caller could run a workflow on other users'
   records by passing their IDs.
-
+<% end %>
   A workflow whose body (or a workflow it calls or schedules) has a step
   bubble_ex could not lower fails before its first step, with
   `{:not_lowered, subjects}`: it never runs half its steps.
@@ -28,7 +45,9 @@ defmodule <%= @module %>.Workflows.Runtime do
 
     * `:serve_workflow_api` - serve the exposed workflows at
       `/api/1.1/wf/<name>` (default `false`: every request answers 503).
-      Turn it on only after adding policies that protect the data
+<%= if @enforced? do %>      With the generated policies, its reads follow the privacy rules for the
+      caller (the bearer token's user, or nobody), its writes only the
+      workflow's conditions, and the admin token bypasses privacy<% else %>      Turn it on only after adding policies that protect the data<% end %>
     * `:max_jobs` - how many scheduled and trigger jobs one root run (an
       API call, a user's write, a job enqueued with `enqueue/3`) may cause
       in total, over every generation (default 10000). Each job carries
@@ -66,7 +85,8 @@ defmodule <%= @module %>.Workflows.Runtime do
     :actor,
     :now,
     :trigger,
-    authorize?: true,
+    authorize?: true,<%= if @enforced? do %>
+    admin: false,<% end %>
     params: %{},
     steps: %{},
     chain: 0,
@@ -85,8 +105,11 @@ defmodule <%= @module %>.Workflows.Runtime do
   are keyed by parameter ID or by the name callers use; things may be
   records or Bubble IDs.
 
-  Options: `:actor`, `:authorize?` (used by custom events, which inherit
-  it), `:chain`, `:depth`, `:budget` (jobs), `:calls` and `:trigger`.
+<%= if @enforced? do %>  Options: `:actor`, `:authorize?` (used by custom events, which inherit
+  it), `:admin` (a workflow API call with the admin token: privacy is
+  ignored in this run and the custom events it triggers), `:chain`,
+  `:depth`, `:budget` (jobs), `:calls` and `:trigger`.<% else %>  Options: `:actor`, `:authorize?` (used by custom events, which inherit
+  it), `:chain`, `:depth`, `:budget` (jobs), `:calls` and `:trigger`.<% end %>
   """
   @spec run(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(id, params, opts \\ []) do
@@ -97,7 +120,8 @@ defmodule <%= @module %>.Workflows.Runtime do
       w ->
         # bubble:ignores_privacy scaffold:workflow_authorize
         bubble = %{
-          authorize?: Keyword.get(opts, :authorize?),
+          authorize?: Keyword.get(opts, :authorize?),<%= if @enforced? do %>
+          admin: Keyword.get(opts, :admin, false) == true,<% end %>
           chain: Keyword.get(opts, :chain, 0),
           depth: Keyword.get(opts, :depth, 0),
           budget: Keyword.get(opts, :budget),
@@ -138,7 +162,8 @@ defmodule <%= @module %>.Workflows.Runtime do
       actor: Map.get(context, :actor),
       now: DateTime.utc_now(),
       trigger: bubble[:trigger],
-      authorize?: authorize?(authorize, bubble[:authorize?]),
+<%= if @enforced? do %>      authorize?: authorize?(authorize, bubble[:authorize?], bubble[:admin] == true),
+      admin: bubble[:admin] == true,<% else %>      authorize?: authorize?(authorize, bubble[:authorize?]),<% end %>
       params: Map.new(w.params, &{&1.id, Map.get(input.arguments, &1.argument)}),
       chain: bubble[:chain] || 0,
       depth: bubble[:depth] || 0,
@@ -165,9 +190,13 @@ defmodule <%= @module %>.Workflows.Runtime do
     }
   end
 
-  defp authorize?(:inherit, nil), do: true
+<%= if @enforced? do %>  # The admin token ignores privacy for the whole run (as in Bubble).
+  defp authorize?(_own, _inherited, true), do: false
+  defp authorize?(:inherit, nil, false), do: true
+  defp authorize?(:inherit, inherited, false), do: inherited
+  defp authorize?(own, _inherited, false), do: own<% else %>  defp authorize?(:inherit, nil), do: true
   defp authorize?(:inherit, inherited), do: inherited
-  defp authorize?(own, _inherited), do: own
+  defp authorize?(own, _inherited), do: own<% end %>
 
   @doc """
   Runs the steps when `condition` (nil, or a function of the context)
@@ -400,7 +429,9 @@ defmodule <%= @module %>.Workflows.Runtime do
   def dump(%Decimal{} = d), do: Decimal.to_float(d)
   def dump(%Time{} = t), do: Time.to_iso8601(t)
   def dump(%NaiveDateTime{} = d), do: NaiveDateTime.to_iso8601(d)
-  def dump(%{__struct__: _, id: id}), do: id
+<%= if @enforced? do %>  # A field the privacy rules hide from the actor is empty, as in Bubble.
+  def dump(%Ash.ForbiddenField{}), do: nil
+<% end %>  def dump(%{__struct__: _, id: id}), do: id
 
   def dump(%{__struct__: _} = other),
     do: other |> Map.from_struct() |> Map.drop([:__meta__, :__metadata__]) |> dump()
@@ -431,19 +462,36 @@ defmodule <%= @module %>.Workflows.Runtime do
   def update(ctx, step, _resource, nil, _changes), do: fail(ctx, step, :empty_thing)
 
   def update(ctx, step, resource, record, changes) do
-    with {:ok, write, ctx} <- write_opts(ctx, resource) do
+    with {:ok, write, ctx} <- write_opts(ctx, resource)<%= if @enforced? do %>,
+         :ok <- visible_lists(record, changes)<% end %> do
       record |> Ash.update(update_attrs(ctx, resource, record, changes), write) |> continue(ctx, step)
     else
       error -> continue(error, ctx, step)
     end
   end
+<%= if @enforced? do %>
+  # A list change reads the current list: one the actor may not view
+  # (`%Ash.ForbiddenField{}`) fails instead of being overwritten.
+  defp visible_lists(nil, _changes), do: :ok
+
+  defp visible_lists(record, changes) do
+    hidden =
+      for {op, attribute, _value} <- changes,
+          op in [:add, :add_list, :remove, :remove_list],
+          match?(%Ash.ForbiddenField{}, Map.get(record, attribute)),
+          do: attribute
+
+    if hidden == [], do: :ok, else: {:error, {:hidden_field, hd(hidden)}}
+  end
+<% end %>
 
   @doc "Make changes to a list of things."
   def update_list(ctx, step, resource, records, changes) do
     records
     |> List.wrap()
     |> Enum.reduce_while({:ok, [], ctx}, fn record, {:ok, acc, ctx} ->
-      with {:ok, write, ctx} <- write_opts(ctx, resource),
+      with {:ok, write, ctx} <- write_opts(ctx, resource),<%= if @enforced? do %>
+           :ok <- visible_lists(record, changes),<% end %>
            {:ok, updated} <- Ash.update(record, update_attrs(ctx, resource, record, changes), write) do
         {:cont, {:ok, [updated | acc], ctx}}
       else
@@ -539,7 +587,12 @@ defmodule <%= @module %>.Workflows.Runtime do
     do: [
       actor: ctx.actor,
       authorize?: ctx.authorize?,
-      context: %{bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget}}
+<%= if @enforced? do %>      context: %{
+        bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget},
+        # <%= @module %>.Privacy.WorkflowWrite: the runtime makes this write
+        # (private context: never passed on to nested actions)
+        private: %{bubble_workflow_write: true}
+      }<% else %>      context: %{bubble: %{chain: ctx.chain, workflow: ctx.workflow, budget: budget}}<% end %>
     ]
 
   # Takes `n` jobs from the run's budget; each gets a share of what is
@@ -642,7 +695,8 @@ defmodule <%= @module %>.Workflows.Runtime do
     # bubble:ignores_privacy scaffold:workflow_authorize
     |> run(params,
       actor: ctx.actor,
-      authorize?: ctx.authorize?,
+      authorize?: ctx.authorize?,<%= if @enforced? do %>
+      admin: ctx.admin,<% end %>
       chain: ctx.chain,
       depth: ctx.depth + 1,
       budget: jobs,
@@ -744,7 +798,7 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   defp job_actor(id) do
     # bubble:ignores_privacy scaffold:job_actor
-    case Ash.get(<%= @module %>.Accounts.Resources.user(), id, authorize?: false, not_found_error?: false) do
+    case Ash.get(<%= @module %>.Accounts.Resources.user(), id, <%= if @enforced? do %>load: <%= @module %>.Privacy.actor_loads(), <% end %>authorize?: false, not_found_error?: false) do
       {:ok, user} -> {:ok, user}
       error -> error
     end
@@ -862,9 +916,11 @@ defmodule <%= @module %>.Workflows.Runtime do
     with :ok <- served(),
          {:ok, endpoint} <- endpoint(name),
          :ok <- method(endpoint, method),
-         {:ok, actor} <- authenticate(endpoint, actor, authorization),
+<%= if @enforced? do %>         {:ok, actor, admin} <- authenticate(endpoint, actor, authorization),
          {:ok, args} <- endpoint_params(endpoint, params) do
-      case run(endpoint.workflow, args, actor: actor) do
+      case run(endpoint.workflow, args, actor: actor, admin: admin) do<% else %>         {:ok, actor} <- authenticate(endpoint, actor, authorization),
+         {:ok, args} <- endpoint_params(endpoint, params) do
+      case run(endpoint.workflow, args, actor: actor) do<% end %>
         {:ok, %{status: :not_run}} when endpoint.return_200? -> {:ok, %{status: :done, data: nil}}
         {:ok, %{status: :not_run}} -> {:error, :not_run}
         {:ok, result} -> {:ok, result}
@@ -895,7 +951,18 @@ defmodule <%= @module %>.Workflows.Runtime do
     end
   end
 
-  defp authenticate(%{auth: :none}, actor, _authorization), do: {:ok, actor}
+<%= if @enforced? do %>  # `{:ok, actor, admin?}`. The admin token runs as nobody, ignoring
+  # privacy (as in Bubble), whatever the endpoint requires; a user's bearer
+  # token as that user, loaded afresh with what the policies read
+  # (`<%= @module %>.Privacy.load_actor/1`).
+  defp authenticate(endpoint, actor, authorization) do
+    cond do
+      admin?(authorization) -> {:ok, nil, true}
+      endpoint.auth == :none -> {:ok, <%= @module %>.Privacy.load_actor(actor), false}
+      endpoint.auth == :authenticated and actor != nil -> {:ok, <%= @module %>.Privacy.load_actor(actor), false}
+      true -> {:error, :unauthorized}
+    end
+  end<% else %>  defp authenticate(%{auth: :none}, actor, _authorization), do: {:ok, actor}
 
   defp authenticate(%{auth: auth}, actor, authorization) do
     cond do
@@ -903,7 +970,7 @@ defmodule <%= @module %>.Workflows.Runtime do
       auth == :authenticated and actor != nil -> {:ok, actor}
       true -> {:error, :unauthorized}
     end
-  end
+  end<% end %>
 
   defp admin?("Bearer " <> token) do
     case System.get_env("WORKFLOW_API_ADMIN_TOKEN") do

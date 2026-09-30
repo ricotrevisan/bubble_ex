@@ -2490,6 +2490,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       module: ctx.module,
       app: ctx.app,
       join_topics: ctx.join_topics,
+      enforced?: Map.get(ctx, :enforced?, false),
       surfaces: Map.merge(pages, reusables)
     }
   end

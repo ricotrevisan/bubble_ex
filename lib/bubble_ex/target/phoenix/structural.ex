@@ -629,8 +629,39 @@ defmodule BubbleEx.Target.Phoenix.Structural do
           into: %{},
           do: {{path, "derived_count", nil}, n}
 
-    Map.merge(fixed, derived)
+    Map.merge(fixed, derived) |> Map.merge(auth_bypasses(lib, project))
   end
+
+  # With enforced policies the User resource bypasses them for
+  # AshAuthentication's own interactions: a policy and a field policy
+  # bypass (field policies only when the User has some).
+  # So does the private file lookup of the generated Uploads (one read).
+  defp auth_bypasses(lib, %{privacy: :enforced} = project) do
+    user =
+      case Enum.find(project.resources, &(&1.source[:type] == "user")) do
+        nil ->
+          %{}
+
+        user ->
+          n = if user.field_policies == [], do: 1, else: 2
+
+          for {path, source} <- lib,
+              module <- defined_modules(source),
+              relative(module, project) == user.module,
+              into: %{},
+              do: {{path, "ash_authentication", nil}, n}
+      end
+
+    uploads =
+      for {path, _} <- lib,
+          String.ends_with?(path, "_web/uploads.ex"),
+          into: %{},
+          do: {{path, "private_file_holders", "holders/4"}, 1}
+
+    Map.merge(user, uploads)
+  end
+
+  defp auth_bypasses(_lib, _project), do: %{}
 
   defp defined_modules(source) do
     case Code.string_to_quoted(source, emit_warnings: false) do

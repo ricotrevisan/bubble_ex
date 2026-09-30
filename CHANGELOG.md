@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Enforced privacy policies in the generated app** (WTF-423).
+  `BubbleEx.Target.Phoenix.render/2` renders `privacy: :enforced` Projects
+  (Target.Ash's policies plus the write policy of option A): PicoSAT is
+  pinned; the User bypasses its policies and field policies for
+  AshAuthentication's own interactions (marked
+  `scaffold:ash_authentication`); page data, frontend and backend
+  workflows, the workflow API and jobs read with the current user loaded
+  afresh by `Privacy.load_actor/1`; searches use `:search`, a refused read
+  shows nothing and a hidden field reads as empty; a page count reads the
+  keys through `:search` (at most `:max_count`: Ash's count aggregate
+  under-counts with policies that read the actor); a page search whose
+  constraints or sort read a field some users may not view is residue
+  (`:search_field_hidden`); the workflow API's
+  admin token bypasses privacy for its run; private files can follow
+  "view attached files" (`private: :privacy_rules`, lookup marked
+  `scaffold:private_file_holders`); README and file headers warn that
+  writes are not policy-checked. The `data_access`, `serve_workflow_api`
+  and private-file switches stay off by default (`docs/page-data.md`,
+  "Enforced privacy", recommends turning them on in enforced mode after
+  review). An `:omit` render is unchanged byte for byte.
+  `scripts/phoenix_compile_check.sh` renders the fixtures with privacy
+  rules, pages and workflows enforced, runs the generated privacy matrix
+  against the app (and the private app), and runs
+  `test/support/target/phoenix/enforced_behavior.exs`, which must pass
+  enforced and fail, every test, against the `:omit` render.
+
 - **`privacy: :enforced` in Target.Ash** (WTF-423). `BubbleEx.Target.Ash.map/3`
   takes `privacy: :enforced`: the policies of `:unverified` (reads follow
   the compiled Bubble rules; stricter than Bubble on empty user-side

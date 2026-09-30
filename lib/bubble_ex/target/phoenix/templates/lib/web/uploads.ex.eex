@@ -59,12 +59,34 @@ defmodule <%= @web %>.Uploads do
 
   ## Private files (off by default)
 
-  The generated app has **no authorization** (`privacy: :omit`), and a
+<%= if @enforced? do %>  The resources have the privacy policies compiled from Bubble
+  (`privacy: :enforced`). Private files answer 404 and get no link until
+  the owner opts in:
+
+    * `private: :privacy_rules` - **Bubble's "view attached files" rule**:
+      the file is served when a record holding it in a file field
+      (`private_files/0`) is readable through that record's `:attachments`
+      action by the signed-in user (or nobody). The records holding the
+      reference are found as the system (a file's key does not say whose it
+      is); the rule is then checked with the user as the actor. This is the
+      one that matches Bubble.
+
+      **Cost and limit.** Each private file request runs, per file field
+      in `private_files/0`, one query for the records holding the
+      reference (at most 20) and one keyed read per holder found, as the
+      user. Without an index on the file column that query scans the
+      table: add one to the resource's `postgres` block, e.g.
+      `custom_indexes do index [:attachment] end` (a GIN index for a list
+      of files). Only the first 20 holders of one file are checked: when
+      more records hold the same file and none of those 20 lets the user
+      open it, the file is denied even if a later one would (fail-closed,
+      stricter than Bubble)
+    * `private: {MyModule, :authorize}`<% else %>  The generated app has **no authorization** (`privacy: :omit`), and a
   private file's key does not say which record it is attached to, so
   Bubble's "view attached files" rule cannot be enforced here yet. Private
   files therefore answer 404 and get no link until the owner opts in:
 
-    * `private: {MyModule, :authorize}` - `MyModule.authorize(actor,
+    * `private: {MyModule, :authorize}`<% end %> - `MyModule.authorize(actor,
       %{sha256: sha, name: name})` must return `true` (the actor is the
       signed-in user, or nil); anything else, a raise or a missing
       function answers 404. This is the one that can match Bubble's rules
@@ -218,7 +240,8 @@ defmodule <%= @web %>.Uploads do
   @spec private?(keyword()) :: boolean()
   def private?(config \\ config()) do
     case config[:private] do
-      :signed_in -> true
+      :signed_in -> true<%= if @enforced? do %>
+      :privacy_rules -> true<% end %>
       {module, fun} when is_atom(module) and is_atom(fun) -> true
       _ -> false
     end
@@ -231,11 +254,58 @@ defmodule <%= @web %>.Uploads do
   @spec authorized?(term(), String.t(), String.t(), keyword()) :: boolean()
   def authorized?(actor, sha, name, config \\ config()) do
     case config[:private] do
-      :signed_in -> actor != nil
+      :signed_in -> actor != nil<%= if @enforced? do %>
+      :privacy_rules -> attachments?(actor, "private/#{sha}/#{name}")<% end %>
       {module, fun} when is_atom(module) and is_atom(fun) -> authorize(module, fun, actor, sha, name)
       _ -> false
     end
   end
+<%= if @enforced? do %>
+  @doc """
+  The file fields a private file may be attached to: `{resource, attribute,
+  list?}` (a list of files holds references in an array).
+  """
+  def private_files, do: <%= @private_files %>
+
+  # The most records holding one reference that are checked.
+  @max_holders 20
+
+  # Bubble's "view attached files": some record holding the reference in a
+  # file field is readable through its `:attachments` action by `actor`.
+  defp attachments?(actor, reference) do
+    actor = <%= @module %>.Privacy.load_actor(actor)
+
+    Enum.any?(private_files(), fn {resource, attribute, list?} ->
+      resource
+      |> holders(attribute, list?, reference)
+      |> Enum.any?(fn id ->
+        match?(
+          {:ok, %{}},
+          Ash.get(resource, id, action: :attachments, actor: actor, not_found_error?: false)
+        )
+      end)
+    end)
+  rescue
+    error ->
+      Logger.error("private file authorization failed: #{Exception.message(error)}")
+      false
+  end
+
+  # The IDs of records holding `reference`, read as the system: a file's
+  # key does not say whose it is, and who may open it is decided above,
+  # with the actor. Only IDs leave this function.
+  defp holders(resource, attribute, list?, reference) do
+    filter = if list?, do: [{attribute, [has: reference]}], else: [{attribute, reference}]
+
+    resource
+    |> Ash.Query.do_filter(filter)
+    |> Ash.Query.select([])
+    |> Ash.Query.limit(@max_holders)
+    # bubble:ignores_privacy scaffold:private_file_holders
+    |> Ash.read!(authorize?: false)
+    |> Enum.map(&Map.fetch!(&1, hd(Ash.Resource.Info.primary_key(resource))))
+  end
+<% end %>
 
   # The owner's function; a raise, an exit or a missing function denies.
   defp authorize(module, fun, actor, sha, name) do
