@@ -39,11 +39,11 @@ defmodule <%= @web %>.Router do
 
     sign_in_route auth_routes_prefix: "/auth",
                   on_mount: [{<%= @web %>.LiveUserAuth, :live_no_user}],
-                  overrides: [AshAuthentication.Phoenix.Overrides.Default]
+                  overrides: [<%= @web %>.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
 
     magic_sign_in_route(<%= @module %>.Accounts.Resources.user(), :magic_link,
       auth_routes_prefix: "/auth",
-      overrides: [AshAuthentication.Phoenix.Overrides.Default]
+      overrides: [<%= @web %>.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
     )
   end
 
