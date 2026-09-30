@@ -1,0 +1,237 @@
+{
+  "_id": "index-thing-fixture",
+  "pages": {
+    "index": {
+      "elements": {
+        "bIdxEmpty": {
+          "id": "bIdxEmpty",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Empty"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bIdxSelf": {
+          "id": "bIdxSelf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Again"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bIdxTitle": {
+          "id": "bIdxTitle",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Index thing: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bIndex",
+      "name": "index",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Home"
+      },
+      "type": "Page",
+      "workflows": {
+        "wIdxEmpty": {
+          "actions": {
+            "0": {
+              "id": "aIdxEmpty1",
+              "properties": {
+                "data_to_send": {
+                  "type": "CurrentUser"
+                },
+                "element_id": "Current page"
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wIdxEmpty",
+          "properties": {
+            "element_id": "bIdxEmpty"
+          },
+          "type": "ButtonClicked"
+        },
+        "wIdxSelf": {
+          "actions": {
+            "0": {
+              "id": "aIdxSelf1",
+              "properties": {
+                "data_to_send": {
+                  "type": "CurrentPageItem"
+                },
+                "element_id": "Current page"
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wIdxSelf",
+          "properties": {
+            "element_id": "bIdxSelf"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    },
+    "task": {
+      "elements": {
+        "bTaskHome": {
+          "id": "bTaskHome",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Home"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bTaskSelf": {
+          "id": "bTaskSelf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Again"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bTaskTitle": {
+          "id": "bTaskTitle",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Task: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bTaskPage",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Task"
+      },
+      "type": "Page",
+      "workflows": {
+        "wTaskHome": {
+          "actions": {
+            "0": {
+              "id": "aTaskHome1",
+              "properties": {
+                "data_to_send": {
+                  "type": "CurrentPageItem"
+                },
+                "element_id": "bIndex"
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wTaskHome",
+          "properties": {
+            "element_id": "bTaskHome"
+          },
+          "type": "ButtonClicked"
+        },
+        "wTaskSelf": {
+          "actions": {
+            "0": {
+              "id": "aTaskSelf1",
+              "properties": {
+                "data_to_send": {
+                  "type": "CurrentPageItem"
+                },
+                "element_id": "Current page"
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wTaskSelf",
+          "properties": {
+            "element_id": "bTaskSelf"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "user_types": {
+    "task": {
+      "display": "Task",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

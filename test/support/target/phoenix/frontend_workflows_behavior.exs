@@ -328,21 +328,23 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
              go.(untyped, :current, %{id: id})
   end
 
-  test "a page's own path drops its thing's segment (WTF-454)" do
+  test "a page's own path drops only a thing's segment its route took (WTF-454)" do
     alias PhxCheckWeb.BubbleWorkflows
     socket = BubbleWorkflows.socket(PhxCheckWeb.IndexLive.Workflows)
     id = "1700000000000x000000000000000001"
 
-    socket =
-      BubbleWorkflows.handle_params(
-        socket,
-        %{"bubble_thing" => id},
-        "http://localhost/index/" <> id
-      )
-
-    assert socket.assigns.bubble_page_path == "/index"
-    socket = BubbleWorkflows.handle_params(socket, %{}, "http://localhost/other")
-    assert socket.assigns.bubble_page_path == "/other"
+    # A query parameter named bubble_thing is no path segment (review M1).
+    for {params, uri, expected} <- [
+          {%{"bubble_thing" => "other"}, "http://localhost/other?bubble_thing=other", "/other"},
+          {%{"bubble_thing" => id}, "http://localhost/other?bubble_thing=" <> id, "/other"},
+          {%{"bubble_thing" => id}, "http://localhost/?bubble_thing=" <> id, "/"},
+          # No such route here: the path stays as it is.
+          {%{"bubble_thing" => id}, "http://localhost/index/" <> id, "/index/" <> id},
+          {%{}, "http://localhost/other", "/other"}
+        ] do
+      socket = BubbleWorkflows.handle_params(socket, params, uri)
+      assert socket.assigns.bubble_page_path == expected, uri
+    end
   end
 
   # Polls `fun` until it holds (a pause is a delayed message).
@@ -413,15 +415,72 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     socket = BubbleWorkflows.socket(PhxCheckWeb.IndexLive.Workflows)
     frame = %{module: :nope, scope: "", workflow: "wPause", at: 3}
 
-    for message <- [
-          {:bubble, :resume, [frame], DateTime.utc_now(), %{jobs: 1, calls: 1, chain: 0}},
-          {:bubble, :resume, [%{frame | module: PhxCheckWeb.IndexLive.Workflows}],
-           DateTime.utc_now(), %{calls: -1}},
-          {:bubble, :resume, [], DateTime.utc_now(), %{jobs: 1, calls: 1, chain: 0}}
+    page = PhxCheckWeb.IndexLive.Workflows
+    good = %{frame | module: page} |> Map.merge(%{args: %{}, steps: %{}, returns: nil, call: nil})
+    budget = %{jobs: 1, calls: 1, chain: 0}
+    now = DateTime.utc_now()
+
+    # Malformed frames are ignored and logged, never crash the page
+    # (review L5): a missing member, a wrong type, a caller not waiting on
+    # a call, an improper list.
+    for frames <- [
+          [frame],
+          [Map.delete(good, :args)],
+          [%{good | steps: nil}],
+          [%{good | at: 0}],
+          [good, good],
+          [good | :tail],
+          ["x"],
+          []
         ] do
-      assert {:noreply, ^socket} =
-               BubbleWorkflows.handle_info(socket, PhxCheckWeb.IndexLive.Workflows, message)
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:noreply, %Phoenix.LiveView.Socket{}} =
+                   BubbleWorkflows.handle_info(
+                     socket,
+                     page,
+                     {:bubble, :resume, frames, now, budget}
+                   )
+        end)
+
+      assert log =~ "malformed paused workflow", inspect(frames)
     end
+
+    assert {:noreply, _} =
+             BubbleWorkflows.handle_info(
+               socket,
+               page,
+               {:bubble, :resume, [good], now, %{calls: -1}}
+             )
+
+    # A well-formed one runs the rest (step 3 of wPause).
+    assert {:noreply, resumed} =
+             BubbleWorkflows.handle_info(socket, page, {:bubble, :resume, [good], now, budget})
+
+    assert resumed.assigns.bubble_states[{"", "bHome", "custom.label_"}] == "paused"
+  end
+
+  test "a page holds at most :max_pending paused and scheduled workflows (review L4)", %{
+    conn: conn
+  } do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, max_pending: 0)
+    {:ok, view, _html} = live(conn, "/")
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        # No room: the rest after the pause is dropped, politely.
+        assert click(view, "bBtnPause") =~ "Label: pausing"
+        assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+      end)
+
+    assert log =~ "dropped: the page already holds :max_pending (0)"
+    Process.sleep(100)
+    assert label(view) =~ "Label: pausing"
+
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, max_pending: 1)
+    click(view, "bBtnPause")
+    refute_push_event(view, "bubble:notice", _)
+    eventually(fn -> label(view) =~ "Label: paused" end)
   end
 
   test "a refused click shows a notice naming nothing internal (WTF-453)", %{conn: conn} do

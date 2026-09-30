@@ -91,7 +91,7 @@ lists for that element.
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
 | Set state(s) | the page's state map, per instance |
 | Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs |
-| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: checked at run time, and the step fails when the page takes no thing); to a page with no type of content `:data_to_send_untyped_page` residue |
+| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: checked at run time, and the step fails when the page takes no thing); the page's own path is its route's, without the segment the router took as its thing (never a query parameter), and the typed index page's is `/`; to a page with no type of content `:data_to_send_untyped_page` residue |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
 | Create / change / delete things, change the current user | the backend workflow runtime's data steps (`<Module>.Workflows.Runtime`, WTF-373), with the current user as actor (data-access opt-in, below) |
@@ -155,9 +155,14 @@ then.
   chain, as a scheduled custom event does: a pause at `:max_chain` fails
   its step, so a workflow that pauses in a loop (through a condition or a
   schedule) ends.
-* **The page must still be there.** Going to another page, or closing
-  it, drops what was paused; a message for a surface the page does not
-  render, or without a well-formed budget, is ignored.
+* **Held by the page.** A page holds at most `:max_pending` (default
+  100) paused workflows and scheduled custom events at once; beyond that
+  the new ones are dropped, logged, and the page shows the refusal notice
+  (below). A resumed or scheduled run's budget never exceeds a root run's.
+* **The page must still be there.** Paused work lives in the LiveView
+  process: going to another page, closing it or a reconnect (a new
+  process) drops it. A malformed message, one for a surface the page does
+  not render, or one without a well-formed budget is ignored and logged.
 
 ## A refused click shows a notice (WTF-453)
 
