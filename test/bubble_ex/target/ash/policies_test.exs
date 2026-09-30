@@ -348,7 +348,10 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
             "display" => "Alt",
             "value" => "text"
           })
-          |> put_in(["user_types", "note", "privacy_role", "filled_", "condition"], condition.(op))
+          |> put_in(
+            ["user_types", "note", "privacy_role", "filled_", "condition"],
+            condition.(op)
+          )
 
         source = Source.expr(calc(resource(project!(app), "note"), "privacy_everyone_else").expr)
         refute source =~ ~s|and not (is_nil(text)|, op
