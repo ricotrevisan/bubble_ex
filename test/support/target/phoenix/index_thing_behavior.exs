@@ -56,6 +56,33 @@ defmodule PhxCheckWeb.IndexThingBehaviorTest do
     refute render(view) =~ "Bake"
   end
 
+  test "a percent-encoded thing segment is still the route's segment", %{conn: conn} do
+    # Sending data to the current page lands on the page's own path, never
+    # on an unrouted one (push_patch would raise).
+    for {path, button, expected} <- [
+          {"/task/%2F%2Fevil.example", "bTaskSelf", "/task"},
+          {"/task/a%20b", "bTaskSelf", "/task"},
+          {"/task/%2E%2E", "bTaskSelf", "/task"},
+          {"/index/%2F%2Fevil.example", "bIdxSelf", "/"},
+          {"/index/a%20b", "bIdxEmpty", "/"}
+        ] do
+      {:ok, view, _html} = live(conn, path)
+      click(view, button)
+      assert_patch(view, expected)
+      assert Process.alive?(view.pid), path
+    end
+
+    # Whatever `params` holds for it (decoded or not), the router decides.
+    alias PhxCheckWeb.BubbleWorkflows
+    socket = BubbleWorkflows.socket(PhxCheckWeb.TaskLive.Workflows)
+    uri = "http://localhost/task/%2F%2Fevil.example"
+
+    for value <- ["//evil.example", "%2F%2Fevil.example", "other"] do
+      socket = BubbleWorkflows.handle_params(socket, %{"bubble_thing" => value}, uri)
+      assert socket.assigns.bubble_page_path == "/task", value
+    end
+  end
+
   test "a query parameter named bubble_thing is no path segment (review M1)", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/task?bubble_thing=task")
     click(view, "bTaskSelf")

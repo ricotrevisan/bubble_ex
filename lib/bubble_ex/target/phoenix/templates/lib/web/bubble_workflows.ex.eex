@@ -272,11 +272,13 @@ defmodule <%= @web %>.BubbleWorkflows do
   # path (a `/<page>/:bubble_thing` route, never a query parameter of the
   # same name), the route without that segment; the index page's
   # `/index/:bubble_thing` is `/` (a bare `/index` has no route).
-  defp page_path(socket, %{"bubble_thing" => id}, path, host) when is_binary(id) do
+  # The router's own report decides, never `params`' value: a
+  # percent-encoded segment (`%2F%2Fevil.example`) decodes differently.
+  defp page_path(socket, %{"bubble_thing" => _}, path, host) do
     router = socket.router || <%= @web %>.Router
 
     case Phoenix.Router.route_info(router, "GET", path, host) do
-      %{route: route, path_params: %{"bubble_thing" => ^id}} when is_binary(route) ->
+      %{route: route, path_params: %{"bubble_thing" => _}} when is_binary(route) ->
         case String.replace_suffix(route, "/:bubble_thing", "") do
           ^route -> path
           "/index" -> "/"
