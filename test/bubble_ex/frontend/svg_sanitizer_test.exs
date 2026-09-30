@@ -82,6 +82,126 @@ defmodule BubbleEx.Frontend.SvgSanitizerTest do
     assert clean =~ ~s(<use></use>)
   end
 
+  test "drops image-set() and src() references in CSS and attributes" do
+    for value <- [
+          "background:image-set(url(#a) 1x)",
+          "background: -webkit-image-set('x.png' 1x)",
+          "background:IMAGE-SET( 'https://evil.example/x.png' 1x)",
+          "fill:src('https://evil.example/x')",
+          "mask: src (x)"
+        ] do
+      clean =
+        sanitize!(
+          ~s|<svg xmlns="http://www.w3.org/2000/svg"><style>p{#{value}}</style>| <>
+            ~s|<path d="M0 0" style="#{value}" fill="#{value}"/></svg>|
+        )
+
+      refute clean =~ ~r/image-set|src\s*\(/i, value
+      assert clean =~ ~s(<path d="M0 0"></path>)
+    end
+  end
+
+  test "text loses characters XML does not allow, decoded or raw" do
+    clean =
+      sanitize!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>a&#0;b&#1;c&#x1F;d&#xFFFE;e\u0001f\tg</text>" <>
+          "<path d=\"M0 0\" class=\"a&#0;b\"/></svg>"
+      )
+
+    # The parser reads `&#0;` as U+FFFD, as HTML does; the rest are dropped.
+    assert clean =~ "<text>a\uFFFDbcdef\tg</text>"
+    refute clean =~ ~r/[\x00-\x08\x0B\x0C\x0E-\x1F]/
+    refute clean =~ "\uFFFE"
+    assert well_formed?(clean)
+  end
+
+  # Random documents from benign and hostile pieces (control characters,
+  # entities, markup and CSS tricks): the output is always one well-formed
+  # XML document, and sanitizes to itself.
+  test "fuzz: output is always well-formed XML" do
+    :rand.seed(:exsss, {447, 2, 3})
+
+    sanitized =
+      Enum.count(1..2_000, fn _ ->
+        input = fuzz_document()
+
+        case SvgSanitizer.sanitize(input) do
+          {:ok, clean} ->
+            assert well_formed?(clean), inspect(input)
+            assert SvgSanitizer.sanitize(clean) == {:ok, clean}, inspect(input)
+            true
+
+          :error ->
+            false
+        end
+      end)
+
+    # Most documents are kept (sanitized), so the check has output to read.
+    assert sanitized > 1_500
+  end
+
+  @pieces [
+    ~S|<path d="M0 0L1 1"/>|,
+    ~S|<g transform="translate(1 2)">|,
+    "</g>",
+    ~S|<text x="1">|,
+    "</text>",
+    ~S|<tspan>|,
+    "</tspan>",
+    "<style>",
+    "</style>",
+    "p{fill:red}",
+    ~S|<rect width="1" height="1" style="fill:url(#a)"/>|,
+    ~S|<use href="#a"/>|,
+    ~S|<linearGradient id="a"><stop offset="0"/></linearGradient>|,
+    "<script>alert(1)</script>",
+    ~S|<image href="https://evil.example/x"/>|,
+    "<![CDATA[x<y]]>",
+    "<!-- c -->",
+    "&#0;",
+    "&#1;",
+    "&#x1F;",
+    "&#xFFFE;",
+    "&#xD800;",
+    "&amp;",
+    "&lt;",
+    "&bogus;",
+    "&",
+    "<",
+    ">",
+    "\"",
+    "'",
+    "]]>",
+    "\u0000",
+    "\u0001",
+    "\u000B",
+    "\uFFFE",
+    "é",
+    "text"
+  ]
+
+  defp fuzz_document do
+    body = for _ <- 1..:rand.uniform(12), into: "", do: Enum.random(@pieces)
+    ~s(<svg xmlns="http://www.w3.org/2000/svg">) <> body <> "</svg>"
+  end
+
+  # xmerl, strict about characters: the document as UTF-8 bytes.
+  defp well_formed?(xml) do
+    bytes = ~s(<?xml version="1.0" encoding="utf-8"?>) <> xml
+    {_doc, rest} = :xmerl_scan.string(:binary.bin_to_list(bytes), quiet: true)
+    rest == []
+  catch
+    _, _ -> false
+  end
+
+  test "the well-formedness check itself rejects what XML does not allow" do
+    assert well_formed?("<svg><text>a\uFFFDb\té</text></svg>")
+    refute well_formed?("<svg><text>a\u0001</text></svg>")
+    refute well_formed?("<svg><text>a\uFFFE</text></svg>")
+    refute well_formed?("<svg><text>a<b</text></svg>")
+    refute well_formed?("<svg></svg><svg></svg>")
+  end
+
   test "never expands entities or keeps a DOCTYPE" do
     clean =
       sanitize!(~S"""

@@ -299,6 +299,31 @@ defmodule BubbleEx.Frontend.StaticAssetsTest do
     end
   end
 
+  describe "verified_assets/1" do
+    test "the exporter's downloads are checked like fetched ones" do
+      svg =
+        ~S|<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><path d="M0 0"/></svg>|
+
+      png_sha = :crypto.hash(:sha256, @png) |> Base.encode16(case: :lower)
+
+      verified =
+        StaticAssets.verified_assets(%{
+          "png" => %{path: "assets/x.gif", bytes: @png, sha256: "stale"},
+          "svg" => %{path: "assets/y.png", bytes: svg},
+          "html" => %{path: "assets/z.png", bytes: "<html><script>alert(1)</script>"},
+          "failed" => %{failed?: true}
+        })
+
+      # The extension and name come from the verified bytes, never the path.
+      assert verified["png"] == %{path: "assets/#{png_sha}.png", bytes: @png, sha256: png_sha}
+      assert %{path: "assets/" <> svg_file, bytes: clean} = verified["svg"]
+      assert String.ends_with?(svg_file, ".svg")
+      refute clean =~ "script"
+      assert verified["html"] == %{failed?: true}
+      assert verified["failed"] == %{failed?: true}
+    end
+  end
+
   describe "load_store/1" do
     @tag :tmp_dir
     test "drops entries whose files were tampered with", %{tmp_dir: dir} do
@@ -334,6 +359,25 @@ defmodule BubbleEx.Frontend.StaticAssetsTest do
 
       assert Enum.sort(Enum.map(errors, & &1.reason)) ==
                ["SHA-256 mismatch", "invalid entry", "invalid file name"]
+    end
+
+    @tag :tmp_dir
+    test "an entry whose recorded url is not a string is an error, not a crash", %{
+      tmp_dir: dir
+    } do
+      serve(%{"a1b2c3d4e5f6.cdn.bubble.io/f1/a.png" => {"image/png", @png}})
+      {:ok, _} = StaticAssets.fetch(frontend([@cdn <> "/f1/a.png"]), dir)
+      index = dir |> Path.join("index.json") |> File.read!() |> Jason.decode!()
+
+      for bad <- [123, %{"a" => 1}, ["x"], true] do
+        broken = put_in(index, ["assets", @cdn <> "/f1/a.png", "url"], bad)
+        File.write!(Path.join(dir, "index.json"), Jason.encode!(broken))
+
+        assert {:ok, %Store{entries: entries, errors: [%{reason: "invalid url"}]}} =
+                 StaticAssets.load_store(dir)
+
+        assert entries == %{}
+      end
     end
 
     @tag :tmp_dir

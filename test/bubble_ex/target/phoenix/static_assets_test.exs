@@ -202,6 +202,42 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     assert endpoint =~ "sandbox"
   end
 
+  # The exporter's `assets:` (the fidelity cases' path) are served only as
+  # verified: raw bytes are never written as they came (review of #169).
+  test "the exporter's assets are written only checked, typed and sanitized" do
+    app = @fixture |> File.read!() |> Jason.decode!()
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+    ids = Map.new(StaticAssets.references(frontend), &{hd(&1.elements), hd(&1.ids)})
+    png = File.read!(Path.join(@store, "#{@png_sha}.png"))
+
+    assets = %{
+      ids["bExt"] => %{path: "assets/hero.jpg", bytes: png},
+      ids["bLook"] => %{
+        path: "assets/logo.png",
+        bytes:
+          ~S|<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><path d="M0 0"/></svg>|
+      },
+      ids["bBucket"] => %{path: "assets/evil.png", bytes: "<html><script>alert(1)</script>"}
+    }
+
+    {files, _report} = render(assets: assets)
+    markup = pages(files)
+    served = for {p, b} <- files, String.starts_with?(p, "priv/static/images/bubble/"), do: {p, b}
+
+    assert {"priv/static/images/bubble/#{@png_sha}.png", png} in served
+    assert img(markup, "bExt") =~ ~s(src="/images/bubble/#{@png_sha}.png")
+
+    [{svg_path, svg}] = for {p, b} <- served, String.ends_with?(p, ".svg"), do: {p, b}
+    refute svg =~ "onload"
+    assert svg_path =~ Base.encode16(:crypto.hash(:sha256, svg), case: :lower)
+    assert img(markup, "bLook") =~ ~s(src="/images/bubble/#{Path.basename(svg_path)}")
+
+    # Not an image: never written, rendered without a source.
+    assert length(served) == 2
+    refute Enum.any?(served, fn {_p, b} -> b =~ "<html" end)
+    refute img(markup, "bBucket") =~ "src="
+  end
+
   test "asset_store: must be a loaded store" do
     app = @fixture |> File.read!() |> Jason.decode!()
     {:ok, model} = BubbleEx.Model.build(app)

@@ -48,10 +48,14 @@ defmodule BubbleEx.MixProject do
     ]
   end
 
+  # xmerl checks the sanitized SVGs are well-formed XML (SvgSanitizerTest).
+  defp test_applications(:test), do: [:xmerl]
+  defp test_applications(_env), do: []
+
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger] ++ test_applications(Mix.env())
       # mod: {BubbleEx.Application, []}
     ]
   end
