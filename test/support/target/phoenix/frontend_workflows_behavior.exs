@@ -280,20 +280,24 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
   test "go to page sends only a thing's unique ID as the path segment (WTF-378)" do
     alias PhxCheckWeb.BubbleWorkflows
 
+    ctx = %BubbleWorkflows.Ctx{path: "/here/1700000000000x000000000000000009", url: %{}}
+    ctx = %{ctx | page_path: "/here", takes_thing: true}
+
+    go = fn ctx, path, thing ->
+      BubbleWorkflows.navigate(ctx, path, [], false, false, false, thing)
+    end
+
     to = fn path, thing ->
-      ctx = %BubbleWorkflows.Ctx{path: "/here", url: %{}}
-
-      {:cont, %{navigate: {_kind, url, _replace?}}} =
-        BubbleWorkflows.navigate(ctx, path, [], false, false, false, thing)
-
+      {:cont, %{navigate: {_kind, url, _replace?}}} = go.(ctx, path, thing)
       url
     end
 
     id = "1700000000000x000000000000000001"
     assert to.("/other", %{id: id}) == "/other/" <> id
     assert to.("/other", id) == "/other/" <> id
-    # Never a scheme-relative URL, a parent path or another host.
-    assert to.("/", %{id: id}) == "/" <> id
+    # Never a scheme-relative URL, a parent path or another host; the index
+    # page's thing is under /index (WTF-454).
+    assert to.("/", %{id: id}) == "/index/" <> id
     assert to.("/other/", %{id: id}) == "/other/" <> id
     assert to.("/other", "../x") == "/other"
     assert to.("/other", "//evil.example") == "/other"
@@ -302,8 +306,160 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert to.("/other", %{title: "no id"}) == "/other"
     assert to.("/other", nil) == "/other"
     assert to.("/other", 42) == "/other"
-    # The current page keeps its own path.
-    assert to.(:current, %{id: id}) == "/here/" <> id
+
+    # The current page (WTF-454): its thing's segment is replaced, patched
+    # in place; an empty or hostile value sends none; with no data to send
+    # the URL stays as it is.
+    assert {:cont, %{navigate: {:patch, "/here/" <> ^id, false}}} = go.(ctx, :current, %{id: id})
+    assert to.(:current, "//evil.example") == "/here"
+    assert to.(:current, %{id: "../x"}) == "/here"
+    assert to.(:current, nil) == "/here"
+
+    assert {:cont, %{navigate: {:patch, "/here/1700000000000x000000000000000009", false}}} =
+             BubbleWorkflows.navigate(ctx, :current, [], false, false, false)
+
+    index = %{ctx | path: "/index/" <> id, page_path: "/index"}
+    assert {:cont, %{navigate: {:patch, "/index/" <> _, false}}} = go.(index, :current, id)
+
+    # A page that takes no thing: the step fails, nothing navigates.
+    untyped = %{ctx | path: "/here", page_path: "/here", takes_thing: false}
+
+    assert {:halt, {:error, :data_to_send_untyped_page}, %{navigate: nil}} =
+             go.(untyped, :current, %{id: id})
+  end
+
+  test "a page's own path drops its thing's segment (WTF-454)" do
+    alias PhxCheckWeb.BubbleWorkflows
+    socket = BubbleWorkflows.socket(PhxCheckWeb.IndexLive.Workflows)
+    id = "1700000000000x000000000000000001"
+
+    socket =
+      BubbleWorkflows.handle_params(
+        socket,
+        %{"bubble_thing" => id},
+        "http://localhost/index/" <> id
+      )
+
+    assert socket.assigns.bubble_page_path == "/index"
+    socket = BubbleWorkflows.handle_params(socket, %{}, "http://localhost/other")
+    assert socket.assigns.bubble_page_path == "/other"
+  end
+
+  # Polls `fun` until it holds (a pause is a delayed message).
+  defp eventually(fun, tries \\ 100) do
+    cond do
+      fun.() ->
+        :ok
+
+      tries == 0 ->
+        flunk("never happened")
+
+      true ->
+        Process.sleep(10)
+        eventually(fun, tries - 1)
+    end
+  end
+
+  test "a pause ends the event; the rest runs after it, never blocking the page (WTF-451)", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, "/")
+    assert click(view, "bBtnPause") =~ "Label: pausing"
+    # The page answers while the workflow is paused.
+    assert change(view, "bIn", "Ann") =~ "Typed: Ann"
+    eventually(fn -> label(view) =~ "Label: paused" end)
+  end
+
+  test "a custom event's caller waits for its pause, then gets on (WTF-451)", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    assert click(view, "bBtnPauseCall") =~ "Label: in event"
+    eventually(fn -> label(view) =~ "Label: event done + after" end)
+  end
+
+  test "a pause is capped and costs one call; at the chain limit it fails (WTF-451)" do
+    alias PhxCheckWeb.BubbleWorkflows
+    on_exit(fn -> Application.delete_env(:phx_check, PhxCheck.Workflows) end)
+
+    assert BubbleWorkflows.pause_ms(30) == 30
+    assert BubbleWorkflows.pause_ms(10_000_000_000) == 60_000
+    assert BubbleWorkflows.pause_ms(-5) == 0
+    assert BubbleWorkflows.pause_ms(nil) == 0
+    assert BubbleWorkflows.pause_ms("100") == 0
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, max_pause_ms: 5)
+    assert BubbleWorkflows.pause_ms(100) == 5
+
+    root = PhxCheck.Workflows.Runtime.root(nil, nil)
+
+    ctx = %BubbleWorkflows.Ctx{
+      now: DateTime.utc_now(),
+      workflow: "w",
+      backend: %{root | calls: 1}
+    }
+
+    assert {:halt, {:pause, 5, [], nil}, paused} = BubbleWorkflows.pause(ctx, "p1", 100)
+    assert paused.backend.calls == 0
+
+    assert {:halt, {:error, {"p2", {:call_budget_exhausted, "w"}}}, _} =
+             BubbleWorkflows.pause(paused, "p2", 1)
+
+    Application.put_env(:phx_check, PhxCheck.Workflows, max_chain: 3)
+    chained = %{ctx | backend: %{ctx.backend | chain: 3}}
+
+    assert {:halt, {:error, {"p3", {:chain_limit, "w"}}}, _} =
+             BubbleWorkflows.pause(chained, "p3", 1)
+
+    # A resume message for a surface the page does not render, or without
+    # a well-formed budget, is ignored.
+    socket = BubbleWorkflows.socket(PhxCheckWeb.IndexLive.Workflows)
+    frame = %{module: :nope, scope: "", workflow: "wPause", at: 3}
+
+    for message <- [
+          {:bubble, :resume, [frame], DateTime.utc_now(), %{jobs: 1, calls: 1, chain: 0}},
+          {:bubble, :resume, [%{frame | module: PhxCheckWeb.IndexLive.Workflows}],
+           DateTime.utc_now(), %{calls: -1}},
+          {:bubble, :resume, [], DateTime.utc_now(), %{jobs: 1, calls: 1, chain: 0}}
+        ] do
+      assert {:noreply, ^socket} =
+               BubbleWorkflows.handle_info(socket, PhxCheckWeb.IndexLive.Workflows, message)
+    end
+  end
+
+  test "a refused click shows a notice naming nothing internal (WTF-453)", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    assert click(view, "bBtnCall") =~ "Label: called"
+    refute_push_event(view, "bubble:notice", _)
+
+    click(view, "bBtnResidue")
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."} = notice)
+    assert map_size(notice) == 1
+
+    # Data access off refuses too; the page is unchanged.
+    click(view, "bBtnData")
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+    assert label(view) =~ "Label: called"
+    assert render(view) =~ ~s(id="bubble-notice")
+  end
+
+  test "BBCode around dynamic text: the text's own tags render, data never does (WTF-450)", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, "/")
+    bold = fn -> view |> element(~s([data-bubble-id="bBold"])) |> render() end
+    # (The test DOM drops the whitespace-only text between the two tags.)
+    assert bold.() =~ "<strong>Typed: </strong>"
+    assert bold.() =~ "<em>start</em> [url=https://example.com]u[/url]"
+
+    change(view, "bIn", ~s{<script>alert(1)</script>[/b][i]x[/i]<b onmouseover="y">z</b>})
+    html = bold.()
+
+    assert html =~
+             "<strong>Typed: &lt;script&gt;alert(1)&lt;/script&gt;[/b][i]x[/i]&lt;b onmouseover="
+
+    assert html =~ "z&lt;/b&gt;</strong>"
+    refute html =~ "<script"
+    refute html =~ "<b "
+    refute html =~ "<em>x</em>"
+    refute html =~ "<a "
   end
 
   test "element-only workflows run in the browser: the element carries the commands",

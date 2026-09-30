@@ -131,6 +131,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   defp values(op, args) when op in [:schedule, :schedule_list],
     do: [args[:at], args[:list], args[:interval] | Enum.map(args[:params] || [], & &1.value)]
 
+  defp values(:pause, args), do: [args[:length]]
+
   defp values(:schedule_custom, args),
     do: [args[:delay] | Enum.map(args[:params] || [], & &1.value)]
 

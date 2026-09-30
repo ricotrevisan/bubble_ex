@@ -91,7 +91,7 @@ lists for that element.
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
 | Set state(s) | the page's state map, per instance |
 | Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs |
-| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378); to the current page or the index page it is `:unsupported_option` residue, and to a page with no type of content `:data_to_send_untyped_page` residue |
+| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: checked at run time, and the step fails when the page takes no thing); to a page with no type of content `:data_to_send_untyped_page` residue |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
 | Create / change / delete things, change the current user | the backend workflow runtime's data steps (`<Module>.Workflows.Runtime`, WTF-373), with the current user as actor (data-access opt-in, below) |
@@ -99,6 +99,7 @@ lists for that element.
 | Schedule a custom event | `Process.send_after` to the page |
 | Schedule API workflow (on a list) | the backend runtime's `schedule/5` (`schedule_list/7`): an Oban job, from the event's job budget (data-access opt-in); without the backend spec, `:backend_workflow` residue |
 | Terminate this workflow | ends it (with a custom event's return values) |
+| Add a pause before next action | ends the event; the rest of the workflow (and of the custom events waiting on it) runs after the pause in a `Process.send_after` message to the page (WTF-451, below) |
 
 ### Values
 
@@ -132,6 +133,42 @@ workflow with a non-empty `blocked` **before its first step**. The same
 holds for data access, which is transitive through custom events. A step
 that fails at run time ends its workflow; the steps before it keep their
 effects, as in Bubble.
+
+## Pauses (WTF-451)
+
+"Add a pause before next action" never blocks the LiveView process. The
+pause step ends the event: what the steps before it did applies to the
+page (states, inputs, element steps), and the page sends itself a
+message after the pause (`Process.send_after/3`) carrying what is left:
+the paused workflow from the step after the pause and, innermost first,
+every workflow waiting on it through "Trigger a custom event" (the call
+step gets the custom event's return values when it ends). The rest keeps
+the workflow's arguments, step results and start time ("Current
+date/time"); it reads the page's states, inputs and data as they are
+then.
+
+* **Capped.** A pause lasts at most `:max_pause_ms` (`config :<app>,
+  <Web>.BubbleWorkflows`, default 60_000 ms); an empty or negative length
+  is no pause.
+* **Budgets and chains.** A pause costs one call of the run's call budget
+  and the rest continues the run's budgets one link further down the
+  chain, as a scheduled custom event does: a pause at `:max_chain` fails
+  its step, so a workflow that pauses in a loop (through a condition or a
+  schedule) ends.
+* **The page must still be there.** Going to another page, or closing
+  it, drops what was paused; a message for a surface the page does not
+  render, or without a well-formed budget, is ignored.
+
+## A refused click shows a notice (WTF-453)
+
+When a click or an input change asks for a workflow the runtime refuses
+before its first step (not lowered, or data access off), the page shows a
+short notice, "This action isn't available yet.", in a polite live region
+(`#bubble-notice`, `role="status"`, set as text by the page's hook from a
+`bubble:notice` event). It never names the workflow, the reason or any
+ID: those stay in the server log (`[error] bubble workflow ... is not
+lowered`). Page-load, condition-true, "do every" and scheduled workflows
+are refused silently (logged), as they would show it on their own.
 
 ## Security
 
@@ -197,7 +234,10 @@ render keeps an overlay open:
 To confirm by replay (WTF-358): what "Go to page" does with a data to
 send to a page with no type of content (a value left over from an
 earlier type of content; its steps are `:data_to_send_untyped_page`
-residue until then); "Reset relevant inputs" resets the inputs
+residue until then; sent by a reusable element to a current page with
+no type of content, the step fails at run time); the URL Bubble gives
+the index page with data sent to it (`/index/<unique id>` here); that a
+workflow calling a custom event waits for the custom event's pauses; "Reset relevant inputs" resets the inputs
 of the triggering element's container; a condition-true workflow whose "run
 this" is unset runs once per page load; a condition that is true when the
 page loads fires; "Go to page" lets the workflow finish before the page
@@ -228,6 +268,15 @@ mobile views):
 
   Steps are counted the same way. Residue reasons are counted per entry (a
   workflow can have several).
+
+### Private fixture app (test version), 2026-09-30
+
+With pauses lowered (WTF-451): 47 of its 48 "Add a pause" steps are
+native (one has an uncompiled length); generated code 569 → 582 native
+workflows, 395 → 403 wired, 1,917 → 1,964 native steps (IR level:
+1,196 → 1,207 native workflows). Data sent to the current or index page
+(WTF-454) changes nothing there: all its data-to-send steps target
+another page. The snapshot below is the earlier one.
 
 ### Private fixture app (test version), 2026-09-27
 

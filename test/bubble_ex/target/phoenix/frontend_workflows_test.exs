@@ -185,9 +185,81 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       runtime = files["lib/shop_web/bubble_workflows.ex"]
 
       assert runtime =~
-               "def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\\\ nil) do"
+               "def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\\\ :none)"
 
-      assert runtime =~ ~s|id -> String.trim_trailing(path, "/") <> "/" <> id|
+      assert runtime =~ ~s|case String.trim_trailing(page, "/") do|
+    end
+
+    test "sends it to the index page under /index (WTF-454)" do
+      app =
+        app()
+        |> with_thing("user")
+        |> put_in(["pages", "other", "name"], "index")
+        |> put_in(["pages", "home", "name"], "home")
+
+      %{files: files, spec: spec} = render(app, page_data: true)
+      nav = FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav")
+      assert nav.residue == [] and FrontendWorkflows.Spec.native?(nav)
+
+      assert files["lib/shop_web/live/home_live/workflows.ex"] =~
+               ~s|BubbleWorkflows.navigate(ctx, "/", [{"q", "hello"}], false, false, false, current_user)|
+
+      routes = files["lib/shop_web/bubble_routes.ex"]
+      assert routes =~ ~s(live "/", ShopWeb.IndexLive)
+      assert routes =~ ~s(live "/index/:bubble_thing", ShopWeb.IndexLive)
+      refute routes =~ ~s(live "/:bubble_thing")
+    end
+
+    test "sends it to the current page (WTF-454)" do
+      current = fn app ->
+        put_in(
+          app,
+          ["pages", "home", "workflows", "wUrl", "actions", "0", "properties", "data_to_send"],
+          %{"type" => "CurrentUser"}
+        )
+      end
+
+      typed =
+        app() |> current.() |> put_in(["pages", "home", "properties", "page_item_type"], "user")
+
+      %{files: files, spec: spec} = render(typed, page_data: true)
+      url = FrontendWorkflows.Spec.workflow(spec, "bHome", "wUrl")
+      assert url.residue == [] and FrontendWorkflows.Spec.native?(url)
+
+      assert files["lib/shop_web/live/index_live/workflows.ex"] =~
+               ~s|BubbleWorkflows.navigate(ctx, :current, [{"tab", "two"}], true, false, false, current_user)|
+
+      # The page does not load its thing without page data: residue.
+      %{spec: spec} = render(typed)
+
+      assert [%{reason: :unsupported_option, detail: %{options: ["data_to_send"]}}] =
+               FrontendWorkflows.Spec.workflow(spec, "bHome", "wUrl").steps
+               |> hd()
+               |> Map.fetch!(:residue)
+
+      # A reusable element's current page is checked at run time.
+      card =
+        put_in(
+          app(),
+          ["element_definitions", "card", "workflows", "wCardOpen", "actions", "0"],
+          %{
+            "id" => "aCardNav",
+            "properties" => %{
+              "element_id" => "Current page",
+              "data_to_send" => %{"type" => "CurrentUser"}
+            },
+            "type" => "ChangePage"
+          }
+        )
+
+      %{files: files, spec: spec} = render(card, page_data: true)
+
+      assert FrontendWorkflows.Spec.native?(
+               FrontendWorkflows.Spec.workflow(spec, "bCard", "wCardOpen")
+             )
+
+      assert files["lib/shop_web/components/reusables/card/workflows.ex"] =~
+               ~s|BubbleWorkflows.navigate(ctx, :current, [], false, false, false, current_user)|
     end
 
     test "is residue while the page does not load its thing" do
@@ -212,6 +284,57 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       assert files["lib/shop_web/live/index_live/workflows.ex"] =~
                ~s|"wNav" => %{run: :wf_w_nav, condition: nil, blocked: ["action:aNav1"], data: false}|
     end
+  end
+
+  test "a pause is a step of the runtime, never a sleep (WTF-451)", %{files: files} do
+    module = files["lib/shop_web/live/index_live/workflows.ex"]
+    assert module =~ ~s|BubbleWorkflows.pause(ctx, "aPause2", 30)|
+
+    assert module =~
+             ~s|"wPauseCall" => %{run: :wf_w_pause_call, condition: nil, blocked: [], data: false}|
+
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ "def pause(ctx, step, length) do"
+    assert runtime =~ "Process.send_after(self(), {:bubble, :resume, frames, now, budget}, delay)"
+    refute runtime =~ "Process.sleep"
+    refute runtime =~ ":timer.sleep"
+  end
+
+  test "a refused click or input change shows a notice without internals (WTF-453)", %{
+    files: files
+  } do
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ ~s|@refused_notice "This action isn't available yet."|
+    assert runtime =~ ~s|push_event("bubble:notice", %{text: @refused_notice})|
+
+    hook = files["lib/shop_web/components/bubble.ex"]
+    assert hook =~ ~s(id="bubble-notice")
+    assert hook =~ ~s(role="status")
+    assert hook =~ ~s(aria-live="polite")
+    assert hook =~ "message.textContent = text"
+    refute hook =~ "innerHTML"
+  end
+
+  test "BBCode around dynamic text renders its own tags, values escaped (WTF-450)", %{
+    files: files
+  } do
+    live = files["lib/shop_web/live/index_live.ex"]
+
+    # The literal tags are data around the values; the URL tag stays text.
+    assert live =~ ~s|{:b, ["Typed: ", Shop.Bubble.Runtime.text(element_state_bin_get_data)]}|
+    assert live =~ ~s|{:i, [Shop.Bubble.Runtime.text(element_state_bhome_custom_label)]}|
+    assert live =~ ~s|" [url=https://example.com]u[/url]"|
+
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    assert template =~ "<Bubble.bbcode nodes={text_bbold("
+
+    assert template =~
+             "TODO(bubble:bBold) text: BBCode [url] around dynamic text is shown as text"
+
+    helpers = files["lib/shop_web/components/bubble.ex"]
+    assert helpers =~ "def bbcode(assigns) do"
+    refute helpers =~ "raw("
+    refute live =~ "raw("
   end
 
   test "bodies call the runtime; browser-run workflows are JS commands", %{files: files} do
@@ -332,15 +455,18 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     end
 
     for {path, content} <- files, String.ends_with?(path, ".heex") do
-      refute content =~ ~s("\#{raise), path
+      # Markers are HEEx comments (`comment_safe/1` keeps them closed):
+      # what they quote renders nothing.
+      code = String.replace(content, ~r/<%!-- TODO\(bubble:.*?--%>/s, "")
+      refute code =~ ~s("\#{raise), path
       refute content =~ ~r/<%(?!!-- TODO\(bubble:)/, path
     end
 
     # Markers are one word each and never collide (review L4): control
     # characters and spaces are percent-encoded, not replaced.
     workflows = markers(files)
-    # 21 page workflows and the backend workflow they schedule.
-    assert map_size(workflows) == 25
+    # 24 page workflows and the backend workflow they schedule.
+    assert map_size(workflows) == 28
     assert Enum.all?(Map.values(workflows), &match?([_], &1))
 
     # The test tags are the plan's subjects, as data.

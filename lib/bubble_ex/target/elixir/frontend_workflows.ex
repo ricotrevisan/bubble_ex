@@ -792,6 +792,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  defp args(:pause, args, id, ctx) do
+    {length, residue} = compile(args.length, id, ctx)
+    {%{length: length}, residue}
+  end
+
   defp args(:terminate, args, id, ctx) do
     {returns, residue} = values(args.returns, :return, id, ctx)
     {%{returns: returns}, residue}
@@ -832,8 +837,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   # The data sent to a page (WTF-378): the page reads its thing from the
   # path segment after its own only when its page thing is loaded (its
-  # `/<page>/:bubble_thing` route exists); otherwise the step is residue.
+  # `/<page>/:bubble_thing` route exists, `/index/:bubble_thing` for the
+  # index page); otherwise the step is residue. The current page (WTF-454)
+  # is a page workflow's own page; a reusable element's is known at run
+  # time only, where the runtime checks that it takes a thing.
   defp navigate_thing(%{thing: nil}, _id, _ctx), do: {nil, []}
+
+  defp navigate_thing(%{thing: thing, page: :current}, id, ctx) do
+    case ctx.raw_elements[ctx.surface] do
+      %{kind: :page} -> navigate_thing(%{thing: thing, page: ctx.surface}, id, ctx)
+      _ -> compile(thing, id, ctx)
+    end
+  end
 
   defp navigate_thing(%{thing: thing, page: page}, id, ctx) do
     case ctx.data.elements[page] do
