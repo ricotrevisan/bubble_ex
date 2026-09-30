@@ -30,7 +30,9 @@ defmodule <%= @web %>.Bubble do
       the hook. Escape closes the topmost open Popup or Group Focus, if it
       can be dismissed that way (its `data-bubble-escape` command); closed
       overlays never react. It also runs the element steps a server-side
-      workflow sends (`bubble:exec`)
+      workflow sends (`bubble:exec`) and shows, as text in a polite live
+      region (`#bubble-notice`), the notice of a refused click or input
+      change (`bubble:notice`, WTF-453)
   """
 
   use Phoenix.Component
@@ -131,10 +133,48 @@ defmodule <%= @web %>.Bubble do
     end
   end
 
+  @doc """
+  A Text's dynamic content with BBCode formatting in its own text
+  (WTF-450): `nodes` are texts and `{tag, nodes}` with `tag` one of `:b`,
+  `:i`, `:u`, `:s` (bold, italic, underline, strikethrough), built at
+  generation from the Bubble text's literal parts only. Every text is
+  escaped, so BBCode or HTML in data shows as it is typed.
+  """
+  attr :nodes, :list, required: true
+
+  def bbcode(assigns) do
+    ~H"<.bbcode_node :for={node <- @nodes} node={node} />"
+  end
+
+  attr :node, :any, required: true
+
+  defp bbcode_node(%{node: {:b, _}} = assigns),
+    do: ~H"<strong><.bbcode nodes={elem(@node, 1)} /></strong>"
+
+  defp bbcode_node(%{node: {:i, _}} = assigns),
+    do: ~H"<em><.bbcode nodes={elem(@node, 1)} /></em>"
+
+  defp bbcode_node(%{node: {:u, _}} = assigns),
+    do: ~H"<u><.bbcode nodes={elem(@node, 1)} /></u>"
+
+  defp bbcode_node(%{node: {:s, _}} = assigns),
+    do: ~H"<s><.bbcode nodes={elem(@node, 1)} /></s>"
+
+  defp bbcode_node(assigns), do: ~H"{@node}"
+
   @doc "The page's hook: element steps, overlays and Escape. Render it once per page."
   def runtime(assigns) do
     ~H"""
     <div id="bubble-runtime" phx-hook=".BubbleRuntime" hidden></div>
+    <div
+      id="bubble-notice"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      phx-update="ignore"
+      class="fixed bottom-4 right-4 z-50 max-w-sm"
+    >
+    </div>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".BubbleRuntime">
       const OVERLAYS = '[data-overlay="popup"], [data-overlay="group_focus"]'
       const FOCUSABLE =
@@ -190,9 +230,22 @@ defmodule <%= @web %>.Bubble do
           this.listeners.push(["keydown", keydown])
           // Element steps of server-side workflows, in order.
           this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
+          // A refused click or input change (WTF-453): a short notice, as text.
+          this.handleEvent("bubble:notice", ({ text }) => this.notice(text))
         },
         destroyed() {
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
+          clearTimeout(this.noticeTimer)
+        },
+        notice(text) {
+          const region = document.getElementById("bubble-notice")
+          if (!region || typeof text !== "string") return
+          const message = document.createElement("p")
+          message.className = "rounded bg-rose-50 px-4 py-2 text-sm text-rose-900 shadow"
+          message.textContent = text
+          region.replaceChildren(message)
+          clearTimeout(this.noticeTimer)
+          this.noticeTimer = setTimeout(() => region.replaceChildren(), 6000)
         },
         exec(op) {
           if (op.op === "open") {

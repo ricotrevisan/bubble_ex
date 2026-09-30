@@ -23,7 +23,9 @@
 #     phoenix_frontend_workflows, the workflows' behavior tests
 #     (test/support/target/phoenix/frontend_workflows_behavior.exs) and
 #     `mix wtf.task complete` of its workflow tasks (compiles, lint,
-#     step_order) with their tagged tests (frontend_workflows.exs)
+#     step_order) with their tagged tests (frontend_workflows.exs); for
+#     phoenix_index_thing, a typed index page's /index/:bubble_thing route
+#     and "Go to page" data (test/support/target/phoenix/index_thing_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
@@ -156,6 +158,15 @@ for fixture in $fixtures; do
       rm test/join_page_data_behavior_test.exs
     fi
 
+    # An index page with a type of content (WTF-454): /index/:bubble_thing
+    # and "Go to page" data to it and to the current page.
+    if [[ "$fixture" == phoenix_index_thing ]]; then
+      cp "$root/test/support/target/phoenix/index_thing_behavior.exs" \
+        test/index_thing_behavior_test.exs
+      mix test test/index_thing_behavior_test.exs
+      rm test/index_thing_behavior_test.exs
+    fi
+
     # Page data (WTF-420): what the generated pages load, and never load.
     if [[ "$fixture" == phoenix_page_data ]]; then
       cp "$root/test/support/target/phoenix/page_data_behavior.exs" \
@@ -178,7 +189,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
@@ -214,6 +225,7 @@ for fixture in $enforced_fixtures; do
       phoenix_enforced) behavior=test/support/target/phoenix/enforced_behavior.exs ;;
       phoenix_page_data) behavior=test/support/target/phoenix/page_data_behavior.exs ;;
       phoenix_frontend_workflows) behavior=test/support/target/phoenix/frontend_workflows_behavior.exs ;;
+      phoenix_index_thing) behavior=test/support/target/phoenix/index_thing_behavior.exs ;;
     esac
 
     if [[ -n "$behavior" ]]; then

@@ -21,7 +21,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       (`BubbleEx.Target.Elixir.Frontend`) is a helper in the LiveView whose
       arguments are assigns; anything else is a `TODO(bubble:<id>)` marker
       (a HEEx comment, rendering nothing, as the exporter renders an
-      unresolved slot empty)
+      unresolved slot empty). A Text whose dynamic content has BBCode in
+      its own literal text (`"[b]" <> title <> "[/b]"`, WTF-450) renders
+      bold, italic, underline and strikethrough through
+      `<Web>.Bubble.bbcode/1`: the helper returns the literal tags as
+      data around the values, which are escaped like any text; BBCode or
+      HTML in data shows as typed, and other tags stay text with a marker
     * Popups, Group Focuses and Floating Groups follow the normalized
       `runtime` model: closed with `hidden`, opened and closed by
       `<Web>.Bubble.show_overlay/2` and `hide_overlay/2` (JS commands),
@@ -281,8 +286,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # A page with a type of content (WTF-420) also takes its thing's unique
-  # ID as the path segment after its own.
-  # A dynamic root route would swallow /auth, /uploads and other owned paths.
+  # ID as the path segment after its own. The index page's is under
+  # `/index` (WTF-454): a dynamic root route would swallow /auth, /uploads
+  # and other owned paths.
+  defp live_routes(%{path: "/", thing?: true} = r),
+    do:
+      "          live #{source(r.path)}, #{r.module}\n" <>
+        "          live #{source(thing_path("/index"))}, #{r.module}"
+
   defp live_routes(%{path: "/"} = r), do: "          live #{source(r.path)}, #{r.module}"
 
   defp live_routes(%{thing?: true} = r),
@@ -723,6 +734,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       {:expr, expr} ->
         element(text_tag(node.variant), node, [], ["{", expr, "}"], ctx, acc)
+
+      # BBCode around dynamic values (WTF-450): the helper returns the
+      # nodes, `Bubble.bbcode/1` renders the tags and escapes the text.
+      {:bbcode, expr} ->
+        element(
+          text_tag(node.variant),
+          node,
+          [],
+          ["<Bubble.bbcode nodes={", expr, "} />"],
+          ctx,
+          acc
+        )
 
       # An instance's own content (a reusable parameter): the caller
       # renders it through text_html/1 into this slot.
@@ -1789,6 +1812,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp compiled_slot(node, name, compiled, ctx, acc, binding \\ nil) do
     case compiled do
       %{source: source, bindings: vars} ->
+        {source, bbcode} = bbcode_source(node, name, source)
+        acc = mark_bbcode(acc, node, bbcode)
         helper = helper_name(name, node, acc)
         args = Enum.map(vars, & &1.var)
         reads = Enum.map(vars, &read_arg(&1, ctx))
@@ -1810,7 +1835,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
                 source: source,
                 node: node,
                 slot: name,
-                raw?: Map.get(compiled, :raw?, false)
+                raw?: Map.get(compiled, :raw?, false),
+                bbcode?: bbcode != nil
               }
               | acc.helpers
             ],
@@ -1818,12 +1844,49 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         }
 
         call = helper <> "(" <> Enum.join(reads, ", ") <> ")"
-        {{:expr, call}, acc}
+        {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
 
       _ ->
         {{:static, ""}, mark_binding(acc, node, name, binding)}
     end
   end
+
+  # A Text's dynamic content with BBCode in its own literal text (WTF-450):
+  # the helper returns `Bubble.bbcode/1`'s nodes instead of one text, the
+  # literal tags as `{tag, nodes}` around the values, which stay values
+  # (never read for tags, escaped when rendered). Returns the source and
+  # the tags left as text, or the source unchanged and nil.
+  defp bbcode_source(%Node{kind: :text}, "text", source) do
+    with {:ok, ast} <- Code.string_to_quoted(source),
+         parts = Enum.map(concat_parts(ast), &if(is_binary(&1), do: &1, else: {:value, &1})),
+         {nodes, unsupported} <- Bbcode.split(parts) do
+      {bbcode_nodes(nodes), unsupported}
+    else
+      _ -> {source, nil}
+    end
+  end
+
+  defp bbcode_source(_node, _name, source), do: {source, nil}
+
+  defp concat_parts({:<>, _, [left, right]}), do: concat_parts(left) ++ concat_parts(right)
+  defp concat_parts(part), do: [part]
+
+  defp bbcode_nodes(nodes), do: "[" <> Enum.map_join(nodes, ", ", &bbcode_node/1) <> "]"
+
+  defp bbcode_node(text) when is_binary(text), do: source(text)
+  defp bbcode_node({:value, ast}), do: Macro.to_string(ast)
+  defp bbcode_node({tag, nodes}), do: "{#{inspect(tag)}, #{bbcode_nodes(nodes)}}"
+
+  defp mark_bbcode(acc, _node, nil), do: acc
+  defp mark_bbcode(acc, _node, []), do: acc
+
+  defp mark_bbcode(acc, node, tags),
+    do:
+      mark(
+        acc,
+        node,
+        "text: BBCode #{Enum.map_join(tags, " ", &"[#{&1}]")} around dynamic text is shown as text"
+      )
 
   # A page assigns a variable (nil until workflows set it; the signed-in
   # user comes from on_mount); a component declares it as an attribute.
@@ -2968,7 +3031,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp helper_source(%{name: name, args: args, source: source, node: node, slot: slot} = h, base) do
     # A file link (`raw?`) stays nil when empty: no attribute is rendered.
     body =
-      if Map.get(h, :raw?) or text?(source),
+      if Map.get(h, :raw?) or Map.get(h, :bbcode?) or text?(source),
         do: source,
         else: "#{base.runtime}.text(#{source})"
 

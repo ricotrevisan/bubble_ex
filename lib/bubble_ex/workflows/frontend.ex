@@ -49,7 +49,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
   | Set state(s) (`SetCustomState`) | `:set_state` | `element`, `states` (`%{state, value}`, state `custom.<id>`) |
-  | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, when the page has a type of content; to a page with none, `:data_to_send_untyped_page` residue), `keep_params?`, `replace?`, `new_tab?` |
+  | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, when the page has a type of content, the index page and the current page included; to a page with none, `:data_to_send_untyped_page` residue), `keep_params?`, `replace?`, `new_tab?` |
   | Open an external website (`OpenURL`) | `:open_url` | `url`, `new_tab?` |
   | Refresh the page | `:refresh` | |
   | Log the user out | `:log_out` | |
@@ -59,6 +59,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Schedule a custom event | `:schedule_custom` | `workflow`, `delay` (seconds), `params` |
   | Schedule API workflow (on a list) | `:schedule` / `:schedule_list` | `workflow`, `at`, (`list`, `interval`), `params` |
   | Terminate this workflow | `:terminate` | `returns` |
+  | Add a pause before next action (`PauseWFClient`) | `:pause` | `length` (milliseconds) |
 
   Every step may carry a `condition` ("Only when"). A custom event called
   or scheduled must belong to the same page or reusable element, as in
@@ -152,7 +153,8 @@ defmodule BubbleEx.Workflows.Frontend do
     "ScheduleCustom" => :schedule_custom,
     "ScheduleAPIEvent" => :schedule,
     "ScheduleAPIEventOnList" => :schedule_list,
-    "TerminateWorkflow" => :terminate
+    "TerminateWorkflow" => :terminate,
+    "PauseWFClient" => :pause
   }
 
   # Action members each operation lowers (besides `condition`); a schedule
@@ -177,7 +179,10 @@ defmodule BubbleEx.Workflows.Frontend do
     schedule_custom: ~w(custom_event arguments delay),
     schedule: ~w(api_event date ignore_privacy_rules),
     schedule_list: ~w(api_event date data_source type_of_list interval ignore_privacy_rules),
-    terminate: ~w(return_values)
+    terminate: ~w(return_values),
+    # `hide_status_bar` hides Bubble's page loading bar during the pause:
+    # generated pages show none.
+    pause: ~w(length hide_status_bar)
   }
 
   @ignored_members ~w(condition breakpoint element_id_friendly)
@@ -698,6 +703,11 @@ defmodule BubbleEx.Workflows.Frontend do
     {args, Enum.uniq(residue)}
   end
 
+  # "Add a pause before next action" (WTF-451): its length in milliseconds
+  # (unset: no pause).
+  defp lower(:pause, props, path, _id, env, _ctx),
+    do: {%{length: Lowering.expr(props["length"], path ++ ["length"], env)}, []}
+
   defp lower(:terminate, props, path, id, env, ctx) do
     {returns, residue} =
       Lowering.terminate_returns(
@@ -870,19 +880,28 @@ defmodule BubbleEx.Workflows.Frontend do
   # --- helpers -------------------------------------------------------------------------
 
   # "Go to page"'s data to send (WTF-378): the destination page's thing,
-  # sent as the path segment after the page's own (`/<page>/<unique id>`).
-  # A destination with no type of content has no such segment; what Bubble
-  # does with a value left there (from an earlier type of content) is not
-  # verified, so it is `:data_to_send_untyped_page` residue for replay
-  # (WTF-358) to settle, never dropped silently. The current page (its path
-  # is only known at run time) and the index page (whose path is `/`) are
-  # not lowered yet.
+  # sent as the path segment after the page's own (`/<page>/<unique id>`;
+  # the index page's is `/index/<unique id>`, WTF-454). A destination with
+  # no type of content has no such segment; what Bubble does with a value
+  # left there (from an earlier type of content) is not verified, so it is
+  # `:data_to_send_untyped_page` residue for replay (WTF-358) to settle,
+  # never dropped silently. The current page (WTF-454) is the workflow's
+  # own page when it is a page's; a reusable element's goes to whichever
+  # page renders it, so the target checks at run time that the page takes
+  # a thing.
   defp data_to_send(nil, _page, _path, _id, _env, _ctx), do: {nil, []}
+
+  defp data_to_send(value, :current, path, id, env, ctx) do
+    case ctx.surfaces[ctx.surface] do
+      %{kind: :page} -> data_to_send(value, bubble(ctx.surface), path, id, env, ctx)
+      _ -> {Lowering.expr(value, path ++ ["data_to_send"], env), []}
+    end
+  end
 
   defp data_to_send(value, page, path, id, env, ctx) when is_binary(page) do
     case ctx.page_things[page] do
       %{type: nil} -> {nil, [Residue.entry(id, :data_to_send_untyped_page, %{page: page})]}
-      %{index?: false} -> {Lowering.expr(value, path ++ ["data_to_send"], env), []}
+      %{type: _} -> {Lowering.expr(value, path ++ ["data_to_send"], env), []}
       _ -> {nil, Lowering.option_residue(id, ["data_to_send"])}
     end
   end
@@ -890,15 +909,12 @@ defmodule BubbleEx.Workflows.Frontend do
   defp data_to_send(_value, _page, _path, id, _env, _ctx),
     do: {nil, Lowering.option_residue(id, ["data_to_send"])}
 
-  # Each page's type of content and whether it is the index page, by
-  # Bubble ID.
+  # Each page's type of content, by Bubble ID.
   defp page_things(app, surfaces) do
     for {id, %{kind: :page} = s} <- surfaces, into: %{} do
       raw = at(app, s.path)
       props = if is_map(raw), do: map(raw["properties"]), else: %{}
-
-      {bubble(id),
-       %{type: text(props["page_item_type"]), index?: is_map(raw) and raw["name"] == "index"}}
+      {bubble(id), %{type: text(props["page_item_type"])}}
     end
   end
 

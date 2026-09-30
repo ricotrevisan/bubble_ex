@@ -6,7 +6,19 @@
       "name": "Task card",
       "type": "CustomDefinition",
       "properties": {"group_type": "custom.task", "width": 300, "height": 40},
+      "workflows": {
+        "wCardSelf": {
+          "id": "wCardSelf", "type": "ButtonClicked", "properties": {"element_id": "bCardSelf"},
+          "actions": {"0": {"id": "aCardSelf1", "type": "ChangePage",
+            "properties": {"element_id": "Current page", "data_to_send": {"type": "ElementParent"}}}}
+        }
+      },
       "elements": {
+        "bCardSelf": {
+          "id": "bCardSelf", "type": "Button",
+          "properties": {"order": 2, "width": 300, "height": 40, "min_height_css": "40px",
+            "text": {"type": "TextExpression", "entries": {"0": "Open here"}}}
+        },
         "bCardTitle": {
           "id": "bCardTitle", "type": "Text",
           "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px",
@@ -226,7 +238,19 @@
       "type": "Page"
     },
     "task": {
+      "workflows": {
+        "wSelf": {
+          "id": "wSelf", "type": "ButtonClicked", "properties": {"element_id": "bSelf"},
+          "actions": {"0": {"id": "aSelf1", "type": "ChangePage",
+            "properties": {"element_id": "Current page", "data_to_send": {"type": "CurrentPageItem"}}}}
+        }
+      },
       "elements": {
+        "bSelf": {
+          "id": "bSelf", "type": "Button",
+          "properties": {"order": 3, "width": 300, "height": 40, "min_height_css": "40px",
+            "text": {"type": "TextExpression", "entries": {"0": "Again"}}}
+        },
         "bProjGroup": {
           "elements": {
             "bProjName": {

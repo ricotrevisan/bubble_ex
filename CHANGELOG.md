@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Four gaps of the vertical slice** (WTF-450, WTF-451, WTF-453,
+  WTF-454).
+  * "Add a pause before next action" lowers to a `:pause` step. The
+    generated runtime ends the event there and runs the rest of the
+    workflow, and of the custom events waiting on it, in a message the page
+    sends itself (`Process.send_after/3`), never blocking the LiveView. A
+    pause is capped by `:max_pause_ms` (default 60 s), costs one call and
+    continues the run's budgets one link down the chain. A page holds at
+    most `:max_pending` (default 100) paused and scheduled workflows;
+    malformed resume messages are ignored and budgets capped at a root
+    run's. A reconnect drops paused work.
+  * A refused click or input change (not lowered, data access off) shows
+    "This action isn't available yet." in a polite live region of the
+    page's hook, as text; the workflow, reason and IDs stay in the log.
+  * "Go to page" data sent to the current page replaces the thing's
+    segment of the page's URL (a reusable element's is checked at run
+    time: the step fails on a page that takes no thing); to the index
+    page it goes to `/index/<unique id>`, a new route of a typed index
+    page. The page's own path comes from the router's path parameters, so a
+    `bubble_thing` query parameter never shortens it
+    (`test/support/target/phoenix/index_thing.json` boots the route). Both use the unique-ID check of `navigate/7`.
+  * A Text whose dynamic content has BBCode in its own literal text
+    renders `[b]`, `[i]`, `[u]` and `[s]` through the generated
+    `<Web>.Bubble.bbcode/1`, the values escaped; BBCode or HTML in data
+    shows as typed, other tags stay text with a marker.
+
 - **Static page assets are the app's own** (WTF-447). Generated pages no
   longer point at Bubble's storage. `mix bubble.fetch_assets`
   (`BubbleEx.Frontend.StaticAssets.fetch/3`) is the separate, explicit

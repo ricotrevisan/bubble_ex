@@ -30,7 +30,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
   test "every page and reusable-element workflow is lowered, in a stable order", %{
     lowered: lowered
   } do
-    assert length(lowered.workflows) == 24
+    assert length(lowered.workflows) == 27
 
     assert Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}) ==
              Enum.sort(Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}))
@@ -116,7 +116,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
              ]
            } = nav
 
-    # The index page's path is "/": no segment to read a thing from yet.
+    # The index page takes it too, under /index (WTF-454).
     index =
       typed
       |> put_in(["pages", "other", "name"], "index")
@@ -124,12 +124,57 @@ defmodule BubbleEx.Workflows.FrontendTest do
       |> send_user.()
       |> lower()
 
-    assert {:unsupported_option, %{options: ["data_to_send"]}} in (index
-                                                                   |> workflow("wNav")
-                                                                   |> Workflow.residue()
-                                                                   |> Enum.map(
-                                                                     &{&1.reason, &1.detail}
-                                                                   ))
+    assert [%{residue: [], args: %{thing: %{ir: %{op: :current_user}}}}] =
+             workflow(index, "wNav").steps
+  end
+
+  test "Go to page sends its data to the current page (WTF-454)" do
+    send_user = fn app ->
+      edit(
+        app,
+        "wUrl",
+        &put_in(&1, ["actions", "0", "properties", "data_to_send"], %{"type" => "CurrentUser"})
+      )
+    end
+
+    # A page's own workflow: that page's rules.
+    [nav] = app() |> send_user.() |> lower() |> workflow("wUrl") |> Map.fetch!(:steps)
+
+    assert [%{reason: :data_to_send_untyped_page, detail: %{page: "bHome"}}] = nav.residue
+
+    [nav] =
+      app()
+      |> put_in(["pages", "home", "properties", "page_item_type"], "user")
+      |> send_user.()
+      |> lower()
+      |> workflow("wUrl")
+      |> Map.fetch!(:steps)
+
+    assert %{residue: [], args: %{page: :current, thing: %{ir: %{op: :current_user}}}} = nav
+
+    # A reusable element's: whichever page renders it, checked at run time.
+    card =
+      app()
+      |> put_in(["element_definitions", "card", "workflows", "wCardOpen", "actions", "0"], %{
+        "id" => "aCardNav",
+        "properties" => %{
+          "element_id" => "Current page",
+          "data_to_send" => %{"type" => "CurrentUser"}
+        },
+        "type" => "ChangePage"
+      })
+      |> lower()
+
+    assert [%{residue: [], args: %{page: :current, thing: %{ir: %{op: :current_user}}}}] =
+             workflow(card, "wCardOpen").steps
+  end
+
+  test "Add a pause before next action lowers to a pause (WTF-451)", %{lowered: lowered} do
+    [_, pause, _] = workflow(lowered, "wPause").steps
+
+    assert %{op: :pause, type: "PauseWFClient", residue: [], args: %{length: %{ir: ir}}} = pause
+    assert %{op: :literal, args: [30]} = ir
+    assert Workflow.native?(workflow(lowered, "wEvtPause"))
   end
 
   test "an unsupported action is residue with a diagnostic, never dropped", %{
@@ -161,7 +206,6 @@ defmodule BubbleEx.Workflows.FrontendTest do
     lowered =
       app()
       |> edit("wCall", &put_in(&1, ["actions", "0", "properties", "custom_event"], "wCardZero"))
-      |> edit("wUrl", &put_in(&1, ["actions", "0", "properties", "data_to_send"], "x"))
       |> edit("wState", &put_in(&1, ["actions", "0", "properties", "surprise"], true))
       |> edit("wLoad", &Map.put(&1, "type", "1488796042609x768734193128308700-AAX"))
       |> edit("wCond", &put_in(&1, ["properties", "run_when"], "sometimes"))
@@ -174,8 +218,6 @@ defmodule BubbleEx.Workflows.FrontendTest do
 
     # A custom event of another page or reusable element.
     assert {:unresolved_reference, %{reference: "workflow"}} in reasons.("wCall")
-    # Data sent to the current page (its path is known at run time only).
-    assert {:unsupported_option, %{options: ["data_to_send"]}} in reasons.("wUrl")
     assert {:unsupported_option, %{options: ["surprise"]}} in reasons.("wState")
 
     assert {:plugin_event, %{plugin: "1488796042609x768734193128308700"}} in reasons.("wLoad")
@@ -209,8 +251,8 @@ defmodule BubbleEx.Workflows.FrontendTest do
     coverage = Frontend.coverage(lowered)
 
     assert coverage["workflows"] == %{
-             "total" => 24,
-             "native" => 22,
+             "total" => 27,
+             "native" => 25,
              "residue" => 2,
              "disabled" => 1
            }
@@ -218,7 +260,8 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert coverage["steps"]["residue"] == 2
     assert coverage["by_surface"]["reusable"] == %{"total" => 3, "native" => 3}
     assert coverage["residue_reasons"] == %{"unsupported_action" => 2}
-    assert coverage["step_ops"]["set_state"] == 15
+    assert coverage["step_ops"]["set_state"] == 20
+    assert coverage["step_ops"]["pause"] == 2
   end
 
   test "its residue feeds the plan", %{lowered: lowered} do

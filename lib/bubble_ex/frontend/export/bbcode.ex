@@ -3,6 +3,13 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
 
   @tags ~w(b i u s ul ol li url)
 
+  # The tags `split/1` renders around dynamic values (WTF-450): inline
+  # formatting only, a subset of `@tags`.
+  @inline %{"b" => :b, "i" => :i, "u" => :u, "s" => :s}
+
+  # Tags Bubble knows that `split/1` leaves as text.
+  @known ~w(url ul ol li color size font center left right justify highlight img youtube indent)
+
   @spec present?(term()) :: boolean()
   def present?(text) when is_binary(text) do
     Regex.match?(~r/\[(?:\/)?(?:b|i|u|s|ul|ol|li|url)\b/i, text)
@@ -16,6 +23,98 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   end
 
   def block?(_), do: false
+
+  @doc """
+  BBCode around dynamic values (WTF-450): `parts` are literal text
+  (binaries, where tags are read) and opaque values (`{:value, term}`,
+  never read for tags). Returns `{nodes, unsupported}` or `:none` when no
+  literal part has a tag `split/1` renders. A node is a binary, a
+  `{:value, term}` or `{tag, nodes}` for `tag` in `:b`, `:i`, `:u`, `:s`
+  (an opening tag with its closing one later in the same literal level,
+  as `to_html/1` pairs them); any other tag, or an unpaired one, stays
+  text. `unsupported` lists the other known tags found (sorted names).
+  """
+  @spec split([String.t() | {:value, term()}]) :: {list(), [String.t()]} | :none
+  def split(parts) when is_list(parts) do
+    literals = for part <- parts, is_binary(part), do: part
+
+    if Enum.any?(literals, &Regex.match?(inline_tag(), &1)) do
+      nodes = parts |> Enum.flat_map(&tokens/1) |> nest([]) |> merge_text()
+      {nodes, unsupported(literals)}
+    else
+      :none
+    end
+  end
+
+  defp inline_tag,
+    do: Regex.compile!("\\[(\\/?)(" <> Enum.join(Map.keys(@inline), "|") <> ")\\]", "i")
+
+  defp tokens({:value, _} = value), do: [value]
+
+  defp tokens(text) when is_binary(text) do
+    inline_tag()
+    |> Regex.split(text, include_captures: true, trim: true)
+    |> Enum.map(fn piece ->
+      case Regex.run(inline_tag(), piece) do
+        [^piece, "", name] -> {:open, String.downcase(name), piece}
+        [^piece, "/", name] -> {:close, String.downcase(name), piece}
+        _ -> piece
+      end
+    end)
+  end
+
+  # Tokens to nodes: an opening tag pairs with its closing tag (same name,
+  # counting nested ones); otherwise both stay text.
+  defp nest([], acc), do: Enum.reverse(acc)
+
+  defp nest([{:open, name, raw} | rest], acc) do
+    case take_close(rest, name, 1, []) do
+      {:ok, inner, rest} -> nest(rest, [{Map.fetch!(@inline, name), nest(inner, [])} | acc])
+      :error -> nest(rest, [raw | acc])
+    end
+  end
+
+  defp nest([{:close, _name, raw} | rest], acc), do: nest(rest, [raw | acc])
+  defp nest([token | rest], acc), do: nest(rest, [token | acc])
+
+  defp take_close([], _name, _depth, _acc), do: :error
+
+  defp take_close([{:close, name, _} | rest], name, 1, acc), do: {:ok, Enum.reverse(acc), rest}
+
+  defp take_close([{:close, name, _} = t | rest], name, depth, acc),
+    do: take_close(rest, name, depth - 1, [t | acc])
+
+  defp take_close([{:open, name, _} = t | rest], name, depth, acc),
+    do: take_close(rest, name, depth + 1, [t | acc])
+
+  defp take_close([t | rest], name, depth, acc), do: take_close(rest, name, depth, [t | acc])
+
+  # Adjacent texts as one; empty texts dropped.
+  defp merge_text(nodes) do
+    nodes
+    |> Enum.map(fn
+      {:value, _} = value -> value
+      {tag, children} -> {tag, merge_text(children)}
+      text -> text
+    end)
+    |> Enum.chunk_by(&is_binary/1)
+    |> Enum.flat_map(fn
+      [text | _] = texts when is_binary(text) -> [IO.iodata_to_binary(texts)]
+      nodes -> nodes
+    end)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp unsupported(literals) do
+    for text <- literals,
+        [_, name] <- Regex.scan(~r/\[\/?([a-z0-9]+)(?:=[^\]]*)?\]/i, text),
+        name = String.downcase(name),
+        name in @known,
+        uniq: true do
+      name
+    end
+    |> Enum.sort()
+  end
 
   @spec to_html(String.t()) :: String.t()
   def to_html(text) when is_binary(text), do: text |> parse([]) |> emit()

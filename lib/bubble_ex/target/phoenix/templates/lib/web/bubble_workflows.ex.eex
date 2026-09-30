@@ -31,12 +31,31 @@ defmodule <%= @web %>.BubbleWorkflows do
   completely: `blocked` in its module's `__bubble__(:workflows)` (the
   residue subjects and blocked callees bubble_ex found, as the backend's
   `not_lowered`) makes it refuse **before its first step** and log an
-  error. The same holds for data access (below). Steps run in Bubble order; a step's "Only when"
+  error. The same holds for data access (below). When a click or an input
+  change is refused, the page also shows a short notice, "This action
+  isn't available yet." (WTF-453, the page hook's `bubble:notice`, a polite
+  live region): never the workflow, its reason or any ID, which stay in
+  the log. Steps run in Bubble order; a step's "Only when"
   skips it; a failing step ends the workflow (steps before it keep their
   effects, as in Bubble). Custom states, input values, element steps and
   navigation apply to the page when the event's workflows end.
   "Terminate this workflow" ends it; a custom event's return values are
   its caller's step result.
+
+  "Add a pause before next action" (WTF-451) never blocks the page: the
+  event ends there (what the steps before it did applies to the page) and
+  the rest of the workflow, and of every custom event waiting on it, runs
+  in a message the page sends itself after the pause
+  (`Process.send_after/3`), with the step results, arguments and start time
+  it had. A pause lasts at most `:max_pause_ms` (default 60_000); it costs
+  one call of the run's call budget and continues the run's budgets one
+  link further down the chain, as a scheduled custom event, so a workflow
+  pausing in a loop ends. Paused work lives in the LiveView process:
+  leaving the page (a "Go to page" to another page), closing it or a
+  reconnect (LiveView mounts a new process) drops what was still paused.
+  A page holds at most `:max_pending` (default 100) paused workflows and
+  scheduled custom events at once; beyond that the new ones are dropped,
+  logged, and the page shows the refusal notice.
 
   ## Data access (opt-in)
 
@@ -84,7 +103,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   of the triggering element's container; a condition-true workflow whose
   "run this" is unset runs once per page load; a condition true when the
   page loads fires; "Go to page" lets the workflow finish before the page
-  changes; workflows triggered together run one after the other.
+  changes; workflows triggered together run one after the other; a custom
+  event's caller waits for the custom event's pauses; data sent to the
+  index page is at `/index/<unique id>`.
   """
 
   require Logger
@@ -102,6 +123,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   @max_input_bytes Application.compile_env(:<%= @app %>, [__MODULE__, :max_input_bytes], 100_000)
   @max_depth 100
 
+  # What a browser is told when its click or input change is refused: no
+  # workflow, reason or ID (those are logged).
+  @refused_notice "This action isn't available yet."
+
   defmodule Ctx do
     @moduledoc """
     The state a workflow runs with: the surface module and instance
@@ -114,7 +139,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     (`data`), the unique ID of its thing from the URL (`thing`) and, while
     a repeating group's cells are read, the current cell's thing and
     1-based index (`cell`, `cell_index`); `data_stale` once a data step
-    ran (it may have written what the page shows).
+    ran (it may have written what the page shows). `page_path` is the
+    page's own path (without its thing's segment) and `takes_thing`
+    whether the page reads a thing from its URL (WTF-454); `resume` the
+    step a paused workflow continues from (WTF-451).
     """
     defstruct [
       :module,
@@ -127,8 +155,11 @@ defmodule <%= @web %>.BubbleWorkflows do
       :thing,
       :cell,
       :cell_index,
+      :resume,
       scope: "",
       path: "/",
+      page_path: "/",
+      takes_thing: false,
       args: %{},
       steps: %{},
       states: %{},
@@ -183,6 +214,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_first_inputs, inputs)
     |> assign(:bubble_url, %{})
     |> assign(:bubble_path, "/")
+    |> assign(:bubble_page_path, "/")
+    |> assign(:bubble_takes_thing, false)
+    |> assign(:bubble_refused, false)
+    |> assign(:bubble_pending_messages, 0)
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_stale, false)
@@ -200,7 +235,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> handle_params(%{}, "http://localhost" <> path)
   end
 
-  @doc "Keeps the URL's path and query parameters (text only)."
+  @doc """
+  Keeps the URL's path and query parameters (text only), and the page's
+  own path: the path without its thing's segment when the route has one.
+  """
   def handle_params(socket, params, uri) do
     url =
       for {k, v} <- params,
@@ -208,9 +246,13 @@ defmodule <%= @web %>.BubbleWorkflows do
           into: %{},
           do: {k, v}
 
+    %URI{path: path, host: host} = URI.parse(uri)
+    path = path || "/"
+
     socket
     |> assign(:bubble_url, url)
-    |> assign(:bubble_path, URI.parse(uri).path || "/")
+    |> assign(:bubble_path, path)
+    |> assign(:bubble_page_path, page_path(socket, params, path, host))
   end
 
   @doc """
@@ -222,15 +264,45 @@ defmodule <%= @web %>.BubbleWorkflows do
     socket
     |> handle_params(params, uri)
     |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
+    |> assign(:bubble_takes_thing, takes_thing?(page))
     |> BubbleData.load(page)
   end
+
+  # The page's own path. When the router took `bubble_thing` from the
+  # path (a `/<page>/:bubble_thing` route, never a query parameter of the
+  # same name), the route without that segment; the index page's
+  # `/index/:bubble_thing` is `/` (a bare `/index` has no route).
+  defp page_path(socket, %{"bubble_thing" => id}, path, host) when is_binary(id) do
+    router = socket.router || <%= @web %>.Router
+
+    case Phoenix.Router.route_info(router, "GET", path, host) do
+      %{route: route, path_params: %{"bubble_thing" => ^id}} when is_binary(route) ->
+        case String.replace_suffix(route, "/:bubble_thing", "") do
+          ^route -> path
+          "/index" -> "/"
+          "" -> "/"
+          base -> base
+        end
+
+      _ ->
+        path
+    end
+  end
+
+  defp page_path(_socket, _params, path, _host), do: path
+
+  # Whether the page reads its thing from the URL: only then is it routed
+  # with a `/:bubble_thing` segment (WTF-420).
+  defp takes_thing?(page),
+    do: Enum.any?(BubbleData.sources(page), &match?(%{read: :url_thing, fun: f} when f != nil, &1))
 
   @doc "Runs the workflows of a click or an input change the page lists."
   def handle_event(socket, page, "bubble:click", %{"scope" => scope, "element" => element})
       when is_binary(scope) and is_binary(element) do
     with {:ok, module} <- surface(page, scope),
          [_ | _] = ids <- Map.get(module.__bubble__(:surface).clicks, element, []) do
-      {:noreply, event(socket, page, [{module, scope, ids, %{}}])}
+      socket = assign(socket, :bubble_refused, false)
+      {:noreply, socket |> event(page, [{module, scope, ids, %{}}]) |> notice()}
     else
       _ -> {:noreply, socket}
     end
@@ -245,9 +317,11 @@ defmodule <%= @web %>.BubbleWorkflows do
       ids = Map.get(module.__bubble__(:surface).changes, element, [])
 
       socket =
-        assign(socket, :bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
+        socket
+        |> assign(:bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
+        |> assign(:bubble_refused, false)
 
-      {:noreply, event(socket, page, [{module, scope, ids, %{}}], nil, :deferred)}
+      {:noreply, socket |> event(page, [{module, scope, ids, %{}}], nil, :deferred) |> notice()}
     else
       _ -> {:noreply, socket}
     end
@@ -268,8 +342,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
+    socket = delivered(socket)
+
     if surface(page, scope) == {:ok, module} and budget?(budget),
-      do: {:noreply, event(socket, page, [{module, scope, [id], args}], budget)},
+      do: {:noreply, event(socket, page, [{module, scope, [id], args}], cap_budget(budget))},
       else: {:noreply, socket}
   end
 
@@ -282,13 +358,32 @@ defmodule <%= @web %>.BubbleWorkflows do
     if BubbleData.pending?(socket, ref) do<%= if @enforced? do %>
       socket = refresh_actor(socket)<% end %>
       run = socket.assigns[:bubble_pending_run] || start(socket, nil)
-      socket = socket |> assign(:bubble_pending_run, nil) |> BubbleData.refresh(page, ref)
+
+      socket =
+        socket
+        |> assign(:bubble_pending_run, nil)
+        |> assign(:bubble_refused, false)
+        |> BubbleData.refresh(page, ref)
+
+      # The pending events are input changes: a refused one gets its notice.
       pending = socket.assigns[:bubble_pending_events] || []
       {socket, run} = run_events(socket, page, pending, run)
       socket = assign(socket, :bubble_pending_events, nil)
       {socket, run} = settle_after_events(socket, page, pending, run)
-      {:noreply, dispatch(socket, run)}
+      {:noreply, socket |> dispatch(run) |> notice()}
     else
+      {:noreply, socket}
+    end
+  end
+
+  # The rest of a paused workflow (WTF-451), sent by the page itself.
+  def handle_info(socket, page, {:bubble, :resume, frames, now, budget}) do
+    socket = delivered(socket)
+
+    if resumable?(page, frames) and budget?(budget) and match?(%DateTime{}, now) do
+      {:noreply, event(socket, page, [{:resume, frames, now}], cap_budget(budget))}
+    else
+      Logger.warning("bubble: a malformed paused workflow was ignored")
       {:noreply, socket}
     end
   end
@@ -335,6 +430,50 @@ defmodule <%= @web %>.BubbleWorkflows do
     do: is_integer(j) and j >= 0 and is_integer(c) and c >= 0 and is_integer(n) and n >= 0
 
   defp budget?(_), do: false
+
+  # A budget never above a root run's (`:max_jobs`, `:max_calls`,
+  # `:max_chain`).
+  defp cap_budget(%{jobs: jobs, calls: calls, chain: chain}) do
+    root = Runtime.root(nil, nil)
+    %{jobs: min(jobs, root.budget), calls: min(calls, root.calls), chain: min(chain, max_chain())}
+  end
+
+  # Every paused workflow is well formed and belongs to a surface the page
+  # renders, in its scope; every one but the innermost waits on a call.
+  defp resumable?(page, [_ | outer] = frames) when is_list(outer),
+    do: Enum.all?(frames, &frame?(page, &1)) and Enum.all?(outer, &is_binary(&1.call))
+
+  defp resumable?(_page, _frames), do: false
+
+  defp frame?(page, %{module: module, scope: scope, workflow: id, at: at, args: args, steps: steps, call: call} = frame)
+       when is_atom(module) and is_binary(scope) and is_binary(id) and is_integer(at) and at > 0 and
+              is_map(args) and is_map(steps) and (is_nil(call) or is_binary(call)) and
+              is_map_key(frame, :returns),
+       do: surface(page, scope) == {:ok, module}
+
+  defp frame?(_page, _frame), do: false
+
+  # One paused workflow or scheduled custom event was delivered.
+  defp delivered(socket),
+    do: assign(socket, :bubble_pending_messages, max(Map.get(socket.assigns, :bubble_pending_messages, 0) - 1, 0))
+
+  defp max_pending do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_pending, 100) do
+      n when is_integer(n) and n >= 0 -> n
+      _ -> 100
+    end
+  end
+
+  # Tells the browser its click or input change was refused (`@refused_notice`).
+  defp notice(socket) do
+    if socket.assigns[:bubble_refused] do
+      socket
+      |> assign(:bubble_refused, false)
+      |> push_event("bubble:notice", %{text: @refused_notice})
+    else
+      socket
+    end
+  end
 
   # Input values are capped (`:max_input_bytes`, default 100_000): a larger
   # one is ignored, as the input's change never happened.
@@ -448,10 +587,14 @@ defmodule <%= @web %>.BubbleWorkflows do
   # Each workflow runs on current data: re-read first when a preceding one
   # (or anything since the last read) made it stale.
   defp run_events(socket, page, runs, run) do
-    Enum.reduce(runs, {socket, run}, fn {module, scope, ids, args}, acc ->
-      Enum.reduce(ids, acc, fn id, {socket, run} ->
-        socket |> BubbleData.reload(page) |> run_event(module, scope, [id], args, run)
-      end)
+    Enum.reduce(runs, {socket, run}, fn
+      {:resume, frames, now}, {socket, run} ->
+        socket |> BubbleData.reload(page) |> resume_event(frames, now, run)
+
+      {module, scope, ids, args}, acc ->
+        Enum.reduce(ids, acc, fn id, {socket, run} ->
+          socket |> BubbleData.reload(page) |> run_event(module, scope, [id], args, run)
+        end)
     end)
   end
 
@@ -481,13 +624,33 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp dispatch(socket, %{messages: []}), do: socket
 
   defp dispatch(socket, run) do
-    n = length(run.messages)
+    # At most :max_pending held by the page at once: the rest is dropped.
+    pending = Map.get(socket.assigns, :bubble_pending_messages, 0)
+    {sent, dropped} = run.messages |> Enum.reverse() |> Enum.split(max(max_pending() - pending, 0))
+    socket = assign(socket, :bubble_pending_messages, pending + length(sent))
+    n = max(length(sent), 1)
     budget = %{jobs: div(run.jobs, n), calls: div(run.calls, n), chain: run.chain + 1}
 
-    for {delay, scope, module, id, args} <- Enum.reverse(run.messages),
-        do: Process.send_after(self(), {:bubble, :run, scope, module, id, args, budget}, delay)
+    for message <- sent do
+      case message do
+        {delay, {:resume, frames, now}} ->
+          Process.send_after(self(), {:bubble, :resume, frames, now, budget}, delay)
 
-    socket
+        {delay, scope, module, id, args} ->
+          Process.send_after(self(), {:bubble, :run, scope, module, id, args, budget}, delay)
+      end
+    end
+
+    if dropped == [] do
+      socket
+    else
+      Logger.warning(
+        "bubble: #{length(dropped)} paused or scheduled workflow(s) dropped: " <>
+          "the page already holds :max_pending (#{max_pending()})"
+      )
+
+      push_event(socket, "bubble:notice", %{text: @refused_notice})
+    end
   end
 
   defp ctx(socket, module, scope, run) do
@@ -506,6 +669,8 @@ defmodule <%= @web %>.BubbleWorkflows do
       first: socket.assigns.bubble_first_inputs,
       url: socket.assigns.bubble_url,
       path: socket.assigns.bubble_path,
+      page_path: Map.get(socket.assigns, :bubble_page_path, socket.assigns.bubble_path),
+      takes_thing: Map.get(socket.assigns, :bubble_takes_thing, false),
       data: Map.get(socket.assigns, :bubble_data, %{}),
       thing: Map.get(socket.assigns, :bubble_thing)
     }
@@ -529,16 +694,40 @@ defmodule <%= @web %>.BubbleWorkflows do
   # Runs workflows `ids` of `module` in `scope` with what is left of the
   # event's budgets; returns the socket and the event's run, charged.
   defp run_event(socket, module, scope, ids, args, run) do
-    ctx =
-      Enum.reduce(ids, ctx(socket, module, scope, run), fn id, ctx ->
-        {_status, ctx} = run(ctx, module, id, args, scope)
-        ctx
+    {ctx, refused?} =
+      Enum.reduce(ids, {ctx(socket, module, scope, run), false}, fn id, {ctx, refused?} ->
+        {status, ctx} = run(ctx, module, id, args, scope)
+        {paused(ctx, status), refused? or refused?(status)}
       end)
 
+    socket = if refused?, do: assign(socket, :bubble_refused, true), else: socket
+    finish(socket, ctx, run)
+  end
+
+  # The rest of a paused workflow and of the custom events waiting on it
+  # (WTF-451), with the start time it had, on the budgets the pause left.
+  defp resume_event(socket, [frame | _] = frames, now, run) do
+    ctx = %{ctx(socket, frame.module, frame.scope, run) | now: now}
+    {status, ctx} = resume(ctx, frames)
+    finish(socket, paused(ctx, status), run)
+  end
+
+  defp finish(socket, ctx, run) do
     b = backend(ctx)
     run = %{run | jobs: b.budget, calls: b.calls, messages: ctx.messages ++ run.messages}
     {apply_ctx(socket, ctx), run}
   end
+
+  # A paused workflow's rest is sent when the event ends, after the pause.
+  defp paused(ctx, {:paused, ms, frames}),
+    do: %{ctx | messages: [{ms, {:resume, frames, ctx.now}} | ctx.messages]}
+
+  defp paused(ctx, _status), do: ctx
+
+  # Refused before its first step: not lowered, or data access is off.
+  defp refused?({:error, {:not_lowered, _}}), do: true
+  defp refused?({:error, {:data_access_disabled, _}}), do: true
+  defp refused?(_status), do: false
 
   defp apply_ctx(socket, %Ctx{} = ctx) do
     # A data step may have written what the page shows; a custom state or
@@ -689,18 +878,136 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   Runs `steps` (functions of the context answering `{:cont, ctx}` or
   `{:halt, status, ctx}`) when `condition` (nil, or a function of the
-  context) holds.
+  context) holds. A paused workflow (`ctx.resume`, WTF-451) continues
+  from the step after its pause: its condition held when it started.
+  A pause ends the run with `{:paused, ms, frames}`: what to continue,
+  the innermost workflow first.
   """
+  def steps(%Ctx{resume: n} = ctx, _condition, steps) when is_integer(n) and n > 0,
+    do: run_steps(%{ctx | resume: nil}, Enum.drop(steps, n - 1), n)
+
   def steps(ctx, condition, steps) do
-    if condition == nil or condition.(ctx) == true do
-      Enum.reduce_while(steps, {:done, ctx}, fn step, {_status, ctx} ->
-        case step.(ctx) do
-          {:cont, ctx} -> {:cont, {:done, ctx}}
-          {:halt, status, ctx} -> {:halt, {status, ctx}}
+    if condition == nil or condition.(ctx) == true,
+      do: run_steps(ctx, steps, 1),
+      else: {:not_run, ctx}
+  end
+
+  defp run_steps(ctx, steps, first) do
+    steps
+    |> Enum.with_index(first)
+    |> Enum.reduce_while({:done, ctx}, fn {step, n}, {_status, ctx} ->
+      case step.(ctx) do
+        {:cont, ctx} ->
+          {:cont, {:done, ctx}}
+
+        # Paused here, or in a custom event step `call` waits on.
+        {:halt, {:pause, ms, frames, call}, ctx} ->
+          {:halt, {{:paused, ms, frames ++ [frame(ctx, n + 1, call)]}, ctx}}
+
+        {:halt, status, ctx} ->
+          {:halt, {status, ctx}}
+      end
+    end)
+  end
+
+  # What a paused workflow continues with: the step after the pause and,
+  # when it waits on a custom event, the step that gets its return values.
+  defp frame(ctx, at, call) do
+    %{
+      module: ctx.module,
+      workflow: ctx.workflow,
+      scope: ctx.scope,
+      args: ctx.args,
+      steps: ctx.steps,
+      returns: ctx.returns,
+      at: at,
+      call: call
+    }
+  end
+
+  @doc """
+  "Add a pause before next action" (WTF-451): `length` milliseconds (at
+  most `:max_pause_ms`; empty or negative is none). It costs one call and
+  ends the run here; the page runs the rest after the pause, one link
+  further down the chain (see the moduledoc).
+  """
+  def pause(ctx, step, length) do
+    b = backend(ctx)
+
+    cond do
+      b.calls < 1 ->
+        fail(ctx, step, {:call_budget_exhausted, ctx.workflow})
+
+      b.chain >= max_chain() ->
+        fail(ctx, step, {:chain_limit, ctx.workflow})
+
+      true ->
+        ctx = put_step(%{ctx | backend: %{b | calls: b.calls - 1}}, step, nil)
+        {:halt, {:pause, pause_ms(length), [], nil}, ctx}
+    end
+  end
+
+  @doc "A pause's length in milliseconds: `length` capped at `:max_pause_ms`."
+  def pause_ms(length) when is_number(length) and length > 0,
+    do: length |> round() |> min(max_pause_ms())
+
+  def pause_ms(_length), do: 0
+
+  defp max_pause_ms do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_pause_ms, 60_000) do
+      ms when is_integer(ms) and ms >= 0 -> min(ms, 4_294_967_295)
+      _ -> 60_000
+    end
+  end
+
+  # Continues `frames` (innermost first): each workflow from the step after
+  # its pause; when one ends, the custom event step waiting on it gets its
+  # return values and its caller continues. A failure ends every caller
+  # (as a failing custom event fails its call step); a new pause returns
+  # what is still waiting.
+  defp resume(ctx, [frame | outer]) do
+    case continue(ctx, frame, length(outer)) do
+      {{:paused, ms, frames}, ctx} ->
+        {{:paused, ms, frames ++ outer}, ctx}
+
+      {status, ctx} when outer == [] ->
+        {status, ctx}
+
+      {{:error, reason}, ctx} ->
+        [caller | _] = outer
+        Logger.warning("bubble workflow #{inspect(caller.workflow)}: step #{inspect(caller.call)} failed after a pause: #{inspect(reason)}")
+        {{:error, {caller.call, reason}}, ctx}
+
+      {_status, ctx} ->
+        [caller | rest] = outer
+        caller = %{caller | steps: Map.put(caller.steps, caller.call, ctx.returns)}
+        resume(ctx, [caller | rest])
+    end
+  end
+
+  defp continue(ctx, frame, depth) do
+    case frame.module.__bubble__(:workflows)[frame.workflow] do
+      %{run: fun, blocked: [], data: data} when is_atom(fun) and fun != nil ->
+        if data and not data_access?() do
+          {{:error, {:data_access_disabled, frame.workflow}}, ctx}
+        else
+          child = %{
+            ctx
+            | module: frame.module,
+              workflow: frame.workflow,
+              scope: frame.scope,
+              args: frame.args,
+              steps: frame.steps,
+              returns: frame.returns,
+              depth: depth + 1,
+              resume: frame.at
+          }
+
+          apply(frame.module, fun, [child])
         end
-      end)
-    else
-      {:not_run, ctx}
+
+      _ ->
+        {{:error, {:not_resumable, frame.workflow}}, ctx}
     end
   end
 
@@ -815,18 +1122,28 @@ defmodule <%= @web %>.BubbleWorkflows do
   Go to page `to` (a path, or `:current`) with `params` (`{key, value}`,
   shown as text), keeping the current ones when `keep?`. `thing`, the
   data sent to a page with a type of content, is a record (or its unique
-  ID): its unique ID is the path segment after the page's own; an empty
-  one (or a value that is not a thing's ID) sends nothing.
+  ID): its unique ID is the path segment after the page's own
+  (`/index/<unique id>` for the index page, WTF-454); an empty one (or a
+  value that is not a thing's ID) sends nothing. Sent to the current page
+  (WTF-454), it replaces the thing's segment of the page's URL, and fails
+  the step when the page takes no thing (its route has no such segment).
   """
-  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\ nil) do
-    path = if to == :current, do: ctx.path, else: to
+  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\ :none)
 
-    # The page's own path without a trailing slash: "/" <> id would be a
-    # scheme-relative URL ("//<id>").
+  def navigate(%Ctx{takes_thing: false} = ctx, :current, _params, _keep?, _replace?, _new_tab?, thing)
+      when thing != :none do
+    Logger.warning("bubble workflow #{inspect(ctx.workflow)}: data sent to the current page, which takes none; not navigated")
+    {:halt, {:error, :data_to_send_untyped_page}, ctx}
+  end
+
+  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing) do
     path =
-      case thing_id(thing) do
-        nil -> path
-        id -> String.trim_trailing(path, "/") <> "/" <> id
+      case {to, thing_id(thing)} do
+        {:current, nil} when thing == :none -> ctx.path
+        {:current, nil} -> ctx.page_path
+        {:current, id} -> thing_path(ctx.page_path, id)
+        {page, nil} -> page
+        {page, id} -> thing_path(page, id)
       end
 
     base = if keep?, do: ctx.url, else: %{}
@@ -843,8 +1160,17 @@ defmodule <%= @web %>.BubbleWorkflows do
 
     cond do
       new_tab? -> {:cont, %{ctx | js: [%{op: "open", url: url} | ctx.js]}}
-      path == ctx.path -> {:cont, %{ctx | navigate: {:patch, url, replace?}}}
+      to == :current or path == ctx.path -> {:cont, %{ctx | navigate: {:patch, url, replace?}}}
       true -> {:cont, %{ctx | navigate: {:navigate, url, replace?}}}
+    end
+  end
+
+  # A page's path with its thing's segment: never "//<id>" (a
+  # scheme-relative URL); the index page's is under /index.
+  defp thing_path(page, id) do
+    case String.trim_trailing(page, "/") do
+      "" -> "/index/" <> id
+      base -> base <> "/" <> id
     end
   end
 
@@ -923,6 +1249,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     case run(ctx, module, id, args, scope(ctx, path)) do
       {{:error, reason}, after_call} ->
         fail(%{after_call | returns: ctx.returns}, step, reason)
+
+      # The custom event paused (WTF-451): this workflow waits on it.
+      {{:paused, ms, frames}, after_call} ->
+        {:halt, {:pause, ms, frames, step}, %{after_call | returns: ctx.returns}}
 
       {_status, after_call} ->
         {:cont, put_step(%{after_call | returns: ctx.returns}, step, after_call.returns)}
