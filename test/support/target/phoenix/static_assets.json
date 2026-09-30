@@ -1,0 +1,249 @@
+{
+  "_id": "static-assets-fixture",
+  "api": {},
+  "element_definitions": {
+    "card": {
+      "%el": {
+        "bPhoto": {
+          "%p": {
+            "alt_tag": "Photo",
+            "src": {
+              "%e": {
+                "0": {
+                  "%n": {
+                    "%nm": "param_image",
+                    "%x": "Message"
+                  },
+                  "%p": {
+                    "%ei": "card"
+                  },
+                  "%x": "GetElement"
+                }
+              },
+              "%x": "TextExpression"
+            }
+          },
+          "%x": "Image",
+          "id": "bPhoto"
+        }
+      },
+      "%nm": "Card",
+      "%p": {
+        "container_layout": "column"
+      },
+      "%x": "CustomDefinition",
+      "id": "card"
+    }
+  },
+  "option_sets": {},
+  "pages": {
+    "index": {
+      "%el": {
+        "bBucket": {
+          "%p": {
+            "alt_tag": "Image bBucket",
+            "src": "https://evil.example/appforest_uf/f1/x.png"
+          },
+          "%x": "Image",
+          "id": "bBucket"
+        },
+        "bCdn": {
+          "%p": {
+            "alt_tag": "Image bCdn",
+            "src": "//a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"
+          },
+          "%x": "Image",
+          "id": "bCdn"
+        },
+        "bData": {
+          "%p": {
+            "alt_tag": "Image bData",
+            "src": "data:image/png;base64,iVBORw0KGgo="
+          },
+          "%x": "Image",
+          "id": "bData"
+        },
+        "bExt": {
+          "%p": {
+            "alt_tag": "Image bExt",
+            "src": "https://images.example.org/hero.jpg"
+          },
+          "%x": "Image",
+          "id": "bExt"
+        },
+        "bHttp": {
+          "%p": {
+            "alt_tag": "Image bHttp",
+            "src": "http://a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"
+          },
+          "%x": "Image",
+          "id": "bHttp"
+        },
+        "bIcon": {
+          "%p": {
+            "icon": "fa fa-star"
+          },
+          "%x": "Icon",
+          "id": "bIcon"
+        },
+        "bJs": {
+          "%p": {
+            "alt_tag": "Image bJs",
+            "src": "javascript:alert(1)"
+          },
+          "%x": "Image",
+          "id": "bJs"
+        },
+        "bLook": {
+          "%p": {
+            "alt_tag": "Image bLook",
+            "src": "https://a1b2c3d4e5f6.cdn.bubble.io.evil.example/f1/x.png"
+          },
+          "%x": "Image",
+          "id": "bLook"
+        },
+        "bMiss": {
+          "%p": {
+            "alt_tag": "Image bMiss",
+            "src": "//a1b2c3d4e5f6.cdn.bubble.io/f1700000000002x400/missing.png"
+          },
+          "%x": "Image",
+          "id": "bMiss"
+        },
+        "bOne": {
+          "%p": {
+            "definition": "card",
+            "param_image": {
+              "%e": {
+                "0": "//a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"
+              },
+              "%x": "TextExpression"
+            }
+          },
+          "%x": "CustomElement",
+          "id": "bOne"
+        },
+        "bQuote": {
+          "%p": {
+            "alt_tag": "Image bQuote",
+            "src": "https://images.example.org/a\" onerror=\"alert(1).png"
+          },
+          "%x": "Image",
+          "id": "bQuote"
+        },
+        "bResp": {
+          "%p": {
+            "alt_tag": "Image bResp",
+            "src": "//a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"
+          },
+          "%s": {
+            "1": {
+              "%c": {
+                "%n": {
+                  "%a": 600,
+                  "%nm": "less_or_equal_than"
+                },
+                "%p": {
+                  "%nm": "Current Page Width"
+                },
+                "%x": "PageData"
+              },
+              "%p": {
+                "src": {
+                  "%e": {
+                    "0": "//a1b2c3d4e5f6.cdn.bubble.io/f1700000000003x500/mobile.png"
+                  },
+                  "%x": "TextExpression"
+                }
+              }
+            },
+            "2": {
+              "%c": {
+                "%n": {
+                  "%a": 400,
+                  "%nm": "less_than"
+                },
+                "%p": {
+                  "%nm": "Current Page Width"
+                },
+                "%x": "PageData"
+              },
+              "%p": {
+                "src": {
+                  "%e": {
+                    "0": "https://images.example.org/small.png"
+                  },
+                  "%x": "TextExpression"
+                }
+              }
+            }
+          },
+          "%x": "Image",
+          "id": "bResp"
+        },
+        "bS3": {
+          "%p": {
+            "alt_tag": "Image bS3",
+            "src": "//s3.amazonaws.com/appforest_uf/f1600000000000x300/footer.png"
+          },
+          "%x": "Image",
+          "id": "bS3"
+        },
+        "bSvg": {
+          "%p": {
+            "alt_tag": "Image bSvg",
+            "src": "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000001x200/mark.svg"
+          },
+          "%x": "Image",
+          "id": "bSvg"
+        },
+        "bToken": {
+          "%p": {
+            "alt_tag": "Image bToken",
+            "src": "//a1b2c3d4e5f6.cdn.bubble.io/f1/x.png?token=abc123"
+          },
+          "%x": "Image",
+          "id": "bToken"
+        },
+        "bTwo": {
+          "%p": {
+            "definition": "card",
+            "param_image": {
+              "%e": {
+                "0": "https://images.example.org/two.png"
+              },
+              "%x": "TextExpression"
+            }
+          },
+          "%x": "CustomElement",
+          "id": "bTwo"
+        },
+        "bUser": {
+          "%p": {
+            "alt_tag": "Image bUser",
+            "src": "https://user:secret@a1b2c3d4e5f6.cdn.bubble.io/f1/x.png"
+          },
+          "%x": "Image",
+          "id": "bUser"
+        }
+      },
+      "%nm": "index",
+      "%p": {
+        "container_layout": "column"
+      },
+      "%x": "Page",
+      "id": "bPg"
+    }
+  },
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

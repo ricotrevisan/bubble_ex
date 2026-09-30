@@ -148,6 +148,23 @@ defmodule BubbleEx.Target.Phoenix do
   `<Web>.UploadsTest` checks hostile files, traversal and the private
   default.
 
+  ## Static assets (WTF-447)
+
+  The images and icons set in the Bubble editor are the app's own after
+  migration: pages never point at Bubble's storage. Downloading them is a
+  separate, explicit step (`mix bubble.fetch_assets`,
+  `BubbleEx.Frontend.StaticAssets.fetch/3`: Bubble's storage hosts only,
+  bytes checked, SVG sanitized, content-addressed); rendering stays
+  offline and deterministic and takes the result as `asset_store:`. A
+  stored image is served from `priv/static/images/bubble/<sha256>.<ext>`
+  (generated), a stored icon library's symbol is inlined; an image on
+  Bubble's storage that was not downloaded renders without a source; an
+  image on another host keeps its URL. Each of these is marked in the
+  template, and `.wtf/assets.json` (generated) lists every asset with its
+  status, SHA-256, content type and size. New endpoints serve
+  `/images/bubble` with `X-Content-Type-Options: nosniff` and a sandbox
+  `Content-Security-Policy`; older ones can add the same `Plug.Static`.
+
   ## Pages (WTF-370)
 
   With `frontend:` (a `BubbleEx.Frontend.Normalized`) the app gets its
@@ -206,7 +223,10 @@ defmodule BubbleEx.Target.Phoenix do
       page modules and paths and component names are kept (WTF-352 D5)
     * `:assets` - downloaded images and icons by exporter ID (as
       `BubbleEx.Frontend` collects them), served from
-      `priv/static/images/bubble`; without it images keep their URLs
+      `priv/static/images/bubble`
+    * `:asset_store` - the static assets downloaded by
+      `mix bubble.fetch_assets` (`BubbleEx.Frontend.StaticAssets.load_store/1`;
+      see "Static assets" above)
     * `:api_clients` - a `BubbleEx.Target.ApiClients.Spec` to render the
       API Connector clients of (see above); none by default
     * `:frontend_workflows` - with `frontend:` and `workflows:`, the page
@@ -389,6 +409,7 @@ defmodule BubbleEx.Target.Phoenix do
          {:ok, user, email, confirmed_at} <- user(project),
          :ok <- check_claims(project, clients),
          {:ok, frontend} <- frontend(opts),
+         :ok <- asset_store(opts),
          frontend = without_dropped_pages(frontend, project),
          :ok <- frontend_workflows(opts, frontend),
          {:ok, workflows} <- workflow_files(Keyword.get(opts, :workflows), ctx),
@@ -685,6 +706,14 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
+  defp asset_store(opts) do
+    case Keyword.get(opts, :asset_store) do
+      nil -> :ok
+      %BubbleEx.Frontend.StaticAssets.Store{} -> :ok
+      _ -> invalid("asset_store: must be a BubbleEx.Frontend.StaticAssets.Store (load_store/1)")
+    end
+  end
+
   defp pages(nil, ctx, _opts),
     do: %{
       routes: [],
@@ -702,6 +731,7 @@ defmodule BubbleEx.Target.Phoenix do
       names: Keyword.get(opts, :surface_names),
       expressions: Keyword.get(opts, :expressions, %{}),
       assets: Keyword.get(opts, :assets, %{}),
+      asset_store: Keyword.get(opts, :asset_store),
       workflows: Keyword.get(opts, :frontend_workflows)
     )
   end

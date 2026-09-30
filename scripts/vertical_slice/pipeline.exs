@@ -147,7 +147,11 @@ defmodule VerticalSlice.Pipeline do
     BubbleEx.Target.Phoenix.Structural.summary(report)
   end
 
-  @doc "The rendered file map."
+  @doc """
+  The rendered file map. With `SLICE_ASSET_STORE` (a store written by
+  `mix bubble.fetch_assets`, WTF-447) the pages serve its images; without
+  it Bubble-hosted images render without a source. Never fetches.
+  """
   def render(built, opts) do
     Phoenix.render(built.project,
       name: Keyword.fetch!(opts, :name),
@@ -156,7 +160,19 @@ defmodule VerticalSlice.Pipeline do
       workflows: built.backend,
       frontend: built.frontend,
       expressions: built.expressions,
-      frontend_workflows: built.spec
+      frontend_workflows: built.spec,
+      asset_store: asset_store()
     )
+  end
+
+  defp asset_store do
+    case System.get_env("SLICE_ASSET_STORE") do
+      blank when blank in [nil, ""] ->
+        nil
+
+      dir ->
+        {:ok, store} = BubbleEx.Frontend.StaticAssets.load_store(dir)
+        store
+    end
   end
 end

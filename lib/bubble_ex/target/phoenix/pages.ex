@@ -51,7 +51,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   """
 
   alias BubbleEx.Frontend.Export.{Bbcode, Css, Safety}
-  alias BubbleEx.Frontend.{ReusableParameters, ResponsiveImages, StaticSvg}
+  alias BubbleEx.Frontend.{ReusableParameters, ResponsiveImages, StaticAssets, StaticSvg}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Target.Ash.Naming
@@ -84,6 +84,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     * `:assets` - downloaded assets by exporter ID (`%{path, bytes}` as
       the HTML exporter collects them): images and icons are served from
       `priv/static/images/bubble/`
+    * `:asset_store` - the downloaded static assets
+      (`BubbleEx.Frontend.StaticAssets.load_store/1`, WTF-447): a stored
+      image is served from `priv/static/images/bubble/`, a stored icon
+      library's symbol is inlined. Without it (or for what it lacks) an
+      image on Bubble's storage renders without a source, never its
+      Bubble URL; an image on another host keeps its URL. Either way
+      each one is marked in the template and listed in
+      `.wtf/assets.json` (`StaticAssets.manifest/3`)
   """
   @spec render(Normalized.t(), map(), keyword()) :: result()
   def render(%Normalized{} = frontend, ctx, opts \\ []) do
@@ -108,6 +116,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       styles: Map.new(frontend.styles, &{&1.map_key, &1.class_name}),
       expressions: Keyword.get(opts, :expressions, %{}),
       assets: Keyword.get(opts, :assets, %{}),
+      asset_store: Keyword.get(opts, :asset_store),
       overrides: overrides(frontend),
       flows: flows
     }
@@ -142,7 +151,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         }
       end)
 
+    assets = StaticAssets.manifest(frontend, base.asset_store, base.assets)
+
     generated = %{
+      ".wtf/assets.json" => StaticAssets.encode_manifest(assets),
       routes_path(ctx) => routes_module(ctx, routes),
       "assets/css/bubble.css" => stylesheet(frontend),
       "assets/css/bubble_residue.css" => residue(surfaces),
@@ -161,11 +173,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           into: generated,
           do: {"priv/static/images/bubble/" <> Path.basename(path), bytes}
 
+    # Stored static images (WTF-447), content-addressed like the above.
+    generated =
+      for %{kind: :image, ref: ref} <- StaticAssets.references(frontend),
+          {:local, entry} <- [StaticAssets.resolve(ref, :image, base.asset_store)],
+          into: generated,
+          do: {StaticAssets.path(entry), entry.bytes}
+
     %{
       owned: owned,
       generated: generated,
       routes: routes,
-      report: report(frontend, surfaces)
+      report: report(frontend, surfaces, assets)
     }
   end
 
@@ -1132,8 +1151,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
               do: {override, value}
 
         attrs =
-          for {%{as: as, name: name}, value} <- passed,
+          for {%{as: as, name: name} = override, value} <- passed,
               as != :slot,
+              value = override_value(override, value, ctx),
+              value != nil,
               expr = override_expr(as, value, ctx),
               do: {name, {:expr, expr}}
 
@@ -1146,6 +1167,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {attrs, slots}
     end
   end
+
+  # An instance's image source: its local copy, or its URL when it is on
+  # another host; nil (not passed) when on Bubble's storage and not
+  # downloaded, or not a URL (WTF-447).
+  defp override_value(%{image_src: true}, value, ctx) when is_binary(value) do
+    case StaticAssets.resolve(value, :image, ctx.asset_store) do
+      {:local, entry} -> StaticAssets.src(entry)
+      {class, url} when class in [:external, :data] -> url
+      _ -> nil
+    end
+  end
+
+  defp override_value(%{image_src: true}, _value, _ctx), do: nil
+  defp override_value(_override, value, _ctx), do: value
 
   defp override_expr(:href, value, ctx) do
     case href(value, ctx) do
@@ -1187,6 +1222,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           %{
             name: attr_name(node, slot),
             as: override_kind(node, slot),
+            # An image's source goes through the static assets (WTF-447).
+            image_src: match?(%Node{kind: :image}, node) and slot == "src",
             # A Text whose content is a block (BBCode lists, alignment…)
             # for any instance is a div, as the exporter makes it.
             block: Enum.any?([own[{path, slot}] | values], &Bbcode.block?/1)
@@ -1855,7 +1892,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp icon_svg(node, ctx) do
     fragment = node.attributes["asset_fragment"]
 
-    with %{bytes: bytes} <- ctx.assets[node.exporter_id],
+    with bytes when is_binary(bytes) <- icon_bytes(node, fragment, ctx),
          [attrs, inner] <- inline_icon(bytes, fragment) do
       icon_set = escape_attr(node.attributes["icon_set"] || "fa")
 
@@ -1884,6 +1921,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # The exporter's download, else the icon's symbol from the stored icon
+  # library (sanitized; WTF-447).
+  defp icon_bytes(node, fragment, ctx) do
+    case ctx.assets[node.exporter_id] do
+      %{bytes: bytes} ->
+        bytes
+
+      _ ->
+        with src when is_binary(src) <- node.attributes["asset_src"],
+             {:local, entry} <- StaticAssets.resolve(src, :icon, ctx.asset_store) do
+          StaticAssets.icon_symbol(entry, fragment)
+        else
+          _ -> nil
+        end
+    end
+  end
+
   defp inline_icon(bytes, fragment) when is_binary(bytes) and is_binary(fragment) do
     regex =
       Regex.compile!("<symbol\\s+id=\"#{Regex.escape(fragment)}\"([^>]*)>(.*?)</symbol>", "s")
@@ -1896,11 +1950,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp image(node, ctx, acc) do
     alt = resolved(node, "alt") || node.attributes["alt"] || ""
 
-    {src, acc} =
-      if file_binding?(node, "src", ctx),
-        do: file_slot(node, "src", ctx, acc),
-        else: {image_src(node, ctx), acc}
-
+    {src, acc} = image_source(node, ctx, acc)
     attrs = [{"src", src}, {"alt", alt}]
 
     sources =
@@ -1908,7 +1958,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> ResponsiveImages.variants()
       |> Enum.reverse()
       |> Enum.map(fn variant ->
-        src = asset_url(ctx.assets[variant.id]) || "data:,"
+        src = asset_url(ctx.assets[variant.id]) || static_url(variant.src, ctx) || "data:,"
 
         [
           "<source media=\"",
@@ -1927,11 +1977,62 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  defp image_src(node, ctx) do
+  # A bound file or image field, an instance's value (a reusable's
+  # parameter), else the static source.
+  defp image_source(node, ctx, acc) do
+    cond do
+      file_binding?(node, "src", ctx) -> file_slot(node, "src", ctx, acc)
+      override = override(node, "src", ctx) -> {{:expr, "@" <> override.name}, acc}
+      true -> image_src(node, ctx, acc)
+    end
+  end
+
+  defp image_src(node, ctx, acc) do
     case ctx.assets[node.exporter_id] do
-      %{path: _} = asset -> asset_url(asset)
-      %{failed?: true} -> nil
-      _ -> Map.get(node.attributes, "asset_src") || resolved(node, "src") || ""
+      %{path: _} = asset -> {asset_url(asset), acc}
+      %{failed?: true} -> {nil, acc}
+      _ -> static_image(StaticAssets.image_ref(node), node, ctx, acc)
+    end
+  end
+
+  # A static image source (WTF-447): its local copy; an image on another
+  # host keeps its URL, marked; one on Bubble's storage that was not
+  # downloaded, or no URL, has no source (marked), never a Bubble URL.
+  defp static_image(nil, _node, _ctx, acc), do: {"", acc}
+
+  defp static_image(ref, node, ctx, acc) do
+    case StaticAssets.resolve(ref, :image, ctx.asset_store) do
+      {:local, entry} ->
+        {StaticAssets.src(entry), acc}
+
+      {:data, url} ->
+        {url, acc}
+
+      {:external, url} ->
+        note =
+          "image on an outside host (#{StaticAssets.host(url)}) left as its URL: " <>
+            "host it yourself (.wtf/assets.json)"
+
+        {url, mark(acc, node, note)}
+
+      {:pending, _url} ->
+        note =
+          "image on Bubble's storage not downloaded: run mix bubble.fetch_assets and " <>
+            "render again (.wtf/assets.json)"
+
+        {nil, mark(acc, node, note)}
+
+      {:invalid, reason} ->
+        {nil, mark(acc, node, "image source dropped: #{reason} (.wtf/assets.json)")}
+    end
+  end
+
+  # A responsive variant's source: local or on another host, else nil.
+  defp static_url(ref, ctx) do
+    case StaticAssets.resolve(ref, :image, ctx.asset_store) do
+      {:local, entry} -> StaticAssets.src(entry)
+      {class, url} when class in [:external, :data] -> url
+      _ -> nil
     end
   end
 
@@ -3243,13 +3344,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # --- report ---------------------------------------------------------------------
 
-  defp report(frontend, surfaces) do
+  defp report(frontend, surfaces, assets) do
     counts =
       Enum.reduce(surfaces, %{}, fn surface, acc ->
         Map.merge(acc, surface.acc.counts, fn _k, a, b -> a + b end)
       end)
 
-    Map.merge(counts, %{
+    asset_counts = Map.new(assets["counts"], fn {status, n} -> {"assets_" <> status, n} end)
+
+    counts
+    |> Map.merge(asset_counts)
+    |> Map.merge(%{
       "pages" => Enum.count(surfaces, &(&1.kind == :page)),
       "reusables" => Enum.count(surfaces, &(&1.kind == :reusable)),
       "named_styles" => length(frontend.styles)

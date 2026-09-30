@@ -6,6 +6,27 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Static page assets are the app's own** (WTF-447). Generated pages no
+  longer point at Bubble's storage. `mix bubble.fetch_assets`
+  (`BubbleEx.Frontend.StaticAssets.fetch/3`) is the separate, explicit
+  download step: only Bubble's storage hosts (`BubbleEx.Load.Files.bubble?/2`,
+  checked on every redirect) and, with `--app-url`, the app's icon
+  libraries, through the frontend exporter's fetcher (public destinations,
+  5 redirects, size cap, deadline); no URL with credentials is requested;
+  bytes must be PNG, JPEG, GIF or WebP by their magic bytes, or an SVG,
+  kept only after `BubbleEx.Frontend.SvgSanitizer` rebuilds it from an
+  allowlist; content-addressed store with an `index.json`, checked again
+  when read. `BubbleEx.Target.Phoenix.render/2` takes it as `asset_store:`
+  and stays offline: stored images are served from
+  `priv/static/images/bubble/<sha256>.<ext>` (icons inlined), a Bubble image
+  not downloaded renders without a source, images on other hosts keep
+  their URL; each is marked in the template and listed in the generated
+  `.wtf/assets.json` (URL, status, SHA-256, content type, size). A reusable
+  instance's image goes through the same rules. New endpoints serve
+  `/images/bubble` with `nosniff` and a sandbox CSP.
+  `scripts/phoenix_compile_check.sh` renders `phoenix_static_assets` with
+  its committed store.
+
 - **Enforced privacy policies in the generated app** (WTF-423).
   `BubbleEx.Target.Phoenix.render/2` renders `privacy: :enforced` Projects
   (Target.Ash's policies plus the write policy of option A): PicoSAT is

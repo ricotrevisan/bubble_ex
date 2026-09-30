@@ -119,6 +119,24 @@ defmodule BubbleEx.Frontend.SafeUrl do
     _ -> false
   end
 
+  @doc false
+  # Whether the URL's query names a credential-like parameter (the keys
+  # `safe/2` redacts).
+  @spec sensitive_query?(String.t()) :: boolean()
+  def sensitive_query?(url) do
+    case URI.parse(url) do
+      %URI{query: query} when is_binary(query) and query != "" ->
+        query
+        |> URI.query_decoder()
+        |> Enum.any?(fn {key, _value} -> Regex.match?(@sensitive_query, key) end)
+
+      _ ->
+        false
+    end
+  rescue
+    _ -> true
+  end
+
   @spec normalize(String.t()) :: String.t()
   def normalize(url) do
     uri = URI.parse(url)
