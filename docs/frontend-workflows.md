@@ -91,7 +91,7 @@ lists for that element.
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
 | Set state(s) | the page's state map, per instance |
 | Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs |
-| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text |
+| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378); to the current page or the index page it is `:unsupported_option` residue, and to a page with no type of content `:data_to_send_untyped_page` residue |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
 | Create / change / delete things, change the current user | the backend workflow runtime's data steps (`<Module>.Workflows.Runtime`, WTF-373), with the current user as actor (data-access opt-in, below) |
@@ -188,7 +188,10 @@ render keeps an overlay open:
 
 ## Unverified Bubble behavior
 
-To confirm by replay (WTF-358): "Reset relevant inputs" resets the inputs
+To confirm by replay (WTF-358): what "Go to page" does with a data to
+send to a page with no type of content (a value left over from an
+earlier type of content; its steps are `:data_to_send_untyped_page`
+residue until then); "Reset relevant inputs" resets the inputs
 of the triggering element's container; a condition-true workflow whose "run
 this" is unset runs once per page load; a condition that is true when the
 page loads fires; "Go to page" lets the workflow finish before the page

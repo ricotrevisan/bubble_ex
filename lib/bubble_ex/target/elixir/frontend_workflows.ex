@@ -720,13 +720,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         {%{key: key, value: compiled}, acc ++ r}
       end)
 
+    {thing, thing_residue} = navigate_thing(args, id, ctx)
+
     {%{
        page: args.page,
        params: params,
+       thing: thing,
        keep_params?: args.keep_params?,
        replace?: args.replace?,
        new_tab?: args.new_tab?
-     }, residue}
+     }, residue ++ thing_residue}
   end
 
   defp args(:open_url, args, id, ctx) do
@@ -826,6 +829,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       resource -> {Map.put(resource_args(resource), :target, target), tr}
     end
   end
+
+  # The data sent to a page (WTF-378): the page reads its thing from the
+  # path segment after its own only when its page thing is loaded (its
+  # `/<page>/:bubble_thing` route exists); otherwise the step is residue.
+  defp navigate_thing(%{thing: nil}, _id, _ctx), do: {nil, []}
+
+  defp navigate_thing(%{thing: thing, page: page}, id, ctx) do
+    case ctx.data.elements[page] do
+      %{kind: :page_thing} -> compile(thing, id, ctx)
+      _ -> {nil, [Residue.entry(id, :unsupported_option, %{options: ["data_to_send"]})]}
+    end
+  end
+
+  defp navigate_thing(_args, _id, _ctx), do: {nil, []}
 
   defp values(entries, key, id, ctx) do
     Enum.map_reduce(entries, [], fn entry, acc ->
