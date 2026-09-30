@@ -67,6 +67,19 @@ defmodule <%= @web %>.BubbleData do
   list) reads at most `related_cap/0` records (`:max_items`, at most 100)
   per record, in all when lists nest (a record's tasks' comments share it).
 
+  ## Random order
+
+  A search sorted by Bubble's random sort reads its records ordered by
+  the MD5 of each one's primary key and a seed (`random_sort/1`): the
+  database orders and limits (the page size, `:max_items`), so a list
+  shows a random selection, not the first records shuffled. The seed is
+  new on every read, so the order changes whenever the page reads again
+  (a change notification included), as Bubble's does on every load. Tests
+  fix it (`config :<%= @app %>, <%= @web %>.BubbleData, random_seed:
+  "seed"`, set in `config/test.exs`) for a deterministic order. It reads
+  no field but the primary key: <%= if @enforced? do %>the policies (and the
+  search fields check) apply as to any other search<% else %>nothing to guard<% end %>.
+
   ## Reactivity
 
   When loaded (and connected), the page subscribes to one topic per data
@@ -95,6 +108,7 @@ defmodule <%= @web %>.BubbleData do
   `docs/page-data.md`); a repeating group's later pages are not loaded.
   """
 
+  require Ash.Expr
   require Ash.Query
   require Logger
 
@@ -117,6 +131,33 @@ defmodule <%= @web %>.BubbleData do
     case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_items, 100) do
       n when is_integer(n) and n > 0 -> n
       _ -> 100
+    end
+  end
+
+  @doc """
+  Bubble's random sort (see "Random order"): `query` (or a resource)
+  ordered by the MD5
+  of the primary key and `random_seed/0`, before its limit.
+  """
+  def random_sort(query) do
+    # A filter of `true` leaves the resource module as it is.
+    query = Ash.Query.new(query)
+    [pk | _] = Ash.Resource.Info.primary_key(query.resource)
+    key = Ash.Expr.ref(pk)
+    seed = random_seed()
+
+    order = Ash.Expr.calc(fragment("md5(CAST(? AS text) || ?)", ^key, ^seed), type: :string)
+    Ash.Query.sort(query, [{order, :asc}])
+  end
+
+  @doc """
+  The seed of `random_sort/1`: `:random_seed` when configured (text, for
+  tests), a new one for every read otherwise.
+  """
+  def random_seed do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :random_seed) do
+      seed when is_binary(seed) and seed != "" -> seed
+      _ -> Base.encode16(:crypto.strong_rand_bytes(8))
     end
   end
 

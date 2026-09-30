@@ -58,6 +58,21 @@ defmodule BubbleEx.TasksTest do
     defdelegate needs_database?(criterion), to: BubbleEx.Target.Phoenix.Checks
   end
 
+  # Records the tasks prefetched in one batch and whether the criteria
+  # then read the prefetched cache (WTF-449).
+  defmodule Batched do
+    @moduledoc false
+    def prefetch(tasks, _ctx, cache) do
+      send(self(), {:prefetch, Enum.map(tasks, & &1.id)})
+      Map.put(cache, :prefetched, true)
+    end
+
+    def run(c, ctx, cache) do
+      send(self(), {:ran, ctx.task.id, Map.get(cache, :prefetched, false)})
+      Pass.run(c, ctx, cache)
+    end
+  end
+
   defmodule Fail do
     @moduledoc false
     def run(%{check: :compiles}, _ctx, cache),
@@ -536,6 +551,35 @@ defmodule BubbleEx.TasksTest do
                  tasks: ["auth"],
                  test_db: :project
                )
+    end
+  end
+
+  describe "tagged tests in one batch (WTF-449)" do
+    test "complete and audit prefetch every task of the run once", %{root: root} do
+      done!(root, @generators ++ ["auth"])
+
+      assert {:ok, _} =
+               complete(root, "backend:fOne", agent: "a1", checks: Batched, test_db: :project)
+
+      assert_received {:prefetch, ids}
+      assert List.last(ids) == "backend:fOne"
+      assert "workflow:wApiA" in ids
+      refute_received {:prefetch, _}
+      assert_received {:ran, "workflow:wApiA", true}
+      assert_received {:ran, "backend:fOne", true}
+      refute_received {:ran, _, false}
+
+      assert {:ok, _} =
+               Tasks.audit(board(root),
+                 now: @now,
+                 checks: Batched,
+                 tasks: ["backend:fOne"],
+                 test_db: :project
+               )
+
+      assert_received {:prefetch, audited}
+      assert "backend:fOne" in audited
+      refute_received {:ran, _, false}
     end
   end
 

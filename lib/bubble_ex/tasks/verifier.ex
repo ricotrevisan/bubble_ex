@@ -55,8 +55,10 @@ defmodule BubbleEx.Tasks.Verifier do
     %{agent: agent, now: now} = ctx
     id = task.id
 
+    cache = prefetch(subtasks ++ [task], ctx)
+
     {sub_reports, {cache, passed}} =
-      Enum.map_reduce(subtasks, {%{}, MapSet.new()}, &verify_one(board, &1, ctx, &2))
+      Enum.map_reduce(subtasks, {cache, MapSet.new()}, &verify_one(board, &1, ctx, &2))
 
     {outcomes, _cache} = verify(board, task, %{ctx | passed: passed}, cache)
 
@@ -96,6 +98,17 @@ defmodule BubbleEx.Tasks.Verifier do
     end
   end
 
+  # The tagged tests of every task of the run, in one mix test (WTF-449,
+  # BubbleEx.Target.Phoenix.Checks.prefetch/3): the starting cache.
+  defp prefetch(tasks, ctx) do
+    checks = ctx.checks
+    Code.ensure_loaded(checks)
+
+    if function_exported?(checks, :prefetch, 3),
+      do: checks.prefetch(tasks, ctx, %{}),
+      else: %{}
+  end
+
   defp record_subtasks(board, reports, agent, now) do
     for r <- reports, not Tasks.done?(board, r.task) do
       :ok = Store.put(board.root, done(board, board.by_id[r.task], agent, now, r.outcomes, []))
@@ -125,8 +138,10 @@ defmodule BubbleEx.Tasks.Verifier do
   end
 
   defp audit_tasks(board, tasks, ctx, evidence, now) do
+    cache = prefetch(Enum.reject(tasks, &stale?(board, &1)), ctx)
+
     {reports, _acc} =
-      Enum.map_reduce(tasks, {%{}, MapSet.new()}, &audit_one(board, &1, ctx, &2))
+      Enum.map_reduce(tasks, {cache, MapSet.new()}, &audit_one(board, &1, ctx, &2))
 
     failed = for r <- reports, r.stale or not passed?(r.outcomes), do: r
     # A subtask that fails takes its done parent with it.

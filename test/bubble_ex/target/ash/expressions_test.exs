@@ -176,6 +176,34 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     assert [%{name: "element_state_bi1_get_data", type: "number"}] = expr.arguments
   end
 
+  test "Bubble's random sort compiles to :random; an unknown sort field does not (WTF-452)", %{
+    project: project
+  } do
+    env = env(ignore_empty_constraints: true)
+
+    compile = fn field ->
+      raw =
+        search(
+          "custom.task",
+          [con("status_option_status", "equals", opt("status", "done"))],
+          %{"sort_field" => field, "descending" => true}
+        )
+
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Expressions.search(ir, project)
+      result
+    end
+
+    assert %{expr: %{sort: [:random]} = expr, diagnostics: []} = compile.("_random_sorting")
+    assert Source.expr(expr) == ~s|expr(status == "done")|
+    assert Expr.to_map(expr)["sort"] == ["random"]
+
+    assert %{expr: nil, diagnostics: [diag]} = compile.("no_such_field_text")
+
+    assert %{code: :ash_expr_unmapped_reference, details: %{constructs: ["the sort field"]}} =
+             diag
+  end
+
   test "a condition reading the actor used as a value is rejected", %{project: project} do
     logged_in = IR.node(:logged_in, [], "boolean")
     ir = IR.node(:gt, [logged_in, IR.node(:literal, [false], "boolean")], "boolean")

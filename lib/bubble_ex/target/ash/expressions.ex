@@ -176,9 +176,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   def filter(_ir, _project, _opts), do: invalid()
 
+  # The sort field of Bubble's random sort.
+  @random_sort "_random_sorting"
+
   @doc """
   Compiles a search (`:search`, possibly under `:sort`) to a filter on the
   searched resource, with its sort. Context inputs become arguments.
+  Bubble's random sort (`_random_sorting`) becomes `sort: [:random]`; any
+  other sort field that maps to no attribute leaves the search uncompiled.
   """
   @spec search(IR.t(), Project.t(), [option()]) :: {:ok, result()} | {:error, Error.t()}
   def search(ir, project, opts \\ [])
@@ -211,6 +216,11 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp unsort(ir), do: {ir, []}
 
   defp sort_result(%{expr: nil} = result, _sort, _type, _lookup, _opts), do: result
+
+  # Bubble's random sort (WTF-452): no field, an order that changes on
+  # every read (`BubbleEx.Target.Ash.Expr`'s `:random`).
+  defp sort_result(%{expr: expr} = result, [{@random_sort, _dir}], _type, _lookup, _opts),
+    do: %{result | expr: %{expr | sort: [:random]}}
 
   defp sort_result(%{expr: expr} = result, sort, type, lookup, opts) do
     fields = get_in(lookup, [:types, type, :fields]) || %{}

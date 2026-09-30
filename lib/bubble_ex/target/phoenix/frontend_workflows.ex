@@ -677,6 +677,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         [] ->
           ""
 
+        [:random] ->
+          "|> BubbleData.random_sort()\n"
+
         sort ->
           "|> Ash.Query.sort([#{Enum.map_join(sort, ", ", fn {a, dir} -> "{#{atom(a)}, #{inspect(dir)}}" end)}])\n"
       end

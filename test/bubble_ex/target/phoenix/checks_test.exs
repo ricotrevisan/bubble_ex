@@ -31,6 +31,40 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
     )
   end
 
+  # A mix whose batched runs write the results file the formatter would
+  # (`results`: `{:results, tests}`, `:loaded` or nil for none).
+  defp batch_ctx(root, results, {output, status}) do
+    test = self()
+
+    ctx(root,
+      cmd: fn
+        ["test", "--formatter" | _] = argv, env ->
+          {_, path} = List.keyfind(env, "WTF_TASK_TEST_RESULTS", 0)
+          {_, flags} = List.keyfind(env, "ERL_AFLAGS", 0)
+          [_, ebin] = Regex.run(~r/-pa (\S+)/, flags)
+          beam? = File.exists?(Path.join(ebin, "Elixir.BubbleEx.Tasks.TestResults.beam"))
+          send(test, {:batch, argv, env, beam?})
+
+          case results do
+            {:results, tests} ->
+              File.write!(path, :erlang.term_to_binary({:wtf_task_test_results, 1, tests}))
+
+            :loaded ->
+              File.write!(path, :erlang.term_to_binary({:wtf_task_test_results, 1, :loaded}))
+
+            nil ->
+              :ok
+          end
+
+          {output, status}
+
+        args, env ->
+          send(test, {:mix, args, env})
+          {output, status}
+      end
+    )
+  end
+
   defp run(check, args, ctx) do
     {outcome, _cache} = Checks.run(%{check: check, args: args}, ctx, %{})
     outcome
@@ -196,8 +230,9 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
         ~s(@tag bubble: "workflow:wA"\n@tag bubble: "workflow:wB"\n)
       )
 
-      # Only the exit status counts (mix exits 1 when no test ran), never
-      # the summary line the tests print.
+      # The batch's formatter never loaded (this fake mix writes no results
+      # file): each subject runs alone. Only the exit status counts (mix
+      # exits 1 when no test ran), never the summary line the tests print.
       Process.put(:mix_result, {"99 tests, 0 failures", 1})
 
       assert %{status: :fail, detail: "workflow:wA: exit status 1 (a test failed or none ran)"} =
@@ -210,6 +245,126 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
 
       assert_received {:mix, ["test", "--only", "bubble:workflow:wA"], _}
       assert_received {:mix, ["test", "--only", "bubble:workflow:wB"], _}
+    end
+
+    test "several subjects run in one mix test, judged per subject (WTF-449)", %{tmp_dir: root} do
+      write(
+        root,
+        "test/wf_test.exs",
+        ~s(@tag bubble: "workflow:wA"\n@tag bubble: "workflow:wB"\n@tag bubble: "workflow:wC"\n)
+      )
+
+      args = %{"workflows" => ~w(workflow:wA workflow:wB workflow:wC)}
+
+      tests = [
+        {"workflow:wA", :passed},
+        {"workflow:wA", :skipped},
+        {"workflow:wB", :passed},
+        {"workflow:wB", :failed},
+        {"workflow:wC", :excluded}
+      ]
+
+      assert %{status: :fail, detail: "workflow:wB: a test failed", output: "1 failure"} =
+               run(:unit_test, args, batch_ctx(root, {:results, tests}, {"1 failure", 2}))
+
+      assert_received {:batch, argv, env, beam?}
+
+      assert argv ==
+               ~w(test --formatter ExUnit.CLIFormatter --formatter BubbleEx.Tasks.TestResults) ++
+                 ~w(--only bubble:workflow:wA --only bubble:workflow:wB --only bubble:workflow:wC)
+
+      # The formatter loads at boot, from a scratch ebin under _build that
+      # is gone afterwards; the database choice is unchanged.
+      assert beam?
+      assert [{"MIX_ENV", "test"}, {"DATABASE_URL", nil} | _] = env
+      {_, flags} = List.keyfind(env, "ERL_AFLAGS", 0)
+
+      assert flags =~
+               ~r/-pa \S+\/_build\/wtf_task\/tests-\d+\/ebin -s Elixir.BubbleEx.Tasks.TestResults preload/
+
+      refute File.exists?(Path.join(root, "_build/wtf_task"))
+      # One run for all three.
+      refute_received {:mix, _, _}
+
+      task = %Task{
+        id: "t",
+        kind: :surface,
+        actor: :agent,
+        criteria: [%{check: :unit_test, args: args}]
+      }
+
+      cache = Checks.prefetch([task], batch_ctx(root, {:results, tests}, {"", 2}), %{})
+      verdict = &Map.take(cache[{:tests, &1}], [:status, :detail])
+
+      assert %{status: :pass} = verdict.("workflow:wA")
+      assert %{status: :fail, detail: "workflow:wB: a test failed"} = verdict.("workflow:wB")
+      # Excluded or skipped is not run.
+      assert %{status: :fail, detail: "workflow:wC: no test ran"} = verdict.("workflow:wC")
+      assert map_size(Map.filter(cache, &match?({{:tests, _}, _}, &1))) == 3
+
+      # A non-zero exit no failed test explains fails every subject.
+      clean = [{"workflow:wA", :passed}, {"workflow:wB", :passed}, {"workflow:wC", :passed}]
+
+      assert %{status: :fail, detail: "workflow:wA: exit status 1, though no test failed"} =
+               run(:unit_test, args, batch_ctx(root, {:results, clean}, {"", 1}))
+
+      assert %{status: :pass} = run(:unit_test, args, batch_ctx(root, {:results, clean}, {"", 0}))
+
+      # The formatter loaded but the suite never finished (the database
+      # setup failed): every subject fails, with no run per subject.
+      assert %{status: :fail, detail: "workflow:wA: exit status 1 before any test finished" <> _} =
+               run(:unit_test, args, batch_ctx(root, :loaded, {"ash.setup failed", 1}))
+
+      refute_received {:mix, _, _}
+    end
+
+    test "memoized subjects are not run again, and one subject runs alone", %{tmp_dir: root} do
+      write(
+        root,
+        "test/wf_test.exs",
+        ~s(@tag bubble: "workflow:wA"\n@tag bubble: "workflow:wB"\n)
+      )
+
+      args = %{"workflows" => ~w(workflow:wA workflow:wB)}
+
+      task = %Task{
+        id: "t",
+        kind: :surface,
+        actor: :agent,
+        criteria: [%{check: :unit_test, args: args}]
+      }
+
+      tests = [{"workflow:wA", :passed}, {"workflow:wB", :passed}]
+      ctx = batch_ctx(root, {:results, tests}, {"", 0})
+
+      cache = Checks.prefetch([task], ctx, %{})
+      assert_received {:batch, _, _, _}
+      {outcome, _} = Checks.run(%{check: :unit_test, args: args}, ctx, cache)
+      assert outcome.status == :pass
+      refute_received {:batch, _, _, _}
+      refute_received {:mix, _, _}
+
+      # Untagged subjects are left out of the batch: one left runs alone.
+      untagged = %{"workflows" => ~w(workflow:wA workflow:wZ)}
+
+      assert Checks.prefetch(
+               [%{task | criteria: [%{check: :unit_test, args: untagged}]}],
+               ctx,
+               %{}
+             )
+             |> Map.keys() == [:test_tags]
+
+      refute_received {:batch, _, _, _}
+
+      # Without a test database, nothing runs.
+      assert Checks.prefetch(
+               [task],
+               batch_ctx(root, {:results, tests}, {"", 0}) |> Map.put(:test_db, nil),
+               %{}
+             )
+             |> Map.keys() == [:test_tags]
+
+      refute_received {:batch, _, _, _}
     end
 
     test "tagged tests run only on a chosen test database (WTF-448)", %{tmp_dir: root} do

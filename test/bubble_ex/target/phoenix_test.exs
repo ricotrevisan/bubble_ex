@@ -640,6 +640,10 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert page =~ "# TODO(bubble:element:bFirstOpen) not loaded: search_field_hidden"
       refute page =~ "TODO(bubble:element:bList) not loaded"
       refute omit["lib/acme_web/live/index_live/workflows.ex"] =~ "search_field_hidden"
+      # Bubble's random sort reads no field (WTF-452): it loads, through
+      # :search like any other search.
+      refute page =~ "TODO(bubble:element:bRandom)"
+      assert page =~ "|> BubbleData.random_sort()"
     end
 
     test "a page count reads keys through :search, capped", %{files: files} do

@@ -80,6 +80,9 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
   defp data_access_on,
     do: Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
 
+  defp picks(html),
+    do: ~r/Pick: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
   defp cells(html),
     do: ~r/Task: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
 
@@ -157,13 +160,16 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
   test "pages show what the rules let the current user find and view", %{conn: conn, u1: u1} do
     data_access_on()
 
-    # Logged out: the search finds nothing.
+    # Logged out: the search finds nothing, in any order.
     {:ok, _view, html} = live(conn, "/")
     assert cells(html) == []
+    assert picks(html) == []
 
-    # Signed in: the watched tasks only.
+    # Signed in: the watched tasks only. Bubble's random sort (WTF-452)
+    # orders what :search finds: its 2 rows are the 2 watched tasks.
     {:ok, _view, html} = live(sign_in(conn, u1), "/")
     assert cells(html) == ["Bake", "Clean"]
+    assert Enum.sort(picks(html)) == ["Bake", "Clean"]
 
     # A task the user does not watch, by its URL: its title, not its
     # project (the reference is hidden, so the group reads nothing).

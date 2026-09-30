@@ -262,8 +262,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp hidden_fields(%Expr{} = expr, %Project{privacy: :enforced} = project) do
     modules = Map.new(project.resources ++ project.joins, &{&1.module, &1})
 
+    # Bubble's random sort (`:random`) reads no field of the record.
     refs =
-      expr_refs(expr.expr) ++ Enum.map(expr.sort, fn {attribute, _} -> {[], attribute} end)
+      expr_refs(expr.expr) ++ for({attribute, _} <- expr.sort, do: {[], attribute})
 
     refs
     |> Enum.flat_map(fn {rels, attribute} ->

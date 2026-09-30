@@ -6,6 +6,27 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Bubble's random sort in page data searches** (WTF-452). A search
+  sorted by `_random_sorting` compiles (`BubbleEx.Target.Ash.Expressions.search/3`:
+  `sort: [:random]`) and loads: `BubbleData.random_sort/1` orders by the
+  MD5 of the primary key and a per-read seed in the database, before the
+  page size and `:max_items` limit; `:random_seed` (set in the generated
+  `config/test.exs`) makes it deterministic. Other unmapped sort fields
+  stay residue. See `docs/page-data.md`.
+
+- **`mix wtf.task` runs a run's tagged tests in one `mix test`** (WTF-449).
+  `complete` and `audit` gather every subject their tasks' criteria test
+  (`BubbleEx.Target.Phoenix.Checks.prefetch/3`) and run them together, an
+  `--only bubble:<S>` filter each, with `BubbleEx.Tasks.TestResults` as a
+  second ExUnit formatter (loaded at boot through `ERL_AFLAGS`) recording
+  each test's tag and outcome: each subject still needs its own passing
+  test and no failure. The summary line is never parsed; a run that fails
+  before its suite finishes fails every subject; when the formatter does
+  not load, each subject runs alone as before. The test database rules of
+  WTF-448 are unchanged. `complete generate:api_clients` took 20.4 s
+  before and 3.7 s after on `phoenix_api_clients`, and 2,587 s (43 min)
+  before and 14 to 16 s after on the private fixture app (199 calls).
+
 - **Static page assets are the app's own** (WTF-447). Generated pages no
   longer point at Bubble's storage. `mix bubble.fetch_assets`
   (`BubbleEx.Frontend.StaticAssets.fetch/3`) is the separate, explicit

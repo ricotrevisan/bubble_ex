@@ -27,6 +27,9 @@ config :<%= @app %>, <%= @web %>.Endpoint,
 config :<%= @app %>, <%= @module %>.Accounts.Secrets,
   token_signing_secret: "<%= @test_secrets.token_signing_secret %>"
 
+# Bubble's random sort in a fixed order (BubbleData.random_sort/1).
+config :<%= @app %>, <%= @web %>.BubbleData, random_seed: "bubble_ex"
+
 config :<%= @app %>, Oban, testing: :manual
 
 config :<%= @app %>, <%= @module %>.Mailer, adapter: Swoosh.Adapters.Test
