@@ -169,6 +169,111 @@ defmodule Mix.Tasks.Wtf.TaskTest do
     end
   end
 
+  describe "test database (WTF-448)" do
+    setup %{tmp_dir: root, plan: plan} do
+      for var <- ~w(WTF_TASK_TEST_DB WTF_TASK_ALLOW_5432) do
+        previous = System.get_env(var)
+        System.delete_env(var)
+
+        on_exit(fn ->
+          if previous, do: System.put_env(var, previous), else: System.delete_env(var)
+        end)
+      end
+
+      done!(root, plan, ~w(generate:option_sets generate:schema generate:api_clients
+                           generate:policies generate:routes generate:styles generate:surfaces
+                           generate:workflow_entry_points))
+
+      :ok
+    end
+
+    test "complete and audit refuse mix test on a database nobody named", %{
+      tmp_dir: root,
+      plan: plan
+    } do
+      assert_raise Mix.Error, ~r/auth run mix test .*--test-db URL/, fn ->
+        wtf(root, ["complete", "auth", "--agent", "a1"])
+      end
+
+      refute File.exists?(Path.join(root, State.path("auth")))
+
+      done!(root, plan, ["auth"])
+
+      assert_raise Mix.Error, ~r/auth run mix test/, fn ->
+        wtf(root, ["audit", "auth"])
+      end
+
+      assert {:ok, %State{status: :done}} =
+               root |> Path.join(State.path("auth")) |> File.read!() |> State.decode()
+    end
+
+    test "--test-db refuses port 5432 and non-test databases", %{tmp_dir: root} do
+      on_5432 = "ecto://postgres:postgres@127.0.0.1:5432/app_test"
+
+      assert_raise Mix.Error, ~r/port 5432/, fn ->
+        wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", on_5432])
+      end
+
+      # Checked before anything runs, even for tasks needing no database.
+      assert_raise Mix.Error, ~r/port 5432/, fn ->
+        wtf(root, ["audit", "--test-db", on_5432])
+      end
+
+      assert_raise Mix.Error, ~r/ending in _test/, fn ->
+        wtf(root, [
+          "complete",
+          "auth",
+          "--agent",
+          "a1",
+          "--test-db",
+          "ecto://postgres:postgres@127.0.0.1:55432/app_dev"
+        ])
+      end
+
+      System.put_env("WTF_TASK_ALLOW_5432", "1")
+
+      # Allowed, the URL is used: this project's config/test.exs does not read it.
+      assert_raise Mix.Error, ~r/does not read DATABASE_URL/, fn ->
+        wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", on_5432])
+      end
+    end
+
+    test "WTF_TASK_TEST_DB, and the flags that exclude each other", %{tmp_dir: root} do
+      System.put_env("WTF_TASK_TEST_DB", "ecto://postgres:postgres@127.0.0.1/app_test")
+
+      assert_raise Mix.Error, ~r/port explicitly/, fn ->
+        wtf(root, ["complete", "auth", "--agent", "a1"])
+      end
+
+      assert_raise Mix.Error, ~r/exclude each other/, fn ->
+        wtf(root, [
+          "complete",
+          "auth",
+          "--agent",
+          "a1",
+          "--use-project-test-config",
+          "--test-db",
+          "ecto://postgres:postgres@127.0.0.1:55432/app_test"
+        ])
+      end
+    end
+
+    test "tasks needing no database run without one", %{tmp_dir: root} do
+      wtf(root, [
+        "complete",
+        "setup:secrets",
+        "--agent",
+        "o",
+        "--attest",
+        "1=Every private value is set in the vault."
+      ])
+
+      assert output() =~ "setup:secrets done"
+      wtf(root, ["audit", "setup:secrets"])
+      assert output() =~ "audited 1 done tasks; 0 need re-verifying"
+    end
+  end
+
   test "is a development tool", %{tmp_dir: root} do
     Mix.env(:prod)
     on_exit(fn -> Mix.env(:test) end)

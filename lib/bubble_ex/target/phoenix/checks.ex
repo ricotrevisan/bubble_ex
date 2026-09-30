@@ -38,6 +38,16 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   status counts: non-zero when a test fails or none ran (the summary line
   is not parsed). A check without subjects uses the task ID.
 
+  ## Test database
+
+  `mix test` runs with `MIX_ENV=test`, and a generated project's `test`
+  alias runs `ash.setup`: it creates and migrates the test database. So a
+  tagged-test run needs the context's `test_db` (`BubbleEx.Tasks.TestDb`):
+  a URL, passed as `DATABASE_URL` in the subprocess's environment, or
+  `:project` for `config/test.exs` as it is. Without one the check fails
+  and runs nothing (`BubbleEx.Tasks.complete/3` refuses such a run up
+  front). The other checks never touch a database.
+
   ## Results
 
   Result-backed checks read `BubbleEx.Verify.Result` files (unsigned)
@@ -51,6 +61,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   alias BubbleEx.Decision.Resolved
   alias BubbleEx.Target.Phoenix.Manifest
+  alias BubbleEx.Tasks.TestDb
   alias BubbleEx.Verify.{Recording, Result}
 
   @result_checks %{
@@ -68,6 +79,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
     * `results` - `[{ref, sha256, %Result{}}]` of the evidence
     * `app`, `now`, `reviewers`, `resolved` - for `Result.evaluate/3`
     * `cmd` - `(args, env) -> {output, exit_status}`: runs `mix` in `root`
+    * `test_db` - `BubbleEx.Tasks.TestDb.t()` or nil: see "Test database"
   """
   @type ctx :: %{
           root: Path.t(),
@@ -77,7 +89,8 @@ defmodule BubbleEx.Target.Phoenix.Checks do
           now: DateTime.t(),
           reviewers: [String.t()],
           resolved: Resolved.t() | nil,
-          cmd: (list(String.t()), list() -> {String.t(), non_neg_integer()})
+          cmd: (list(String.t()), list() -> {String.t(), non_neg_integer()}),
+          test_db: BubbleEx.Tasks.TestDb.t() | nil
         }
 
   @typedoc "One criterion's outcome. `output` is shown, never stored."
@@ -94,6 +107,20 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   def bound,
     do: ~w(generated_unchanged compiles lint traceability render_smoke step_order unit_test
          request_shape)a ++ Map.keys(@result_checks) ++ [:replay]
+
+  @doc """
+  Whether `criterion` (`%{check, args}`) runs `mix test`, which touches the
+  test database (see "Test database"): the tagged-test checks, and
+  `traceability` when it lists a page or reusable.
+  """
+  @spec needs_database?(map()) :: boolean()
+  def needs_database?(%{check: check}) when check in [:render_smoke, :unit_test, :request_shape],
+    do: true
+
+  def needs_database?(%{check: :traceability, args: args}),
+    do: Enum.any?(list(args, "elements"), &surface?/1)
+
+  def needs_database?(_criterion), do: false
 
   @doc """
   Runs `criterion` (`%{check, args}`). `cache` memoizes project-wide
@@ -317,13 +344,23 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   end
 
   defp subject_tests(subject, ctx, cache) do
-    memo(cache, {:tests, subject}, fn ->
-      outcome = mix(ctx, ["test", "--only", "bubble:" <> subject], [{"MIX_ENV", "test"}])
+    memo(cache, {:tests, subject}, fn -> subject_run(subject, ctx, Map.get(ctx, :test_db)) end)
+  end
 
-      if outcome.status == :fail,
-        do: %{outcome | detail: "#{subject}: #{outcome.detail} (a test failed or none ran)"},
-        else: outcome
-    end)
+  # Never mix test against whatever config/test.exs names (WTF-448).
+  defp subject_run(subject, _ctx, nil),
+    do:
+      fail(
+        "mix test --only bubble:" <> subject,
+        "#{subject}: no test database chosen (--test-db URL or --use-project-test-config)"
+      )
+
+  defp subject_run(subject, ctx, test_db) do
+    outcome = mix(ctx, ["test", "--only", "bubble:" <> subject], TestDb.env(test_db))
+
+    if outcome.status == :fail,
+      do: %{outcome | detail: "#{subject}: #{outcome.detail} (a test failed or none ran)"},
+      else: outcome
   end
 
   # The `bubble:` tags of test/, read from the parsed code: @tag,

@@ -386,6 +386,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       now: ~U[2026-09-26 12:00:00Z],
       reviewers: [],
       resolved: nil,
+      test_db: :project,
       cmd: fn args, env ->
         send(test, {:mix, args, env})
         {"1 test, 0 failures", 0}

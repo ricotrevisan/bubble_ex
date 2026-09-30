@@ -358,6 +358,13 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert byte_size(dev_secret) == 64
       refute dev_secret == test_secret
       refute runtime =~ dev_secret
+
+      # The tests' database: DATABASE_URL when set (mix wtf.task --test-db,
+      # WTF-448), else Phoenix's defaults.
+      assert test =~ ~s|if database_url = System.get_env("DATABASE_URL") do|
+      assert test =~ "url: database_url"
+      assert test =~ ~s|database: "acme_import_test\#{System.get_env("MIX_TEST_PARTITION")}"|
+      assert test =~ "pool: Ecto.Adapters.SQL.Sandbox"
       refute render!(representative_project(), name: "Other")["config/dev.exs"] =~ dev_secret
     end
 

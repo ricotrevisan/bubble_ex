@@ -15,13 +15,38 @@ defmodule Mix.Tasks.Wtf.Task do
       mix wtf.task complete ID --agent A [--evidence PATH]… [--attest N=TEXT]…
                                           [--waive N=REASON]… [--app APP_ID]
                                           [--reviewer-waivers R]…
+                                          [--test-db URL | --use-project-test-config]
       mix wtf.task review ID --reviewer R --summary TEXT
       mix wtf.task note ID --agent A (--needs-decision TEXT | --info TEXT | --resolve N)
       mix wtf.task audit [ID…] [--evidence PATH]… [--app APP_ID] [--reviewer-waivers R]… [--json]
+                         [--test-db URL | --use-project-test-config]
       mix wtf.task sync NEW_PLAN.json      # diff against .wtf/plan.json, then replace it
       mix wtf.task sync --from OLD_PLAN.json   # .wtf/plan.json is already the new plan
 
   Every command takes `--root DIR` (default: the current directory).
+
+  ## Test database
+
+  Tagged-test criteria run `mix test` in the project (`MIX_ENV=test`), and
+  a generated project's `test` alias runs `ash.setup`, which creates and
+  migrates the test database: by default `<app>_test` on
+  `localhost:5432`, likely your everyday PostgreSQL. So when `complete` or
+  `audit` would run `mix test`, it refuses unless you choose the database:
+
+    * `--test-db URL` (or `WTF_TASK_TEST_DB=URL`), e.g.
+      `ecto://postgres:postgres@127.0.0.1:55432/my_app_test`: an explicit
+      port, not 5432 unless `WTF_TASK_ALLOW_5432=1`, and a database whose
+      name ends in `_test` or starts with `wtf_`. It reaches `mix test` as
+      `DATABASE_URL` in its environment (never on a command line), which
+      the generated `config/test.exs` uses when set; a project whose
+      `config/test.exs` never reads `DATABASE_URL` is refused
+    * `--use-project-test-config` - `config/test.exs` as it is (and your
+      environment's `DATABASE_URL`, when it reads that)
+
+  `--test-db` wins over `WTF_TASK_TEST_DB`, and `--use-project-test-config`
+  over the variable; giving both flags is an error. Tasks whose criteria
+  need no database (the manifest, compile, format and Credo, the source
+  scans, results, task state) complete and audit without either.
 
   ## Threat model: advisory only
 
@@ -65,7 +90,7 @@ defmodule Mix.Tasks.Wtf.Task do
 
   alias BubbleEx.Plan.Task
   alias BubbleEx.Tasks
-  alias BubbleEx.Tasks.{State, Store}
+  alias BubbleEx.Tasks.{State, Store, TestDb}
 
   @switches [
     root: :string,
@@ -85,7 +110,9 @@ defmodule Mix.Tasks.Wtf.Task do
     needs_decision: :string,
     info: :string,
     resolve: :integer,
-    from: :string
+    from: :string,
+    test_db: :string,
+    use_project_test_config: :boolean
   ]
 
   @impl Mix.Task
@@ -281,9 +308,34 @@ defmodule Mix.Tasks.Wtf.Task do
       now: now,
       evidence: Keyword.get_values(opts, :evidence),
       app: opts[:app],
-      reviewers: Keyword.get_values(opts, :reviewer_waivers)
+      reviewers: Keyword.get_values(opts, :reviewer_waivers),
+      test_db: test_db!(opts)
     ]
   end
+
+  # The test database mix test may use (WTF-448, BubbleEx.Tasks.TestDb):
+  # nil refuses every run that needs one.
+  defp test_db!(opts) do
+    case {opts[:test_db], opts[:use_project_test_config]} do
+      {url, true} when is_binary(url) ->
+        Mix.raise("--test-db and --use-project-test-config exclude each other")
+
+      {nil, true} ->
+        :project
+
+      {nil, _} ->
+        case System.get_env("WTF_TASK_TEST_DB") do
+          blank when blank in [nil, ""] -> nil
+          url -> test_db_url!(url)
+        end
+
+      {url, _} ->
+        test_db_url!(url)
+    end
+  end
+
+  defp test_db_url!(url),
+    do: ok!(TestDb.parse(url, allow_5432: System.get_env("WTF_TASK_ALLOW_5432") == "1"))
 
   defp attest!(opts) do
     opts

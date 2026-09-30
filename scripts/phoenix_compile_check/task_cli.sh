@@ -9,9 +9,14 @@
 #   * complete runs the real bindings (check_manifest, the determinism
 #     result through Verify.Result.evaluate, mix compile --warnings-as-errors
 #     in the project) and records the tasks done, labelled advisory
+#   * a task whose criteria run mix test (generate:api_clients'
+#     request_shape) is refused without a test database, and with a URL on
+#     port 5432 or naming a non-test database (WTF-448); the generator
+#     tasks, which need none, complete without one
 #   * a hand edit of a generated file makes complete refuse and audit turn
 #     the done tasks needs_reverify (both exit non-zero)
-#   * with PHOENIX_COMPILE_CHECK_DB (mix test needs the database): a real
+#   * with PHOENIX_COMPILE_CHECK_DB (mix test needs the database, named
+#     with --test-db: that server's phx_check_test): a real
 #     tagged test (`@moduletag bubble: "<task>"`) in the project; a failing
 #     one makes complete refuse, a passing one completes the task, so the
 #     `mix test --only` binding is exercised on every CI Elixir version;
@@ -28,6 +33,11 @@ scratch="$1"
 fixture="${2:-field_types}"
 app="phx-check"
 export MIX_ENV=test
+# Only --test-db names the database here (WTF-448).
+unset WTF_TASK_TEST_DB
+# The generated config/test.exs uses DATABASE_URL when set: only the
+# check's own database may reach it.
+unset DATABASE_URL
 
 cd "$root"
 mix run --no-compile scripts/phoenix_compile_check/render.exs "$scratch" "$fixture"
@@ -45,13 +55,32 @@ wtf complete generate:option_sets --agent ci --app "$app"
 wtf complete generate:schema --agent ci --app "$app"
 grep -q 'status done' <<<"$(wtf show generate:schema)" || fail "generate:schema is not done"
 
+# mix test (and its ash.setup) never runs on a database nobody named.
+refused_db() {
+  local why="$1" msg="$2"; shift 2
+  local out
+  if out="$(wtf complete generate:api_clients --agent ci --app "$app" "$@" 2>&1)"; then
+    fail "complete ran mix test $why"
+  fi
+  grep -q -- "$msg" <<<"$out" || { echo "$out" >&2; fail "complete was refused $why, but not for that"; }
+}
+refused_db "without a test database" "no test database was chosen"
+WTF_TASK_ALLOW_5432='' refused_db "on port 5432" "port 5432" \
+  --test-db "ecto://postgres:postgres@127.0.0.1:5432/phx_check_test"
+refused_db "on a non-test database" "ending in _test" \
+  --test-db "ecto://postgres:postgres@127.0.0.1:55432/phx_check"
+if grep -q 'status done' <<<"$(wtf show generate:api_clients)"; then
+  fail "a refused complete recorded generate:api_clients"
+fi
+
 domain="$scratch/lib/phx_check/domain.ex"
 cp "$domain" "$scratch/domain.ex.orig"
 echo "# a hand edit" >> "$domain"
 
-if wtf complete generate:api_clients --agent ci --app "$app"; then
+if out="$(wtf complete generate:api_clients --agent ci --app "$app" --use-project-test-config 2>&1)"; then
   fail "complete accepted a hand-edited generated file"
 fi
+grep -q 'FAIL .*generated_unchanged' <<<"$out" || { echo "$out" >&2; fail "complete refused, but not for the hand edit"; }
 
 if wtf audit --app "$app"; then
   fail "audit accepted a hand-edited generated file"
@@ -68,6 +97,7 @@ wtf audit --app "$app"
 grep -q 'advisory: not verified' <<<"$(wtf audit --app "$app")" || fail "the audit is not labelled advisory"
 
 if [[ -n "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
+  test_db="${PHOENIX_COMPILE_CHECK_DB%/}/phx_check_test"
   tagged="$scratch/test/wtf_tagged_test.exs"
   write_tagged() {
     cat > "$tagged" <<ELIXIR
@@ -80,13 +110,13 @@ ELIXIR
   }
 
   write_tagged 3
-  if wtf complete generate:api_clients --agent ci --app "$app"; then
+  if wtf complete generate:api_clients --agent ci --app "$app" --test-db "$test_db"; then
     rm -f "$tagged"
     fail "complete accepted a failing tagged test"
   fi
 
   write_tagged 2
-  wtf complete generate:api_clients --agent ci --app "$app"
+  wtf complete generate:api_clients --agent ci --app "$app" --test-db "$test_db"
   rm -f "$tagged"
 
   # API calls the generator leaves out (WTF-412): phoenix_api_clients has
@@ -104,7 +134,7 @@ ELIXIR
 
   wtf complete generate:option_sets --agent ci --app "$app"
   wtf complete generate:schema --agent ci --app "$app"
-  wtf complete generate:api_clients --agent ci --app "$app"
+  wtf complete generate:api_clients --agent ci --app "$app" --test-db "$test_db"
   grep -q 'status done' <<<"$(wtf show generate:api_clients)" ||
     fail "generate:api_clients is not done with residue calls"
 

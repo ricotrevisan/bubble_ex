@@ -17,7 +17,7 @@ defmodule BubbleEx.Tasks.Verifier do
 
   alias BubbleEx.{Error, Tasks}
   alias BubbleEx.Target.Phoenix.Checks
-  alias BubbleEx.Tasks.{Git, State, Store}
+  alias BubbleEx.Tasks.{Git, State, Store, TestDb}
   alias BubbleEx.Verify.Result
 
   @min_text 20
@@ -37,32 +37,62 @@ defmodule BubbleEx.Tasks.Verifier do
          :ok <- waivable(task, Keyword.get(opts, :waive, %{})),
          {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, [])) do
       ctx = board |> context(opts, now, evidence) |> Map.put(:agent, agent)
-      subtasks = Map.get(board.children, id, [])
 
-      {sub_reports, {cache, passed}} =
-        subtasks
+      subtasks =
+        board.children
+        |> Map.get(id, [])
         |> Enum.filter(
           &(&1.status != :closed and (&1.status == :auto or Tasks.done?(board, &1.id)))
         )
-        |> Enum.map_reduce({%{}, MapSet.new()}, &verify_one(board, &1, ctx, &2))
 
-      {outcomes, _cache} = verify(board, task, %{ctx | passed: passed}, cache)
-
-      report = %{
-        task: id,
-        mode: :advisory,
-        outcomes: outcomes,
-        subtasks: sub_reports,
-        ignored_results: ignored(evidence, [outcomes | Enum.map(sub_reports, & &1.outcomes)])
-      }
-
-      if passed?(outcomes) do
-        record_subtasks(board, sub_reports, agent, now)
-        :ok = Store.put(board.root, done(board, task, agent, now, outcomes, evidence.artifacts))
-        {:ok, report}
-      else
-        error("#{id} is not complete: a criterion failed", %{report: report})
+      with :ok <- test_db(subtasks ++ [task], ctx) do
+        verify_complete(board, task, subtasks, ctx, evidence)
       end
+    end
+  end
+
+  defp verify_complete(board, task, subtasks, ctx, evidence) do
+    %{agent: agent, now: now} = ctx
+    id = task.id
+
+    {sub_reports, {cache, passed}} =
+      Enum.map_reduce(subtasks, {%{}, MapSet.new()}, &verify_one(board, &1, ctx, &2))
+
+    {outcomes, _cache} = verify(board, task, %{ctx | passed: passed}, cache)
+
+    report = %{
+      task: id,
+      mode: :advisory,
+      outcomes: outcomes,
+      subtasks: sub_reports,
+      ignored_results: ignored(evidence, [outcomes | Enum.map(sub_reports, & &1.outcomes)])
+    }
+
+    if passed?(outcomes) do
+      record_subtasks(board, sub_reports, agent, now)
+      :ok = Store.put(board.root, done(board, task, agent, now, outcomes, evidence.artifacts))
+      {:ok, report}
+    else
+      error("#{id} is not complete: a criterion failed", %{report: report})
+    end
+  end
+
+  # A run that would touch the test database (mix test) needs one chosen
+  # explicitly (WTF-448, BubbleEx.Tasks.TestDb); the others need none.
+  defp test_db(tasks, ctx) do
+    checks = ctx.checks
+    Code.ensure_loaded(checks)
+
+    needing =
+      for task <- tasks,
+          function_exported?(checks, :needs_database?, 1),
+          Enum.any?(task.criteria, &checks.needs_database?/1),
+          do: task.id
+
+    case {needing, ctx.test_db} do
+      {[], _} -> :ok
+      {ids, nil} -> {:error, TestDb.refusal(ids)}
+      {_ids, test_db} -> TestDb.usable(ctx.root, test_db)
     end
   end
 
@@ -88,35 +118,41 @@ defmodule BubbleEx.Tasks.Verifier do
          {:ok, evidence} <- evidence(board.root, Keyword.get(opts, :evidence, [])) do
       ctx = board |> context(opts, now, evidence) |> Map.merge(%{audit: true, agent: nil})
 
-      {reports, _acc} =
-        Enum.map_reduce(tasks, {%{}, MapSet.new()}, &audit_one(board, &1, ctx, &2))
-
-      failed = for r <- reports, r.stale or not passed?(r.outcomes), do: r
-      # A subtask that fails takes its done parent with it.
-      parents =
-        for r <- failed,
-            parent = board.by_id[r.task].parent,
-            parent != nil,
-            Tasks.state(board, parent).status == :done,
-            parent not in Enum.map(failed, & &1.task),
-            uniq: true,
-            do: %{task: parent, stale: false, outcomes: [], subtask: r.task}
-
-      flipped =
-        for r <- failed ++ parents do
-          :ok = Store.put(board.root, flip(Tasks.state(board, r.task), r, board.plan, now))
-          r.task
-        end
-
-      {:ok,
-       %{
-         mode: :advisory,
-         ignored_results: ignored(evidence, Enum.map(reports, & &1.outcomes)),
-         checked: Enum.map(reports, & &1.task),
-         flipped: flipped,
-         reports: reports
-       }}
+      with :ok <- test_db(Enum.reject(tasks, &stale?(board, &1)), ctx) do
+        audit_tasks(board, tasks, ctx, evidence, now)
+      end
     end
+  end
+
+  defp audit_tasks(board, tasks, ctx, evidence, now) do
+    {reports, _acc} =
+      Enum.map_reduce(tasks, {%{}, MapSet.new()}, &audit_one(board, &1, ctx, &2))
+
+    failed = for r <- reports, r.stale or not passed?(r.outcomes), do: r
+    # A subtask that fails takes its done parent with it.
+    parents =
+      for r <- failed,
+          parent = board.by_id[r.task].parent,
+          parent != nil,
+          Tasks.state(board, parent).status == :done,
+          parent not in Enum.map(failed, & &1.task),
+          uniq: true,
+          do: %{task: parent, stale: false, outcomes: [], subtask: r.task}
+
+    flipped =
+      for r <- failed ++ parents do
+        :ok = Store.put(board.root, flip(Tasks.state(board, r.task), r, board.plan, now))
+        r.task
+      end
+
+    {:ok,
+     %{
+       mode: :advisory,
+       ignored_results: ignored(evidence, Enum.map(reports, & &1.outcomes)),
+       checked: Enum.map(reports, & &1.task),
+       flipped: flipped,
+       reports: reports
+     }}
   end
 
   defp audit_one(board, task, ctx, acc) do
@@ -213,6 +249,7 @@ defmodule BubbleEx.Tasks.Verifier do
       waive: Keyword.get(opts, :waive, %{}),
       checks: Keyword.get(opts, :checks, Checks),
       git: Keyword.get(opts, :git) || Git.cmd(root),
+      test_db: opts[:test_db],
       cmd:
         Keyword.get(opts, :cmd, fn args, env ->
           System.cmd("mix", args, cd: root, stderr_to_stdout: true, env: env)
