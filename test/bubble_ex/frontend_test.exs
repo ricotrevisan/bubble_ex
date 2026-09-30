@@ -1600,8 +1600,8 @@ defmodule BubbleEx.FrontendTest do
             "is_visible" => visible,
             "width" => 320,
             "height" => 180,
-            "left" => 40,
-            "top" => 60
+            "x" => 40,
+            "y" => 60
           },
           "workflows" => workflows
         }

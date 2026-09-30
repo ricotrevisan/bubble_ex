@@ -1232,6 +1232,22 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Editor JSON pages lay out in flow** (WTF-446). Bubble's editor JSON
+  (a Buildprint v5 workspace, a `.bubble` export) writes every element's
+  canvas box as `left`/`top`/`width`/`height`, also inside Column, Row
+  and Align-to-parent containers, and leaves out sizing flags that are
+  off. `BubbleEx.Frontend.normalize/2` read that box as a position and a
+  size, so every element became `position: absolute` and fill or fit
+  elements got `0px` sizes. A child of a flow container with editor
+  offsets now has its box read as Bubble's runtime reads it (`%l`/`%t`/
+  `%w`/`%h`: no offsets in flow, a size only on a fixed axis), with the
+  missing flags off (neither fixed nor fit fills between min and max); a
+  reusable definition's canvas size is read the same way, and a flow
+  page drops its canvas offsets and height (it fills the viewport unless
+  `fixed_width`). Children of Fixed and layout-less (legacy) containers
+  and the calibrated payloads (the fidelity cases) are unchanged byte for
+  byte.
+
 - **`mix wtf.task complete` and `audit` no longer run `mix test` on a
   database nobody named** (WTF-448). Tagged-test criteria (`unit_test`,
   `request_shape`, `render_smoke`, and `traceability` of a page or

@@ -350,6 +350,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp normalize_container(raw, identity, kind, path, map_key) do
+    raw = editor_container_geometry(raw, kind)
     exporter_id = Naming.exporter_id(identity, kind, path)
     layout = layout_from(raw)
     workflows = click_workflows(raw)
@@ -412,6 +413,7 @@ defmodule BubbleEx.Frontend.Normalize do
     |> Enum.sort_by(fn {key, node} -> {order_of(node, parent_mode), key} end)
     |> Enum.reduce({[], []}, fn {key, raw}, {nodes, diags} ->
       if is_map(raw) do
+        raw = compact_editor_geometry(raw, parent_mode)
         path = parent_path ++ ["elements", key]
         {node, node_diags} = normalize_element(raw, identity, path, key, workflows)
 
@@ -429,6 +431,89 @@ defmodule BubbleEx.Frontend.Normalize do
       end
     end)
     |> then(fn {nodes, diags} -> {Enum.reverse(nodes), diags} end)
+  end
+
+  # Bubble's editor JSON (a `.bubble` export, a Buildprint v5 workspace)
+  # writes an element's canvas box as `left`/`top`/`width`/`height` on every
+  # element, also under Column, Row and Align-to-parent containers where
+  # Bubble ignores them. Bubble's runtime payload serves the same four values
+  # as `%l`/`%t`/`%w`/`%h`, which are read the way Bubble does (sizes only
+  # for fixed axes and plugin elements, no canvas offsets in flow). A child
+  # of such a container is read that way too; readable `width`/`height`
+  # without editor offsets stay explicit sizes, and children of Fixed or
+  # layout-less (legacy) parents keep their canvas box.
+  @editor_geometry %{"left" => "%l", "top" => "%t", "width" => "%w", "height" => "%h"}
+
+  defp compact_editor_geometry(raw, parent_mode)
+       when parent_mode in [:column, :row, :align_to_parent] do
+    props = Payload.properties(raw)
+    props_key = if Map.has_key?(raw, "properties"), do: "properties", else: "%p"
+
+    if editor_geometry?(props) do
+      Map.put(raw, props_key, props |> compact_geometry() |> put_sizing_flags())
+    else
+      raw
+    end
+  end
+
+  defp compact_editor_geometry(raw, _parent_mode), do: raw
+
+  # A page or reusable definition in the editor JSON is a Column, Row or
+  # Align-to-parent container with a canvas box around it. A reusable
+  # definition's `width`/`height` are its canvas size (`%w`/`%h` at
+  # runtime). A page's canvas offsets and height are dropped: its height
+  # follows its content from `min_height_px`, and it fills the viewport
+  # unless it is marked `fixed_width`. Legacy (layout-less or Fixed)
+  # containers keep their box.
+  defp editor_container_geometry(raw, kind) when kind in [:page, :reusable_definition] do
+    props = Payload.properties(raw)
+
+    if layout_mode(raw) in [:column, :row, :align_to_parent] and editor_container?(props, kind) do
+      props_key = if Map.has_key?(raw, "properties"), do: "properties", else: "%p"
+      Map.put(raw, props_key, editor_container_props(props, kind))
+    else
+      raw
+    end
+  end
+
+  defp editor_container_geometry(raw, _kind), do: raw
+
+  defp editor_container?(props, :page), do: editor_geometry?(props)
+
+  defp editor_container?(props, :reusable_definition) do
+    (is_number(props["width"]) or is_number(props["height"])) and
+      not Enum.any?(Map.values(@editor_geometry), &Map.has_key?(props, &1))
+  end
+
+  defp editor_container_props(props, :page) do
+    props
+    |> Map.drop(["left", "top", "height"])
+    |> Map.put_new("single_width", props["fixed_width"] == true)
+    |> Map.put_new("single_height", false)
+  end
+
+  defp editor_container_props(props, :reusable_definition), do: compact_geometry(props)
+
+  # The editor leaves out a sizing flag that is off: an element that is
+  # neither fixed nor fit on an axis fills it between its min and max.
+  defp put_sizing_flags(props) do
+    Enum.reduce(~w(fit_width single_width fit_height single_height), props, fn flag, acc ->
+      Map.put_new(acc, flag, false)
+    end)
+  end
+
+  defp compact_geometry(props) do
+    Enum.reduce(@editor_geometry, props, fn {readable, compact}, acc ->
+      case Map.pop(acc, readable) do
+        {nil, acc} -> acc
+        {value, acc} -> Map.put(acc, compact, value)
+      end
+    end)
+  end
+
+  defp editor_geometry?(props) do
+    (is_number(props["left"]) or is_number(props["top"])) and
+      not Enum.any?(Map.values(@editor_geometry), &Map.has_key?(props, &1))
   end
 
   defp put_default_modern_width(%Node{kind: kind} = node, raw, parent_mode)
