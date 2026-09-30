@@ -13,8 +13,10 @@ All notable changes to this project are documented here.
   The browser drive records each visit's load and settle times and
   layout counts (elements with no area, past the right edge, wired
   elements covered), and signs in only with a magic link that arrived
-  after its request (waiting out the sender's one-a-minute limit), so
-  repeated drives of one server no longer use a spent link.
+  after its request, so repeated drives of one server no longer use a
+  spent link. The sender's job is unique per email for 60 s, so a
+  request within a minute of an earlier one is dropped; with no new link
+  61 s after its request, the drive asks once more and keeps polling.
 - **Four gaps of the vertical slice** (WTF-450, WTF-451, WTF-453,
   WTF-454).
   * "Add a pause before next action" lowers to a `:pause` step. The

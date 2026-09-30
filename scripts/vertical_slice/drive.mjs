@@ -171,8 +171,10 @@ await visit("signed-out");
 // 2. Magic-link sign-in through the local mailbox. Only a message that
 //    arrives after the request counts: an earlier one (another drive of
 //    the same server, the same user) holds a spent link. The generated
-//    sender sends one link per email a minute (a unique Oban job), so a
-//    repeated drive may wait up to that long.
+//    sender's Oban job is unique per email for 60 s, completed jobs
+//    included, so a request within a minute of an earlier one is dropped,
+//    not delayed. With no new link 61 s after the request, the drive asks
+//    once more (by then the window has passed) and keeps polling.
 const mailboxIds = async () => {
   await page.goto(new URL("/dev/mailbox", base).href);
   const html = await page.content();
@@ -180,13 +182,26 @@ const mailboxIds = async () => {
 };
 try {
   const known = new Set(await mailboxIds());
-  await page.goto(new URL("/sign-in", base).href);
-  await settle();
-  await page.fill('input[type="email"], input[name$="[email]"]', args.email);
-  await page.click('form[action$="/magic_link/request"] button[type="submit"], form[action$="/magic_link/request"] button');
+  const requestLink = async () => {
+    await page.goto(new URL("/sign-in", base).href);
+    await settle();
+    await page.fill('input[type="email"], input[name$="[email]"]', args.email);
+    await page.click('form[action$="/magic_link/request"] button[type="submit"], form[action$="/magic_link/request"] button');
+  };
+  const RETRY_AFTER_MS = 61_000;
+  const DEADLINE_MS = RETRY_AFTER_MS + 45_000;
+  const started = Date.now();
+  let requested = Date.now();
+  let requests = 1;
+  await requestLink();
   let link = null;
   const checked = new Set(known);
-  for (let attempt = 0; attempt < 75 && !link; attempt++) {
+  while (!link && Date.now() - started < DEADLINE_MS) {
+    if (requests === 1 && Date.now() - requested >= RETRY_AFTER_MS) {
+      await requestLink();
+      requested = Date.now();
+      requests++;
+    }
     await page.waitForTimeout(1000);
     for (const id of await mailboxIds()) {
       if (checked.has(id)) continue;
@@ -201,7 +216,10 @@ try {
       }
     }
   }
-  if (!link) throw new Error("no new magic link in the local mailbox within 75 s");
+  if (!link) {
+    const elapsed = Math.round((Date.now() - started) / 1000);
+    throw new Error(`no new magic link in the local mailbox after ${elapsed} s and ${requests} request(s)`);
+  }
   const linkUrl = new URL(link);
   await page.goto(new URL(linkUrl.pathname + linkUrl.search, base).href);
   await settle();
@@ -216,7 +234,7 @@ try {
   }
   const landed = new URL(page.url()).pathname;
   if (landed.includes("magic_link") || landed.startsWith("/sign-in")) throw new Error(`still on ${landed.split("/")[1]}`);
-  result.sign_in = { ok: true, landed };
+  result.sign_in = { ok: true, landed, requests };
 } catch (err) {
   result.sign_in = { ok: false, error: String(err).slice(0, 300) };
 }

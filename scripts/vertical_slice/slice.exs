@@ -173,6 +173,7 @@ case System.argv() do
     decisions = rest |> List.first("-") |> Cli.decisions() |> Pipeline.load_decisions()
     built = Pipeline.build(app, decisions, module: "Slice", privacy: privacy)
     {chosen, ranked} = built |> Pages.stats() |> Pages.choose()
+    IO.puts("privacy: #{privacy}")
     IO.puts(Pages.criteria())
     IO.puts(Cli.page_table(ranked))
     IO.puts("\nmedian page: #{chosen && chosen.id}")
