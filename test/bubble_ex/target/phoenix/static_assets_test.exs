@@ -1,0 +1,214 @@
+defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
+  # WTF-447: the generated pages never point at Bubble's storage. The
+  # fixture page (test/support/target/phoenix/static_assets.json) has
+  # images on Bubble's CDN and S3 bucket (protocol-relative, http and
+  # https, an SVG, one never downloaded), on other hosts (look-alikes
+  # included), hostile sources, a data URL, responsive variants, a
+  # reusable whose instances pass their image, and an icon; its committed
+  # store (static_assets.store/) is what mix bubble.fetch_assets wrote
+  # against a fake server. scripts/phoenix_compile_check.sh compiles and
+  # mounts it as `phoenix_static_assets`.
+  use ExUnit.Case, async: true
+
+  alias BubbleEx.Frontend.StaticAssets
+  alias BubbleEx.Target.Phoenix
+
+  @fixture "test/support/target/phoenix/static_assets.json"
+  @store "test/support/target/phoenix/static_assets.store"
+  @png_sha "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77"
+  @gif_sha "ef1955ae757c8b966c83248350331bd3a30f658ced11f387f8ebf05ab3368629"
+
+  defp render(opts \\ []) do
+    app = @fixture |> File.read!() |> Jason.decode!()
+    {:ok, model} = BubbleEx.Model.build(app)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+
+    {:ok, expressions} =
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+        runtime: "Shop.Bubble.Runtime",
+        namespace: "Shop"
+      )
+
+    opts = [module: "Shop", frontend: frontend, expressions: expressions] ++ opts
+    {:ok, files} = Phoenix.render(project, opts)
+    # Offline and deterministic.
+    {:ok, ^files} = Phoenix.render(project, opts)
+    {:ok, report} = Phoenix.frontend_report(project, opts)
+    {files, report}
+  end
+
+  defp store do
+    {:ok, store} = StaticAssets.load_store(@store)
+    assert store.errors == []
+    store
+  end
+
+  defp pages(files) do
+    for {path, content} <- files,
+        path =~ ~r{^lib/shop_web/(live|components/reusables)/.*\.(heex|ex)$},
+        into: "",
+        do: content
+  end
+
+  defp img(markup, id) do
+    [tag] = Regex.run(~r/<img\s+data-bubble-id="#{id}"[^>]*>/s, markup)
+    tag
+  end
+
+  defp by_url(manifest), do: Map.new(manifest["assets"], &{{&1["kind"], &1["url"]}, &1})
+
+  # No page or component references Bubble's storage (the generated
+  # uploads test holds hostile Bubble URLs on purpose).
+  defp refute_bubble_urls(files) do
+    markup = pages(files)
+    refute markup =~ ~r{//[a-z0-9-]+\.cdn\.bubble\.io/}i
+    refute markup =~ ~r{s3\.amazonaws\.com/appforest_uf|appforest_uf\.s3}i
+  end
+
+  test "with the store: Bubble's images are the app's own, other hosts stay and are flagged" do
+    {files, report} = render(asset_store: store())
+    refute_bubble_urls(files)
+    markup = pages(files)
+
+    png = "/images/bubble/#{@png_sha}.png"
+    # Protocol-relative, http:// and https:// references to one file.
+    for id <- ~w(bCdn bHttp bResp), do: assert(img(markup, id) =~ ~s(src="#{png}"), id)
+    assert img(markup, "bS3") =~ ~s(src="/images/bubble/#{@gif_sha}.gif")
+    assert img(markup, "bSvg") =~ ~r|src="/images/bubble/[0-9a-f]{64}\.svg"|
+    assert markup =~ ~r/<source\s+media="\(width &lt;= 600px\)"\s+srcset="#{Regex.escape(png)}"/
+
+    # Never downloaded: no source, never the Bubble URL, and marked.
+    refute img(markup, "bMiss") =~ "src="
+    assert markup =~ "TODO(bubble:bMiss) image on Bubble's storage not downloaded"
+
+    # Other hosts, look-alikes of Bubble's included, keep their URL, marked.
+    assert img(markup, "bExt") =~ ~s(src="https://images.example.org/hero.jpg")
+    assert img(markup, "bLook") =~ ~s(src="https://a1b2c3d4e5f6.cdn.bubble.io.evil.example/)
+    assert img(markup, "bBucket") =~ ~s(src="https://evil.example/appforest_uf/)
+    assert markup =~ "TODO(bubble:bExt) image on an outside host (images.example.org)"
+
+    assert markup =~
+             ~S|<source media="(width &lt; 400px)" srcset="https://images.example.org/small.png"|
+
+    # Hostile sources are dropped, never echoed.
+    for id <- ~w(bJs bQuote bUser bToken), do: refute(img(markup, id) =~ "src=", id)
+    refute markup =~ "javascript:"
+    refute markup =~ "onerror"
+    refute markup =~ "secret"
+    refute markup =~ "abc123"
+    assert img(markup, "bData") =~ ~s(src="data:image/png;base64,iVBORw0KGgo=")
+
+    # A reusable's instances pass their image through the same rules.
+    assert markup =~ ~s|src_bphoto={\n      to_string(\n        "#{png}"\n      )\n    }|
+    assert markup =~ ~S|src_bphoto={to_string("https://images.example.org/two.png")}|
+    assert files["lib/shop_web/components/reusables/card.html.heex"] =~ "src={@src_bphoto}"
+
+    # The icon's symbol is inlined from the stored library, sanitized.
+    assert markup =~ ~s(<symbol id="bubble-icon-bIcon" viewBox="0 0 32 32">)
+
+    # The images the app serves, generated and hash-checked.
+    served =
+      for {path, bytes} <- files,
+          String.starts_with?(path, "priv/static/images/bubble/"),
+          do: {path, bytes}
+
+    assert Enum.map(served, &elem(&1, 0)) |> Enum.sort() ==
+             Enum.sort([
+               "priv/static/images/bubble/#{@png_sha}.png",
+               "priv/static/images/bubble/#{@gif_sha}.gif",
+               hd(for {p, _} <- served, String.ends_with?(p, ".svg"), do: p)
+             ])
+
+    for {path, bytes} <- served do
+      assert path =~ Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+      refute bytes =~ "script"
+    end
+
+    generated = Jason.decode!(files[".wtf/generated.json"])["generated"]
+    for {path, _} <- served, do: assert(Map.has_key?(generated, path), path)
+    assert Map.has_key?(generated, ".wtf/assets.json")
+
+    # The manifest.
+    manifest = Jason.decode!(files[".wtf/assets.json"])
+    assets = by_url(manifest)
+
+    assert %{
+             "status" => "local",
+             "sha256" => @png_sha,
+             "content_type" => "image/png",
+             "size" => 70,
+             "src" => ^png,
+             "path" => "priv/static/images/bubble/" <> _,
+             "elements" => ["bCdn", "bHttp", "bPhoto", "bResp"]
+           } = assets[{"image", "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"}]
+
+    assert %{"status" => "local", "content_type" => "image/gif", "size" => 42} =
+             assets[
+               {"image", "https://s3.amazonaws.com/appforest_uf/f1600000000000x300/footer.png"}
+             ]
+
+    assert %{"status" => "pending"} =
+             assets[
+               {"image", "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000002x400/missing.png"}
+             ]
+
+    assert %{"status" => "external", "host" => "images.example.org", "elements" => ["bExt"]} =
+             assets[{"image", "https://images.example.org/hero.jpg"}]
+
+    assert %{"status" => "local", "inlined" => true} =
+             assets[
+               {"icon", "https://app.example.test/static/icon_libraries/fontawesome-4.7.0.svg"}
+             ]
+
+    # Credentials never reach the manifest.
+    refute files[".wtf/assets.json"] =~ "secret"
+    refute files[".wtf/assets.json"] =~ "abc123"
+
+    assert manifest["counts"] == %{
+             "local" => 5,
+             "pending" => 1,
+             "external" => 5,
+             "data" => 1,
+             "invalid" => 4
+           }
+
+    assert report["assets_local"] == 5 and report["assets_external"] == 5
+  end
+
+  test "without the store: no Bubble URL either, every Bubble image pending" do
+    {files, report} = render()
+    refute_bubble_urls(files)
+    markup = pages(files)
+
+    for id <- ~w(bCdn bHttp bS3 bSvg bMiss bResp), do: refute(img(markup, id) =~ "src=", id)
+    assert img(markup, "bExt") =~ ~s(src="https://images.example.org/hero.jpg")
+    refute Enum.any?(Map.keys(files), &String.starts_with?(&1, "priv/static/images/bubble/"))
+    # The instance passing a Bubble image passes nothing.
+    refute markup =~ ~r/data-bubble-id="bOne"[^>]*src_bphoto/s
+
+    manifest = Jason.decode!(files[".wtf/assets.json"])
+    assert manifest["counts"]["local"] == 0
+    assert manifest["counts"]["pending"] == 6
+    assert report["assets_pending"] == 6
+  end
+
+  test "the endpoint serves the images with nosniff and a sandbox policy" do
+    {files, _report} = render()
+    endpoint = files["lib/shop_web/endpoint.ex"]
+    assert endpoint =~ ~s(at: "/images/bubble")
+    assert endpoint =~ ~s(from: {:shop, "priv/static/images/bubble"})
+    assert endpoint =~ ~s("x-content-type-options" => "nosniff")
+    assert endpoint =~ "sandbox"
+  end
+
+  test "asset_store: must be a loaded store" do
+    app = @fixture |> File.read!() |> Jason.decode!()
+    {:ok, model} = BubbleEx.Model.build(app)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+
+    assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+             Phoenix.render(project, frontend: frontend, asset_store: @store)
+  end
+end

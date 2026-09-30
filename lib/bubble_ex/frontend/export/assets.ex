@@ -33,6 +33,17 @@ defmodule BubbleEx.Frontend.Export.Assets do
 
   def collect(%Node{} = node, opts), do: collect([node], opts)
 
+  @doc false
+  # One public asset, fetched as `collect/2` fetches (redirect limit, size
+  # cap, deadline, content-type check, public destinations only), with
+  # every hop (the URL and each redirect) checked by `allow?`
+  # (BubbleEx.Frontend.StaticAssets: Bubble's storage hosts only).
+  @spec fetch_allowed(String.t(), (String.t() -> boolean()), keyword()) ::
+          {:ok, map()} | {:error, map()}
+  def fetch_allowed(url, allow?, opts) when is_binary(url) and is_function(allow?, 1) do
+    fetch_public(url, Keyword.put(opts, :allow, allow?))
+  end
+
   defp collect_one(node, state, opts) do
     case resolved_src(node) do
       url when is_binary(url) and url != "" -> collect_url(node, url, state, opts)
@@ -244,10 +255,22 @@ defmodule BubbleEx.Frontend.Export.Assets do
   defp do_fetch_public(url, opts, visited, hops) do
     normalized = SafeUrl.normalize(url)
 
-    if MapSet.member?(visited, normalized) do
-      {:error, asset_finding(url, "asset redirect loop detected")}
-    else
-      request_public_asset(url, opts, visited, normalized, hops)
+    cond do
+      MapSet.member?(visited, normalized) ->
+        {:error, asset_finding(url, "asset redirect loop detected")}
+
+      not allowed?(url, opts) ->
+        {:error, asset_finding(url, "asset host is not allowed")}
+
+      true ->
+        request_public_asset(url, opts, visited, normalized, hops)
+    end
+  end
+
+  defp allowed?(url, opts) do
+    case Keyword.get(opts, :allow) do
+      nil -> true
+      allow? -> allow?.(url) == true
     end
   end
 
@@ -396,8 +419,11 @@ defmodule BubbleEx.Frontend.Export.Assets do
     end
   end
 
-  defp sanitize_icon_sprite(bytes, fragment)
-       when is_binary(bytes) and is_binary(fragment) do
+  @doc false
+  # One icon's symbol out of a sprite, rebuilt from its paths only.
+  @spec sanitize_icon_sprite(term(), term()) :: {:ok, binary()} | :error
+  def sanitize_icon_sprite(bytes, fragment)
+      when is_binary(bytes) and is_binary(fragment) do
     with true <- Regex.match?(~r/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, fragment),
          regex =
            Regex.compile!(
@@ -420,7 +446,7 @@ defmodule BubbleEx.Frontend.Export.Assets do
     end
   end
 
-  defp sanitize_icon_sprite(_bytes, _fragment), do: :error
+  def sanitize_icon_sprite(_bytes, _fragment), do: :error
 
   defp safe_view_box?(view_box) do
     parts = String.split(view_box, ~r/\s+/, trim: true)

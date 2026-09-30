@@ -478,6 +478,27 @@ generated files to remove. The resources have **no authorization**
 (`privacy: :omit`): add Ash policies before exposing them. `scripts/phoenix_compile_check.sh`
 builds, migrates and tests the rendered application of every fixture.
 
+The images and icons set in the Bubble editor never stay on Bubble's
+storage. Downloading them is its own, explicit step; rendering stays
+offline:
+
+```bash
+mix bubble.fetch_assets path/to/app.json --store assets_store --app-url https://myapp.bubbleapps.io
+```
+
+```elixir
+{:ok, store} = BubbleEx.Frontend.StaticAssets.load_store("assets_store")
+BubbleEx.Target.Phoenix.render(project, frontend: frontend, asset_store: store)
+```
+
+Only Bubble's storage hosts are requested (redirects included), with a size
+cap and a redirect limit; images are kept only if their bytes are PNG,
+JPEG, GIF or WebP, or a sanitized SVG, and are served from
+`priv/static/images/bubble/<sha256>.<ext>`. A Bubble image not downloaded
+renders without a source; images on other hosts keep their URL. Both are
+marked in the templates, and `.wtf/assets.json` lists every asset with its
+status, SHA-256, content type and size.
+
 ### DBML / database diagram (legacy options)
 
 The original DBML path is unchanged and still available via its own options:

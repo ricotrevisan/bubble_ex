@@ -1,0 +1,45 @@
+{
+  "assets": {
+    "/static/icon_libraries/fontawesome-4.7.0.svg": {
+      "content_type": "image/svg+xml",
+      "file": "c5b5615e8bfd348d10c9cab514315be540822756f9902cb563c61ef76c57045c.svg",
+      "kind": "icon",
+      "sha256": "c5b5615e8bfd348d10c9cab514315be540822756f9902cb563c61ef76c57045c",
+      "size": 186,
+      "url": "https://app.example.test/static/icon_libraries/fontawesome-4.7.0.svg"
+    },
+    "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png": {
+      "content_type": "image/png",
+      "file": "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77.png",
+      "kind": "image",
+      "sha256": "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77",
+      "size": 70,
+      "url": "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"
+    },
+    "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000001x200/mark.svg": {
+      "content_type": "image/svg+xml",
+      "file": "eed1a4401daf0c0dc9bb05f6ea7af5b7e3df8cff890d8262daee59e78d5e3198.svg",
+      "kind": "image",
+      "sha256": "eed1a4401daf0c0dc9bb05f6ea7af5b7e3df8cff890d8262daee59e78d5e3198",
+      "size": 109,
+      "url": "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000001x200/mark.svg"
+    },
+    "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000003x500/mobile.png": {
+      "content_type": "image/png",
+      "file": "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77.png",
+      "kind": "image",
+      "sha256": "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77",
+      "size": 70,
+      "url": "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000003x500/mobile.png"
+    },
+    "https://s3.amazonaws.com/appforest_uf/f1600000000000x300/footer.png": {
+      "content_type": "image/gif",
+      "file": "ef1955ae757c8b966c83248350331bd3a30f658ced11f387f8ebf05ab3368629.gif",
+      "kind": "image",
+      "sha256": "ef1955ae757c8b966c83248350331bd3a30f658ced11f387f8ebf05ab3368629",
+      "size": 42,
+      "url": "https://s3.amazonaws.com/appforest_uf/f1600000000000x300/footer.png"
+    }
+  },
+  "version": 1
+}

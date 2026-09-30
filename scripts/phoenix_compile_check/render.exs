@@ -137,6 +137,22 @@ fixtures =
 
     fixture = fn -> path |> File.read!() |> Jason.decode!() |> app_fixture.() end
 
+    # A fixture's downloaded static assets (WTF-447), when it has a
+    # committed store next to it (<fixture>.store/, never fetched here).
+    store = String.replace_suffix(path, ".json", ".store")
+
+    fixture =
+      if File.dir?(store) do
+        fn ->
+          {:ok, project, opts} = fixture.()
+          {:ok, loaded} = BubbleEx.Frontend.StaticAssets.load_store(store)
+          [] = loaded.errors
+          {:ok, project, Keyword.put(opts, :asset_store, loaded)}
+        end
+      else
+        fixture
+      end
+
     if prefix == "fidelity_",
       do: {name, fn -> with_case_assets.(fixture.(), Path.dirname(Path.dirname(path))) end},
       else: {name, fixture}
