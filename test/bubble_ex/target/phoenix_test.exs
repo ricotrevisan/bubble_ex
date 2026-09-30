@@ -49,6 +49,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     "lib/acme_import/mailer.ex",
     "lib/acme_import/repo.ex",
     "lib/acme_import_web.ex",
+    "lib/acme_import_web/auth_overrides.ex",
     "lib/acme_import_web/components/layouts.ex",
     "lib/acme_import_web/components/layouts/root.html.heex",
     "lib/acme_import_web/controllers/auth_controller.ex",
@@ -248,6 +249,17 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert router =~ "magic_sign_in_route(AcmeImport.Accounts.Resources.user(), :magic_link"
       assert router =~ ~s(scope "/api/1.1/wf", AcmeImportWeb)
       assert router =~ ~s(match :*, "/:__wf_name", WorkflowApiController, :dispatch)
+
+      # The sign-in pages load nothing from a third party (WTF-378): the
+      # default banner's logo is on ash-hq.org.
+      assert router =~
+               "overrides: [AcmeImportWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]"
+
+      refute router =~ "overrides: [AshAuthentication.Phoenix.Overrides.Default]"
+      overrides = files["lib/acme_import_web/auth_overrides.ex"]
+      assert overrides =~ "set :image_url, nil"
+      assert overrides =~ "set :dark_image_url, nil"
+      assert overrides =~ ~s(set :text, "Acme Import")
     end
 
     test "the User's confirmed_at: generated, and a magic-link sign-in sets it (WTF-413)" do

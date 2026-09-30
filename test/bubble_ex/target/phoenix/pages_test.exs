@@ -151,6 +151,25 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert helpers =~ ~s|this.js().setAttribute(el, "hidden", "")|
     end
 
+    test "a modal Popup with an authored HTML ID has one id, the authored one (WTF-378)" do
+      app = case_app("bptvorpv")
+      [page] = Map.keys(app["pages"])
+
+      app =
+        put_in(
+          app,
+          ["pages", page, "elements", "overlay__popup", "properties", "unique_id"],
+          "savedViews"
+        )
+
+      {files, _, _} = render(app)
+      [template] = for {p, c} <- files, p =~ ~r{live/.*\.heex$}, do: c
+      [popup] = Regex.run(~r/<\.focus_wrap\s[^>]*data-bubble-id="bptvorpw"[^>]*>/, template)
+      assert [_] = Regex.scan(~r/\sid=/, popup)
+      assert popup =~ ~s(id="savedViews")
+      refute template =~ "bubble-overlay-bptvorpw"
+    end
+
     test "a modal Popup is a named dialog that gives the focus back", %{
       files: files,
       template: template

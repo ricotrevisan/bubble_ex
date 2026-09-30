@@ -1374,8 +1374,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     case node.runtime do
       %{"overlay" => "popup", "modal" => true} ->
-        {["<.focus_wrap", component_attrs_html([{"id", overlay_dom_id(node, ctx)} | all]), ">"],
-         acc}
+        # Its focus trap needs a DOM ID: the authored HTML ID when it has
+        # one (unique on the page, put_authored_id/4), else a generated one.
+        # Never both: a second `id` overrides the first (WTF-378).
+        all =
+          if List.keymember?(all, "id", 0),
+            do: all,
+            else: [{"id", overlay_dom_id(node, ctx)} | all]
+
+        {["<.focus_wrap", component_attrs_html(all), ">"], acc}
 
       _ ->
         {["<", tag, attrs_html(all), ">"], acc}
