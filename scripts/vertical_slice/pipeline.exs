@@ -27,7 +27,8 @@ defmodule VerticalSlice.Pipeline do
 
       # A `.bubble` export is Bubble editor JSON, like a v5 workspace.
       File.regular?(path) ->
-        path |> File.read!() |> Jason.decode!() |> BubbleEx.Frontend.EditorGeometry.mark()
+        {:ok, app} = BubbleEx.Frontend.read_bubble_export(path)
+        app
 
       true ->
         raise ArgumentError, "not a Buildprint v5 workspace or a JSON file: #{path}"
