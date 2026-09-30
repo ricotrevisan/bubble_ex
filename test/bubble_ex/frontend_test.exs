@@ -1625,6 +1625,39 @@ defmodule BubbleEx.FrontendTest do
       end
     end
 
+    test "editor JSON overlays drop their canvas offsets and keep their min/max width" do
+      for type <- ["Popup", "GroupFocus"] do
+        raw = %{
+          "id" => "overlay",
+          "type" => type,
+          "properties" => %{
+            "container_layout" => "column",
+            "left" => 106.5,
+            "top" => 488,
+            "width" => 320,
+            "height" => 320,
+            "fit_height" => true,
+            "min_width_css" => "320px",
+            "max_width_css" => "600px"
+          }
+        }
+
+        payload =
+          %{"overlay" => raw}
+          |> page_with_elements()
+          |> BubbleEx.Frontend.EditorGeometry.mark()
+
+        assert {:ok, %Normalized{pages: [page], diagnostics: []}} = Frontend.normalize(payload)
+        [overlay] = page.children
+        assert overlay.box.min_width == "320px"
+        assert overlay.box.max_width == "600px"
+        refute Map.has_key?(overlay.box, :width)
+        refute Map.has_key?(overlay.box, :height)
+        refute Map.has_key?(overlay.box, :x)
+        refute Map.has_key?(overlay.box, :y)
+      end
+    end
+
     test "describes Popup, Group Focus and Floating Group runtime behavior" do
       payload =
         page_with_elements(%{

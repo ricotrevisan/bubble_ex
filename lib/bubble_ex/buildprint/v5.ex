@@ -37,7 +37,9 @@ defmodule BubbleEx.Buildprint.V5 do
       does not carry does not survive. Deleted definitions are kept with
       their `deleted` flag, as Bubble and `BubbleEx.Model` expect. Buildprint's
       own top-level members (`__bp_*`, `_index`) are dropped, and of
-      `settings` only `client_safe` is kept.
+      `settings` only `client_safe` is kept. The app is marked as Bubble
+      editor JSON (`BubbleEx.Frontend.EditorGeometry.mark/1`), so
+      `BubbleEx.Frontend.normalize/2` reads its layout as Bubble does.
     * **Checks.** The app is built into a `BubbleEx.Model` (returned as
       `model`), and the counts of its data types, fields, option sets and API
       calls, plus the app's pages and workflows (`counts/2`, deleted ones
@@ -54,7 +56,8 @@ defmodule BubbleEx.Buildprint.V5 do
   The manifest's `snapshotJsonSha256` hashes Buildprint's serialization of
   the snapshot, which is not reproducible from the stored rows (member
   order and number formatting are not recorded); `load/2` reports whether
-  the canonical JSON of the merged app matches it (`snapshot.reproduced`)
+  the canonical JSON of the merged app (without its editor-JSON mark)
+  matches it (`snapshot.reproduced`)
   and emits an informational `:buildprint_snapshot_unverified` diagnostic
   when it does not. The per-row hashes above are verified instead.
 
@@ -68,6 +71,7 @@ defmodule BubbleEx.Buildprint.V5 do
 
   alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
   alias BubbleEx.Buildprint.V5.Sqlite
+  alias BubbleEx.Frontend.EditorGeometry
 
   # Defined only when the optional `exqlite` dependency is loaded.
   @compile {:no_warn_undefined, Sqlite}
@@ -182,7 +186,8 @@ defmodule BubbleEx.Buildprint.V5 do
         sha256_hex(manifest["snapshotJsonSha256"]) ||
           sha256_hex(read.metadata["snapshotJsonSha256"])
 
-      reproduced = is_binary(expected) and CanonicalJson.sha256(app) == expected
+      reproduced =
+        is_binary(expected) and CanonicalJson.sha256(EditorGeometry.unmark(app)) == expected
 
       diagnostics =
         merge_diagnostics ++
@@ -220,6 +225,7 @@ defmodule BubbleEx.Buildprint.V5 do
       |> put_settings(settings)
       |> drop_buildprint_members()
       |> redact()
+      |> then(fn {app, handles} -> {EditorGeometry.mark(app), handles} end)
 
     diagnostics =
       stub_diagnostics(base, acc.covered) ++

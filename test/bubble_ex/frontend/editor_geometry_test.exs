@@ -10,6 +10,7 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
 
   alias BubbleEx.Buildprint.V5
   alias BubbleEx.Frontend
+  alias BubbleEx.Frontend.EditorGeometry
   alias BubbleEx.Frontend.Export.Css
   alias BubbleEx.Target.Phoenix.Tailwind
 
@@ -333,10 +334,112 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     refute Enum.any?(classes(layout, "pgblog"), &(&1 in ["absolute", "h-[767px]"]))
   end
 
-  test "a fixed-width editor page keeps its width" do
-    page = put_in(editor_page(), ["properties", "fixed_width"], true)
-    layout = layout(app(page))
-    assert "w-[1440px]" in classes(layout, "pgblog")
+  defp editor_app(page), do: EditorGeometry.mark(app(page))
+
+  defp column_page(elements, props \\ %{}) do
+    %{
+      "id" => "pg",
+      "type" => "Page",
+      "name" => "p",
+      "properties" =>
+        Map.merge(
+          %{
+            "container_layout" => "column",
+            "width" => 1440,
+            "height" => 767,
+            "min_height_px" => 800
+          },
+          props
+        ),
+      "elements" => elements
+    }
+  end
+
+  defp only_child(app) do
+    {:ok, %{pages: [page]}} = Frontend.normalize(app)
+    [child] = page.children
+    child
+  end
+
+  test "editor pages grow with their content, with or without canvas offsets" do
+    for offsets <- [%{}, %{"left" => 0, "top" => 0}], fixed <- [true, false] do
+      props = Map.put(offsets, "fixed_width", fixed)
+      layout = layout(editor_app(column_page(%{}, props)))
+      page = classes(layout, "pg")
+
+      refute Enum.any?(page, &(&1 in ["absolute", "h-[767px]"])), inspect(props)
+      assert "min-h-[800px]" in page
+      assert "w-[1440px]" in page == fixed, inspect(props)
+      assert "w-[100%]" in page == not fixed, inspect(props)
+    end
+  end
+
+  test "flow children lose their canvas size with or without offsets" do
+    text =
+      el("t", "Text", 1, %{
+        "text" => "x",
+        "width" => 200,
+        "height" => 45,
+        "fit_width" => true,
+        "fit_height" => true
+      })
+
+    child = only_child(editor_app(column_page(%{"t" => text})))
+
+    refute Map.has_key?(child.box, :width)
+    refute Map.has_key?(child.box, :height)
+  end
+
+  test "plugin elements keep their canvas size and lose only their offsets" do
+    plugin =
+      el("pl", "1488796042609x768734193128308700-AAg", 1, %{
+        "left" => 24,
+        "top" => 40,
+        "width" => 300,
+        "height" => 120
+      })
+
+    child = only_child(editor_app(column_page(%{"pl" => plugin})))
+
+    assert child.kind == :placeholder
+    assert %{width: 300, height: 120} = child.box
+    refute Map.has_key?(child.box, :x)
+    refute Map.has_key?(child.box, :y)
+  end
+
+  # Assumption until a Bubble capture calibrates it (WTF-358 replay list):
+  # an element neither fixed nor fit on its height, without a min height,
+  # keeps its canvas height as a min height (never as a height).
+  test "neither fixed nor fit: the canvas height is a min height" do
+    group = fn props ->
+      el(
+        "g",
+        "Group",
+        1,
+        Map.merge(
+          %{"container_layout" => "column", "left" => 0, "top" => 0, "height" => 280},
+          props
+        )
+      )
+    end
+
+    layout = fn props -> layout(editor_app(column_page(%{"g" => group.(props)}))) end
+
+    assert "min-h-[280px]" in classes(layout.(%{}), "g")
+    refute Enum.any?(classes(layout.(%{}), "g"), &String.starts_with?(&1, "h-"))
+    assert "min-h-[40px]" in classes(layout.(%{"min_height_css" => "40px"}), "g")
+
+    refute Enum.any?(
+             classes(layout.(%{"fit_height" => true}), "g"),
+             &String.starts_with?(&1, "min-h-")
+           )
+
+    assert "h-[280px]" in classes(
+             layout.(%{"single_height" => true, "min_height_css" => "280px"}),
+             "g"
+           )
+
+    refute Enum.any?(classes(layout.(%{"height" => 0}), "g"), &String.starts_with?(&1, "min-h-"))
   end
 
   test "a reusable definition's canvas size does not size its instances" do
@@ -348,17 +451,20 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     }
 
     {:ok, %{reusables: [editor]}} =
-      Frontend.normalize(%{"_id" => "wtf446", "element_definitions" => %{"hdr" => definition}})
+      Frontend.normalize(
+        EditorGeometry.mark(%{"_id" => "wtf446", "element_definitions" => %{"hdr" => definition}})
+      )
 
     {:ok, %{reusables: [calibrated]}} =
       Frontend.normalize(%{
         "_id" => "wtf446",
         "element_definitions" => %{
           "hdr" =>
-            update_in(definition["properties"], &Map.drop(&1, ["width", "height"]))
-            |> then(
-              &Map.put(definition, "properties", Map.merge(&1, %{"%w" => 1280, "%h" => 80}))
-            )
+            put_in(definition, ["properties"], %{
+              "container_layout" => "column",
+              "%w" => 1280,
+              "%h" => 80
+            })
         }
       })
 
@@ -366,7 +472,7 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     refute Map.has_key?(editor.box, :width)
   end
 
-  test "legacy editor pages without a layout keep their canvas box" do
+  test "children of legacy containers keep their canvas box" do
     page = %{
       "id" => "pglegacy",
       "type" => "Page",
@@ -377,8 +483,20 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
       }
     }
 
-    {:ok, %{pages: [normalized]}} = Frontend.normalize(app(page))
-    [text] = normalized.children
-    assert %{x: 40, y: 60, width: 200} = text.box
+    assert %{x: 40, y: 60, width: 200} = only_child(editor_app(page)).box
+  end
+
+  test "an unmarked app is read as before, and the option overrides the mark" do
+    text = el("t", "Text", 1, %{"text" => "x", "left" => 40, "top" => 60, "width" => 200})
+    raw = app(column_page(%{"t" => text}))
+
+    assert %{x: 40, y: 60, width: 200} = only_child(raw).box
+
+    {:ok, %{pages: [page]}} = Frontend.normalize(raw, geometry: :editor)
+    refute Map.has_key?(hd(page.children).box, :x)
+
+    {:ok, %{pages: [page]}} = Frontend.normalize(EditorGeometry.mark(raw), geometry: :runtime)
+    assert %{x: 40} = hd(page.children).box
+    assert {:ok, _} = Frontend.normalize(EditorGeometry.mark(raw))
   end
 end
