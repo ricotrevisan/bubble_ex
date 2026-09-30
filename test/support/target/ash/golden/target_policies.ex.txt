@@ -198,13 +198,8 @@ defmodule MyApp.Privacy.SearchFields do
     end
   end
 
-  defp field_name(%Ash.Query.Calculation{calc_name: name})
-       when is_atom(name) and not is_nil(name),
-       do: name
-
-  defp field_name(%Ash.Query.Aggregate{agg_name: name}) when is_atom(name) and not is_nil(name),
-    do: name
-
+  defp field_name(%Ash.Query.Calculation{calc_name: n}) when is_atom(n) and not is_nil(n), do: n
+  defp field_name(%Ash.Query.Aggregate{agg_name: n}) when is_atom(n) and not is_nil(n), do: n
   defp field_name(%{name: name}) when is_atom(name), do: name
   defp field_name(name) when is_atom(name), do: name
   defp field_name(_other), do: :__unknown__
