@@ -61,6 +61,10 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
 
     assert out.source =~
              ~s({"get.r.note.2", :visible_fields, "r.note.2", )
+
+    # a search constrained on note's non-filterable text, by its attribute
+    assert out.source =~ ~s({"search.1.text_text", :search, {:constrain, :text}})
+    assert out.source =~ "defp observe(op, :search, {:constrain, field}, resource, actor)"
   end
 
   test "deterministic", %{project: project, matrix: matrix, out: out} do

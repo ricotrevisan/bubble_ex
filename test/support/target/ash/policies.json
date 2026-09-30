@@ -203,6 +203,9 @@
           "display": "Public",
           "permissions": {
             "auto_binding": false,
+            "non_filterable_fields": {
+              "0": "body_text"
+            },
             "search_for": true,
             "view_all": false,
             "view_attachments": false,
@@ -302,6 +305,9 @@
           "display": "everyone",
           "permissions": {
             "auto_binding": false,
+            "non_filterable_fields": {
+              "0": "text_text"
+            },
             "search_for": true,
             "view_all": true,
             "view_attachments": true

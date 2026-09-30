@@ -6,6 +6,34 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Non-filterable fields in privacy rules.** `BubbleEx.Privacy.Permissions`
+  reads Bubble's `non_filterable_fields` (fields users matching a rule may
+  not search by) as `non_filterable_fields`, so it is no longer an
+  `unknown_permission`. With `privacy: :unverified`, `BubbleEx.Target.Ash`
+  records per field who may search by it (`ResourcePrivacy.search_fields`:
+  a rule they match grants `search_for` and does not list it, with the
+  usual union and everyone-rule negation) and guards every `:read` and
+  `:search` from which such a field is reachable with the new filter check
+  `<namespace>.Privacy.SearchFields`: a filter or sort naming the field
+  (input or code) returns only the records where the actor may search by
+  it, and one naming a restricted field further along a relationship
+  returns nothing. Aggregates over such a field are not guarded
+  (`:ash_policy_search_fields_restricted`). A page data search constrained
+  or sorted on such a field is residue (`:search_field_restricted`). The
+  privacy interpreter reports the fields a persona may search by
+  (`Access.filterable`) and constrained searches (`Interpreter.search/5`,
+  assumption `non_filterable_constraint_excludes`); the privacy matrix adds
+  a search constrained on each such field (the `search` op's new optional
+  `constrain` member), which the generated matrix tests run as
+  `filter_input` and the replay recorder as `is empty` plus `is not empty`.
+- **`defaulting to` in the Ash and Elixir backends.** `x defaulting to d`
+  (`:fallback`) compiles to `Ash.Expr` as `if(<x is empty>, d, x)`, with
+  Bubble's emptiness (nil, `""`, `[]`, a reference whose record is gone),
+  and so do field chains over it (`(x defaulting to d)'s a`) in both
+  backends; `(x defaulting to d) is empty` is both empty. The interpreter
+  treats a dangling reference as empty there too (`dangling_ref_is_empty`),
+  and the actor guards cover a default read from the current user.
+
 - **Buildprint v5 workspaces** (`BubbleEx.Buildprint.V5`). Buildprint
   retired its v4 JSON export; a v5 workspace (`buildprint project clone`)
   keeps Bubble's raw app JSON in `.buildprint/index.sqlite`.

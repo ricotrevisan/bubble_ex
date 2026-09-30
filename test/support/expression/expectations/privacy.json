@@ -548,6 +548,122 @@
       "expected": {
         "logged_out": [],
         "u1": [
+          "k3"
+        ],
+        "u2": [
+          "k1"
+        ],
+        "u3": [
+          "k4",
+          "k5"
+        ],
+        "u4": []
+      },
+      "rule": "zb_assignee_or_creator_",
+      "type": "task",
+      "why": "the assignee, or the creator when there is none (k4); k2 has neither"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u2": [
+          "k1",
+          "k4",
+          "k5"
+        ],
+        "u3": [
+          "k1",
+          "k4",
+          "k5"
+        ],
+        "u4": [
+          "k1",
+          "k4",
+          "k5"
+        ]
+      },
+      "rule": "zd_team_or_actor_team_",
+      "type": "task",
+      "why": "a task's own team, or else the actor's: k3's team is dangling, so it is empty and defaults to the actor's (only u1 has one; u2's membership is dangling, u3's has no team); the actor side needs a logged-in actor"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k2",
+          "k3",
+          "k5"
+        ],
+        "u1": [
+          "k2",
+          "k3",
+          "k5"
+        ],
+        "u2": [
+          "k2",
+          "k3",
+          "k5"
+        ],
+        "u3": [
+          "k2",
+          "k3",
+          "k5"
+        ],
+        "u4": [
+          "k2",
+          "k3",
+          "k5"
+        ]
+      },
+      "rule": "ze_title_or_untitled_",
+      "type": "task",
+      "why": "an empty text (null or \"\") defaults to 'Untitled'"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k1",
+          "k5"
+        ],
+        "u2": [],
+        "u3": [],
+        "u4": []
+      },
+      "rule": "zf_parent_or_self_team_",
+      "type": "task",
+      "why": "a field of a fallback: the parent's team, or the task's own when it has no parent (k2's parent is dangling, so its own, empty team); k3 and k4 reach the dangling team, which is not t1; an empty actor side never matches"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
+          "k4",
+          "k5"
+        ],
+        "u2": [
+          "k1",
+          "k5"
+        ],
+        "u3": [
+          "k4"
+        ],
+        "u4": []
+      },
+      "rule": "zg_access_or_team_members_",
+      "type": "task",
+      "why": "an empty access list (null or []) defaults to the team's members: k5 to t1's; k3's team is dangling, so it has none"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [
           "m1"
         ],
         "u2": [],

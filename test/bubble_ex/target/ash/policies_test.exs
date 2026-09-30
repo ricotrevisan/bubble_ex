@@ -244,6 +244,101 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
     end
   end
 
+  describe "fields some users may not search by (non-filterable)" do
+    test "who may search by the field: the rules granting search that do not list it",
+         %{project: project} do
+      # doc.body: the public rule lists it, admin and owner do not; raw_
+      # does not compile, so it grants nothing
+      assert %{"body" => [checks]} = resource(project, "doc").privacy.search_fields
+
+      assert tests(checks) == [
+               {:authorize_if, {:calculation, "privacy_rule_admin"}},
+               {:authorize_if, {:calculation, "privacy_rule_owner"}}
+             ]
+
+      # note.text: the everyone rule lists it, so only mine_ may
+      assert %{"text" => [checks]} = resource(project, "note").privacy.search_fields
+      assert tests(checks) == [{:authorize_if, {:calculation, "privacy_rule_mine"}}]
+
+      assert resource(project, "memo").privacy.search_fields == %{}
+      assert :ash_policy_search_fields_restricted in codes(project, %{type: "doc"})
+      refute :ash_policy_search_fields_restricted in codes(project, %{type: "memo"})
+    end
+
+    test "the reads of resources that reach a restricted field run the SearchFields check",
+         %{project: project} do
+      guarded =
+        for r <- project.resources ++ project.joins,
+            p <- r.policies,
+            p.permission == :search_fields,
+            do: {r.source.type, p.action, tests(p.checks)}
+
+      assert Enum.sort(guarded) == [
+               {"doc", "read", [{:authorize_if, :search_fields}]},
+               {"doc", "search", [{:authorize_if, :search_fields}]},
+               {"note", "read", [{:authorize_if, :search_fields}]},
+               {"note", "search", [{:authorize_if, :search_fields}]}
+             ]
+
+      {:ok, source} = Source.render(project, namespace: "Fx")
+      assert source =~ "defmodule Fx.Privacy.SearchFields do"
+      assert source =~ "use Ash.Policy.FilterCheck"
+      assert source =~ "Fx.Doc => [body: [[:privacy_rule_admin, :privacy_rule_owner]]]"
+      assert source =~ "Fx.Note => [text: [[:privacy_rule_mine]]]"
+      assert source =~ "authorize_if Fx.Privacy.SearchFields"
+    end
+
+    test "a reference, its private twin and a relationship to a restricted resource follow",
+         %{app: app} do
+      # The owner reference of a doc is restricted for the public rule: its
+      # belongs_to and private twin are restricted with it, and the board
+      # (whose owner is a user) is untouched.
+      app =
+        put_in(
+          app,
+          [
+            "user_types",
+            "doc",
+            "privacy_role",
+            "public_",
+            "permissions",
+            "non_filterable_fields"
+          ],
+          %{"0" => "body_text", "1" => "owner_user"}
+        )
+
+      doc = resource(project!(app), "doc")
+
+      assert Map.keys(doc.privacy.search_fields) |> Enum.sort() ==
+               ["body", "owner", "owner_for_privacy", "owner_id"]
+    end
+
+    test "a field no rule lets anyone search by is restricted for everyone", %{app: app} do
+      app =
+        for rule <- ~w(admin_ owner_ public_ raw_), reduce: app do
+          app ->
+            put_in(
+              app,
+              ["user_types", "doc", "privacy_role", rule, "permissions", "non_filterable_fields"],
+              %{"0" => "title_text"}
+            )
+        end
+
+      {:ok, source} = Source.render(project!(app), namespace: "Fx")
+
+      assert %{"title" => [[%PolicyCheck{kind: :forbid_if, test: :always}]]} =
+               resource(project!(app), "doc").privacy.search_fields
+
+      assert source =~ "title: [:never]"
+    end
+
+    test "privacy: :omit generates none of it", %{app: app} do
+      project = project!(app, privacy: :omit)
+      {:ok, source} = Source.render(project, namespace: "Fx")
+      refute source =~ "SearchFields"
+    end
+  end
+
   describe "fail-safe" do
     test "an uncompilable condition grants nothing", %{project: project} do
       doc = resource(project, "doc")
@@ -352,7 +447,8 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
              "resources" => %{"rules" => 5, "public_default" => 1},
              "rules" => %{"compiled" => 7, "denied" => 2},
              "auto_bind_actions" => 1,
-             "authorization_bypasses" => 1
+             "authorization_bypasses" => 1,
+             "search_fields" => 2
            } = Project.privacy_summary(project)
   end
 end

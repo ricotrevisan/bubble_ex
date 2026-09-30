@@ -21,7 +21,13 @@
 #     fields and gated relationships, and relationship loads, must reveal
 #     nothing; aggregates (count, exists, max) through the keyed :read
 #     must be refused unless keyed; :auto_bind updates and a create must be allowed or forbidden
-#     as expected
+#     as expected; filters, sorts and counts naming a non-filterable field
+#     (a field a privacy rule keeps out of the searches of the users it
+#     applies to) must return only the records where the actor may search
+#     by it, and each case marked search_fields must find fewer records
+#     than the same search without that restriction (the actor's plain
+#     :search, filtered in the database without authorization), so the
+#     check fails if the restriction is not enforced
 
 for repo <- Application.fetch_env!(:ash_compile_check, :ecto_repos),
     not match?({:error, {:already_started, _}}, repo.start_link()),
@@ -184,7 +190,21 @@ defmodule PolicyExpectations do
           failure <- aggregate(resource.(type), action, actor.(persona), kind, a, want),
           do: "#{type} #{kind} via :#{action} as #{persona}: #{failure}"
 
-    failures = read_failures ++ probe_failures ++ aggregate_failures ++ write_failures ++ create_failures
+    # Non-vacuity: without the restriction on non-filterable fields the
+    # search would find more.
+    search_field_cases =
+      for %{"search_fields" => true} = c <- doc["filters"] ++ doc["sorts"], do: c
+
+    search_field_failures =
+      for c <- search_field_cases,
+          failure <- restricted(resource.(c["type"]), actor.(c["persona"]), c, table[c["type"]]),
+          do: "#{c["type"]} #{inspect(c["filter"] || c["sort"])} as #{c["persona"]}: #{failure}"
+
+    if search_field_cases == [], do: raise("the policy table has no search_fields cases")
+
+    failures =
+      read_failures ++ probe_failures ++ search_field_failures ++ aggregate_failures ++
+        write_failures ++ create_failures
 
     if failures != [] do
       Enum.each(failures, &IO.puts/1)
@@ -194,7 +214,8 @@ defmodule PolicyExpectations do
     IO.puts(
       "policy expectation check passed: #{length(doc["reads"])} type/action cases, #{reads} persona reads, " <>
         "#{length(doc["filters"])} filter_input, #{length(doc["sorts"])} sort_input and " <>
-        "#{length(doc["loads"])} relationship-load and #{length(doc["aggregates"])} aggregate probes, " <>
+        "#{length(doc["loads"])} relationship-load and #{length(doc["aggregates"])} aggregate probes " <>
+        "(#{length(search_field_cases)} proven to depend on the non-filterable restriction), " <>
         "#{length(doc["auto_bind"])} auto-binding updates, #{length(doc["creates"])} creates"
     )
   end
@@ -253,6 +274,45 @@ defmodule PolicyExpectations do
     got = if sorted? and is_list(got), do: Enum.sort(got), else: got
     want = if sorted? and is_list(want), do: Enum.sort(want), else: want
     if got == want, do: [], else: ["got #{inspect(got)}, expected #{inspect(want)}"]
+  end
+
+  # The records the case's search would find without the restriction on
+  # non-filterable fields: those the actor finds with a plain :search that
+  # the filter selects (read without authorization; a sort drops nothing).
+  # The expected records must be strictly fewer.
+  defp restricted(resource, actor, spec, ids) do
+    found =
+      case PolicyCheck.read(resource, :search, actor) do
+        {:ok, records} -> for r <- records, r.id in ids, into: MapSet.new(), do: r.id
+        :forbidden -> MapSet.new()
+        {:error, message} -> raise message
+      end
+
+    selected =
+      case spec do
+        %{"filter" => filter} ->
+          resource
+          |> Ash.Query.filter_input(filter)
+          |> Ash.read!(authorize?: false)
+          |> MapSet.new(& &1.id)
+
+        _ ->
+          found
+      end
+
+    unrestricted = MapSet.intersection(found, selected)
+    expected = MapSet.new(spec["expected"])
+
+    cond do
+      not MapSet.subset?(expected, unrestricted) ->
+        ["expected #{inspect(spec["expected"])} is not within the unrestricted #{inspect(Enum.sort(unrestricted))}"]
+
+      MapSet.equal?(expected, unrestricted) ->
+        ["vacuous: without the restriction the search finds the same records #{inspect(Enum.sort(unrestricted))}"]
+
+      true ->
+        []
+    end
   end
 
   defp aggregate(resource, action, actor, kind, spec, want) do
@@ -345,8 +405,28 @@ defmodule InterpreterCheck do
     resource = fn type -> Module.concat(@namespace, Macro.camelize(type)) end
     actor = fn "logged_out" -> nil; id -> privacy.load_actor(id) end
 
+    constrained =
+      for %{"type" => type, "constrain" => field, "verdicts" => verdicts} <- doc,
+          {persona, mine} <- verdicts do
+        res = resource.(type)
+        ids = Enum.map(table[type], & &1["id"])
+        got = constrained(res, String.to_existing_atom(field), actor.(persona), ids)
+
+        # Records an unsupported rule could decide are denied by the
+        # policies: the search finds exactly the decided ones.
+        verdict =
+          cond do
+            got != mine["records"] -> :disagree
+            mine["unknown"] != [] -> :unknown
+            true -> :agree
+          end
+
+        {verdict, "#{type}.search constrained on #{field} as #{persona}: interpreter #{inspect(mine)}, policies #{inspect(got)}"}
+      end
+
     outcomes =
-      for %{"type" => type, "action" => action, "verdicts" => verdicts} <- doc,
+      for %{"type" => type, "action" => action, "verdicts" => verdicts} = entry <- doc,
+          not Map.has_key?(entry, "constrain"),
           {persona, mine} <- verdicts do
         res = resource.(type)
         ids = Enum.map(table[type], & &1["id"])
@@ -359,6 +439,9 @@ defmodule InterpreterCheck do
         end
       end
       |> List.flatten()
+      |> Kernel.++(constrained)
+
+    if constrained == [], do: raise("interpreter_policies.json has no constrained searches")
 
     disagreements = for {:disagree, message} <- outcomes, do: message
     counts = outcomes |> Enum.map(&elem(&1, 0)) |> Enum.frequencies()
@@ -370,8 +453,23 @@ defmodule InterpreterCheck do
 
     IO.puts(
       "privacy interpreter check passed: agrees with the generated policies on #{counts[:agree] || 0} " <>
-        "record reads; #{counts[:unknown] || 0} undecided by the interpreter are denied by the policies"
+        "record reads and constrained searches (#{length(constrained)}); " <>
+        "#{counts[:unknown] || 0} undecided by the interpreter are denied by the policies"
     )
+  end
+
+  # A :search constrained on `field` by a constraint every value meets.
+  defp constrained(resource, field, actor, ids) do
+    query =
+      resource
+      |> Ash.Query.for_read(:search, %{}, actor: actor)
+      |> Ash.Query.filter_input(%{or: [%{field => %{is_nil: true}}, %{field => %{is_nil: false}}]})
+
+    case Ash.read(query, actor: actor) do
+      {:ok, records} -> records |> Enum.map(& &1.id) |> Enum.filter(&(&1 in ids)) |> Enum.sort()
+      {:error, %Ash.Error.Forbidden{}} -> []
+      {:error, error} -> raise Exception.message(error)
+    end
   end
 
   defp reads(resource, "get", actor, ids) do

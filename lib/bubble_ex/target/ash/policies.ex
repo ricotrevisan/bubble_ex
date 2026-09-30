@@ -65,6 +65,7 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     {resources, names} = gate(resources, names)
     joins = Enum.map(project.joins, &join_policies(&1, resources))
+    {resources, joins} = search_field_policies(resources, joins)
 
     expression_diags =
       Enum.flat_map(compiled, & &1.diagnostics) ++ aggregate_diags(resources, types)
@@ -221,6 +222,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       end)
 
     unsortable = &%{&1 | sortable?: false}
+    resource = twin_search_fields(resource, relationships, privacy)
 
     # The private twins stay sortable: `sort_input` cannot name a private
     # relationship, and a derived field (a public calculation guarded by
@@ -234,6 +236,27 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     {resource, entry, twins}
   end
+
+  # A private twin is restricted in searches like the relationship it
+  # mirrors.
+  defp twin_search_fields(
+         %Resource{privacy: %ResourcePrivacy{search_fields: sf} = p} = r,
+         rels,
+         twins
+       )
+       when map_size(sf) > 0 do
+    sf =
+      Enum.reduce(twins, sf, fn twin, sf ->
+        case Enum.find(rels, &(&1.kind == twin.kind and &1.source == twin.source)) do
+          %{name: name} when is_map_key(sf, name) -> Map.put(sf, twin.name, sf[name])
+          _ -> sf
+        end
+      end)
+
+    %{r | privacy: %{p | search_fields: sf}}
+  end
+
+  defp twin_search_fields(resource, _rels, _twins), do: resource
 
   defp twin(rel, gate, resource, {privacy, entry, used, twins}) do
     field = rel.source.field
@@ -736,6 +759,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       end)
 
     {field_policies, relationship_checks} = split_checks(field_checks)
+    {search_fields, ctx} = search_fields(ctx, fields, resource)
 
     {auto_bind, ctx} = auto_binding(ctx, stored_fields(fields))
     {attachments, ctx} = checks(ctx, :view_attachments, &(&1.view_attachments == true))
@@ -766,7 +790,8 @@ defmodule BubbleEx.Target.Ash.Policies do
       attachments: attachments,
       file_fields: file_fields(type, fields),
       data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api),
-      relationship_checks: relationship_checks
+      relationship_checks: relationship_checks,
+      search_fields: search_fields
     }
 
     resource = %{
@@ -788,6 +813,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         denied_rules(type, denied, ctx) ++
         stricter_rules(type, stricter, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
+        search_fields_diag(type, search_fields) ++
         binding_dropped(type, others ++ List.wrap(default), fields) ++
         attachments_diag(type, privacy) ++
         data_api(type, privacy)
@@ -814,6 +840,143 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   defp binding_fields(perms, ctx),
     do: for(f <- perms.binding_fields || [], Map.has_key?(ctx.fields, f), do: f)
+
+  # --- fields users may not search by -------------------------------------------------
+
+  # Bubble's non-filterable fields: for each field some rule lists (and the
+  # project maps), who may use it in a search: a rule they match finds the
+  # record (`search_for`) and does not list the field (the same union as
+  # every permission, the everyone rule included). `%{name => groups}`:
+  # every group of checks must authorize, for the attribute (or derived
+  # field) and for what reads through it: the `belongs_to` of a reference,
+  # its private twin (`gate/2`), and a derived field or count whose path
+  # starts at a restricted field. A field every user may search by is not
+  # listed.
+  defp search_fields(ctx, fields, resource) do
+    rules = ctx.others ++ List.wrap(ctx.default)
+
+    listed =
+      for %{permissions: %{} = p} <- rules,
+          f <- p.non_filterable_fields || [],
+          Map.has_key?(ctx.fields, f),
+          into: MapSet.new(),
+          do: f
+
+    {own, ctx} =
+      fields
+      |> Enum.filter(fn {id, _} -> MapSet.member?(listed, id) end)
+      |> Enum.map_reduce(ctx, fn {id, item}, ctx ->
+        {checks, ctx} = checks(ctx, {:filter_field, id}, &filterable?(&1, id))
+        {{item.name, checks}, ctx}
+      end)
+
+    own = for {name, checks} <- own, not always?(checks), into: %{}, do: {name, [checks]}
+    {through(own, resource), ctx}
+  end
+
+  defp filterable?(perms, id),
+    do: perms.search_for == true and id not in (perms.non_filterable_fields || [])
+
+  defp always?([%PolicyCheck{kind: :authorize_if, test: :always}]), do: true
+  defp always?(_checks), do: false
+
+  defp through(own, _resource) when map_size(own) == 0, do: own
+
+  defp through(own, resource) do
+    restricted =
+      for %Relationship{kind: :belongs_to} = r <- resource.relationships,
+          Map.has_key?(own, r.source_attribute),
+          into: own,
+          do: {r.name, own[r.source_attribute]}
+
+    derived =
+      for(
+        %Calculation{kind: :derived} = c <- resource.calculations,
+        do: {c.name, expr_heads(c.expr.expr)}
+      ) ++ for(g <- resource.aggregates, do: {g.name, Enum.take(g.path, 1)})
+
+    Enum.reduce(derived, restricted, fn {name, heads}, acc ->
+      case heads |> Enum.flat_map(&Map.get(restricted, &1, [])) |> Enum.uniq() do
+        [] -> acc
+        groups -> Map.update(acc, name, groups, &Enum.uniq(&1 ++ groups))
+      end
+    end)
+  end
+
+  # The names an expression reads first: a relationship, or an attribute
+  # of the resource itself.
+  defp expr_heads({:ref, [], attribute}), do: [attribute]
+  defp expr_heads({:ref, [rel | _], _attribute}), do: [rel]
+  defp expr_heads({:call, _name, args}), do: Enum.flat_map(args, &expr_heads/1)
+  defp expr_heads({:op, _op, l, r}), do: expr_heads(l) ++ expr_heads(r)
+  defp expr_heads({bool, nodes}) when bool in [:and, :or], do: Enum.flat_map(nodes, &expr_heads/1)
+  defp expr_heads({:not, node}), do: expr_heads(node)
+  defp expr_heads(_node), do: []
+
+  defp search_fields_diag(_type, search_fields) when map_size(search_fields) == 0, do: []
+
+  defp search_fields_diag(type, search_fields) do
+    names = search_fields |> Map.keys() |> Enum.sort()
+
+    [
+      Diagnostic.new(
+        :ash_policy_search_fields_restricted,
+        type.path <> "/privacy_role",
+        "#{type.id}: some users may not search by #{Enum.join(names, ", ")}; a :read or " <>
+          ":search whose filter or sort names one returns only the records where the actor " <>
+          "may (<namespace>.Privacy.SearchFields), but aggregates over them are not guarded",
+        target: :ash,
+        subject: %{type: type.id},
+        details: %{fields: names}
+      )
+    ]
+  end
+
+  # The resources (and joins) a read could reach a restricted field from,
+  # through their relationships: each gets a policy on its read actions
+  # (`authorize_if <namespace>.Privacy.SearchFields`).
+  defp search_field_policies(resources, joins) do
+    all = resources ++ joins
+    restricted = for r <- resources, r.privacy && r.privacy.search_fields != %{}, do: r.module
+
+    edges =
+      Map.new(all, fn r ->
+        {r.module, Enum.map(r.relationships ++ r.privacy_relationships, & &1.destination)}
+      end)
+
+    reach = reaching(MapSet.new(restricted), edges)
+    add = &if(MapSet.member?(reach, &1.module), do: add_search_fields_policies(&1), else: &1)
+    {Enum.map(resources, add), Enum.map(joins, add)}
+  end
+
+  defp reaching(set, edges) do
+    more =
+      for {module, destinations} <- edges,
+          not MapSet.member?(set, module),
+          Enum.any?(destinations, &MapSet.member?(set, &1)),
+          into: set,
+          do: module
+
+    if MapSet.size(more) == MapSet.size(set), do: set, else: reaching(more, edges)
+  end
+
+  defp add_search_fields_policies(%Resource{} = r) do
+    actions = for %Action{type: :read, name: name} <- r.extra_actions, do: name
+
+    policies =
+      for action <- actions do
+        %Policy{
+          action: action,
+          permission: :search_fields,
+          description:
+            "A filter or sort naming a field some users may not search by returns only the " <>
+              "records where the actor may",
+          checks: [%PolicyCheck{kind: :authorize_if, test: :search_fields}]
+        }
+      end
+
+    %{r | policies: r.policies ++ policies}
+  end
 
   # --- grants ------------------------------------------------------------------------
 
@@ -977,6 +1140,7 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   defp record_based?(%IR{op: :this, args: [binder]}), do: binder in [:rule_record, :filter_item]
   defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)
+  defp record_based?(%IR{op: :fallback, args: args}), do: Enum.all?(args, &record_based?/1)
   defp record_based?(_), do: false
 
   # Source paths differ between occurrences of the same chain.
@@ -1055,6 +1219,7 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   defp permission_key({:view_field, field}), do: "view_field:" <> field
   defp permission_key({:bind_field, field}), do: "bind_field:" <> field
+  defp permission_key({:filter_field, field}), do: "filter_field:" <> field
   defp permission_key(permission), do: Atom.to_string(permission)
 
   defp rule_label(%{name: nil, id: id}), do: inspect(id)

@@ -1638,6 +1638,181 @@
             "view_all": true,
             "view_attachments": true
           }
+        },
+        "zb_assignee_or_creator_": {
+          "condition": {
+            "next": {
+              "name": "assignee_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "Created By",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "defaulting_to",
+                "next": {
+                  "args": {
+                    "type": "CurrentUser"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Assignee defaulting to Created By) is the actor",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zd_team_or_actor_team_": {
+          "condition": {
+            "next": {
+              "name": "team_custom_team",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "active_membership_custom_membership",
+                    "next": {
+                      "name": "team_custom_team",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "defaulting_to",
+                "next": {
+                  "name": "is_not_empty",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Team defaulting to the actor's active membership's team) is not empty",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "ze_title_or_untitled_": {
+          "condition": {
+            "next": {
+              "name": "title_text",
+              "next": {
+                "args": "Untitled",
+                "name": "defaulting_to",
+                "next": {
+                  "args": "Untitled",
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Title defaulting to 'Untitled') is 'Untitled'",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zf_parent_or_self_team_": {
+          "condition": {
+            "next": {
+              "name": "parent_custom_task",
+              "next": {
+                "args": {
+                  "type": "InjectedValue"
+                },
+                "name": "defaulting_to",
+                "next": {
+                  "name": "team_custom_team",
+                  "next": {
+                    "args": {
+                      "next": {
+                        "name": "active_membership_custom_membership",
+                        "next": {
+                          "name": "team_custom_team",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "CurrentUser"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Parent defaulting to This Task)'s Team is the actor's active membership's team",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zg_access_or_team_members_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "next": {
+                      "name": "members_list_user",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "defaulting_to",
+                "next": {
+                  "args": {
+                    "type": "CurrentUser"
+                  },
+                  "name": "contains",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Access defaulting to Team's Members) contains the actor",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
         }
       }
     },
