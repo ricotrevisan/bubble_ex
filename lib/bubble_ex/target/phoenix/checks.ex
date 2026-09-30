@@ -42,9 +42,10 @@ defmodule BubbleEx.Target.Phoenix.Checks do
       filter each (WTF-449; `prefetch/3` gathers those of several tasks),
       with `BubbleEx.Tasks.TestResults` as a second formatter recording
       each test's tag and outcome. `S` passes when one of its tests
-      passed and none failed, and the run exited 0 or a failed test
-      explains its status. A run that fails before its suite finishes
-      (the database setup, a compile error) fails every subject in it
+      passed and none failed, and the run exited 0 or a failed test of
+      one of the judged subjects explains its status. A run that ends
+      without a result (the database setup, a compile error, a crashed
+      formatter) fails every subject in it
     * one subject, or one the batch could not judge (the formatter did
       not load), runs alone, `mix test --only bubble:<S>`, and only its
       exit status counts: non-zero when a test fails or none ran
@@ -340,7 +341,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   # between Elixir versions.
   defp tagged(subjects, ctx, cache) do
     {tags, cache} = test_tags(ctx, cache)
-    binding = "mix test --only bubble:<subject>, per subject"
+    binding = "mix test --only bubble:<subject>, each subject judged on its own tests"
 
     case Enum.reject(subjects, &MapSet.member?(tags, &1)) do
       [] ->
@@ -424,7 +425,8 @@ defmodule BubbleEx.Target.Phoenix.Checks do
         Path.expand(ctx.root),
         "_build",
         "wtf_task",
-        "tests-#{System.unique_integer([:positive])}"
+        "tests-#{System.pid()}-" <>
+          Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
       ])
 
     ebin = Path.join(dir, "ebin")
@@ -463,21 +465,26 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   defp attribute(_subjects, :error, _status, _output), do: :error
 
+  # The formatter loaded but wrote no result: the run (the database setup,
+  # compiling the tests) or the formatter died before the suite finished.
+  # Every subject fails with the run's output; no run per subject, which
+  # would repeat the same failure once per subject.
   defp attribute(subjects, :loaded, status, output) do
     {:ok,
      Map.new(subjects, fn s ->
-       {s,
-        batch_fail(
-          s,
-          "exit status #{status} before any test finished (the run failed)",
-          output
-        )}
+       {s, batch_fail(s, "the run ended without a result (exit status #{status})", output)}
      end)}
   end
 
   defp attribute(subjects, {:ok, tests}, status, output) do
     outcomes = Enum.group_by(tests, &elem(&1, 0), &elem(&1, 1))
-    explained? = status == 0 or Enum.any?(tests, fn {_, o} -> o in [:failed, :invalid] end)
+    judged = MapSet.new(subjects)
+
+    # A non-zero exit is explained only by a failed test of a judged
+    # subject; any other failure (an untagged test, another subject) is not.
+    explained? =
+      status == 0 or
+        Enum.any?(tests, fn {s, o} -> MapSet.member?(judged, s) and o in [:failed, :invalid] end)
 
     {:ok,
      Map.new(subjects, fn s ->
@@ -492,7 +499,11 @@ defmodule BubbleEx.Target.Phoenix.Checks do
              batch_fail(s, "no test ran", output)
 
            not explained? ->
-             batch_fail(s, "exit status #{status}, though no test failed", output)
+             batch_fail(
+               s,
+               "exit status #{status}, which no failed test of the judged subjects explains",
+               output
+             )
 
            true ->
              pass("mix test --only bubble:" <> s, nil)

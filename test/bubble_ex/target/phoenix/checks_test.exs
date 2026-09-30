@@ -280,7 +280,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
       {_, flags} = List.keyfind(env, "ERL_AFLAGS", 0)
 
       assert flags =~
-               ~r/-pa \S+\/_build\/wtf_task\/tests-\d+\/ebin -s Elixir.BubbleEx.Tasks.TestResults preload/
+               ~r/-pa \S+\/_build\/wtf_task\/tests-\d+-[A-Za-z0-9_-]+\/ebin -s Elixir.BubbleEx.Tasks.TestResults preload/
 
       refute File.exists?(Path.join(root, "_build/wtf_task"))
       # One run for all three.
@@ -305,14 +305,27 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
       # A non-zero exit no failed test explains fails every subject.
       clean = [{"workflow:wA", :passed}, {"workflow:wB", :passed}, {"workflow:wC", :passed}]
 
-      assert %{status: :fail, detail: "workflow:wA: exit status 1, though no test failed"} =
+      unexplained =
+        "workflow:wA: exit status 1, which no failed test of the judged subjects explains"
+
+      assert %{status: :fail, detail: ^unexplained} =
                run(:unit_test, args, batch_ctx(root, {:results, clean}, {"", 1}))
+
+      # Nor does a failure outside the judged subjects (an untagged test,
+      # another subject): the clean ones fail too.
+      outside = clean ++ [{nil, :failed}, {"workflow:wOther", :invalid}]
+
+      assert %{status: :fail, detail: ^unexplained} =
+               run(:unit_test, args, batch_ctx(root, {:results, outside}, {"", 1}))
 
       assert %{status: :pass} = run(:unit_test, args, batch_ctx(root, {:results, clean}, {"", 0}))
 
       # The formatter loaded but the suite never finished (the database
       # setup failed): every subject fails, with no run per subject.
-      assert %{status: :fail, detail: "workflow:wA: exit status 1 before any test finished" <> _} =
+      assert %{
+               status: :fail,
+               detail: "workflow:wA: the run ended without a result (exit status 1)"
+             } =
                run(:unit_test, args, batch_ctx(root, :loaded, {"ash.setup failed", 1}))
 
       refute_received {:mix, _, _}

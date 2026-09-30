@@ -135,7 +135,8 @@ pinned too.
 Bubble's **random sort** (`sort_field: "_random_sorting"`, WTF-452)
 compiles to `sort: [:random]` (`BubbleEx.Target.Ash.Expr`) and is printed
 as `|> BubbleData.random_sort()`: the records ordered by
-`md5(CAST(<primary key> AS text) || seed)` in the database, then limited
+`md5(CAST(<primary key> AS text) || seed)` in the database (the first
+column of a composite key only), then limited
 by the page size and `:max_items` as any other search, so the list is a
 random selection of the search, not its first records shuffled. The seed
 is new on every read (the order changes whenever the page reads again,

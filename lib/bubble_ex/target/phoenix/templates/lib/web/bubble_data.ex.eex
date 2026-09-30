@@ -137,7 +137,9 @@ defmodule <%= @web %>.BubbleData do
   @doc """
   Bubble's random sort (see "Random order"): `query` (or a resource)
   ordered by the MD5
-  of the primary key and `random_seed/0`, before its limit.
+  of the primary key and `random_seed/0`, before its limit. With a
+  composite primary key only its first column is hashed: records sharing
+  it keep the database's order among themselves.
   """
   def random_sort(query) do
     # A filter of `true` leaves the resource module as it is.

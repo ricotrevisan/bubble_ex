@@ -64,6 +64,11 @@ defmodule BubbleEx.Tasks do
     * results are unsigned: every result naming a criterion must pass, so
       a newer pass cannot mask a failure, but a failure file can still be
       deleted
+    * tagged tests of several subjects run in one `mix test` (WTF-449),
+      judged from a results file the run writes (`WTF_TASK_TEST_RESULTS`,
+      `BubbleEx.Tasks.TestResults`): any test in the batch, or the code it
+      calls, can overwrite it and forge the results of the other subjects
+      too, not only its own
 
   A verdict anyone else can rely on needs an anchor outside the
   repository (WTF signing the plan and results, CI verifying them, reviews
