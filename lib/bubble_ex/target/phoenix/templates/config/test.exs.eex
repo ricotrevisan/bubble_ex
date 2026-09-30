@@ -1,9 +1,11 @@
 import Config
 
-# TEST_DATABASE_URL, when set, replaces the connection below (`mix wtf.task
-# --test-db URL` sets it for the tests it runs). Never DATABASE_URL: the
-# test alias creates and migrates this database.
-if database_url = System.get_env("TEST_DATABASE_URL") do
+# TEST_DATABASE_URL, when set (and not empty), replaces the connection
+# below (`mix wtf.task --test-db URL` sets it for the tests it runs).
+# Never DATABASE_URL: the test alias creates and migrates this database.
+database_url = System.get_env("TEST_DATABASE_URL")
+
+if database_url not in [nil, ""] do
   config :<%= @app %>, <%= @module %>.Repo, url: database_url
 else
   config :<%= @app %>, <%= @module %>.Repo,

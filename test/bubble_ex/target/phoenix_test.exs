@@ -373,7 +373,8 @@ defmodule BubbleEx.Target.PhoenixTest do
 
       # The tests' database: TEST_DATABASE_URL when set (mix wtf.task --test-db,
       # WTF-448), else Phoenix's defaults.
-      assert test =~ ~s|if database_url = System.get_env("TEST_DATABASE_URL") do|
+      assert test =~ ~s|database_url = System.get_env("TEST_DATABASE_URL")|
+      assert test =~ ~s|if database_url not in [nil, ""] do|
       assert test =~ "url: database_url"
       refute test =~ ~s|System.get_env("DATABASE_URL")|
       assert test =~ ~s|database: "acme_import_test\#{System.get_env("MIX_TEST_PARTITION")}"|

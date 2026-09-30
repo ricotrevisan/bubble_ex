@@ -171,7 +171,7 @@ defmodule Mix.Tasks.Wtf.TaskTest do
 
   describe "test database (WTF-448)" do
     setup %{tmp_dir: root, plan: plan} do
-      for var <- ~w(WTF_TASK_TEST_DB WTF_TASK_ALLOW_5432) do
+      for var <- ~w(WTF_TASK_TEST_DB WTF_TASK_ALLOW_5432 WTF_TASK_ALLOW_REMOTE_TEST_DB) do
         previous = System.get_env(var)
         System.delete_env(var)
 
@@ -235,6 +235,29 @@ defmodule Mix.Tasks.Wtf.TaskTest do
       # Allowed, the URL is used: this project's config/test.exs does not read it.
       assert_raise Mix.Error, ~r/does not read TEST_DATABASE_URL/, fn ->
         wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", on_5432])
+      end
+    end
+
+    test "--test-db refuses socket parameters and remote hosts", %{tmp_dir: root} do
+      for url <- [
+            "ecto://postgres:postgres@127.0.0.1:55432/app_test?socket_dir=/var/run/postgresql",
+            "ecto://postgres:postgres@127.0.0.1:55432/app_test?socket=/s/.s.PGSQL.5432"
+          ] do
+        assert_raise Mix.Error, ~r/no query parameter but ssl/, fn ->
+          wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", url])
+        end
+      end
+
+      remote = "ecto://postgres:postgres@db.example.com:55432/app_test"
+
+      assert_raise Mix.Error, ~r/loopback host/, fn ->
+        wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", remote])
+      end
+
+      System.put_env("WTF_TASK_ALLOW_REMOTE_TEST_DB", "1")
+
+      assert_raise Mix.Error, ~r/does not read TEST_DATABASE_URL/, fn ->
+        wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", remote])
       end
     end
 

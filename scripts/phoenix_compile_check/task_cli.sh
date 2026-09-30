@@ -11,7 +11,8 @@
 #     in the project) and records the tasks done, labelled advisory
 #   * a task whose criteria run mix test (generate:api_clients'
 #     request_shape) is refused without a test database, and with a URL on
-#     port 5432 or naming a non-test database (WTF-448); the generator
+#     port 5432, naming a non-test database or with a socket_dir parameter
+#     (WTF-448); the generator
 #     tasks, which need none, complete without one
 #   * a hand edit of a generated file makes complete refuse and audit turn
 #     the done tasks needs_reverify (both exit non-zero)
@@ -69,6 +70,8 @@ WTF_TASK_ALLOW_5432='' refused_db "on port 5432" "port 5432" \
   --test-db "ecto://postgres:postgres@127.0.0.1:5432/phx_check_test"
 refused_db "on a non-test database" "ending in _test" \
   --test-db "ecto://postgres:postgres@127.0.0.1:55432/phx_check"
+refused_db "through a socket_dir parameter" "no query parameter but ssl" \
+  --test-db "ecto://postgres:postgres@127.0.0.1:55432/phx_check_test?socket_dir=/var/run/postgresql"
 if grep -q 'status done' <<<"$(wtf show generate:api_clients)"; then
   fail "a refused complete recorded generate:api_clients"
 fi

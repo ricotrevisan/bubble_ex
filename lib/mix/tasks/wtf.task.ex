@@ -33,15 +33,27 @@ defmodule Mix.Tasks.Wtf.Task do
   `localhost:5432`, likely your everyday PostgreSQL. So when `complete` or
   `audit` would run `mix test`, it refuses unless you choose the database:
 
-    * `--test-db URL` (or `WTF_TASK_TEST_DB=URL`), e.g.
-      `ecto://postgres:postgres@127.0.0.1:55432/my_app_test`: an explicit
-      port, not 5432 unless `WTF_TASK_ALLOW_5432=1`, and a database whose
-      name ends in `_test` or starts with `wtf_`. It reaches `mix test` as
+    * `WTF_TASK_TEST_DB=URL` (or `--test-db URL`; the variable keeps the
+      URL and its password out of `ps` and your shell history), e.g.
+      `ecto://postgres:postgres@127.0.0.1:55432/my_app_test`: a
+      throwaway PostgreSQL on a loopback host (another host needs
+      `WTF_TASK_ALLOW_REMOTE_TEST_DB=1`), an explicit port (not 5432
+      unless `WTF_TASK_ALLOW_5432=1`), a database whose name ends in
+      `_test` or starts with `wtf_`, no query parameter but
+      `ssl=true|false` (`socket`, `socket_dir` or `port` would bypass the
+      host and port) and no fragment. It reaches `mix test` as
       `TEST_DATABASE_URL` in its environment (never on a command line),
-      which the generated `config/test.exs` uses when set; a project whose
-      `config/test.exs` never reads `TEST_DATABASE_URL` is refused
-    * `--use-project-test-config` - `config/test.exs` as it is (with your
-      `TEST_DATABASE_URL`, when you set one)
+      which the generated `config/test.exs` uses when set. It is refused
+      for a project whose `config/test.exs` never reads
+      `TEST_DATABASE_URL`, whose `config/runtime.exs` reads `DATABASE_URL`
+      or sets a Repo's connection outside an `if config_env() == :prod`
+      block, or whose Repo config sets `socket` or `socket_dir` (a check
+      of the code as written: config computed another way is not seen)
+    * `--use-project-test-config` - **no checks at all**:
+      `config/test.exs` as it is, which in a generated project means
+      `<app>_test` on `localhost:5432` (any port, any server), and your
+      `TEST_DATABASE_URL` and `PG*` variables pass through. Use it only
+      when that config already names a throwaway database
 
   `DATABASE_URL` is always removed from the environment of `mix test`: it
   often points at a development or production database.
@@ -338,7 +350,13 @@ defmodule Mix.Tasks.Wtf.Task do
   end
 
   defp test_db_url!(url),
-    do: ok!(TestDb.parse(url, allow_5432: System.get_env("WTF_TASK_ALLOW_5432") == "1"))
+    do:
+      ok!(
+        TestDb.parse(url,
+          allow_5432: System.get_env("WTF_TASK_ALLOW_5432") == "1",
+          allow_remote: System.get_env("WTF_TASK_ALLOW_REMOTE_TEST_DB") == "1"
+        )
+      )
 
   defp attest!(opts) do
     opts
