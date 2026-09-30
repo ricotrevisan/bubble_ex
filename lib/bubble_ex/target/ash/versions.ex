@@ -12,12 +12,12 @@ defmodule BubbleEx.Target.Ash.Versions do
   @policy_versions [picosat_elixir: "0.2.3"]
 
   @doc "See `BubbleEx.Target.Ash.versions/1`."
-  @spec versions([{:privacy, :omit | :unverified}]) :: [{atom(), String.t()}]
+  @spec versions([{:privacy, :omit | :unverified | :enforced}]) :: [{atom(), String.t()}]
   def versions(opts \\ []) when is_list(opts) do
     pins =
       case Keyword.get(opts, :privacy, :omit) do
         :omit -> @versions
-        :unverified -> @versions ++ @policy_versions
+        mode when mode in [:unverified, :enforced] -> @versions ++ @policy_versions
         other -> raise ArgumentError, "unknown privacy mode #{inspect(other)}"
       end
 

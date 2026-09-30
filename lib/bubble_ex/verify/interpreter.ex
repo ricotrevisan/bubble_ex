@@ -552,15 +552,21 @@ defmodule BubbleEx.Verify.Interpreter do
     values = lacking |> Enum.flat_map(& &1.info.record_values) |> Enum.uniq()
 
     {empty, flags} =
-      Enum.reduce(values, {false, []}, fn ir, {empty, flags} ->
-        {e, more} =
-          try do
-            Eval.value_empty?(ir, ctx)
-          catch
-            {:unsupported, _} -> {false, []}
-          end
+      Enum.reduce(values, {false, []}, fn
+        # WTF-430: a reference read only by an emptiness test must not be
+        # dangling (its emptiness is then the same under either reading).
+        {:not_dangling, ir}, {empty, flags} ->
+          {empty or Eval.dangling_value?(ir, ctx), flags}
 
-        {empty or e, flags ++ more}
+        ir, {empty, flags} ->
+          {e, more} =
+            try do
+              Eval.value_empty?(ir, ctx)
+            catch
+              {:unsupported, _} -> {false, []}
+            end
+
+          {empty or e, flags ++ more}
       end)
 
     cond do

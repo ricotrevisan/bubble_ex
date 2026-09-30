@@ -638,6 +638,161 @@ defmodule BubbleEx.Verify.InterpreterTest do
     end
   end
 
+  # WTF-430: an emptiness test's negation is exact, so the everyone rule's
+  # record-value guard does not cover a value read only by one (it made
+  # the reach `text is empty and text is not empty`); the compiled policy
+  # is the same (PoliciesTest).
+  test "the everyone rule's reach negates an emptiness test exactly" do
+    rule = fn op ->
+      %{
+        "display" => "Filled",
+        "condition" => %{
+          "type" => "InjectedValue",
+          "next" => %{
+            "type" => "Message",
+            "name" => "text_text",
+            "next" => %{"type" => "Message", "name" => op}
+          }
+        },
+        "permissions" => %{"view_all" => false, "search_for" => false}
+      }
+    end
+
+    app = fn op ->
+      %{
+        "_id" => "emptiness",
+        "user_types" => %{
+          "note" => %{
+            "display" => "Note",
+            "fields" => %{"text_text" => %{"display" => "Text", "value" => "text"}},
+            "privacy_role" => %{
+              "everyone" => %{
+                "display" => "everyone",
+                "permissions" => %{"search_for" => true, "view_all" => true}
+              },
+              "filled_" => rule.(op)
+            }
+          }
+        }
+      }
+    end
+
+    {:ok, ds} =
+      Dataset.new([
+        {"u", "user", %{}},
+        {"blank", "note", %{"text_text" => nil}},
+        {"full", "note", %{"text_text" => {:text, "x"}}}
+      ])
+
+    for reading <- [Assumptions.defaults(), Assumptions.target()] do
+      {:ok, model} = Model.build(app.("is_not_empty"))
+      {:ok, i} = Interpreter.new(model, assumptions: reading)
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == true
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "full") == false
+
+      {:ok, model} = Model.build(app.("is_empty"))
+      {:ok, i} = Interpreter.new(model, assumptions: reading)
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == false
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "full") == true
+    end
+  end
+
+  # WTF-430 review M1: a reference read only by an emptiness test must not
+  # be dangling for the reach to apply, whatever `dangling_ref_is_empty`
+  # says; and L2: the same through `defaulting to`.
+  test "the everyone rule's reach needs a reference not dangling; defaulting to negates exactly" do
+    note = fn fields, condition ->
+      %{
+        "_id" => "emptiness",
+        "user_types" => %{
+          "note" => %{
+            "display" => "Note",
+            "fields" => fields,
+            "privacy_role" => %{
+              "everyone" => %{
+                "display" => "everyone",
+                "permissions" => %{"search_for" => true, "view_all" => true}
+              },
+              "filled_" => %{
+                "display" => "Filled",
+                "condition" => condition,
+                "permissions" => %{"view_all" => false, "search_for" => false}
+              }
+            }
+          }
+        }
+      }
+    end
+
+    owner =
+      note.(%{"owner_user" => %{"display" => "Owner", "value" => "user"}}, %{
+        "type" => "InjectedValue",
+        "next" => %{
+          "type" => "Message",
+          "name" => "owner_user",
+          "next" => %{"type" => "Message", "name" => "is_not_empty"}
+        }
+      })
+
+    {:ok, ds} =
+      Dataset.new([
+        {"u", "user", %{}},
+        {"none", "note", %{"owner_user" => nil}},
+        {"gone", "note", %{"owner_user" => {:ref, "missing"}}},
+        {"mine", "note", %{"owner_user" => {:ref, "u"}}}
+      ])
+
+    for reading <- [Assumptions.defaults(), Assumptions.target()],
+        dangling <- [true, false] do
+      {:ok, model} = Model.build(owner)
+
+      {:ok, i} =
+        Interpreter.new(model, assumptions: Map.put(reading, :dangling_ref_is_empty, dangling))
+
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "none") == true
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "gone") == false
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "mine") == false
+    end
+
+    fallback =
+      note.(
+        %{
+          "text_text" => %{"display" => "Text", "value" => "text"},
+          "alt_text" => %{"display" => "Alt", "value" => "text"}
+        },
+        %{
+          "type" => "InjectedValue",
+          "next" => %{
+            "type" => "Message",
+            "name" => "text_text",
+            "next" => %{
+              "type" => "Message",
+              "name" => "defaulting_to",
+              "args" => %{
+                "type" => "InjectedValue",
+                "next" => %{"type" => "Message", "name" => "alt_text"}
+              },
+              "next" => %{"type" => "Message", "name" => "is_not_empty"}
+            }
+          }
+        }
+      )
+
+    {:ok, ds} =
+      Dataset.new([
+        {"u", "user", %{}},
+        {"blank", "note", %{"text_text" => nil, "alt_text" => nil}},
+        {"alt", "note", %{"text_text" => nil, "alt_text" => {:text, "x"}}}
+      ])
+
+    for reading <- [Assumptions.defaults(), Assumptions.target()] do
+      {:ok, model} = Model.build(fallback)
+      {:ok, i} = Interpreter.new(model, assumptions: reading)
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == true
+      assert Interpreter.everyone_applies(i, ds, "u", "note", "alt") == false
+    end
+  end
+
   test "deterministic, and errors for unknown input", %{pmodel: model, pds: ds} do
     interpreter = interpreter(model)
 

@@ -89,6 +89,97 @@ defmodule BubbleEx.Target.Ash.Policies do
     {project, List.flatten(diags)}
   end
 
+  @doc false
+  # `privacy: :enforced` (WTF-423, Rico's option A): the policies of
+  # `apply/2`, plus one policy per default write action authorizing the
+  # writes of the generated workflow runtime (`:workflow_write`). Other
+  # writes stay forbidden. The "not verified" warning becomes the warning
+  # that writes are not checked against the privacy rules.
+  @spec enforce(Project.t(), [Diagnostic.t()]) :: {Project.t(), [Diagnostic.t()]}
+  def enforce(%Project{} = project, diags) do
+    project = %{
+      project
+      | resources: Enum.map(project.resources, &(&1 |> workflow_writes() |> attachments())),
+        joins: Enum.map(project.joins, &workflow_writes/1)
+    }
+
+    diags = Enum.reject(diags, &(&1.code == :ash_policies_unverified))
+    {project, writes_unchecked(project) ++ diags}
+  end
+
+  defp workflow_writes(%Resource{policies: []} = resource), do: resource
+
+  defp workflow_writes(%Resource{} = resource) do
+    writes =
+      for action <- ~w(create update destroy) do
+        %Policy{
+          action: action,
+          permission: :workflow_write,
+          description:
+            "Writes by the generated workflow runtime: the workflow's conditions guard them, " <>
+              "as in Bubble (not checked against the privacy rules)",
+          checks: [
+            %PolicyCheck{
+              kind: :authorize_if,
+              test: :workflow_write,
+              source: %{decision: "WTF-423"}
+            }
+          ]
+        }
+      end
+
+    %{resource | policies: resource.policies ++ writes}
+  end
+
+  # Bubble's "view attached files" as a keyed read action, `:attachments`,
+  # on a resource with file fields: the generated app reads the record a
+  # private file is attached to through it (by primary key), with the
+  # actor, to decide whether to serve the file. Its policy is the
+  # permission's checks.
+  defp attachments(%Resource{privacy: %ResourcePrivacy{file_fields: [_ | _]} = p} = r) do
+    action = %Action{
+      type: :read,
+      name: "attachments",
+      description:
+        "Bubble's \"view attached files\": the record, by primary key, when the user may " <>
+          "open the files attached to it"
+    }
+
+    policies = [
+      %Policy{
+        action: "attachments",
+        permission: :keyed,
+        description: "Attached files are reached through their record's primary key",
+        checks: [%PolicyCheck{kind: :authorize_if, test: :keyed}]
+      },
+      %Policy{
+        action: "attachments",
+        permission: :view_attachments,
+        description: "The user may view the files attached to the record",
+        checks: p.attachments
+      }
+    ]
+
+    %{r | extra_actions: r.extra_actions ++ [action], policies: r.policies ++ policies}
+  end
+
+  defp attachments(resource), do: resource
+
+  defp writes_unchecked(%Project{resources: []}), do: []
+
+  defp writes_unchecked(%Project{}) do
+    [
+      Diagnostic.new(
+        :ash_writes_not_policy_checked,
+        "",
+        "privacy: :enforced - reads follow the compiled privacy rules; writes are not checked " <>
+          "against them: a write the generated workflow runtime makes is authorized (its " <>
+          "conditions guard it, as in Bubble), any other write is forbidden",
+        target: :ash
+      )
+    ]
+  end
+
   # Ash field policies do not apply to aggregates (count, min, max, sum,
   # list, first, ...) over a field: diagnosed wherever some field is not
   # visible to everyone, since a policy cannot tell an aggregate from a read.
@@ -1094,7 +1185,10 @@ defmodule BubbleEx.Target.Ash.Policies do
       irs
       |> Enum.flat_map(&record_values/1)
       |> Enum.uniq()
-      |> Enum.map(&IR.node(:not, [IR.node(:is_empty, [&1], "boolean")], "boolean"))
+      |> Enum.map(fn
+        {:not_dangling, ir} -> IR.node(:not_dangling, [ir], "boolean")
+        ir -> IR.node(:not, [IR.node(:is_empty, [ir], "boolean")], "boolean")
+      end)
 
     negation = IR.node(:and, [IR.node(:not, [any], "boolean") | guards], "boolean")
 
@@ -1128,8 +1222,27 @@ defmodule BubbleEx.Target.Ash.Policies do
     end
   end
 
-  # The outermost field chains read from the rule's record (`This Thing's
-  # a's b`), not from the actor.
+  # The outermost field chains read from the rule's record (`This
+  # Thing's a's b`), not from the actor: each must be non-empty. A chain
+  # read only as the operand of an emptiness test (`is empty`, `is not
+  # empty`, `= empty`, also through `defaulting to`) is not guarded that
+  # way: the test's negation is exact, and guarding it made the negation
+  # `x is empty and x is not empty`, always false (WTF-430). Such a chain
+  # that is a reference gets `{:not_dangling, chain}` instead: whether a
+  # dangling reference is empty is not calibrated (`dangling_ref_is_empty`),
+  # so the negation holds only where both readings agree (its ID is nil,
+  # or its record exists). The interpreter lists the same guards
+  # (`Verify.Interpreter.Eval.record_values/1`).
+  defp record_values(%IR{op: :is_empty, args: [x]}), do: emptiness_operand(x)
+
+  defp record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) -> emptiness_operand(r)
+      match?(%IR{op: :empty}, r) -> emptiness_operand(l)
+      true -> record_values(l) ++ record_values(r)
+    end
+  end
+
   defp record_values(%IR{op: :field, args: [base | _]} = ir) do
     if record_based?(base), do: [strip_path(ir)], else: []
   end
@@ -1137,6 +1250,25 @@ defmodule BubbleEx.Target.Ash.Policies do
   defp record_values(%IR{args: args}), do: Enum.flat_map(args, &record_values/1)
   defp record_values(list) when is_list(list), do: Enum.flat_map(list, &record_values/1)
   defp record_values(_), do: []
+
+  defp emptiness_operand(%IR{op: :field, args: [base | _]} = ir) do
+    cond do
+      not record_based?(base) ->
+        []
+
+      is_binary(ir.type) and
+          match?({%Type{kind: :ref, cardinality: :one}, _}, Type.classify(ir.type)) ->
+        [{:not_dangling, strip_path(ir)}]
+
+      true ->
+        []
+    end
+  end
+
+  defp emptiness_operand(%IR{op: :fallback, args: args}),
+    do: Enum.flat_map(args, &emptiness_operand/1)
+
+  defp emptiness_operand(other), do: record_values(other)
 
   defp record_based?(%IR{op: :this, args: [binder]}), do: binder in [:rule_record, :filter_item]
   defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)

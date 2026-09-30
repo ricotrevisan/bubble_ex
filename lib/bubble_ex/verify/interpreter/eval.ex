@@ -530,10 +530,29 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   defp nonnull?(_), do: false
 
   @doc """
-  The outermost field chains of `ir` read from the rule's record (`This
-  Thing's a's b`), without source paths.
+  The everyone rule's record-value guards (`everyone_guards_record_values`)
+  for a condition: the outermost field chains of `ir` read from the rule's
+  record (`This Thing's a's b`), without source paths, each of which must
+  be non-empty. A chain read only as the operand of an emptiness test
+  (`is empty`, `is not empty`, `= empty`, also through `defaulting to`)
+  is not listed: negating that test is exact, so guarding it would make
+  the negation contradict itself (`x is empty and x is not empty`,
+  WTF-430); such a chain that is a reference is listed as `{:not_dangling,
+  chain}`: its stored ID is nil or names a record that exists, so its
+  emptiness does not depend on `dangling_ref_is_empty`. The Ash policy
+  generator uses the same guards.
   """
-  @spec record_values(term()) :: [IR.t()]
+  @spec record_values(term()) :: [IR.t() | {:not_dangling, IR.t()}]
+  def record_values(%IR{op: :is_empty, args: [x]}), do: emptiness_operand(x)
+
+  def record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) -> emptiness_operand(r)
+      match?(%IR{op: :empty}, r) -> emptiness_operand(l)
+      true -> record_values(l) ++ record_values(r)
+    end
+  end
+
   def record_values(%IR{op: :field, args: [base | _]} = ir) do
     if record_based?(base), do: [IR.strip_paths(ir)], else: []
   end
@@ -541,6 +560,21 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   def record_values(%IR{args: args}), do: Enum.flat_map(args, &record_values/1)
   def record_values(list) when is_list(list), do: Enum.flat_map(list, &record_values/1)
   def record_values(_), do: []
+
+  defp emptiness_operand(%IR{op: :field, args: [base | _]} = ir) do
+    if record_based?(base) and ref_one?(ir.type),
+      do: [{:not_dangling, IR.strip_paths(ir)}],
+      else: []
+  end
+
+  defp emptiness_operand(%IR{op: :fallback, args: args}),
+    do: Enum.flat_map(args, &emptiness_operand/1)
+
+  defp emptiness_operand(other), do: record_values(other)
+
+  @doc "Whether a record-side reference names a record the dataset does not hold."
+  @spec dangling_value?(IR.t(), ctx()) :: boolean()
+  def dangling_value?(ir, ctx), do: ref_one?(ir.type) and dangling?(ir, ctx)
 
   defp record_based?(%IR{op: :this}), do: true
   defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)

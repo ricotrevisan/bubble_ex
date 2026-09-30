@@ -29,7 +29,7 @@
       "everyone_exclusive": 34,
       "everyone_guards_record_values": 32,
       "logged_out_user_is_empty": 28,
-      "no_visible_field_unreadable": 812,
+      "no_visible_field_unreadable": 807,
       "non_filterable_constraint_excludes": 9,
       "search_independent_of_view": 49
     },
@@ -73,11 +73,11 @@
       "non_filterable_constraint_excludes"
     ]
   },
-  "checks": 1788,
+  "checks": 1782,
   "defaults": {
     "explicit_empties": 9,
     "fields": 194,
-    "seed_values_equal_to_default": 845,
+    "seed_values_equal_to_default": 837,
     "unmodeled": 0
   },
   "differences": {
@@ -91,20 +91,20 @@
     "unintended": 0
   },
   "governed_fields": {
-    "held": 2701,
-    "slots": 4178,
-    "unchecked": 1477,
+    "held": 2682,
+    "slots": 4155,
+    "unchecked": 1473,
     "unchecked_by_reason": {
-      "condition_reads": 219,
+      "condition_reads": 218,
       "explicitly_empty": 11,
-      "no_synthetic_value": 1150,
+      "no_synthetic_value": 1147,
       "persona": 97
     }
   },
-  "observations": 2976,
+  "observations": 2964,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 198,
+  "records": 197,
   "rules": {
     "conditional": 91,
     "everyone": 53,

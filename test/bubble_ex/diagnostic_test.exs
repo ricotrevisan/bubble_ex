@@ -146,7 +146,7 @@ defmodule BubbleEx.DiagnosticTest do
     # Target.Ash applying owner decisions (WTF-401).
     defp decided_diagnostics do
       for set <- BubbleEx.Test.DecidedFixture.sets(),
-          privacy <- [:omit, :unverified],
+          privacy <- [:omit, :unverified, :enforced],
           {:ok, project} = BubbleEx.Test.DecidedFixture.project(set, privacy: privacy),
           d <- project.diagnostics,
           do: d

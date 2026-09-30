@@ -49,6 +49,41 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
 
   defp calc(resource, name), do: Enum.find(resource.calculations, &(&1.name == name))
 
+  # A note whose rule `filled_` tests one field's emptiness and grants
+  # nothing; the everyone rule grants everything (WTF-430).
+  defp emptiness_app(field, op) do
+    %{
+      "_id" => "emptiness",
+      "user_types" => %{
+        "note" => %{
+          "display" => "Note",
+          "fields" => %{
+            "text_text" => %{"display" => "Text", "value" => "text"},
+            "owner_user" => %{"display" => "Owner", "value" => "user"}
+          },
+          "privacy_role" => %{
+            "everyone" => %{
+              "display" => "everyone",
+              "permissions" => %{"search_for" => true, "view_all" => true}
+            },
+            "filled_" => %{
+              "display" => "Filled",
+              "condition" => %{
+                "type" => "InjectedValue",
+                "next" => %{
+                  "type" => "Message",
+                  "name" => field,
+                  "next" => %{"type" => "Message", "name" => op}
+                }
+              },
+              "permissions" => %{"view_all" => false, "search_for" => false}
+            }
+          }
+        }
+      }
+    }
+  end
+
   setup_all do
     app = load(@policies)
     {:ok, index} = Index.build(app)
@@ -124,6 +159,110 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
     end
   end
 
+  describe "privacy: :enforced (WTF-423, option A)" do
+    setup %{app: app} do
+      {:ok, index} = Index.build(app)
+      %{enforced: project!(app, index: index, privacy: :enforced)}
+    end
+
+    test "the same read policies, plus a write policy per default write action",
+         %{project: unverified, enforced: enforced} do
+      for {u, e} <- Enum.zip(unverified.resources, enforced.resources), u.policies != [] do
+        {writes, others} = Enum.split_with(e.policies, &(&1.permission == :workflow_write))
+        {attachments, reads} = Enum.split_with(others, &(&1.action == "attachments"))
+        assert reads == u.policies
+
+        # Bubble's "view attached files" as a keyed read (types with files)
+        if u.privacy.file_fields == [] do
+          assert attachments == []
+        else
+          assert [%{permission: :keyed}, %{permission: :view_attachments, checks: checks}] =
+                   attachments
+
+          assert checks == u.privacy.attachments
+          assert Enum.any?(e.extra_actions, &(&1.name == "attachments"))
+        end
+
+        assert e.field_policies == u.field_policies
+        assert Enum.map(writes, & &1.action) == ~w(create update destroy)
+
+        for w <- writes,
+            do: assert(tests(w.checks) == [authorize_if: :workflow_write])
+
+        # :omit / :unverified authorize no write
+        refute Enum.any?(u.policies, &(&1.permission == :workflow_write))
+      end
+    end
+
+    test "joins get the write policy too" do
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: :enforced)
+      assert project.joins != []
+
+      for j <- project.joins,
+          do: assert(Enum.count(j.policies, &(&1.permission == :workflow_write)) == 3)
+    end
+
+    test "warns that writes are not policy-checked instead of 'unverified'",
+         %{enforced: enforced} do
+      codes = Enum.map(enforced.diagnostics, & &1.code)
+      assert :ash_writes_not_policy_checked in codes
+      refute :ash_policies_unverified in codes
+      assert enforced.privacy == :enforced
+      refute enforced.policies_verified
+    end
+
+    test "the source renders the WorkflowWrite check and the mode", %{enforced: enforced} do
+      {:ok, source} = Source.render(enforced, namespace: "Acme")
+      assert source =~ "defmodule Acme.Privacy.WorkflowWrite do"
+      assert source =~ "authorize_if Acme.Privacy.WorkflowWrite"
+      assert source =~ "def mode, do: :enforced"
+      assert source =~ "WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES"
+      refute source =~ "NOT VERIFIED AGAINST BUBBLE"
+
+      assert source =~
+               "defp workflow_write?(%{private: %{bubble_workflow_write: true}} = context)"
+
+      assert source =~ "defp shared?(%{private: %{bubble_workflow_write: _}}), do: true"
+    end
+
+    test "a renderer's policy bypasses come first, marked, and reach private fields",
+         %{enforced: enforced} do
+      user = Enum.find(enforced.resources, &(&1.source.type == "user"))
+      check = {"AshAuthentication.Checks.AshAuthenticationInteraction", "ash_authentication"}
+
+      {:ok, source} =
+        Source.render(enforced,
+          namespace: "Acme",
+          extend: %{user.module => %{policy_bypasses: [check]}}
+        )
+
+      [_, user_source] = String.split(source, "defmodule Acme.#{user.module} do", parts: 2)
+      [user_source | _] = String.split(user_source, "\ndefmodule ", parts: 2)
+
+      assert user_source =~
+               ~r/policies do\n\s+# bubble:ignores_privacy scaffold:ash_authentication\n\s+bypass AshAuthentication.Checks.AshAuthenticationInteraction do/
+
+      if user.field_policies != [] do
+        assert user_source =~ "private_fields :include"
+
+        assert user_source =~
+                 "field_policy_bypass :*, AshAuthentication.Checks.AshAuthenticationInteraction do"
+      end
+
+      # Other resources keep private fields hidden.
+      refute String.replace(source, user_source, "") =~ "private_fields :include"
+
+      assert {:error, %BubbleEx.Error{kind: :invalid_input}} =
+               Source.render(enforced,
+                 extend: %{user.module => %{policy_bypasses: ["NoPurpose"]}}
+               )
+    end
+
+    test "pins PicoSAT like :unverified" do
+      assert Ash.versions(privacy: :enforced) == Ash.versions(privacy: :unverified)
+    end
+  end
+
   describe "the everyone rule" do
     test "grants to users no other rule matches, as a fail-safe negation", %{project: project} do
       note = resource(project, "note")
@@ -147,6 +286,104 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
              } = calc(note, "privacy_everyone_else")
 
       assert :ash_policy_default_rule_negated in codes(project, %{type: "note", rule: "everyone"})
+    end
+
+    # WTF-430: the record-value guard (every value the negated rules read
+    # must be non-empty) made the negation of an emptiness test contradict
+    # itself: `This Thing's text is not empty` negated to `text is empty and
+    # text is not empty`, always false. An emptiness test negates exactly.
+    test "an emptiness test is negated exactly, not guarded into a contradiction" do
+      for {field, op, expected} <- [
+            {"text_text", "is_not_empty", ~s|expr((is_nil(text) or text == ""))|},
+            {"text_text", "is_empty", ~s|expr(not (is_nil(text) or text == ""))|},
+            # A reference: not dangling too (WTF-430 review M1), so a
+            # dangling owner grants nothing whatever `dangling_ref_is_empty`
+            # says; `is not empty` negates to "no owner ID".
+            {"owner_user", "is_not_empty",
+             "expr(not exists(owner_for_privacy, true) and " <>
+               "(is_nil(owner_id) or exists(owner_for_privacy, true)))"},
+            {"owner_user", "is_empty",
+             "expr(exists(owner_for_privacy, true) and " <>
+               "(is_nil(owner_id) or exists(owner_for_privacy, true)))"}
+          ] do
+        note = "note" |> then(&resource(project!(emptiness_app(field, op)), &1))
+
+        assert Source.expr(calc(note, "privacy_everyone_else").expr) == expected,
+               "#{field} #{op}"
+      end
+    end
+
+    # The same bug through `defaulting to` (#165): `(x defaulting to y) is
+    # not empty` negates to both empty, not to a contradiction.
+    test "an emptiness test through defaulting to is negated exactly" do
+      condition = fn op ->
+        %{
+          "type" => "InjectedValue",
+          "next" => %{
+            "type" => "Message",
+            "name" => "text_text",
+            "next" => %{
+              "type" => "Message",
+              "name" => "defaulting_to",
+              "args" => %{
+                "type" => "InjectedValue",
+                "next" => %{"type" => "Message", "name" => "alt_text"}
+              },
+              "next" => %{"type" => "Message", "name" => op}
+            }
+          }
+        }
+      end
+
+      for {op, expected} <- [
+            {"is_not_empty",
+             ~s|expr((is_nil(text) or text == "") and (is_nil(alt) or alt == ""))|},
+            {"is_empty",
+             ~s|expr(not ((is_nil(text) or text == "") and (is_nil(alt) or alt == "")))|}
+          ] do
+        app =
+          "text_text"
+          |> emptiness_app(op)
+          |> put_in(["user_types", "note", "fields", "alt_text"], %{
+            "display" => "Alt",
+            "value" => "text"
+          })
+          |> put_in(
+            ["user_types", "note", "privacy_role", "filled_", "condition"],
+            condition.(op)
+          )
+
+        source = Source.expr(calc(resource(project!(app), "note"), "privacy_everyone_else").expr)
+        refute source =~ ~s|and not (is_nil(text)|, op
+        assert source == expected, "#{op}: #{source}"
+      end
+    end
+
+    test "a value also compared elsewhere keeps its guard" do
+      app = emptiness_app("text_text", "is_not_empty")
+
+      app =
+        put_in(app, ["user_types", "note", "privacy_role", "match_"], %{
+          "display" => "Match",
+          "condition" => %{
+            "type" => "InjectedValue",
+            "next" => %{
+              "type" => "Message",
+              "name" => "text_text",
+              "next" => %{
+                "type" => "Message",
+                "name" => "equals",
+                "args" => %{"type" => "TextExpression", "entries" => %{"0" => "x"}}
+              }
+            }
+          },
+          "permissions" => %{"view_all" => false, "search_for" => false}
+        })
+
+      note = resource(project!(app), "note")
+      source = Source.expr(calc(note, "privacy_everyone_else").expr)
+      # the guard of the compared text stays (fail-safe)
+      assert source =~ ~s|not (is_nil(text) or text == "")|
     end
 
     test "a grant that needs an uncompilable rule negated is denied", %{project: project} do
