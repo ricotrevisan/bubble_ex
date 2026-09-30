@@ -130,7 +130,7 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
-  defp do_run(payload, _opts) do
+  defp do_run(payload, opts) do
     cond do
       not app_payload?(payload) ->
         {:error, Error.new(:invalid_input, "payload is not a Bubble app object", %{})}
@@ -140,7 +140,7 @@ defmodule BubbleEx.Frontend.Normalize do
          Error.new(:unsupported_renderer, "app is not using the modern responsive renderer", %{})}
 
       true ->
-        {:ok, build_model(payload)}
+        {:ok, build_model(BubbleEx.Frontend.EditorGeometry.runtime_shape(payload, opts), payload)}
     end
   end
 
@@ -166,7 +166,10 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp explicit_legacy?(_), do: false
 
-  defp build_model(payload) do
+  # `payload` is what the model is built from (editor geometry already in
+  # its runtime shape, `BubbleEx.Frontend.EditorGeometry`); `source` is the
+  # payload as given, kept as the model's source.
+  defp build_model(payload, source) do
     identity = %Identity{
       bubble_id: payload["_id"] || "unknown",
       app_version: payload["app_version"] || "live"
@@ -200,7 +203,7 @@ defmodule BubbleEx.Frontend.Normalize do
         path: [],
         map_key: nil,
         bubble_id: identity.bubble_id,
-        payload: payload
+        payload: source
       },
       pages: pages,
       reusables: reusables,

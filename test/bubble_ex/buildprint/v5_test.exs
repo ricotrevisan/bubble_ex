@@ -276,6 +276,8 @@ defmodule BubbleEx.Buildprint.V5Test do
 
       # Buildprint's own members are dropped.
       refute Enum.any?(Map.keys(app), &(&1 == "_index" or String.starts_with?(&1, "__bp")))
+      # Marked as editor JSON, so the frontend reads its layout as Bubble does.
+      assert BubbleEx.Frontend.EditorGeometry.editor?(app)
 
       assert result.counts == %{
                "data_types" => 2,
@@ -300,7 +302,7 @@ defmodule BubbleEx.Buildprint.V5Test do
     test "a snapshot hash equal to the merged app's canonical JSON is reproduced",
          %{tmp_dir: dir} do
       {:ok, first} = dir |> write_workspace(name: "a") |> V5.load()
-      sha = BubbleEx.CanonicalJson.sha256(first.app)
+      sha = BubbleEx.CanonicalJson.sha256(BubbleEx.Frontend.EditorGeometry.unmark(first.app))
 
       {:ok, again} =
         dir |> write_workspace(name: "b", metadata: %{"snapshotJsonSha256" => sha}) |> V5.load()

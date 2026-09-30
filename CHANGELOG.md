@@ -1253,6 +1253,27 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Editor JSON pages lay out in flow** (WTF-446). Bubble's editor JSON
+  (a Buildprint v5 workspace, a `.bubble` export) writes every element's
+  canvas box as `left`/`top`/`width`/`height`, also inside Column, Row
+  and Align-to-parent containers, and leaves out sizing flags that are
+  off. `BubbleEx.Frontend.normalize/2` read that box as a position and a
+  size, so every element became `position: absolute` and fill or fit
+  elements got `0px` sizes. `BubbleEx.Buildprint.V5.merge/2` now marks
+  its app as editor JSON (`BubbleEx.Frontend.EditorGeometry.mark/1`; mark
+  a decoded `.bubble` export the same way, or pass `geometry: :editor`),
+  and `normalize/2` reads a marked app's layout as Bubble's runtime does:
+  in flow, no canvas offsets and a size only on a fixed axis, missing
+  flags off (neither fixed nor fit fills between min and max); plugin
+  elements keep their canvas size; a reusable definition's canvas size
+  does not size it; a flow page grows with its content and keeps its
+  width only when `fixed_width`. *Assumption* (on the WTF-358 replay
+  list): an element neither fixed nor fit on its height, without a min
+  height, keeps its canvas height as a min height. Children of Fixed and
+  layout-less (legacy) containers keep their canvas box. Unmarked apps,
+  the fidelity cases among them, are read as before, byte for byte.
+  `snapshot.reproduced` hashes the app without the mark.
+
 - **`mix wtf.task complete` and `audit` no longer run `mix test` on a
   database nobody named** (WTF-448). Tagged-test criteria (`unit_test`,
   `request_shape`, `render_smoke`, and `traceability` of a page or
