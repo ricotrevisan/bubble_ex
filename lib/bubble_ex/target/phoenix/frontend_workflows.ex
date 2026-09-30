@@ -382,6 +382,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "BubbleWorkflows.schedule_custom(ctx, #{id}, #{callee_module(args.callee, env.ctx)}, " <>
         "#{literal(args.callee.workflow)}, [], #{src(args.delay)}, #{keyed(args.params, :param)})"
 
+  defp op(:pause, args, id, _env),
+    do: "BubbleWorkflows.pause(ctx, #{id}, #{src(args.length)})"
+
   defp op(:terminate, args, _id, _env),
     do: "BubbleWorkflows.terminate(ctx, #{keyed(args.returns, :return)})"
 

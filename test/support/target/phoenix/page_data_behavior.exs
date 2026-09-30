@@ -424,6 +424,34 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert html =~ "Card: Eat"
   end
 
+  test "go to the current page with a thing replaces the URL's thing (WTF-454)", %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/task/#{@t1}")
+    assert html =~ "Title: Bake"
+    render_click(view, "bubble:click", %{"scope" => "", "element" => "bSelf"})
+    assert_patch(view, "/task/#{@t1}")
+
+    # A query parameter named like the route's segment is not the page's
+    # thing: its own path stays /task (review M1: it went to "/", another
+    # view, and crashed the patch).
+    {:ok, view, _html} = live(conn, "/task?bubble_thing=task")
+    render_click(view, "bubble:click", %{"scope" => "", "element" => "bSelf"})
+    assert_patch(view, "/task")
+    assert Process.alive?(view.pid)
+
+    # The index page takes no thing: the reusable's step fails, logged,
+    # and the page stays.
+    {:ok, view, _html} = live(conn, "/")
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        render_click(view, "bubble:click", %{"scope" => "bCard1", "element" => "bCardSelf"})
+      end)
+
+    assert log =~ "data sent to the current page, which takes none"
+    assert render(view) =~ "Card: Answer"
+  end
+
   test "value-backed lists obey page size and the global cap before looking up IDs" do
     on()
     socket = %Phoenix.LiveView.Socket{transport_pid: self()}

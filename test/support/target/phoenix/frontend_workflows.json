@@ -279,6 +279,44 @@
         }
       },
       "elements": {
+        "bBold": {
+          "id": "bBold",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 25,
+            "text": {
+              "entries": {
+                "0": "[b]Typed: ",
+                "1": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bIn"
+                  },
+                  "type": "GetElement"
+                },
+                "2": "[/b] [i]",
+                "3": {
+                  "next": {
+                    "name": "custom.label_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "type": "GetElement"
+                },
+                "4": "[/i] [url=https://example.com]u[/url]"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
         "bBtnCall": {
           "id": "bBtnCall",
           "properties": {
@@ -368,6 +406,38 @@
             "text": {
               "entries": {
                 "0": "Open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnPause": {
+          "id": "bBtnPause",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 23,
+            "text": {
+              "entries": {
+                "0": "Pause"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnPauseCall": {
+          "id": "bBtnPauseCall",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 24,
+            "text": {
+              "entries": {
+                "0": "Pause in a custom event"
               },
               "type": "TextExpression"
             },
@@ -966,14 +1036,58 @@
           },
           "type": "CustomEvent"
         },
+        "wEvtPause": {
+          "actions": {
+            "0": {
+              "id": "aEvtPause1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "in event"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aEvtPause2",
+              "properties": {
+                "length": 30
+              },
+              "type": "PauseWFClient"
+            },
+            "2": {
+              "id": "aEvtPause3",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "event done"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wEvtPause",
+          "properties": {
+            "event_name": "pause and set"
+          },
+          "type": "CustomEvent"
+        },
         "wEvtResidue": {
           "actions": {
             "0": {
               "id": "aEvtRes1",
               "properties": {
-                "length": 100
+                "element_id": "bLabel"
               },
-              "type": "PauseWFClient"
+              "type": "DisplayGroupData"
             }
           },
           "id": "wEvtResidue",
@@ -1113,6 +1227,90 @@
           "properties": {
             "element_id": "bBtnOpen",
             "workflow_disabled": true
+          },
+          "type": "ButtonClicked"
+        },
+        "wPause": {
+          "actions": {
+            "0": {
+              "id": "aPause1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "pausing"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aPause2",
+              "properties": {
+                "length": 30
+              },
+              "type": "PauseWFClient"
+            },
+            "2": {
+              "id": "aPause3",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "paused"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wPause",
+          "properties": {
+            "element_id": "bBtnPause"
+          },
+          "type": "ButtonClicked"
+        },
+        "wPauseCall": {
+          "actions": {
+            "0": {
+              "id": "aPauseCall1",
+              "properties": {
+                "custom_event": "wEvtPause"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "1": {
+              "id": "aPauseCall2",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": {
+                      "next": {
+                        "name": "custom.label_",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bHome"
+                      },
+                      "type": "GetElement"
+                    },
+                    "1": " + after"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wPauseCall",
+          "properties": {
+            "element_id": "bBtnPauseCall"
           },
           "type": "ButtonClicked"
         },

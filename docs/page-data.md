@@ -117,7 +117,7 @@ element (not a mobile view):
 
 | Bubble | `kind` | Generated read |
 |--------|--------|----------------|
-| a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route except for `index`, where a root catch-all would capture owned routes); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read; query parameters cannot select a thing |
+| a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route; for `index` it is `/index/<id>` (WTF-454), since a root catch-all would capture owned routes); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read; query parameters cannot select a thing |
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
 | a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
 | a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it) |
