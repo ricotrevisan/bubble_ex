@@ -1159,15 +1159,19 @@ All notable changes to this project are documented here.
   on `localhost:5432`. Such a run now needs `--test-db URL` (or
   `WTF_TASK_TEST_DB`: an explicit port, not 5432 unless
   `WTF_TASK_ALLOW_5432=1`, and a database ending in `_test` or starting
-  with `wtf_`; passed to `mix test` as `DATABASE_URL` in its environment)
-  or `--use-project-test-config`, and is refused up front otherwise;
+  with `wtf_`; passed to `mix test` as `TEST_DATABASE_URL` in its
+  environment) or `--use-project-test-config` (`config/test.exs` as it
+  is; `DATABASE_URL` is stripped from the subprocess's environment), and
+  is refused up front otherwise;
   tasks whose criteria need no database (manifest, compile, format and
   Credo, source scans, results, task state) run as before.
   `BubbleEx.Tasks.TestDb` validates the URL; `BubbleEx.Tasks.complete/3`
   and `audit/2` take `:test_db`, and
   `BubbleEx.Target.Phoenix.Checks.needs_database?/1` says which criteria
-  run `mix test`. The generated `config/test.exs` uses `DATABASE_URL` when
-  it is set (Phoenix's defaults otherwise), and a `--test-db` URL is
+  run `mix test`. The generated `config/test.exs` uses `TEST_DATABASE_URL`
+  when it is set (Phoenix's defaults otherwise) and never `DATABASE_URL`,
+  which often points at a development or production database while the
+  test alias creates and migrates its database; a `--test-db` URL is
   refused for a project whose `config/test.exs` never reads it.
   `scripts/phoenix_compile_check/task_cli.sh` checks the refusals and runs
   its tagged tests with `--test-db`.

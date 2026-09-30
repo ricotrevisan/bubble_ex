@@ -490,21 +490,21 @@ defmodule BubbleEx.TasksTest do
       assert m =~ "workflow:wApiA, workflow:wApiD, backend:fOne run mix test"
     end
 
-    test "a URL needs a config/test.exs reading DATABASE_URL", %{root: root} do
+    test "a URL needs a config/test.exs reading TEST_DATABASE_URL", %{root: root} do
       done!(root, @generators)
       test_db = {:url, @url}
 
       assert {:error, %Error{message: m}} = guarded(root, "auth", test_db: test_db)
-      assert m =~ "config/test.exs does not read DATABASE_URL"
+      assert m =~ "config/test.exs does not read TEST_DATABASE_URL"
 
       # A mention in a comment reads nothing.
       File.mkdir_p!(Path.join(root, "config"))
-      File.write!(Path.join(root, "config/test.exs"), "# DATABASE_URL\nimport Config\n")
+      File.write!(Path.join(root, "config/test.exs"), "# TEST_DATABASE_URL\nimport Config\n")
       assert {:error, _} = guarded(root, "auth", test_db: test_db)
 
       File.write!(
         Path.join(root, "config/test.exs"),
-        ~s|import Config\nconfig :app, App.Repo, url: System.get_env("DATABASE_URL")\n|
+        ~s|import Config\nconfig :app, App.Repo, url: System.get_env("TEST_DATABASE_URL")\n|
       )
 
       assert {:ok, _} = guarded(root, "auth", test_db: test_db)

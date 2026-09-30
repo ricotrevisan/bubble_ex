@@ -13,12 +13,18 @@ defmodule BubbleEx.Tasks.TestDb do
       URL (`ecto://`, `postgres://` or `postgresql://`) naming its host,
       an explicit port that is not 5432 (unless `allow_5432: true`,
       `WTF_TASK_ALLOW_5432=1`) and a database whose name ends in `_test`
-      or starts with `wtf_`. It reaches `mix test` as `DATABASE_URL` in the
-      subprocess's environment, never on its command line; the generated
-      `config/test.exs` uses `DATABASE_URL` when it is set, and a project
-      whose `config/test.exs` never reads it is refused
+      or starts with `wtf_`. It reaches `mix test` as `TEST_DATABASE_URL`
+      in the subprocess's environment, never on its command line; the
+      generated `config/test.exs` uses `TEST_DATABASE_URL` when it is set
+      (never `DATABASE_URL`), and a project whose `config/test.exs` never
+      reads it is refused
     * `:project` (`--use-project-test-config`) - the project's
-      `config/test.exs` as it is (and the caller's environment)
+      `config/test.exs` as it is, with the caller's `TEST_DATABASE_URL`
+      when set
+
+  Either way `DATABASE_URL` is removed from the subprocess's environment:
+  owners often point it at a development or production database, and the
+  test alias creates and migrates whatever database the tests use.
 
   Checks that need no database (the manifest, compile, format and Credo,
   the source scans, results) run without either.
@@ -80,13 +86,16 @@ defmodule BubbleEx.Tasks.TestDb do
   end
 
   @doc "The environment of a `mix test` run against `test_db`."
-  @spec env(t()) :: [{String.t(), String.t()}]
-  def env(:project), do: [{"MIX_ENV", "test"}]
-  def env({:url, url}), do: [{"MIX_ENV", "test"}, {"DATABASE_URL", url}]
+  # A nil value removes the variable from the subprocess's environment.
+  @spec env(t()) :: [{String.t(), String.t() | nil}]
+  def env(:project), do: [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}]
+
+  def env({:url, url}),
+    do: [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}, {"TEST_DATABASE_URL", url}]
 
   @doc """
   `:ok` when the project at `root` can use `test_db`: with a URL, its
-  `config/test.exs` must read `DATABASE_URL` (a `"DATABASE_URL"` string in
+  `config/test.exs` must read `TEST_DATABASE_URL` (a `"TEST_DATABASE_URL"` string in
   its code, not in a comment), or the URL would go nowhere and the tests
   would run on the configured database.
   """
@@ -103,8 +112,8 @@ defmodule BubbleEx.Tasks.TestDb do
     else
       _ ->
         error(
-          "config/test.exs does not read DATABASE_URL, so --test-db cannot point the tests at " <>
-            "its database: regenerate the project (its config/test.exs uses DATABASE_URL when " <>
+          "config/test.exs does not read TEST_DATABASE_URL, so --test-db cannot point the tests at " <>
+            "its database: regenerate the project (its config/test.exs uses TEST_DATABASE_URL when " <>
             "set) or make the Repo config read it, or pass --use-project-test-config when " <>
             "config/test.exs already names a database of its own"
         )
@@ -114,7 +123,7 @@ defmodule BubbleEx.Tasks.TestDb do
   defp reads_database_url?(ast) do
     ast
     |> Macro.prewalk(false, fn
-      "DATABASE_URL" = node, _acc -> {node, true}
+      "TEST_DATABASE_URL" = node, _acc -> {node, true}
       node, acc -> {node, acc}
     end)
     |> elem(1)

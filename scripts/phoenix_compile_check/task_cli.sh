@@ -35,9 +35,9 @@ app="phx-check"
 export MIX_ENV=test
 # Only --test-db names the database here (WTF-448).
 unset WTF_TASK_TEST_DB
-# The generated config/test.exs uses DATABASE_URL when set: only the
+# The generated config/test.exs uses TEST_DATABASE_URL when set: only the
 # check's own database may reach it.
-unset DATABASE_URL
+unset TEST_DATABASE_URL
 
 cd "$root"
 mix run --no-compile scripts/phoenix_compile_check/render.exs "$scratch" "$fixture"

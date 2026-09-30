@@ -11,8 +11,9 @@ app's data model.
     mix phx.server         # http://localhost:4000
 
 `mix test` runs the smoke tests (the endpoint boots, magic-link sign-in).
-It creates and migrates its own database: `DATABASE_URL` when set,
-otherwise `<%= @app %>_test` on `localhost` (`config/test.exs`).
+It creates and migrates its own database: `TEST_DATABASE_URL` when set,
+otherwise `<%= @app %>_test` on `localhost` (`config/test.exs`); never
+`DATABASE_URL`, which may point at a database you care about.
 `mix wtf.task complete` and `audit` run tests only on a database you name
 (`--test-db URL`, or `--use-project-test-config`; see `mix help
 wtf.task`).

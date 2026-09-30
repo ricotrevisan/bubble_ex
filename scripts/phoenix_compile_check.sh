@@ -44,9 +44,9 @@ export MIX_ENV=test
 # mix wtf.task names its test database explicitly (WTF-448); it refuses
 # port 5432 unless told otherwise, like the check itself.
 if [[ "${PHOENIX_COMPILE_CHECK_ALLOW_5432:-}" == 1 ]]; then export WTF_TASK_ALLOW_5432=1; fi
-# The generated config/test.exs uses DATABASE_URL when set: only the
+# The generated config/test.exs uses TEST_DATABASE_URL when set: only the
 # check's own database may reach it.
-unset DATABASE_URL
+unset TEST_DATABASE_URL
 
 cd "$root"
 mix compile

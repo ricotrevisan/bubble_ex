@@ -233,7 +233,7 @@ defmodule Mix.Tasks.Wtf.TaskTest do
       System.put_env("WTF_TASK_ALLOW_5432", "1")
 
       # Allowed, the URL is used: this project's config/test.exs does not read it.
-      assert_raise Mix.Error, ~r/does not read DATABASE_URL/, fn ->
+      assert_raise Mix.Error, ~r/does not read TEST_DATABASE_URL/, fn ->
         wtf(root, ["complete", "auth", "--agent", "a1", "--test-db", on_5432])
       end
     end

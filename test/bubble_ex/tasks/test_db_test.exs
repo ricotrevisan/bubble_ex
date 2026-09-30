@@ -43,22 +43,32 @@ defmodule BubbleEx.Tasks.TestDbTest do
     assert refused("ecto://postgres:secret@127.0.0.1:55432") =~ "ending in _test"
   end
 
-  test "the URL reaches mix test as DATABASE_URL" do
-    assert TestDb.env(:project) == [{"MIX_ENV", "test"}]
+  test "the URL reaches mix test as TEST_DATABASE_URL; DATABASE_URL never does" do
+    # nil removes the variable from the subprocess's environment.
+    assert TestDb.env(:project) == [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}]
 
     assert TestDb.env({:url, "ecto://h:1/a_test"}) ==
-             [{"MIX_ENV", "test"}, {"DATABASE_URL", "ecto://h:1/a_test"}]
+             [
+               {"MIX_ENV", "test"},
+               {"DATABASE_URL", nil},
+               {"TEST_DATABASE_URL", "ecto://h:1/a_test"}
+             ]
   end
 
-  test "a URL needs a config/test.exs that reads DATABASE_URL", %{tmp_dir: root} do
+  test "a URL needs a config/test.exs that reads TEST_DATABASE_URL", %{tmp_dir: root} do
     url = {:url, "ecto://h:55432/a_test"}
     assert TestDb.usable(root, :project) == :ok
     assert {:error, %Error{message: m}} = TestDb.usable(root, url)
-    assert m =~ "does not read DATABASE_URL"
+    assert m =~ "does not read TEST_DATABASE_URL"
 
     File.mkdir_p!(Path.join(root, "config"))
     path = Path.join(root, "config/test.exs")
+
+    # DATABASE_URL is not the test database's variable.
     File.write!(path, ~s|if url = System.get_env("DATABASE_URL"), do: :ok\n|)
+    assert {:error, _} = TestDb.usable(root, url)
+
+    File.write!(path, ~s|if url = System.get_env("TEST_DATABASE_URL"), do: :ok\n|)
     assert TestDb.usable(root, url) == :ok
   end
 end

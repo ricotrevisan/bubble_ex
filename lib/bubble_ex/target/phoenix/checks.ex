@@ -43,8 +43,9 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   `mix test` runs with `MIX_ENV=test`, and a generated project's `test`
   alias runs `ash.setup`: it creates and migrates the test database. So a
   tagged-test run needs the context's `test_db` (`BubbleEx.Tasks.TestDb`):
-  a URL, passed as `DATABASE_URL` in the subprocess's environment, or
-  `:project` for `config/test.exs` as it is. Without one the check fails
+  a URL, passed as `TEST_DATABASE_URL` in the subprocess's environment, or
+  `:project` for `config/test.exs` as it is; `DATABASE_URL` is removed
+  from that environment either way. Without one the check fails
   and runs nothing (`BubbleEx.Tasks.complete/3` refuses such a run up
   front). The other checks never touch a database.
 

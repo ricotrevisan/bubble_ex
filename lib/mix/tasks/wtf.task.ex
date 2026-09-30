@@ -37,11 +37,14 @@ defmodule Mix.Tasks.Wtf.Task do
       `ecto://postgres:postgres@127.0.0.1:55432/my_app_test`: an explicit
       port, not 5432 unless `WTF_TASK_ALLOW_5432=1`, and a database whose
       name ends in `_test` or starts with `wtf_`. It reaches `mix test` as
-      `DATABASE_URL` in its environment (never on a command line), which
-      the generated `config/test.exs` uses when set; a project whose
-      `config/test.exs` never reads `DATABASE_URL` is refused
-    * `--use-project-test-config` - `config/test.exs` as it is (and your
-      environment's `DATABASE_URL`, when it reads that)
+      `TEST_DATABASE_URL` in its environment (never on a command line),
+      which the generated `config/test.exs` uses when set; a project whose
+      `config/test.exs` never reads `TEST_DATABASE_URL` is refused
+    * `--use-project-test-config` - `config/test.exs` as it is (with your
+      `TEST_DATABASE_URL`, when you set one)
+
+  `DATABASE_URL` is always removed from the environment of `mix test`: it
+  often points at a development or production database.
 
   `--test-db` wins over `WTF_TASK_TEST_DB`, and `--use-project-test-config`
   over the variable; giving both flags is an error. Tasks whose criteria

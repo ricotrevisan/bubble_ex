@@ -152,7 +152,9 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
                run(:traceability, args, ctx(root))
 
       assert detail =~ "rendered by the tests of page:pHome"
-      assert_received {:mix, ["test", "--only", "bubble:page:pHome"], [{"MIX_ENV", "test"}]}
+
+      assert_received {:mix, ["test", "--only", "bubble:page:pHome"],
+                       [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}]}
     end
 
     test "render_smoke refuses placeholders, then runs the tagged tests", %{tmp_dir: root} do
@@ -224,7 +226,7 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
 
       # In the environment, never on the command line.
       assert_received {:mix, ["test", "--only", "bubble:workflow:wA"],
-                       [{"MIX_ENV", "test"}, {"DATABASE_URL", ^url}]}
+                       [{"MIX_ENV", "test"}, {"DATABASE_URL", nil}, {"TEST_DATABASE_URL", ^url}]}
     end
 
     test "needs_database? names the checks that run mix test" do
