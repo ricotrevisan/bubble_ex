@@ -6,6 +6,17 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Vertical slice: enforced privacy and a chosen persona** (WTF-378
+  re-run). `scripts/vertical_slice/run.sh` takes `SLICE_PRIVACY=enforced`
+  (the Ash target's `privacy: :enforced`, recorded in `slice.json` and
+  `seed.json`) and `SLICE_PERSONA=<n>` (the synthetic user signed in).
+  The browser drive records each visit's load and settle times and
+  layout counts (elements with no area, past the right edge, wired
+  elements covered), and signs in only with a magic link that arrived
+  after its request, so repeated drives of one server no longer use a
+  spent link. The sender's job is unique per email for 60 s, so a
+  request within a minute of an earlier one is dropped; with no new link
+  61 s after its request, the drive asks once more and keeps polling.
 - **Four gaps of the vertical slice** (WTF-450, WTF-451, WTF-453,
   WTF-454).
   * "Add a pause before next action" lowers to a `:pause` step. The
