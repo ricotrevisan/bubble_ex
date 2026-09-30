@@ -12,8 +12,9 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
     * **Attributes**: presentation and geometry attributes only (no event
       handlers, no namespaced attributes). `href` only on `use`, and only
       to a fragment of the same file (`#id`). A value that is not plain
-      text (`javascript:`, `data:`, `expression(`, `@import`, `image-set(`,
-      `src(`, a `url(…)` other than `url(#id)`, a backslash, control
+      text (`javascript:`, `data:`, `expression(`, `@import`, a `url(…)`
+      other than `url(#id)`, any quoted string or token with a `:` or `//`
+      in a value, whatever function holds it, a backslash, control
       characters) drops the
       attribute; so does a `style` attribute or element with such CSS.
     * **Output** is serialized here, not echoed: canonical element and
@@ -189,7 +190,7 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
 
   defp attribute(key, value, _tag) do
     case Map.fetch(@attributes, key) do
-      {:ok, name} -> if safe_value?(value), do: [{name, value}], else: []
+      {:ok, name} -> if safe_value?(value) and safe_tokens?(value), do: [{name, value}], else: []
       :error -> []
     end
   end
@@ -204,7 +205,8 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
   # CSS of a style element or attribute: rules and declarations only, no
   # at-rules, escapes, markup or references outside the file.
   defp safe_css?(css) when is_binary(css) and byte_size(css) <= 200_000 do
-    safe_value?(css) and not String.contains?(css, ["@", "<", ">", "&", "\\", "/*", "*/"])
+    safe_value?(css) and not String.contains?(css, ["@", "<", ">", "&", "\\", "/*", "*/"]) and
+      safe_declarations?(css)
   end
 
   defp safe_css?(_css), do: false
@@ -222,14 +224,42 @@ defmodule BubbleEx.Frontend.SvgSanitizer do
         "expression(",
         "@import",
         "-moz-binding",
-        "behavior:",
-        "image-set(",
-        "src("
+        "behavior:"
       ]) and
       local_urls?(compact)
   end
 
   defp safe_value?(_value), do: false
+
+  # No URL whatever function holds it (`image("…")`, `cross-fade(…, "…")`,
+  # `image-set(…)`, `src(…)`, one not invented yet): in every declaration
+  # value, no quoted string and no unquoted token has a `:` or `//` (a
+  # scheme, absolute or protocol-relative URL). `url(#id)` is a token
+  # `#id`. The property name before a declaration's first `:` (or a
+  # selector's pseudo-class) is not a value.
+  defp safe_declarations?(css) do
+    css
+    |> String.split(~r/[;{}]/)
+    |> Enum.all?(fn declaration ->
+      case String.split(declaration, ":", parts: 2) do
+        [_property, value] -> safe_tokens?(value)
+        [other] -> safe_tokens?(other)
+      end
+    end)
+  end
+
+  @quoted ~r/"[^"]*"|'[^']*'/
+
+  # A CSS value (or a presentation attribute's): its strings and tokens.
+  defp safe_tokens?(value) do
+    rest = Regex.replace(@quoted, value, " ")
+
+    not String.contains?(rest, ["\"", "'"]) and
+      @quoted |> Regex.scan(value) |> List.flatten() |> Enum.all?(&safe_token?/1) and
+      rest |> String.split(~r/[\s,()]+/u, trim: true) |> Enum.all?(&safe_token?/1)
+  end
+
+  defp safe_token?(token), do: not String.contains?(token, [":", "//"])
 
   # Every url(…) points at an element of the same file.
   defp local_urls?(compact) do

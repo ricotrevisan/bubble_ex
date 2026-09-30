@@ -82,23 +82,53 @@ defmodule BubbleEx.Frontend.SvgSanitizerTest do
     assert clean =~ ~s(<use></use>)
   end
 
-  test "drops image-set() and src() references in CSS and attributes" do
-    for value <- [
-          "background:image-set(url(#a) 1x)",
-          "background: -webkit-image-set('x.png' 1x)",
-          "background:IMAGE-SET( 'https://evil.example/x.png' 1x)",
-          "fill:src('https://evil.example/x')",
-          "mask: src (x)"
-        ] do
+  # A URL as a plain string or token passes through no function
+  # (review of #170): any string or token with `:` or `//` is refused.
+  @hostile_css [
+    "background:image('https://evil.example/x.png')",
+    "background:image(\"//evil.example/x.png\")",
+    "mask:cross-fade(url(#a), 'https://evil.example/x.png')",
+    "background:image-set(url(#a) 1x, 'https://evil.example/x.png' 2x)",
+    "background: -webkit-image-set('//evil.example/x.png' 1x)",
+    "background:IMAGE-SET( 'HTTPS://evil.example/x.png' 1x)",
+    "fill:src('https://evil.example/x')",
+    "fill:src(https://evil.example/x)",
+    "background:image(//evil.example/x.png)",
+    "background:element(#a), image(ftp:evil.example)",
+    "font-family:'x', 'y:z'",
+    "content:'a//b'",
+    "fill:red 'unclosed"
+  ]
+
+  test "refuses a URL in any CSS function, as a string or a token" do
+    for value <- @hostile_css do
+      attr = String.replace(value, "\"", "&quot;")
+
       clean =
         sanitize!(
           ~s|<svg xmlns="http://www.w3.org/2000/svg"><style>p{#{value}}</style>| <>
-            ~s|<path d="M0 0" style="#{value}" fill="#{value}"/></svg>|
+            ~s|<path d="M0 0" style="#{attr}"/><rect width="1" fill="#{attr}"/></svg>|
         )
 
-      refute clean =~ ~r/image-set|src\s*\(/i, value
-      assert clean =~ ~s(<path d="M0 0"></path>)
+      refute clean =~ "evil.example", value
+      refute clean =~ "<style>", value
+      assert clean =~ ~s(<path d="M0 0"></path>), value
+      assert clean =~ ~s(<rect width="1"></rect>), value
     end
+  end
+
+  test "keeps local references, relative strings and selectors' pseudo-classes" do
+    css =
+      "p:hover{fill:url(#a)} .b{mask:cross-fade(url(#a), url('#b'));font-family:'Inter', sans-serif}"
+
+    clean =
+      sanitize!(
+        ~s|<svg xmlns="http://www.w3.org/2000/svg"><style>#{css}</style>| <>
+          ~s|<path d="M0 0" style="fill:url(#a);stroke:#000" fill="url(#a)"/></svg>|
+      )
+
+    assert clean =~ "<style>#{css}</style>"
+    assert clean =~ ~s|<path d="M0 0" style="fill:url(#a);stroke:#000" fill="url(#a)">|
   end
 
   test "text loses characters XML does not allow, decoded or raw" do
@@ -128,6 +158,11 @@ defmodule BubbleEx.Frontend.SvgSanitizerTest do
         case SvgSanitizer.sanitize(input) do
           {:ok, clean} ->
             assert well_formed?(clean), inspect(input)
+            # No outside URL survives in CSS or an attribute, whatever
+            # function held it (text content is only text).
+            refute Enum.any?(css_and_attributes(clean), &(&1 =~ "evil.example")),
+                   inspect(input)
+
             assert SvgSanitizer.sanitize(clean) == {:ok, clean}, inspect(input)
             true
 
@@ -177,12 +212,23 @@ defmodule BubbleEx.Frontend.SvgSanitizerTest do
     "\u000B",
     "\uFFFE",
     "é",
-    "text"
+    "text",
+    "p{background:image('https://evil.example/x')}",
+    "p{mask:cross-fade(url(#a), \"//evil.example/x\")}",
+    "p{fill:src(https://evil.example/x)}",
+    ~S|<rect width="1" style="background:image('//evil.example/x')"/>|,
+    ~S|<rect width="1" fill="image(https://evil.example/x)"/>|,
+    ~S|<rect width="1" style="fill:url(#a);mask:image-set('x' 1x, 'https://evil.example/y' 2x)"/>|
   ]
 
   defp fuzz_document do
     body = for _ <- 1..:rand.uniform(12), into: "", do: Enum.random(@pieces)
     ~s(<svg xmlns="http://www.w3.org/2000/svg">) <> body <> "</svg>"
+  end
+
+  defp css_and_attributes(xml) do
+    Enum.map(Regex.scan(~r{<style>(.*?)</style>}s, xml), &List.last/1) ++
+      Enum.map(Regex.scan(~r/="([^"]*)"/, xml), &List.last/1)
   end
 
   # xmerl, strict about characters: the document as UTF-8 bytes.
