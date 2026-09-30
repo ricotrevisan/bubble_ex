@@ -75,8 +75,10 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
   ## Scope
 
-  `privacy_read` scenarios with unsorted `search` ops and `get` ops that
-  observe `visible` and `visible_fields` (what `Matrix` synthesizes). Ops the
+  `privacy_read` scenarios with unsorted `search` ops (constrained ones as
+  `filter_input` on the field, `is_nil` true or false: only the records
+  where the persona may search by it) and `get` ops that observe `visible`
+  and `visible_fields` (what `Matrix` synthesizes). Ops the
   interpreter could not decide are not in the matrix's scenarios (its
   report counts them as skipped). The tests do not cover the known
   limitations of the policies (see `BubbleEx.Target.Ash`): aggregates over
@@ -465,7 +467,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
     map_ok(expected, fn {scenario, recording} ->
       with {:ok, resource} <- resource(ctx, scenario.subjects.type, scenario.id),
-           :ok <- personas(scenario, seed) do
+           :ok <- personas(scenario, seed),
+           {:ok, constrains} <- constrains(scenario, resource) do
         cases = Difference.for_scenario(differences, scenario.id)
 
         {:ok,
@@ -476,7 +479,8 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
            cases: cases,
            held_only: recording.oracle == :bubble,
            module: module(resource, ctx),
-           fields: fields(resource)
+           fields: fields(resource),
+           constrains: constrains
          }}
       end
     end)
@@ -522,6 +526,31 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
   # {attribute name, field Bubble ID} of every public non-key attribute
   # that maps a Bubble field.
+  # The field (Ash name) each constrained search constrains: an attribute,
+  # or a field an owner decision derives.
+  defp constrains(scenario, resource) do
+    names =
+      Map.new(
+        for(a <- resource.attributes, a.source[:field], do: {a.source.field, a.name}) ++
+          for(c <- resource.calculations, c.kind == :derived, do: {c.source.field, c.name}) ++
+          for(g <- resource.aggregates, do: {g.source.field, g.name})
+      )
+
+    ops = for %{op: :search, constrain: field} = op <- scenario.ops, do: {op.id, field}
+
+    case Enum.reject(ops, fn {_, field} -> Map.has_key?(names, field) end) do
+      [] ->
+        {:ok, Map.new(ops, fn {id, field} -> {id, names[field]} end)}
+
+      bad ->
+        {:error,
+         Error.new(:invalid_input, "constrained searches on fields the project does not map", %{
+           scenario: scenario.id,
+           ops: Enum.map(bad, &elem(&1, 0))
+         })}
+    end
+  end
+
   defp fields(resource) do
     for a <- resource.attributes,
         not a.primary_key?,
@@ -725,6 +754,24 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
         [{op, :record_set, nil, records |> Enum.uniq() |> Enum.sort()}]
       end
 
+      # A search constrained on a field by a constraint every value meets:
+      # only the records where the actor may search by the field.
+      defp observe(op, :search, {:constrain, field}, resource, actor) do
+        query =
+          resource
+          |> Ash.Query.for_read(:search, %{}, actor: actor)
+          |> Ash.Query.filter_input(%{or: [%{field => %{is_nil: true}}, %{field => %{is_nil: false}}]})
+
+        records =
+          case Ash.read(query, actor: actor) do
+            {:ok, records} -> Enum.map(records, &key(resource, &1))
+            {:error, %Ash.Error.Forbidden{}} -> []
+            {:error, error} -> flunk("\#{op}: \#{Exception.message(error)}")
+          end
+
+        [{op, :record_set, nil, records |> Enum.uniq() |> Enum.sort()}]
+      end
+
       defp observe(op, :get, record, resource, actor) do
         case Ash.get(resource, Map.fetch!(@ids, record), actor: actor) do
           {:ok, found} ->
@@ -827,8 +874,14 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
 
     ops =
       Enum.map_join(s.ops, ",\n", fn
-        %{op: :search} = op -> "{#{lit(op.id)}, :search, nil}"
-        %{op: :get} = op -> "{#{lit(op.id)}, :get, #{lit(op.record)}}"
+        %{op: :search, constrain: _} = op ->
+          "{#{lit(op.id)}, :search, {:constrain, #{lit(String.to_atom(t.constrains[op.id]))}}}"
+
+        %{op: :search} = op ->
+          "{#{lit(op.id)}, :search, nil}"
+
+        %{op: :get} = op ->
+          "{#{lit(op.id)}, :get, #{lit(op.record)}}"
       end)
 
     expected =

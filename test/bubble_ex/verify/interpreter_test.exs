@@ -198,7 +198,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
   describe "assumption flags (the target's reading: the compiler's fail-safe one)" do
     test "the registry" do
-      assert length(Assumptions.names()) == 16
+      assert length(Assumptions.names()) == 17
 
       assert Assumptions.wtf_384() == [
                :empty_equals_empty,
@@ -256,6 +256,53 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
       assert {false, _} =
                holds(model, ds, "u1", "task", "i_unfiled_", "k3", dangling_ref_is_empty: false)
+    end
+
+    test "dangling_ref_is_empty: defaulting to on a reference to a missing record",
+         %{model: model, ds: ds} do
+      # zd_: (Team defaulting to the actor's team) is not empty; k3's team
+      # is gone and u2 has no team
+      assert {false, flags} = holds(model, ds, "u2", "task", "zd_team_or_actor_team_", "k3")
+      assert :dangling_ref_is_empty in flags
+
+      assert {true, _} =
+               holds(model, ds, "u2", "task", "zd_team_or_actor_team_", "k3",
+                 dangling_ref_is_empty: false
+               )
+    end
+
+    test "non_filterable_constraint_excludes: a search constrained on a non-filterable field",
+         %{pmodel: model, pds: ds} do
+      interpreter = interpreter(model)
+
+      # note.text: the everyone rule keeps it out of searches; u2 created n2
+      assert {:ok, %Access{searchable: true, filterable: ["text_text"]}} =
+               Interpreter.access(interpreter, ds, "u2", "n2")
+
+      assert {:ok, %Access{searchable: true, filterable: []}} =
+               Interpreter.access(interpreter, ds, "u2", "n1")
+
+      assert {:ok, %{records: ["n2"], unknown: [], assumptions: flags}} =
+               Interpreter.search(interpreter, ds, "u2", "note", "text_text")
+
+      assert :non_filterable_constraint_excludes in flags
+
+      assert {:ok, %{records: ["n1", "n2"]}} =
+               Interpreter.search(
+                 interpreter(model, non_filterable_constraint_excludes: false),
+                 ds,
+                 "u2",
+                 "note",
+                 "text_text"
+               )
+
+      # a field no rule lists constrains nothing
+      assert {:ok, %{records: ["n1", "n2"], unknown: []}} =
+               Interpreter.search(interpreter, ds, "u2", "note", "hidden_boolean")
+
+      # doc.body: raw_ (unsupported, not listing it) could let anyone search by it
+      assert {:ok, %{records: [], unknown: ["d1", "d2", "d3", "d4"]}} =
+               Interpreter.search(interpreter, ds, nil, "doc", "body_text")
     end
 
     test "empty_yes_no_is_no: x is no on an empty yes/no", %{model: model, ds: ds} do
@@ -376,7 +423,8 @@ defmodule BubbleEx.Verify.InterpreterTest do
       assert BubbleEx.Verify.Difference.intended(Assumptions.defaults()) == Assumptions.target()
 
       evidence = Assumptions.evidence()
-      assert map_size(evidence) == 16
+      assert map_size(evidence) == 17
+      assert evidence.non_filterable_constraint_excludes.status == :not_exercised
 
       assert %{status: :refuted, agree: 14, disagree: 69, flip_fixes: 64} =
                evidence.actor_empty_denies
@@ -394,14 +442,14 @@ defmodule BubbleEx.Verify.InterpreterTest do
       assert evidence.everyone_guards_record_values.status == :unclear
 
       not_exercised = for {flag, %{status: :not_exercised}} <- evidence, do: flag
-      assert length(not_exercised) == 8
+      assert length(not_exercised) == 9
       assert :defaults_applied_at_creation in not_exercised
 
       # the leaning flags are not flipped: too few samples
       for flag <- Assumptions.unsettled(),
           do: assert(Assumptions.defaults()[flag] == Assumptions.target()[flag], "#{flag}")
 
-      assert length(Assumptions.unsettled()) == 12
+      assert length(Assumptions.unsettled()) == 13
     end
 
     test "an empty user-side value compares like any empty value", %{model: model, ds: ds} do

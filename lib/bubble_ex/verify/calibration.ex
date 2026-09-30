@@ -170,6 +170,19 @@ defmodule BubbleEx.Verify.Calibration do
     end
   end
 
+  defp predict(ctx, interpreter, %{op: :search, constrain: field} = op, user, type)
+       when is_binary(field) do
+    {:ok, %{records: records}} = Interpreter.search(interpreter, ctx.ds, user, type, field)
+
+    [
+      %Observation{
+        op: op.id,
+        kind: :record_set,
+        value: %{ordered: false, records: Enum.sort(records)}
+      }
+    ]
+  end
+
   defp predict(ctx, interpreter, %{op: :search} = op, user, type) do
     records =
       for key <- Dataset.keys(ctx.ds, type),

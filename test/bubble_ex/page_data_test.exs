@@ -92,6 +92,37 @@ defmodule BubbleEx.PageDataTest do
       assert source(pd, "bList").residue == []
     end
 
+    test "a search constrained or sorted on a field a privacy rule keeps out of searches is residue" do
+      rules = fn non_filterable ->
+        %{
+          "everyone" => %{
+            "permissions" => %{
+              "search_for" => true,
+              "view_all" => true,
+              "non_filterable_fields" => non_filterable
+            }
+          }
+        }
+      end
+
+      restricted =
+        put_in(app(), ["user_types", "task", "privacy_role"], rules.(%{"0" => "title_text"}))
+
+      {_model, pd} = build(restricted)
+
+      assert [%{reason: :search_field_restricted, detail: %{fields: ["title_text"]}}] =
+               source(pd, "bList").residue
+
+      assert :page_data_residue in Enum.map(pd.diagnostics, & &1.code)
+
+      # another field restricted: the search loads
+      other =
+        put_in(app(), ["user_types", "task", "privacy_role"], rules.(%{"0" => "done_boolean"}))
+
+      {_model, pd} = build(other)
+      assert source(pd, "bList").residue == []
+    end
+
     test "a type of content that is not a data type is residue" do
       app = put_in(app(), ["pages", "task", "properties", "page_item_type"], "text")
       {_model, pd} = build(app)

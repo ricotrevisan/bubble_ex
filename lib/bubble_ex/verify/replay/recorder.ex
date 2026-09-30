@@ -396,13 +396,18 @@ defmodule BubbleEx.Verify.Replay.Recorder do
     counts = Enum.frequencies_by(seed.records, & &1.type)
 
     for s <- scenarios, op <- s.ops, reduce: 0 do
-      acc ->
-        case op.op do
-          :search -> acc + div(Map.get(counts, op.type, 0), client.page_size) + 1
-          _ -> acc + 1
-        end
+      acc -> acc + op_call_count(op, counts, client)
     end
   end
+
+  # A search pages through its type's records; a constrained one searches
+  # twice (`is empty`, `is not empty`).
+  defp op_call_count(%{op: :search} = op, counts, client) do
+    searches = if Map.get(op, :constrain), do: 2, else: 1
+    searches * (div(Map.get(counts, op.type, 0), client.page_size) + 1)
+  end
+
+  defp op_call_count(_op, _counts, _client), do: 1
 
   # --- runs ---------------------------------------------------------------------------
 
@@ -699,7 +704,7 @@ defmodule BubbleEx.Verify.Replay.Recorder do
 
     with {:ok, auth} <- auth(seed, scenario, op, state),
          {:ok, sort} <- sort(client.names, op),
-         {:ok, results} <- Client.search(client, op.type, auth, ids: ids, sort: sort) do
+         {:ok, results} <- search(client, op, auth, ids: ids, sort: sort) do
       keys =
         results
         |> Enum.map(&Ledger.key_for_id(state.ledger, &1["_id"]))
@@ -717,6 +722,26 @@ defmodule BubbleEx.Verify.Replay.Recorder do
        ]}
     end
   end
+
+  # A search constrained on a field by a constraint every value meets
+  # (`constrain`): `is empty`, then `is not empty`, together.
+  defp search(client, %{constrain: field} = op, auth, opts) when is_binary(field) do
+    with {:ok, key} <- Names.field_key(client.names, op.type, field),
+         {:ok, empty} <- constrained_search(client, op, auth, opts, key, "is_empty"),
+         {:ok, filled} <- constrained_search(client, op, auth, opts, key, "is_not_empty"),
+         do: {:ok, empty ++ filled}
+  end
+
+  defp search(client, op, auth, opts), do: Client.search(client, op.type, auth, opts)
+
+  defp constrained_search(client, op, auth, opts, key, type),
+    do:
+      Client.search(
+        client,
+        op.type,
+        auth,
+        Keyword.put(opts, :constraints, [%{"key" => key, "constraint_type" => type}])
+      )
 
   defp missing(key),
     do: {:error, Error.new(:invalid_input, "the op's record was not seeded", %{record: key})}

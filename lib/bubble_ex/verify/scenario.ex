@@ -42,7 +42,7 @@ defmodule BubbleEx.Verify.Scenario do
   | op | members | observes |
   |----|---------|----------|
   | `get` | `type`, `record` | `visible`, `visible_fields`, `values` |
-  | `search` | `type`, `sort` (optional `{"field", "descending"}`) | `record_set` |
+  | `search` | `type`, `sort` (optional `{"field", "descending"}`), `constrain` (optional field ID: constrained on the field by a constraint every value meets, `is empty` together with `is not empty`) | `record_set` |
   | `call_api_workflow` | `workflow`, `auth` (`none`/`persona`/`admin`), `params` | `status`, `response`, `db_diff`, `step_trace` |
   | `trigger` | `workflow`, `params` | `db_diff`, `step_trace` |
   | `visit` | `page`, `params` | `dom_text`, `db_diff` |
@@ -76,7 +76,7 @@ defmodule BubbleEx.Verify.Scenario do
   @kinds [:privacy_read, :workflow, :api_workflow, :page, :journey]
   @ops %{
     get: {~w(type record), [:visible, :visible_fields, :values]},
-    search: {~w(type sort), [:record_set]},
+    search: {~w(type sort constrain), [:record_set]},
     call_api_workflow: {~w(workflow auth params), [:status, :response, :db_diff, :step_trace]},
     trigger: {~w(workflow params), [:db_diff, :step_trace]},
     visit: {~w(page params), [:dom_text, :db_diff]},
@@ -252,7 +252,10 @@ defmodule BubbleEx.Verify.Scenario do
   defp op_fields(:search, m) do
     with {:ok, type} <- Json.string(m["type"], "search type"),
          {:ok, sort} <- sort(m["sort"]),
-         do: {:ok, %{type: type, sort: sort}}
+         {:ok, constrain} <- optional_string(m["constrain"], "search constrain") do
+      fields = %{type: type, sort: sort}
+      {:ok, if(constrain, do: Map.put(fields, :constrain, constrain), else: fields)}
+    end
   end
 
   defp op_fields(:call_api_workflow, m) do
@@ -296,6 +299,9 @@ defmodule BubbleEx.Verify.Scenario do
 
   defp params(nil), do: {:ok, %{}}
   defp params(map), do: Json.object(map, "params", &Value.cast/1)
+
+  defp optional_string(nil, _name), do: {:ok, nil}
+  defp optional_string(value, name), do: Json.string(value, name)
 
   defp optional_symbol(nil, _), do: {:ok, nil}
   defp optional_symbol(value, name), do: Json.symbol(value, name)
@@ -371,7 +377,7 @@ defmodule BubbleEx.Verify.Scenario do
 
   defp op_json(op) do
     op
-    |> Enum.reject(fn {k, v} -> k == :persona and is_nil(v) end)
+    |> Enum.reject(fn {k, v} -> k in [:persona, :constrain] and is_nil(v) end)
     |> Map.new(fn
       {:params, params} -> {"params", Map.new(params, fn {k, v} -> {k, Value.to_json(v)} end)}
       {:value, value} -> {"value", Value.to_json(value)}

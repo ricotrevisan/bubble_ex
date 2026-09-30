@@ -376,6 +376,8 @@ defmodule BubbleEx.Test.FakeBubble do
     Enum.all?(constraints, fn
       %{"key" => "_id", "constraint_type" => "in", "value" => ids} -> id in ids
       %{"key" => key, "constraint_type" => "equals", "value" => v} -> r.fields[key] == v
+      %{"key" => key, "constraint_type" => "is_empty"} -> r.fields[key] in [nil, "", []]
+      %{"key" => key, "constraint_type" => "is_not_empty"} -> r.fields[key] not in [nil, "", []]
       _ -> true
     end)
   end

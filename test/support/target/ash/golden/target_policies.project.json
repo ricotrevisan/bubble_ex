@@ -109,6 +109,22 @@
       }
     },
     {
+      "code": "ash_policy_search_fields_restricted",
+      "details": {
+        "fields": [
+          "body"
+        ]
+      },
+      "message": "doc: some users may not search by body; a :read or :search whose filter or sort names one returns only the records where the actor may (<namespace>.Privacy.SearchFields), but aggregates over them are not guarded",
+      "outcome": "degraded",
+      "path": "/user_types/doc/privacy_role",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "doc"
+      }
+    },
+    {
       "code": "ash_policy_rule_denied",
       "details": {
         "granted": [
@@ -234,6 +250,22 @@
       "message": "note: Ash field policies do not cover aggregates; an aggregate over created_date, modified_date, creator_id, slug, hidden, text reads values some users may not view",
       "outcome": "degraded",
       "path": "/user_types/note",
+      "severity": "warning",
+      "stage": "target:ash",
+      "subject": {
+        "type": "note"
+      }
+    },
+    {
+      "code": "ash_policy_search_fields_restricted",
+      "details": {
+        "fields": [
+          "text"
+        ]
+      },
+      "message": "note: some users may not search by text; a :read or :search whose filter or sort names one returns only the records where the actor may (<namespace>.Privacy.SearchFields), but aggregates over them are not guarded",
+      "outcome": "degraded",
+      "path": "/user_types/note/privacy_role",
       "severity": "warning",
       "stage": "target:ash",
       "subject": {
@@ -940,6 +972,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "rules",
         "stricter_rules": [
           "lead_"
@@ -1761,6 +1794,34 @@
           ],
           "description": "Auto-binding changes title: a rule letting the user auto-bind it holds",
           "permission": "auto_binding"
+        },
+        {
+          "accessing_from": null,
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "search_fields"
+            }
+          ],
+          "description": "A filter or sort naming a field some users may not search by returns only the records where the actor may",
+          "permission": "search_fields"
+        },
+        {
+          "accessing_from": null,
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "search_fields"
+            }
+          ],
+          "description": "A filter or sort naming a field some users may not search by returns only the records where the actor may",
+          "permission": "search_fields"
         }
       ],
       "privacy": {
@@ -1840,6 +1901,36 @@
           "attachment"
         ],
         "relationship_checks": {},
+        "search_fields": {
+          "body": [
+            [
+              {
+                "kind": "authorize_if",
+                "source": {
+                  "rules": [
+                    "admin_"
+                  ]
+                },
+                "test": [
+                  "calculation",
+                  "privacy_rule_admin"
+                ]
+              },
+              {
+                "kind": "authorize_if",
+                "source": {
+                  "rules": [
+                    "owner_"
+                  ]
+                },
+                "test": [
+                  "calculation",
+                  "privacy_rule_owner"
+                ]
+              }
+            ]
+          ]
+        },
         "source": "rules",
         "stricter_rules": [
           "admin_",
@@ -2244,6 +2335,7 @@
         ],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "rules",
         "stricter_rules": []
       },
@@ -2722,6 +2814,34 @@
           ],
           "description": "Searches: the user may find the record in searches",
           "permission": "search_for"
+        },
+        {
+          "accessing_from": null,
+          "action": "read",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "search_fields"
+            }
+          ],
+          "description": "A filter or sort naming a field some users may not search by returns only the records where the actor may",
+          "permission": "search_fields"
+        },
+        {
+          "accessing_from": null,
+          "action": "search",
+          "changing": null,
+          "checks": [
+            {
+              "kind": "authorize_if",
+              "source": {},
+              "test": "search_fields"
+            }
+          ],
+          "description": "A filter or sort naming a field some users may not search by returns only the records where the actor may",
+          "permission": "search_fields"
         }
       ],
       "privacy": {
@@ -2783,6 +2903,24 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {
+          "text": [
+            [
+              {
+                "kind": "authorize_if",
+                "source": {
+                  "rules": [
+                    "mine_"
+                  ]
+                },
+                "test": [
+                  "calculation",
+                  "privacy_rule_mine"
+                ]
+              }
+            ]
+          ]
+        },
         "source": "rules",
         "stricter_rules": [
           "mine_",
@@ -3152,6 +3290,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "public_default",
         "stricter_rules": []
       },
@@ -3660,6 +3799,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "rules",
         "stricter_rules": [
           "me_",

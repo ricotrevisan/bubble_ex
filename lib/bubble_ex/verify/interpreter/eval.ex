@@ -24,6 +24,8 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
       empty yes/no is `empty_yes_no_is_no`
     * `is empty` is nil, `""` or an empty list; a dangling reference is
       `dangling_ref_is_empty`
+    * `x defaulting to d` is `x` unless it is empty in that sense, else
+      `d`; it is read from the current user when either side is
     * `text contains` with an empty side is `empty_text_contains_nothing`;
       ordering with an empty side `ordering_with_empty_false`; `doesn't
       contain` an empty record-side item `empty_item_not_contained`
@@ -172,10 +174,36 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   # logged-out user is (`logged_out_user_is_empty`).
   defp atom(ir, positive, ctx) do
     {b, flags} = atom_(ir, positive, ctx)
+    flags = flags ++ fallback_flags(ir, ctx)
 
     if not logged_in?(ctx) and reads_actor?(ir),
       do: {b, [:logged_out_user_is_empty | flags]},
       else: {b, flags}
+  end
+
+  # A `defaulting to` whose subject is a dangling reference decides on
+  # `dangling_ref_is_empty` (`value/2` returns no flags).
+  defp fallback_flags(ir, ctx) do
+    for %IR{args: [x, _]} <- fallbacks(ir),
+        ref_one?(x.type),
+        dangling?(x, ctx),
+        uniq: true,
+        do: :dangling_ref_is_empty
+  end
+
+  defp fallbacks(%IR{op: :fallback, args: args} = ir),
+    do: [ir | Enum.flat_map(args, &fallbacks/1)]
+
+  defp fallbacks(%IR{args: args}), do: Enum.flat_map(args, &fallbacks/1)
+  defp fallbacks(_), do: []
+
+  defp dangling?(x, ctx) do
+    case value(x, ctx) do
+      {:ref, key} -> is_nil(Dataset.fetch(ctx.ds, key))
+      _ -> false
+    end
+  catch
+    _, _ -> false
   end
 
   defp logged_in?(ctx), do: Map.get(ctx, :logged_in, not is_nil(ctx.user))
@@ -391,9 +419,13 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   def value(%IR{op: :first, args: [l]}, ctx), do: l |> value(ctx) |> items() |> List.first()
   def value(%IR{op: :last, args: [l]}, ctx), do: l |> value(ctx) |> items() |> List.last()
 
+  # `x defaulting to d`: `x` unless it is empty as `is empty` tests it (nil,
+  # `""`, an empty list, or a dangling reference under
+  # `dangling_ref_is_empty`), else `d`. `atom/3` reports the flag.
   def value(%IR{op: :fallback, args: [x, d]}, ctx) do
     v = value(x, ctx)
-    if blank?(v), do: value(d, ctx), else: v
+    {empty, _flags} = empty?(x, v, ctx)
+    if empty, do: value(d, ctx), else: v
   end
 
   def value(%IR{op: op, args: [l, r]}, ctx) when op in @arithmetic,
@@ -489,6 +521,7 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   @spec actor?(IR.t()) :: boolean()
   def actor?(%IR{op: :current_user}), do: true
   def actor?(%IR{op: :field, args: [base | _]}), do: actor?(base)
+  def actor?(%IR{op: :fallback, args: args}), do: Enum.any?(args, &actor?/1)
   def actor?(_), do: false
 
   defp nonnull?(%IR{op: :literal, args: [v]}), do: not is_nil(v)
@@ -511,6 +544,7 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
 
   defp record_based?(%IR{op: :this}), do: true
   defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)
+  defp record_based?(%IR{op: :fallback, args: args}), do: Enum.all?(args, &record_based?/1)
   defp record_based?(_), do: false
 
   @doc "Whether a record value is empty, as `is empty` tests it (with the flags consulted)."

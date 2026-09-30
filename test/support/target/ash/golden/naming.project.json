@@ -636,6 +636,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "public_default",
         "stricter_rules": []
       },
@@ -969,6 +970,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "public_default",
         "stricter_rules": []
       },
@@ -1248,6 +1250,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "public_default",
         "stricter_rules": []
       },
@@ -1527,6 +1530,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "public_default",
         "stricter_rules": []
       },
@@ -1842,6 +1846,7 @@
         "denied_rules": [],
         "file_fields": [],
         "relationship_checks": {},
+        "search_fields": {},
         "source": "unavailable",
         "stricter_rules": []
       },

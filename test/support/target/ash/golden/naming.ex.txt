@@ -178,7 +178,9 @@ defmodule MyApp.ThingJoin do
   # must not reference such fields directly, nor the private *_for_privacy
   # relationships. Aggregates (count, min, max, sum, ...) over a field are
   # not covered by field policies either: never aggregate a field the actor
-  # may not view.
+  # may not view. Where Privacy.SearchFields guards a read, a filter or sort
+  # naming a field some users may not search by returns only the records
+  # where the actor may; aggregates over such a field are not guarded.
   policies do
     policy action(:read) do
       description "Direct view reaches records by primary key or through a relationship, never by listing"
@@ -305,7 +307,9 @@ defmodule MyApp.Launch do
   # must not reference such fields directly, nor the private *_for_privacy
   # relationships. Aggregates (count, min, max, sum, ...) over a field are
   # not covered by field policies either: never aggregate a field the actor
-  # may not view.
+  # may not view. Where Privacy.SearchFields guards a read, a filter or sort
+  # naming a field some users may not search by returns only the records
+  # where the actor may; aggregates over such a field are not guarded.
   policies do
     policy action(:read) do
       description "Direct view reaches records by primary key or through a relationship, never by listing"
@@ -407,7 +411,9 @@ defmodule MyApp.Thing do
   # must not reference such fields directly, nor the private *_for_privacy
   # relationships. Aggregates (count, min, max, sum, ...) over a field are
   # not covered by field policies either: never aggregate a field the actor
-  # may not view.
+  # may not view. Where Privacy.SearchFields guards a read, a filter or sort
+  # naming a field some users may not search by returns only the records
+  # where the actor may; aggregates over such a field are not guarded.
   policies do
     policy action(:read) do
       description "Direct view reaches records by primary key or through a relationship, never by listing"
@@ -509,7 +515,9 @@ defmodule MyApp.Thing2 do
   # must not reference such fields directly, nor the private *_for_privacy
   # relationships. Aggregates (count, min, max, sum, ...) over a field are
   # not covered by field policies either: never aggregate a field the actor
-  # may not view.
+  # may not view. Where Privacy.SearchFields guards a read, a filter or sort
+  # naming a field some users may not search by returns only the records
+  # where the actor may; aggregates over such a field are not guarded.
   policies do
     policy action(:read) do
       description "Direct view reaches records by primary key or through a relationship, never by listing"
@@ -630,7 +638,9 @@ defmodule MyApp.User do
   # must not reference such fields directly, nor the private *_for_privacy
   # relationships. Aggregates (count, min, max, sum, ...) over a field are
   # not covered by field policies either: never aggregate a field the actor
-  # may not view.
+  # may not view. Where Privacy.SearchFields guards a read, a filter or sort
+  # naming a field some users may not search by returns only the records
+  # where the actor may; aggregates over such a field are not guarded.
   policies do
     policy action(:read) do
       description "Direct view reaches records by primary key or through a relationship, never by listing"

@@ -41,6 +41,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   | `search_independent_of_view` | `true` | `true` | `search_for` alone decides whether a record is found in searches | a record is found only when it is also visible by ID |
   | `logged_out_user_is_empty` | `true` | `true` | a logged-out user has no identity: `Current User` is empty | a logged-out user is Bubble's temporary user: a user of its own (never equal to a record's user) with empty fields |
   | `defaults_applied_at_creation` | `true` | `true` | a record created without a value for a field that has a default (WTF-338: defaults are kept) stores the default: a field a record omits reads as its default; an explicitly empty field (`null` in a seed) stays empty | a field a record omits is empty; defaults are never applied |
+  | `non_filterable_constraint_excludes` | `true` | `true` | a search constrained on a field the user may not search by (a privacy rule's non-filterable fields) does not find the records where the user may not; the generated policies (`<namespace>.Privacy.SearchFields`) return only the records where the user may | such a constraint is ignored for those records: they are found as by the unconstrained search |
 
   ## Calibration evidence
 
@@ -60,7 +61,8 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
       (`unsettled/0`, `BubbleEx.Verify.Matrix.Coverage`)
     * `:unclear` - mixed (`everyone_guards_record_values`)
     * `:not_exercised` - no recorded check depended on it (the other
-      eight)
+      eight, and `non_filterable_constraint_excludes`, added after the
+      run)
 
   A flag is flipped only on a `:refuted` verdict. The run's other
   findings: 68 disagreements came from privacy rules changed since the
@@ -106,7 +108,8 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     empty_item_not_contained: true,
     search_independent_of_view: true,
     logged_out_user_is_empty: true,
-    defaults_applied_at_creation: true
+    defaults_applied_at_creation: true,
+    non_filterable_constraint_excludes: true
   ]
 
   # The generated policies' reading: the compiler's fail-safe one.
@@ -144,6 +147,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
           | :search_independent_of_view
           | :logged_out_user_is_empty
           | :defaults_applied_at_creation
+          | :non_filterable_constraint_excludes
   @type t :: %{name() => boolean()}
   @type status :: :refuted | :supported | :leaning_flipped | :unclear | :not_exercised
   @type evidence :: %{

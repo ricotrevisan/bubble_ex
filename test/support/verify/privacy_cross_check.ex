@@ -167,7 +167,10 @@ defmodule BubbleEx.Test.PrivacyCrossCheck do
     * conditions: per table case, per actor, the records the rule's
       condition selects (or "unknown")
     * policies: per `get` / `search` read of the policy table, per
-      persona, `reads/6`
+      persona, `reads/6`; and per field some rule keeps out of searches
+      (non-filterable), per persona, the records a search constrained on
+      it finds (`constrain`: the attribute; `records`, and `unknown` for
+      those an unsupported rule could decide, which the policies deny)
   """
   def harness_verdicts do
     %{conditions: condition_verdicts(), policies: policy_verdicts()}
@@ -193,15 +196,37 @@ defmodule BubbleEx.Test.PrivacyCrossCheck do
     {model, project, doc, ds} = load(@policies)
     {:ok, interpreter} = Interpreter.new(model, assumptions: Assumptions.target())
 
-    for %{"type" => type, "action" => action, "expected" => expected} <- doc["reads"],
-        action in ["get", "search"] do
-      verdicts =
-        Map.new(expected, fn {persona, _} ->
-          {persona, interpreter |> reads(project, ds, type, action, persona) |> json()}
-        end)
+    reads =
+      for %{"type" => type, "action" => action, "expected" => expected} <- doc["reads"],
+          action in ["get", "search"] do
+        verdicts =
+          Map.new(expected, fn {persona, _} ->
+            {persona, interpreter |> reads(project, ds, type, action, persona) |> json()}
+          end)
 
-      %{"type" => type, "action" => action, "verdicts" => verdicts}
-    end
+        %{"type" => type, "action" => action, "verdicts" => verdicts}
+      end
+
+    constrained =
+      for %{"type" => type, "action" => "search", "expected" => expected} <- doc["reads"],
+          field <- Interpreter.type(interpreter, type).nonfilterable do
+        verdicts =
+          Map.new(expected, fn {persona, _} ->
+            {:ok, found} = Interpreter.search(interpreter, ds, user(persona), type, field)
+
+            {persona,
+             %{"records" => Enum.sort(found.records), "unknown" => Enum.sort(found.unknown)}}
+          end)
+
+        %{
+          "type" => type,
+          "action" => "search",
+          "constrain" => attributes(project, type)[field],
+          "verdicts" => verdicts
+        }
+      end
+
+    reads ++ constrained
   end
 
   defp load(table) do

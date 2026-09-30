@@ -326,6 +326,35 @@ defmodule BubbleEx.PrivacyTest do
 
       assert %Permissions{view_fields: ["a", "b"]} = rule!(privacy, "task", "x_").permissions
     end
+
+    test "fields users may not search by are read, not diagnosed" do
+      perms = %{
+        "search_for" => true,
+        "view_all" => true,
+        "non_filterable_fields" => %{"1" => "b_text", "0" => "a_text"}
+      }
+
+      privacy =
+        parse!(with_rule(%{"condition" => %{"type" => "CurrentUser"}, "permissions" => perms}))
+
+      assert %Permissions{non_filterable_fields: ["a_text", "b_text"], extra: %{}} =
+               rule!(privacy, "task", "x_").permissions
+
+      assert privacy.diagnostics == []
+      assert rule!(parse!(), "task", "owner_").permissions.non_filterable_fields == nil
+    end
+
+    test "a malformed list of fields users may not search by is kept and diagnosed" do
+      perms = %{"non_filterable_fields" => "a_text"}
+
+      privacy =
+        parse!(with_rule(%{"condition" => %{"type" => "CurrentUser"}, "permissions" => perms}))
+
+      assert %Permissions{non_filterable_fields: nil, extra: ^perms} =
+               rule!(privacy, "task", "x_").permissions
+
+      assert Enum.map(privacy.diagnostics, & &1.code) == [:invalid_permission]
+    end
   end
 
   test "parsing is deterministic" do
