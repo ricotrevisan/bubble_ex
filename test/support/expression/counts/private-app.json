@@ -53,7 +53,9 @@
             "elixir_expr_unsupported:plus_item": 55,
             "elixir_expr_unsupported:search": 224,
             "elixir_expr_unsupported:sort": 217,
-            "elixir_expr_unsupported:unique": 101
+            "elixir_expr_unsupported:unique": 101,
+            "elixir_format_approximated:date_format_letters": 1,
+            "elixir_format_approximated:date_format_token:ZZ": 6
           },
           "ir": {
             "expr_uncompiled:constraint": 77,
@@ -142,7 +144,9 @@
             "elixir_expr_unsupported:plus_item": 55,
             "elixir_expr_unsupported:search": 224,
             "elixir_expr_unsupported:sort": 217,
-            "elixir_expr_unsupported:unique": 101
+            "elixir_expr_unsupported:unique": 101,
+            "elixir_format_approximated:date_format_letters": 1,
+            "elixir_format_approximated:date_format_token:ZZ": 6
           },
           "ir": {
             "expr_uncompiled:constraint": 77,
@@ -222,7 +226,9 @@
             "elixir_expr_unsupported:plus_item": 51,
             "elixir_expr_unsupported:search": 22,
             "elixir_expr_unsupported:sort": 49,
-            "elixir_expr_unsupported:unique": 77
+            "elixir_expr_unsupported:unique": 77,
+            "elixir_format_approximated:date_format_letters": 1,
+            "elixir_format_approximated:date_format_token:ZZ": 6
           },
           "ir": {
             "expr_uncompiled:constraint": 76,

@@ -238,6 +238,19 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
              ~r/<p\b[^>]*data-bubble-id="bT2"[^>]*>\{text_bt2\(@element_state_bi1_get_data\)\}<\/p>/s
 
     assert template =~ "<%!-- TODO(bubble:bT5) text: dynamic value not compiled --%>"
+
+    # Bubble's date formats go to the runtime; an approximated one is
+    # marked (WTF-456).
+    assert live =~
+             ~s|Shop.Bubble.Runtime.format_date(get_in(page_thing_bp1, [Access.key(:due)]), "mmm d")|
+
+    assert live =~
+             ~r/format_date\(\s*get_in\(page_thing_bp1, \[Access.key\(:due\)\]\),\s*"h:MMtt ZZ",\s*"UTC"\s*\)/
+
+    assert template =~
+             "<%!-- TODO(bubble:bT11) text: format approximated (date_format_token:ZZ) --%>"
+
+    refute template =~ "TODO(bubble:bT7)"
     assert template =~ "<div :for={_item <- @items_br1}>"
 
     component = files["lib/shop_web/components/reusables/team_card.ex"]

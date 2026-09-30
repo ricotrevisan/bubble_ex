@@ -1813,7 +1813,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     case compiled do
       %{source: source, bindings: vars} ->
         {source, bbcode} = bbcode_source(node, name, source)
-        acc = mark_bbcode(acc, node, bbcode)
+        acc = acc |> mark_bbcode(node, bbcode) |> mark_approximated(node, name, compiled)
         helper = helper_name(name, node, acc)
         args = Enum.map(vars, & &1.var)
         reads = Enum.map(vars, &read_arg(&1, ctx))
@@ -1876,6 +1876,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp bbcode_node(text) when is_binary(text), do: source(text)
   defp bbcode_node({:value, ast}), do: Macro.to_string(ast)
   defp bbcode_node({tag, nodes}), do: "{#{inspect(tag)}, #{bbcode_nodes(nodes)}}"
+
+  # A date or number format the runtime only approximates (WTF-456).
+  defp mark_approximated(acc, node, name, %{approximated: [_ | _] = constructs}),
+    do: mark(acc, node, "#{name}: format approximated (#{Enum.join(constructs, ", ")})")
+
+  defp mark_approximated(acc, _node, _name, _compiled), do: acc
 
   defp mark_bbcode(acc, _node, nil), do: acc
   defp mark_bbcode(acc, _node, []), do: acc

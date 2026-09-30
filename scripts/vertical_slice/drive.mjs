@@ -14,6 +14,8 @@
 //    time on a fresh load, and records what happened: navigation, a
 //    LiveView error or crash (`phx-error`, a server 500), console errors,
 //    whether anything in the DOM changed.
+// 3. Counts raw ISO timestamps in each visit's visible text: Bubble shows
+//    dates formatted, so a nonzero count is an unformatted date (WTF-456).
 // Writes <out>/drive.json and screenshots <out>/*.png (the caller keeps
 // <out> private).
 import { chromium } from "../../test/support/fidelity/node_modules/playwright/index.mjs";
@@ -104,6 +106,9 @@ const snapshot = async () =>
     url: location.pathname + location.search,
     elements: document.querySelectorAll("[data-bubble-id]").length,
     visible_text: (document.body.innerText || "").length,
+    // Raw ISO timestamps in the visible text: Bubble shows dates formatted
+    // (WTF-456), so any is a date the page failed to format (a count only).
+    iso_timestamps: ((document.body.innerText || "").match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/g) || []).length,
     clickables: [...document.querySelectorAll("[phx-click][data-bubble-id]")].map((e) => ({
       id: e.getAttribute("data-bubble-id"),
       visible: !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length),
@@ -245,5 +250,6 @@ fs.writeFileSync(path.join(out, "drive.json"), JSON.stringify(result, null, 2), 
 console.log(
   `drove ${pagePath}: sign-in ${result.sign_in.ok ? "ok" : "failed"}, ` +
     `${result.clicks.length} clicks, ` +
-    `${result.clicks.filter((c) => c.phx_error || c.server_errors.length).length} with errors`,
+    `${result.clicks.filter((c) => c.phx_error || c.server_errors.length).length} with errors, ` +
+    `${Math.max(0, ...result.visits.map((v) => v.iso_timestamps || 0))} raw ISO timestamps shown`,
 );

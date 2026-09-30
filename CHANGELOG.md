@@ -6,6 +6,24 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Bubble's date and number formats in generated pages** (WTF-456).
+  `:formatted as` a date renders Bubble's patterns (named formats and
+  custom ones: `mmm d, yyyy`, `h:MM tt`, `dS`, `'yy`, quoted text, `Z`,
+  ISO dates) in the expression's time zone (static or dynamic) or the
+  app's (`config :<app>, :bubble_time_zone`, default UTC; Bubble uses the
+  browser's), instead of a raw ISO timestamp; a date shown without a
+  format uses Bubble's default. `:formatted as` a number renders decimals,
+  thousands separators, currency and percentages; `rounded down to` and
+  `extract` work on calendar units in a zone, and `+(months)`/`+(years)`
+  step on the calendar. A format the runtime only approximates (`ZZ`,
+  unquoted letters, an unknown unit or number setting) still compiles,
+  with an `:elixir_format_approximated` warning that the compile report
+  counts and the page marks with a `TODO(bubble:<id>)` comment. The
+  vertical slice's driver counts raw ISO timestamps on each page.
+  Assumptions until a replay calibrates them: the default format
+  (`mmm d, yyyy h:MM tt`), weeks from Sunday, 2 decimals for a currency
+  without a setting.
+
 - **Four gaps of the vertical slice** (WTF-450, WTF-451, WTF-453,
   WTF-454).
   * "Add a pause before next action" lowers to a `:pause` step. The

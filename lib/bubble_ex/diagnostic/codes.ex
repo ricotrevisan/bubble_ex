@@ -176,6 +176,8 @@ defmodule BubbleEx.Diagnostic.Codes do
     # target:elixir — BubbleEx.Target.Elixir
     {:elixir_expr_unsupported, :warning, :unresolved, :target,
      "an expression IR construct with no Elixir mapping yet (e.g. a search); the expression is not compiled"},
+    {:elixir_format_approximated, :warning, :degraded, :target,
+     "a date or number format with parts the generated runtime only approximates (a date pattern token, unit or number setting it does not implement); the expression compiles"},
 
     # --- {:target, format} — BubbleEx.Db.Encoder ----------------------------
     {:external_type_unresolved_root, :warning, :degraded, :target,

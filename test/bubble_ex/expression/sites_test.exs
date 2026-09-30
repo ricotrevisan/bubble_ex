@@ -20,7 +20,7 @@ defmodule BubbleEx.Expression.SitesTest do
   test "finds every outermost expression with its host", %{sites: sites} do
     pointers = Enum.map(sites, &Diagnostic.pointer(&1.path))
     assert pointers == Enum.sort(pointers)
-    assert length(sites) == 19
+    assert length(sites) == 20
 
     assert %{kind: :element, env: %{host: "bT1"}} =
              site(sites, "/pages/task/elements/bG1/elements/bT1/properties/text")
@@ -62,10 +62,15 @@ defmodule BubbleEx.Expression.SitesTest do
            }
 
     expressions = report["expressions"]
-    assert expressions["roots"] == 19
-    assert expressions["by_kind"] == %{"element" => 13, "workflow" => 6}
-    assert expressions["ir_compiled"] == 16
-    assert expressions["elixir_compiled"] == 15
+    assert expressions["roots"] == 20
+    assert expressions["by_kind"] == %{"element" => 14, "workflow" => 6}
+    assert expressions["ir_compiled"] == 17
+    assert expressions["elixir_compiled"] == 16
+
+    # A format the runtime only approximates compiles and is counted (WTF-456).
+    assert expressions["unsupported"]["elixir"]["elixir_format_approximated:date_format_token:ZZ"] ==
+             1
+
     assert expressions["searches_ash_compiled"] == expressions["searches"]
 
     assert expressions["unsupported"]["ir"] == %{
