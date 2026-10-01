@@ -851,20 +851,17 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   # A native element lowered to an empty placeholder has no content to size
-  # it (WTF-468): one that would be sized to its content keeps its canvas
-  # height as a min height instead of collapsing.
+  # it (WTF-468): an editor element that would be sized to its content
+  # keeps its canvas height as a min height instead of collapsing. Only
+  # editor geometry carries that height (`EditorGeometry.canvas_height/1`).
   defp put_placeholder_min_height(box, raw) do
-    value = Payload.properties(raw)["%h"]
+    value = BubbleEx.Frontend.EditorGeometry.canvas_height(raw)
 
-    if is_number(value) and value > 0 and empty?(raw["elements"] || raw["%el"]) and
-         is_nil(fill_axis?(raw, :height)) and
+    if is_number(value) and map_size(Payload.elements(raw)) == 0 and
          Enum.all?([:height, :min_height], &is_nil(box[&1])),
        do: Map.put(box, :min_height, value),
        else: box
   end
-
-  defp empty?(elements) when is_map(elements) or is_list(elements), do: Enum.empty?(elements)
-  defp empty?(_elements), do: true
 
   defp put_plugin_dimension(box, raw, axis, compact) do
     value = Payload.properties(raw)[compact]
@@ -2907,6 +2904,7 @@ defmodule BubbleEx.Frontend.Normalize do
         "%p",
         "elements",
         "%el",
+        BubbleEx.Frontend.EditorGeometry.canvas_height_key(),
         "style",
         "states",
         "%st",
