@@ -98,6 +98,17 @@ defmodule BubbleEx.Target.Ash do
       value), Bubble may grant and the policies deny (`actor_empty_denies`,
       `BubbleEx.Verify.Difference`); verification reports each such case
       as an intended difference.
+    * **Searches on fields some users may not view** (WTF-457, Rico
+      2026-10-01: stay stricter): field policies do not guard a filter or
+      sort written in code, so each field some users may not view (and
+      each gated relationship, and what reads through them) is restricted
+      in reads like a non-filterable field (`privacy.view_search_fields`,
+      `<namespace>.Privacy.SearchFields`): a read whose filter or sort
+      names one returns only the records where the actor may view it.
+      Bubble matches the stored value for every user who may search by the
+      field; the difference is `hidden_field_constraint_matches`
+      (`BubbleEx.Verify.Difference`), reported per data type
+      (`:ash_policy_hidden_search_stricter_than_bubble`).
     * **Writes (option A)**: a write the generated workflow runtime makes
       is authorized, as in Bubble, where a workflow's conditions are what
       guards its writes. Each resource (and join) gets `policy
@@ -729,7 +740,7 @@ defmodule BubbleEx.Target.Ash do
   # (WTF-423): what the generated runtime writes is authorized.
   defp privacy(:enforced, project, model, types, index) do
     {project, diags} = privacy(:unverified, project, model, types, index)
-    Policies.enforce(project, diags)
+    Policies.enforce(project, diags, model)
   end
 
   defp privacy(:unverified, project, model, _types, index) do

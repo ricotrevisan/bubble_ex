@@ -83,7 +83,7 @@ failures =
         |> Enum.frequencies()
 
       IO.puts(
-        "privacy matrix #{name}: stricter than Bubble by design (#{Enum.join(Difference.flags(), ", ")}): " <>
+        "privacy matrix #{name}: stricter than Bubble by design (#{Enum.join(Difference.flags(:rule_conditions), ", ")}): " <>
           "#{length(intended)} diff entries (record, field or record-set differences; " <>
           "#{length(plan.differences)} matrix observations) in " <>
           "#{intended |> Enum.map(& &1.result) |> Enum.uniq() |> length()} scenarios, " <>

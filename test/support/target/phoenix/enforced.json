@@ -1,5 +1,5 @@
 {
-  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail.",
+  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything. The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it).",
   "_id": "enforced-probe",
   "api": {
     "wBlocked": {
@@ -875,8 +875,25 @@
             "bPickTitle": {
               "id": "bPickTitle",
               "type": "Text",
-              "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px",
-                "text": {"type": "TextExpression", "entries": {"0": "Pick: ", "1": {"type": "CurrentDataItem", "next": {"type": "Message", "name": "title_text"}}}}}
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Pick: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -912,6 +929,59 @@
             "width": 300
           },
           "type": "Input"
+        },
+        "bFlagged": {
+          "id": "bFlagged",
+          "type": "RepeatingGroup",
+          "properties": {
+            "_comment": "WTF-457: a search constrained on a field only the owner views (Flagged).",
+            "columns": 1,
+            "rows": 5,
+            "order": 8,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.note",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.note",
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "flagged_boolean",
+                    "value": true
+                  }
+                },
+                "sort_field": "title_text",
+                "descending": false
+              }
+            }
+          },
+          "elements": {
+            "bNoteTitle": {
+              "id": "bNoteTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Flagged: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "id": "bHome",
@@ -1089,6 +1159,60 @@
         "name_text": {
           "display": "Name",
           "value": "text"
+        }
+      }
+    },
+    "note": {
+      "display": "Note",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "flagged_boolean": {
+          "display": "Flagged",
+          "value": "boolean"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "title_text"
+            ]
+          }
+        },
+        "owner_": {
+          "condition": {
+            "next": {
+              "name": "owner_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
         }
       }
     }

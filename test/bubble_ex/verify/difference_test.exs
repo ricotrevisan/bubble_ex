@@ -29,11 +29,20 @@ defmodule BubbleEx.Verify.DifferenceTest do
     )
   end
 
-  test "the policy: one flag, Bubble's reading and the target's" do
-    assert Difference.flags() == [:actor_empty_denies]
+  test "the policy: two flags, Bubble's reading and the target's, by scope" do
+    assert Difference.flags() == [:actor_empty_denies, :hidden_field_constraint_matches]
+    assert Difference.flags(:rule_conditions) == [:actor_empty_denies]
+    assert Difference.flags(:search_constraints) == [:hidden_field_constraint_matches]
 
     assert %{bubble: false, target: true, direction: :stricter} =
              Difference.policy().actor_empty_denies
+
+    # WTF-457: Bubble matches a constraint on a field the user may not
+    # view; the enforced policies find only records where the user may.
+    assert %{bubble: true, target: false, direction: :stricter, decision: decision} =
+             Difference.policy().hidden_field_constraint_matches
+
+    assert decision =~ "WTF-457"
 
     assert Difference.intended(Assumptions.defaults()) == Assumptions.target()
   end

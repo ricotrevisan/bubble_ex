@@ -255,6 +255,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "`privacy: :enforced`: reads follow the compiled privacy rules, but writes are not checked against them; a write the generated workflow runtime makes is authorized (the workflow's conditions guard it, as in Bubble), any other write is forbidden (WTF-423)"},
     {:ash_policy_stricter_than_bubble, :info, :degraded, :target,
      "a privacy rule whose condition reads the current user: where the user is logged out or lacks a value it reads, Bubble compares the empty value like any other (and may grant) while the generated policy denies; stricter than Bubble by the owner's decision (`BubbleEx.Verify.Difference`, WTF-426)"},
+    {:ash_policy_hidden_search_stricter_than_bubble, :info, :degraded, :target,
+     "with enforced policies, a data type with fields some users may not view: a read whose filter or sort names one returns only the records where the actor may view it, where Bubble matches the stored value for every user who may search by the field; stricter than Bubble by the owner's decision (`BubbleEx.Verify.Difference`, WTF-457)"},
     {:ash_policy_rule_denied, :warning, :degraded, :target,
      "a privacy rule whose condition does not compile (or is missing); it grants nothing"},
     {:ash_policy_default_grant_denied, :warning, :degraded, :target,

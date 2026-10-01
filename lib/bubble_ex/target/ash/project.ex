@@ -239,6 +239,14 @@ defmodule BubbleEx.Target.Ash.Project do
 
   defp json(%Diagnostic{} = d), do: Diagnostic.to_map(d)
   defp json(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
+
+  # Only enforced projects restrict the fields some users may not view in
+  # searches (WTF-457): the key is left out when there are none.
+  # (defined later in this file: matched by its struct name)
+  defp json(%{__struct__: BubbleEx.Target.Ash.ResourcePrivacy, view_search_fields: v} = privacy)
+       when map_size(v) == 0,
+       do: privacy |> Map.from_struct() |> Map.delete(:view_search_fields) |> json()
+
   defp json(%_{} = struct), do: struct |> Map.from_struct() |> json()
   defp json(map) when is_map(map), do: Map.new(map, fn {k, v} -> {key(k), json(v)} end)
   defp json(list) when is_list(list), do: Enum.map(list, &json/1)
@@ -742,6 +750,14 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
       for a read whose filter or sort names the field to return the record
       (`<namespace>.Privacy.SearchFields`). Fields every user may search by
       are not listed
+    * `view_search_fields` - with `privacy: :enforced` only (WTF-457), the
+      same for the fields some users may not view (field policies), the
+      gated relationships and their private `*_for_privacy` twins, and
+      what reads through them (derived fields and counts): field policies do
+      not guard a filter or sort written in code, so a read naming one
+      returns only the records where the actor may view it (stricter than
+      Bubble, which matches the stored value for every user who may search
+      by the field: `BubbleEx.Verify.Difference`)
   """
 
   @enforce_keys [:source]
@@ -754,7 +770,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     file_fields: [],
     data_api: %{exposed: nil, create: [], modify: [], delete: []},
     relationship_checks: %{},
-    search_fields: %{}
+    search_fields: %{},
+    view_search_fields: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -766,7 +783,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
           file_fields: [String.t()],
           data_api: map(),
           relationship_checks: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]},
-          search_fields: %{String.t() => [[BubbleEx.Target.Ash.PolicyCheck.t()]]}
+          search_fields: %{String.t() => [[BubbleEx.Target.Ash.PolicyCheck.t()]]},
+          view_search_fields: %{String.t() => [[BubbleEx.Target.Ash.PolicyCheck.t()]]}
         }
 end
 

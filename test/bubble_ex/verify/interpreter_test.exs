@@ -198,7 +198,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
   describe "assumption flags (the target's reading: the compiler's fail-safe one)" do
     test "the registry" do
-      assert length(Assumptions.names()) == 17
+      assert length(Assumptions.names()) == 18
 
       assert Assumptions.wtf_384() == [
                :empty_equals_empty,
@@ -417,14 +417,22 @@ defmodule BubbleEx.Verify.InterpreterTest do
     do: IR.node(:field, [IR.node(:this, [:rule_record], "custom.task"), "task", field], type)
 
   describe "Bubble's reading (the defaults, calibrated by V5: WTF-426)" do
-    test "only the refuted flag differs from the target's; the evidence is recorded" do
+    test "only the refuted flag and the documented one differ from the target's; the evidence is recorded" do
       assert {:ok, target} = Assumptions.new(Assumptions.target())
-      assert Assumptions.changed(target) == [:actor_empty_denies]
+      # WTF-457: the documented Bubble reading of a search constraint on a
+      # field the user may not view, which the enforced target refuses
+      assert Assumptions.changed(target) == [
+               :actor_empty_denies,
+               :hidden_field_constraint_matches
+             ]
+
       assert BubbleEx.Verify.Difference.intended(Assumptions.defaults()) == Assumptions.target()
 
       evidence = Assumptions.evidence()
-      assert map_size(evidence) == 17
+      assert map_size(evidence) == 18
       assert evidence.non_filterable_constraint_excludes.status == :not_exercised
+      assert evidence.hidden_field_constraint_matches.status == :documented
+      refute :hidden_field_constraint_matches in Assumptions.unsettled()
 
       assert %{status: :refuted, agree: 14, disagree: 69, flip_fixes: 64} =
                evidence.actor_empty_denies

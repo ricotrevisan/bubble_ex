@@ -170,7 +170,15 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
       for {u, e} <- Enum.zip(unverified.resources, enforced.resources), u.policies != [] do
         {writes, others} = Enum.split_with(e.policies, &(&1.permission == :workflow_write))
         {attachments, reads} = Enum.split_with(others, &(&1.action == "attachments"))
-        assert reads == u.policies
+
+        # WTF-457: reads reaching a field some users may not view run the
+        # SearchFields check too (one policy per read action, once).
+        added = reads -- u.policies
+        assert reads -- added == u.policies
+        assert Enum.all?(added, &(&1.permission == :search_fields))
+
+        guarded = for %{permission: :search_fields, action: a} <- reads, do: a
+        assert guarded == Enum.uniq(guarded)
 
         # Bubble's "view attached files" as a keyed read (types with files)
         if u.privacy.file_fields == [] do
@@ -192,6 +200,95 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
         # :omit / :unverified authorize no write
         refute Enum.any?(u.policies, &(&1.permission == :workflow_write))
       end
+    end
+
+    # WTF-457: a read's filter or sort is code, which field policies do not
+    # guard: the fields some users may not view are restricted in reads
+    # (Privacy.SearchFields), stricter than Bubble by decision.
+    test "fields some users may not view are restricted in reads, enforced only",
+         %{project: unverified, enforced: enforced} do
+      assert Enum.all?(
+               unverified.resources,
+               &(&1.privacy == nil or &1.privacy.view_search_fields == %{})
+             )
+
+      restricted =
+        for r <- enforced.resources, r.privacy, r.privacy.view_search_fields != %{}, do: r
+
+      assert restricted != []
+
+      for r <- restricted do
+        hidden =
+          for fp <- r.field_policies,
+              not Enum.any?(fp.checks, &match?(%{kind: :authorize_if, test: :always}, &1)),
+              f <- fp.fields,
+              do: f
+
+        assert hidden -- Map.keys(r.privacy.view_search_fields) == []
+
+        # A gated relationship and its private twin (`*_for_privacy`, which
+        # reaches the same records) are restricted alike (review of #179).
+        for %{gate: gate, name: name} = rel <- r.relationships, gate != nil do
+          groups = Map.fetch!(r.privacy.view_search_fields, name)
+
+          twins =
+            Enum.filter(
+              r.privacy_relationships,
+              &(&1.kind == rel.kind and &1.source == rel.source)
+            )
+
+          assert twins != [], name
+
+          for twin <- twins,
+              do: assert(r.privacy.view_search_fields[twin.name] == groups, twin.name)
+        end
+
+        assert Enum.any?(r.policies, &(&1.action == "search" and &1.permission == :search_fields))
+
+        assert Enum.any?(
+                 enforced.diagnostics,
+                 &(&1.code == :ash_policy_hidden_search_stricter_than_bubble and
+                     &1.subject == %{type: r.source.type} and
+                     &1.path == "/user_types/#{r.source.type}/privacy_role" and
+                     &1.details.flags == ["hidden_field_constraint_matches"])
+               )
+      end
+
+      {:ok, source} = Source.render(enforced, namespace: "Acme")
+      assert source =~ "defmodule Acme.Privacy.SearchFields do"
+      assert source =~ "hidden_field_constraint_matches"
+
+      refute Enum.any?(
+               unverified.diagnostics,
+               &(&1.code == :ash_policy_hidden_search_stricter_than_bubble)
+             )
+    end
+
+    # Review of #179: `gate/2` rewrites a derived field's path to the
+    # twins, so the twins are named before `through/2` and a derived
+    # field or count reading through a gated relationship is restricted by
+    # its checks too.
+    test "derived fields and counts read through a twin are restricted by its checks" do
+      {:ok, combined} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: :enforced)
+      {:ok, cut2} = BubbleEx.Test.DecidedFixture.project(:cut2, privacy: :enforced)
+
+      checked =
+        for project <- [combined, cut2],
+            r <- project.resources,
+            r.privacy,
+            vsf = r.privacy.view_search_fields,
+            {name, heads} <-
+              for(%{kind: :derived} = c <- r.calculations, do: {c.name, heads(c.expr.expr)}) ++
+                for(g <- r.aggregates, do: {g.name, Enum.take(g.path, 1)}),
+            head <- heads,
+            String.ends_with?(head, "_for_privacy"),
+            Map.has_key?(vsf, head) do
+          assert vsf[head] -- (vsf[name] || []) == [], "#{r.module}.#{name}"
+          name
+        end
+
+      assert "team_name" in checked
+      assert "board_card_count" in checked
     end
 
     test "joins get the write policy too" do
@@ -688,4 +785,12 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
              "search_fields" => 2
            } = Project.privacy_summary(project)
   end
+
+  defp heads({:ref, [], attribute}), do: [attribute]
+  defp heads({:ref, [rel | _], _attribute}), do: [rel]
+  defp heads({:call, _name, args}), do: Enum.flat_map(args, &heads/1)
+  defp heads({:op, _op, l, r}), do: heads(l) ++ heads(r)
+  defp heads({bool, nodes}) when bool in [:and, :or], do: Enum.flat_map(nodes, &heads/1)
+  defp heads({:not, node}), do: heads(node)
+  defp heads(_node), do: []
 end
