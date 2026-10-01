@@ -270,19 +270,33 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
                nav.steps |> hd() |> Map.fetch!(:residue) |> hd()
     end
 
-    test "is residue when the page has no type of content (unverified in Bubble)" do
+    test "goes to a page with no type of content as a path segment (WTF-466)" do
       app =
         app()
         |> with_thing("user")
         |> update_in(["pages", "other", "properties"], &Map.delete(&1, "page_item_type"))
 
+      # Bubble appends the data all the same and the page loads (replay):
+      # the step runs, its data an encoded segment the page ignores.
       %{files: files, spec: spec} = render(app, page_data: true)
       nav = FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav")
-      assert nav.blocked_by == ["action:aNav1"]
-      assert [%{reason: :data_to_send_untyped_page}] = hd(nav.steps).residue
+      assert nav.residue == [] and FrontendWorkflows.Spec.native?(nav)
 
       assert files["lib/shop_web/live/index_live/workflows.ex"] =~
-               ~s|"wNav" => %{run: :wf_w_nav, condition: nil, blocked: ["action:aNav1"], data: false}|
+               ~r/BubbleWorkflows.navigate\(\s*ctx,\s*"\/other",[^)]*\{:segment, current_user\}\s*\)/
+
+      # Without page data too: the page reads nothing from it.
+      %{spec: spec} = render(app)
+
+      assert FrontendWorkflows.Spec.native?(
+               FrontendWorkflows.Spec.workflow(spec, "bHome", "wNav")
+             )
+
+      # Every page's route takes the segment, the index page's under /index.
+      routes = files["lib/shop_web/bubble_routes.ex"]
+      assert routes =~ ~s(live "/index/:bubble_thing", ShopWeb.IndexLive)
+      assert routes =~ ~s(live "/other/:bubble_thing", ShopWeb.OtherLive)
+      refute routes =~ ~s(live "/:bubble_thing")
     end
   end
 
@@ -466,7 +480,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # characters and spaces are percent-encoded, not replaced.
     workflows = markers(files)
     # 24 page workflows and the backend workflow they schedule.
-    assert map_size(workflows) == 28
+    assert map_size(workflows) == 29
     assert Enum.all?(Map.values(workflows), &match?([_], &1))
 
     # The test tags are the plan's subjects, as data.

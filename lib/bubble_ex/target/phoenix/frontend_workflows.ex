@@ -355,9 +355,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     params = Enum.map_join(args.params, ", ", fn p -> "{#{literal(p.key)}, #{src(p.value)}}" end)
 
     thing =
-      case Map.get(args, :thing) do
-        nil -> ""
-        value -> ", #{src(value)}"
+      case args do
+        %{thing: nil} -> ""
+        %{thing: value, untyped?: true} -> ", {:segment, #{src(value)}}"
+        %{thing: value} -> ", #{src(value)}"
+        _ -> ""
       end
 
     "BubbleWorkflows.navigate(ctx, #{to}, [#{params}], #{args.keep_params?}, " <>

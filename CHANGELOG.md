@@ -6,6 +6,19 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **"Go to page" sends data to a page with no type of content** (WTF-466).
+  A replay showed that Bubble appends the data as a path segment and the
+  page loads: text `x` goes to `/page/x` (URL parameters kept), a thing to
+  `/page/<unique id>`, no data to `/page`. Such steps are now lowered
+  (`Step.args.untyped?`) and run: the generated `navigate/7` takes
+  `{:segment, value}` and appends a record's unique ID or the value as
+  text, percent-encoded as one segment (never a `/`, `?`, `#`, backslash
+  or `%` of its own; `.` and `..` send nothing). Every page's route now
+  takes that segment (`/<page>/:bubble_thing`, `/index/:bubble_thing` for
+  the index page); a page that does not read its thing ignores it. A
+  reusable element sending data to a current page that takes no thing
+  appends it the same way instead of failing. `:data_to_send_untyped_page`
+  is no longer produced (still decoded).
 - **Images on other hosts stay linked, as in Bubble** (WTF-465). An image
   a Bubble app hotlinks from a host other than Bubble's storage is never
   fetched, proxied or dropped: the page links its original URL (an

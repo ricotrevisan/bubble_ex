@@ -509,6 +509,22 @@
           },
           "type": "Button"
         },
+        "bBtnSeg": {
+          "id": "bBtnSeg",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 26,
+            "text": {
+              "entries": {
+                "0": "Go with data"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
         "bBtnState": {
           "id": "bBtnState",
           "properties": {
@@ -1548,6 +1564,43 @@
           "id": "wSchedule",
           "properties": {
             "element_id": "bBtnSchedule"
+          },
+          "type": "ButtonClicked"
+        },
+        "wSeg": {
+          "actions": {
+            "0": {
+              "id": "aSeg1",
+              "properties": {
+                "data_to_send": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bIn"
+                  },
+                  "type": "GetElement"
+                },
+                "element_id": "bOther",
+                "url_parameters": {
+                  "0": {
+                    "key": "q",
+                    "value": {
+                      "entries": {
+                        "0": "hello"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                }
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wSeg",
+          "properties": {
+            "element_id": "bBtnSeg"
           },
           "type": "ButtonClicked"
         },
