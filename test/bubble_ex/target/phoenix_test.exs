@@ -4,6 +4,7 @@ defmodule BubbleEx.Target.PhoenixTest do
   alias BubbleEx.CanonicalJson
   alias BubbleEx.Target.Ash.{Project, Source}
   alias BubbleEx.Target.Phoenix
+  alias BubbleEx.Target.Phoenix.Formatter
   alias BubbleEx.Test.DecidedFixture
 
   @generated [
@@ -380,6 +381,13 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert test =~ ~s|database: "acme_import_test\#{System.get_env("MIX_TEST_PARTITION")}"|
       assert test =~ "pool: Ecto.Adapters.SQL.Sandbox"
       refute render!(representative_project(), name: "Other")["config/dev.exs"] =~ dev_secret
+
+      # No pages, no BubbleData to seed; the project does not depend on
+      # bubble_ex, so its docs do not send the owner to mix wtf.task
+      # (WTF-455).
+      refute test =~ "BubbleData"
+      refute test =~ "wtf.task"
+      refute files["README.md"] =~ "wtf.task"
     end
 
     test "uses Tailwind v4 theme tokens and no daisyUI" do
@@ -655,6 +663,30 @@ defmodule BubbleEx.Target.PhoenixTest do
       # :search like any other search.
       refute page =~ "TODO(bubble:element:bRandom)"
       assert page =~ "|> BubbleData.random_sort()"
+    end
+
+    # WTF-459: the generated project's `mix format --check-formatted` must
+    # pass whichever Elixir formats it. Elixir 1.17 and 1.18 keep a
+    # `name [list] do` head on one line when only its ` do` passes 98
+    # columns; 1.19+ break the list. A render made on one version then
+    # failed the check on the other (Note's owner field policy head is 100
+    # columns). The check below runs on the test's own Elixir; the head
+    # length is what the other versions disagree on.
+    test "the Elixir is format-clean on every Elixir version", %{files: files} do
+      sources = for {path, _} <- files, Path.extname(path) in [".ex", ".exs"], do: path
+
+      for path <- sources,
+          do: assert(Formatter.format(path, files[path]) == files[path], path)
+
+      long_heads =
+        for path <- sources,
+            line <- String.split(files[path], "\n"),
+            String.length(line) > 98,
+            line =~ ~r/^\s*[a-z_]+ \[.*\] do$/,
+            do: {path, line}
+
+      assert long_heads == []
+      assert files["lib/acme/note.ex"] =~ ~r/^    field_policy \[\n      :created_date,$/m
     end
 
     test "a page count reads keys through :search, capped", %{files: files} do

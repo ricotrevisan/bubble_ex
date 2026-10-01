@@ -14,6 +14,30 @@ defmodule <%= @web %>.SmokeTest do
     assert html_response(get(conn, ~p"/sign-in"), 200) =~ "email"
   end
 
+  # The Bubble images are served only by their own plug, with its sandbox
+  # policy: a compressed file without its raw file is not found, never
+  # served by the other static plug without the policy.
+  test "only the images' own plug serves /images/bubble", %{conn: conn} do
+    dir = Application.app_dir(:<%= @app %>, "priv/static/images/bubble")
+    name = "smoke-#{System.unique_integer([:positive])}"
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, name <> ".png"), "png")
+    File.write!(Path.join(dir, name <> ".html.gz"), :zlib.gzip("<script>alert(1)</script>"))
+    on_exit(fn -> Enum.each([".png", ".html.gz"], &File.rm(Path.join(dir, name <> &1))) end)
+
+    image = get(conn, "/images/bubble/#{name}.png")
+    assert response(image, 200) == "png"
+    assert get_resp_header(image, "content-security-policy") != []
+
+    gz =
+      build_conn()
+      |> put_req_header("accept-encoding", "gzip")
+      |> get("/images/bubble/#{name}.html")
+
+    assert gz.status == 404
+    assert get_resp_header(gz, "content-encoding") == []
+  end
+
   test "an unknown workflow is not found", %{conn: conn} do
     conn = post(conn, "/api/1.1/wf/no_such_workflow", %{})
 <%= if @workflows? do %>

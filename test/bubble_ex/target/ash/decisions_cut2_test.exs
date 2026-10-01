@@ -28,13 +28,8 @@ defmodule BubbleEx.Target.Ash.DecisionsCut2Test do
     assert File.exists?(path), "missing golden #{path}; set BUBBLE_EX_UPDATE_GOLDEN=1"
     expected = File.read!(path)
 
-    assert actual == expected or
-             (String.ends_with?(path, ".ex.txt") and
-                Version.compare(System.version(), "1.19.0") != :lt and
-                reformat(actual) == reformat(expected))
+    assert actual == expected
   end
-
-  defp reformat(source), do: source |> Code.format_string!() |> IO.iodata_to_binary()
 
   defp project!(set, opts \\ []) do
     {:ok, project} = DecidedFixture.project(set, opts)

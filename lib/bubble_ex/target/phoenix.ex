@@ -438,7 +438,15 @@ defmodule BubbleEx.Target.Phoenix do
            }),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
-      ctx = Map.merge(ctx, %{routes: pages.routes, frontend: frontend_inputs(frontend)})
+      bubble_data = "lib/#{ctx.app}_web/bubble_data.ex"
+
+      ctx =
+        Map.merge(ctx, %{
+          routes: pages.routes,
+          frontend: frontend_inputs(frontend),
+          # The page data module (WTF-420), whose test seed config/test.exs sets.
+          bubble_data?: Enum.any?(pages.generated, &match?({^bubble_data, _}, &1))
+        })
 
       generated =
         project
@@ -1083,6 +1091,9 @@ defmodule BubbleEx.Target.Phoenix do
     Map.merge(ctx, %{
       workflows?: Map.get(ctx, :workflows) != nil,
       deps: deps_source(ctx.privacy),
+      # `mix wtf.task` is bubble_ex's: the docs mention it only when the
+      # project depends on bubble_ex.
+      bubble_ex?: Enum.any?(deps(ctx.privacy), &(elem(&1, 0) == :bubble_ex)),
       tailwind: @tailwind,
       esbuild: @esbuild,
       oban_migration: @oban_migration,

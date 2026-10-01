@@ -31,6 +31,12 @@ defmodule <%= @web %>.Endpoint do
       "x-content-type-options" => "nosniff"
     }
 
+  # ... and only there: the static plug below serves `images` too, with
+  # gzip in production, so a `.gz` without its raw file would reach it
+  # and be served without the policy. Anything the plug above did not
+  # serve under /images/bubble is not found.
+  plug :bubble_images_only
+
   plug Plug.Static,
     at: "/",
     from: :<%= @app %>,
@@ -57,4 +63,9 @@ defmodule <%= @web %>.Endpoint do
   plug Plug.Head
   plug Plug.Session, @session_options
   plug <%= @web %>.Router
+
+  defp bubble_images_only(%Plug.Conn{path_info: ["images", "bubble" | _]} = conn, _opts),
+    do: conn |> Plug.Conn.send_resp(404, "Not Found") |> Plug.Conn.halt()
+
+  defp bubble_images_only(conn, _opts), do: conn
 end

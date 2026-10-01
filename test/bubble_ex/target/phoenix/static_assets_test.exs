@@ -318,6 +318,17 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
 
     assert endpoint =~
              ~s("content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+
+    # ... and only that plug: what it does not serve under /images/bubble
+    # (a .gz without its raw file) never reaches the gzip-serving static
+    # plug, which would send it without the policy (WTF-455). Behavior:
+    # the generated smoke test (scripts/phoenix_compile_check.sh).
+    [images, main] = String.split(endpoint, "plug Plug.Static,", trim: true) |> Enum.drop(1)
+    assert images =~ ~r/\n  plug :bubble_images_only\n/
+    assert main =~ "gzip: not code_reloading?"
+
+    assert endpoint =~
+             ~s|defp bubble_images_only(%Plug.Conn{path_info: ["images", "bubble" \| _]} = conn, _opts)|
   end
 
   # The exporter's `assets:` (the fidelity cases' path) are served only as

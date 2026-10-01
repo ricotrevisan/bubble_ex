@@ -1,8 +1,9 @@
 import Config
 
-# TEST_DATABASE_URL, when set (and not empty), replaces the connection
+<%= if @bubble_ex? do %># TEST_DATABASE_URL, when set (and not empty), replaces the connection
 # below (`mix wtf.task --test-db URL` sets it for the tests it runs).
-# Never DATABASE_URL: the test alias creates and migrates this database.
+<% else %># TEST_DATABASE_URL, when set (and not empty), replaces the connection below.
+<% end %># Never DATABASE_URL: the test alias creates and migrates this database.
 database_url = System.get_env("TEST_DATABASE_URL")
 
 if database_url not in [nil, ""] do
@@ -27,10 +28,10 @@ config :<%= @app %>, <%= @web %>.Endpoint,
 config :<%= @app %>, <%= @module %>.Accounts.Secrets,
   token_signing_secret: "<%= @test_secrets.token_signing_secret %>"
 
-# Bubble's random sort in a fixed order (BubbleData.random_sort/1).
+<%= if @bubble_data? do %># Bubble's random sort in a fixed order (BubbleData.random_sort/1).
 config :<%= @app %>, <%= @web %>.BubbleData, random_seed: "bubble_ex"
 
-config :<%= @app %>, Oban, testing: :manual
+<% end %>config :<%= @app %>, Oban, testing: :manual
 
 config :<%= @app %>, <%= @module %>.Mailer, adapter: Swoosh.Adapters.Test
 
