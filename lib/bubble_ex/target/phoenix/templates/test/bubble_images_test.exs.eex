@@ -50,19 +50,26 @@ defmodule <%= @web %>.BubbleImagesTest do
           ],
           do: "#{prefix}/#{name}.svg"
 
-    for method <- [:get, :head], path <- paths do
-      assert_error_sent 404, fn -> dispatch(build_conn(), @endpoint, method, path, nil) end
-    end
+    # Not found, or a bad request (Plug.Static refuses an encoded `/`).
+    for method <- [:get, :head], path <- paths,
+        do: assert(status(build_conn(), method, path) in [400, 404], "#{method} #{path}")
   end
 
   test "a compressed file without its raw file is never served", %{name: name} do
     for method <- [:get, :head],
         prefix <- ["/images/bubble", "/images/bubbl%65", "/images/%62ubble", "/images/Bubble"] do
       conn = put_req_header(build_conn(), "accept-encoding", "gzip")
-
-      assert_error_sent 404, fn ->
-        dispatch(conn, @endpoint, method, "#{prefix}/#{name}.html", nil)
-      end
+      path = "#{prefix}/#{name}.html"
+      assert status(conn, method, path) == 404, "#{method} #{path}"
     end
+  end
+
+  # The status sent: a response's, or the one an exception (no route)
+  # renders.
+  defp status(conn, method, path) do
+    dispatch(conn, @endpoint, method, path, nil).status
+  rescue
+    error in Plug.Conn.WrapperError -> Plug.Exception.status(error.reason)
+    error -> Plug.Exception.status(error)
   end
 end
