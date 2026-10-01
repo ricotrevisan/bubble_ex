@@ -364,8 +364,6 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   defp lister(root) when is_binary(root),
     do: {:ok, fn dir -> root |> walk(dir) |> Enum.sort() end}
 
-  defp lister(_other), do: {:ok, fn _dir -> [] end}
-
   # Not Path.wildcard: the root may hold glob characters. A symlink is
   # listed, never followed (no loop).
   defp walk(root, path) do
