@@ -43,10 +43,10 @@ defmodule BubbleEx.Expression.SitesTest do
     {:ok, report} = CompileReport.build(app(), model, project)
 
     assert report["privacy"] == %{
-             "rules" => 47,
+             "rules" => 49,
              "rules_without_condition" => 5,
-             "conditions" => 42,
-             "ash_compiled" => 39,
+             "conditions" => 44,
+             "ash_compiled" => 41,
              "ash_with_actor_loads" => 5,
              "diagnostics" => %{
                "ash_expr_unmapped_reference" => 1,

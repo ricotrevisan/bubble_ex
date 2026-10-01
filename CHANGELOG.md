@@ -23,12 +23,21 @@ All notable changes to this project are documented here.
   condition used as any other value is strictly yes or no (`if(c, true,
   false)`; never nil in Elixir), so an empty operand can no longer match
   through NULL = NULL. That removes such matches (the old form was wider
-  than Bubble); in one rare shape it can also match where the old,
-  NULL-propagating form did not: a condition whose negation holds on an
-  empty value (`text contains` on an empty text) compared with another
-  condition, which is Bubble's reading (an empty text contains nothing).
-  The interpreter reads the same way, so the matrix sees these cases
-  agree; the `:ash_policy_empty_yes_no_wider_than_bubble` warning and
+  than Bubble). In page and workflow conditions it can also match where
+  the old form did not: a condition whose negation holds on an empty
+  value compared with another yes/no, which is Bubble's reading.
+  In the Ash policies only, such a comparison (neither side reading the
+  user) also requires the record values a condition reads to be
+  non-empty on its negative side, so the policies never grant where the
+  previous ones denied (a negation holding on an empty value, `doesn't
+  contain` on an empty list or an empty text, rests on uncalibrated
+  semantics): a new intended difference,
+  `compared_condition_guards_record_values` (`Verify.Difference`,
+  `Assumptions`), listed per rule. Page and workflow conditions follow
+  Bubble there; the shared expectation table holds their reading as
+  `expected_elixir` where it differs. The interpreter reads the same way,
+  so the matrix sees these cases agree or as intended differences; the
+  `:ash_policy_empty_yes_no_wider_than_bubble` warning and
   `Difference.empty_yes_no_wider?/1` are removed.
 
 - **Privacy interpreter: four calibration flags flipped to Bubble's

@@ -42,7 +42,7 @@ defmodule BubbleEx.Verify.MatrixTest do
              {"task", "everyone", :blocked_by_unsupported_rule}
            ]
 
-    assert %{total: 47, solved: 42, conditional: 42, everyone: 5} =
+    assert %{total: 49, solved: 44, conditional: 44, everyone: 5} =
              expression.report.rules
 
     assert expression.report.unsolved_by_reason == %{
@@ -435,7 +435,7 @@ defmodule BubbleEx.Verify.MatrixTest do
     end
 
     test "every flag reports whether a check depends on it", %{policies: matrix} do
-      assert map_size(matrix.flags) == 18
+      assert map_size(matrix.flags) == 19
       # doc's body is non-filterable for the public rule: its constrained
       # searches depend on the flag
       assert matrix.flags[:non_filterable_constraint_excludes] == :exercised

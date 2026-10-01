@@ -30,9 +30,10 @@ defmodule BubbleEx.Verify.DifferenceTest do
     )
   end
 
-  test "the policy: six flags, Bubble's reading and the target's, by scope" do
+  test "the policy: seven flags, Bubble's reading and the target's, by scope" do
     rule_conditions = [
       :actor_empty_denies,
+      :compared_condition_guards_record_values,
       :empty_yes_no_is_no,
       :everyone_exclusive,
       :everyone_guards_record_values,
@@ -48,7 +49,7 @@ defmodule BubbleEx.Verify.DifferenceTest do
 
     # WTF-467: the 2026-10-01 replay flipped four flags in Bubble's
     # reading; the generated policies keep the stricter reading.
-    for flag <- rule_conditions -- [:actor_empty_denies] do
+    for flag <- rule_conditions -- [:actor_empty_denies, :compared_condition_guards_record_values] do
       assert %{direction: :stricter, scope: :rule_conditions, decision: decision} =
                Difference.policy()[flag]
 
@@ -57,6 +58,12 @@ defmodule BubbleEx.Verify.DifferenceTest do
       assert Difference.policy()[flag].target == Assumptions.target()[flag]
       assert Difference.policy()[flag].bubble != Difference.policy()[flag].target
     end
+
+    # WTF-471: the policies guard a compared condition's negative side
+    assert %{bubble: false, target: true, direction: :stricter, decision: d471} =
+             Difference.policy().compared_condition_guards_record_values
+
+    assert d471 =~ "WTF-471"
 
     # WTF-457: Bubble matches a constraint on a field the user may not
     # view; the enforced policies find only records where the user may.
@@ -112,6 +119,28 @@ defmodule BubbleEx.Verify.DifferenceTest do
 
     assert Difference.rule_flags(IR.node(:eq, [flag, no], "boolean")) == [:empty_yes_no_is_no]
     assert Difference.affected?(IR.node(:eq, [flag, other], "boolean"))
+  end
+
+  test "rule_flags/1: a condition compared as a value, reading no user, is guarded" do
+    this = IR.node(:this, [:rule_record], "custom.t")
+    access = IR.node(:field, [this, "custom.t", "access_list_user"], "list.user")
+    assignee = IR.node(:field, [this, "custom.t", "assignee_user"], "user")
+    public = IR.node(:field, [this, "custom.t", "public_boolean"], "boolean")
+    member = IR.node(:member, [access, assignee], "boolean")
+    yes = IR.node(:literal, [true], "boolean")
+
+    assert Difference.rule_flags(IR.node(:eq, [member, public], "boolean")) ==
+             [:compared_condition_guards_record_values, :empty_yes_no_is_no]
+
+    # `c is yes` is the condition itself, not a comparison
+    assert Difference.rule_flags(IR.node(:eq, [member, yes], "boolean")) == []
+    # one reading the user keeps the actor's flags only (expanded unguarded)
+    user = IR.node(:current_user, [], "user")
+    actor_member = IR.node(:member, [access, user], "boolean")
+
+    refute :compared_condition_guards_record_values in Difference.rule_flags(
+             IR.node(:eq, [actor_member, public], "boolean")
+           )
   end
 
   test "everyone_narrowed?/3: the everyone rule grants what some rule lacks" do

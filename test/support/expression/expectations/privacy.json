@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-authored expectations for the privacy conditions of test/support/expression/app.json (all data invented). Records use the Ash attribute names of the fixture's project; IDs starting with 'gone-' name records that do not exist (dangling references). For each rule and actor (logged out, u1, u2, u3, u4), the IDs of the records the condition selects. Checked by BubbleEx.Target.ElixirTest (Elixir backend) and by scripts/ash_compile_check/runtime.exs (Ash backend: PostgreSQL and in-memory).",
+  "_comment": "Hand-authored expectations for the privacy conditions of test/support/expression/app.json (all data invented). Records use the Ash attribute names of the fixture's project; IDs starting with 'gone-' name records that do not exist (dangling references). For each rule and actor (logged out, u1, u2, u3, u4), the IDs of the records the condition selects. Checked by BubbleEx.Target.ElixirTest (Elixir backend) and by scripts/ash_compile_check/runtime.exs (Ash backend: PostgreSQL and in-memory). A case's optional 'expected_elixir' is what the page/workflow conditions (BubbleEx.Target.Elixir, Bubble's reading) select where the policies are stricter by design (BubbleEx.Verify.Difference).",
   "cases": [
     {
       "expected": {
@@ -839,6 +839,79 @@
       "rule": "admin_no_not_coach_no_",
       "type": "user",
       "why": "(admin is no) is not (coach is no): one is a stored no and the other a stored yes; an empty side satisfies neither polarity (stricter than Bubble, where empty is no), so u2 and u3 are not selected, as a NULL-tolerant comparison would"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k1"
+        ],
+        "u1": [
+          "k1"
+        ],
+        "u2": [
+          "k1"
+        ],
+        "u3": [
+          "k1"
+        ],
+        "u4": [
+          "k1"
+        ]
+      },
+      "expected_elixir": {
+        "logged_out": [
+          "k1",
+          "k3"
+        ],
+        "u1": [
+          "k1",
+          "k3"
+        ],
+        "u2": [
+          "k1",
+          "k3"
+        ],
+        "u3": [
+          "k1",
+          "k3"
+        ],
+        "u4": [
+          "k1",
+          "k3"
+        ]
+      },
+      "rule": "zj_access_has_assignee_is_public_",
+      "type": "task",
+      "why": "(access contains assignee) is public: k1 (contains, yes). k3's empty access contains nothing and public is no, which Bubble's reading grants (Elixir) but the policies do not: a compared condition's negative side needs its record values non-empty (WTF-471); the base policies (a NULL-free value comparison) granted no more than this row allows elsewhere"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [],
+        "u2": [],
+        "u3": [],
+        "u4": []
+      },
+      "expected_elixir": {
+        "logged_out": [
+          "k4"
+        ],
+        "u1": [
+          "k4"
+        ],
+        "u2": [
+          "k4"
+        ],
+        "u3": [
+          "k4"
+        ],
+        "u4": [
+          "k4"
+        ]
+      },
+      "rule": "zk_access_has_assignee_is_public_no_",
+      "type": "task",
+      "why": "(access contains assignee) is (public is no): k4 has no assignee (an empty item is not contained) and public is yes, so Bubble's reading grants it (Elixir); the policies require the assignee non-empty first, and the base policies denied it too (NULL)"
     }
   ],
   "records": {

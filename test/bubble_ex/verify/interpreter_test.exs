@@ -198,7 +198,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
   describe "assumption flags (the target's reading: the compiler's fail-safe one)" do
     test "the registry" do
-      assert length(Assumptions.names()) == 18
+      assert length(Assumptions.names()) == 19
 
       assert Assumptions.wtf_384() == [
                :empty_equals_empty,
@@ -439,13 +439,15 @@ defmodule BubbleEx.Verify.InterpreterTest do
                :everyone_exclusive,
                :everyone_guards_record_values,
                :logged_out_user_is_empty,
-               :hidden_field_constraint_matches
+               :hidden_field_constraint_matches,
+               # WTF-471: the policies' guard on a compared condition's negation
+               :compared_condition_guards_record_values
              ]
 
       assert BubbleEx.Verify.Difference.intended(Assumptions.defaults()) == Assumptions.target()
 
       evidence = Assumptions.evidence()
-      assert map_size(evidence) == 18
+      assert map_size(evidence) == 19
       assert evidence.non_filterable_constraint_excludes.status == :not_exercised
       assert evidence.hidden_field_constraint_matches.status == :documented
       refute :hidden_field_constraint_matches in Assumptions.unsettled()
@@ -488,16 +490,18 @@ defmodule BubbleEx.Verify.InterpreterTest do
       assert evidence.empty_list_contains_nothing.status == :unclear
 
       not_exercised = for {flag, %{status: :not_exercised}} <- evidence, do: flag
-      assert length(not_exercised) == 7
+      assert length(not_exercised) == 8
       assert :defaults_applied_at_creation in not_exercised
 
       # every flipped flag differs from the target's reading by the
       # policy of BubbleEx.Verify.Difference; the other unsettled flags
       # are not flipped
-      for flag <- Assumptions.unsettled() -- [:empty_yes_no_is_no, :everyone_exclusive],
+      for flag <-
+            Assumptions.unsettled() --
+              [:empty_yes_no_is_no, :everyone_exclusive, :compared_condition_guards_record_values],
           do: assert(Assumptions.defaults()[flag] == Assumptions.target()[flag], "#{flag}")
 
-      assert length(Assumptions.unsettled()) == 10
+      assert length(Assumptions.unsettled()) == 11
     end
 
     test "an empty user-side value compares like any empty value", %{model: model, ds: ds} do

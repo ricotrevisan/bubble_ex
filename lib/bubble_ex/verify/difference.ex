@@ -14,7 +14,7 @@ defmodule BubbleEx.Verify.Difference do
       fail-safe reading)
 
   `policy/0` lists the flags on which the two differ by an owner's
-  decision, and in which direction. Today there are six:
+  decision, and in which direction. Today there are seven:
 
     * `actor_empty_denies` (scope `:rule_conditions`). Bubble treats an
       empty value on the user's side (a logged-out user, or a user
@@ -37,6 +37,16 @@ defmodule BubbleEx.Verify.Difference do
       only users no rule lacking them matches, record values guarded.
       `x is not no` (and `x is not y` between stored yes/no values) reads
       an empty value as no in the target too (WTF-471), as in Bubble.
+    * `compared_condition_guards_record_values` (scope `:rule_conditions`,
+      WTF-471). A condition compared with another yes/no as a value,
+      neither side reading the user (`(access contains assignee) is
+      public`), is expanded into each side's polarities; the generated
+      policies also require the record values a condition reads to be
+      non-empty on its negative side, since that negation can hold on an
+      empty value (`doesn't contain` on an empty list, an empty text:
+      `empty_list_contains_nothing`, `empty_text_contains_nothing`, never
+      calibrated). Bubble has no such guard. Page and workflow conditions
+      (`BubbleEx.Target.Elixir`) follow Bubble here.
     * `hidden_field_constraint_matches` (scope `:search_constraints`,
       `privacy: :enforced` only, WTF-457). In Bubble, viewing a field and
       using it as a search constraint are separate permissions: a page
@@ -94,7 +104,7 @@ defmodule BubbleEx.Verify.Difference do
   alias BubbleEx.Expression.IR
   alias BubbleEx.Verify.{DataApi, Json, Observation}
   alias BubbleEx.Verify.Interpreter
-  alias BubbleEx.Verify.Interpreter.Assumptions
+  alias BubbleEx.Verify.Interpreter.{Assumptions, Eval}
 
   @format "bubble_ex.verify.differences"
   @schema_version 1
@@ -159,6 +169,19 @@ defmodule BubbleEx.Verify.Difference do
         "The generated policies' everyone grant also needs every record value the rules " <>
           "lacking the permission read to be non-empty; Bubble has no such guard (its " <>
           "everyone rule reaches every user)"
+    },
+    compared_condition_guards_record_values: %{
+      bubble: false,
+      target: true,
+      direction: :stricter,
+      scope: :rule_conditions,
+      decision: "owner standing rule (WTF-471, 2026-10-01): stay stricter than Bubble",
+      summary:
+        "A condition compared with another yes/no as a value, neither side reading the " <>
+          "user (`(list contains x) is y`): the generated policies' negative side also needs " <>
+          "the record values the condition reads to be non-empty, since such a negation can " <>
+          "hold on an empty value (`empty_list_contains_nothing`, " <>
+          "`empty_text_contains_nothing`, never calibrated); Bubble has no such guard"
     },
     hidden_field_constraint_matches: %{
       bubble: true,
@@ -290,7 +313,30 @@ defmodule BubbleEx.Verify.Difference do
         else: []
 
     yes_no = if :stricter in yes_no_tests(ir), do: [:empty_yes_no_is_no], else: []
-    Enum.sort(actor ++ yes_no)
+
+    compared =
+      if guarded_comparison?(ir), do: [:compared_condition_guards_record_values], else: []
+
+    Enum.sort(actor ++ yes_no ++ compared)
+  end
+
+  # A condition compared with another yes/no as a value, neither side
+  # reading the user, whose condition side reads record values: the
+  # compiler guards its negative side (WTF-471).
+  defp guarded_comparison?(%IR{op: op, args: [l, r]} = ir) when op in [:eq, :neq],
+    do: compared_pair?(l, r, ir) or Enum.any?(ir.args, &guarded_comparison?/1)
+
+  defp guarded_comparison?(%IR{args: args}), do: Enum.any?(args, &guarded_comparison?/1)
+  defp guarded_comparison?(list) when is_list(list), do: Enum.any?(list, &guarded_comparison?/1)
+  defp guarded_comparison?(_), do: false
+
+  defp empty_operand?(ir), do: match?(%IR{op: :empty}, ir)
+
+  defp compared_pair?(l, r, ir) do
+    plain = Enum.all?([l, r], &(not empty_operand?(&1) and not boolean_literal?(&1)))
+    reads_user = Enum.any?(IR.ops(ir), &(&1 in [:current_user, :logged_in]))
+    guarded = Enum.any?([l, r], &(condition?(&1) and Eval.record_values(&1) != []))
+    plain and not reads_user and guarded
   end
 
   # "Stored" yes/no: any yes/no value that is not a condition (a field, a

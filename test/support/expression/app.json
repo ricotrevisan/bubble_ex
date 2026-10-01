@@ -1904,6 +1904,86 @@
             "view_all": true,
             "view_attachments": true
           }
+        },
+        "zj_access_has_assignee_is_public_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "assignee_user",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "contains",
+                "next": {
+                  "args": {
+                    "next": {
+                      "name": "public_boolean",
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Access contains assignee) is public",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zk_access_has_assignee_is_public_no_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "assignee_user",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "contains",
+                "next": {
+                  "args": {
+                    "next": {
+                      "name": "public_boolean",
+                      "next": {
+                        "name": "is_false",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Access contains assignee) is (public is no)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
         }
       }
     },

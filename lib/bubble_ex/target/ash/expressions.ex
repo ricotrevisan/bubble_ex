@@ -436,7 +436,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp boolean_equality(op, l, r, st, positive) do
     {[lp, ln, rp, rn], st} =
       Enum.map_reduce([{l, true}, {l, false}, {r, true}, {r, false}], st, fn {ir, pol}, st ->
-        side(ir, st, pol)
+        side(ir, st, pol, guarded_negation?(l, r))
       end)
 
     node =
@@ -447,10 +447,34 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {all_ok(node, [lp, ln, rp, rn]), st}
   end
 
-  defp side(ir, st, pol) do
-    if condition?(ir),
-      do: pred(ir, st, pol),
-      else: atom(IR.node(:eq, [ir, IR.node(:literal, [pol], "boolean")], "boolean"), st, true)
+  # A condition's negative side also requires the record values it reads to
+  # be non-empty, as the `everyone` rule's reach does (WTF-471): a
+  # negation that holds on an empty value (`doesn't contain` on an empty
+  # list, an empty text) rests on Bubble semantics not calibrated
+  # (`empty_list_contains_nothing`, `empty_text_contains_nothing`), and the
+  # value form it replaces was NULL there. Stricter than Bubble by the
+  # owner's rule (`BubbleEx.Verify.Difference`,
+  # `compared_condition_guards_record_values`). Only where neither side
+  # reads the actor: those comparisons were expanded before, unguarded.
+  defp guarded_negation?(l, r), do: not reads_actor?(l) and not reads_actor?(r)
+
+  defp side(ir, st, pol, guarded?) do
+    cond do
+      not condition?(ir) ->
+        atom(IR.node(:eq, [ir, IR.node(:literal, [pol], "boolean")], "boolean"), st, true)
+
+      pol or not guarded? ->
+        pred(ir, st, pol)
+
+      true ->
+        case record_guards([ir]) do
+          [] ->
+            pred(ir, st, false)
+
+          guards ->
+            pred(IR.node(:and, [IR.node(:not, [ir], "boolean") | guards], "boolean"), st, true)
+        end
+    end
   end
 
   # An atomic condition: its core for the requested polarity, guarded so
@@ -839,6 +863,83 @@ defmodule BubbleEx.Target.Ash.Expressions do
       do: {:op, "==", v, {:value, true}},
       else: {:call, "is_not_distinct_from", [v, {:value, true}]}
   end
+
+  @doc false
+  # The record-value guards of conditions (WTF-430, WTF-471): one IR
+  # condition per record-side value they read, requiring it non-empty
+  # (`not (x is empty)`), or, for a reference read only by an emptiness
+  # test, not dangling. Used by the `everyone` rule's reach
+  # (`Target.Ash.Policies`) and the negative side of a condition compared
+  # as a value.
+  @spec record_guards([IR.t()]) :: [IR.t()]
+  def record_guards(irs) do
+    irs
+    |> Enum.flat_map(&record_values/1)
+    |> Enum.uniq()
+    |> Enum.map(fn
+      {:not_dangling, ir} -> IR.node(:not_dangling, [ir], "boolean")
+      ir -> IR.node(:not, [IR.node(:is_empty, [ir], "boolean")], "boolean")
+    end)
+  end
+
+  # The outermost field chains read from the rule's record (`This
+  # Thing's a's b`), not from the actor: each must be non-empty. A chain
+  # read only as the operand of an emptiness test (`is empty`, `is not
+  # empty`, `= empty`, also through `defaulting to`) is not guarded that
+  # way: the test's negation is exact, and guarding it made the negation
+  # `x is empty and x is not empty`, always false (WTF-430). Such a chain
+  # that is a reference gets `{:not_dangling, chain}` instead: whether a
+  # dangling reference is empty is not calibrated (`dangling_ref_is_empty`),
+  # so the negation holds only where both readings agree (its ID is nil,
+  # or its record exists). The interpreter lists the same guards
+  # (`Verify.Interpreter.Eval.record_values/1`).
+  defp record_values(%IR{op: :is_empty, args: [x]}), do: emptiness_operand(x)
+
+  defp record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) -> emptiness_operand(r)
+      match?(%IR{op: :empty}, r) -> emptiness_operand(l)
+      true -> record_values(l) ++ record_values(r)
+    end
+  end
+
+  defp record_values(%IR{op: :field, args: [base | _]} = ir) do
+    if record_based?(base), do: [strip_path(ir)], else: []
+  end
+
+  defp record_values(%IR{args: args}), do: Enum.flat_map(args, &record_values/1)
+  defp record_values(list) when is_list(list), do: Enum.flat_map(list, &record_values/1)
+  defp record_values(_), do: []
+
+  defp emptiness_operand(%IR{op: :field, args: [base | _]} = ir) do
+    cond do
+      not record_based?(base) ->
+        []
+
+      is_binary(ir.type) and
+          match?({%Type{kind: :ref, cardinality: :one}, _}, Type.classify(ir.type)) ->
+        [{:not_dangling, strip_path(ir)}]
+
+      true ->
+        []
+    end
+  end
+
+  defp emptiness_operand(%IR{op: :fallback, args: args}),
+    do: Enum.flat_map(args, &emptiness_operand/1)
+
+  defp emptiness_operand(other), do: record_values(other)
+
+  defp record_based?(%IR{op: :this, args: [binder]}), do: binder in [:rule_record, :filter_item]
+  defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)
+  defp record_based?(%IR{op: :fallback, args: args}), do: Enum.all?(args, &record_based?/1)
+  defp record_based?(_), do: false
+
+  # Source paths differ between occurrences of the same chain.
+  defp strip_path(%IR{args: args} = ir),
+    do: %{ir | path: nil, args: Enum.map(args, &strip_path/1)}
+
+  defp strip_path(other), do: other
 
   # `node`, required to have every actor-side operand non-empty in Bubble's
   # sense (as `is empty`): not nil, and not `""` for text or `[]` for a

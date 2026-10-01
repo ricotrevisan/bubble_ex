@@ -151,15 +151,49 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   # `a is b` between yes/no values, one a condition: each side keeps its
   # own polarities and guards, as the compiler expands it (WTF-471).
   defp boolean_equality(op, l, r, positive, ctx) do
+    guarded = not reads_actor?(l) and not reads_actor?(r)
     {lp, f1} = side(l, true, ctx)
-    {ln, f2} = side(l, false, ctx)
+    {ln, f2} = negative_side(l, guarded, ctx)
     {rp, f3} = side(r, true, ctx)
-    {rn, f4} = side(r, false, ctx)
+    {rn, f4} = negative_side(r, guarded, ctx)
     flags = f1 ++ f2 ++ f3 ++ f4
 
     if op == :eq == positive,
       do: {(lp and rp) or (ln and rn), flags},
       else: {(lp and rn) or (ln and rp), flags}
+  end
+
+  # A condition's negative side, in a comparison reading no user, also
+  # needs the record values it reads to be non-empty under
+  # `compared_condition_guards_record_values` (the compiler's hedge,
+  # WTF-471).
+  defp negative_side(ir, guarded, ctx) do
+    {b, flags} = side(ir, false, ctx)
+
+    if b and guarded and condition?(ir) and record_values(ir) != [] do
+      if empty_record_value?(ir, ctx) do
+        f = [:compared_condition_guards_record_values | flags]
+        {not ctx.flags.compared_condition_guards_record_values, f}
+      else
+        {b, [:compared_condition_guards_record_values | flags]}
+      end
+    else
+      {b, flags}
+    end
+  end
+
+  defp empty_record_value?(ir, ctx) do
+    Enum.any?(record_values(ir), fn
+      {:not_dangling, v} ->
+        dangling_value?(v, ctx)
+
+      v ->
+        try do
+          v |> value_empty?(ctx) |> elem(0)
+        catch
+          {:unsupported, _} -> false
+        end
+    end)
   end
 
   defp side(ir, pol, ctx) do
