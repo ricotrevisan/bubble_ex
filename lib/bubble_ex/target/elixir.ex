@@ -38,7 +38,7 @@ defmodule BubbleEx.Target.Elixir do
 
   | Function | Bubble |
   |----------|--------|
-  | `text(x)` | a value as machine text (numbers as JavaScript prints them, yes/no, dates in ISO 8601) |
+  | `text(x)` | a value as machine text (numbers as JavaScript prints them, yes/no, dates in ISO 8601, UTC, milliseconds) |
   | `display(x)` | a value shown on a page (`:display`): `text/1` with dates in Bubble's default format |
   | `empty?(x)` | `is empty`: nil, `""` or `[]` |
   | `compare(op, a, b)` | `>`, `<`, `>=`, `<=`; false when either side is empty |

@@ -89,7 +89,7 @@ defmodule BubbleEx.Target.Elixir.Formats do
   # `day` is shown as the day of the month; Bubble may follow JavaScript
   # (getDay: the weekday), unverified until the replay (WTF-358).
   def approximations(:date_part, "day"),
-    do: ["date_part_unit:day (day of month; Bubble may mean the weekday)"]
+    do: ["date_part_unit:day"]
 
   def approximations(:date_part, unit) when unit in @part_units, do: []
   def approximations(:date_part, unit), do: ["date_part_unit:#{unit}"]

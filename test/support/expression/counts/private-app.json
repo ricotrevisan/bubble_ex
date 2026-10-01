@@ -5,7 +5,7 @@
         "approximated": {
           "date_format_letters": 1,
           "date_format_token:ZZ": 6,
-          "date_part_unit:day (day of month; Bubble may mean the weekday)": 4
+          "date_part_unit:day": 4
         },
         "by_kind": {
           "element": 11006,
@@ -99,7 +99,7 @@
         "approximated": {
           "date_format_letters": 1,
           "date_format_token:ZZ": 6,
-          "date_part_unit:day (day of month; Bubble may mean the weekday)": 4
+          "date_part_unit:day": 4
         },
         "by_kind": {
           "element": 11006,
@@ -193,7 +193,7 @@
         "approximated": {
           "date_format_letters": 1,
           "date_format_token:ZZ": 6,
-          "date_part_unit:day (day of month; Bubble may mean the weekday)": 4
+          "date_part_unit:day": 4
         },
         "by_kind": {
           "element": 11006,

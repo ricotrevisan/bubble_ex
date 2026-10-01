@@ -15,7 +15,7 @@ defmodule BubbleEx.Target.Elixir.Runtime do
 
   @type value :: term()
 
-  @doc "A value as machine text (URLs, API responses): `nil` is `\"\"`, `1.0` is `\"1\"`, yes/no, ISO 8601 dates."
+  @doc "A value as machine text (URLs, API responses): `nil` is `\"\"`, `1.0` is `\"1\"`, yes/no, ISO 8601 dates in UTC with milliseconds."
   @callback text(value()) :: String.t()
   @doc "A value as Bubble shows it on a page: `text/1` with dates in Bubble's default format."
   @callback display(value()) :: String.t()

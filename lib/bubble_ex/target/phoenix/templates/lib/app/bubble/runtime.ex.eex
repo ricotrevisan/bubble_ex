@@ -33,8 +33,8 @@ defmodule <%= @module %>.Bubble.Runtime do
   def text(true), do: "yes"
   def text(false), do: "no"
   def text(x) when is_float(x), do: js_number(x)
-  def text(%DateTime{} = x), do: DateTime.to_iso8601(x)
-  def text(%NaiveDateTime{} = x), do: NaiveDateTime.to_iso8601(x)
+  def text(%DateTime{} = x), do: iso(x)
+  def text(%NaiveDateTime{} = x), do: x |> DateTime.from_naive!("Etc/UTC") |> iso()
   def text(%Date{} = x), do: Date.to_iso8601(x)
   def text(%Decimal{} = x), do: Decimal.to_string(x, :normal)
   def text(x) when is_list(x), do: Enum.map_join(x, ", ", &text/1)
@@ -61,8 +61,17 @@ defmodule <%= @module %>.Bubble.Runtime do
     mantissa <> "e" <> sign <> exponent
   end
 
-  defp js_number(x) when x == trunc(x), do: Integer.to_string(trunc(x))
-  defp js_number(x), do: x |> Decimal.from_float() |> Decimal.to_string(:normal)
+  # Shortest digits, as JavaScript: 9.999999999999999e20 is
+  # "999999999999999900000", not the float's exact integer.
+  defp js_number(x),
+    do: x |> Decimal.from_float() |> Decimal.normalize() |> Decimal.to_string(:normal)
+
+  # ISO 8601 in UTC with milliseconds, as JavaScript's toISOString.
+  defp iso(%DateTime{} = x) do
+    {us, _} = x.microsecond
+    utc = DateTime.shift_zone!(x, "Etc/UTC")
+    DateTime.to_iso8601(%{utc | microsecond: {us - rem(us, 1000), 3}})
+  end
 
   @doc "`is empty`."
 <%= if @enforced? do %>  def empty?(%Ash.ForbiddenField{}), do: true
@@ -222,11 +231,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   def format_date(%Date{} = x, "iso_date", _zone), do: Date.to_iso8601(x)
   def format_date(%Date{} = x, nil, zone), do: format_date(x, @default_day_format, zone)
 
-  def format_date(%DateTime{} = x, "iso_date", _zone) do
-    {us, _} = x.microsecond
-    utc = DateTime.shift_zone!(x, "Etc/UTC")
-    DateTime.to_iso8601(%{utc | microsecond: {us - rem(us, 1000), 3}})
-  end
+  def format_date(%DateTime{} = x, "iso_date", _zone), do: iso(x)
 
   def format_date(x, format, zone) do
     case local(x, zone) do
@@ -430,7 +435,7 @@ defmodule <%= @module %>.Bubble.Runtime do
     local
     |> DateTime.to_naive()
     |> NaiveDateTime.shift([{unit, trunc(n)}])
-    |> at(local.time_zone, nil)
+    |> at(local.time_zone, local.utc_offset + local.std_offset)
   end
 
   def date_add(%DateTime{} = x, n, unit)
@@ -461,10 +466,13 @@ defmodule <%= @module %>.Bubble.Runtime do
       end
 
     {h, m, s} = time
+    # Within the day, a repeated hour keeps the original's occurrence; a
+    # repeated midnight (Havana) starts the day at the earlier one.
+    offset = if unit in ~w(hour minute second), do: local.utc_offset + local.std_offset
 
     date
     |> NaiveDateTime.new!(Time.new!(h, m, s, {0, 6}))
-    |> at(local.time_zone, local.utc_offset + local.std_offset)
+    |> at(local.time_zone, offset)
   end
 
   def date_floor(x, _unit, _zone), do: x

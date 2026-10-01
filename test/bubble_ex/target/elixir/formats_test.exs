@@ -97,9 +97,9 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       refute rt.display(@at) =~ ~r/\d{4}-\d{2}-\d{2}T/
       # URLs, API responses and request bodies (navigate query params, the
       # workflow API) read text/1: lossless, as before.
-      assert rt.text(@at) == "2028-03-02T15:04:05.678901Z"
+      assert rt.text(@at) == "2028-03-02T15:04:05.678Z"
       assert rt.text(~D[2028-03-02]) == "2028-03-02"
-      assert rt.text(~N[2028-03-02 15:04:05]) == "2028-03-02T15:04:05"
+      assert rt.text(~N[2028-03-02 15:04:05]) == "2028-03-02T15:04:05.000Z"
       assert rt.display("x") == "x"
     end
 
@@ -131,6 +131,8 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
             {0.1, "0.1"},
             {-2.5, "-2.5"},
             {1.0e20, "100000000000000000000"},
+            {String.to_float("9.999999999999999e20"), "999999999999999900000"},
+            {9_007_199_254_740_993.0, "9007199254740992"},
             {1.0e21, "1e+21"},
             {1.5e22, "1.5e+22"},
             {1.0e-6, "0.000001"},
@@ -298,7 +300,7 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert Formats.approximations(:date_part, "date") == []
 
       assert Formats.approximations(:date_part, "day") == [
-               "date_part_unit:day (day of month; Bubble may mean the weekday)"
+               "date_part_unit:day"
              ]
 
       assert Formats.approximations(:date_part, "quarter") == ["date_part_unit:quarter"]

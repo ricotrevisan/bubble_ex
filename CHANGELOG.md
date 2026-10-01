@@ -25,7 +25,8 @@ All notable changes to this project are documented here.
   browser's), instead of a raw ISO timestamp; a date shown without a
   format uses Bubble's default on pages (the runtime's new `display/1`;
   `text/1`, which URLs, navigate parameters and API responses read, keeps
-  ISO 8601, and prints numbers as JavaScript does). A calendar day shows
+  ISO 8601 in UTC with milliseconds, and prints numbers as JavaScript
+  does). A calendar day shows
   as the day; local times a clock change skips or repeats resolve as in
   JavaScript, and rounding down within a repeated hour stays in it (tested
   with `tz`, a test-only dependency). `:formatted as` a number renders decimals,
