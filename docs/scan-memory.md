@@ -2,8 +2,11 @@
 
 The existing `Trufflehog.scan/2` interface remains available. It now encodes one
 private JSON artifact, reads scanner NDJSON incrementally, and checks BASE64
-findings against the file in bounded chunks. Scanner input formatting remains
-pretty JSON, preserving the previous scanner input representation for maps.
+findings against the file in bounded chunks. Maps are written as compact JSON
+(WTF-469): pretty-printing a 3 MiB app built ~290 MiB of iodata and OOM-killed
+a 1.5 GiB scan worker. The whole map is one line, so a finding's
+`SourceMetadata` line number is always 1. `max_input_bytes` measures this
+compact encoding.
 Raw stdout is no longer retained alongside a second parsed result list.
 
 For callers that also upload or inspect the source, share its lifetime:

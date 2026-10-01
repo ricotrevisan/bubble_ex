@@ -2,10 +2,15 @@ defmodule BubbleEx.PayloadFile do
   @moduledoc """
   A private JSON artifact shared by scan stages.
 
-  `with_file/3` encodes a map once as iodata directly to disk. The callback may
-  scan or upload `artifact.path`; it must finish before returning. Cleanup runs
-  even if the callback raises. This budget bounds serialized input, not the
-  caller's already-decoded map or the memory of an external scanner.
+  `with_file/3` encodes a map once as compact JSON iodata directly to disk.
+  The callback may scan or upload `artifact.path`; it must finish before
+  returning. Cleanup runs even if the callback raises. This budget bounds
+  serialized input, not the caller's already-decoded map or the memory of an
+  external scanner.
+
+  The JSON is deliberately not pretty-printed: for a 3 MiB app, Jason's pretty
+  iodata was ~290 MiB of terms (16 MiB on disk), enough to OOM-kill a 1.5 GiB
+  scan worker (WTF-469).
   """
 
   alias BubbleEx.Error
@@ -35,7 +40,7 @@ defmodule BubbleEx.PayloadFile do
     end
   end
 
-  defp encode(payload) when is_map(payload), do: Jason.encode_to_iodata(payload, pretty: true)
+  defp encode(payload) when is_map(payload), do: Jason.encode_to_iodata(payload)
   defp encode(payload) when is_binary(payload), do: {:ok, payload}
   defp encode(_), do: {:error, :invalid_payload}
 
