@@ -979,6 +979,12 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {
+          "lead_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ]
+        },
         "stricter_rules": [
           "lead_"
         ]
@@ -1937,6 +1943,16 @@
           ]
         },
         "source": "rules",
+        "stricter_flags": {
+          "admin_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ],
+          "owner_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ]
+        },
         "stricter_rules": [
           "admin_",
           "owner_"
@@ -2341,6 +2357,12 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {
+          "everyone": [
+            "everyone_exclusive",
+            "everyone_guards_record_values"
+          ]
+        },
         "stricter_rules": [
           "everyone"
         ]
@@ -2928,6 +2950,16 @@
           ]
         },
         "source": "rules",
+        "stricter_flags": {
+          "everyone": [
+            "everyone_exclusive",
+            "everyone_guards_record_values"
+          ],
+          "mine_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ]
+        },
         "stricter_rules": [
           "mine_",
           "everyone"
@@ -3298,6 +3330,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "public_default",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [],
@@ -3807,6 +3840,12 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {
+          "me_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ]
+        },
         "stricter_rules": [
           "me_"
         ]

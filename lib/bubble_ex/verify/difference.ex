@@ -261,12 +261,15 @@ defmodule BubbleEx.Verify.Difference do
   def stricter?(_kind, _bubble, _target), do: false
 
   @doc """
-  Whether a compiled rule condition can differ between Bubble and the
-  target under the policy: it reads the current user (an atom with an
-  empty user-side value is where `actor_empty_denies` decides, a
-  logged-out user where `logged_out_user_is_empty` does), or it compares
-  a stored yes/no with something other than `yes` (an empty one is where
-  `empty_yes_no_is_no` decides).
+  Whether a compiled rule condition can make the target stricter than
+  Bubble under the policy (`rule_flags/1` is not empty): it reads the
+  current user (an atom with an empty user-side value is where
+  `actor_empty_denies` decides, a logged-out user where
+  `logged_out_user_is_empty` does), or it tests a stored yes/no in a way
+  an empty one fails in the target but may pass in Bubble, which reads it
+  as no (`empty_yes_no_is_no`: `x is no`, `x is y` between stored yes/no
+  values, `x is not <condition>`). The opposite case, where the target is
+  less strict, is `empty_yes_no_wider?/1`.
   """
   @spec affected?(IR.t() | nil) :: boolean()
   def affected?(ir), do: rule_flags(ir) != []
@@ -275,8 +278,8 @@ defmodule BubbleEx.Verify.Difference do
   The policy flags under which a compiled rule condition can make the
   target stricter than Bubble (see `affected?/1`), sorted:
   `actor_empty_denies` and `logged_out_user_is_empty` when it reads the
-  current user, `empty_yes_no_is_no` when it compares a stored yes/no
-  with other than `yes`.
+  current user, `empty_yes_no_is_no` when a stored yes/no test is
+  stricter on an empty value.
   """
   @spec rule_flags(IR.t() | nil) :: [atom()]
   def rule_flags(nil), do: []
@@ -287,59 +290,130 @@ defmodule BubbleEx.Verify.Difference do
         do: [:actor_empty_denies, :logged_out_user_is_empty],
         else: []
 
-    yes_no = if yes_no_comparison?(ir), do: [:empty_yes_no_is_no], else: []
+    yes_no = if :stricter in yes_no_tests(ir), do: [:empty_yes_no_is_no], else: []
     Enum.sort(actor ++ yes_no)
   end
 
-  # `x is y` / `is not` with a stored yes/no on one side and anything but
-  # the literal `yes` on the other.
-  defp yes_no_comparison?(%IR{op: op, args: [l, r]} = ir) when op in [:eq, :neq],
-    do: yes_no_pair?(l, r) or yes_no_pair?(r, l) or Enum.any?(ir.args, &yes_no_comparison?/1)
+  @doc """
+  Whether a compiled rule condition is **less strict** than Bubble on an
+  empty stored yes/no (WTF-471): after negations are pushed down, it holds
+  `x is not no`, or `x is not y` with another stored yes/no, on a
+  record-side x. The compiled `is_distinct_from(x, false)` holds on an
+  empty x, where Bubble, reading empty as no, does not. Not an intended
+  difference: the generated policies warn
+  (`:ash_policy_empty_yes_no_wider_than_bubble`) and the matrix reports
+  its cases as unintended.
+  """
+  @spec empty_yes_no_wider?(IR.t() | nil) :: boolean()
+  def empty_yes_no_wider?(nil), do: false
+  def empty_yes_no_wider?(%IR{} = ir), do: :wider in yes_no_tests(ir)
 
-  defp yes_no_comparison?(%IR{args: args}), do: Enum.any?(args, &yes_no_comparison?/1)
-  defp yes_no_comparison?(list) when is_list(list), do: Enum.any?(list, &yes_no_comparison?/1)
-  defp yes_no_comparison?(_), do: false
+  # The stored yes/no tests of a condition, classified once negations are
+  # pushed down to the atoms as the compiler does: `:stricter` where an
+  # empty yes/no fails in the target but may hold in Bubble (empty is no),
+  # `:wider` where it holds in the target but not in Bubble.
+  @stored_ops [:field, :fallback]
 
-  defp yes_no_pair?(%IR{op: op, type: "boolean"}, other) when op in [:field, :fallback],
-    do: not match?(%IR{op: :literal, args: [true]}, other)
+  defp yes_no_tests(ir), do: ir |> yes_no_tests(true) |> MapSet.new()
 
-  defp yes_no_pair?(_, _), do: false
+  defp yes_no_tests(%IR{op: :not, args: [x]}, pos), do: yes_no_tests(x, not pos)
+
+  defp yes_no_tests(%IR{op: op, args: args}, pos) when op in [:and, :or],
+    do: Enum.flat_map(args, &yes_no_tests(&1, pos))
+
+  defp yes_no_tests(%IR{op: op, args: [l, r]} = ir, pos) when op in [:eq, :neq] do
+    is = op == :eq == pos
+
+    cond do
+      # `c is yes` / `c is no` of a condition: the condition, in a polarity
+      condition?(l) and boolean_literal?(r) -> yes_no_tests(l, is == literal(r))
+      condition?(r) and boolean_literal?(l) -> yes_no_tests(r, is == literal(l))
+      stored?(l) or stored?(r) -> yes_no_atom(l, r, is) ++ yes_no_atom(r, l, is)
+      true -> Enum.flat_map(ir.args, &(yes_no_tests(&1, true) ++ yes_no_tests(&1, false)))
+    end
+  end
+
+  defp yes_no_tests(%IR{args: args}, _pos),
+    do: Enum.flat_map(args, &(yes_no_tests(&1, true) ++ yes_no_tests(&1, false)))
+
+  defp yes_no_tests(_other, _pos), do: []
+
+  # One side `s` a stored yes/no, the other `o`; `is` the effective test.
+  defp yes_no_atom(s, o, is) do
+    cond do
+      not stored?(s) or yes?(o) -> []
+      is -> [:stricter]
+      # `x is not no` / `x is not y`: holds on an empty record-side x
+      boolean_literal?(o) or stored?(o) -> if record_side?(s), do: [:wider], else: []
+      # `x is not <condition>`: the target needs a stored value either way
+      true -> [:stricter]
+    end
+  end
+
+  defp yes?(o), do: boolean_literal?(o) and literal(o) == true
+
+  defp stored?(%IR{op: op, type: "boolean"}) when op in @stored_ops, do: true
+  defp stored?(_), do: false
+
+  defp condition?(%IR{type: "boolean", op: op}), do: op not in [:literal | @stored_ops]
+  defp condition?(_), do: false
+
+  defp boolean_literal?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
+  defp boolean_literal?(_), do: false
+
+  defp literal(%IR{args: [b]}), do: b
+
+  defp record_side?(ir), do: :current_user not in IR.ops(ir)
 
   @doc """
   The structural list, from the Model alone: every rule whose condition
-  compiles and can differ (`affected?/1`), where the target may deny what
-  Bubble grants (`%{type, rule, flags}`, Bubble IDs, sorted), plus the
-  `everyone` rule of a type when it grants something some other rule
-  lacks (`everyone_narrowed?/3`): Bubble's `everyone` rule reaches every
-  user, the target's only the users no rule lacking the grant matches.
+  compiles and can be stricter than Bubble (`affected?/1`), with its
+  flags (`rule_flags/1`), plus the `everyone` rule of a type when it
+  grants something some other rule lacks (`everyone_narrowed?/3`, flags
+  `everyone_exclusive` and `everyone_guards_record_values`): Bubble's
+  `everyone` rule reaches every user, the target's only the users no rule
+  lacking the grant matches. `%{type, rule, flags}`, Bubble IDs, sorted.
   """
   @spec structural(Model.t()) :: [%{type: String.t(), rule: String.t(), flags: [atom()]}]
   def structural(%Model{} = model) do
     {:ok, interpreter} = Interpreter.new(model, assumptions: Assumptions.target())
 
     for {type_id, %{status: :rules} = info} <- Enum.sort(interpreter.types),
-        affected = for(%{ir: ir, rule: r} <- info.rules, affected?(ir), do: r.id),
-        rule <- Enum.sort(affected) ++ everyone(info),
-        do: %{type: type_id, rule: rule, flags: flags(:rule_conditions)}
+        entry <- rule_entries(info) ++ everyone(info),
+        do: Map.put(entry, :type, type_id)
+  end
+
+  defp rule_entries(info) do
+    for %{ir: ir, rule: r} <- Enum.sort_by(info.rules, & &1.rule.id),
+        flags = rule_flags(ir),
+        flags != [],
+        do: %{rule: r.id, flags: flags}
   end
 
   defp everyone(%{default: %{permissions: %{} = p}} = info) do
     others = Enum.map(info.rules, & &1.rule.permissions)
 
-    if grants?(p) and everyone_narrowed?(p, others, MapSet.to_list(info.field_ids)),
-      do: ["everyone"],
+    if everyone_narrowed?(p, others, MapSet.to_list(info.field_ids)),
+      do: [%{rule: "everyone", flags: everyone_flags()}],
       else: []
   end
 
   defp everyone(_info), do: []
 
+  @doc "The flags of the `everyone` rule's narrowed reach."
+  @spec everyone_flags() :: [atom()]
+  def everyone_flags, do: [:everyone_exclusive, :everyone_guards_record_values]
+
   @doc """
   Whether the `everyone` rule's reach differs between Bubble and the
   target (`everyone_exclusive`, `everyone_guards_record_values`): its
-  permissions `everyone` grant a view, a search or a field (of `fields`,
-  the type's field IDs) that some rule's permissions in `others` (nil:
+  permissions `everyone` grant a view, a search, a field (of `fields`,
+  the type's field IDs), "view attached files" or a Data API permission
+  (create, modify, delete) that some rule's permissions in `others` (nil:
   grants nothing) lack. Bubble then grants it to every user, the target
-  only where none of those rules holds.
+  only where none of those rules holds. A grant whose negation does not
+  compile is denied outright instead (`:ash_policy_default_grant_denied`,
+  also counted here: stricter either way).
   """
   @spec everyone_narrowed?(map() | nil, [map() | nil], [String.t()]) :: boolean()
   def everyone_narrowed?(nil, _others, _fields), do: false
@@ -351,7 +425,13 @@ defmodule BubbleEx.Verify.Difference do
       Enum.any?(others, &(not MapSet.subset?(granted, granted(&1, fields))))
   end
 
-  defp grants?(p), do: p.view_all == true or (p.view_fields || []) != [] or p.search_for == true
+  @flags_granted [
+    :search_for,
+    :view_attachments,
+    :create_via_api,
+    :modify_via_api,
+    :delete_via_api
+  ]
 
   defp granted(nil, _fields), do: MapSet.new()
 
@@ -360,8 +440,8 @@ defmodule BubbleEx.Verify.Difference do
       if p.view_all == true, do: fields, else: Enum.filter(p.view_fields || [], &(&1 in fields))
 
     view = if p.view_all == true or shown != [], do: [:view], else: []
-    search = if p.search_for == true, do: [:search], else: []
-    MapSet.new(view ++ search ++ Enum.map(shown, &{:field, &1}))
+    flags = for flag <- @flags_granted, Map.get(p, flag) == true, do: flag
+    MapSet.new(view ++ flags ++ Enum.map(shown, &{:field, &1}))
   end
 
   # --- applying the record ----------------------------------------------------------

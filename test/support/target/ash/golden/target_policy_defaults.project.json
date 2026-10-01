@@ -642,6 +642,12 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {
+          "active_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ]
+        },
         "stricter_rules": [
           "active_"
         ]
@@ -1095,6 +1101,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [
@@ -1512,6 +1519,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [],

@@ -737,6 +737,10 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
       rule grants something another rule lacks: Bubble's `everyone` rule
       reaches every user, the policies' only the users none of those
       rules matches (WTF-467)
+    * `stricter_flags` - per entry of `stricter_rules`, the
+      `BubbleEx.Verify.Difference` flags it is stricter by
+      (`Difference.rule_flags/1`; `Difference.everyone_flags/0` for
+      `"everyone"`)
     * `attachments` - `BubbleEx.Target.Ash.PolicyCheck`s for Bubble's "view
       attached files", which Ash cannot enforce (file fields are URLs; the
       file store must): data for the owner and later lowering only
@@ -770,6 +774,7 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     compiled_rules: [],
     denied_rules: [],
     stricter_rules: [],
+    stricter_flags: %{},
     attachments: [],
     file_fields: [],
     data_api: %{exposed: nil, create: [], modify: [], delete: []},
@@ -783,6 +788,7 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
           compiled_rules: [String.t()],
           denied_rules: [String.t()],
           stricter_rules: [String.t()],
+          stricter_flags: %{String.t() => [atom()]},
           attachments: [BubbleEx.Target.Ash.PolicyCheck.t()],
           file_fields: [String.t()],
           data_api: map(),

@@ -960,11 +960,16 @@ defmodule BubbleEx.Target.Ash.Policies do
           Difference.affected?(by_rule[{type.id, r.id}].ir),
           do: r.id
 
+    everyone = stricter_everyone(default, others, fields)
+
     privacy = %ResourcePrivacy{
       source: :rules,
       compiled_rules: for(r <- others, MapSet.member?(compiled, r.id), do: r.id),
       denied_rules: denied,
-      stricter_rules: stricter ++ stricter_everyone(default, others, fields),
+      stricter_rules: stricter ++ everyone,
+      stricter_flags:
+        Map.new(stricter, &{&1, Difference.rule_flags(by_rule[{type.id, &1}].ir)})
+        |> Map.merge(Map.new(everyone, &{&1, Difference.everyone_flags()})),
       attachments: attachments,
       file_fields: file_fields(type, fields),
       data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api),
@@ -990,6 +995,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         default_diags(ctx) ++
         denied_rules(type, denied, ctx) ++
         stricter_rules(type, stricter, ctx) ++
+        wider_yes_no(type, others, compiled, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
         search_fields_diag(type, search_fields) ++
         binding_dropped(type, others ++ List.wrap(default), fields) ++
@@ -1591,11 +1597,11 @@ defmodule BubbleEx.Target.Ash.Policies do
   # reaches every user, the policy only the users none of those rules
   # matches (`everyone_exclusive`, WTF-467). Otherwise it is `always`.
   defp stricter_everyone(%{permissions: %{} = p}, others, fields) do
-    grants? = p.view_all == true or (p.view_fields || []) != [] or p.search_for == true
     perms = Enum.map(others, & &1.permissions)
-    narrowed? = Difference.everyone_narrowed?(p, perms, Enum.map(fields, &elem(&1, 0)))
 
-    if grants? and narrowed?, do: ["everyone"], else: []
+    if Difference.everyone_narrowed?(p, perms, Enum.map(fields, &elem(&1, 0))),
+      do: ["everyone"],
+      else: []
   end
 
   defp stricter_everyone(_default, _others, _fields), do: []
@@ -1615,6 +1621,27 @@ defmodule BubbleEx.Target.Ash.Policies do
         target: :ash,
         subject: %{type: type.id, rule: id},
         details: %{flags: Enum.map(flags, &Atom.to_string/1)}
+      )
+    end
+  end
+
+  # WTF-471: `x is not no` (or `x is not y` between stored yes/no values)
+  # on a record-side x compiles to `is_distinct_from(x, ...)`, which holds
+  # on an empty x where Bubble, reading empty as no, does not: less strict
+  # than Bubble, not by design.
+  defp wider_yes_no(type, others, compiled, ctx) do
+    for r <- others,
+        MapSet.member?(compiled, r.id),
+        Difference.empty_yes_no_wider?(ctx.by_rule[{type.id, r.id}].ir) do
+      Diagnostic.new(
+        :ash_policy_empty_yes_no_wider_than_bubble,
+        r.path,
+        "#{type.id}: privacy rule #{rule_label(r)} tests a stored yes/no with `is not no` (or " <>
+          "`is not` another yes/no); on an empty value the policy grants where Bubble, which " <>
+          "reads empty as no, does not (less strict than Bubble; WTF-471)",
+        target: :ash,
+        subject: %{type: type.id, rule: r.id},
+        details: %{flags: ["empty_yes_no_is_no"], ticket: "WTF-471"}
       )
     end
   end

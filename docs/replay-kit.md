@@ -243,9 +243,13 @@ No email reaches a real person.
 - **The `everyone` rule reaches every user** (the 2026-10-01 run,
   WTF-467). Its grants add to what the other rules grant, also for a
   user another rule matches; they are not limited to the users no other
-  rule matches (0 of 19 dependent ops agreed with that reading). The
-  compiler's guard on that reach (the record values the other rules read
-  must be non-empty) has nothing to guard either (0 of 18).
+  rule matches. The compiler's guard on that reach (the record values
+  the other rules read must be non-empty) has nothing to guard either (0
+  of 18 agreed with it). 19 ops depended on exclusivity and none agreed,
+  but 17 of them are also explained by dropping the guard alone: only 2
+  tell an additive `everyone` rule apart from an exclusive one without
+  the guard (both for additive). The next replay should add witnesses for
+  it (the matrix does, since it is still unsettled).
 - **A logged-out user is a temporary user**, not an empty one: it equals
   no record's user, so `This Thing's Creator = Current User` does not
   grant it a record with no creator (0 of 12 agreed with the empty

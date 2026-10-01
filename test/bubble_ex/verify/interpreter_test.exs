@@ -457,7 +457,6 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
       # WTF-467: refuted by the 2026-10-01 run, flipping breaks nothing
       for {flag, fixes} <- [
-            everyone_exclusive: 19,
             everyone_guards_record_values: 17,
             logged_out_user_is_empty: 12
           ] do
@@ -470,6 +469,13 @@ defmodule BubbleEx.Verify.InterpreterTest do
       # leaning in both runs (0 of 2, 0 of 5): flipped, still unsettled
       assert %{status: :leaning_flipped, agree: 0, disagree: 5} = evidence.empty_yes_no_is_no
       assert :empty_yes_no_is_no in Assumptions.unsettled()
+
+      # only 2 of the 19 dependent ops tell an additive everyone rule from
+      # an exclusive one without the guard: flipped, still unsettled
+      assert %{status: :leaning_flipped, agree: 0, disagree: 2, flip_fixes: 2} =
+               evidence.everyone_exclusive
+
+      assert :everyone_exclusive in Assumptions.unsettled()
 
       for flag <- [
             :empty_equals_empty,
@@ -488,10 +494,10 @@ defmodule BubbleEx.Verify.InterpreterTest do
       # every flipped flag differs from the target's reading by the
       # policy of BubbleEx.Verify.Difference; the other unsettled flags
       # are not flipped
-      for flag <- Assumptions.unsettled() -- [:empty_yes_no_is_no],
+      for flag <- Assumptions.unsettled() -- [:empty_yes_no_is_no, :everyone_exclusive],
           do: assert(Assumptions.defaults()[flag] == Assumptions.target()[flag], "#{flag}")
 
-      assert length(Assumptions.unsettled()) == 9
+      assert length(Assumptions.unsettled()) == 10
     end
 
     test "an empty user-side value compares like any empty value", %{model: model, ds: ds} do

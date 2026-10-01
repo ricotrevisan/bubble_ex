@@ -11,7 +11,7 @@
       "empty_list_contains_nothing": "unclear",
       "empty_text_contains_nothing": "not_exercised",
       "empty_yes_no_is_no": "leaning_flipped",
-      "everyone_exclusive": "refuted",
+      "everyone_exclusive": "leaning_flipped",
       "everyone_guards_record_values": "refuted",
       "hidden_field_constraint_matches": "documented",
       "logged_out_user_is_empty": "refuted",
@@ -23,10 +23,10 @@
     "changed": [],
     "dependent_checks": {
       "actor_empty_denies": 82,
-      "builtin_fields_hidden_unless_listed": 69,
+      "builtin_fields_hidden_unless_listed": 85,
       "empty_equals_empty": 82,
       "empty_yes_no_is_no": 13,
-      "everyone_exclusive": 4,
+      "everyone_exclusive": 9,
       "logged_out_user_is_empty": 15,
       "no_visible_field_unreadable": 747,
       "non_filterable_constraint_excludes": 9,
@@ -57,6 +57,7 @@
       "empty_yes_no_is_no",
       "empty_list_contains_nothing",
       "dangling_ref_is_empty",
+      "everyone_exclusive",
       "absent_permission_denied",
       "empty_text_contains_nothing",
       "ordering_with_empty_false",
@@ -65,15 +66,15 @@
       "non_filterable_constraint_excludes"
     ]
   },
-  "checks": 1680,
+  "checks": 1704,
   "defaults": {
     "explicit_empties": 9,
     "fields": 194,
-    "seed_values_equal_to_default": 740,
+    "seed_values_equal_to_default": 794,
     "unmodeled": 0
   },
   "differences": {
-    "observations": 152,
+    "observations": 158,
     "policy": [
       "actor_empty_denies",
       "empty_yes_no_is_no",
@@ -87,20 +88,20 @@
     "unintended": 0
   },
   "governed_fields": {
-    "held": 2385,
-    "slots": 3718,
-    "unchecked": 1333,
+    "held": 2525,
+    "slots": 3924,
+    "unchecked": 1399,
     "unchecked_by_reason": {
-      "condition_reads": 189,
+      "condition_reads": 193,
       "explicitly_empty": 11,
-      "no_synthetic_value": 1036,
+      "no_synthetic_value": 1098,
       "persona": 97
     }
   },
-  "observations": 2760,
+  "observations": 2808,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 180,
+  "records": 184,
   "rules": {
     "conditional": 91,
     "everyone": 53,

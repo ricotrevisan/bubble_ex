@@ -907,7 +907,7 @@ defmodule BubbleEx.Verify.Matrix do
   # The policy flags a case rests on (`observe` of a reading): those whose
   # target reading alone changes what Bubble's reading shows, and those
   # without whose target reading the intended one would not show what it
-  # does; all of them when neither tells.
+  # does; when neither tells, the minimal set that explains it.
   defp responsible(cell, observe) do
     bubble = observe.(cell.readings.bubble)
     intended = observe.(cell.readings.intended)
@@ -917,8 +917,38 @@ defmodule BubbleEx.Verify.Matrix do
           observe.(alone) != bubble or observe.(without) != intended,
           do: flag
 
-    if flags == [], do: Difference.flags(:rule_conditions), else: Enum.sort(flags)
+    if flags == [], do: minimal_set(cell, observe, intended), else: Enum.sort(flags)
   end
+
+  # When no flag alone tells: the smallest set of the policy's flags whose
+  # target readings, together, give the intended observation (fewest flags
+  # first, then in order). The whole set always does: intended is Bubble's
+  # reading with every policy flag at its target reading.
+  defp minimal_set(cell, observe, intended) do
+    flags = Enum.map(cell.readings.per_flag, &elem(&1, 0))
+    bubble = cell.readings.bubble
+
+    Enum.find_value(1..max(length(flags), 1)//1, flags, fn size ->
+      Enum.find(subsets(flags, size), fn set ->
+        target = Map.new(set, &{&1, Difference.policy()[&1].target})
+        observe.(with_flags(bubble, target)) == intended
+      end)
+    end)
+    |> Enum.sort()
+  end
+
+  defp with_flags(interpreter, flags) do
+    {:ok, i} =
+      Interpreter.with_assumptions(interpreter, Map.merge(interpreter.assumptions, flags))
+
+    i
+  end
+
+  defp subsets(_list, 0), do: [[]]
+  defp subsets([], _size), do: []
+
+  defp subsets([h | t], size),
+    do: Enum.map(subsets(t, size - 1), &[h | &1]) ++ subsets(t, size)
 
   # Per op of a scenario: where the target's verdict differs from the
   # recorded one, an intended difference per observation (stricter, and

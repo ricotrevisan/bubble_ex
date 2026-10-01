@@ -480,6 +480,34 @@ defmodule BubbleEx.Verify.MatrixTest do
   end
 
   describe "intended differences: the target policy is stricter than Bubble (WTF-426)" do
+    # Several flags can apply to one case: each case names those its
+    # verdict rests on, never the whole policy by default, and Bubble's
+    # reading with just those at their target reading gives the case's
+    # target value.
+    test "each case names the flags that explain it; several may apply", %{
+      pmodel: model,
+      policies: matrix
+    } do
+      {:ok, bubble} = Interpreter.new(model)
+      {:ok, ds} = Dataset.from_seed(matrix.seed)
+      all = Difference.flags(:rule_conditions)
+
+      assert Enum.any?(matrix.differences, &match?([_, _ | _], &1.flags))
+      refute Enum.any?(matrix.differences, &(&1.flags == all))
+
+      for %{kind: kind} = c <- matrix.differences, kind in [:visible, :visible_fields] do
+        overrides = Map.new(c.flags, &{&1, Difference.policy()[&1].target})
+
+        {:ok, reading} =
+          Interpreter.with_assumptions(bubble, Map.merge(bubble.assumptions, overrides))
+
+        user = matrix.seed.personas[c.persona].user
+        {:ok, access} = Interpreter.access(reading, ds, user, c.record)
+        value = if kind == :visible, do: access.visible, else: access.fields
+        assert value == c.target, "#{c.scenario} #{c.op} #{kind} #{inspect(c.flags)}"
+      end
+    end
+
     test "every case is stricter, explained by the policy's flags, and none is unintended",
          %{pmodel: model, policies: matrix} do
       {:ok, bubble} = Interpreter.new(model)
@@ -603,15 +631,17 @@ defmodule BubbleEx.Verify.MatrixTest do
 
     test "the structural list names every rule reading the current user", %{pmodel: model} do
       list = Difference.structural(model)
-      flags = Difference.flags(:rule_conditions)
-      assert %{type: "board", rule: "lead_", flags: flags} in list
-      assert %{type: "doc", rule: "owner_", flags: flags} in list
+      actor = [:actor_empty_denies, :logged_out_user_is_empty]
+      # each entry names its own flags (Difference.rule_flags/1)
+      assert %{type: "board", rule: "lead_", flags: actor} in list
+      assert %{type: "doc", rule: "owner_", flags: actor} in list
       # doc's everyone rule grants a field every other rule grants too: its
       # reach is `always` in both readings
       refute Enum.any?(list, &(&1.type == "doc" and &1.rule == "everyone"))
       # note's everyone rule grants what hidden_ lacks: Bubble reaches every
       # user with it, the policies only those hidden_ does not match (WTF-467)
-      assert %{type: "note", rule: "everyone", flags: flags} in list
+      assert %{type: "note", rule: "everyone", flags: Difference.everyone_flags()} in list
+      assert Enum.all?(list, &(&1.flags in [actor, Difference.everyone_flags()]))
       refute Enum.any?(list, &(&1.type == "note" and &1.rule == "hidden_"))
     end
 

@@ -8,26 +8,34 @@ All notable changes to this project are documented here.
 
 - **Privacy interpreter: four calibration flags flipped to Bubble's
   reading** (WTF-467). The 2026-10-01 replay of WTF-385 refuted
+  `everyone_guards_record_values` and `logged_out_user_is_empty` (a
+  logged-out user is Bubble's temporary user), and leaned flipped on
   `everyone_exclusive` (Bubble's `everyone` rule reaches every user, on
-  top of the other rules), `everyone_guards_record_values` (moot with
-  it) and `logged_out_user_is_empty` (a logged-out user is Bubble's
-  temporary user), and leaned flipped on `empty_yes_no_is_no` for the
-  second run (an empty yes/no reads as no). Flipping them raises the
+  top of the other rules; only 2 ops tell it apart from dropping the
+  guard, both for it) and, for the second run, `empty_yes_no_is_no` (an
+  empty yes/no reads as no). Flipping them raises the
   run's agreement from 94.7% to 97.3% (1,354 of 1,392 ops); none breaks
   an agreeing op. `Assumptions.evidence/0` records the run per flag.
   **The generated policies do not change**: each flip would widen them,
   so they keep the stricter reading and `Verify.Difference` lists the
   four as intended differences (`policy/0`, per-case `flags` now naming
-  only the flags responsible). `ResourcePrivacy.stricter_rules` and
-  `:ash_policy_stricter_than_bubble` cover rules comparing a stored
-  yes/no, and list `"everyone"` only where its grants are narrowed
-  (some rule lacks what it grants), no longer for every type whose rules
-  read the user. The matrix seeks the `everyone` rule's witnesses under
+  only the flags responsible, or the minimal set that explains the case).
+  `ResourcePrivacy.stricter_rules` and `:ash_policy_stricter_than_bubble`
+  cover rules whose yes/no tests are stricter on an empty value (`is
+  no`), and list `"everyone"` only where its grants (view, search,
+  fields, attachments, Data API) are narrowed (some rule lacks what it
+  grants), no longer for every type whose rules read the user; the new
+  `ResourcePrivacy.stricter_flags` and the structural list name each
+  entry's own flags. Because the Project changes, a regenerated app's
+  `.wtf/generated.json` records a new `project_sha256` (no generated
+  source changes). The matrix seeks the `everyone` rule's witnesses under
   the target's exclusive reach; under Bubble's, rules granting what the
-  `everyone` rule grants anyway are masked. Known gap: `x is not no` on
-  an empty yes/no compiles to `is_distinct_from(x, false)`, which grants
-  where Bubble (empty is no) does not; the matrix reports it as an
-  unintended difference.
+  `everyone` rule grants anyway are masked. Known gap (WTF-471): `x is
+  not no` on an empty yes/no compiles to `is_distinct_from(x, false)`,
+  which grants where Bubble (empty is no) does not; such rules get the
+  new warning `:ash_policy_empty_yes_no_wider_than_bubble` (not the
+  stricter-than-Bubble list) and the matrix reports their cases as
+  unintended differences.
 
 - **"Go to page" sends data to a page with no type of content** (WTF-466).
   A replay showed that Bubble appends the data as a path segment and the

@@ -83,6 +83,46 @@ defmodule BubbleEx.Verify.DifferenceTest do
     assert Difference.affected?(IR.node(:not, [IR.node(:neq, [no, flag], "boolean")], "boolean"))
     refute Difference.affected?(IR.node(:eq, [flag, yes], "boolean"))
     refute Difference.affected?(flag)
+
+    assert Difference.rule_flags(IR.node(:eq, [flag, no], "boolean")) == [:empty_yes_no_is_no]
+
+    assert Difference.rule_flags(IR.node(:eq, [owner, user], "boolean")) ==
+             [:actor_empty_denies, :logged_out_user_is_empty]
+  end
+
+  # WTF-471: `x is not no` on an empty x holds in the policies
+  # (`is_distinct_from(x, false)`) but not in Bubble (empty is no): less
+  # strict, never reported as stricter.
+  test "empty_yes_no_wider?/1: `x is not no` is less strict, not stricter" do
+    this = IR.node(:this, [:rule_record], "custom.t")
+    flag = IR.node(:field, [this, "custom.t", "done_boolean"], "boolean")
+    other = IR.node(:field, [this, "custom.t", "other_boolean"], "boolean")
+    no = IR.node(:literal, [false], "boolean")
+    yes = IR.node(:literal, [true], "boolean")
+    is_not_no = IR.node(:neq, [flag, no], "boolean")
+
+    refute Difference.affected?(is_not_no)
+    assert Difference.rule_flags(is_not_no) == []
+    assert Difference.empty_yes_no_wider?(is_not_no)
+
+    # the same through a negation: not (x is no)
+    negated = IR.node(:not, [IR.node(:eq, [flag, no], "boolean")], "boolean")
+    refute Difference.affected?(negated)
+    assert Difference.empty_yes_no_wider?(negated)
+
+    # between two stored yes/no values: `is` stricter, `is not` wider
+    assert Difference.affected?(IR.node(:eq, [flag, other], "boolean"))
+    assert Difference.empty_yes_no_wider?(IR.node(:neq, [flag, other], "boolean"))
+
+    # `(x is no) is no` is `x is not no`
+    double = IR.node(:eq, [IR.node(:eq, [flag, no], "boolean"), no], "boolean")
+    assert Difference.empty_yes_no_wider?(double)
+    refute Difference.affected?(double)
+
+    # `is not yes` and `is no` are not wider
+    refute Difference.empty_yes_no_wider?(IR.node(:neq, [flag, yes], "boolean"))
+    refute Difference.empty_yes_no_wider?(IR.node(:eq, [flag, no], "boolean"))
+    refute Difference.empty_yes_no_wider?(nil)
   end
 
   test "everyone_narrowed?/3: the everyone rule grants what some rule lacks" do
@@ -99,6 +139,16 @@ defmodule BubbleEx.Verify.DifferenceTest do
     assert Difference.everyone_narrowed?(everyone, [perms.(%{view_fields: ["b"]})], fields)
     assert Difference.everyone_narrowed?(everyone, [nil], fields)
     assert Difference.everyone_narrowed?(perms.(%{search_for: true}), [everyone], fields)
+    # attachments and Data API grants count too
+    assert Difference.everyone_narrowed?(perms.(%{view_attachments: true}), [nil], fields)
+    assert Difference.everyone_narrowed?(perms.(%{delete_via_api: true}), [everyone], fields)
+
+    refute Difference.everyone_narrowed?(
+             perms.(%{create_via_api: true}),
+             [perms.(%{create_via_api: true})],
+             fields
+           )
+
     # a listed field the type does not have is not granted
     refute Difference.everyone_narrowed?(perms.(%{view_fields: ["gone"]}), [nil], fields)
   end

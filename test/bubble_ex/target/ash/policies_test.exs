@@ -786,6 +786,70 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
            } = Project.privacy_summary(project)
   end
 
+  # WTF-467 review, WTF-471: `x is no` on an empty yes/no is stricter than
+  # Bubble (empty is no) by design; `x is not no` is less strict, so it is
+  # warned about instead of listed as stricter.
+  test "a yes/no `is no` is stricter by design, `is not no` is warned as wider" do
+    is_no = %{"type" => "Message", "name" => "is_false"}
+
+    rule = fn next ->
+      %{
+        "display" => "R",
+        "condition" => %{
+          "type" => "InjectedValue",
+          "next" => %{"type" => "Message", "name" => "flag_boolean", "next" => next}
+        },
+        "permissions" => %{"view_all" => true, "search_for" => true}
+      }
+    end
+
+    type = fn next ->
+      %{
+        "display" => "T",
+        "fields" => %{"flag_boolean" => %{"display" => "Flag", "value" => "boolean"}},
+        "privacy_role" => %{
+          "everyone" => %{
+            "display" => "everyone",
+            "permissions" => %{"view_all" => false, "search_for" => false}
+          },
+          "r_" => rule.(next)
+        }
+      }
+    end
+
+    project =
+      project!(%{
+        "_id" => "yes_no",
+        "user_types" => %{
+          "is_no" => type.(is_no),
+          "is_not_no" => type.(Map.put(is_no, "next", is_no))
+        }
+      })
+
+    stricter = resource(project, "is_no").privacy
+    assert stricter.stricter_rules == ["r_"]
+    assert stricter.stricter_flags == %{"r_" => [:empty_yes_no_is_no]}
+    assert :ash_policy_stricter_than_bubble in codes(project, %{type: "is_no", rule: "r_"})
+
+    refute :ash_policy_empty_yes_no_wider_than_bubble in codes(project, %{
+             type: "is_no",
+             rule: "r_"
+           })
+
+    wider = resource(project, "is_not_no").privacy
+    assert wider.stricter_rules == []
+    assert wider.stricter_flags == %{}
+    wider_codes = codes(project, %{type: "is_not_no", rule: "r_"})
+    refute :ash_policy_stricter_than_bubble in wider_codes
+    assert :ash_policy_empty_yes_no_wider_than_bubble in wider_codes
+
+    assert %{severity: :warning, details: %{ticket: "WTF-471"}} =
+             Enum.find(
+               project.diagnostics,
+               &(&1.code == :ash_policy_empty_yes_no_wider_than_bubble)
+             )
+  end
+
   defp heads({:ref, [], attribute}), do: [attribute]
   defp heads({:ref, [rel | _], _attribute}), do: [rel]
   defp heads({:call, _name, args}), do: Enum.flat_map(args, &heads/1)

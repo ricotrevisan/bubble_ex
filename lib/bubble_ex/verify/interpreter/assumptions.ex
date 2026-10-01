@@ -12,11 +12,13 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
       takes each flag calibration refuted (`evidence/0`):
       `actor_empty_denies` (the 2026-09-29 run: Bubble treats an empty
       actor-side value as equal to an empty record value), and
-      `everyone_exclusive`, `everyone_guards_record_values` and
-      `logged_out_user_is_empty` (the 2026-10-01 run, WTF-467: the
-      `everyone` rule's grants reach every user, and a logged-out user is
-      Bubble's temporary user), plus `empty_yes_no_is_no`, which both runs
-      lean the same way on (0 of 2, then 0 of 5 agreeing: an empty yes/no
+      `everyone_guards_record_values` and `logged_out_user_is_empty` (the
+      2026-10-01 run, WTF-467: no record-value guard on the `everyone`
+      rule's reach, and a logged-out user is Bubble's temporary user),
+      plus two the samples lean on: `everyone_exclusive` (the `everyone`
+      rule's grants reach every user: only 2 ops of that run tell it apart
+      from an exclusive rule without the guard, both for it) and
+      `empty_yes_no_is_no` (0 of 2, then 0 of 5 agreeing: an empty yes/no
       reads as no). One flag is Bubble's documented behavior instead:
       `hidden_field_constraint_matches` (WTF-457), which the compiler's
       reading never had.
@@ -67,17 +69,20 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     * `:refuted` - Bubble reads it the other way; the Bubble default was
       flipped (`actor_empty_denies`, 2026-09-29: 14 agree / 69 disagree,
       flipping fixes 64 and breaks 5, confirmed 2026-10-01 at 73 / 12;
-      2026-10-01: `everyone_exclusive` 0 / 19, flipping fixes 19;
-      `everyone_guards_record_values` 0 / 18, fixes 17;
+      2026-10-01: `everyone_guards_record_values` 0 / 18, fixes 17;
       `logged_out_user_is_empty` 0 / 12, fixes 12; none breaks any)
     * `:supported` - the default agrees (`empty_equals_empty`,
       `builtin_fields_hidden_unless_listed`, `no_visible_field_unreadable`,
       `search_independent_of_view`)
     * `:leaning_flipped` - the samples lean the other way but are few
       (`empty_yes_no_is_no`: 0 / 2, then 0 / 5, flipping fixes all and
-      breaks none). Flipped all the same (WTF-467: two runs, no sample
-      against); still unsettled, so the matrix adds witnesses for it
-      (`unsettled/0`, `BubbleEx.Verify.Matrix.Coverage`)
+      breaks none; `everyone_exclusive`: 19 ops depended on it, 0 agreeing,
+      but 17 of them are also fixed by dropping the record-value guard
+      alone, so only 2 discriminate, recorded as 0 / 2, both fixed by the
+      flip). Flipped all the same (WTF-467: no sample against); still
+      unsettled, so the matrix adds witnesses for them (`unsettled/0`,
+      `BubbleEx.Verify.Matrix.Coverage`; the next replay is to settle
+      `everyone_exclusive`, WTF-358)
     * `:unclear` - mixed, or too few samples (`empty_list_contains_nothing`:
       8 agree, none disagree)
     * `:not_exercised` - no recorded check depended on it (the other
@@ -165,7 +170,9 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   @evidence %{
     actor_empty_denies: {:refuted, 14, 69, 64, 5, @run_0929},
     empty_equals_empty: {:supported, 73, 12, 11, 73, @run_1001},
-    everyone_exclusive: {:refuted, 0, 19, 19, 0, @run_1001},
+    # 19 dependent ops, 17 of them also fixed by dropping the guard alone:
+    # only the 2 that tell the readings apart are counted.
+    everyone_exclusive: {:leaning_flipped, 0, 2, 2, 0, @run_1001},
     everyone_guards_record_values: {:refuted, 0, 18, 17, 0, @run_1001},
     logged_out_user_is_empty: {:refuted, 0, 12, 12, 0, @run_1001},
     empty_yes_no_is_no: {:leaning_flipped, 0, 5, 5, 0, @run_1001},

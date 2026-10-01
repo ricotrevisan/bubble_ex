@@ -700,6 +700,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "public_default",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [],
@@ -1016,6 +1017,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "unavailable",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [
