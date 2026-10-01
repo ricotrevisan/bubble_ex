@@ -5,6 +5,10 @@
 #     mix run scripts/vertical_slice/slice.exs render EXPORT DECISIONS OUT [PAGE]
 #     mix run scripts/vertical_slice/slice.exs seed   EXPORT DECISIONS OUT [N]
 #
+# SLICE_PRIVACY is `omit` (the default) or `enforced` (WTF-423): the Ash
+# target's privacy mode for every command. SLICE_PERSONA (default 1) is
+# the synthetic user `seed` records as the sign-in user.
+#
 # EXPORT is a Buildprint v5 workspace or a `.bubble` JSON file, DECISIONS a
 # JSON list of decision envelopes (`-` for none), OUT the private slice
 # directory (created 0700; the project goes to OUT/project), PAGE a page's
@@ -161,12 +165,15 @@ end
 
 alias VerticalSlice.Cli
 
+privacy = Pipeline.privacy_mode(System.get_env("SLICE_PRIVACY"))
+
 case System.argv() do
   ["pages", export | rest] ->
     app = Pipeline.load_app(export)
     decisions = rest |> List.first("-") |> Cli.decisions() |> Pipeline.load_decisions()
-    built = Pipeline.build(app, decisions, module: "Slice")
+    built = Pipeline.build(app, decisions, module: "Slice", privacy: privacy)
     {chosen, ranked} = built |> Pages.stats() |> Pages.choose()
+    IO.puts("privacy: #{privacy}")
     IO.puts(Pages.criteria())
     IO.puts(Cli.page_table(ranked))
     IO.puts("\nmedian page: #{chosen && chosen.id}")
@@ -176,7 +183,7 @@ case System.argv() do
     project_dir = Path.join(out, "project")
     app = Pipeline.load_app(export)
     decisions = decisions_path |> Cli.decisions() |> Pipeline.load_decisions()
-    built = Pipeline.build(app, decisions, module: "Slice")
+    built = Pipeline.build(app, decisions, module: "Slice", privacy: privacy)
     rows = Pages.stats(built)
     {median, ranked} = Pages.choose(rows)
 
@@ -247,6 +254,7 @@ case System.argv() do
 
     slice = %{
       "page" => page,
+      "privacy" => privacy,
       "path" => get_in(surfaces, ["pages", page.id, "path"]),
       "thing_type" => thing_type,
       "criteria" => Pages.criteria(),
@@ -279,9 +287,10 @@ case System.argv() do
   ["seed", export, decisions_path, out | rest] ->
     out = Cli.private_dir!(Path.expand(out))
     n = rest |> List.first("3") |> String.to_integer()
+    persona = VerticalSlice.Synthetic.persona(System.get_env("SLICE_PERSONA"), n)
     app = Pipeline.load_app(export)
     decisions = decisions_path |> Cli.decisions() |> Pipeline.load_decisions()
-    built = Pipeline.build(app, decisions, module: "Slice")
+    built = Pipeline.build(app, decisions, module: "Slice", privacy: privacy)
 
     {host, port, user, password} = Cli.db_credentials()
 
@@ -309,7 +318,9 @@ case System.argv() do
     end
 
     seed = %{
-      "sign_in_email" => VerticalSlice.Synthetic.email(1),
+      "sign_in_email" => VerticalSlice.Synthetic.email(persona),
+      "persona" => persona,
+      "privacy" => privacy,
       "per_type" => n,
       "ids" => VerticalSlice.Synthetic.ids(built.model, n),
       "load" => %{
