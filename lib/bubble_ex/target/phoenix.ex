@@ -158,12 +158,17 @@ defmodule BubbleEx.Target.Phoenix do
   offline and deterministic and takes the result as `asset_store:`. A
   stored image is served from `priv/static/images/bubble/<sha256>.<ext>`
   (generated), a stored icon library's symbol is inlined; an image on
-  Bubble's storage that was not downloaded renders without a source; an
-  image on another host keeps its URL. Each of these is marked in the
-  template, and `.wtf/assets.json` (generated) lists every asset with its
+  Bubble's storage that was not downloaded renders without a source and is
+  marked in the template. An image on another host stays linked to its
+  original URL, as in Bubble (WTF-465): never fetched or proxied, linked
+  over HTTPS with `loading="lazy"` and `referrerpolicy="no-referrer"`, and
+  not marked. `.wtf/assets.json` (generated) lists every asset with its
   status, SHA-256, content type and size. New endpoints serve
   `/images/bubble` with `X-Content-Type-Options: nosniff` and a sandbox
   `Content-Security-Policy`; older ones can add the same `Plug.Static`.
+  New routers' browser pipeline adds `img-src 'self' data: blob: https:`
+  to Phoenix's default policy; an older router without an `img-src`
+  already allows them.
 
   ## Pages (WTF-370)
 
@@ -519,6 +524,9 @@ defmodule BubbleEx.Target.Phoenix do
   several); `"bindings_compiled"` / `"bindings_marked"` value bindings;
   `"utilities"` / `"residue_declarations"` style declarations, and
   `"elements_with_residue"` the elements with a residue rule.
+  `"assets_<status>"` count `.wtf/assets.json`'s assets by status;
+  `"assets_external"` (images linked to other hosts, as in Bubble) is
+  informational, not work to do.
   """
   @spec frontend_report(Project.t(), [option()]) :: {:ok, map()} | {:error, Error.t()}
   def frontend_report(%Project{} = project, opts) do
