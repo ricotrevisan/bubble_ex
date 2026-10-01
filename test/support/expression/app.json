@@ -1841,6 +1841,149 @@
             "view_all": true,
             "view_attachments": true
           }
+        },
+        "zh_public_not_no_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "name": "is_false",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public is not no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zi_not_no_is_no_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "name": "is_false",
+                "next": {
+                  "name": "is_false",
+                  "next": {
+                    "args": {
+                      "next": {
+                        "name": "public_boolean",
+                        "next": {
+                          "name": "is_false",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "InjectedValue"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Public is not no) is (public is no)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zj_access_has_assignee_is_public_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "assignee_user",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "contains",
+                "next": {
+                  "args": {
+                    "next": {
+                      "name": "public_boolean",
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Access contains assignee) is public",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "zk_access_has_assignee_is_public_no_": {
+          "condition": {
+            "next": {
+              "name": "access_list_user",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "assignee_user",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "contains",
+                "next": {
+                  "args": {
+                    "next": {
+                      "name": "public_boolean",
+                      "next": {
+                        "name": "is_false",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Access contains assignee) is (public is no)",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
         }
       }
     },
@@ -1964,6 +2107,68 @@
             "type": "InjectedValue"
           },
           "display": "Me",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "admin_not_coach_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "coach_boolean",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Admin is not coach",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "admin_no_not_coach_no_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "next": {
+                "name": "is_false",
+                "next": {
+                  "args": {
+                    "next": {
+                      "name": "coach_boolean",
+                      "next": {
+                        "name": "is_false",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "InjectedValue"
+                  },
+                  "name": "not_equals",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "(Admin is no) is not (coach is no)",
           "permissions": {
             "auto_binding": false,
             "search_for": true,

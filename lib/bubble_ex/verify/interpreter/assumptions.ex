@@ -39,7 +39,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   |------|------------------|--------|--------------------|---------------------|
   | `actor_empty_denies` | `false` | `true` | an atomic comparison reading an empty value from the current user (or a logged-out user) is false in either polarity; `is empty` on the user's side needs a logged-in user | the user's empty values compare like any other empty value (`x is y` holds when both are empty, `x is not y` holds, `doesn't contain` on an empty list holds, a logged-out user's fields are empty) |
   | `empty_equals_empty` | `true` | `true` | between two record-side values, empty `is` empty (and `is not` is false) | an empty value never equals anything, so `is` is false and `is not` holds |
-  | `empty_yes_no_is_no` | `true` | `false` | an empty yes/no field reads as no | an empty yes/no field is neither yes nor no (`x is no` is false) |
+  | `empty_yes_no_is_no` | `true` | `false` | an empty yes/no field reads as no | an empty yes/no field is neither yes nor no (`x is no` is false); `x is not no`, and `is not` between yes/no values with a record-side stored one, reads it as no under either reading (WTF-471, as the compiler) |
   | `empty_list_contains_nothing` | `true` | `true` | a record-side list that is empty `doesn't contain` anything | `doesn't contain` on an empty list is false |
   | `dangling_ref_is_empty` | `true` | `true` | `is empty` on a reference to a record that no longer exists holds | such a reference is not empty (its stored ID counts) |
   | `everyone_exclusive` | `false` | `true` | the `everyone` rule applies only to users no other rule matches | the `everyone` rule's grants apply to every user |
@@ -54,6 +54,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   | `logged_out_user_is_empty` | `false` | `true` | a logged-out user has no identity: `Current User` is empty | a logged-out user is Bubble's temporary user: a user of its own (never equal to a record's user) with empty fields |
   | `defaults_applied_at_creation` | `true` | `true` | a record created without a value for a field that has a default (WTF-338: defaults are kept) stores the default: a field a record omits reads as its default; an explicitly empty field (`null` in a seed) stays empty | a field a record omits is empty; defaults are never applied |
   | `non_filterable_constraint_excludes` | `true` | `true` | a search constrained on a field the user may not search by (a privacy rule's non-filterable fields) does not find the records where the user may not; the generated policies (`<namespace>.Privacy.SearchFields`) return only the records where the user may | such a constraint is ignored for those records: they are found as by the unconstrained search |
+  | `compared_condition_guards_record_values` | `false` | `true` | a condition compared with another yes/no as a value (`(list contains x) is y`), neither side reading the user: its negative side also needs every record value it reads to be non-empty (the compiler's hedge, WTF-471: such a negation can hold on an empty value, `empty_list_contains_nothing` / `empty_text_contains_nothing`, which no calibration has settled) | no such guard: the negation as in any condition |
   | `hidden_field_constraint_matches` | `true` | `false` | a page search constrained or sorted on a field the user may not view (but may search by) matches its stored value: view and constraint are separate permissions in Bubble (replayed 2026-10-01; a backend workflow's search reads the field as empty, a Data API search matches nothing) | a record whose field the user may not view matches nothing: only the records where the user may view the field are found; the generated policies with `privacy: :enforced` (`<namespace>.Privacy.SearchFields`, WTF-457) |
 
   ## Calibration evidence
@@ -149,7 +150,8 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     logged_out_user_is_empty: false,
     defaults_applied_at_creation: true,
     non_filterable_constraint_excludes: true,
-    hidden_field_constraint_matches: true
+    hidden_field_constraint_matches: true,
+    compared_condition_guards_record_values: false
   ]
 
   # The generated policies' reading: the compiler's fail-safe one.
@@ -160,6 +162,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
           |> Keyword.put(:everyone_guards_record_values, true)
           |> Keyword.put(:logged_out_user_is_empty, true)
           |> Keyword.put(:hidden_field_constraint_matches, false)
+          |> Keyword.put(:compared_condition_guards_record_values, true)
 
   # The calibration runs (V5 of WTF-385) and, per flag, the run that
   # settled it: ops that depend on the flag, agreeing and disagreeing
@@ -202,6 +205,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
           | :defaults_applied_at_creation
           | :non_filterable_constraint_excludes
           | :hidden_field_constraint_matches
+          | :compared_condition_guards_record_values
   @type t :: %{name() => boolean()}
   @type status ::
           :refuted | :supported | :leaning_flipped | :unclear | :not_exercised | :documented

@@ -134,6 +134,35 @@ defmodule BubbleEx.Target.ElixirTest do
     assert eval(result, element_state_bi1_get_data: 2.0) == "Total: 3"
   end
 
+  # A runtime whose ordering answers nil on an empty side (the contract
+  # asks for false; stubs and hand edits may not comply).
+  defmodule LaxRuntime do
+    @moduledoc false
+    def compare(_op, nil, _), do: nil
+    def compare(_op, _, nil), do: nil
+    def compare(:gt, a, b), do: a > b
+    def default(x, d), do: if(x in [nil, "", []], do: d, else: x)
+  end
+
+  # WTF-471: a condition used as a value is strictly true or false, never
+  # nil: `(estimate > 3) defaulting to yes` on an empty estimate is no,
+  # even when the runtime's comparison answers nil.
+  test "a condition used as a value is never nil", %{project: project} do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    estimate = IR.node(:field, [this, "task", "estimate_number"], "number")
+    over = IR.node(:gt, [estimate, IR.node(:literal, [3.0], "number")], "boolean")
+    yes = IR.node(:literal, [true], "boolean")
+    ir = IR.node(:eq, [IR.node(:fallback, [over, yes], "boolean"), yes], "boolean")
+
+    for runtime <- [@runtime, inspect(LaxRuntime)] do
+      {:ok, result} = Target.compile(ir, project, runtime: runtime)
+
+      refute eval(result, this: %{estimate: nil}), runtime
+      assert eval(result, this: %{estimate: 5.0})
+      refute eval(result, this: %{estimate: 1.0})
+    end
+  end
+
   test "records compare by ID; the current user side must not be empty", %{project: project} do
     raw = chain(src("CurrentDataItem"), [msg("assignee_user"), msg("equals", cu())])
     result = compile(raw, project, host: "bT3")
@@ -205,7 +234,11 @@ defmodule BubbleEx.Target.ElixirTest do
       model = model()
       db = records(@expectations["records"], project)
 
-      for %{"type" => type, "rule" => rule, "expected" => expected} <- @expectations["cases"] do
+      # page and workflow conditions follow Bubble's reading where the
+      # policies are stricter by design (`expected_elixir`)
+      for %{"type" => type, "rule" => rule} = c <- @expectations["cases"] do
+        expected = c["expected_elixir"] || c["expected"]
+
         condition =
           Enum.find(BubbleEx.Model.data_type(model, type).rules, &(&1.id == rule)).condition
 

@@ -24,7 +24,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | option value | its stored key (the enum value), checked against the generated enum |
   | literal | the literal |
   | `x is y` | `x == y` when either side cannot be empty (a literal, an option, the record's ID) or is read from the actor; otherwise (two record-side values) `is_not_distinct_from(x, y)` |
-  | `x is not y` | `x != y` when neither side can be empty; otherwise `is_distinct_from(x, y)`, with `not is_nil(a)` for every actor-side operand `a` |
+  | `x is not y` | `x != y` when neither side can be empty; otherwise `is_distinct_from(x, y)`, with `not is_nil(a)` for every actor-side operand `a`. Between yes/no values (not conditions) an empty one reads as no and the result is never NULL (WTF-471, as Bubble): `x is not no` is `is_not_distinct_from(x, true)`, `x is not yes` is `is_distinct_from(x, true)`, two such values differ when exactly one is yes |
   | `x is empty` | a reference with a `belongs_to`: `not exists(rel, true)` (a dangling ID is empty; there are no foreign keys), `is_nil(^actor([..., :rel]))` on the actor side; otherwise `is_nil(x)`, also `x == ""` for text and `x == []` for a list |
   | `>`, `<`, `>=`, `<=` | the operator |
   | `and`, `or`, `not` | the operator |
@@ -52,9 +52,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
   not follow from the actor lacking data. `not`, `is no`
   and `is not` are pushed down to the atoms (De Morgan), so a guard is
   never negated; `a is b` between yes/no values of which one is a
-  condition reading the actor is expanded to `(a and b) or (not a and not
+  condition is expanded to `(a and b) or (not a and not
   b)` (a stored yes/no side is `== true` / `== false`: empty is neither).
-  A condition reading the actor used as any other value is rejected. The
+  A condition reading the actor used as any other value is rejected; any
+  other condition used as a value is `if(c, true, false)`, never NULL. The
   one exception is `is empty` on an actor-side value, which tests the
   emptiness itself: it only requires a logged-in actor. Between two record-side values, `is` keeps
   what we take to be Bubble's rule, that an empty value equals an empty
@@ -425,16 +426,17 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
   defp condition?(_ir), do: false
 
-  # Two yes/no sides, one a condition, reading the actor: expanded so that
-  # each side keeps its own guards (a stored yes/no side is `== true` /
-  # `== false`: empty is neither).
-  defp boolean_equality?(l, r),
-    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+  # Two yes/no sides, one a condition: expanded so that each side keeps its
+  # own polarities and guards (a stored yes/no side is `== true` / `==
+  # false`: empty is neither). A condition's negation is not always its
+  # complement (an empty value fails both), so comparing it as a plain
+  # value could match where neither side holds (WTF-471).
+  defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
 
   defp boolean_equality(op, l, r, st, positive) do
     {[lp, ln, rp, rn], st} =
       Enum.map_reduce([{l, true}, {l, false}, {r, true}, {r, false}], st, fn {ir, pol}, st ->
-        side(ir, st, pol)
+        side(ir, st, pol, guarded_negation?(l, r))
       end)
 
     node =
@@ -445,10 +447,34 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {all_ok(node, [lp, ln, rp, rn]), st}
   end
 
-  defp side(ir, st, pol) do
-    if condition?(ir),
-      do: pred(ir, st, pol),
-      else: atom(IR.node(:eq, [ir, IR.node(:literal, [pol], "boolean")], "boolean"), st, true)
+  # A condition's negative side also requires the record values it reads to
+  # be non-empty, as the `everyone` rule's reach does (WTF-471): a
+  # negation that holds on an empty value (`doesn't contain` on an empty
+  # list, an empty text) rests on Bubble semantics not calibrated
+  # (`empty_list_contains_nothing`, `empty_text_contains_nothing`), and the
+  # value form it replaces was NULL there. Stricter than Bubble by the
+  # owner's rule (`BubbleEx.Verify.Difference`,
+  # `compared_condition_guards_record_values`). Only where neither side
+  # reads the actor: those comparisons were expanded before, unguarded.
+  defp guarded_negation?(l, r), do: not reads_actor?(l) and not reads_actor?(r)
+
+  defp side(ir, st, pol, guarded?) do
+    cond do
+      not condition?(ir) ->
+        atom(IR.node(:eq, [ir, IR.node(:literal, [pol], "boolean")], "boolean"), st, true)
+
+      pol or not guarded? ->
+        pred(ir, st, pol)
+
+      true ->
+        case record_guards([ir]) do
+          [] ->
+            pred(ir, st, false)
+
+          guards ->
+            pred(IR.node(:and, [IR.node(:not, [ir], "boolean") | guards], "boolean"), st, true)
+        end
+    end
   end
 
   # An atomic condition: its core for the requested polarity, guarded so
@@ -471,7 +497,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = values([l, r], st)
     eq = eq_node(a, b, st)
-    neq = neq_node(a, b, st)
+    neq = if yes_no_pair?(l, r), do: yes_no_neq(l, r, a, b), else: neq_node(a, b, st)
     operands = [{a, l.type}, {b, r.type}]
     {all_ok(if(op == :eq, do: {eq, neq, operands}, else: {neq, eq, operands}), [a, b]), st}
   end
@@ -805,6 +831,116 @@ defmodule BubbleEx.Target.Ash.Expressions do
       else: {:call, "is_distinct_from", [a, b]}
   end
 
+  # `x is not y` between yes/no values, at least one a yes/no value (not a
+  # condition: a field, a parameter, an option attribute, ...; WTF-471): an
+  # empty one reads as no, as in Bubble, and the result is never NULL.
+  # `x is not no` is `is_not_distinct_from(x, true)`; `x is not yes` is
+  # `is_distinct_from(x, true)`; between two values, exactly one of them is
+  # yes. An actor-side value keeps `==` (its guard requires it non-empty).
+  # `x is y` keeps `is_not_distinct_from` / `==` (stricter than Bubble on
+  # an empty side against no: `BubbleEx.Verify.Difference`,
+  # `empty_yes_no_is_no`).
+  defp yes_no_pair?(l, r),
+    do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)
+
+  defp stored_yes_no?(%IR{op: op, type: "boolean"}), do: op in @boolean_values
+  defp stored_yes_no?(_ir), do: false
+
+  defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
+  defp yes_no_side?(ir), do: stored_yes_no?(ir)
+
+  defp yes_no_neq(%IR{op: :literal, args: [b]}, _r, _a, v), do: yes_no_not(v, b)
+  defp yes_no_neq(_l, %IR{op: :literal, args: [b]}, v, _b), do: yes_no_not(v, b)
+
+  defp yes_no_neq(_l, _r, a, b), do: {:op, "!=", yes(a), yes(b)}
+
+  defp yes_no_not(v, false), do: yes(v)
+  defp yes_no_not(v, true), do: {:call, "is_distinct_from", [v, {:value, true}]}
+
+  # `v` is yes, never NULL (an actor-side `v` is guarded non-empty).
+  defp yes(v) do
+    if actor?(v),
+      do: {:op, "==", v, {:value, true}},
+      else: {:call, "is_not_distinct_from", [v, {:value, true}]}
+  end
+
+  @doc false
+  # The record-value guards of conditions (WTF-430, WTF-471): one IR
+  # condition per record-side value they read, requiring it non-empty
+  # (`not (x is empty)`), or, for a reference read only by an emptiness
+  # test, not dangling. Used by the `everyone` rule's reach
+  # (`Target.Ash.Policies`) and the negative side of a condition compared
+  # as a value.
+  @spec record_guards([IR.t()]) :: [IR.t()]
+  def record_guards(irs) do
+    irs
+    |> Enum.flat_map(&record_values/1)
+    |> Enum.uniq()
+    |> Enum.map(fn
+      {:not_dangling, ir} -> IR.node(:not_dangling, [ir], "boolean")
+      ir -> IR.node(:not, [IR.node(:is_empty, [ir], "boolean")], "boolean")
+    end)
+  end
+
+  # The outermost field chains read from the rule's record (`This
+  # Thing's a's b`), not from the actor: each must be non-empty. A chain
+  # read only as the operand of an emptiness test (`is empty`, `is not
+  # empty`, `= empty`, also through `defaulting to`) is not guarded that
+  # way: the test's negation is exact, and guarding it made the negation
+  # `x is empty and x is not empty`, always false (WTF-430). Such a chain
+  # that is a reference gets `{:not_dangling, chain}` instead: whether a
+  # dangling reference is empty is not calibrated (`dangling_ref_is_empty`),
+  # so the negation holds only where both readings agree (its ID is nil,
+  # or its record exists). The interpreter lists the same guards
+  # (`Verify.Interpreter.Eval.record_values/1`).
+  defp record_values(%IR{op: :is_empty, args: [x]}), do: emptiness_operand(x)
+
+  defp record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
+    cond do
+      match?(%IR{op: :empty}, l) -> emptiness_operand(r)
+      match?(%IR{op: :empty}, r) -> emptiness_operand(l)
+      true -> record_values(l) ++ record_values(r)
+    end
+  end
+
+  defp record_values(%IR{op: :field, args: [base | _]} = ir) do
+    if record_based?(base), do: [strip_path(ir)], else: []
+  end
+
+  defp record_values(%IR{args: args}), do: Enum.flat_map(args, &record_values/1)
+  defp record_values(list) when is_list(list), do: Enum.flat_map(list, &record_values/1)
+  defp record_values(_), do: []
+
+  defp emptiness_operand(%IR{op: :field, args: [base | _]} = ir) do
+    cond do
+      not record_based?(base) ->
+        []
+
+      is_binary(ir.type) and
+          match?({%Type{kind: :ref, cardinality: :one}, _}, Type.classify(ir.type)) ->
+        [{:not_dangling, strip_path(ir)}]
+
+      true ->
+        []
+    end
+  end
+
+  defp emptiness_operand(%IR{op: :fallback, args: args}),
+    do: Enum.flat_map(args, &emptiness_operand/1)
+
+  defp emptiness_operand(other), do: record_values(other)
+
+  defp record_based?(%IR{op: :this, args: [binder]}), do: binder in [:rule_record, :filter_item]
+  defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)
+  defp record_based?(%IR{op: :fallback, args: args}), do: Enum.all?(args, &record_based?/1)
+  defp record_based?(_), do: false
+
+  # Source paths differ between occurrences of the same chain.
+  defp strip_path(%IR{args: args} = ir),
+    do: %{ir | path: nil, args: Enum.map(args, &strip_path/1)}
+
+  defp strip_path(other), do: other
+
   # `node`, required to have every actor-side operand non-empty in Bubble's
   # sense (as `is empty`): not nil, and not `""` for text or `[]` for a
   # list. `operands` are `{node, bubble_type}`. A core that is already NULL
@@ -914,10 +1050,15 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # A condition used as a value (compared with another value that reads no
   # actor). One that reads the actor has no guard that survives being used
   # as a value, so it is rejected.
+  # A condition used as a value: strictly yes or no (`if(c, true, false)`),
+  # never NULL, so comparing it cannot match an unknown (WTF-471).
   defp value_(%IR{op: op, type: "boolean"} = ir, st) when op not in @boolean_values do
-    if reads_actor?(ir),
-      do: unsupported(st, {"a condition reading the current user used as a value", nil}),
-      else: pred(ir, st)
+    if reads_actor?(ir) do
+      unsupported(st, {"a condition reading the current user used as a value", nil})
+    else
+      {c, st} = pred(ir, st)
+      {ok(c, &{:call, "if", [&1, {:value, true}, {:value, false}]}), st}
+    end
   end
 
   defp value_(%IR{op: op}, st), do: unsupported(st, {"the value #{inspect(op)}", nil})

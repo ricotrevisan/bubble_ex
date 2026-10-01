@@ -66,6 +66,22 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
       "expr(if(not exists(parent, true), team_id, parent.team_id) == ^actor([:active_membership, :team_id]))",
     {"task", "zg_access_or_team_members_"} =>
       "expr(^actor(:id) in if(is_nil(access) or access == [], team.members, access))",
+    # WTF-471: `is not` between yes/no values reads an empty one as no
+    {"task", "zh_public_not_no_"} => "expr(is_not_distinct_from(public, true))",
+    {"user", "admin_not_coach_"} =>
+      "expr(is_not_distinct_from(admin, true) != is_not_distinct_from(coach, true))",
+    # conditions compared as values: each side expanded into its own
+    # polarities, so an empty value matches neither (never NULL = NULL)
+    {"task", "zi_not_no_is_no_"} =>
+      "expr(is_not_distinct_from(public, true) and public == false or public == false and not is_nil(public) and is_not_distinct_from(public, true) and not is_nil(public))",
+    # a compared condition's negative side needs its record values
+    # non-empty (WTF-471: no grant where the base policies denied)
+    {"task", "zj_access_has_assignee_is_public_"} =>
+      "expr(assignee_id in access and public == true or (is_nil(access) or is_nil(assignee_id) or not (assignee_id in access)) and not (is_nil(access) or access == []) and exists(assignee, true) and public == false)",
+    {"task", "zk_access_has_assignee_is_public_no_"} =>
+      "expr(assignee_id in access and public == false or (is_nil(access) or is_nil(assignee_id) or not (assignee_id in access)) and not (is_nil(access) or access == []) and exists(assignee, true) and is_not_distinct_from(public, true) and not is_nil(public))",
+    {"user", "admin_no_not_coach_no_"} =>
+      "expr(admin == false and is_not_distinct_from(coach, true) and not is_nil(coach) or is_not_distinct_from(admin, true) and not is_nil(admin) and coach == false)",
     {"user", "me_"} => "expr(id == ^actor(:id))",
     {"membership", "mine_"} => "expr(^actor(:active_membership_id) == id)",
     {"membership", "account_"} => "expr(member_id == ^actor(:id))",
@@ -144,6 +160,22 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     assert {:error, %BubbleEx.Error{}} = Expressions.filter(ir, project, [])
 
     assert Source.expr(e) == ~s|expr(^arg(:parameter_x) == "a")|
+  end
+
+  # WTF-471: a condition used as a value is strictly yes or no. Without
+  # the coercion, `(estimate > 3) defaulting to yes` on an empty estimate
+  # would read the NULL comparison as empty and give yes.
+  test "a condition used as a value is never NULL", %{project: project} do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    estimate = IR.node(:field, [this, "task", "estimate_number"], "number")
+    over = IR.node(:gt, [estimate, IR.node(:literal, [3.0], "number")], "boolean")
+    yes = IR.node(:literal, [true], "boolean")
+    ir = IR.node(:eq, [IR.node(:fallback, [over, yes], "boolean"), yes], "boolean")
+
+    {:ok, %{expr: e, diagnostics: []}} = Expressions.filter(ir, project, resource: "task")
+
+    assert Source.expr(e) ==
+             "expr(if(is_nil(if(estimate > 3.0, true, false)), true, if(estimate > 3.0, true, false)) == true)"
   end
 
   test "a search compiles to a filter on the searched resource, with its sort", %{

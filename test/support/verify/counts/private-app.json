@@ -4,6 +4,7 @@
       "absent_permission_denied": "not_exercised",
       "actor_empty_denies": "refuted",
       "builtin_fields_hidden_unless_listed": "supported",
+      "compared_condition_guards_record_values": "not_exercised",
       "dangling_ref_is_empty": "not_exercised",
       "defaults_applied_at_creation": "not_exercised",
       "empty_equals_empty": "supported",
@@ -37,6 +38,7 @@
       "absent_permission_denied": "not exercised: no persona and record found whose verdict it decides",
       "actor_empty_denies": "exercised",
       "builtin_fields_hidden_unless_listed": "exercised",
+      "compared_condition_guards_record_values": "not exercised: no persona and record found whose verdict it decides",
       "dangling_ref_is_empty": "not exercised: seeds cannot hold a reference to a missing record (V1 seed references must resolve)",
       "defaults_applied_at_creation": "not exercised: the seed writes every modeled default out (as Bubble stores records after creation), so no recording can tell the readings apart; a Data API create was seen storing defaults (WTF-385)",
       "empty_equals_empty": "exercised",
@@ -63,7 +65,8 @@
       "ordering_with_empty_false",
       "empty_item_not_contained",
       "defaults_applied_at_creation",
-      "non_filterable_constraint_excludes"
+      "non_filterable_constraint_excludes",
+      "compared_condition_guards_record_values"
     ]
   },
   "checks": 1704,
@@ -77,6 +80,7 @@
     "observations": 158,
     "policy": [
       "actor_empty_denies",
+      "compared_condition_guards_record_values",
       "empty_yes_no_is_no",
       "everyone_exclusive",
       "everyone_guards_record_values",

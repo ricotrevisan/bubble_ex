@@ -6,6 +6,40 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **`x is not no` reads an empty yes/no as no, as Bubble does** (WTF-471).
+  Between yes/no values (not conditions: fields, parameters, option
+  attributes, ...; "stored" below), at least one stored, `is not` now
+  treats an empty stored value as no, in the Ash policies and in page and
+  workflow conditions alike (`Target.Elixir`), and never yields NULL: `x
+  is not no` compiles to `is_not_distinct_from(x, true)` (was
+  `is_distinct_from(x, false)`, which granted on an empty x), and `x is
+  not y` between two stored values holds when exactly one is yes. These
+  only narrow: each holds in a subset of the cases it held before. `x is
+  no` and `x is y` are unchanged: they stay stricter than Bubble on an
+  empty value by the owner's decision (`Verify.Difference`,
+  `empty_yes_no_is_no`). A condition compared with another yes/no as a
+  value (`(x is not no) is (x is no)`) is now expanded into each side's
+  own polarities, as conditions reading the user already were, and a
+  condition used as any other value is strictly yes or no (`if(c, true,
+  false)`; never nil in Elixir), so an empty operand can no longer match
+  through NULL = NULL. That removes such matches (the old form was wider
+  than Bubble). In page and workflow conditions it can also match where
+  the old form did not: a condition whose negation holds on an empty
+  value compared with another yes/no, which is Bubble's reading.
+  In the Ash policies only, such a comparison (neither side reading the
+  user) also requires the record values a condition reads to be
+  non-empty on its negative side, so the policies never grant where the
+  previous ones denied (a negation holding on an empty value, `doesn't
+  contain` on an empty list or an empty text, rests on uncalibrated
+  semantics): a new intended difference,
+  `compared_condition_guards_record_values` (`Verify.Difference`,
+  `Assumptions`), listed per rule. Page and workflow conditions follow
+  Bubble there; the shared expectation table holds their reading as
+  `expected_elixir` where it differs. The interpreter reads the same way,
+  so the matrix sees these cases agree or as intended differences; the
+  `:ash_policy_empty_yes_no_wider_than_bubble` warning and
+  `Difference.empty_yes_no_wider?/1` are removed.
+
 - **Privacy interpreter: four calibration flags flipped to Bubble's
   reading** (WTF-467). The 2026-10-01 replay of WTF-385 refuted
   `everyone_guards_record_values` and `logged_out_user_is_empty` (a
@@ -30,12 +64,8 @@ All notable changes to this project are documented here.
   `.wtf/generated.json` records a new `project_sha256` (no generated
   source changes). The matrix seeks the `everyone` rule's witnesses under
   the target's exclusive reach; under Bubble's, rules granting what the
-  `everyone` rule grants anyway are masked. Known gap (WTF-471): `x is
-  not no` on an empty yes/no compiles to `is_distinct_from(x, false)`,
-  which grants where Bubble (empty is no) does not; such rules get the
-  new warning `:ash_policy_empty_yes_no_wider_than_bubble` (not the
-  stricter-than-Bubble list) and the matrix reports their cases as
-  unintended differences.
+  `everyone` rule grants anyway are masked. (`x is not no` on an empty
+  yes/no, less strict than Bubble at first, is closed by WTF-471 below.)
 
 - **"Go to page" sends data to a page with no type of content** (WTF-466).
   A replay showed that Bubble appends the data as a path segment and the

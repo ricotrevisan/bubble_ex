@@ -995,7 +995,6 @@ defmodule BubbleEx.Target.Ash.Policies do
         default_diags(ctx) ++
         denied_rules(type, denied, ctx) ++
         stricter_rules(type, stricter, ctx) ++
-        wider_yes_no(type, others, compiled, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
         search_fields_diag(type, search_fields) ++
         binding_dropped(type, others ++ List.wrap(default), fields) ++
@@ -1285,14 +1284,7 @@ defmodule BubbleEx.Target.Ash.Policies do
     # grant where Bubble would not. So the negation also requires every
     # record-side value the conditions read to be non-empty, and can only
     # under-grant.
-    guards =
-      irs
-      |> Enum.flat_map(&record_values/1)
-      |> Enum.uniq()
-      |> Enum.map(fn
-        {:not_dangling, ir} -> IR.node(:not_dangling, [ir], "boolean")
-        ir -> IR.node(:not, [IR.node(:is_empty, [ir], "boolean")], "boolean")
-      end)
+    guards = Expressions.record_guards(irs)
 
     negation = IR.node(:and, [IR.node(:not, [any], "boolean") | guards], "boolean")
 
@@ -1325,65 +1317,6 @@ defmodule BubbleEx.Target.Ash.Policies do
         {except_check(name, ids), negated(ctx, permission, ids)}
     end
   end
-
-  # The outermost field chains read from the rule's record (`This
-  # Thing's a's b`), not from the actor: each must be non-empty. A chain
-  # read only as the operand of an emptiness test (`is empty`, `is not
-  # empty`, `= empty`, also through `defaulting to`) is not guarded that
-  # way: the test's negation is exact, and guarding it made the negation
-  # `x is empty and x is not empty`, always false (WTF-430). Such a chain
-  # that is a reference gets `{:not_dangling, chain}` instead: whether a
-  # dangling reference is empty is not calibrated (`dangling_ref_is_empty`),
-  # so the negation holds only where both readings agree (its ID is nil,
-  # or its record exists). The interpreter lists the same guards
-  # (`Verify.Interpreter.Eval.record_values/1`).
-  defp record_values(%IR{op: :is_empty, args: [x]}), do: emptiness_operand(x)
-
-  defp record_values(%IR{op: op, args: [l, r]}) when op in [:eq, :neq] do
-    cond do
-      match?(%IR{op: :empty}, l) -> emptiness_operand(r)
-      match?(%IR{op: :empty}, r) -> emptiness_operand(l)
-      true -> record_values(l) ++ record_values(r)
-    end
-  end
-
-  defp record_values(%IR{op: :field, args: [base | _]} = ir) do
-    if record_based?(base), do: [strip_path(ir)], else: []
-  end
-
-  defp record_values(%IR{args: args}), do: Enum.flat_map(args, &record_values/1)
-  defp record_values(list) when is_list(list), do: Enum.flat_map(list, &record_values/1)
-  defp record_values(_), do: []
-
-  defp emptiness_operand(%IR{op: :field, args: [base | _]} = ir) do
-    cond do
-      not record_based?(base) ->
-        []
-
-      is_binary(ir.type) and
-          match?({%Type{kind: :ref, cardinality: :one}, _}, Type.classify(ir.type)) ->
-        [{:not_dangling, strip_path(ir)}]
-
-      true ->
-        []
-    end
-  end
-
-  defp emptiness_operand(%IR{op: :fallback, args: args}),
-    do: Enum.flat_map(args, &emptiness_operand/1)
-
-  defp emptiness_operand(other), do: record_values(other)
-
-  defp record_based?(%IR{op: :this, args: [binder]}), do: binder in [:rule_record, :filter_item]
-  defp record_based?(%IR{op: :field, args: [base | _]}), do: record_based?(base)
-  defp record_based?(%IR{op: :fallback, args: args}), do: Enum.all?(args, &record_based?/1)
-  defp record_based?(_), do: false
-
-  # Source paths differ between occurrences of the same chain.
-  defp strip_path(%IR{args: args} = ir),
-    do: %{ir | path: nil, args: Enum.map(args, &strip_path/1)}
-
-  defp strip_path(other), do: other
 
   defp except_check(name, ids),
     do: %PolicyCheck{
@@ -1621,27 +1554,6 @@ defmodule BubbleEx.Target.Ash.Policies do
         target: :ash,
         subject: %{type: type.id, rule: id},
         details: %{flags: Enum.map(flags, &Atom.to_string/1)}
-      )
-    end
-  end
-
-  # WTF-471: `x is not no` (or `x is not y` between stored yes/no values)
-  # on a record-side x compiles to `is_distinct_from(x, ...)`, which holds
-  # on an empty x where Bubble, reading empty as no, does not: less strict
-  # than Bubble, not by design.
-  defp wider_yes_no(type, others, compiled, ctx) do
-    for r <- others,
-        MapSet.member?(compiled, r.id),
-        Difference.empty_yes_no_wider?(ctx.by_rule[{type.id, r.id}].ir) do
-      Diagnostic.new(
-        :ash_policy_empty_yes_no_wider_than_bubble,
-        r.path,
-        "#{type.id}: privacy rule #{rule_label(r)} tests a stored yes/no with `is not no` (or " <>
-          "`is not` another yes/no); on an empty value the policy grants where Bubble, which " <>
-          "reads empty as no, does not (less strict than Bubble; WTF-471)",
-        target: :ash,
-        subject: %{type: type.id, rule: r.id},
-        details: %{flags: ["empty_yes_no_is_no"], ticket: "WTF-471"}
       )
     end
   end

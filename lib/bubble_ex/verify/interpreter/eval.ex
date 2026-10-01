@@ -21,7 +21,8 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
       or an empty record-side item
     * a yes/no value used as a condition holds when it is yes; its
       negation when it is not yes (empty is not yes); `x is no` on an
-      empty yes/no is `empty_yes_no_is_no`
+      empty yes/no is `empty_yes_no_is_no`; `x is not y` between yes/no
+      values reads an empty record-side stored one as no (WTF-471)
     * `is empty` is nil, `""` or an empty list; a dangling reference is
       `dangling_ref_is_empty`
     * `x defaulting to d` is `x` unless it is empty in that sense, else
@@ -145,21 +146,54 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
   defp condition?(_), do: false
 
-  defp boolean_equality?(l, r),
-    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+  defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
 
-  # `a is b` between yes/no values, one a condition reading the user: each
-  # side keeps its own guards.
+  # `a is b` between yes/no values, one a condition: each side keeps its
+  # own polarities and guards, as the compiler expands it (WTF-471).
   defp boolean_equality(op, l, r, positive, ctx) do
+    guarded = not reads_actor?(l) and not reads_actor?(r)
     {lp, f1} = side(l, true, ctx)
-    {ln, f2} = side(l, false, ctx)
+    {ln, f2} = negative_side(l, guarded, ctx)
     {rp, f3} = side(r, true, ctx)
-    {rn, f4} = side(r, false, ctx)
+    {rn, f4} = negative_side(r, guarded, ctx)
     flags = f1 ++ f2 ++ f3 ++ f4
 
     if op == :eq == positive,
       do: {(lp and rp) or (ln and rn), flags},
       else: {(lp and rn) or (ln and rp), flags}
+  end
+
+  # A condition's negative side, in a comparison reading no user, also
+  # needs the record values it reads to be non-empty under
+  # `compared_condition_guards_record_values` (the compiler's hedge,
+  # WTF-471).
+  defp negative_side(ir, guarded, ctx) do
+    {b, flags} = side(ir, false, ctx)
+
+    if b and guarded and condition?(ir) and record_values(ir) != [] do
+      if empty_record_value?(ir, ctx) do
+        f = [:compared_condition_guards_record_values | flags]
+        {not ctx.flags.compared_condition_guards_record_values, f}
+      else
+        {b, [:compared_condition_guards_record_values | flags]}
+      end
+    else
+      {b, flags}
+    end
+  end
+
+  defp empty_record_value?(ir, ctx) do
+    Enum.any?(record_values(ir), fn
+      {:not_dangling, v} ->
+        dangling_value?(v, ctx)
+
+      v ->
+        try do
+          v |> value_empty?(ctx) |> elem(0)
+        catch
+          {:unsupported, _} -> false
+        end
+    end)
   end
 
   defp side(ir, pol, ctx) do
@@ -218,7 +252,10 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   end
 
   defp atom_(%IR{op: op, args: [l, r]}, positive, ctx) when op in [:eq, :neq] do
-    {a, b, flags} = operands([l, r], ctx)
+    {a, b, flags} =
+      if op == :eq != positive and yes_no_pair?(l, r),
+        do: no_operands([l, r], ctx),
+        else: operands([l, r], ctx)
 
     guarded(actor_empty?([{l, a}, {r, b}]), ctx, fn ->
       {equal, more} = equal(a, b, ctx)
@@ -328,6 +365,36 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
     {a, f3} = stored_boolean(l, lv, ctx)
     {b, f4} = stored_boolean(r, rv, ctx)
     {a, b, f1 ++ f2 ++ f3 ++ f4}
+  end
+
+  # `x is not y` between yes/no values with a stored side (WTF-471): an
+  # empty stored yes/no reads as no in either reading, as Bubble does and
+  # as the compiler does (`x is not no` needs a stored yes).
+  defp yes_no_pair?(l, r),
+    do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)
+
+  defp stored_yes_no?(%IR{op: op, type: "boolean"}), do: op in @boolean_values
+  defp stored_yes_no?(_ir), do: false
+
+  defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
+  defp yes_no_side?(ir), do: stored_yes_no?(ir)
+
+  # Record-side ones only, consulting no flag: an actor-side value reads as
+  # in any comparison (an empty one keeps its guard, `actor_empty_denies`).
+  defp no_operands([l, r], ctx) do
+    {a, f1} = no_operand(l, ctx)
+    {b, f2} = no_operand(r, ctx)
+    {a, b, f1 ++ f2}
+  end
+
+  defp no_operand(ir, ctx) do
+    if stored_yes_no?(ir) and not actor?(ir) do
+      {value(ir, ctx) || {:boolean, false}, []}
+    else
+      {v, f1} = value_flags(ir, ctx)
+      {v, f2} = stored_boolean(ir, v, ctx)
+      {v, f1 ++ f2}
+    end
   end
 
   # A value, with the flags consulted when it is a condition used as a value.
