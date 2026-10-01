@@ -112,11 +112,19 @@ defmodule BubbleEx.Target.Elixir.Frontend do
            ElixirTarget.compile(ir, project, target_opts(opts)) do
       result
       |> Map.take([:source, :bindings, :runtime, :loads])
-      |> Map.merge(%{type: ir.type})
+      |> Map.merge(%{type: ir.type, approximated: approximated(result.diagnostics)})
       |> Map.merge(file_value(shown_file(ir), project, opts))
     else
       _ -> nil
     end
+  end
+
+  # The format parts the runtime only approximates (see
+  # `BubbleEx.Target.Elixir.Formats`), which the page marks.
+  defp approximated(diagnostics) do
+    for %{code: :elixir_format_approximated, details: %{constructs: constructs}} <- diagnostics,
+        construct <- constructs,
+        do: construct
   end
 
   # A binding showing one file value also compiles to just its link
@@ -140,7 +148,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     [
       runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
       namespace: namespace,
-      file_url: Keyword.get(opts, :file_url, namespace <> "Web.Uploads.url")
+      file_url: Keyword.get(opts, :file_url, namespace <> "Web.Uploads.url"),
+      display: true
     ]
   end
 end

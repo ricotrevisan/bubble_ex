@@ -38,19 +38,26 @@ defmodule BubbleEx.Target.Elixir do
 
   | Function | Bubble |
   |----------|--------|
-  | `text(x)` | a value shown in text (numbers without a trailing `.0`, yes/no, dates) |
+  | `text(x)` | a value as machine text (numbers as JavaScript prints them, yes/no, dates in ISO 8601, UTC, milliseconds) |
+  | `display(x)` | a value shown on a page (`:display`): `text/1` with dates in Bubble's default format |
   | `empty?(x)` | `is empty`: nil, `""` or `[]` |
   | `compare(op, a, b)` | `>`, `<`, `>=`, `<=`; false when either side is empty |
   | `add/sub/mul/div/mod(a, b)` | arithmetic; dates plus intervals |
   | `default(x, d)` | `defaulting to`: `x` unless it is empty (as `empty?/1`; a reference is its loaded record, nil when unset or gone), else `d`; a field of it reads through whichever holds |
   | `lowercase/uppercase/trim/capitalize_words/text_length/json_encode/url_encode/is_email/abs/round/to_text/to_number(x)` | the operators |
-  | `format_date(x, format)`, `format_number(x, options)`, `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `date_add(x, n, unit)`, `date_floor(x, unit)`, `date_part(x, unit)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the formatting and date operators (stubs until the runtime is written) |
+  | `format_date(x, format[, zone])`, `format_number(x, options)`, `date_floor(x, unit[, zone])`, `date_part(x, unit[, zone])`, `date_add(x, n, unit)` | Bubble's date and number formats and calendar operators (`BubbleEx.Target.Elixir.Formats`); `zone` only when the expression names one |
+  | `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the other formatting and text operators |
 
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
   `{:target, :elixir}`): searches and `:filtered` (these become Ash
   queries), sorting, API type fields, fields of list items (a list of
   things is a list of IDs), list algebra other than `count`, `first`,
   `last` and `contains`.
+
+  A format the runtime only approximates (an unknown number setting, a
+  date pattern token or unit it does not implement, see
+  `BubbleEx.Target.Elixir.Formats.approximations/2`) still compiles, with an
+  `:elixir_format_approximated` warning naming the parts.
 
   An option is its stored key; its label is the generated enum's
   `label/1` and an attribute its `attributes/1` entry.
@@ -67,6 +74,7 @@ defmodule BubbleEx.Target.Elixir do
   alias BubbleEx.Expression.IR
   alias BubbleEx.Model.Type
   alias BubbleEx.Target.Ash.Project
+  alias BubbleEx.Target.Elixir.Formats
 
   @type result :: %{
           source: String.t() | nil,
@@ -82,6 +90,7 @@ defmodule BubbleEx.Target.Elixir do
           | {:subject, Diagnostic.subject()}
           | {:path, String.t() | list()}
           | {:file_url, String.t() | nil}
+          | {:display, boolean()}
 
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
                     is_email abs round to_text to_number)a
@@ -102,6 +111,9 @@ defmodule BubbleEx.Target.Elixir do
     * `:subject` / `:path` - diagnostic subject and pointer
     * `:file_url` - the function a shown file or image value goes through
       (see the moduledoc); none by default
+    * `:display` - parts of a dynamic text are shown on a page:
+      `display(x)` (dates in Bubble's default format) instead of `text(x)`
+      (machine text: URLs, API responses); default false
   """
   @spec compile(IR.t(), Project.t(), [option()]) :: {:ok, result()} | {:error, Error.t()}
   def compile(ir, project, opts \\ [])
@@ -120,10 +132,12 @@ defmodule BubbleEx.Target.Elixir do
       runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
       namespace: Keyword.get(opts, :namespace, "MyApp"),
       file_url: Keyword.get(opts, :file_url),
+      shown: if(Keyword.get(opts, :display, false), do: :display, else: :text),
       bindings: %{},
       loads: %{},
       used: MapSet.new(),
-      unsupported: []
+      unsupported: [],
+      approximated: []
     }
 
     {source, st} = ir |> value(st) |> shown_file(ir)
@@ -139,7 +153,7 @@ defmodule BubbleEx.Target.Elixir do
         loads:
           Map.new(st.loads, fn {var, paths} -> {var, paths |> MapSet.to_list() |> Enum.sort()} end),
         runtime: st.used |> MapSet.to_list() |> Enum.sort(),
-        diagnostics: []
+        diagnostics: approximations(st, opts)
       }
     end
   end
@@ -300,10 +314,30 @@ defmodule BubbleEx.Target.Elixir do
     runtime(st, op, [a])
   end
 
-  defp value(%IR{op: op, args: [x | options]}, st)
-       when op in [:format_date, :format_number, :date_floor, :date_part] do
+  # A date operator's zone is an argument only when the expression names
+  # one: without it the runtime uses the user's (its `time_zone/0`).
+  defp value(%IR{op: op, args: [x, setting, zone]}, st)
+       when op in [:format_date, :date_floor, :date_part] do
     {a, st} = value(x, st)
-    runtime(st, op, [a | Enum.map(options, &inspect/1)])
+    st = approximate(st, Formats.approximations(op, setting))
+
+    case zone do
+      nil ->
+        runtime(st, op, [a, lit(setting)])
+
+      zone when is_binary(zone) ->
+        runtime(st, op, [a, lit(setting), lit(zone)])
+
+      %IR{} = zone ->
+        {z, st} = value(zone, st)
+        runtime(st, op, [a, lit(setting), z])
+    end
+  end
+
+  defp value(%IR{op: :format_number, args: [x, options]}, st) do
+    {a, st} = value(x, st)
+    st = approximate(st, Formats.approximations(:format_number, options))
+    runtime(st, :format_number, [a, lit(options)])
   end
 
   defp value(%IR{op: :date_add, args: [x, n, unit]}, st) do
@@ -480,7 +514,7 @@ defmodule BubbleEx.Target.Elixir do
   defp shown_file(result, _ir), do: result
 
   defp text(:error, st), do: {:error, st}
-  defp text(part, st), do: runtime(st, :text, [part])
+  defp text(part, st), do: runtime(st, st.shown, [part])
 
   # Records compare by Bubble ID: a record-valued expression as its ID.
   defp id_value(%IR{type: type} = ir, st) do
@@ -712,6 +746,28 @@ defmodule BubbleEx.Target.Elixir do
   # it); `at` names the Bubble IDs involved, or nil.
   defp unsupported(st, {_kind, _at} = what),
     do: {:error, %{st | unsupported: [what | st.unsupported]}}
+
+  defp approximate(st, []), do: st
+  defp approximate(st, constructs), do: %{st | approximated: constructs ++ st.approximated}
+
+  # Formats compiled with parts the runtime only approximates: the
+  # expression compiles, and the diagnostic reports what to check.
+  defp approximations(%{approximated: []}, _opts), do: []
+
+  defp approximations(st, opts) do
+    constructs = st.approximated |> Enum.uniq() |> Enum.sort()
+
+    [
+      Diagnostic.new(
+        :elixir_format_approximated,
+        Keyword.get(opts, :path, ""),
+        "#{Enum.join(constructs, ", ")} only approximated by the runtime; check the rendered text",
+        target: :elixir,
+        subject: Keyword.get(opts, :subject, %{}),
+        details: %{constructs: constructs}
+      )
+    ]
+  end
 
   defp describe({kind, nil}), do: kind
   defp describe({kind, at}), do: "#{kind} #{inspect(at)}"

@@ -142,7 +142,7 @@ defmodule BubbleEx.Expression.CompilerTest do
       assert %IR{op: :date_add, args: [_, %IR{op: :literal, args: [3]}, :day], type: "date"} =
                ir(chain(date, [msg("plus_days", 3)]), opts)
 
-      assert %IR{op: :format_date, args: [_, "mmm d"]} =
+      assert %IR{op: :format_date, args: [_, "mmm d", nil]} =
                ir(chain(date, [msg("format_date", nil, %{"formatting_type" => "mmm d"})]), opts)
 
       replace =
@@ -162,6 +162,94 @@ defmodule BubbleEx.Expression.CompilerTest do
         })
 
       assert %IR{op: :format_boolean} = ir(chain(cu(), [msg("admin_boolean"), yes_no]))
+    end
+  end
+
+  describe "date and number formats (WTF-456)" do
+    setup do
+      %{date: chain(src("CurrentPageItem"), [msg("due_date")]), opts: [host: "bT4"]}
+    end
+
+    test "a custom format reads custom_format; a named one is its own pattern",
+         %{date: date, opts: opts} do
+      custom = %{"formatting_type" => "custom", "custom_format" => "ddd, mmm d"}
+
+      assert %IR{op: :format_date, args: [_, "ddd, mmm d", nil], type: "text"} =
+               ir(chain(date, [msg("format_date", nil, custom)]), opts)
+
+      # A named format keeps its pattern even with a stale custom_format.
+      iso = %{"formatting_type" => "iso_date", "custom_format" => "yyyy"}
+
+      assert %IR{op: :format_date, args: [_, "iso_date", nil]} =
+               ir(chain(date, [msg("format_date", nil, iso)]), opts)
+
+      # The live payload's compact key.
+      compact = %{"%ft" => "custom", "custom_format" => "yyyy"}
+
+      assert %IR{op: :format_date, args: [_, "yyyy", nil]} =
+               ir(chain(date, [msg("format_date", nil, compact)]), opts)
+    end
+
+    test "time zones: the user's, a static zone, or an expression",
+         %{date: date, opts: opts} do
+      browser = %{"formatting_type" => "h:MM tt", "tz_type" => "browser", "tz_static" => "UTC"}
+
+      assert %IR{args: [_, "h:MM tt", nil]} =
+               ir(chain(date, [msg("format_date", nil, browser)]), opts)
+
+      static = %{"formatting_type" => "h:MM tt", "tz_type" => "static", "tz_static" => "UTC"}
+
+      assert %IR{args: [_, "h:MM tt", "UTC"]} =
+               ir(chain(date, [msg("format_date", nil, static)]), opts)
+
+      dynamic = %{
+        "formatting_type" => "h:MM tt",
+        "tz_type" => "dynamic",
+        "tz_dynamic" => chain(cu(), [msg("name_text")])
+      }
+
+      assert %IR{args: [_, "h:MM tt", %IR{op: :field, type: "text"}]} =
+               ir(chain(date, [msg("format_date", nil, dynamic)]), opts)
+
+      floor = %{
+        "component_to_extract" => "day",
+        "tz_type_overridden" => "static",
+        "tz_static_overridden" => "UTC"
+      }
+
+      assert %IR{op: :date_floor, args: [_, "day", "UTC"], type: "date"} =
+               ir(chain(date, [msg("rounded_down", nil, floor)]), opts)
+
+      assert %IR{op: :date_part, args: [_, "UNIX", nil], type: "number"} =
+               ir(
+                 chain(date, [msg("extract_from_date", nil, %{"component_to_extract" => "UNIX"})]),
+                 opts
+               )
+    end
+
+    test "an unknown time zone setting is not compiled", %{date: date, opts: opts} do
+      odd = %{"formatting_type" => "h:MM tt", "tz_type" => "lunar"}
+      env = env(opts)
+
+      {:ok, %{ir: nil}} =
+        Compiler.compile(parse!(chain(date, [msg("format_date", nil, odd)]), env), env)
+    end
+
+    test "number options keep Bubble's settings with readable keys" do
+      number = chain(el("bI1"), [msg("get_data")])
+
+      currency = %{
+        "formatting_type" => "currency",
+        "decimal_place" => 0,
+        "thousand_separator" => "comma",
+        "currency_symbol" => "$"
+      }
+
+      assert %IR{op: :format_number, args: [_, ^currency], type: "text"} =
+               ir(chain(number, [msg("format_number", nil, currency)]))
+
+      assert %IR{op: :format_number, args: [_, %{}]} =
+               ir(chain(number, [msg("format_number", nil, nil)]))
     end
   end
 

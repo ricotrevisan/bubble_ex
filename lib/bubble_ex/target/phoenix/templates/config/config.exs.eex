@@ -5,6 +5,12 @@ config :<%= @app %>,
   ash_domains: [<%= @module %>.Domain],
   generators: [timestamp_type: :utc_datetime_usec]
 
+# The time zone Bubble dates show in when an expression names none (Bubble
+# uses the user's browser zone; see <%= @module %>.Bubble.Runtime.time_zone/0).
+# Zones other than UTC need a time zone database, e.g. the `tz` package and
+# `config :elixir, :time_zone_database, Tz.TimeZoneDatabase`.
+config :<%= @app %>, :bubble_time_zone, "Etc/UTC"
+
 # Required since Ash 3.33 (EEF-CVE-2026-82752).
 config :ash, default_string_length_count: :codepoints
 

@@ -21,7 +21,9 @@
 //    whether anything in the DOM changed.
 // Each visit also records its load and settle times and, as counts, its
 // layout sanity (elements with no area, past the right edge, wired
-// elements covered at their center).
+// elements covered at their center), and the raw ISO timestamps in its
+// visible text: Bubble shows dates formatted, so a nonzero count is an
+// unformatted date (WTF-456).
 // Writes <out>/drive.json and screenshots <out>/*.png (the caller keeps
 // <out> private).
 import { chromium } from "../../test/support/fidelity/node_modules/playwright/index.mjs";
@@ -128,6 +130,9 @@ const snapshot = async () =>
     url: location.pathname + location.search,
     elements: document.querySelectorAll("[data-bubble-id]").length,
     visible_text: (document.body.innerText || "").length,
+    // Raw ISO timestamps in the visible text: Bubble shows dates formatted
+    // (WTF-456), so any is a date the page failed to format (a count only).
+    iso_timestamps: ((document.body.innerText || "").match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/g) || []).length,
     clickables: [...document.querySelectorAll("[phx-click][data-bubble-id]")].map((e) => ({
       id: e.getAttribute("data-bubble-id"),
       visible: !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length),
@@ -332,5 +337,6 @@ console.log(
     `${result.clicks.length} clicks, ` +
     `${result.clicks.filter((c) => c.phx_error || c.server_errors.length).length} with errors, ` +
     `${result.blocked_requests.length} blocked origins, ` +
-    `${result.external_images_expected} linked external images (expected)`,
+    `${result.external_images_expected} linked external images (expected), ` +
+    `${Math.max(0, ...result.visits.map((v) => v.iso_timestamps || 0))} raw ISO timestamps shown`,
 );

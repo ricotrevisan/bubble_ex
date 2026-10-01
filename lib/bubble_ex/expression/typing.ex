@@ -88,6 +88,7 @@ defmodule BubbleEx.Expression.Typing do
     "as_text" => "text",
     "convert_to_number" => "number",
     "format_date" => "text",
+    "format_number" => "text",
     "url" => "text"
   }
 

@@ -42,18 +42,24 @@ defmodule BubbleEx.Expression.IR do
   | `:concat` | `[part, …]` | dynamic text: parts in order, each shown as text |
   | `:fallback` | `[x, default]` | `x defaulting to default` |
   | `:lowercase`, `:uppercase`, `:trim`, `:capitalize_words`, `:text_length`, `:json_encode`, `:url_encode`, `:is_email`, `:abs`, `:round`, `:to_text` | `[x]` | text and number operators |
-  | `:to_number`, `:format_date` | `[x]` / `[date, format]` | `converted to number`; `formatted as` a date (`format` is Bubble's format text, nil for the default) |
-  | `:format_number` | `[number, options]` | `formatted as` a number; `options` are Bubble's settings verbatim |
+  | `:to_number` | `[x]` | `converted to number` |
+  | `:format_date` | `[date, format, zone]` | `formatted as` a date: `format` is Bubble's pattern (a named format is its own pattern, `custom` its `custom_format`; `"iso_date"` for ISO 8601; nil for Bubble's default); `zone` (see below) |
+  | `:format_number` | `[number, options]` | `formatted as` a number; `options` are Bubble's settings with readable keys (`formatting_type`, `decimal_place`, `thousand_separator`, `currency_symbol`) |
   | `:format_boolean` | `[x, yes_text, no_text]` | a yes/no `formatted as` text |
   | `:truncate` | `[text, n]` | `truncated to` |
   | `:replace` | `[text, find, replace, regex?]` | `find & replace` |
   | `:split` | `[text, separator]` | `split by` |
   | `:date_add` | `[date, amount, unit]` | `+(seconds)` … `+(years)`; `unit` is `:second`, `:minute`, `:hour`, `:day`, `:month` or `:year` |
-  | `:date_floor`, `:date_part` | `[date, unit]` | `rounded down to`, `extract`; `unit` is Bubble's component name |
+  | `:date_floor`, `:date_part` | `[date, unit, zone]` | `rounded down to`, `extract`; `unit` is Bubble's component name |
   | `:text_contains` | `[text, text]` | `text contains string` (substring) |
   | `:text_contains_words` | `[text, text]` | `text contains` (Bubble's keyword match) |
   | `:search` | `[data_type, predicate \\| nil]` | `Do a search for`; the predicate is over `{:this, [:filter_item]}` |
   | `:filter` | `[list, predicate]` | `:filtered` |
+
+  A date operator's `zone` is the time zone it works in: nil for Bubble's
+  default (the user's; the target decides what that is), a zone name
+  (Bubble's `static` setting) or the IR of an expression giving one
+  (`dynamic`).
 
   The IR has no target-language names: fields and types are Bubble IDs,
   options carry their stable keys. It is plain data, deterministic and
