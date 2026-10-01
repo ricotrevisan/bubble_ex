@@ -117,6 +117,32 @@ defmodule BubbleEx.Frontend.StaticAssetsTest do
       end
     end
 
+    # WTF-465: linked to their original host, as in Bubble, over HTTPS.
+    test "other hosts are linked over HTTPS, and only http(s) URLs are" do
+      for {ref, url} <- [
+            {"https://cdn.example.com/a.png", "https://cdn.example.com/a.png"},
+            {"//cdn.example.com/a.png?w=200", "https://cdn.example.com/a.png?w=200"},
+            {"http://cdn.example.com/a.png", "https://cdn.example.com/a.png"},
+            {"http://cdn.example.com:8080/a.png", "https://cdn.example.com:8080/a.png"},
+            {"HTTPS://CDN.Example.com/A.png", "https://cdn.example.com/A.png"}
+          ] do
+        assert StaticAssets.classify(ref) == {:external, url}, ref
+      end
+
+      for ref <- [
+            "javascript:alert(1)",
+            "data:text/html,<script>",
+            "data:image/svg+xml,<svg/onload=alert(1)>",
+            "ftp://cdn.example.com/a.png",
+            "file:///etc/passwd",
+            "blob:https://cdn.example.com/1",
+            "//cdn.example.com/a.png?token=abc",
+            "https://user:pw@cdn.example.com/a.png"
+          ] do
+        assert {:invalid, _} = StaticAssets.classify(ref), ref
+      end
+    end
+
     test "hostile references are dropped" do
       for ref <- [
             "javascript:alert(1)",

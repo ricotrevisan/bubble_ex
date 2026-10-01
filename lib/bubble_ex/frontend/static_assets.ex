@@ -27,13 +27,16 @@ defmodule BubbleEx.Frontend.StaticAssets do
       stored image is served by the app from `priv/static/images/bubble/`
       and referenced as `/images/bubble/<sha256>.<ext>`; a Bubble-hosted
       image not in the store renders **without a source** (never its
-      Bubble URL) and is `pending`; an image on any other host is left as
-      its URL, `external`, and flagged; `data:` images stay inline;
-      anything else is dropped (`invalid`). `.wtf/assets.json`
-      (`manifest/3`) lists every asset with its status.
+      Bubble URL) and is `pending`; an image on any other host is
+      `external`: linked to its original URL (over HTTPS), as Bubble does;
+      `data:` images stay inline; anything else is dropped (`invalid`).
+      `.wtf/assets.json` (`manifest/3`) lists every asset with its status.
 
-  Assets on other hosts are never fetched: they are the app owner's to
-  move or keep.
+  Images on other hosts are never fetched, proxied or dropped: Bubble
+  hotlinks them, and so does the migrated app (WTF-465). The
+  page links them with `referrerpolicy="no-referrer"` and
+  `loading="lazy"`, the app's `img-src` allows `https:`, and they are
+  listed as informational, not as work to do.
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -180,9 +183,10 @@ defmodule BubbleEx.Frontend.StaticAssets do
 
   @doc """
   What a reference is: `{:bubble, https_url}` (Bubble's storage, to fetch),
-  `{:icon, path}` (an icon library on the app's origin), `{:external, url}`
-  (another host: left as is, never fetched), `{:data, url}` (an inline
-  raster image) or `{:invalid, reason}`.
+  `{:icon, path}` (an icon library on the app's origin), `{:external, https_url}`
+  (another host: linked, never fetched; an `http://` reference is linked
+  over HTTPS), `{:data, url}` (an inline raster image) or
+  `{:invalid, reason}` (any other scheme, credentials, a relative path).
   """
   @spec classify(term(), :image | :icon) ::
           {:bubble | :icon | :external | :data, String.t()} | {:invalid, String.t()}
@@ -225,12 +229,15 @@ defmodule BubbleEx.Frontend.StaticAssets do
       String.contains?(url, [" ", "\n", "\r", "\t"]) -> {:invalid, "not a URL"}
       SafeUrl.sensitive_query?(url) -> {:invalid, "credential-like query parameter"}
       Files.bubble?(secure) -> {:bubble, secure}
-      true -> {:external, url}
+      true -> {:external, secure}
     end
   end
 
   # Bubble's storage serves HTTPS; an http:// reference is fetched and
-  # keyed over HTTPS, with its host in lower case.
+  # keyed over HTTPS, with its host in lower case. An image on another host
+  # is linked over HTTPS too: Bubble serves its pages over HTTPS, where
+  # browsers upgrade an http:// image, and the generated app's `img-src`
+  # allows `https:` only.
   defp secure(%URI{scheme: scheme, port: port, host: host} = uri) do
     port = if scheme == "http" and port == 80, do: 443, else: port
     URI.to_string(%{uri | scheme: "https", port: port, host: String.downcase(host)})
@@ -330,8 +337,9 @@ defmodule BubbleEx.Frontend.StaticAssets do
         "Static images and icons of the Bubble pages (WTF-447). local: served by the app " <>
           "from priv/static/images/bubble (icons inlined); pending: on Bubble's storage, not " <>
           "downloaded, rendered without a source (run mix bubble.fetch_assets, then render " <>
-          "with its store); external: another host, left as its URL and never fetched; " <>
-          "data: inline; invalid: dropped.",
+          "with its store); external: on another host, linked to its original URL as " <>
+          "Bubble does (informational: never fetched, nothing to fix); data: inline; " <>
+          "invalid: dropped.",
       "counts" => counts,
       "assets" => entries
     }
@@ -401,8 +409,9 @@ defmodule BubbleEx.Frontend.StaticAssets do
         %{
           "url" => display_url(url),
           "status" => "external",
+          "handling" => "linked",
           "host" => host(url),
-          "reason" => "not on Bubble's storage: left as its URL, never fetched"
+          "note" => "on another host: linked to its original URL, as in Bubble"
         }
 
       {:data, url} ->
@@ -591,8 +600,9 @@ defmodule BubbleEx.Frontend.StaticAssets do
   stay pending), `:max_asset_bytes`, `:asset_timeout`.
 
   Returns a report: `fetched`, `reused`, `failed` (`[%{url, reason}]`),
-  and the counts of `external`, `data`, `invalid` and `skipped` (icons
-  without `app_url`) references, which are never fetched.
+  and the counts of `external` (linked to their host, as in Bubble),
+  `data`, `invalid` and `skipped` (icons without `app_url`) references,
+  which are never fetched.
   """
   @spec fetch(Normalized.t(), Path.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def fetch(%Normalized{} = frontend, dir, opts \\ []) when is_binary(dir) do

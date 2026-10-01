@@ -1,11 +1,15 @@
 // Drives one generated page in a real browser (WTF-378), with the pinned
 // Playwright of the fidelity gates (test/support/fidelity, `npm ci` there
 // first). Only the slice's own server is contacted: every request to
-// another origin is aborted and recorded.
+// another origin is aborted and recorded in `blocked_requests`, except the
+// images the pages link from other hosts (`--assets`, the generated
+// `.wtf/assets.json`: `external` images stay linked, as in Bubble,
+// WTF-465), which are expected and only counted, as
+// `external_images_expected` (distinct URLs).
 //
 //   node scripts/vertical_slice/drive.mjs --base http://127.0.0.1:4378 \
 //     --path /some-page [--thing <Bubble ID>] --email user@example.test \
-//     --out <private dir> [--log <server log file>]
+//     --out <private dir> [--log <server log file>] [--assets <.wtf/assets.json>]
 //
 // 1. Visits the page signed out, then signs in with a magic link from the
 //    local mailbox (/dev/mailbox) and visits it again.
@@ -45,7 +49,28 @@ if (base.hostname !== "127.0.0.1") {
 const out = args.out;
 fs.mkdirSync(out, { recursive: true, mode: 0o700 });
 const pagePath = args.thing ? `${args.path}/${args.thing}` : args.path;
-const result = { page: pagePath, visits: [], sign_in: null, clicks: [], blocked_requests: [] };
+const result = {
+  page: pagePath,
+  visits: [],
+  sign_in: null,
+  clicks: [],
+  blocked_requests: [],
+  external_images_expected: 0,
+};
+
+// The origins of the images the pages link from other hosts.
+const linkedImageOrigins = new Set();
+if (args.assets) {
+  const manifest = JSON.parse(fs.readFileSync(args.assets, "utf8"));
+  for (const asset of manifest.assets || []) {
+    if (asset.kind !== "image" || asset.status !== "external") continue;
+    try {
+      linkedImageOrigins.add(new URL(asset.url).origin);
+    } catch {}
+  }
+}
+const linkedImages = new Set();
+const linkedImage = (url, resourceType) => resourceType === "image" && linkedImageOrigins.has(url.origin);
 
 // Nothing but the slice's own server, three ways: no host name resolves
 // but 127.0.0.1 (a request that escaped the routes below fails DNS), every
@@ -62,7 +87,8 @@ const context = await browser.newContext({
 await context.route("**/*", (route) => {
   const url = new URL(route.request().url());
   if (url.origin === base.origin || url.protocol === "data:") return route.continue();
-  result.blocked_requests.push(url.origin);
+  if (linkedImage(url, route.request().resourceType())) linkedImages.add(url.href);
+  else result.blocked_requests.push(url.origin);
   return route.abort();
 });
 
@@ -93,7 +119,15 @@ const serverLog = (from) => {
 
 const page = await context.newPage();
 let consoleErrors = [];
-page.on("console", (msg) => msg.type() === "error" && consoleErrors.push(msg.text().slice(0, 300)));
+// A linked image the drive blocked is expected: its load error is not one.
+const expectedError = (msg) => {
+  try {
+    return linkedImages.has(new URL(msg.location().url).href);
+  } catch {
+    return false;
+  }
+};
+page.on("console", (msg) => msg.type() === "error" && !expectedError(msg) && consoleErrors.push(msg.text().slice(0, 300)));
 page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${String(err).slice(0, 300)}`));
 
 const settle = async () => {
@@ -304,9 +338,12 @@ for (const { id } of signedIn.clickables) {
 
 await browser.close();
 result.blocked_requests = [...new Set(result.blocked_requests)].sort();
+result.external_images_expected = linkedImages.size;
 fs.writeFileSync(path.join(out, "drive.json"), JSON.stringify(result, null, 2), { mode: 0o600 });
 console.log(
   `drove ${pagePath}: sign-in ${result.sign_in.ok ? "ok" : "failed"}, ` +
     `${result.clicks.length} clicks, ` +
-    `${result.clicks.filter((c) => c.phx_error || c.server_errors.length).length} with errors`,
+    `${result.clicks.filter((c) => c.phx_error || c.server_errors.length).length} with errors, ` +
+    `${result.blocked_requests.length} blocked origins, ` +
+    `${result.external_images_expected} linked external images (expected)`,
 );

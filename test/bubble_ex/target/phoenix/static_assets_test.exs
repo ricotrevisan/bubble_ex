@@ -18,8 +18,8 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
   @png_sha "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77"
   @gif_sha "ef1955ae757c8b966c83248350331bd3a30f658ced11f387f8ebf05ab3368629"
 
-  defp render(opts \\ []) do
-    app = @fixture |> File.read!() |> Jason.decode!()
+  defp render(opts \\ [], edit \\ & &1) do
+    app = @fixture |> File.read!() |> edit.() |> Jason.decode!()
     {:ok, model} = BubbleEx.Model.build(app)
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
     {:ok, frontend} = BubbleEx.Frontend.normalize(app)
@@ -66,7 +66,7 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     refute markup =~ ~r{s3\.amazonaws\.com/appforest_uf|appforest_uf\.s3}i
   end
 
-  test "with the store: Bubble's images are the app's own, other hosts stay and are flagged" do
+  test "with the store: Bubble's images are the app's own, other hosts stay linked" do
     {files, report} = render(asset_store: store())
     refute_bubble_urls(files)
     markup = pages(files)
@@ -82,11 +82,25 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     refute img(markup, "bMiss") =~ "src="
     assert markup =~ "TODO(bubble:bMiss) image on Bubble's storage not downloaded"
 
-    # Other hosts, look-alikes of Bubble's included, keep their URL, marked.
+    # Other hosts, look-alikes of Bubble's included, stay linked to their
+    # URL as in Bubble (WTF-465): lazy, without a Referer, and not marked.
     assert img(markup, "bExt") =~ ~s(src="https://images.example.org/hero.jpg")
     assert img(markup, "bLook") =~ ~s(src="https://a1b2c3d4e5f6.cdn.bubble.io.evil.example/)
     assert img(markup, "bBucket") =~ ~s(src="https://evil.example/appforest_uf/)
-    assert markup =~ "TODO(bubble:bExt) image on an outside host (images.example.org)"
+
+    for id <- ~w(bExt bLook bBucket) do
+      assert img(markup, id) =~ ~s(loading="lazy"), id
+      assert img(markup, id) =~ ~s(referrerpolicy="no-referrer"), id
+    end
+
+    refute markup =~ "outside host"
+    refute markup =~ ~r/TODO\(bubble:(bExt|bLook|bBucket)\)/
+
+    # Local, inline and dropped images are neither lazy nor linked.
+    for id <- ~w(bCdn bS3 bSvg bMiss bData bJs) do
+      refute img(markup, id) =~ "referrerpolicy", id
+      refute img(markup, id) =~ "loading=", id
+    end
 
     assert markup =~
              ~S|<source media="(width &lt; 400px)" srcset="https://images.example.org/small.png"|
@@ -153,8 +167,16 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
                {"image", "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000002x400/missing.png"}
              ]
 
-    assert %{"status" => "external", "host" => "images.example.org", "elements" => ["bExt"]} =
-             assets[{"image", "https://images.example.org/hero.jpg"}]
+    assert %{
+             "status" => "external",
+             "handling" => "linked",
+             "host" => "images.example.org",
+             "note" => "on another host: linked to its original URL, as in Bubble",
+             "elements" => ["bExt"]
+           } = assets[{"image", "https://images.example.org/hero.jpg"}]
+
+    refute Map.has_key?(assets[{"image", "https://images.example.org/hero.jpg"}], "reason")
+    assert manifest["about"] =~ "external: on another host, linked to its original URL"
 
     assert %{"status" => "local", "inlined" => true} =
              assets[
@@ -174,6 +196,58 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
            }
 
     assert report["assets_local"] == 5 and report["assets_external"] == 5
+  end
+
+  test "an http:// image on another host is linked over HTTPS, an instance's too" do
+    {files, report} =
+      render([asset_store: store()], fn json ->
+        json
+        |> String.replace(
+          "https://images.example.org/hero.jpg",
+          "http://images.example.org/hero.jpg"
+        )
+        |> String.replace(
+          "https://images.example.org/two.png",
+          "http://images.example.org/two.png"
+        )
+      end)
+
+    markup = pages(files)
+    assert img(markup, "bExt") =~ ~s(src="https://images.example.org/hero.jpg")
+    refute markup =~ "http://images.example.org"
+    assert markup =~ ~S|src_bphoto={to_string("https://images.example.org/two.png")}|
+
+    # The reusable's image: an instance passes a linked one.
+    [card] =
+      Regex.run(
+        ~r/<img\s[^>]*src=\{@src_bphoto\}[^>]*>/s,
+        files["lib/shop_web/components/reusables/card.html.heex"]
+      )
+
+    assert card =~ ~s(referrerpolicy="no-referrer")
+    assert card =~ ~s(loading="lazy")
+
+    manifest = Jason.decode!(files[".wtf/assets.json"])
+
+    assert %{"status" => "external"} =
+             by_url(manifest)[{"image", "https://images.example.org/hero.jpg"}]
+
+    assert report["assets_external"] == 5
+  end
+
+  test "the pages' policy allows images from any HTTPS host" do
+    {files, _report} = render()
+    router = files["lib/shop_web/router.ex"]
+    assert router =~ "plug :put_secure_browser_headers"
+
+    [policy] =
+      Regex.run(~r/"content-security-policy" =>\s*"([^"]+)"/, router, capture: :all_but_first)
+
+    assert policy =~ "base-uri 'self'"
+    assert policy =~ "frame-ancestors 'self'"
+    assert policy =~ "img-src 'self' data: blob: https:;"
+    refute policy =~ "http:"
+    refute policy =~ "example"
   end
 
   test "without the store: no Bubble URL either, every Bubble image pending" do
@@ -199,7 +273,9 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     assert endpoint =~ ~s(at: "/images/bubble")
     assert endpoint =~ ~s(from: {:shop, "priv/static/images/bubble"})
     assert endpoint =~ ~s("x-content-type-options" => "nosniff")
-    assert endpoint =~ "sandbox"
+
+    assert endpoint =~
+             ~s("content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox")
   end
 
   # The exporter's `assets:` (the fidelity cases' path) are served only as

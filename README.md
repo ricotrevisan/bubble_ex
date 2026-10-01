@@ -495,9 +495,12 @@ Only Bubble's storage hosts are requested (redirects included), with a size
 cap and a redirect limit; images are kept only if their bytes are PNG,
 JPEG, GIF or WebP, or a sanitized SVG, and are served from
 `priv/static/images/bubble/<sha256>.<ext>`. A Bubble image not downloaded
-renders without a source; images on other hosts keep their URL. Both are
-marked in the templates, and `.wtf/assets.json` lists every asset with its
-status, SHA-256, content type and size.
+renders without a source and is marked in the template. Images on other
+hosts are never fetched or proxied: they stay linked to their original
+URLs, as in Bubble (over HTTPS, `loading="lazy"`,
+`referrerpolicy="no-referrer"`; the pages' `img-src` allows `https:`), and
+are informational, not work to do. `.wtf/assets.json` lists every asset
+with its status, SHA-256, content type and size.
 
 ### DBML / database diagram (legacy options)
 
