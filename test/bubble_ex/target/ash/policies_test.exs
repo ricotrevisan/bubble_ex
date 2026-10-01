@@ -831,12 +831,14 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
     assert :ash_policy_stricter_than_bubble in codes(project, %{type: "is_no", rule: "r_"})
 
     # WTF-471: `x is not no` reads an empty value as no, as Bubble does:
-    # it compiles to `flag == true` and is neither stricter nor warned
+    # it compiles to a never-NULL `flag is yes` and is neither stricter nor warned
     same = resource(project, "is_not_no")
     assert same.privacy.stricter_rules == []
     assert same.privacy.stricter_flags == %{}
     refute :ash_policy_stricter_than_bubble in codes(project, %{type: "is_not_no", rule: "r_"})
-    assert Source.expr(calc(same, "privacy_rule_r").expr) == "expr(flag == true)"
+
+    assert Source.expr(calc(same, "privacy_rule_r").expr) ==
+             "expr(is_not_distinct_from(flag, true))"
   end
 
   defp heads({:ref, [], attribute}), do: [attribute]

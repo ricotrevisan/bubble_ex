@@ -7,17 +7,28 @@ All notable changes to this project are documented here.
 ### Changed
 
 - **`x is not no` reads an empty yes/no as no, as Bubble does** (WTF-471).
-  Between yes/no values with a stored side, `is not` now treats an empty
-  stored value as no, in the Ash policies and in page and workflow
-  conditions alike (`Target.Elixir`): `x is not no` compiles to `x ==
-  true` (was `is_distinct_from(x, false)`, which granted on an empty x),
-  and `x is not y` between two stored yes/no values holds when exactly one
-  is yes. This only narrows, and matches Bubble (an empty yes/no reads as
-  no, WTF-385). `x is no` and `x is y` are unchanged: they stay stricter
-  than Bubble on an empty value by the owner's decision
-  (`Verify.Difference`, `empty_yes_no_is_no`). The interpreter's target
-  reading follows, so the matrix sees these cases agree; the
-  `:ash_policy_empty_yes_no_wider_than_bubble` warning and
+  Between yes/no values (not conditions: fields, parameters, option
+  attributes, ...; "stored" below), at least one stored, `is not` now
+  treats an empty stored value as no, in the Ash policies and in page and
+  workflow conditions alike (`Target.Elixir`), and never yields NULL: `x
+  is not no` compiles to `is_not_distinct_from(x, true)` (was
+  `is_distinct_from(x, false)`, which granted on an empty x), and `x is
+  not y` between two stored values holds when exactly one is yes. These
+  only narrow: each holds in a subset of the cases it held before. `x is
+  no` and `x is y` are unchanged: they stay stricter than Bubble on an
+  empty value by the owner's decision (`Verify.Difference`,
+  `empty_yes_no_is_no`). A condition compared with another yes/no as a
+  value (`(x is not no) is (x is no)`) is now expanded into each side's
+  own polarities, as conditions reading the user already were, and a
+  condition used as any other value is strictly yes or no (`if(c, true,
+  false)`; never nil in Elixir), so an empty operand can no longer match
+  through NULL = NULL. That removes such matches (the old form was wider
+  than Bubble); in one rare shape it can also match where the old,
+  NULL-propagating form did not: a condition whose negation holds on an
+  empty value (`text contains` on an empty text) compared with another
+  condition, which is Bubble's reading (an empty text contains nothing).
+  The interpreter reads the same way, so the matrix sees these cases
+  agree; the `:ash_policy_empty_yes_no_wider_than_bubble` warning and
   `Difference.empty_yes_no_wider?/1` are removed.
 
 - **Privacy interpreter: four calibration flags flipped to Bubble's

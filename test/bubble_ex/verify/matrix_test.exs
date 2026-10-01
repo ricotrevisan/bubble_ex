@@ -37,15 +37,18 @@ defmodule BubbleEx.Verify.MatrixTest do
              {"archived_thing", "old_", :deleted_type},
              {"archived_thing", "everyone", :deleted_type},
              {"task", "m_raw_", :not_compiled},
+             # (public is not no) is (public is no): never holds (WTF-471)
+             {"task", "zi_not_no_is_no_", :no_true_witness},
              {"task", "everyone", :blocked_by_unsupported_rule}
            ]
 
-    assert %{total: 45, solved: 41, conditional: 40, everyone: 5} =
+    assert %{total: 47, solved: 42, conditional: 42, everyone: 5} =
              expression.report.rules
 
     assert expression.report.unsolved_by_reason == %{
              "blocked_by_unsupported_rule" => 1,
              "deleted_type" => 2,
+             "no_true_witness" => 1,
              "not_compiled" => 1
            }
   end
@@ -639,6 +642,54 @@ defmodule BubbleEx.Verify.MatrixTest do
       end
 
       assert Enum.any?(matrix.recordings, &(&1.scenario.id =~ ".is_not_no."))
+
+      # the seed holds an is_not_no record whose flag is empty: where the
+      # old `is_distinct_from(flag, false)` granted
+      empty = Enum.find(matrix.seed.records, &(&1.key == "e.is_not_no"))
+      assert empty && not Map.has_key?(empty.fields, "flag_boolean")
+
+      # a subject compiled the widened way shows it, and fails
+      id = "privacy_read.custom.is_not_no.w1_member"
+      scenario = Enum.find(matrix.scenarios, &(&1.id == id))
+      recording = Enum.find(matrix.recordings, &(&1.scenario.id == id))
+
+      assert %{value: false} =
+               Enum.find(
+                 recording.observations,
+                 &(&1.record == "e.is_not_no" and &1.kind == :visible)
+               )
+
+      shown =
+        Enum.find_value(recording.observations, fn
+          %{kind: :visible_fields, value: [_ | _] = fields} -> fields
+          _ -> nil
+        end)
+
+      widened =
+        Enum.map(recording.observations, fn
+          %{record: "e.is_not_no", kind: :visible} = o ->
+            %{o | value: true}
+
+          %{record: "e.is_not_no", kind: :visible_fields} = o ->
+            %{o | value: shown}
+
+          %{kind: :record_set, value: v} = o ->
+            %{o | value: %{v | records: ["e.is_not_no" | v.records]}}
+
+          o ->
+            o
+        end)
+
+      opts = [app: "fixture-app", ran_at: ~U[2026-10-02 09:15:00Z]]
+
+      assert {:ok, %Result{status: :pass}} =
+               Matrix.result(scenario, recording, recording.observations, opts)
+
+      assert {:ok, %Result{status: :fail, diff: diff}} =
+               Matrix.result(scenario, recording, widened, opts)
+
+      assert Enum.any?(diff, &match?(%{op: "record_visible", record: "e.is_not_no"}, &1))
+      assert Enum.any?(diff, &match?(%{op: "record_set"}, &1))
     end
 
     test "the structural list names every rule reading the current user", %{pmodel: model} do

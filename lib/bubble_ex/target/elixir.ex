@@ -26,9 +26,11 @@ defmodule BubbleEx.Target.Elixir do
   value is empty, in either polarity (negation is pushed down to the
   comparisons); between other values empty equals empty (not verified
   against Bubble); an empty list contains nothing; `not` of an empty yes/no
-  is true; `x is not y` between yes/no values with a stored side reads an
-  empty one as no, as Bubble does (`x is not no` needs a stored yes,
-  WTF-471), while `x is y` keeps empty equal only to empty. `BubbleEx.Target.ElixirTest` holds both backends to one
+  is true; `x is not y` between yes/no values (not conditions), one at
+  least stored, reads an empty one as no, as Bubble does (`x is not no` needs a stored yes,
+  WTF-471), while `x is y` keeps empty equal only to empty; a comparison
+  with a condition is expanded into each side's polarities, and a
+  condition used as any other value is strictly true or false (never nil). `BubbleEx.Target.ElixirTest` holds both backends to one
   hand-authored expectation table.
   Everything whose Bubble behavior Elixir's operators do not match (ordering
   with empty values, arithmetic, emptiness, text formatting) is a call to a
@@ -278,7 +280,11 @@ defmodule BubbleEx.Target.Elixir do
 
   defp value(%IR{op: :field} = ir, st), do: path(ir, [], :value, st)
 
-  defp value(%IR{op: op} = ir, st) when op in @conditions, do: cond(ir, st, true)
+  # A condition used as a value: strictly true or false, never nil (WTF-471).
+  defp value(%IR{op: op} = ir, st) when op in @conditions do
+    {c, st} = cond(ir, st, true)
+    {ok(c, &"(#{&1} == true)"), st}
+  end
 
   defp value(%IR{op: :count, args: [list]}, st) do
     {l, st} = value(list, st)
@@ -423,11 +429,12 @@ defmodule BubbleEx.Target.Elixir do
   defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
   defp yes_no_side?(ir), do: stored_yes_no?(ir)
 
-  # Two yes/no sides, one a condition, reading the actor: expanded so that
-  # each side keeps its own guards (a stored yes/no side is `== true` /
-  # `== false`: empty is neither).
-  defp boolean_equality?(l, r),
-    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+  # Two yes/no sides, one a condition: expanded so that each side keeps its
+  # own polarities and guards (a stored yes/no side is `== true` / `==
+  # false`: empty is neither). A condition's negation is not always its
+  # complement (an empty value fails both), so comparing it as a plain
+  # value could match where neither side holds (WTF-471).
+  defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
 
   # `a is b` between yes/no conditions that read the current user.
   defp boolean_equality(op, l, r, st, positive) do

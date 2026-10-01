@@ -293,10 +293,13 @@ defmodule BubbleEx.Verify.Difference do
     Enum.sort(actor ++ yes_no)
   end
 
+  # "Stored" yes/no: any yes/no value that is not a condition (a field, a
+  # parameter, an option attribute, a fallback, ...), as the compilers'
+  # `@boolean_values`.
   # The stored yes/no tests of a condition, classified once negations are
   # pushed down to the atoms as the compiler does: `:stricter` where an
   # empty yes/no fails in the target but may hold in Bubble (empty is no).
-  @stored_ops [:field, :fallback]
+  @stored_ops [:field, :input, :fallback, :option_attribute, :option_label, :external_field]
 
   defp yes_no_tests(ir), do: ir |> yes_no_tests(true) |> MapSet.new()
 

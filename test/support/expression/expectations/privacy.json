@@ -773,28 +773,72 @@
       "expected": {
         "logged_out": [
           "u1",
-          "u2"
+          "u2",
+          "u7"
         ],
         "u1": [
           "u1",
-          "u2"
+          "u2",
+          "u7"
         ],
         "u2": [
           "u1",
-          "u2"
+          "u2",
+          "u7"
         ],
         "u3": [
           "u1",
-          "u2"
+          "u2",
+          "u7"
         ],
         "u4": [
           "u1",
-          "u2"
+          "u2",
+          "u7"
         ]
       },
       "rule": "admin_not_coach_",
       "type": "user",
-      "why": "exactly one of admin and coach is yes, an empty one reading as no (WTF-471): u3's no and empty coach are both no"
+      "why": "exactly one of admin and coach is yes, an empty one reading as no (WTF-471): u2's empty admin is no; u5 (yes, yes), u6 (no, no) and u3 (no, empty) are not; `(admin is yes) or (coach is yes)` would wrongly add u5"
+    },
+    {
+      "expected": {
+        "logged_out": [],
+        "u1": [],
+        "u2": [],
+        "u3": [],
+        "u4": []
+      },
+      "rule": "zi_not_no_is_no_",
+      "type": "task",
+      "why": "(public is not no) is (public is no) never holds: for a stored yes or no the two differ, and an empty public satisfies neither side (each condition used as a value is strictly yes or no; a NULL-equals-NULL comparison would select the empty k2 and k5)"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "u1",
+          "u7"
+        ],
+        "u1": [
+          "u1",
+          "u7"
+        ],
+        "u2": [
+          "u1",
+          "u7"
+        ],
+        "u3": [
+          "u1",
+          "u7"
+        ],
+        "u4": [
+          "u1",
+          "u7"
+        ]
+      },
+      "rule": "admin_no_not_coach_no_",
+      "type": "user",
+      "why": "(admin is no) is not (coach is no): one is a stored no and the other a stored yes; an empty side satisfies neither polarity (stricter than Bubble, where empty is no), so u2 and u3 are not selected, as a NULL-tolerant comparison would"
     }
   ],
   "records": {
@@ -929,6 +973,30 @@
         "coach": null,
         "id": "u4",
         "name": "",
+        "teams": []
+      },
+      {
+        "active_membership_id": null,
+        "admin": true,
+        "coach": true,
+        "id": "u5",
+        "name": "Nu5",
+        "teams": []
+      },
+      {
+        "active_membership_id": null,
+        "admin": false,
+        "coach": false,
+        "id": "u6",
+        "name": "Nu6",
+        "teams": []
+      },
+      {
+        "active_membership_id": null,
+        "admin": false,
+        "coach": true,
+        "id": "u7",
+        "name": "Nu7",
         "teams": []
       }
     ]

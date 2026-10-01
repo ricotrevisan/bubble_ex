@@ -24,7 +24,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | option value | its stored key (the enum value), checked against the generated enum |
   | literal | the literal |
   | `x is y` | `x == y` when either side cannot be empty (a literal, an option, the record's ID) or is read from the actor; otherwise (two record-side values) `is_not_distinct_from(x, y)` |
-  | `x is not y` | `x != y` when neither side can be empty; otherwise `is_distinct_from(x, y)`, with `not is_nil(a)` for every actor-side operand `a`. Between yes/no values with a stored side, an empty one reads as no (WTF-471, as Bubble): `x is not no` is `x == true`, `x is not yes` is `is_distinct_from(x, true)`, two stored values differ when exactly one is yes |
+  | `x is not y` | `x != y` when neither side can be empty; otherwise `is_distinct_from(x, y)`, with `not is_nil(a)` for every actor-side operand `a`. Between yes/no values (not conditions) an empty one reads as no and the result is never NULL (WTF-471, as Bubble): `x is not no` is `is_not_distinct_from(x, true)`, `x is not yes` is `is_distinct_from(x, true)`, two such values differ when exactly one is yes |
   | `x is empty` | a reference with a `belongs_to`: `not exists(rel, true)` (a dangling ID is empty; there are no foreign keys), `is_nil(^actor([..., :rel]))` on the actor side; otherwise `is_nil(x)`, also `x == ""` for text and `x == []` for a list |
   | `>`, `<`, `>=`, `<=` | the operator |
   | `and`, `or`, `not` | the operator |
@@ -52,9 +52,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
   not follow from the actor lacking data. `not`, `is no`
   and `is not` are pushed down to the atoms (De Morgan), so a guard is
   never negated; `a is b` between yes/no values of which one is a
-  condition reading the actor is expanded to `(a and b) or (not a and not
+  condition is expanded to `(a and b) or (not a and not
   b)` (a stored yes/no side is `== true` / `== false`: empty is neither).
-  A condition reading the actor used as any other value is rejected. The
+  A condition reading the actor used as any other value is rejected; any
+  other condition used as a value is `if(c, true, false)`, never NULL. The
   one exception is `is empty` on an actor-side value, which tests the
   emptiness itself: it only requires a logged-in actor. Between two record-side values, `is` keeps
   what we take to be Bubble's rule, that an empty value equals an empty
@@ -425,11 +426,12 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
   defp condition?(_ir), do: false
 
-  # Two yes/no sides, one a condition, reading the actor: expanded so that
-  # each side keeps its own guards (a stored yes/no side is `== true` /
-  # `== false`: empty is neither).
-  defp boolean_equality?(l, r),
-    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+  # Two yes/no sides, one a condition: expanded so that each side keeps its
+  # own polarities and guards (a stored yes/no side is `== true` / `==
+  # false`: empty is neither). A condition's negation is not always its
+  # complement (an empty value fails both), so comparing it as a plain
+  # value could match where neither side holds (WTF-471).
+  defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
 
   defp boolean_equality(op, l, r, st, positive) do
     {[lp, ln, rp, rn], st} =
@@ -805,12 +807,15 @@ defmodule BubbleEx.Target.Ash.Expressions do
       else: {:call, "is_distinct_from", [a, b]}
   end
 
-  # `x is not y` between yes/no values, at least one stored (WTF-471): an
-  # empty stored yes/no reads as no, as in Bubble. `x is not no` is `x ==
-  # true`; `x is not yes` is `is_distinct_from(x, true)`; between two
-  # stored values, exactly one of them is yes. `x is y` keeps
-  # `is_not_distinct_from` / `==` (stricter than Bubble on an empty side
-  # against no: `BubbleEx.Verify.Difference`, `empty_yes_no_is_no`).
+  # `x is not y` between yes/no values, at least one a yes/no value (not a
+  # condition: a field, a parameter, an option attribute, ...; WTF-471): an
+  # empty one reads as no, as in Bubble, and the result is never NULL.
+  # `x is not no` is `is_not_distinct_from(x, true)`; `x is not yes` is
+  # `is_distinct_from(x, true)`; between two values, exactly one of them is
+  # yes. An actor-side value keeps `==` (its guard requires it non-empty).
+  # `x is y` keeps `is_not_distinct_from` / `==` (stricter than Bubble on
+  # an empty side against no: `BubbleEx.Verify.Difference`,
+  # `empty_yes_no_is_no`).
   defp yes_no_pair?(l, r),
     do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)
 
@@ -823,14 +828,17 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp yes_no_neq(%IR{op: :literal, args: [b]}, _r, _a, v), do: yes_no_not(v, b)
   defp yes_no_neq(_l, %IR{op: :literal, args: [b]}, v, _b), do: yes_no_not(v, b)
 
-  defp yes_no_neq(_l, _r, a, b) do
-    yes = fn v -> {:op, "==", v, {:value, true}} end
-    not_yes = fn v -> {:call, "is_distinct_from", [v, {:value, true}]} end
-    {:or, [{:and, [yes.(a), not_yes.(b)]}, {:and, [not_yes.(a), yes.(b)]}]}
-  end
+  defp yes_no_neq(_l, _r, a, b), do: {:op, "!=", yes(a), yes(b)}
 
-  defp yes_no_not(v, false), do: {:op, "==", v, {:value, true}}
+  defp yes_no_not(v, false), do: yes(v)
   defp yes_no_not(v, true), do: {:call, "is_distinct_from", [v, {:value, true}]}
+
+  # `v` is yes, never NULL (an actor-side `v` is guarded non-empty).
+  defp yes(v) do
+    if actor?(v),
+      do: {:op, "==", v, {:value, true}},
+      else: {:call, "is_not_distinct_from", [v, {:value, true}]}
+  end
 
   # `node`, required to have every actor-side operand non-empty in Bubble's
   # sense (as `is empty`): not nil, and not `""` for text or `[]` for a
@@ -941,10 +949,15 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # A condition used as a value (compared with another value that reads no
   # actor). One that reads the actor has no guard that survives being used
   # as a value, so it is rejected.
+  # A condition used as a value: strictly yes or no (`if(c, true, false)`),
+  # never NULL, so comparing it cannot match an unknown (WTF-471).
   defp value_(%IR{op: op, type: "boolean"} = ir, st) when op not in @boolean_values do
-    if reads_actor?(ir),
-      do: unsupported(st, {"a condition reading the current user used as a value", nil}),
-      else: pred(ir, st)
+    if reads_actor?(ir) do
+      unsupported(st, {"a condition reading the current user used as a value", nil})
+    else
+      {c, st} = pred(ir, st)
+      {ok(c, &{:call, "if", [&1, {:value, true}, {:value, false}]}), st}
+    end
   end
 
   defp value_(%IR{op: op}, st), do: unsupported(st, {"the value #{inspect(op)}", nil})

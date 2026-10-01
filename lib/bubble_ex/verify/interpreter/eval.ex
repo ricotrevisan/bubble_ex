@@ -146,11 +146,10 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
   defp condition?(_), do: false
 
-  defp boolean_equality?(l, r),
-    do: (condition?(l) or condition?(r)) and (reads_actor?(l) or reads_actor?(r))
+  defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
 
-  # `a is b` between yes/no values, one a condition reading the user: each
-  # side keeps its own guards.
+  # `a is b` between yes/no values, one a condition: each side keeps its
+  # own polarities and guards, as the compiler expands it (WTF-471).
   defp boolean_equality(op, l, r, positive, ctx) do
     {lp, f1} = side(l, true, ctx)
     {ln, f2} = side(l, false, ctx)
@@ -346,20 +345,23 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
   defp yes_no_side?(ir), do: stored_yes_no?(ir)
 
-  # Record-side ones only: an actor-side empty value keeps its guard
-  # (`actor_empty_denies`).
+  # Record-side ones only, consulting no flag: an actor-side value reads as
+  # in any comparison (an empty one keeps its guard, `actor_empty_denies`).
   defp no_operands([l, r], ctx) do
-    {a, b, flags} = operands([l, r], ctx)
-    {record_no(l, a, ctx), record_no(r, b, ctx), flags}
+    {a, f1} = no_operand(l, ctx)
+    {b, f2} = no_operand(r, ctx)
+    {a, b, f1 ++ f2}
   end
 
-  defp record_no(ir, nil, ctx) do
-    if stored_yes_no?(ir) and not actor?(ir) and value(ir, ctx) == nil,
-      do: {:boolean, false},
-      else: nil
+  defp no_operand(ir, ctx) do
+    if stored_yes_no?(ir) and not actor?(ir) do
+      {value(ir, ctx) || {:boolean, false}, []}
+    else
+      {v, f1} = value_flags(ir, ctx)
+      {v, f2} = stored_boolean(ir, v, ctx)
+      {v, f1 ++ f2}
+    end
   end
-
-  defp record_no(_ir, v, _ctx), do: v
 
   # A value, with the flags consulted when it is a condition used as a value.
   defp value_flags(%IR{op: op} = ir, ctx) when op in @predicates do
