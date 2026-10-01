@@ -939,7 +939,7 @@ defmodule BubbleEx.Verify.Matrix do
       persona: cell.persona,
       bubble: nil,
       target: nil,
-      flags: Difference.flags(),
+      flags: Difference.flags(:rule_conditions),
       rules: rules
     }
   end
@@ -1123,7 +1123,7 @@ defmodule BubbleEx.Verify.Matrix do
       observations: matrix.recordings |> Enum.map(&length(&1.observations)) |> Enum.sum(),
       skipped: matrix.skipped,
       differences: %{
-        policy: Difference.flags(),
+        policy: Difference.flags(:rule_conditions),
         observations: length(matrix.differences),
         scenarios: matrix.differences |> Enum.map(& &1.scenario) |> Enum.uniq() |> length(),
         types: matrix.differences |> Enum.map(& &1.type) |> Enum.uniq() |> length(),

@@ -41,6 +41,29 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Enforced privacy: searches on fields some users may not view are
+  decided per user** (WTF-457). With `privacy: :enforced`, a page search
+  whose constraints or sort read a field of the searched type that some
+  users may not view (or follow a gated relationship) is no longer
+  refused at generation (`:search_field_hidden`): it is loaded, and
+  `<App>.Privacy.SearchFields` now also restricts such fields
+  (`ResourcePrivacy.view_search_fields`: the fields, the gated
+  relationships and their private `*_for_privacy` twins, and the derived
+  fields and counts reading through them), returning only the records where
+  the actor may view every field the read's filter or sort names (a
+  record whose field the actor may not view matches nothing, in either
+  polarity). A Bubble page search matches the stored value (an oracle on
+  hidden values: the 2026-10-01 replay; a backend workflow's search reads
+  the field as empty, a Data API search matches nothing): the generated
+  app is stricter by the owner's decision, recorded as the known difference
+  `hidden_field_constraint_matches` (`BubbleEx.Verify.Difference`, scope
+  `:search_constraints`; `Difference.flags/1`; evidence status
+  `:documented` in `Assumptions.evidence/0`) and reported per data type
+  (`:ash_policy_hidden_search_stricter_than_bubble`). Only a hidden field
+  further along a relationship path stays residue. On a private app, page
+  data wired under enforced privacy goes from 802 to 817 of 2017 sources,
+  the same as `:omit`.
+
 - **Vertical slice: enforced privacy and a chosen persona** (WTF-378
   re-run). `scripts/vertical_slice/run.sh` takes `SLICE_PRIVACY=enforced`
   (the Ash target's `privacy: :enforced`, recorded in `slice.json` and

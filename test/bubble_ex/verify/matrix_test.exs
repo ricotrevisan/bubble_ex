@@ -420,7 +420,7 @@ defmodule BubbleEx.Verify.MatrixTest do
     end
 
     test "every flag reports whether a check depends on it", %{policies: matrix} do
-      assert map_size(matrix.flags) == 17
+      assert map_size(matrix.flags) == 18
       # doc's body is non-filterable for the public rule: its constrained
       # searches depend on the flag
       assert matrix.flags[:non_filterable_constraint_excludes] == :exercised

@@ -631,15 +631,26 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert files["config/runtime.exs"] =~ "private: false"
     end
 
-    # Review M2: a search constrained on a field some users may not view
-    # (Task's Done: only watchers) would reveal it (field policies do not
-    # guard a filter in code): residue, not loaded. Sorting by Title (every
-    # user views it) loads.
-    test "a page search over a hidden field is residue", %{files: files, omit: omit} do
+    # WTF-457: a search constrained on a field some users may not view
+    # (Task's Done: only watchers; Note's Flagged: only its owner) is
+    # loaded; Privacy.SearchFields decides per actor and record (only the
+    # records where the actor may view the field), since field policies do
+    # not guard a filter in code. Stricter than Bubble, by decision.
+    test "a page search over a hidden field is loaded, guarded by SearchFields",
+         %{files: files, omit: omit} do
       page = files["lib/acme_web/live/index_live/workflows.ex"]
-      assert page =~ "# TODO(bubble:element:bFirstOpen) not loaded: search_field_hidden"
+      refute page =~ "search_field_hidden"
+      assert page =~ "Ash.Query.filter(done == false)"
+      assert page =~ "Ash.Query.filter(flagged == true)"
       refute page =~ "TODO(bubble:element:bList) not loaded"
       refute omit["lib/acme_web/live/index_live/workflows.ex"] =~ "search_field_hidden"
+
+      search_fields = files["lib/acme/privacy/search_fields.ex"]
+      assert search_fields =~ "flagged: [[:privacy_rule_owner]]"
+      assert search_fields =~ "done: [[:privacy_rule_watching]]"
+      assert search_fields =~ "hidden_field_constraint_matches"
+      assert files["lib/acme/note.ex"] =~ "authorize_if Acme.Privacy.SearchFields"
+      refute omit["lib/acme/privacy/search_fields.ex"]
       # Bubble's random sort reads no field (WTF-452): it loads, through
       # :search like any other search.
       refute page =~ "TODO(bubble:element:bRandom)"
