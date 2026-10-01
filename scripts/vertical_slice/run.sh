@@ -32,7 +32,9 @@
 # $SLICE_ROOT/SLUG (created 0700; $SLICE_ROOT itself is created 0700 when
 # missing and never changed otherwise) and the project's own deps/_build;
 # nothing contacts Bubble or a third-party API (the browser resolves no
-# other host and aborts every other origin). Downloading the pinned
+# other host and aborts every other origin; the images the pages link from
+# other hosts, as in Bubble, are counted as external_images_expected, not
+# as blocked_requests). Downloading the pinned
 # Tailwind and esbuild binaries is the only other network use.
 #
 # Environment: SLICE_DB_PORT (required: the throwaway PostgreSQL's port on
@@ -189,7 +191,8 @@ step "drive $page_path"
 thing_args=()
 [[ "$thing" != "-" ]] && thing_args=(--thing "$thing")
 node scripts/vertical_slice/drive.mjs --base "http://127.0.0.1:$http_port" --path "$page_path" \
-  "${thing_args[@]}" --email "$email" --out "$out/artifacts" --log "$logs/server.log" |
+  "${thing_args[@]}" --email "$email" --out "$out/artifacts" --log "$logs/server.log" \
+  --assets "$project/.wtf/assets.json" |
   tee "$logs/drive.log"
 
 kill "$server_pid" 2>/dev/null || true

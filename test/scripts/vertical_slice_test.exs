@@ -59,4 +59,16 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
       end
     end
   end
+
+  # The drive's expected blocked requests (WTF-465): exact linked image
+  # URLs, never Bubble's storage (scripts/vertical_slice/linked_images.mjs).
+  test "the drive expects only the exact linked image URLs" do
+    {output, status} =
+      System.cmd("node", ["--test", "scripts/vertical_slice/linked_images.test.mjs"],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, output
+    assert output =~ ~r/# pass 6|ℹ pass 6/
+  end
 end

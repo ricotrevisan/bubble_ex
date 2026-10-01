@@ -42,7 +42,7 @@ defmodule Mix.Tasks.Bubble.FetchAssetsTest do
 
     assert_received {:mix_shell, :info, [summary]}
     assert summary =~ "5 fetched"
-    assert summary =~ "5 on other hosts"
+    assert summary =~ "5 on other hosts (linked)"
     assert summary =~ "1 icon libraries (need --app-url)"
 
     hosts = Stream.repeatedly(fn -> receive do: ({:requested, h} -> h), after: (0 -> nil) end)

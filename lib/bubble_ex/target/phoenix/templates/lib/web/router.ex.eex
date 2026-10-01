@@ -10,7 +10,13 @@ defmodule <%= @web %>.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {<%= @web %>.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    # Phoenix's default policy, plus the images the pages may load: the
+    # app's own, inline ones, upload previews and any HTTPS host (images a
+    # Bubble app links from other hosts stay linked, WTF-465).
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" =>
+        "base-uri 'self'; frame-ancestors 'self'; img-src 'self' data: blob: https:;"
+    }
     plug :load_from_session
   end
 
