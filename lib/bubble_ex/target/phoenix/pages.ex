@@ -65,9 +65,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   @names_version 1
 
-  # First path segments the scaffold routes (sign-in, the API, assets…).
+  # First path segments the scaffold routes (sign-in, the API, assets…),
+  # and `index`: the index page's `/index/:bubble_thing` (WTF-454, WTF-466).
   @reserved_paths ~w(auth sign-in sign-out register reset password-reset magic_link api dev live
-                     assets fonts images favicon.ico robots.txt phoenix)
+                     assets fonts images favicon.ico robots.txt phoenix index)
 
   @phrasing ~w(p h1 h2 h3 h4 button a label textarea select)
 

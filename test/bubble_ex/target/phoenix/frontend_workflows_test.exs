@@ -479,7 +479,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # Markers are one word each and never collide (review L4): control
     # characters and spaces are percent-encoded, not replaced.
     workflows = markers(files)
-    # 24 page workflows and the backend workflow they schedule.
+    # The page and reusable-element workflows and the backend workflow they schedule.
     assert map_size(workflows) == 29
     assert Enum.all?(Map.values(workflows), &match?([_], &1))
 

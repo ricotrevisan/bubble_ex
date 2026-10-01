@@ -11,11 +11,14 @@ All notable changes to this project are documented here.
   page loads: text `x` goes to `/page/x` (URL parameters kept), a thing to
   `/page/<unique id>`, no data to `/page`. Such steps are now lowered
   (`Step.args.untyped?`) and run: the generated `navigate/7` takes
-  `{:segment, value}` and appends a record's unique ID or the value as
-  text, percent-encoded as one segment (never a `/`, `?`, `#`, backslash
-  or `%` of its own; `.` and `..` send nothing). Every page's route now
-  takes that segment (`/<page>/:bubble_thing`, `/index/:bubble_thing` for
-  the index page); a page that does not read its thing ignores it. A
+  `{:segment, value}` and appends a record's unique ID or the value (text,
+  a number, a boolean, a date) as text, percent-encoded as one segment
+  (never a `/`, `?`, `#`, backslash or `%` of its own; `.` and `..`, any
+  other kind of value, a list included, and a segment over 2000 encoded
+  bytes, logged, send nothing). Every page's route now takes that segment
+  (`/<page>/:bubble_thing`, `/index/:bubble_thing` for the index page); a
+  page that does not read its thing ignores it, and no other page is
+  routed at `/index` (a page named so goes to `/index-page`). A
   reusable element sending data to a current page that takes no thing
   appends it the same way instead of failing. `:data_to_send_untyped_page`
   is no longer produced (still decoded).

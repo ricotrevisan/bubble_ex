@@ -366,6 +366,26 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert to.("/other", ".", [], false) == "/other"
     assert to.("/other", "é", [], false) == "/other/%C3%A9"
     assert to.("/other", %{id: "a/b"}, [], false) == "/other/a%2Fb"
+
+    # Dates and booleans as text; anything else sends none, never debug
+    # output (a list of things included: unverified in Bubble).
+    assert to.("/other", ~D[2026-10-01], [], false) == "/other/2026-10-01"
+    assert to.("/other", true, [], false) == "/other/yes"
+    assert to.("/other", %{title: "no id"}, [], false) == "/other"
+    assert to.("/other", {:a, 1}, [], false) == "/other"
+    assert to.("/other", [%{id: id}, %{id: id}], [], false) == "/other"
+    assert to.("/other", :atom, [], false) == "/other"
+
+    # At most 2000 encoded bytes: a longer segment sends none, logged.
+    assert to.("/other", String.duplicate("a", 2000), [], false) ==
+             "/other/" <> String.duplicate("a", 2000)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert to.("/other", String.duplicate("/", 667), [], false) == "/other"
+      end)
+
+    assert log =~ "over 2000"
   end
 
   test "a page with no type of content loads with the segment (WTF-466)", %{conn: conn} do

@@ -91,7 +91,7 @@ lists for that element.
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
 | Set state(s) | the page's state map, per instance |
 | Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs |
-| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to a page with no type of content (WTF-466, replay-verified) it is appended all the same, as Bubble does: a thing's unique ID or the value as text, percent-encoded as one segment (`/<page>/x`; none when empty, `.` or `..`), which the page ignores; to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: decided at run time, as text when the page takes no thing); every page's route takes the segment; the page's own path is its route's, without the segment the router took (never a query parameter), and the index page's is `/` |
+| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to a page with no type of content (WTF-466, replay-verified) it is appended all the same, as Bubble does: a thing's unique ID or the value (text, a number, a boolean, a date) as text, percent-encoded as one segment (`/<page>/x`; none when empty, `.` or `..`, another kind of value, a list included, or over 2000 encoded bytes, logged), which the page ignores; to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: decided at run time, as text when the page takes no thing); every page's route takes the segment; the page's own path is its route's, without the segment the router took (never a query parameter), and the index page's is `/` |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
 | Create / change / delete things, change the current user | the backend workflow runtime's data steps (`<Module>.Workflows.Runtime`, WTF-373), with the current user as actor (data-access opt-in, below) |
@@ -236,7 +236,10 @@ render keeps an overlay open:
 
 ## Unverified Bubble behavior
 
-To confirm by replay (WTF-358): the URL Bubble gives
+To confirm by replay (WTF-358): what "Go to page" appends when the data
+sent to a page with no type of content is a list (here none: no path
+segment; Bubble may join its things' unique IDs with commas), or a value
+over 2000 encoded bytes (here none, logged); the URL Bubble gives
 the index page with data sent to it (`/index/<unique id>` here); that a
 workflow calling a custom event waits for the custom event's pauses; "Reset relevant inputs" resets the inputs
 of the triggering element's container; a condition-true workflow whose "run
