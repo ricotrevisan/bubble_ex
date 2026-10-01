@@ -740,7 +740,7 @@ defmodule BubbleEx.Target.Ash do
   # (WTF-423): what the generated runtime writes is authorized.
   defp privacy(:enforced, project, model, types, index) do
     {project, diags} = privacy(:unverified, project, model, types, index)
-    Policies.enforce(project, diags)
+    Policies.enforce(project, diags, model)
   end
 
   defp privacy(:unverified, project, model, _types, index) do

@@ -115,9 +115,25 @@ the workflow API and private files:
   `private: :privacy_rules` serves a file when a record holding it in a
   file field is readable through its `:attachments` action by the user.
 
-**Not guaranteed:** calculations written in code are not field-guarded
-(a read's filter and sort are, through `<App>.Privacy.SearchFields`);
-aggregates over hidden fields; owned code that bypasses authorization. The policies are checked by the
+**What `<App>.Privacy.SearchFields` guards:** the filter, sort and
+distinct of a read through any read action but `:attachments` (by
+primary key), written in code or given as `filter_input`/`sort_input`.
+It restricts a field of the read resource some users may not view, a
+gated relationship and its private `*_for_privacy` twin (by path or
+through `exists`), and a derived field or count that reads through one
+of them; it returns only the records where the actor may view each
+named field, so a record whose field the actor may not view matches
+nothing whatever the expression (`is_nil`, `not`, `or` included). A
+restricted field further along a relationship path returns nothing for
+everyone (the page leaves such a search as `:search_field_hidden`).
+
+**Not guaranteed:** aggregates over hidden fields (`Ash.count`,
+`Ash.sum`, a `:count`/`:sum` aggregate or calculation that reads one:
+the check sees the read's filter and sort, not what an aggregate or
+calculation computes); calculations written in code that read a hidden
+field (field policies hide a loaded field's value, not what code
+computes from it); owned code that bypasses authorization
+(`authorize?: false`, the Repo). The policies are checked by the
 privacy matrix against the interpreter's calibrated reading of Bubble,
 run against the generated app (`scripts/phoenix_compile_check.sh`): that
 is evidence, not a proof.

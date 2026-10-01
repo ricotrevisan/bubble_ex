@@ -95,8 +95,8 @@ defmodule BubbleEx.Target.Ash.Policies do
   # writes of the generated workflow runtime (`:workflow_write`). Other
   # writes stay forbidden. The "not verified" warning becomes the warning
   # that writes are not checked against the privacy rules.
-  @spec enforce(Project.t(), [Diagnostic.t()]) :: {Project.t(), [Diagnostic.t()]}
-  def enforce(%Project{} = project, diags) do
+  @spec enforce(Project.t(), [Diagnostic.t()], Model.t()) :: {Project.t(), [Diagnostic.t()]}
+  def enforce(%Project{} = project, diags, %Model{} = model) do
     resources =
       Enum.map(project.resources, &(&1 |> workflow_writes() |> attachments() |> view_search()))
 
@@ -106,7 +106,7 @@ defmodule BubbleEx.Target.Ash.Policies do
     project = %{project | resources: resources, joins: joins}
 
     diags = Enum.reject(diags, &(&1.code == :ash_policies_unverified))
-    {project, writes_unchecked(project) ++ view_search_diags(project) ++ diags}
+    {project, writes_unchecked(project) ++ view_search_diags(project, model) ++ diags}
   end
 
   # WTF-457: a search's filter or sort is code, which field policies do
@@ -126,18 +126,35 @@ defmodule BubbleEx.Target.Ash.Policies do
           into: %{},
           do: {name, [checks]}
 
+    gated = for %Relationship{gate: gate} = rel <- r.relationships, gate != nil, do: rel
+
+    # A gated relationship, its join rows relationship (a many_to_many),
+    # and its private ungated twin (`*_for_privacy`, `gate/2`), which
+    # reaches the same records: restricted by the relationship's checks.
+    # The twins are named before `through/2`, so a derived field or count
+    # reading through one (`gate/2` rewrote its path) is restricted too.
     relationships =
-      for %Relationship{gate: gate} = rel <- r.relationships,
-          gate != nil,
-          checks = view_checks(rel, r),
+      for rel <- gated,
+          groups = [view_checks(rel, r)],
+          related <- [rel | twins_of(rel, r.privacy_relationships)],
+          name <- [related.name | List.wrap(join_name(related))],
           into: %{},
-          do: {rel.name, [checks]}
+          do: {name, groups}
 
     own = Map.merge(fields, relationships)
     %{r | privacy: %{p | view_search_fields: through(own, r)}}
   end
 
   defp view_search(resource), do: resource
+
+  defp path(nil), do: ""
+  defp path(type), do: type.path <> "/privacy_role"
+
+  defp twins_of(rel, privacy_relationships),
+    do: Enum.filter(privacy_relationships, &(&1.kind == rel.kind and &1.source == rel.source))
+
+  defp join_name(%Relationship{kind: :many_to_many, join_relationship: name}), do: name
+  defp join_name(_rel), do: nil
 
   defp visible_to_all?(checks),
     do: Enum.any?(checks, &match?(%PolicyCheck{kind: :authorize_if, test: :always}, &1))
@@ -152,7 +169,9 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   defp view_checks(rel, resource), do: Map.get(resource.privacy.relationship_checks, rel.name, [])
 
-  defp view_search_diags(%Project{} = project) do
+  defp view_search_diags(%Project{} = project, %Model{} = model) do
+    types = Map.new(model.data_types, &{&1.id, &1})
+
     for %Resource{privacy: %ResourcePrivacy{view_search_fields: vsf}} = r <- project.resources,
         map_size(vsf) > 0 do
       names = vsf |> Map.keys() |> Enum.sort()
@@ -160,7 +179,7 @@ defmodule BubbleEx.Target.Ash.Policies do
 
       Diagnostic.new(
         :ash_policy_hidden_search_stricter_than_bubble,
-        "/user_types/#{type}/privacy_role",
+        path(types[type]),
         "#{type}: some users may not view #{Enum.join(names, ", ")}; a :read or :search " <>
           "whose filter or sort names one returns only the records where the actor may view " <>
           "it (<namespace>.Privacy.SearchFields), where Bubble matches the stored value for " <>

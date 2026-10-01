@@ -12,7 +12,9 @@ All notable changes to this project are documented here.
   users may not view (or follow a gated relationship) is no longer
   refused at generation (`:search_field_hidden`): it is loaded, and
   `<App>.Privacy.SearchFields` now also restricts such fields
-  (`ResourcePrivacy.view_search_fields`), returning only the records where
+  (`ResourcePrivacy.view_search_fields`: the fields, the gated
+  relationships and their private `*_for_privacy` twins, and the derived
+  fields and counts reading through them), returning only the records where
   the actor may view every field the read's filter or sort names (a
   record whose field the actor may not view matches nothing, in either
   polarity). A Bubble page search matches the stored value (an oracle on

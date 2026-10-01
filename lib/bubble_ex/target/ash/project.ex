@@ -752,7 +752,8 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
       are not listed
     * `view_search_fields` - with `privacy: :enforced` only (WTF-457), the
       same for the fields some users may not view (field policies), the
-      gated relationships, and what reads through them: field policies do
+      gated relationships and their private `*_for_privacy` twins, and
+      what reads through them (derived fields and counts): field policies do
       not guard a filter or sort written in code, so a read naming one
       returns only the records where the actor may view it (stricter than
       Bubble, which matches the stored value for every user who may search

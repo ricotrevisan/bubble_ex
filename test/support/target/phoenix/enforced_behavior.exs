@@ -256,6 +256,50 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
            |> Ash.read!(action: :search, actor: nil) == []
   end
 
+  # Review of #179: the other ways a read can name Note's hidden fields.
+  # Under :omit the first assertion fails (u1 views u2's Owner there).
+  test "a hidden field is guarded however a read names it", %{u1: u1} do
+    require Ash.Query
+    u1 = actor(u1)
+
+    # u2's note by ID: its Title only.
+    assert %Ash.ForbiddenField{} = Ash.get!(PhxCheck.Note, @n2, actor: u1).owner_id
+
+    # Found by its Title (everyone), with its other fields hidden.
+    [bravo] =
+      PhxCheck.Note
+      |> Ash.Query.filter(title == "Bravo")
+      |> Ash.read!(action: :search, actor: u1)
+
+    assert %Ash.ForbiddenField{} = bravo.owner_id
+    assert %Ash.ForbiddenField{} = bravo.flagged
+
+    ids = fn query -> query |> Ash.read!(action: :search, actor: u1) |> Enum.map(& &1.id) end
+
+    # The gated belongs_to: its ID attribute, the relationship, and its
+    # private twin (by path and through exists) reveal nothing of u2's.
+    assert ids.(Ash.Query.filter(PhxCheck.Note, owner_id == ^@u2)) == []
+    assert Enum.sort(ids.(Ash.Query.filter(PhxCheck.Note, owner_id == ^@u1))) == [@n1, @n3]
+    assert ids.(Ash.Query.filter(PhxCheck.Note, owner.id == ^@u2)) == []
+    assert ids.(Ash.Query.filter(PhxCheck.Note, owner_for_privacy.id == ^@u2)) == []
+
+    assert ids.(Ash.Query.filter(PhxCheck.Note, exists(owner_for_privacy, id == ^@u2))) == []
+
+    # is_nil and or: a record whose field u1 may not view matches nothing,
+    # even where another branch would match it.
+    assert ids.(Ash.Query.filter(PhxCheck.Note, is_nil(flagged))) == []
+
+    assert Enum.sort(ids.(Ash.Query.filter(PhxCheck.Note, not is_nil(flagged)))) ==
+             [@n1, @n3]
+
+    assert ids.(Ash.Query.filter(PhxCheck.Note, title == "Bravo" or flagged == true)) == [@n1]
+
+    # The page's count reads the same way.
+    query = Ash.Query.filter(PhxCheck.Note, flagged == true)
+    assert PhxCheckWeb.BubbleData.read(query, %{actor: u1}, :count, nil) == 1
+    assert PhxCheckWeb.BubbleData.read(query, %{actor: nil}, :count, nil) == 0
+  end
+
   test "workflows read with the caller's privacy; the admin token bypasses it", %{conn: conn} do
     Application.put_env(:phx_check, PhxCheck.Workflows, serve_workflow_api: true)
     System.put_env("WORKFLOW_API_ADMIN_TOKEN", "admin-secret")
