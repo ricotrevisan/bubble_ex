@@ -22,7 +22,18 @@ All notable changes to this project are documented here.
   "priv/bubble_images"}`. Regenerating with the asset store (from `mix
   bubble.fetch_assets`) writes the images to the new place, and the
   manifest check lists the old `priv/static/images/bubble/*` files as
-  `stale`: remove them.
+  `stale`: remove them. Until both are done, `check_manifest/3` reports
+  `images_unserved`: the images, when the endpoint's uncommented source
+  does not name `priv/bubble_images` (the manifest records them under a
+  new `images` entry), and any file left under
+  `priv/static/images/bubble/`. The scaffolded
+  `test/<app>_web/bubble_images_test.exs` fails on both too, saying how
+  to fix the endpoint.
+- **The task CLI's `generated_unchanged` check reports what the owned
+  files leave undone** (WTF-455): besides hand-edited and missing
+  generated files, it now fails on `unrouted` pages,
+  `extensions_unlisted` and `images_unserved` from `check_manifest/3`,
+  which it used to pass silently.
 - **Scaffold docs: `mix wtf.task` runs from bubble_ex** (WTF-455). The
   generated project does not depend on bubble_ex; its README now shows
   `mix wtf.task audit --root /path/to/this/project` from a bubble_ex

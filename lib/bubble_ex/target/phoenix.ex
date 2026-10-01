@@ -168,7 +168,9 @@ defmodule BubbleEx.Target.Phoenix do
   `X-Content-Type-Options: nosniff` and a sandbox
   `Content-Security-Policy`, outside `priv/static` so no other plug can
   serve them (WTF-455); older ones can add the same `Plug.Static`, or
-  point theirs at `priv/bubble_images`.
+  point theirs at `priv/bubble_images`. Until they do, `check_manifest/3`
+  lists the images as `images_unserved`, with any file left under
+  `priv/static/images/bubble/` (served there without the policy).
   New routers' browser pipeline adds `img-src 'self' data: blob: https:`
   to Phoenix's default policy; an older router without an `img-src`
   already allows them.
