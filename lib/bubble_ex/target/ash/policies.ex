@@ -97,14 +97,82 @@ defmodule BubbleEx.Target.Ash.Policies do
   # that writes are not checked against the privacy rules.
   @spec enforce(Project.t(), [Diagnostic.t()]) :: {Project.t(), [Diagnostic.t()]}
   def enforce(%Project{} = project, diags) do
-    project = %{
-      project
-      | resources: Enum.map(project.resources, &(&1 |> workflow_writes() |> attachments())),
-        joins: Enum.map(project.joins, &workflow_writes/1)
-    }
+    resources =
+      Enum.map(project.resources, &(&1 |> workflow_writes() |> attachments() |> view_search()))
+
+    {resources, joins} =
+      search_field_policies(resources, Enum.map(project.joins, &workflow_writes/1))
+
+    project = %{project | resources: resources, joins: joins}
 
     diags = Enum.reject(diags, &(&1.code == :ash_policies_unverified))
-    {project, writes_unchecked(project) ++ diags}
+    {project, writes_unchecked(project) ++ view_search_diags(project) ++ diags}
+  end
+
+  # WTF-457: a search's filter or sort is code, which field policies do
+  # not guard. With enforced policies, the fields some users may not view
+  # (and the gated relationships) are restricted in reads like Bubble's
+  # non-filterable fields (`view_search_fields`, checked by
+  # `<namespace>.Privacy.SearchFields`): a read whose filter or sort names
+  # one returns only the records where the actor may view it. Bubble
+  # evaluates such a constraint against the stored value for every user
+  # who may search by the field: stricter than Bubble by the owner's
+  # decision (`BubbleEx.Verify.Difference`, `hidden_field_constraint_matches`).
+  defp view_search(%Resource{privacy: %ResourcePrivacy{} = p, field_policies: [_ | _]} = r) do
+    fields =
+      for %FieldPolicy{checks: checks, fields: names} <- r.field_policies,
+          not visible_to_all?(checks),
+          name <- names,
+          into: %{},
+          do: {name, [checks]}
+
+    relationships =
+      for %Relationship{gate: gate} = rel <- r.relationships,
+          gate != nil,
+          checks = view_checks(rel, r),
+          into: %{},
+          do: {rel.name, [checks]}
+
+    own = Map.merge(fields, relationships)
+    %{r | privacy: %{p | view_search_fields: through(own, r)}}
+  end
+
+  defp view_search(resource), do: resource
+
+  defp visible_to_all?(checks),
+    do: Enum.any?(checks, &match?(%PolicyCheck{kind: :authorize_if, test: :always}, &1))
+
+  # A gated relationship follows its ID attribute's checks (a belongs_to)
+  # or those of the list it replaces; with neither, nobody may follow it.
+  defp view_checks(%Relationship{kind: :belongs_to} = rel, resource) do
+    Enum.find_value(resource.field_policies, [], fn fp ->
+      if rel.source_attribute in fp.fields, do: fp.checks
+    end)
+  end
+
+  defp view_checks(rel, resource), do: Map.get(resource.privacy.relationship_checks, rel.name, [])
+
+  defp view_search_diags(%Project{} = project) do
+    for %Resource{privacy: %ResourcePrivacy{view_search_fields: vsf}} = r <- project.resources,
+        map_size(vsf) > 0 do
+      names = vsf |> Map.keys() |> Enum.sort()
+      type = r.source[:type]
+
+      Diagnostic.new(
+        :ash_policy_hidden_search_stricter_than_bubble,
+        "/user_types/#{type}/privacy_role",
+        "#{type}: some users may not view #{Enum.join(names, ", ")}; a :read or :search " <>
+          "whose filter or sort names one returns only the records where the actor may view " <>
+          "it (<namespace>.Privacy.SearchFields), where Bubble matches the stored value for " <>
+          "every user who may search by it (stricter than Bubble by design)",
+        target: :ash,
+        subject: %{type: type},
+        details: %{
+          fields: names,
+          flags: Enum.map(Difference.flags(:search_constraints), &Atom.to_string/1)
+        }
+      )
+    end
   end
 
   defp workflow_writes(%Resource{policies: []} = resource), do: resource
@@ -1028,7 +1096,11 @@ defmodule BubbleEx.Target.Ash.Policies do
   # (`authorize_if <namespace>.Privacy.SearchFields`).
   defp search_field_policies(resources, joins) do
     all = resources ++ joins
-    restricted = for r <- resources, r.privacy && r.privacy.search_fields != %{}, do: r.module
+
+    restricted =
+      for r <- resources,
+          r.privacy && (r.privacy.search_fields != %{} or r.privacy.view_search_fields != %{}),
+          do: r.module
 
     edges =
       Map.new(all, fn r ->
@@ -1051,8 +1123,15 @@ defmodule BubbleEx.Target.Ash.Policies do
     if MapSet.size(more) == MapSet.size(set), do: set, else: reaching(more, edges)
   end
 
+  # Idempotent (`enforce/2` runs it again with the fields some users may
+  # not view); `:attachments` reads by primary key only.
   defp add_search_fields_policies(%Resource{} = r) do
-    actions = for %Action{type: :read, name: name} <- r.extra_actions, do: name
+    guarded = [
+      "attachments" | for(%Policy{permission: :search_fields, action: a} <- r.policies, do: a)
+    ]
+
+    actions =
+      for %Action{type: :read, name: name} <- r.extra_actions, name not in guarded, do: name
 
     policies =
       for action <- actions do
@@ -1513,7 +1592,7 @@ defmodule BubbleEx.Target.Ash.Policies do
           "(stricter than Bubble by design)",
         target: :ash,
         subject: %{type: type.id, rule: id},
-        details: %{flags: Enum.map(Difference.flags(), &Atom.to_string/1)}
+        details: %{flags: Enum.map(Difference.flags(:rule_conditions), &Atom.to_string/1)}
       )
     end
   end

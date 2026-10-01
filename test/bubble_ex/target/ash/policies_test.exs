@@ -170,7 +170,15 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
       for {u, e} <- Enum.zip(unverified.resources, enforced.resources), u.policies != [] do
         {writes, others} = Enum.split_with(e.policies, &(&1.permission == :workflow_write))
         {attachments, reads} = Enum.split_with(others, &(&1.action == "attachments"))
-        assert reads == u.policies
+
+        # WTF-457: reads reaching a field some users may not view run the
+        # SearchFields check too (one policy per read action, once).
+        added = reads -- u.policies
+        assert reads -- added == u.policies
+        assert Enum.all?(added, &(&1.permission == :search_fields))
+
+        guarded = for %{permission: :search_fields, action: a} <- reads, do: a
+        assert guarded == Enum.uniq(guarded)
 
         # Bubble's "view attached files" as a keyed read (types with files)
         if u.privacy.file_fields == [] do
@@ -192,6 +200,54 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
         # :omit / :unverified authorize no write
         refute Enum.any?(u.policies, &(&1.permission == :workflow_write))
       end
+    end
+
+    # WTF-457: a read's filter or sort is code, which field policies do not
+    # guard: the fields some users may not view are restricted in reads
+    # (Privacy.SearchFields), stricter than Bubble by decision.
+    test "fields some users may not view are restricted in reads, enforced only",
+         %{project: unverified, enforced: enforced} do
+      assert Enum.all?(
+               unverified.resources,
+               &(&1.privacy == nil or &1.privacy.view_search_fields == %{})
+             )
+
+      restricted =
+        for r <- enforced.resources, r.privacy, r.privacy.view_search_fields != %{}, do: r
+
+      assert restricted != []
+
+      for r <- restricted do
+        hidden =
+          for fp <- r.field_policies,
+              not Enum.any?(fp.checks, &match?(%{kind: :authorize_if, test: :always}, &1)),
+              f <- fp.fields,
+              do: f
+
+        assert hidden -- Map.keys(r.privacy.view_search_fields) == []
+
+        for %{gate: gate, name: name} <- r.relationships,
+            gate != nil,
+            do: assert(Map.has_key?(r.privacy.view_search_fields, name), name)
+
+        assert Enum.any?(r.policies, &(&1.action == "search" and &1.permission == :search_fields))
+
+        assert Enum.any?(
+                 enforced.diagnostics,
+                 &(&1.code == :ash_policy_hidden_search_stricter_than_bubble and
+                     &1.subject == %{type: r.source.type} and
+                     &1.details.flags == ["hidden_field_constraint_matches"])
+               )
+      end
+
+      {:ok, source} = Source.render(enforced, namespace: "Acme")
+      assert source =~ "defmodule Acme.Privacy.SearchFields do"
+      assert source =~ "hidden_field_constraint_matches"
+
+      refute Enum.any?(
+               unverified.diagnostics,
+               &(&1.code == :ash_policy_hidden_search_stricter_than_bubble)
+             )
     end
 
     test "joins get the write policy too" do

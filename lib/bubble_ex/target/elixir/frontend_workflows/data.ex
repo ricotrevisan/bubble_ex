@@ -254,11 +254,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end
   end
 
-  # With enforced policies (WTF-423), the fields a search's filter or sort
-  # reads that some users may not view, as `<Resource>.<field>`, and the
-  # gated relationships it follows (`<Resource>.<relationship>`): field
-  # policies guard `filter_input` and reads, not a filter written in code,
-  # so such a search would reveal what the rules hide. Empty otherwise.
+  # With enforced policies (WTF-423), what a search's filter or sort reads
+  # that cannot be decided per actor, as `<Resource>.<field>` or
+  # `<Resource>.<relationship>`: a field some users may not view, or a
+  # gated relationship, further along a relationship path. Empty
+  # otherwise. Field policies guard `filter_input` and reads, not a filter
+  # written in code; on the searched resource itself, a field some users
+  # may not view (or a gated relationship followed to fields everyone
+  # views) is decided per actor and record at run time by
+  # `<namespace>.Privacy.SearchFields` (WTF-457: only the records where
+  # the actor may view it), so the search is loaded. Further along a path
+  # that check returns nothing for everyone: the search is residue.
   defp hidden_fields(%Expr{} = expr, %Project{privacy: :enforced} = project) do
     modules = Map.new(project.resources ++ project.joins, &{&1.module, &1})
 
@@ -268,7 +274,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
     refs
     |> Enum.flat_map(fn {rels, attribute} ->
-      hidden_path(expr.resource, rels, attribute, modules)
+      hidden_path(expr.resource, rels, attribute, modules, true)
     end)
     |> Enum.uniq()
     |> Enum.sort()
@@ -276,18 +282,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp hidden_fields(_expr, _project), do: []
 
-  defp hidden_path(module, [], attribute, modules) do
+  defp hidden_path(_module, [], _attribute, _modules, true = _root?), do: []
+
+  defp hidden_path(module, [], attribute, modules, false) do
     case modules[module] do
       nil -> []
       r -> if visible_to_all?(r, attribute), do: [], else: ["#{module}.#{attribute}"]
     end
   end
 
-  defp hidden_path(module, [rel | rest], attribute, modules) do
+  defp hidden_path(module, [rel | rest], attribute, modules, root?) do
     with %{} = r <- modules[module],
          %{} = relationship <- Enum.find(r.relationships, &(&1.name == rel)) do
-      if relationship.gate == nil,
-        do: hidden_path(relationship.destination, rest, attribute, modules),
+      if relationship.gate == nil or root?,
+        do: hidden_path(relationship.destination, rest, attribute, modules, false),
         else: ["#{module}.#{rel}"]
     else
       _ -> ["#{module}.#{rel}"]

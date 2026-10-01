@@ -592,7 +592,7 @@ defmodule BubbleEx.Target.Ash.MatrixTests do
         do: "",
         else:
           " Where the target policy is stricter than Bubble by design " <>
-            "(BubbleEx.Verify.Difference: #{Enum.map_join(Difference.flags(), ", ", &Atom.to_string/1)}), " <>
+            "(BubbleEx.Verify.Difference: #{Enum.map_join(Difference.flags(:rule_conditions), ", ", &Atom.to_string/1)}), " <>
             "#{stricter |> Enum.map(&length(&1.cases)) |> Enum.sum()} observations in " <>
             "#{length(stricter)} scenarios (tagged stricter_than_bubble), the tests expect " <>
             "the stricter value."

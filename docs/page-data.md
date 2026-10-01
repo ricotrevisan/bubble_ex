@@ -79,6 +79,28 @@ the workflow API and private files:
   compares a value of the user's (logged out, or a user without it) with
   a record's, Bubble may grant when both are empty; the policies deny
   (`actor_empty_denies`, reported as intended differences).
+* **Searches on fields some users may not view are decided per user**
+  (WTF-457). In Bubble, viewing a field and constraining a search on it
+  are separate permissions: a page search constrained (or sorted) on a
+  field the user may not view matches its stored value, an oracle on the
+  hidden values (replayed 2026-10-01: a logged-out visitor's `= aaa`
+  found the record holding "aaa", `is not empty` found both, `is empty`
+  none; Bubble's security dashboard flags such fields as "non-viewable
+  but constrainable"). A backend workflow's search reads the field as
+  empty instead, and a Data API search matches nothing; only a field the
+  user may not constrain on (non-filterable) makes a page search find
+  nothing. Field policies do not guard a filter written in code, so the
+  generated page loads such a search and `<App>.Privacy.SearchFields`
+  matches nothing on a record whose field the user may not view (like
+  the Data API): it returns only the records where the user may view
+  every field its filter or sort reads, in either polarity (per user and
+  record, in the database). A user who may view the field gets Bubble's
+  result; one who may not finds fewer records than in Bubble, by the
+  owner's decision (stay stricter: `hidden_field_constraint_matches` in
+  `BubbleEx.Verify.Difference`, `:ash_policy_hidden_search_stricter_than_bubble`
+  per data type). Only a hidden field further along a relationship (a
+  normalized list's join, ...) is still residue (`:search_field_hidden`):
+  the check would return nothing for everyone.
 * **Writes (Rico's option A)**: the generated runtime's writes are allowed
   (the `WorkflowWrite` check: a context flag only the runtime sets), so a
   workflow's own conditions guard them, as in Bubble. **They are not
@@ -93,10 +115,9 @@ the workflow API and private files:
   `private: :privacy_rules` serves a file when a record holding it in a
   file field is readable through its `:attachments` action by the user.
 
-**Not guaranteed:** code filters are not field-guarded (a search's own
-constraint on a field the user may not view still matches its value,
-though the record itself must be findable); aggregates over hidden fields;
-owned code that bypasses authorization. The policies are checked by the
+**Not guaranteed:** calculations written in code are not field-guarded
+(a read's filter and sort are, through `<App>.Privacy.SearchFields`);
+aggregates over hidden fields; owned code that bypasses authorization. The policies are checked by the
 privacy matrix against the interpreter's calibrated reading of Bubble,
 run against the generated app (`scripts/phoenix_compile_check.sh`): that
 is evidence, not a proof.

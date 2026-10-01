@@ -14,13 +14,38 @@ defmodule BubbleEx.Verify.Difference do
       fail-safe reading)
 
   `policy/0` lists the flags on which the two differ by an owner's
-  decision, and in which direction. Today there is one:
-  `actor_empty_denies`. Bubble treats an empty value on the user's side
-  (a logged-out user, or a user without the value a condition reads) as
-  equal to an empty record value, so a condition such as `Current User's
-  team = This Thing's team` grants a logged-out user access to
-  a record with no team. The owner decided (2026-09-29) that the
-  generated policies keep denying there.
+  decision, and in which direction. Today there are two:
+
+    * `actor_empty_denies` (scope `:rule_conditions`). Bubble treats an
+      empty value on the user's side (a logged-out user, or a user
+      without the value a condition reads) as equal to an empty record
+      value, so a condition such as `Current User's team = This Thing's
+      team` grants a logged-out user access to a record with no team. The
+      owner decided (2026-09-29) that the generated policies keep denying
+      there.
+    * `hidden_field_constraint_matches` (scope `:search_constraints`,
+      `privacy: :enforced` only, WTF-457). In Bubble, viewing a field and
+      using it as a search constraint are separate permissions: a page
+      search constrained (or sorted) on a field the user may not view
+      matches its stored value, an oracle on the hidden values (the
+      2026-10-01 replay, WTF-385: a logged-out visitor's `= aaa` found 1
+      of 2 records, `is not empty` 2, `is empty` 0; Bubble's manual flags
+      such fields, "constrainable fields: non-viewable but filterable").
+      Elsewhere Bubble differs: a backend workflow's search reads the
+      field as empty, a Data API search matches nothing; only a field the
+      user may not constrain on (non-filterable) makes a page search find
+      nothing (`non_filterable_constraint_excludes`). The generated app
+      matches nothing on a record whose field the user may not view (as
+      the Data API): it returns only the records where the user may view
+      every field the search's filter or sort reads, in either polarity
+      (`<namespace>.Privacy.SearchFields`, per actor and record). The
+      owner decided (2026-10-01) to stay stricter. The
+      privacy matrix does not exercise it (its constrained searches cover
+      only non-filterable fields); the generated policies report each type
+      it applies to (`:ash_policy_hidden_search_stricter_than_bubble`).
+
+  `flags/1` splits them by scope: the matrix's cases, the structural list
+  and the rules' diagnostics name only `:rule_conditions` flags.
 
   A difference is **intended** only when it is stricter (the target shows
   a subset of what Bubble shows: not visible where Bubble is, fewer
@@ -64,11 +89,24 @@ defmodule BubbleEx.Verify.Difference do
       bubble: false,
       target: true,
       direction: :stricter,
+      scope: :rule_conditions,
       decision: "owner, 2026-09-29 (WTF-426): stay stricter than Bubble",
       summary:
         "Bubble treats an empty value on the user's side (logged out, or a user without the " <>
           "value a condition reads) as equal to an empty record value and grants access; " <>
           "the generated policies deny"
+    },
+    hidden_field_constraint_matches: %{
+      bubble: true,
+      target: false,
+      direction: :stricter,
+      scope: :search_constraints,
+      decision: "owner, 2026-10-01 (WTF-457): stay stricter than Bubble",
+      summary:
+        "A Bubble page search evaluates a constraint or sort on a field the user may not " <>
+          "view against its stored value (an oracle on hidden values; replayed 2026-10-01); " <>
+          "with enforced policies the generated app matches nothing there: it returns only " <>
+          "the records where the user may view every field the filter or sort reads"
     }
   }
 
@@ -121,6 +159,17 @@ defmodule BubbleEx.Verify.Difference do
   def flags, do: @policy |> Map.keys() |> Enum.sort()
 
   @doc """
+  The policy's flags of one scope, sorted: `:rule_conditions` (how a
+  privacy rule's condition reads; the privacy matrix checks them) or
+  `:search_constraints` (how a search's own constraints and sort read the
+  fields a user may not view; `privacy: :enforced` only, outside the
+  matrix, whose constrained searches cover only non-filterable fields).
+  """
+  @spec flags(:rule_conditions | :search_constraints) :: [atom()]
+  def flags(scope),
+    do: for({flag, %{scope: ^scope}} <- @policy, do: flag) |> Enum.sort()
+
+  @doc """
   `assumptions` with the policy's flags at their target reading: the
   interpreter under them shows what the intended differences alone
   change.
@@ -169,7 +218,7 @@ defmodule BubbleEx.Verify.Difference do
         affected = for(%{ir: ir, rule: r} <- info.rules, affected?(ir), do: r.id),
         affected != [],
         rule <- Enum.sort(affected) ++ everyone(info),
-        do: %{type: type_id, rule: rule, flags: flags()}
+        do: %{type: type_id, rule: rule, flags: flags(:rule_conditions)}
   end
 
   defp everyone(%{default: %{permissions: %{} = p}}) do

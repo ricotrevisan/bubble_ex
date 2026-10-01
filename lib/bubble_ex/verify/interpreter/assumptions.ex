@@ -11,16 +11,20 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
       Bubble does. It starts from the compiler's fail-safe reading and
       takes each flag calibration settled (`evidence/0`): today only
       `actor_empty_denies`, refuted by the V5 run (Bubble treats an empty
-      actor-side value as equal to an empty record value).
+      actor-side value as equal to an empty record value). One flag is
+      Bubble's documented behavior instead: `hidden_field_constraint_matches`
+      (WTF-457), which the compiler's reading never had.
     * `target/0` is the **generated policies' reading**: the compiler's
       fail-safe reading, which `BubbleEx.Target.Ash.Expressions` and the
       generated Ash policies (`privacy: :unverified`) implement. With it
       the interpreter predicts what the compiled policies select.
 
-  Where the two differ by an owner decision, the target is stricter than
-  Bubble on purpose: `BubbleEx.Verify.Difference` holds that policy and
-  records every case it applies to, so verification reports them as
-  known, intentional differences instead of failures. A flag that differs
+  Where the two differ by an owner decision (`actor_empty_denies`, and
+  `hidden_field_constraint_matches` with `privacy: :enforced`), the
+  target is stricter than Bubble on purpose: `BubbleEx.Verify.Difference`
+  holds that policy and records every case it applies to, so
+  verification reports them as known, intentional differences instead of
+  failures. A flag that differs
   without such a decision is a real difference.
 
   | flag | Bubble (default) | target | the `true` reading | the `false` reading |
@@ -42,6 +46,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   | `logged_out_user_is_empty` | `true` | `true` | a logged-out user has no identity: `Current User` is empty | a logged-out user is Bubble's temporary user: a user of its own (never equal to a record's user) with empty fields |
   | `defaults_applied_at_creation` | `true` | `true` | a record created without a value for a field that has a default (WTF-338: defaults are kept) stores the default: a field a record omits reads as its default; an explicitly empty field (`null` in a seed) stays empty | a field a record omits is empty; defaults are never applied |
   | `non_filterable_constraint_excludes` | `true` | `true` | a search constrained on a field the user may not search by (a privacy rule's non-filterable fields) does not find the records where the user may not; the generated policies (`<namespace>.Privacy.SearchFields`) return only the records where the user may | such a constraint is ignored for those records: they are found as by the unconstrained search |
+  | `hidden_field_constraint_matches` | `true` | `false` | a page search constrained or sorted on a field the user may not view (but may search by) matches its stored value: view and constraint are separate permissions in Bubble (replayed 2026-10-01; a backend workflow's search reads the field as empty, a Data API search matches nothing) | a record whose field the user may not view matches nothing: only the records where the user may view the field are found; the generated policies with `privacy: :enforced` (`<namespace>.Privacy.SearchFields`, WTF-457) |
 
   ## Calibration evidence
 
@@ -62,7 +67,16 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     * `:unclear` - mixed (`everyone_guards_record_values`)
     * `:not_exercised` - no recorded check depended on it (the other
       eight, and `non_filterable_constraint_excludes`, added after the
-      run)
+      run; Bubble's manual supports its reading: a search constrained on
+      a field a user may not constrain on returns nothing for that user)
+    * `:documented` - no matrix check depended on it, but a targeted
+      replay and Bubble's manual settle it (`hidden_field_constraint_matches`,
+      WTF-457: the 2026-10-01 replay of WTF-385 found a page search
+      matching a hidden field's stored value, 4 probes of 4; a backend
+      workflow's search reads it as empty, a Data API search matches
+      nothing). Not unsettled: the target differs from it by the owner's
+      decision, and the matrix's constrained searches cover only
+      non-filterable fields
 
   A flag is flipped only on a `:refuted` verdict. The run's other
   findings: 68 disagreements came from privacy rules changed since the
@@ -109,11 +123,14 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     search_independent_of_view: true,
     logged_out_user_is_empty: true,
     defaults_applied_at_creation: true,
-    non_filterable_constraint_excludes: true
+    non_filterable_constraint_excludes: true,
+    hidden_field_constraint_matches: true
   ]
 
   # The generated policies' reading: the compiler's fail-safe one.
-  @target Keyword.put(@flags, :actor_empty_denies, true)
+  @target @flags
+          |> Keyword.put(:actor_empty_denies, true)
+          |> Keyword.put(:hidden_field_constraint_matches, false)
 
   # The last calibration run (V5 of WTF-385, 2026-09-29): ops that depend
   # on the flag, agreeing and disagreeing (fair comparison), and how many
@@ -127,7 +144,8 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
     everyone_guards_record_values: {:unclear, 12, 3, 2, 0},
     builtin_fields_hidden_unless_listed: {:supported, 35, 14, 0, 27},
     no_visible_field_unreadable: {:supported, 328, 98, 0, 215},
-    search_independent_of_view: {:supported, 5, 24, 0, 5}
+    search_independent_of_view: {:supported, 5, 24, 0, 5},
+    hidden_field_constraint_matches: {:documented, 0, 0, 0, 0}
   }
 
   @type name ::
@@ -148,8 +166,10 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
           | :logged_out_user_is_empty
           | :defaults_applied_at_creation
           | :non_filterable_constraint_excludes
+          | :hidden_field_constraint_matches
   @type t :: %{name() => boolean()}
-  @type status :: :refuted | :supported | :leaning_flipped | :unclear | :not_exercised
+  @type status ::
+          :refuted | :supported | :leaning_flipped | :unclear | :not_exercised | :documented
   @type evidence :: %{
           status: status(),
           run: String.t(),
