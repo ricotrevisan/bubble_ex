@@ -117,6 +117,60 @@ defmodule BubbleEx.Frontend.StaticAssetsTest do
       end
     end
 
+    # WTF-465: linked to their original host, as in Bubble, over HTTPS.
+    test "other hosts are linked over HTTPS, and only http(s) URLs are" do
+      for {ref, url} <- [
+            {"https://cdn.example.com/a.png", "https://cdn.example.com/a.png"},
+            {"//cdn.example.com/a.png?w=200", "https://cdn.example.com/a.png?w=200"},
+            {"http://cdn.example.com/a.png", "https://cdn.example.com/a.png"},
+            {"http://cdn.example.com:80/a.png", "https://cdn.example.com/a.png"},
+            {"https://cdn.example.com:8443/a.png", "https://cdn.example.com:8443/a.png"},
+            {"HTTPS://CDN.Example.com/A.png", "https://cdn.example.com/A.png"}
+          ] do
+        assert StaticAssets.classify(ref) == {:external, url}, ref
+      end
+
+      for ref <- [
+            "javascript:alert(1)",
+            "data:text/html,<script>",
+            "data:image/svg+xml,<svg/onload=alert(1)>",
+            "ftp://cdn.example.com/a.png",
+            "file:///etc/passwd",
+            "blob:https://cdn.example.com/1",
+            "//cdn.example.com/a.png?token=abc",
+            "https://user:pw@cdn.example.com/a.png",
+            # No HTTPS equivalent to link.
+            "http://cdn.example.com:8080/a.png",
+            "http://cdn.example.com:443/a.png",
+            # Control characters inside the URL.
+            "https://cdn.example.com/a\u0000.png",
+            "https://cdn.example.com/a\u0001b.png",
+            "https://cdn.example.com/a\u000Bb.png",
+            "https://cdn.example.com/a\u001Fb.png",
+            "https://cdn.example.com/a\u007Fb.png",
+            "https://cdn.example.com/a\tb.png",
+            "https://cdn.example.com/a\nb.png",
+            "https://cdn.example.com/a b.png"
+          ] do
+        assert {:invalid, _} = StaticAssets.classify(ref), inspect(ref)
+      end
+    end
+
+    test "loopback and private hosts are still linked, and noted as such" do
+      for host <-
+            ~w(127.0.0.1 10.1.2.3 172.16.0.1 192.168.1.1 169.254.169.254 0.0.0.0 100.64.0.1) ++
+              ~w([::1] [fc00::1] [fe80::1] [::ffff:127.0.0.1] localhost cdn.localhost) do
+        assert {:external, _} = StaticAssets.classify("https://#{host}/a.png"), host
+        assert StaticAssets.local_host?(StaticAssets.host("https://#{host}/a.png")), host
+      end
+
+      for host <- ~w(cdn.example.com 10.example.com localhost.example.com) do
+        refute StaticAssets.local_host?(host), host
+      end
+
+      refute StaticAssets.local_host?(nil)
+    end
+
     test "hostile references are dropped" do
       for ref <- [
             "javascript:alert(1)",

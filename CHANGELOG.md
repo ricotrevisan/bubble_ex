@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Images on other hosts stay linked, as in Bubble** (WTF-465). An image
+  a Bubble app hotlinks from a host other than Bubble's storage is never
+  fetched, proxied or dropped: the page links its original URL (an
+  `http://` one over HTTPS) with `loading="lazy"` and
+  `referrerpolicy="no-referrer"`, a reusable element's image too when an
+  instance passes one. It is no longer a `TODO(bubble:<id>)` marker:
+  `.wtf/assets.json` lists it as `external` with `"handling": "linked"` (a
+  note, not a reason to fix), and `frontend_report/2`'s `assets_external`
+  is informational. New routers send
+  `img-src 'self' data: blob: https:` with Phoenix's default policy; the
+  sandbox policy on `/images/bubble` is unchanged. An `http://` URL on a
+  port other than 80 is dropped (no HTTPS equivalent); a loopback or
+  private host stays linked, with a manifest note. The vertical slice's
+  drive counts the blocked image requests for exactly those URLs (never
+  Bubble's storage) as `external_images_expected`, so `blocked_requests`
+  lists only unexpected ones.
+
 ### Added
 
 - **Vertical slice: enforced privacy and a chosen persona** (WTF-378
