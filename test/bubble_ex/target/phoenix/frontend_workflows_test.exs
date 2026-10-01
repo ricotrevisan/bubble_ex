@@ -321,8 +321,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     live = files["lib/shop_web/live/index_live.ex"]
 
     # The literal tags are data around the values; the URL tag stays text.
-    assert live =~ ~s|{:b, ["Typed: ", Shop.Bubble.Runtime.text(element_state_bin_get_data)]}|
-    assert live =~ ~s|{:i, [Shop.Bubble.Runtime.text(element_state_bhome_custom_label)]}|
+    assert live =~ ~s|{:b, ["Typed: ", Shop.Bubble.Runtime.display(element_state_bin_get_data)]}|
+    assert live =~ ~s|{:i, [Shop.Bubble.Runtime.display(element_state_bhome_custom_label)]}|
     assert live =~ ~s|" [url=https://example.com]u[/url]"|
 
     template = files["lib/shop_web/live/index_live.html.heex"]

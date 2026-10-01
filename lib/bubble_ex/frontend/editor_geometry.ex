@@ -19,24 +19,55 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   page's or reusable definition's `container_layout`, down the tree):
 
     * **Elements.** `left`/`top`/`width`/`height` become `%l`/`%t`/`%w`/
-      `%h`: no canvas offsets in flow, a size only on a fixed axis. A
-      missing sizing flag is off, so an element that is neither fixed nor
-      fit on an axis fills it between its min and max. Plugin elements
-      (`BubbleEx.Frontend.Payload.plugin_type?/1`: marketplace and Bubble's
-      own plugins, rendered as dimension-preserving placeholders) keep
-      their canvas `width`/`height` and flags as written; only their
+      `%h`: no canvas offsets in flow, a size only on a fixed axis. Plugin
+      elements (`BubbleEx.Frontend.Payload.plugin_type?/1`: marketplace and
+      Bubble's own plugins, rendered as dimension-preserving placeholders)
+      keep their canvas `width`/`height` and flags as written; only their
       offsets go.
-    * **Height of an element neither fixed nor fit, without a min height.**
-      Its canvas height becomes its `min_height_css`. *Assumption*, not
-      yet calibrated by a Bubble capture (on the WTF-358 replay list): it
-      keeps such an element from collapsing without clipping content. Not
-      when its max height is below its canvas height (it would render
-      taller than Bubble's max), nor inside a flow container of fixed
-      height (its children share that height; canvas min heights could
-      add up to more and spill over the siblings below).
-      *Known behavior:* min heights the app sets itself are kept, so
-      children whose own min heights add up to more than a fixed-height
-      parent overflow it, as in CSS.
+    * **Width.** A missing width flag (`fit_width`, `single_width`) is off,
+      so an element that is neither fixed nor fit on its width fills it
+      between its min and max.
+    * **Height** (WTF-468). The height flags are left as written, as
+      Bubble's runtime payload serves them (it leaves them out too), so an
+      element's height follows the same rules as a runtime payload's:
+        - `single_height` set: fixed, at its min height (else `%h`);
+        - `fit_height` set, or no height flag at all: sized to its
+          content, from its own min height if it has one (the canvas height
+          is not a min height);
+        - `single_height` written `false` without `fit_height`: fills
+          between its min and max;
+        - a Row child with `vert_alignment: "stretch"` stretches to the
+          row, and a Group without a height flag in an Align-to-parent
+          container fills it (`BubbleEx.Frontend.normalize/2`).
+      The 2026-10-01 replay measured 49 rendered elements without a height
+      flag or a min height, nearly all Row children: 41 rendered shorter
+      than their canvas height (36 sized to their content, with a computed
+      min height of `0px` or `auto`), 7 taller and 1 alike. The 7 taller
+      ones are content-sized too: 4 images whose width sets their height,
+      2 texts wrapping in a Row, 1 Group taller with its content. None of
+      them fills its parent.
+      *Inferred, not calibrated by the replay:* that a Row child without
+      a height flag no longer stretches to the row (as missing flags read
+      as off made it), from the runtime payload, which leaves the flags
+      out and is read that way. Column children follow the same rules,
+      untested.
+    * **An element with nothing to size it**, neither fixed nor fit and
+      without a min height, keeps its canvas height: a Shape without a
+      height flag (Bubble's Shapes have no content) as a fixed height,
+      unless it keeps an aspect ratio (`aspect_ratio_width`/`_height`);
+      an empty Group or Floating group with a visible background or
+      border (its own or its style's) as a min height; an element lowered
+      to an empty placeholder as a min height (`canvas_height/1`). Other
+      empty elements are content-sized.
+    * **Images that keep their aspect ratio** (`use_aspect_ratio`, not
+      fixed height; WTF-458). Their height follows their width: they are
+      read as fit height, as Bubble serves a fit-height aspect image, so
+      they get no height, min or max height, and no fill, and the
+      `aspect-ratio` sets their height from their width. This overrides
+      a written `fit_height: false`: fit off and fixed off would make the
+      image fill its parent's height, and a filled height (`flex-grow`,
+      `align-self: stretch`) overrides the aspect ratio in CSS, while the
+      replay measured such images at the height their width gives them.
     * **Reusable definitions.** Their `width`/`height` are the canvas size
       (`%w`/`%h`).
     * **Pages.** Their canvas offsets and height are dropped: the page
@@ -51,6 +82,7 @@ defmodule BubbleEx.Frontend.EditorGeometry do
 
   @mark "__bubble_ex_geometry__"
   @canvas %{"left" => "%l", "top" => "%t", "width" => "%w", "height" => "%h"}
+  @canvas_height "__bubble_ex_canvas_height__"
   @flow ["column", "row", "relative", "align_to_parent", "align-to-parent"]
 
   @doc "Marks a decoded app as Bubble editor JSON."
@@ -78,49 +110,58 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   @spec runtime_shape(map(), keyword()) :: map()
   def runtime_shape(app, opts \\ []) do
     if editor?(app, opts) do
+      styles = Payload.styles(app)
+
       app
-      |> update_section("pages", &container(&1, &2, :page))
-      |> update_section("element_definitions", &container(&1, &2, :reusable_definition))
+      |> update_section("pages", &container(&1, :page, styles))
+      |> update_section("element_definitions", &container(&1, :reusable_definition, styles))
     else
       app
     end
   end
 
+  @doc """
+  The canvas height of an editor element in flow that is neither fixed
+  nor fit and has no min height (WTF-468), or nil. Only `runtime_shape/2` sets it,
+  so a runtime payload never has one; `BubbleEx.Frontend.normalize/2`
+  keeps it as the min height of an empty placeholder.
+  """
+  @spec canvas_height(map()) :: number() | nil
+  def canvas_height(raw) when is_map(raw), do: raw[@canvas_height]
+  def canvas_height(_raw), do: nil
+
+  @doc "The element key `canvas_height/1` reads."
+  @spec canvas_height_key() :: String.t()
+  def canvas_height_key, do: @canvas_height
+
   defp update_section(app, key, fun) do
     case app[key] do
       section when is_map(section) ->
-        Map.put(app, key, Map.new(section, fn {k, v} -> {k, fun.(k, v)} end))
+        Map.put(app, key, Map.new(section, fn {k, v} -> {k, fun.(v)} end))
 
       _ ->
         app
     end
   end
 
-  defp container(_key, raw, kind) when is_map(raw) do
+  defp container(raw, kind, styles) when is_map(raw) do
     raw = if flow?(raw), do: update_props(raw, &container_props(&1, kind)), else: raw
-    update_children(raw, parent(raw))
+    update_children(raw, parent(raw), styles)
   end
 
-  defp container(_key, raw, _kind), do: raw
+  defp container(raw, _kind, _styles), do: raw
 
   # How a container lays out its children: nil (Fixed or no layout: the
-  # canvas box stands), :flow, or :fixed_height_flow (a flow container of
-  # fixed height, whose children get no canvas min height).
-  defp parent(raw) do
-    cond do
-      not flow?(raw) -> nil
-      Payload.prop(raw, "single_height") == true -> :fixed_height_flow
-      true -> :flow
-    end
-  end
+  # canvas box stands) or :flow.
+  defp parent(raw), do: if(flow?(raw), do: :flow)
 
-  defp update_children(raw, parent) do
+  defp update_children(raw, parent, styles) do
     case raw["elements"] do
       elements when is_map(elements) ->
         Map.put(
           raw,
           "elements",
-          Map.new(elements, fn {k, child} -> {k, element(child, parent)} end)
+          Map.new(elements, fn {k, child} -> {k, element(child, parent, styles)} end)
         )
 
       _ ->
@@ -128,16 +169,96 @@ defmodule BubbleEx.Frontend.EditorGeometry do
     end
   end
 
-  defp element(raw, parent) when is_map(raw) do
-    raw =
-      if parent,
-        do: update_props(raw, &element_props(&1, Payload.type(raw), parent)),
-        else: raw
-
-    update_children(raw, parent(raw))
+  defp element(raw, parent, styles) when is_map(raw) do
+    raw = if parent, do: flow_element(raw, styles), else: raw
+    update_children(raw, parent(raw), styles)
   end
 
-  defp element(raw, _parent), do: raw
+  defp element(raw, _parent, _styles), do: raw
+
+  defp flow_element(raw, styles) do
+    type = Payload.type(raw)
+
+    if Payload.plugin_type?(type) do
+      update_props(raw, &compact(&1, ["left", "top"]))
+    else
+      raw = update_props(raw, &(&1 |> compact() |> put_width_flags()))
+      flow_height(raw, type, Payload.properties(raw), styles)
+    end
+  end
+
+  defp flow_height(raw, "Image", %{"use_aspect_ratio" => true}, _styles),
+    do: update_props(raw, &put_aspect_fit_height/1)
+
+  defp flow_height(raw, type, props, styles) do
+    cond do
+      not guessed_height?(props) ->
+        raw
+
+      type == "Shape" and not flagged_height?(props) and not aspect_ratio?(props) ->
+        update_props(raw, &Map.put(&1, "single_height", true))
+
+      type in ["Group", "FloatingGroup"] and no_children?(raw) and painted?(raw, styles) ->
+        update_props(raw, &Map.put(&1, "min_height_css", px(props["%h"])))
+
+      true ->
+        Map.put(raw, @canvas_height, props["%h"])
+    end
+  end
+
+  # Neither fixed nor fit, without a min height, with a canvas height: the
+  # height the editor JSON leaves to be guessed.
+  defp guessed_height?(props) do
+    props["fit_height"] != true and props["single_height"] != true and
+      is_nil(props["min_height_css"]) and is_nil(props["min_height_px"]) and
+      is_number(props["%h"]) and props["%h"] > 0
+  end
+
+  defp flagged_height?(props),
+    do: is_map_key(props, "fit_height") or is_map_key(props, "single_height")
+
+  # A ratio the element keeps (as `Frontend.normalize/2` reads it).
+  defp aspect_ratio?(props) do
+    props["use_aspect_ratio"] == true and positive?(props["aspect_ratio_width"]) and
+      positive?(props["aspect_ratio_height"])
+  end
+
+  defp positive?(value), do: is_number(value) and value > 0
+
+  defp no_children?(raw) do
+    case raw["elements"] do
+      elements when is_map(elements) -> map_size(elements) == 0
+      _ -> true
+    end
+  end
+
+  # A visible background or border, set on the element or by its style.
+  defp painted?(raw, styles) do
+    style =
+      case styles[raw["style"]] do
+        style when is_map(style) -> Payload.properties(style)
+        _ -> %{}
+      end
+
+    props = Map.merge(style, Payload.properties(raw))
+    background?(props) or border?(props)
+  end
+
+  defp background?(props) do
+    case props["background_style"] do
+      nil -> is_binary(props["bgcolor"])
+      style -> style != "none"
+    end
+  end
+
+  defp border?(props) do
+    sides =
+      if props["four_border_style"] == false,
+        do: [],
+        else: Enum.map(~w(top right bottom left), &props["border_style_#{&1}"])
+
+    Enum.any?([props["border_style"] | sides], &(is_binary(&1) and &1 != "none"))
+  end
 
   defp flow?(raw), do: Payload.prop(raw, "container_layout") in @flow
 
@@ -157,22 +278,6 @@ defmodule BubbleEx.Frontend.EditorGeometry do
 
   defp container_props(props, :reusable_definition), do: compact(props)
 
-  defp element_props(props, type, parent) do
-    cond do
-      Payload.plugin_type?(type) ->
-        compact(props, ["left", "top"])
-
-      parent == :fixed_height_flow ->
-        props |> compact() |> put_flags()
-
-      true ->
-        props
-        |> compact()
-        |> put_flags()
-        |> put_canvas_min_height()
-    end
-  end
-
   defp compact(props, keys \\ Map.keys(@canvas)) do
     Enum.reduce(Map.take(@canvas, keys), props, fn {readable, compact}, acc ->
       case acc do
@@ -185,41 +290,19 @@ defmodule BubbleEx.Frontend.EditorGeometry do
     end)
   end
 
-  defp put_flags(props) do
-    Enum.reduce(~w(fit_width single_width fit_height single_height), props, fn flag, acc ->
-      Map.put_new(acc, flag, false)
-    end)
+  defp put_width_flags(props) do
+    props |> Map.put_new("fit_width", false) |> Map.put_new("single_width", false)
   end
 
-  defp put_canvas_min_height(props) do
-    height = props["%h"]
-
-    if props["fit_height"] != true and props["single_height"] != true and
-         is_nil(props["min_height_css"]) and is_nil(props["min_height_px"]) and
-         is_number(height) and height > 0 and not below?(max_height(props), height) do
-      Map.put(props, "min_height_css", px(height))
-    else
-      props
-    end
+  # An image that keeps its aspect ratio takes its height from its width,
+  # like the fit-height aspect image Bubble serves. This overrides a
+  # written `fit_height: false`: with fit off and fixed off the image
+  # would fill its parent's height, and a filled height overrides the
+  # aspect ratio (`align-self: stretch` or `flex-grow` in CSS). The replay
+  # measured such images at their width's height.
+  defp put_aspect_fit_height(props) do
+    if props["single_height"] == true, do: props, else: Map.put(props, "fit_height", true)
   end
-
-  # A max height in px (`max_height_px`, or a `max_height_css` in px), or nil.
-  defp max_height(props) do
-    case {props["max_height_px"], props["max_height_css"]} do
-      {px, _} when is_number(px) -> px
-      {_, css} when is_binary(css) -> parse_px(css)
-      _ -> nil
-    end
-  end
-
-  defp parse_px(css) do
-    case Regex.run(~r/^\s*(\d+(?:\.\d+)?)px\s*$/, css, capture: :all_but_first) do
-      [n] -> n |> Float.parse() |> elem(0)
-      _ -> nil
-    end
-  end
-
-  defp below?(max, height), do: is_number(max) and max < height
 
   defp px(value) when is_integer(value), do: "#{value}px"
 

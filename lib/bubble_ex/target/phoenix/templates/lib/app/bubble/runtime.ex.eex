@@ -6,21 +6,35 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   Every function takes possibly-empty values (`nil`) and never raises on
   them: in Bubble an empty value is not an error. The functions marked
-  `TODO(bubble:runtime)` approximate Bubble (formats, calendars, keyword
-  matching): check them against the Bubble app before relying on them.
+  `TODO(bubble:runtime)` approximate Bubble (keyword matching, text
+  encodings): check them against the Bubble app before relying on them.
+
+  Dates show in `time_zone/0` unless an expression names a zone, and in
+  Bubble's formats (`format_date/3`, `format_number/2`). Assumptions until
+  a replay against the Bubble app calibrates them (WTF-456): the default
+  format of a date shown without one, `mmm d, yyyy h:MM tt`; weeks
+  start on Sunday; a currency without decimal places shows 2; a number
+  shows no thousands separator unless the format sets one.
   """
 
   import Kernel, except: [abs: 1, div: 2, round: 1]
 
-  @doc "A value as Bubble shows it in text."
+  @default_date_format "mmm d, yyyy h:MM tt"
+  @default_day_format "mmm d, yyyy"
+
+  @doc """
+  A value as text for machines: URLs, API responses, request bodies. Dates
+  stay ISO 8601 (what Bubble sends there is a replay question, WTF-358).
+  Pages show values with `display/1`.
+  """
   def text(nil), do: ""<%= if @enforced? do %>
   # A field the privacy rules hide from the user reads as empty, as in Bubble.
   def text(%Ash.ForbiddenField{}), do: ""<% end %>
   def text(true), do: "yes"
   def text(false), do: "no"
-  def text(x) when is_float(x) and x == trunc(x), do: Integer.to_string(trunc(x))
-  def text(x) when is_float(x), do: Float.to_string(x)
-  def text(%DateTime{} = x), do: DateTime.to_iso8601(x)
+  def text(x) when is_float(x), do: js_number(x)
+  def text(%DateTime{} = x), do: iso(x)
+  def text(%NaiveDateTime{} = x), do: x |> DateTime.from_naive!("Etc/UTC") |> iso()
   def text(%Date{} = x), do: Date.to_iso8601(x)
   def text(%Decimal{} = x), do: Decimal.to_string(x, :normal)
   def text(x) when is_list(x), do: Enum.map_join(x, ", ", &text/1)
@@ -28,6 +42,36 @@ defmodule <%= @module %>.Bubble.Runtime do
   def text(x) when is_binary(x), do: x
   def text(x) when is_atom(x) or is_number(x), do: to_string(x)
   def text(x), do: inspect(x)
+
+  @doc "A value as Bubble shows it on a page: `text/1`, with dates in Bubble's default format."
+  def display(%DateTime{} = x), do: format_date(x, nil)
+  def display(%NaiveDateTime{} = x), do: format_date(x, nil)
+  def display(%Date{} = x), do: format_date(x, nil)
+  def display(x) when is_list(x), do: Enum.map_join(x, ", ", &display/1)
+  def display(x), do: text(x)
+
+  # A float as JavaScript prints it (Bubble's numbers): no trailing `.0`,
+  # plain digits from 1e-6 up to 1e21, exponent notation (`1e+21`) outside.
+  defp js_number(x) when x == 0, do: "0"
+
+  defp js_number(x) when Kernel.abs(x) >= 1.0e21 or Kernel.abs(x) < 1.0e-6 do
+    [mantissa, exponent] = x |> Float.to_string() |> String.split("e")
+    mantissa = String.replace_suffix(mantissa, ".0", "")
+    sign = if String.starts_with?(exponent, "-"), do: "", else: "+"
+    mantissa <> "e" <> sign <> exponent
+  end
+
+  # Shortest digits, as JavaScript: 9.999999999999999e20 is
+  # "999999999999999900000", not the float's exact integer.
+  defp js_number(x),
+    do: x |> Decimal.from_float() |> Decimal.normalize() |> Decimal.to_string(:normal)
+
+  # ISO 8601 in UTC with milliseconds, as JavaScript's toISOString.
+  defp iso(%DateTime{} = x) do
+    {us, _} = x.microsecond
+    utc = DateTime.shift_zone!(x, "Etc/UTC")
+    DateTime.to_iso8601(%{utc | microsecond: {us - rem(us, 1000), 3}})
+  end
 
   @doc "`is empty`."
 <%= if @enforced? do %>  def empty?(%Ash.ForbiddenField{}), do: true
@@ -161,35 +205,300 @@ defmodule <%= @module %>.Bubble.Runtime do
   def is_email(x) when is_binary(x), do: Regex.match?(~r/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/, x)
   def is_email(_x), do: false
 
-  # TODO(bubble:runtime) Bubble's date formats (`format` is Bubble's format text).
-  def format_date(nil, _format), do: nil
-  def format_date(x, _format), do: text(x)
+  @doc """
+  The time zone dates show in when an expression names none. Bubble uses
+  the user's browser zone, which the server does not know: this is the
+  app's `config :<%= @app %>, :bubble_time_zone` (default `"Etc/UTC"`).
+  Zones other than UTC need a time zone database
+  (`config :elixir, :time_zone_database`, e.g. from the `tz` package);
+  without one dates show in UTC.
+  """
+  def time_zone, do: Application.get_env(:<%= @app %>, :bubble_time_zone, "Etc/UTC")
 
-  # TODO(bubble:runtime) Bubble's number formats (`options` are Bubble's settings).
-  def format_number(x, _options), do: x
+  @doc """
+  `formatted as` a date: `format` is Bubble's pattern (`"mmm d, yyyy"`),
+  `"iso_date"` (ISO 8601 in UTC) or nil (Bubble's default); `zone` the
+  zone the expression names, else `time_zone/0`.
+  """
+  def format_date(x, format, zone \\ nil)
+  def format_date(nil, _format, _zone), do: nil
+
+  # Ecto's naive datetimes hold UTC.
+  def format_date(%NaiveDateTime{} = x, format, zone),
+    do: format_date(DateTime.from_naive!(x, "Etc/UTC"), format, zone)
+
+  # A calendar day has no time or zone: shown as the day itself.
+  def format_date(%Date{} = x, "iso_date", _zone), do: Date.to_iso8601(x)
+  def format_date(%Date{} = x, nil, zone), do: format_date(x, @default_day_format, zone)
+
+  def format_date(%DateTime{} = x, "iso_date", _zone), do: iso(x)
+
+  def format_date(x, format, zone) do
+    case local(x, zone) do
+      nil ->
+        text(x)
+
+      local ->
+        Regex.replace(date_tokens(), format || @default_date_format, fn token, _ ->
+          date_token(local, token)
+        end)
+    end
+  end
+
+  # Bubble's date patterns (BubbleEx.Target.Elixir.Formats reads the same).
+  defp date_tokens, do: ~r/<%= BubbleEx.Target.Elixir.Formats.date_pattern() %>/
+  @months ~w(January February March April May June July August September October November December)
+  @weekdays ~w(Monday Tuesday Wednesday Thursday Friday Saturday Sunday)
+
+  defp date_token(x, "d"), do: Integer.to_string(x.day)
+  defp date_token(x, "dd"), do: pad(x.day)
+  defp date_token(x, "ddd"), do: x |> weekday() |> String.slice(0, 3)
+  defp date_token(x, "dddd"), do: weekday(x)
+  defp date_token(x, "DDD"), do: relative_day(x, ["Ysd", "Tdy", "Tmw"], "ddd")
+  defp date_token(x, "DDDD"), do: relative_day(x, ["Yesterday", "Today", "Tomorrow"], "dddd")
+  defp date_token(x, "m"), do: Integer.to_string(x.month)
+  defp date_token(x, "mm"), do: pad(x.month)
+  defp date_token(x, "mmm"), do: @months |> Enum.at(x.month - 1) |> String.slice(0, 3)
+  defp date_token(x, "mmmm"), do: Enum.at(@months, x.month - 1)
+  defp date_token(x, "yy"), do: pad(rem(x.year, 100))
+  defp date_token(x, "yyyy"), do: x.year |> Integer.to_string() |> String.pad_leading(4, "0")
+  defp date_token(x, "h"), do: Integer.to_string(hour12(x))
+  defp date_token(x, "hh"), do: pad(hour12(x))
+  defp date_token(x, "H"), do: Integer.to_string(x.hour)
+  defp date_token(x, "HH"), do: pad(x.hour)
+  defp date_token(x, "M"), do: Integer.to_string(x.minute)
+  defp date_token(x, "MM"), do: pad(x.minute)
+  defp date_token(x, "s"), do: Integer.to_string(x.second)
+  defp date_token(x, "ss"), do: pad(x.second)
+  defp date_token(x, "l"), do: x |> millisecond() |> Integer.to_string() |> String.pad_leading(3, "0")
+  defp date_token(x, "L"), do: x |> millisecond() |> Kernel./(10) |> Kernel.round() |> pad()
+  defp date_token(x, "t"), do: if(x.hour < 12, do: "a", else: "p")
+  defp date_token(x, "tt"), do: if(x.hour < 12, do: "am", else: "pm")
+  defp date_token(x, "T"), do: if(x.hour < 12, do: "A", else: "P")
+  defp date_token(x, "TT"), do: if(x.hour < 12, do: "AM", else: "PM")
+  # Approximation: `ZZ` shows as `Z`.
+  defp date_token(x, zone) when zone in ["Z", "ZZ"], do: x.zone_abbr
+  defp date_token(x, "o"), do: offset(x, "")
+  defp date_token(x, "p"), do: offset(x, ":")
+  defp date_token(x, "S"), do: ordinal(x.day)
+  defp date_token(x, "W"), do: Integer.to_string(iso_week(x))
+  defp date_token(x, "WW"), do: pad(iso_week(x))
+  defp date_token(x, "N"), do: x |> Date.day_of_week() |> Integer.to_string()
+  defp date_token(_x, quoted), do: String.slice(quoted, 1..-2//1)
+
+  defp pad(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
+  defp weekday(x), do: Enum.at(@weekdays, Date.day_of_week(x) - 1)
+  defp millisecond(%{microsecond: {us, _}}), do: Kernel.div(us, 1000)
+  defp iso_week(x), do: x |> DateTime.to_date() |> Date.to_erl() |> :calendar.iso_week_number() |> elem(1)
+
+  defp hour12(%{hour: h}) when h in [0, 12], do: 12
+  defp hour12(%{hour: h}), do: rem(h, 12)
+
+  defp ordinal(day) when day in 11..13, do: "th"
+  defp ordinal(day), do: Enum.at(["th", "st", "nd", "rd"], rem(day, 10), "th")
+
+  defp offset(x, separator) do
+    seconds = x.utc_offset + x.std_offset
+    minutes = Kernel.div(Kernel.abs(seconds), 60)
+    sign = if seconds < 0, do: "-", else: "+"
+    sign <> pad(Kernel.div(minutes, 60)) <> separator <> pad(rem(minutes, 60))
+  end
+
+  defp relative_day(x, [yesterday, today, tomorrow], otherwise) do
+    now = DateTime.utc_now() |> DateTime.shift_zone!(x.time_zone) |> DateTime.to_date()
+
+    case Date.diff(DateTime.to_date(x), now) do
+      -1 -> yesterday
+      0 -> today
+      1 -> tomorrow
+      _ -> date_token(x, otherwise)
+    end
+  end
+
+  # A date as shown in `zone` (else `time_zone/0`): in UTC when the zone is
+  # unknown or no time zone database is configured. A Date is shown as is.
+  defp local(%DateTime{} = x, zone) do
+    case DateTime.shift_zone(x, zone_name(zone)) do
+      {:ok, local} -> local
+      {:error, _} -> DateTime.shift_zone!(x, "Etc/UTC")
+    end
+  end
+
+  defp local(%Date{} = x, _zone), do: DateTime.new!(x, ~T[00:00:00], "Etc/UTC")
+  defp local(_x, _zone), do: nil
+
+  defp zone_name(zone) when is_binary(zone) and zone != "", do: zone
+  defp zone_name(_zone), do: time_zone()
+
+  # A wall-clock time in `zone`, as a UTC DateTime, resolved as JavaScript
+  # resolves local times: one a clock change skips is read with the offset
+  # before the change (00:30 in a midnight gap is 01:30 after it); one it
+  # repeats is the occurrence with `offset` (the original's, so rounding
+  # down within the repeated hour stays in it), else the earlier.
+  defp at(naive, zone, offset) do
+    case DateTime.from_naive(naive, zone) do
+      {:ok, x} ->
+        DateTime.shift_zone!(x, "Etc/UTC")
+
+      {:ambiguous, x, y} ->
+        DateTime.shift_zone!(same_offset(x, y, offset), "Etc/UTC")
+
+      {:gap, before, _after} ->
+        naive
+        |> DateTime.from_naive!("Etc/UTC")
+        |> DateTime.add(-(before.utc_offset + before.std_offset), :second)
+
+      {:error, _} ->
+        DateTime.from_naive!(naive, "Etc/UTC")
+    end
+  end
+
+  defp same_offset(x, y, offset),
+    do: if(y.utc_offset + y.std_offset == offset, do: y, else: x)
+
+  @doc """
+  `formatted as` a number. `options` are Bubble's settings:
+  `formatting_type` (`"currency"`, `"percentage"`, else a plain number),
+  `decimal_place`, `thousand_separator` (`"comma"`, `"period"` with a
+  decimal comma, `"space"`) and `currency_symbol`.
+  """
+  def format_number(x, options) when is_map(options) do
+    case decimal(x) do
+      nil ->
+        if empty?(x), do: nil, else: text(x)
+
+      n ->
+        type = options["formatting_type"]
+        n = if type == "percentage", do: Decimal.mult(n, 100), else: n
+        n = round_places(n, places(options["decimal_place"], type))
+        sign = if Decimal.negative?(n) and not Decimal.eq?(n, 0), do: "-", else: ""
+        digits = n |> Decimal.abs() |> Decimal.to_string(:normal)
+        body = group(digits, options["thousand_separator"])
+
+        case type do
+          "currency" -> sign <> (options["currency_symbol"] || "$") <> body
+          "percentage" -> sign <> body <> "%"
+          _ -> sign <> body
+        end
+    end
+  end
+
+  def format_number(x, _options), do: format_number(x, %{})
+
+  defp decimal(x) when is_integer(x), do: Decimal.new(x)
+  defp decimal(x) when is_float(x), do: Decimal.from_float(x)
+  defp decimal(%Decimal{} = x), do: x
+  defp decimal(_x), do: nil
+
+  defp places(n, _type) when is_integer(n) and n >= 0, do: n
+  defp places(_n, "currency"), do: 2
+  defp places(_n, _type), do: nil
+
+  defp round_places(n, nil), do: Decimal.normalize(n)
+  defp round_places(n, places), do: Decimal.round(n, places, :half_up)
+
+  defp group(digits, separator) do
+    {mark, point} =
+      case separator do
+        "comma" -> {",", "."}
+        "period" -> {".", ","}
+        "space" -> {" ", "."}
+        _ -> {"", "."}
+      end
+
+    [whole | fraction] = String.split(digits, ".")
+
+    whole =
+      whole
+      |> String.graphemes()
+      |> Enum.reverse()
+      |> Enum.chunk_every(3)
+      |> Enum.map_join(mark, &Enum.join/1)
+      |> String.reverse()
+
+    Enum.join([whole | fraction], point)
+  end
 
   def format_boolean(true, yes, _no), do: yes
   def format_boolean(false, _yes, no), do: no
   def format_boolean(_x, _yes, _no), do: nil
 
-  # TODO(bubble:runtime) Bubble's calendar arithmetic (months, time zones).
+  @doc """
+  `+(seconds)` … `+(years)`. Days, months and years are calendar steps in
+  `time_zone/0` (a month from Jan 31 is the last day of February);
+  fractions of them, and smaller units, are exact durations.
+  """
+  def date_add(%DateTime{} = x, n, unit)
+      when is_number(n) and n == trunc(n) and unit in [:day, :month, :year] do
+    local = local(x, nil)
+
+    local
+    |> DateTime.to_naive()
+    |> NaiveDateTime.shift([{unit, trunc(n)}])
+    |> at(local.time_zone, local.utc_offset + local.std_offset)
+  end
+
   def date_add(%DateTime{} = x, n, unit)
       when is_number(n) and unit in [:second, :minute, :hour, :day, :month, :year] do
-    seconds = %{second: 1, minute: 60, hour: 3600, day: 86_400, month: 2_592_000, year: 31_536_000}
+    seconds = %{second: 1, minute: 60, hour: 3600, day: 86_400, month: 2_629_746, year: 31_556_952}
     DateTime.add(x, Kernel.round(n * seconds[unit]), :second)
   end
 
   def date_add(_x, _n, _unit), do: nil
 
-  # TODO(bubble:runtime) `rounded down to` a calendar unit.
-  def date_floor(x, _unit), do: x
+  @doc "`rounded down to` a calendar unit, in `zone` (else `time_zone/0`); weeks start on Sunday."
+  def date_floor(x, unit, zone \\ nil)
 
-  # TODO(bubble:runtime) `extract` a calendar part.
-  def date_part(nil, _unit), do: nil
-  def date_part(%DateTime{} = x, "year"), do: x.year
-  def date_part(%DateTime{} = x, "month"), do: x.month
-  def date_part(%DateTime{} = x, "day"), do: x.day
-  def date_part(%DateTime{} = x, "hour"), do: x.hour
-  def date_part(%DateTime{} = x, "minute"), do: x.minute
-  def date_part(_x, _unit), do: nil
+  def date_floor(%DateTime{} = x, unit, zone)
+      when unit in ~w(year month week day hour minute second) do
+    local = local(x, zone)
+    date = DateTime.to_date(local)
+
+    {date, time} =
+      case unit do
+        "year" -> {Date.new!(date.year, 1, 1), {0, 0, 0}}
+        "month" -> {Date.beginning_of_month(date), {0, 0, 0}}
+        "week" -> {Date.beginning_of_week(date, :sunday), {0, 0, 0}}
+        "day" -> {date, {0, 0, 0}}
+        "hour" -> {date, {local.hour, 0, 0}}
+        "minute" -> {date, {local.hour, local.minute, 0}}
+        "second" -> {date, {local.hour, local.minute, local.second}}
+      end
+
+    {h, m, s} = time
+    # Within the day, a repeated hour keeps the original's occurrence; a
+    # repeated midnight (Havana) starts the day at the earlier one.
+    offset = if unit in ~w(hour minute second), do: local.utc_offset + local.std_offset
+
+    date
+    |> NaiveDateTime.new!(Time.new!(h, m, s, {0, 6}))
+    |> at(local.time_zone, offset)
+  end
+
+  def date_floor(x, _unit, _zone), do: x
+
+  @doc "`extract` a calendar part, in `zone` (else `time_zone/0`); `UNIX` is milliseconds."
+  def date_part(x, unit, zone \\ nil)
+  def date_part(%DateTime{} = x, "UNIX", _zone), do: DateTime.to_unix(x, :millisecond)
+
+  def date_part(%DateTime{} = x, unit, zone) do
+    local = local(x, zone)
+
+    case unit do
+      "year" -> local.year
+      "month" -> local.month
+      "date" -> local.day
+      # TODO(bubble:runtime) Bubble may follow JavaScript here (`day` the
+      # weekday, as getDay); kept as the day of the month and reported as
+      # approximated until the replay (WTF-358) settles it.
+      "day" -> local.day
+      "hour" -> local.hour
+      "minute" -> local.minute
+      "second" -> local.second
+      "millisecond" -> millisecond(local)
+      _ -> nil
+    end
+  end
+
+  def date_part(_x, _unit, _zone), do: nil
 end

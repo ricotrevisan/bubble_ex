@@ -8,15 +8,17 @@ defmodule BubbleEx.Target.Elixir.Runtime do
 
   Every function receives possibly-empty values (`nil`) and must follow
   Bubble: an empty value is never an error. The functions in `stubs/0`
-  have Bubble behavior this contract does not pin down yet (formats,
-  calendars, keyword matching); a generated app must implement them
+  have Bubble behavior this contract does not pin down yet (keyword
+  matching, text encodings); a generated app must implement them
   against Bubble and test them there.
   """
 
   @type value :: term()
 
-  @doc "A value as Bubble shows it in text: `nil` is `\"\"`, `1.0` is `\"1\"`, yes/no, dates."
+  @doc "A value as machine text (URLs, API responses): `nil` is `\"\"`, `1.0` is `\"1\"`, yes/no, ISO 8601 dates in UTC with milliseconds."
   @callback text(value()) :: String.t()
+  @doc "A value as Bubble shows it on a page: `text/1` with dates in Bubble's default format."
+  @callback display(value()) :: String.t()
   @doc "`is empty`: nil, `\"\"` or `[]`."
   @callback empty?(value()) :: boolean()
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty; dates compare as instants."
@@ -45,9 +47,15 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback round(value()) :: value()
   @callback to_text(value()) :: value()
   @callback to_number(value()) :: value()
-  @doc "`formatted as` a date; `format` is Bubble's format text, nil for its default."
+  @doc """
+  `formatted as` a date; `format` is Bubble's pattern, `"iso_date"` or nil
+  for its default (`BubbleEx.Target.Elixir.Formats`), shown in the user's
+  time zone (the runtime's choice).
+  """
   @callback format_date(value(), String.t() | nil) :: value()
-  @doc "`formatted as` a number; `options` are Bubble's settings verbatim."
+  @doc "`format_date/2` in the time zone the expression names."
+  @callback format_date(value(), String.t() | nil, value()) :: value()
+  @doc "`formatted as` a number; `options` are Bubble's settings with readable keys."
   @callback format_number(value(), map()) :: value()
   @callback format_boolean(value(), value(), value()) :: value()
   @callback truncate(value(), value()) :: value()
@@ -56,15 +64,20 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @doc "`+(seconds)` … `+(years)`."
   @callback date_add(value(), value(), :second | :minute | :hour | :day | :month | :year) ::
               value()
+  @doc "`rounded down to` a calendar unit, in the user's time zone."
   @callback date_floor(value(), String.t()) :: value()
+  @doc "`date_floor/2` in the time zone the expression names."
+  @callback date_floor(value(), String.t(), value()) :: value()
+  @doc "`extract` a calendar part, in the user's time zone."
   @callback date_part(value(), String.t()) :: value()
+  @doc "`date_part/2` in the time zone the expression names."
+  @callback date_part(value(), String.t(), value()) :: value()
   @doc "`text contains string`: substring."
   @callback text_contains?(value(), value()) :: boolean()
   @doc "`text contains`: Bubble's keyword match."
   @callback text_contains_words?(value(), value()) :: boolean()
 
-  @stubs ~w(format_date format_number format_boolean date_add date_floor date_part
-            text_contains_words? capitalize_words json_encode url_encode is_email)a
+  @stubs ~w(format_boolean text_contains_words? capitalize_words json_encode url_encode is_email)a
 
   @doc "Every function of the contract."
   @spec functions() :: [atom()]

@@ -559,6 +559,34 @@
           },
           "type": "Text"
         },
+        "bT11": {
+          "id": "bT11",
+          "properties": {
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "name": "due_date",
+                    "next": {
+                      "name": "format_date",
+                      "properties": {
+                        "custom_format": "h:MMtt ZZ",
+                        "formatting_type": "custom",
+                        "tz_static": "UTC",
+                        "tz_type": "static"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentPageItem"
+                }
+              },
+              "type": "TextExpression"
+            }
+          },
+          "type": "Text"
+        },
         "bT8": {
           "id": "bT8",
           "properties": {

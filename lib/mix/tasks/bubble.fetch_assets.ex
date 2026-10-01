@@ -12,8 +12,9 @@ defmodule Mix.Tasks.Bubble.FetchAssets do
   on Bubble's storage hosts are requested (`*.cdn.bubble.io`, Bubble's S3
   bucket and CloudFront distribution; redirects must stay there), and,
   with `--app-url https://<app host>`, the icon libraries on the app's own
-  origin. Images on other hosts are never fetched: they are listed as
-  `external`. Images are kept only if their bytes are PNG, JPEG, GIF or
+  origin. Images on other hosts are never fetched: the generated pages
+  link them to their original URLs, as Bubble does, and list them as
+  `external` (informational). Images are kept only if their bytes are PNG, JPEG, GIF or
   WebP, or an SVG (sanitized). Already stored assets are not fetched
   again.
 
@@ -80,7 +81,7 @@ defmodule Mix.Tasks.Bubble.FetchAssets do
     Mix.shell().info(
       "#{report["stored"]} assets in #{dir}: #{report["fetched"]} fetched, " <>
         "#{report["reused"]} already stored, #{length(report["failed"])} failed; " <>
-        "not fetched: #{report["external"]} on other hosts, #{report["skipped"]} icon " <>
+        "not fetched: #{report["external"]} on other hosts (linked), #{report["skipped"]} icon " <>
         "libraries (need --app-url), #{report["invalid"]} invalid, #{report["data"]} inline"
     )
 

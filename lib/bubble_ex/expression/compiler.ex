@@ -351,7 +351,10 @@ defmodule BubbleEx.Expression.Compiler do
 
     case Map.fetch(@operators, name) do
       _ when name == "format_date" ->
-        {combine(IR.node(:format_date, [subject, nil], type), [subject]), path, diags}
+        {combine(IR.node(:format_date, [subject, nil, nil], type), [subject]), path, diags}
+
+      _ when name == "format_number" ->
+        {combine(IR.node(:format_number, [subject, %{}], type), [subject]), path, diags}
 
       {:ok, op} ->
         {combine(IR.node(op, [subject], type), [subject]), path, diags}
@@ -393,18 +396,32 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp raw_operator("format_date", raw, subject, _path, _ctx) do
-    format = raw |> Keys.value(:properties) |> prop("formatting_type")
+  # `formatted as` a date: a named format is its own pattern (`mmm d,
+  # yyyy`), `custom` reads `custom_format`, no format is Bubble's default
+  # (nil). The time zone follows it (see `zone/5`).
+  defp raw_operator("format_date", raw, subject, path, ctx) do
+    props = raw |> Keys.value(:properties) |> format_props()
 
-    if is_binary(format),
-      do: {:ok, IR.node(:format_date, [subject, format], "text"), []},
-      else: :unknown
+    format =
+      case props["formatting_type"] do
+        "custom" -> props["custom_format"]
+        other -> other
+      end
+
+    with true <- is_nil(format) or is_binary(format),
+         {:ok, zone, diags} <- zone(raw, props, ~w(tz_type tz_static tz_dynamic), path, ctx) do
+      {:ok, IR.node(:format_date, [subject, format, zone], "text"), diags}
+    else
+      _ -> :unknown
+    end
   end
 
+  # Options are Bubble's settings with readable keys; a setting that is
+  # itself an expression is not compiled.
   defp raw_operator("format_number", raw, subject, _path, _ctx) do
-    props = Keys.value(raw, :properties)
+    props = raw |> Keys.value(:properties) |> format_props()
 
-    if is_map(props) and Enum.all?(props, fn {_, v} -> not is_map(v) end),
+    if Enum.all?(props, fn {_, v} -> not is_map(v) and not is_list(v) end),
       do: {:ok, IR.node(:format_number, [subject, props], "text"), []},
       else: :unknown
   end
@@ -427,15 +444,48 @@ defmodule BubbleEx.Expression.Compiler do
          do: {:ok, IR.node(:split, [subject, sep], "list.text"), diags}
   end
 
-  defp raw_operator(name, raw, subject, _path, _ctx)
+  defp raw_operator(name, raw, subject, path, ctx)
        when name in ["rounded_down", "extract_from_date"] do
-    unit = raw |> Keys.value(:properties) |> prop("component_to_extract")
-    op = if name == "rounded_down", do: :date_floor, else: :date_part
-    type = if name == "rounded_down", do: "date", else: "number"
-    if is_binary(unit), do: {:ok, IR.node(op, [subject, unit], type), []}, else: :unknown
+    props = raw |> Keys.value(:properties) |> format_props()
+    unit = props["component_to_extract"]
+
+    {op, type, zone_keys} =
+      if name == "rounded_down",
+        do:
+          {:date_floor, "date", ~w(tz_type_overridden tz_static_overridden tz_dynamic_overridden)},
+        else: {:date_part, "number", ~w(tz_type tz_static tz_dynamic)}
+
+    with true <- is_binary(unit),
+         {:ok, zone, diags} <- zone(raw, props, zone_keys, path, ctx) do
+      {:ok, IR.node(op, [subject, unit, zone], type), diags}
+    else
+      _ -> :unknown
+    end
   end
 
   defp raw_operator(_name, _raw, _subject, _path, _ctx), do: :unknown
+
+  defp format_props(props) when is_map(props), do: Keys.normalize(props)
+  defp format_props(_props), do: %{}
+
+  # The time zone a date operator works in: nil for Bubble's default (the
+  # user's, which the target decides), a zone name (`static`), or the IR of
+  # an expression giving one (`dynamic`).
+  defp zone(raw, props, [type_key, static_key, dynamic_key], path, ctx) do
+    case props[type_key] do
+      type when type in [nil, "browser"] ->
+        {:ok, nil, []}
+
+      "static" ->
+        if is_binary(props[static_key]), do: {:ok, props[static_key], []}, else: :unknown
+
+      "dynamic" ->
+        operand_prop(raw, dynamic_key, path, ctx)
+
+      _ ->
+        :unknown
+    end
+  end
 
   defp prop(props, name) when is_map(props), do: Map.get(props, name)
   defp prop(_props, _name), do: nil

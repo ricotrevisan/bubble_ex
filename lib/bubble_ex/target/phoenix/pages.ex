@@ -94,8 +94,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       image is served from `priv/static/images/bubble/`, a stored icon
       library's symbol is inlined. Without it (or for what it lacks) an
       image on Bubble's storage renders without a source, never its
-      Bubble URL; an image on another host keeps its URL. Either way
-      each one is marked in the template and listed in
+      Bubble URL, and is marked in the template; an image on another
+      host keeps its URL (over HTTPS, `loading="lazy"`,
+      `referrerpolicy="no-referrer"`, WTF-465). All are listed in
       `.wtf/assets.json` (`StaticAssets.manifest/3`)
   """
   @spec render(Normalized.t(), map(), keyword()) :: result()
@@ -1252,6 +1253,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             as: override_kind(node, slot),
             # An image's source goes through the static assets (WTF-447).
             image_src: match?(%Node{kind: :image}, node) and slot == "src",
+            # …and whether any of its values is linked to another host.
+            linked:
+              match?(%Node{kind: :image}, node) and slot == "src" and
+                Enum.any?([own[{path, slot}] | values], &linked_ref?/1),
             # A Text whose content is a block (BBCode lists, alignment…)
             # for any instance is a div, as the exporter makes it.
             block: Enum.any?([own[{path, slot}] | values], &Bbcode.block?/1)
@@ -1259,6 +1264,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
        end)}
     end)
   end
+
+  defp linked_ref?(value), do: match?({:external, _}, StaticAssets.classify(value))
 
   defp override_kind(_node, "destination"), do: :href
   defp override_kind(%Node{kind: :text}, "text"), do: :slot
@@ -1813,7 +1820,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     case compiled do
       %{source: source, bindings: vars} ->
         {source, bbcode} = bbcode_source(node, name, source)
-        acc = mark_bbcode(acc, node, bbcode)
+        acc = acc |> mark_bbcode(node, bbcode) |> mark_approximated(node, name, compiled)
         helper = helper_name(name, node, acc)
         args = Enum.map(vars, & &1.var)
         reads = Enum.map(vars, &read_arg(&1, ctx))
@@ -1876,6 +1883,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp bbcode_node(text) when is_binary(text), do: source(text)
   defp bbcode_node({:value, ast}), do: Macro.to_string(ast)
   defp bbcode_node({tag, nodes}), do: "{#{inspect(tag)}, #{bbcode_nodes(nodes)}}"
+
+  # A date or number format the runtime only approximates (WTF-456).
+  defp mark_approximated(acc, node, name, %{approximated: [_ | _] = constructs}),
+    do: mark(acc, node, "#{name}: format approximated (#{Enum.join(constructs, ", ")})")
+
+  defp mark_approximated(acc, _node, _name, _compiled), do: acc
 
   defp mark_bbcode(acc, _node, nil), do: acc
   defp mark_bbcode(acc, _node, []), do: acc
@@ -2019,15 +2032,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     alt = resolved(node, "alt") || node.attributes["alt"] || ""
 
     {src, acc} = image_source(node, ctx, acc)
-    attrs = [{"src", src}, {"alt", alt}]
 
-    sources =
+    variants =
       node
       |> ResponsiveImages.variants()
       |> Enum.reverse()
-      |> Enum.map(fn variant ->
-        src = asset_url(ctx.assets[variant.id]) || static_url(variant.src, ctx) || "data:,"
+      |> Enum.map(&{&1, asset_url(ctx.assets[&1.id]) || static_url(&1.src, ctx) || "data:,"})
 
+    attrs = [{"src", src}, {"alt", alt}] ++ linked_attrs(node, src, variants, ctx)
+
+    sources =
+      Enum.map(variants, fn {variant, src} ->
         [
           "<source media=\"",
           escape_attr(variant.media),
@@ -2064,7 +2079,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # A static image source (WTF-447): its local copy; an image on another
-  # host keeps its URL, marked; one on Bubble's storage that was not
+  # host keeps its URL (WTF-465); one on Bubble's storage that was not
   # downloaded, or no URL, has no source (marked), never a Bubble URL.
   defp static_image(nil, _node, _ctx, acc), do: {"", acc}
 
@@ -2076,12 +2091,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {:data, url} ->
         {url, acc}
 
+      # Linked to its original host, as Bubble does (WTF-465): listed in
+      # .wtf/assets.json as informational, not marked as work to do.
       {:external, url} ->
-        note =
-          "image on an outside host (#{StaticAssets.host(url)}) left as its URL: " <>
-            "host it yourself (.wtf/assets.json)"
-
-        {url, mark(acc, node, note)}
+        {url, acc}
 
       {:pending, _url} ->
         note =
@@ -2094,6 +2107,22 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {nil, mark(acc, node, "image source dropped: #{reason} (.wtf/assets.json)")}
     end
   end
+
+  # An image linked to another host (WTF-465), as its own source, a
+  # responsive variant's or, in a reusable element, a value an instance
+  # passes: loaded lazily and without a Referer, so the host learns
+  # nothing of the page.
+  defp linked_attrs(node, src, variants, ctx) do
+    if linked_src?(src) or Enum.any?(variants, fn {_v, s} -> linked_src?(s) end) or
+         match?(%{linked: true}, override(node, "src", ctx)) do
+      [{"loading", "lazy"}, {"referrerpolicy", "no-referrer"}]
+    else
+      []
+    end
+  end
+
+  defp linked_src?("https://" <> _), do: true
+  defp linked_src?(_src), do: false
 
   # A responsive variant's source: local or on another host, else nil.
   defp static_url(ref, ctx) do
@@ -3033,7 +3062,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     body =
       if Map.get(h, :raw?) or Map.get(h, :bbcode?) or text?(source),
         do: source,
-        else: "#{base.runtime}.text(#{source})"
+        else: "#{base.runtime}.display(#{source})"
 
     params = Enum.join(args, ", ")
 
@@ -3047,11 +3076,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # Whether compiled source is already shown text: a concatenation or a
-  # runtime `text/1` call.
+  # runtime `text/1` or `display/1` call.
   defp text?(source) do
     case Code.string_to_quoted(source) do
       {:ok, {:<>, _, _}} -> true
-      {:ok, {{:., _, [_module, :text]}, _, [_]}} -> true
+      {:ok, {{:., _, [_module, fun]}, _, [_]}} when fun in [:text, :display] -> true
       _ -> false
     end
   end

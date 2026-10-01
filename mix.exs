@@ -84,6 +84,10 @@ defmodule BubbleEx.MixProject do
       # (scripts/ash_compile_check/load.exs); the library itself takes a
       # query function (e.g. the generated app's `Repo.query/2`).
       {:postgrex, "== 0.22.4", only: :test},
+      # A real time zone database for the generated runtime's date tests
+      # (BubbleEx.Target.Elixir.FormatsTest: DST gaps and repeats). Test
+      # only: the library itself does no time zone arithmetic.
+      {:tz, "~> 0.28", only: :test},
       # Formats rendered HEEx with the same formatter as the generated app,
       # which pins `== 1.2.12` (BubbleEx.Target.Phoenix.Formatter
       # .live_view_version/0) and checks `mix format --check-formatted`.

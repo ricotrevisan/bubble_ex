@@ -2,6 +2,11 @@
   "ignore_empty_constraints": {
     "compared": {
       "expressions": {
+        "approximated": {
+          "date_format_letters": 1,
+          "date_format_token:ZZ": 6,
+          "date_part_unit:day": 4
+        },
         "by_kind": {
           "element": 11006,
           "workflow": 8499
@@ -91,6 +96,11 @@
     },
     "ignored": {
       "expressions": {
+        "approximated": {
+          "date_format_letters": 1,
+          "date_format_token:ZZ": 6,
+          "date_part_unit:day": 4
+        },
         "by_kind": {
           "element": 11006,
           "workflow": 8499
@@ -180,6 +190,11 @@
     },
     "unknown": {
       "expressions": {
+        "approximated": {
+          "date_format_letters": 1,
+          "date_format_token:ZZ": 6,
+          "date_part_unit:day": 4
+        },
         "by_kind": {
           "element": 11006,
           "workflow": 8499

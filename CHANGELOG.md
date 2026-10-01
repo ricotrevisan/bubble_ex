@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Images on other hosts stay linked, as in Bubble** (WTF-465). An image
+  a Bubble app hotlinks from a host other than Bubble's storage is never
+  fetched, proxied or dropped: the page links its original URL (an
+  `http://` one over HTTPS) with `loading="lazy"` and
+  `referrerpolicy="no-referrer"`, a reusable element's image too when an
+  instance passes one. It is no longer a `TODO(bubble:<id>)` marker:
+  `.wtf/assets.json` lists it as `external` with `"handling": "linked"` (a
+  note, not a reason to fix), and `frontend_report/2`'s `assets_external`
+  is informational. New routers send
+  `img-src 'self' data: blob: https:` with Phoenix's default policy; the
+  sandbox policy on `/images/bubble` is unchanged. An `http://` URL on a
+  port other than 80 is dropped (no HTTPS equivalent); a loopback or
+  private host stays linked, with a manifest note. The vertical slice's
+  drive counts the blocked image requests for exactly those URLs (never
+  Bubble's storage) as `external_images_expected`, so `blocked_requests`
+  lists only unexpected ones.
+
 ### Added
 
 - **Enforced privacy: searches on fields some users may not view are
@@ -40,6 +59,32 @@ All notable changes to this project are documented here.
   spent link. The sender's job is unique per email for 60 s, so a
   request within a minute of an earlier one is dropped; with no new link
   61 s after its request, the drive asks once more and keeps polling.
+- **Bubble's date and number formats in generated pages** (WTF-456).
+  `:formatted as` a date renders Bubble's patterns (named formats and
+  custom ones: `mmm d, yyyy`, `h:MM tt`, `dS`, `'yy`, quoted text, `Z`,
+  ISO dates) in the expression's time zone (static or dynamic) or the
+  app's (`config :<app>, :bubble_time_zone`, default UTC; Bubble uses the
+  browser's), instead of a raw ISO timestamp; a date shown without a
+  format uses Bubble's default on pages (the runtime's new `display/1`;
+  `text/1`, which URLs, navigate parameters and API responses read, keeps
+  ISO 8601 in UTC with milliseconds, and prints numbers as JavaScript
+  does). A calendar day shows
+  as the day; local times a clock change skips or repeats resolve as in
+  JavaScript, and rounding down within a repeated hour stays in it (tested
+  with `tz`, a test-only dependency). `:formatted as` a number renders decimals,
+  thousands separators, currency and percentages; `rounded down to` and
+  `extract` work on calendar units in a zone, and `+(months)`/`+(years)`
+  step on the calendar. A format the runtime only approximates (`ZZ`,
+  unquoted letters, an unknown unit or number setting) still compiles,
+  with an `:elixir_format_approximated` warning that the compile report
+  counts in its own `approximated` section and the page marks with a
+  `TODO(bubble:<id>)` comment; so does `extract day` (kept as the day of
+  the month; Bubble may mean the weekday, a replay question). The
+  vertical slice's driver counts raw ISO timestamps on each page.
+  Assumptions until a replay calibrates them: the default format
+  (`mmm d, yyyy h:MM tt`), weeks from Sunday, 2 decimals for a currency
+  without a setting.
+
 - **Four gaps of the vertical slice** (WTF-450, WTF-451, WTF-453,
   WTF-454).
   * "Add a pause before next action" lowers to a `:pause` step. The
@@ -1333,6 +1378,25 @@ All notable changes to this project are documented here.
   are unchanged on the private fixture export.
 
 ### Fixed
+
+- **Editor JSON: guessed heights are content-sized** (WTF-468, WTF-458).
+  The 2026-10-01 replay showed that elements without a height flag or a
+  min height render sized to their content in Bubble, not at their canvas
+  height. `BubbleEx.Frontend.EditorGeometry` no longer turns the canvas
+  height into a min height, and leaves the height flags as written (as
+  Bubble's runtime payload does). Such an element no longer fills its
+  Column; that it no longer stretches in its Row is inferred from the
+  runtime payload, not measured. A Row child aligned to stretch still
+  stretches, a Group still fills an Align-to-parent container, a fixed
+  height stays fixed, and `single_height: false` still fills. An image
+  that keeps its aspect ratio takes its height from its width (no
+  height, min or max height, no fill, even with a written
+  `fit_height: false`). Elements with nothing to size them keep their
+  canvas height: a Shape without a height flag or ratio as a fixed
+  height; an empty Group or Floating group with a background or border,
+  and an element lowered to an empty placeholder, as a min height.
+  Column children follow the same rules but were not in the replay
+  sample. Runtime payloads lay out as before, byte for byte.
 
 - **Editor JSON layout follow-ups** (WTF-446). The canvas min height of
   an element neither fixed nor fit is not applied when its max height is
