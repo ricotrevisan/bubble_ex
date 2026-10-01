@@ -148,7 +148,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     [
       runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
       namespace: namespace,
-      file_url: Keyword.get(opts, :file_url, namespace <> "Web.Uploads.url")
+      file_url: Keyword.get(opts, :file_url, namespace <> "Web.Uploads.url"),
+      display: true
     ]
   end
 end

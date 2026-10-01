@@ -68,8 +68,12 @@ defmodule BubbleEx.Expression.SitesTest do
     assert expressions["elixir_compiled"] == 16
 
     # A format the runtime only approximates compiles and is counted (WTF-456).
-    assert expressions["unsupported"]["elixir"]["elixir_format_approximated:date_format_token:ZZ"] ==
-             1
+    assert expressions["approximated"] == %{"date_format_token:ZZ" => 1}
+
+    refute Enum.any?(
+             Map.keys(expressions["unsupported"]["elixir"]),
+             &String.starts_with?(&1, "elixir_format_approximated")
+           )
 
     assert expressions["searches_ash_compiled"] == expressions["searches"]
 

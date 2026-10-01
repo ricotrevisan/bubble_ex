@@ -20,23 +20,49 @@ defmodule <%= @module %>.Bubble.Runtime do
   import Kernel, except: [abs: 1, div: 2, round: 1]
 
   @default_date_format "mmm d, yyyy h:MM tt"
+  @default_day_format "mmm d, yyyy"
 
-  @doc "A value as Bubble shows it in text."
+  @doc """
+  A value as text for machines: URLs, API responses, request bodies. Dates
+  stay ISO 8601 (what Bubble sends there is a replay question, WTF-358).
+  Pages show values with `display/1`.
+  """
   def text(nil), do: ""<%= if @enforced? do %>
   # A field the privacy rules hide from the user reads as empty, as in Bubble.
   def text(%Ash.ForbiddenField{}), do: ""<% end %>
   def text(true), do: "yes"
   def text(false), do: "no"
-  def text(x) when is_float(x) and x == trunc(x), do: Integer.to_string(trunc(x))
-  def text(x) when is_float(x), do: Float.to_string(x)
-  def text(%DateTime{} = x), do: format_date(x, nil)
-  def text(%Date{} = x), do: format_date(x, nil)
+  def text(x) when is_float(x), do: js_number(x)
+  def text(%DateTime{} = x), do: DateTime.to_iso8601(x)
+  def text(%NaiveDateTime{} = x), do: NaiveDateTime.to_iso8601(x)
+  def text(%Date{} = x), do: Date.to_iso8601(x)
   def text(%Decimal{} = x), do: Decimal.to_string(x, :normal)
   def text(x) when is_list(x), do: Enum.map_join(x, ", ", &text/1)
   def text(%{id: id}), do: to_string(id)
   def text(x) when is_binary(x), do: x
   def text(x) when is_atom(x) or is_number(x), do: to_string(x)
   def text(x), do: inspect(x)
+
+  @doc "A value as Bubble shows it on a page: `text/1`, with dates in Bubble's default format."
+  def display(%DateTime{} = x), do: format_date(x, nil)
+  def display(%NaiveDateTime{} = x), do: format_date(x, nil)
+  def display(%Date{} = x), do: format_date(x, nil)
+  def display(x) when is_list(x), do: Enum.map_join(x, ", ", &display/1)
+  def display(x), do: text(x)
+
+  # A float as JavaScript prints it (Bubble's numbers): no trailing `.0`,
+  # plain digits from 1e-6 up to 1e21, exponent notation (`1e+21`) outside.
+  defp js_number(x) when x == 0, do: "0"
+
+  defp js_number(x) when Kernel.abs(x) >= 1.0e21 or Kernel.abs(x) < 1.0e-6 do
+    [mantissa, exponent] = x |> Float.to_string() |> String.split("e")
+    mantissa = String.replace_suffix(mantissa, ".0", "")
+    sign = if String.starts_with?(exponent, "-"), do: "", else: "+"
+    mantissa <> "e" <> sign <> exponent
+  end
+
+  defp js_number(x) when x == trunc(x), do: Integer.to_string(trunc(x))
+  defp js_number(x), do: x |> Decimal.from_float() |> Decimal.to_string(:normal)
 
   @doc "`is empty`."
 <%= if @enforced? do %>  def empty?(%Ash.ForbiddenField{}), do: true
@@ -188,6 +214,14 @@ defmodule <%= @module %>.Bubble.Runtime do
   def format_date(x, format, zone \\ nil)
   def format_date(nil, _format, _zone), do: nil
 
+  # Ecto's naive datetimes hold UTC.
+  def format_date(%NaiveDateTime{} = x, format, zone),
+    do: format_date(DateTime.from_naive!(x, "Etc/UTC"), format, zone)
+
+  # A calendar day has no time or zone: shown as the day itself.
+  def format_date(%Date{} = x, "iso_date", _zone), do: Date.to_iso8601(x)
+  def format_date(%Date{} = x, nil, zone), do: format_date(x, @default_day_format, zone)
+
   def format_date(%DateTime{} = x, "iso_date", _zone) do
     {us, _} = x.microsecond
     utc = DateTime.shift_zone!(x, "Etc/UTC")
@@ -232,7 +266,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   defp date_token(x, "s"), do: Integer.to_string(x.second)
   defp date_token(x, "ss"), do: pad(x.second)
   defp date_token(x, "l"), do: x |> millisecond() |> Integer.to_string() |> String.pad_leading(3, "0")
-  defp date_token(x, "L"), do: x |> millisecond() |> Kernel.div(10) |> pad()
+  defp date_token(x, "L"), do: x |> millisecond() |> Kernel./(10) |> Kernel.round() |> pad()
   defp date_token(x, "t"), do: if(x.hour < 12, do: "a", else: "p")
   defp date_token(x, "tt"), do: if(x.hour < 12, do: "am", else: "pm")
   defp date_token(x, "T"), do: if(x.hour < 12, do: "A", else: "P")
@@ -291,16 +325,31 @@ defmodule <%= @module %>.Bubble.Runtime do
   defp zone_name(zone) when is_binary(zone) and zone != "", do: zone
   defp zone_name(_zone), do: time_zone()
 
-  # A wall-clock time in `zone`, as a UTC DateTime (the later time when
-  # a clock change skips it, the earlier when it repeats).
-  defp at(date, time, zone) do
-    case DateTime.new(date, time, zone) do
-      {:ok, x} -> DateTime.shift_zone!(x, "Etc/UTC")
-      {:ambiguous, x, _} -> DateTime.shift_zone!(x, "Etc/UTC")
-      {:gap, _, x} -> DateTime.shift_zone!(x, "Etc/UTC")
-      {:error, _} -> DateTime.new!(date, time, "Etc/UTC")
+  # A wall-clock time in `zone`, as a UTC DateTime, resolved as JavaScript
+  # resolves local times: one a clock change skips is read with the offset
+  # before the change (00:30 in a midnight gap is 01:30 after it); one it
+  # repeats is the occurrence with `offset` (the original's, so rounding
+  # down within the repeated hour stays in it), else the earlier.
+  defp at(naive, zone, offset) do
+    case DateTime.from_naive(naive, zone) do
+      {:ok, x} ->
+        DateTime.shift_zone!(x, "Etc/UTC")
+
+      {:ambiguous, x, y} ->
+        DateTime.shift_zone!(same_offset(x, y, offset), "Etc/UTC")
+
+      {:gap, before, _after} ->
+        naive
+        |> DateTime.from_naive!("Etc/UTC")
+        |> DateTime.add(-(before.utc_offset + before.std_offset), :second)
+
+      {:error, _} ->
+        DateTime.from_naive!(naive, "Etc/UTC")
     end
   end
+
+  defp same_offset(x, y, offset),
+    do: if(y.utc_offset + y.std_offset == offset, do: y, else: x)
 
   @doc """
   `formatted as` a number. `options` are Bubble's settings:
@@ -376,10 +425,12 @@ defmodule <%= @module %>.Bubble.Runtime do
   """
   def date_add(%DateTime{} = x, n, unit)
       when is_number(n) and n == trunc(n) and unit in [:day, :month, :year] do
-    x
-    |> local(nil)
-    |> DateTime.shift([{unit, trunc(n)}])
-    |> DateTime.shift_zone!("Etc/UTC")
+    local = local(x, nil)
+
+    local
+    |> DateTime.to_naive()
+    |> NaiveDateTime.shift([{unit, trunc(n)}])
+    |> at(local.time_zone, nil)
   end
 
   def date_add(%DateTime{} = x, n, unit)
@@ -410,7 +461,10 @@ defmodule <%= @module %>.Bubble.Runtime do
       end
 
     {h, m, s} = time
-    at(date, Time.new!(h, m, s, {0, 6}), local.time_zone)
+
+    date
+    |> NaiveDateTime.new!(Time.new!(h, m, s, {0, 6}))
+    |> at(local.time_zone, local.utc_offset + local.std_offset)
   end
 
   def date_floor(x, _unit, _zone), do: x
@@ -425,7 +479,11 @@ defmodule <%= @module %>.Bubble.Runtime do
     case unit do
       "year" -> local.year
       "month" -> local.month
-      day when day in ["date", "day"] -> local.day
+      "date" -> local.day
+      # TODO(bubble:runtime) Bubble may follow JavaScript here (`day` the
+      # weekday, as getDay); kept as the day of the month and reported as
+      # approximated until the replay (WTF-358) settles it.
+      "day" -> local.day
       "hour" -> local.hour
       "minute" -> local.minute
       "second" -> local.second

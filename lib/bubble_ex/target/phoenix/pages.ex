@@ -3039,7 +3039,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     body =
       if Map.get(h, :raw?) or Map.get(h, :bbcode?) or text?(source),
         do: source,
-        else: "#{base.runtime}.text(#{source})"
+        else: "#{base.runtime}.display(#{source})"
 
     params = Enum.join(args, ", ")
 
@@ -3053,11 +3053,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # Whether compiled source is already shown text: a concatenation or a
-  # runtime `text/1` call.
+  # runtime `text/1` or `display/1` call.
   defp text?(source) do
     case Code.string_to_quoted(source) do
       {:ok, {:<>, _, _}} -> true
-      {:ok, {{:., _, [_module, :text]}, _, [_]}} -> true
+      {:ok, {{:., _, [_module, fun]}, _, [_]}} when fun in [:text, :display] -> true
       _ -> false
     end
   end

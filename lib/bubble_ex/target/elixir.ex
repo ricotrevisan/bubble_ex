@@ -38,7 +38,8 @@ defmodule BubbleEx.Target.Elixir do
 
   | Function | Bubble |
   |----------|--------|
-  | `text(x)` | a value shown in text (numbers without a trailing `.0`, yes/no, dates) |
+  | `text(x)` | a value as machine text (numbers as JavaScript prints them, yes/no, dates in ISO 8601) |
+  | `display(x)` | a value shown on a page (`:display`): `text/1` with dates in Bubble's default format |
   | `empty?(x)` | `is empty`: nil, `""` or `[]` |
   | `compare(op, a, b)` | `>`, `<`, `>=`, `<=`; false when either side is empty |
   | `add/sub/mul/div/mod(a, b)` | arithmetic; dates plus intervals |
@@ -89,6 +90,7 @@ defmodule BubbleEx.Target.Elixir do
           | {:subject, Diagnostic.subject()}
           | {:path, String.t() | list()}
           | {:file_url, String.t() | nil}
+          | {:display, boolean()}
 
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
                     is_email abs round to_text to_number)a
@@ -109,6 +111,9 @@ defmodule BubbleEx.Target.Elixir do
     * `:subject` / `:path` - diagnostic subject and pointer
     * `:file_url` - the function a shown file or image value goes through
       (see the moduledoc); none by default
+    * `:display` - parts of a dynamic text are shown on a page:
+      `display(x)` (dates in Bubble's default format) instead of `text(x)`
+      (machine text: URLs, API responses); default false
   """
   @spec compile(IR.t(), Project.t(), [option()]) :: {:ok, result()} | {:error, Error.t()}
   def compile(ir, project, opts \\ [])
@@ -127,6 +132,7 @@ defmodule BubbleEx.Target.Elixir do
       runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
       namespace: Keyword.get(opts, :namespace, "MyApp"),
       file_url: Keyword.get(opts, :file_url),
+      shown: if(Keyword.get(opts, :display, false), do: :display, else: :text),
       bindings: %{},
       loads: %{},
       used: MapSet.new(),
@@ -508,7 +514,7 @@ defmodule BubbleEx.Target.Elixir do
   defp shown_file(result, _ir), do: result
 
   defp text(:error, st), do: {:error, st}
-  defp text(part, st), do: runtime(st, :text, [part])
+  defp text(part, st), do: runtime(st, st.shown, [part])
 
   # Records compare by Bubble ID: a record-valued expression as its ID.
   defp id_value(%IR{type: type} = ir, st) do

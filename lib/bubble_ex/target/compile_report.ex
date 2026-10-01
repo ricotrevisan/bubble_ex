@@ -14,6 +14,8 @@ defmodule BubbleEx.Target.CompileReport do
   `unsupported` counts, per stage, the constructs that stopped
   compilation (a diagnostic's `details.construct(s)`, or its code for
   typing diagnostics), so the top of each list is the next thing to build.
+  `approximated` counts the date and number format parts compiled
+  expressions only approximate (`BubbleEx.Target.Elixir.Formats`).
 
   ## Options
 
@@ -81,9 +83,13 @@ defmodule BubbleEx.Target.CompileReport do
       "searches_ash_compiled" => Enum.count(searches, & &1),
       "unsupported" => %{
         "ir" => unsupported(Enum.flat_map(compiled, &if(&1.ir, do: [], else: &1.diagnostics))),
-        "elixir" => unsupported(Enum.flat_map(ir_ok, & &1.elixir_diagnostics)),
+        "elixir" => unsupported(Enum.flat_map(ir_ok, &blocking(&1.elixir_diagnostics))),
         "ash_search" => unsupported(Enum.flat_map(ir_ok, & &1.search_diagnostics))
-      }
+      },
+      "approximated" =>
+        ir_ok
+        |> Enum.flat_map(&approximated(&1.elixir_diagnostics))
+        |> Enum.frequencies()
     }
   end
 
@@ -121,6 +127,14 @@ defmodule BubbleEx.Target.CompileReport do
   defp nested(%IR{} = ir), do: searches(ir)
   defp nested(list) when is_list(list), do: Enum.flat_map(list, &nested/1)
   defp nested(_), do: []
+
+  # Formats the runtime only approximates compiled: counted on their own
+  # (`approximated`), not as what stopped compilation.
+  defp blocking(diags), do: Enum.reject(diags, &(&1.code == :elixir_format_approximated))
+
+  defp approximated(diags) do
+    for %{code: :elixir_format_approximated, details: %{constructs: cs}} <- diags, c <- cs, do: c
+  end
 
   defp unsupported(diags) do
     diags

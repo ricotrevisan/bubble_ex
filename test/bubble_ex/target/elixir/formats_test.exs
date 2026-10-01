@@ -48,7 +48,7 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
         {"yyyy-mm-dd", "2028-03-02"},
         {"d", "2"},
         {"dd mmm, yyyy", "02 Mar, 2028"},
-        {"H:M:s.l L", "15:4:5.678 67"},
+        {"H:M:s.l L", "15:4:5.678 68"},
         {"t T", "p P"},
         {"mmm d, h:MM tt Z", "Mar 2, 3:04 pm UTC"},
         {"o p", "+0000 +00:00"},
@@ -90,11 +90,56 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert rt.format_date(~U[2028-03-02 00:00:00Z], "iso_date") == "2028-03-02T00:00:00.000Z"
     end
 
-    test "the default format, also for dates shown as text", %{rt: rt} do
+    test "the default format on pages; machine text stays ISO 8601", %{rt: rt} do
       assert rt.format_date(@at, nil) == "Mar 2, 2028 3:04 pm"
-      assert rt.text(@at) == "Mar 2, 2028 3:04 pm"
-      assert rt.text(~D[2028-03-02]) == "Mar 2, 2028 12:00 am"
-      refute rt.text(@at) =~ ~r/\d{4}-\d{2}-\d{2}T/
+      assert rt.display(@at) == "Mar 2, 2028 3:04 pm"
+      assert rt.display([@at, 1.0]) == "Mar 2, 2028 3:04 pm, 1"
+      refute rt.display(@at) =~ ~r/\d{4}-\d{2}-\d{2}T/
+      # URLs, API responses and request bodies (navigate query params, the
+      # workflow API) read text/1: lossless, as before.
+      assert rt.text(@at) == "2028-03-02T15:04:05.678901Z"
+      assert rt.text(~D[2028-03-02]) == "2028-03-02"
+      assert rt.text(~N[2028-03-02 15:04:05]) == "2028-03-02T15:04:05"
+      assert rt.display("x") == "x"
+    end
+
+    test "a calendar day is shown as the day", %{rt: rt} do
+      assert rt.display(~D[2028-03-02]) == "Mar 2, 2028"
+      assert rt.format_date(~D[2028-03-02], nil) == "Mar 2, 2028"
+      assert rt.format_date(~D[2028-03-02], "iso_date") == "2028-03-02"
+
+      assert rt.format_date(~D[2028-03-02], "dddd, mmmm d", "America/New_York") ==
+               "Thursday, March 2"
+    end
+
+    test "a naive datetime is UTC, never inspected", %{rt: rt} do
+      naive = ~N[2028-03-02 15:04:05.678]
+      assert rt.display(naive) == "Mar 2, 2028 3:04 pm"
+      assert rt.format_date(naive, "iso_date") == "2028-03-02T15:04:05.678Z"
+      refute rt.display(naive) =~ "~N"
+    end
+
+    test "L is rounded centiseconds", %{rt: rt} do
+      assert rt.format_date(~U[2028-03-02 00:00:00.675Z], "L") == "68"
+      assert rt.format_date(~U[2028-03-02 00:00:00.674Z], "L") == "67"
+      assert rt.format_date(~U[2028-03-02 00:00:00.004Z], "L") == "00"
+    end
+
+    test "numbers as text print as JavaScript prints them", %{rt: rt} do
+      for {n, expected} <- [
+            {1.0, "1"},
+            {0.1, "0.1"},
+            {-2.5, "-2.5"},
+            {1.0e20, "100000000000000000000"},
+            {1.0e21, "1e+21"},
+            {1.5e22, "1.5e+22"},
+            {1.0e-6, "0.000001"},
+            {1.0e-7, "1e-7"},
+            {-1.25e-8, "-1.25e-8"},
+            {0.0, "0"}
+          ] do
+        assert rt.text(n) == expected, inspect(n)
+      end
     end
 
     test "empty and non-date values never raise", %{rt: rt} do
@@ -204,6 +249,8 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert rt.date_part(@at, "year") == 2028
       assert rt.date_part(@at, "month") == 3
       assert rt.date_part(@at, "date") == 2
+      # Kept as the day of the month, reported as approximated (WTF-358).
+      assert rt.date_part(@at, "day") == 2
       assert rt.date_part(@at, "hour", "UTC") == 15
       assert rt.date_part(@at, "millisecond") == 678
       assert rt.date_part(~U[1970-01-01 00:00:01Z], "UNIX") == 1000
@@ -248,6 +295,12 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert Formats.approximations(:date_floor, "week") == []
       assert Formats.approximations(:date_floor, "quarter") == ["date_floor_unit:quarter"]
       assert Formats.approximations(:date_part, "UNIX") == []
+      assert Formats.approximations(:date_part, "date") == []
+
+      assert Formats.approximations(:date_part, "day") == [
+               "date_part_unit:day (day of month; Bubble may mean the weekday)"
+             ]
+
       assert Formats.approximations(:date_part, "quarter") == ["date_part_unit:quarter"]
 
       assert Formats.approximations(:format_number, %{

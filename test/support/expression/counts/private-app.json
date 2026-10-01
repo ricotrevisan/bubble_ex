@@ -2,6 +2,11 @@
   "ignore_empty_constraints": {
     "compared": {
       "expressions": {
+        "approximated": {
+          "date_format_letters": 1,
+          "date_format_token:ZZ": 6,
+          "date_part_unit:day (day of month; Bubble may mean the weekday)": 4
+        },
         "by_kind": {
           "element": 11006,
           "workflow": 8499
@@ -53,9 +58,7 @@
             "elixir_expr_unsupported:plus_item": 55,
             "elixir_expr_unsupported:search": 224,
             "elixir_expr_unsupported:sort": 217,
-            "elixir_expr_unsupported:unique": 101,
-            "elixir_format_approximated:date_format_letters": 1,
-            "elixir_format_approximated:date_format_token:ZZ": 6
+            "elixir_expr_unsupported:unique": 101
           },
           "ir": {
             "expr_uncompiled:constraint": 77,
@@ -93,6 +96,11 @@
     },
     "ignored": {
       "expressions": {
+        "approximated": {
+          "date_format_letters": 1,
+          "date_format_token:ZZ": 6,
+          "date_part_unit:day (day of month; Bubble may mean the weekday)": 4
+        },
         "by_kind": {
           "element": 11006,
           "workflow": 8499
@@ -144,9 +152,7 @@
             "elixir_expr_unsupported:plus_item": 55,
             "elixir_expr_unsupported:search": 224,
             "elixir_expr_unsupported:sort": 217,
-            "elixir_expr_unsupported:unique": 101,
-            "elixir_format_approximated:date_format_letters": 1,
-            "elixir_format_approximated:date_format_token:ZZ": 6
+            "elixir_expr_unsupported:unique": 101
           },
           "ir": {
             "expr_uncompiled:constraint": 77,
@@ -184,6 +190,11 @@
     },
     "unknown": {
       "expressions": {
+        "approximated": {
+          "date_format_letters": 1,
+          "date_format_token:ZZ": 6,
+          "date_part_unit:day (day of month; Bubble may mean the weekday)": 4
+        },
         "by_kind": {
           "element": 11006,
           "workflow": 8499
@@ -226,9 +237,7 @@
             "elixir_expr_unsupported:plus_item": 51,
             "elixir_expr_unsupported:search": 22,
             "elixir_expr_unsupported:sort": 49,
-            "elixir_expr_unsupported:unique": 77,
-            "elixir_format_approximated:date_format_letters": 1,
-            "elixir_format_approximated:date_format_token:ZZ": 6
+            "elixir_expr_unsupported:unique": 77
           },
           "ir": {
             "expr_uncompiled:constraint": 76,
