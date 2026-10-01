@@ -39,6 +39,8 @@ defmodule BubbleEx.Frontend.StaticAssets do
   listed as informational, not as work to do.
   """
 
+  import Bitwise
+
   alias BubbleEx.{CanonicalJson, Error}
   alias BubbleEx.Frontend.{Normalized, ReusableParameters, ResponsiveImages, SafeUrl}
   alias BubbleEx.Frontend.Export.Assets
@@ -186,7 +188,8 @@ defmodule BubbleEx.Frontend.StaticAssets do
   `{:icon, path}` (an icon library on the app's origin), `{:external, https_url}`
   (another host: linked, never fetched; an `http://` reference is linked
   over HTTPS), `{:data, url}` (an inline raster image) or
-  `{:invalid, reason}` (any other scheme, credentials, a relative path).
+  `{:invalid, reason}` (any other scheme, credentials, a relative path,
+  control characters, an `http://` URL on a port other than 80).
   """
   @spec classify(term(), :image | :icon) ::
           {:bubble | :icon | :external | :data, String.t()} | {:invalid, String.t()}
@@ -215,6 +218,10 @@ defmodule BubbleEx.Frontend.StaticAssets do
       {:ok, %URI{userinfo: userinfo}} when not is_nil(userinfo) ->
         {:invalid, "the URL carries credentials"}
 
+      # An http:// URL on another port has no HTTPS equivalent to link.
+      {:ok, %URI{scheme: "http", port: port}} when port != 80 ->
+        {:invalid, "an http:// URL on a port other than 80"}
+
       {:ok, %URI{scheme: scheme, host: host} = uri}
       when scheme in ["http", "https"] and is_binary(host) and host != "" ->
         classify_host(url, secure(uri))
@@ -226,7 +233,7 @@ defmodule BubbleEx.Frontend.StaticAssets do
 
   defp classify_host(url, secure) do
     cond do
-      String.contains?(url, [" ", "\n", "\r", "\t"]) -> {:invalid, "not a URL"}
+      Regex.match?(~r/[\x00-\x20\x7f]/, url) -> {:invalid, "not a URL"}
       SafeUrl.sensitive_query?(url) -> {:invalid, "credential-like query parameter"}
       Files.bubble?(secure) -> {:bubble, secure}
       true -> {:external, secure}
@@ -411,7 +418,7 @@ defmodule BubbleEx.Frontend.StaticAssets do
           "status" => "external",
           "handling" => "linked",
           "host" => host(url),
-          "note" => "on another host: linked to its original URL, as in Bubble"
+          "note" => external_note(url)
         }
 
       {:data, url} ->
@@ -421,6 +428,39 @@ defmodule BubbleEx.Frontend.StaticAssets do
         %{"url" => display_url(reference.ref), "status" => "invalid", "reason" => reason}
     end
   end
+
+  defp external_note(url) do
+    note = "on another host: linked to its original URL, as in Bubble"
+
+    if local_host?(host(url)),
+      do: note <> "; a loopback or private address, which loads only on the viewer's network",
+      else: note
+  end
+
+  @doc """
+  Whether a host is a loopback, private, link-local or otherwise
+  non-public address (or `localhost`): such an image is still linked, as
+  in Bubble, and its manifest entry says so.
+  """
+  @spec local_host?(String.t() | nil) :: boolean()
+  def local_host?(host) when is_binary(host) do
+    host = host |> String.trim_leading("[") |> String.trim_trailing("]") |> String.downcase()
+
+    if host == "localhost" or String.ends_with?(host, ".localhost") do
+      true
+    else
+      case :inet.parse_strict_address(String.to_charlist(host)) do
+        {:ok, ip} -> not BubbleEx.HTTP.Destination.public_ip?(unmapped(ip))
+        {:error, _} -> false
+      end
+    end
+  end
+
+  def local_host?(_host), do: false
+
+  # An IPv4-mapped IPv6 address is its IPv4 address.
+  defp unmapped({0, 0, 0, 0, 0, 0xFFFF, a, b}), do: {a >>> 8, a &&& 255, b >>> 8, b &&& 255}
+  defp unmapped(ip), do: ip
 
   @doc "The host of a URL (for diagnostics), or nil."
   @spec host(String.t()) :: String.t() | nil

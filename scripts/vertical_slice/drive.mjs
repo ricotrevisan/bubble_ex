@@ -2,9 +2,10 @@
 // Playwright of the fidelity gates (test/support/fidelity, `npm ci` there
 // first). Only the slice's own server is contacted: every request to
 // another origin is aborted and recorded in `blocked_requests`, except the
-// images the pages link from other hosts (`--assets`, the generated
-// `.wtf/assets.json`: `external` images stay linked, as in Bubble,
-// WTF-465), which are expected and only counted, as
+// image requests for exactly the URLs the pages link from other hosts
+// (`--assets`, the generated `.wtf/assets.json`: `external` images stay
+// linked, as in Bubble, WTF-465; never Bubble's storage, see
+// linked_images.mjs), which are expected and only counted, as
 // `external_images_expected` (distinct URLs).
 //
 //   node scripts/vertical_slice/drive.mjs --base http://127.0.0.1:4378 \
@@ -25,6 +26,7 @@
 // <out> private).
 import { chromium } from "../../test/support/fidelity/node_modules/playwright/index.mjs";
 import fs from "node:fs";
+import { expectedImage, linkedImageUrls, withoutFragment } from "./linked_images.mjs";
 import path from "node:path";
 
 const args = Object.fromEntries(
@@ -58,19 +60,10 @@ const result = {
   external_images_expected: 0,
 };
 
-// The origins of the images the pages link from other hosts.
-const linkedImageOrigins = new Set();
-if (args.assets) {
-  const manifest = JSON.parse(fs.readFileSync(args.assets, "utf8"));
-  for (const asset of manifest.assets || []) {
-    if (asset.kind !== "image" || asset.status !== "external") continue;
-    try {
-      linkedImageOrigins.add(new URL(asset.url).origin);
-    } catch {}
-  }
-}
+// The URLs of the images the pages link from other hosts, and those the
+// drive blocked.
+const linked = args.assets ? linkedImageUrls(JSON.parse(fs.readFileSync(args.assets, "utf8"))) : new Set();
 const linkedImages = new Set();
-const linkedImage = (url, resourceType) => resourceType === "image" && linkedImageOrigins.has(url.origin);
 
 // Nothing but the slice's own server, three ways: no host name resolves
 // but 127.0.0.1 (a request that escaped the routes below fails DNS), every
@@ -87,7 +80,7 @@ const context = await browser.newContext({
 await context.route("**/*", (route) => {
   const url = new URL(route.request().url());
   if (url.origin === base.origin || url.protocol === "data:") return route.continue();
-  if (linkedImage(url, route.request().resourceType())) linkedImages.add(url.href);
+  if (expectedImage(url.href, route.request().resourceType(), linked)) linkedImages.add(withoutFragment(url.href));
   else result.blocked_requests.push(url.origin);
   return route.abort();
 });
@@ -120,13 +113,7 @@ const serverLog = (from) => {
 const page = await context.newPage();
 let consoleErrors = [];
 // A linked image the drive blocked is expected: its load error is not one.
-const expectedError = (msg) => {
-  try {
-    return linkedImages.has(new URL(msg.location().url).href);
-  } catch {
-    return false;
-  }
-};
+const expectedError = (msg) => linkedImages.has(withoutFragment(msg.location().url));
 page.on("console", (msg) => msg.type() === "error" && !expectedError(msg) && consoleErrors.push(msg.text().slice(0, 300)));
 page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${String(err).slice(0, 300)}`));
 

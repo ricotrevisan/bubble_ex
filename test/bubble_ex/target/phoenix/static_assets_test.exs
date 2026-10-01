@@ -96,6 +96,12 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     refute markup =~ "outside host"
     refute markup =~ ~r/TODO\(bubble:(bExt|bLook|bBucket)\)/
 
+    # A local image with a responsive variant on another host: its <img>
+    # governs the variant's request too.
+    assert img(markup, "bResp") =~ ~s(src="#{png}")
+    assert img(markup, "bResp") =~ ~s(loading="lazy")
+    assert img(markup, "bResp") =~ ~s(referrerpolicy="no-referrer")
+
     # Local, inline and dropped images are neither lazy nor linked.
     for id <- ~w(bCdn bS3 bSvg bMiss bData bJs) do
       refute img(markup, id) =~ "referrerpolicy", id
@@ -233,6 +239,42 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
              by_url(manifest)[{"image", "https://images.example.org/hero.jpg"}]
 
     assert report["assets_external"] == 5
+  end
+
+  test "an image on a loopback or private host stays linked, with a note" do
+    {files, _report} =
+      render(
+        [],
+        &String.replace(&1, "https://images.example.org/hero.jpg", "https://10.0.0.7/hero.jpg")
+      )
+
+    assert img(pages(files), "bExt") =~ ~s(src="https://10.0.0.7/hero.jpg")
+    assets = files[".wtf/assets.json"] |> Jason.decode!() |> by_url()
+
+    assert %{"status" => "external", "handling" => "linked", "note" => note} =
+             assets[{"image", "https://10.0.0.7/hero.jpg"}]
+
+    assert note =~ "loopback or private address"
+
+    refute assets[{"image", "https://images.example.org/two.png"}]["note"] =~ "private"
+  end
+
+  test "an http:// image on a port other than 80 is dropped and marked" do
+    {files, _report} =
+      render(
+        [],
+        &String.replace(
+          &1,
+          "https://images.example.org/hero.jpg",
+          "http://images.example.org:8080/hero.jpg"
+        )
+      )
+
+    markup = pages(files)
+    refute img(markup, "bExt") =~ "src="
+
+    assert markup =~
+             "TODO(bubble:bExt) image source dropped: an http:// URL on a port other than 80"
   end
 
   test "the pages' policy allows images from any HTTPS host" do
