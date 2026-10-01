@@ -293,8 +293,8 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp page_path(_socket, _params, path, _host), do: path
 
-  # Whether the page reads its thing from the URL: only then is it routed
-  # with a `/:bubble_thing` segment (WTF-420).
+  # Whether the page reads its thing from its `/:bubble_thing` segment
+  # (WTF-420); every page is routed with one, the others ignore it (WTF-466).
   defp takes_thing?(page),
     do: Enum.any?(BubbleData.sources(page), &match?(%{read: :url_thing, fun: f} when f != nil, &1))
 
@@ -1123,29 +1123,30 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   Go to page `to` (a path, or `:current`) with `params` (`{key, value}`,
   shown as text), keeping the current ones when `keep?`. `thing`, the
-  data sent to a page with a type of content, is a record (or its unique
-  ID): its unique ID is the path segment after the page's own
-  (`/index/<unique id>` for the index page, WTF-454); an empty one (or a
-  value that is not a thing's ID) sends nothing. Sent to the current page
-  (WTF-454), it replaces the thing's segment of the page's URL, and fails
-  the step when the page takes no thing (its route has no such segment).
+  data to send, is the path segment after the page's own (`/index/<...>`
+  for the index page, WTF-454):
+
+    * to a page with a type of content, a record (or its unique ID): its
+      unique ID; an empty one (or a value that is not a thing's ID) sends
+      nothing;
+    * `{:segment, value}`, to a page with no type of content (WTF-466,
+      as Bubble does): a record's unique ID, else the value (text, a
+      number, a boolean or a date) as text, percent-encoded as one
+      segment; an empty one, `.` or `..`, any other value (a list
+      included) or one over 2000 encoded bytes (logged) sends nothing.
+
+  Sent to the current page (WTF-454), it replaces the segment of the
+  page's URL: a thing's unique ID when the page takes a thing, else as
+  `{:segment, value}`.
   """
-  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\ :none)
-
-  def navigate(%Ctx{takes_thing: false} = ctx, :current, _params, _keep?, _replace?, _new_tab?, thing)
-      when thing != :none do
-    Logger.warning("bubble workflow #{inspect(ctx.workflow)}: data sent to the current page, which takes none; not navigated")
-    {:halt, {:error, :data_to_send_untyped_page}, ctx}
-  end
-
-  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing) do
+  def navigate(ctx, to, params, keep?, replace?, new_tab?, thing \\ :none) do
     path =
-      case {to, thing_id(thing)} do
+      case {to, segment(ctx, to, thing)} do
         {:current, nil} when thing == :none -> ctx.path
         {:current, nil} -> ctx.page_path
-        {:current, id} -> thing_path(ctx.page_path, id)
+        {:current, segment} -> thing_path(ctx.page_path, segment)
         {page, nil} -> page
-        {page, id} -> thing_path(page, id)
+        {page, segment} -> thing_path(page, segment)
       end
 
     base = if keep?, do: ctx.url, else: %{}
@@ -1166,6 +1167,51 @@ defmodule <%= @web %>.BubbleWorkflows do
       true -> {:cont, %{ctx | navigate: {:navigate, url, replace?}}}
     end
   end
+
+  # The path segment of the data sent: none, a thing's unique ID, or (to a
+  # page with no type of content) any value as one encoded segment.
+  defp segment(_ctx, _to, :none), do: nil
+  defp segment(_ctx, _to, {:segment, value}), do: text_segment(value)
+  defp segment(%Ctx{takes_thing: false}, :current, value), do: text_segment(value)
+  defp segment(_ctx, _to, value), do: thing_id(value)
+
+  # At most this many bytes of encoded segment; a longer one sends none.
+  @max_segment 2000
+
+  # Text, a number, a boolean, a date or a record (its unique ID); any
+  # other value (a list, a map without an ID…) sends none, never debug
+  # output. Only unreserved characters stay as they are: never a `/`, `?`,
+  # `#`, backslash or `%` of its own, so never another path, host or page;
+  # `.` and `..` (which browsers resolve, even percent-encoded) send nothing.
+  defp text_segment(value) do
+    case segment_text(value) do
+      text when text in [nil, "", ".", ".."] ->
+        nil
+
+      text ->
+        case URI.encode(text, &URI.char_unreserved?/1) do
+          encoded when byte_size(encoded) <= @max_segment ->
+            encoded
+
+          encoded ->
+            Logger.warning(
+              "bubble: data sent to a page is #{byte_size(encoded)} bytes encoded (over #{@max_segment}); sent no path segment"
+            )
+
+            nil
+        end
+    end
+  end
+
+  defp segment_text(%{id: id}) when is_binary(id) or is_integer(id), do: to_string(id)
+
+  defp segment_text(value)
+       when is_binary(value) or is_number(value) or is_boolean(value) or is_struct(value, Decimal) or
+              is_struct(value, Date) or is_struct(value, DateTime) or
+              is_struct(value, NaiveDateTime),
+       do: <%= @module %>.Bubble.Runtime.text(value)
+
+  defp segment_text(_value), do: nil
 
   # A page's path with its thing's segment: never "//<id>" (a
   # scheme-relative URL); the index page's is under /index.

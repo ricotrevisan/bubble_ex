@@ -381,6 +381,42 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     assert again == files
   end
 
+  test "no page but the index page is routed under /index (WTF-466)" do
+    page = fn name ->
+      %{
+        "type" => "Page",
+        "name" => name,
+        "properties" => %{"container_layout" => "column"},
+        "elements" => %{}
+      }
+    end
+
+    # "Index" slugs to "index": it would clash with /index/:bubble_thing.
+    payload = %{
+      "_id" => "index-clash",
+      "pages" => %{"index" => page.("index"), "Index" => page.("Index")}
+    }
+
+    {_, project, _} = render(app("test/support/expression/app.json"))
+    {:ok, frontend} = BubbleEx.Frontend.normalize(payload)
+    {:ok, files} = Phoenix.render(project, module: "Shop", frontend: frontend)
+
+    paths =
+      files[".wtf/surfaces.json"]
+      |> Jason.decode!()
+      |> Map.fetch!("pages")
+      |> Map.values()
+      |> Enum.map(& &1["path"])
+      |> Enum.sort()
+
+    assert paths == ["/", "/index-page"]
+
+    routes = files["lib/shop_web/bubble_routes.ex"]
+    assert routes =~ ~s(live "/index/:bubble_thing")
+    assert routes =~ ~s(live "/index-page/:bubble_thing")
+    refute routes =~ ~s(live "/index",)
+  end
+
   test "one literal test per surface, tagged as the task CLI reads it" do
     {files, _, _} = render(case_app("bpgwgmpz"))
     test = files["test/shop_web/bubble_surfaces_test.exs"]

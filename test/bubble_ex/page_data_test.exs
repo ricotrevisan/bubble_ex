@@ -506,6 +506,7 @@ defmodule BubbleEx.PageDataTest do
     template = files["lib/shop_web/live/task_live.html.heex"]
     assert template =~ "TODO(bubble:bProjGroup) its data source is not loaded"
     assert template =~ "TODO(bubble:bProjName) text: reads page data that is not loaded"
-    refute files["lib/shop_web/bubble_routes.ex"] =~ ":bubble_thing"
+    # Every page takes a path segment (WTF-466); this one reads nothing there.
+    assert files["lib/shop_web/bubble_routes.ex"] =~ ~s(live "/task/:bubble_thing")
   end
 end

@@ -321,11 +321,82 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     index = %{ctx | path: "/index/" <> id, page_path: "/index"}
     assert {:cont, %{navigate: {:patch, "/index/" <> _, false}}} = go.(index, :current, id)
 
-    # A page that takes no thing: the step fails, nothing navigates.
+    # A current page that takes no thing gets the data as a segment all
+    # the same (WTF-466): a thing's unique ID, or encoded text.
     untyped = %{ctx | path: "/here", page_path: "/here", takes_thing: false}
 
-    assert {:halt, {:error, :data_to_send_untyped_page}, %{navigate: nil}} =
+    assert {:cont, %{navigate: {:patch, "/here/" <> ^id, false}}} =
              go.(untyped, :current, %{id: id})
+
+    assert {:cont, %{navigate: {:patch, "/here/a%2Fb", false}}} = go.(untyped, :current, "a/b")
+  end
+
+  test "go to a page with no type of content appends the data as one segment (WTF-466)" do
+    alias PhxCheckWeb.BubbleWorkflows
+
+    ctx = %BubbleWorkflows.Ctx{path: "/here", page_path: "/here", url: %{"keep" => "1"}}
+
+    to = fn path, value, params, keep? ->
+      {:cont, %{navigate: {_kind, url, _replace?}}} =
+        BubbleWorkflows.navigate(ctx, path, params, keep?, false, false, {:segment, value})
+
+      url
+    end
+
+    id = "1700000000000x000000000000000001"
+    # Text as it is, a thing as its unique ID, nothing as the bare page;
+    # the URL parameters are kept.
+    assert to.("/other", "x", [{"q", "hello"}], true) == "/other/x?keep=1&q=hello"
+    assert to.("/other", %{id: id}, [], false) == "/other/" <> id
+    assert to.("/other", id, [], false) == "/other/" <> id
+    assert to.("/other", nil, [], false) == "/other"
+    assert to.("/other", "", [{"q", "hello"}], false) == "/other?q=hello"
+    assert to.("/other", 42, [], false) == "/other/42"
+    assert to.("/", "x", [], false) == "/index/x"
+
+    # One segment, percent-encoded: never another path, query, fragment,
+    # host or a parent page.
+    assert to.("/other", "a b/c?d#e", [], false) == "/other/a%20b%2Fc%3Fd%23e"
+    assert to.("/other", "//evil.example", [], false) == "/other/%2F%2Fevil.example"
+    assert to.("/other", "\\\\evil.example", [], false) == "/other/%5C%5Cevil.example"
+    assert to.("/other", "https://evil.example", [], false) == "/other/https%3A%2F%2Fevil.example"
+    assert to.("/other", "../x", [], false) == "/other/..%2Fx"
+    assert to.("/other", "%2e%2e", [], false) == "/other/%252e%252e"
+    assert to.("/other", "..", [], false) == "/other"
+    assert to.("/other", ".", [], false) == "/other"
+    assert to.("/other", "é", [], false) == "/other/%C3%A9"
+    assert to.("/other", %{id: "a/b"}, [], false) == "/other/a%2Fb"
+
+    # Dates and booleans as text; anything else sends none, never debug
+    # output (a list of things included: unverified in Bubble).
+    assert to.("/other", ~D[2026-10-01], [], false) == "/other/2026-10-01"
+    assert to.("/other", true, [], false) == "/other/yes"
+    assert to.("/other", %{title: "no id"}, [], false) == "/other"
+    assert to.("/other", {:a, 1}, [], false) == "/other"
+    assert to.("/other", [%{id: id}, %{id: id}], [], false) == "/other"
+    assert to.("/other", :atom, [], false) == "/other"
+
+    # At most 2000 encoded bytes: a longer segment sends none, logged.
+    assert to.("/other", String.duplicate("a", 2000), [], false) ==
+             "/other/" <> String.duplicate("a", 2000)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert to.("/other", String.duplicate("/", 667), [], false) == "/other"
+      end)
+
+    assert log =~ "over 2000"
+  end
+
+  test "a page with no type of content loads with the segment (WTF-466)", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    change(view, "bIn", "a/b c")
+
+    assert {:error, {:live_redirect, %{to: "/other/a%2Fb%20c?q=hello"}}} =
+             click(view, "bBtnSeg")
+
+    assert {:ok, _view, html} = live(conn, "/other/a%2Fb%20c?q=hello")
+    assert html =~ "bOtherText"
   end
 
   test "a page's own path drops only a thing's segment its route took (WTF-454)" do
@@ -338,8 +409,11 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
           {%{"bubble_thing" => "other"}, "http://localhost/other?bubble_thing=other", "/other"},
           {%{"bubble_thing" => id}, "http://localhost/other?bubble_thing=" <> id, "/other"},
           {%{"bubble_thing" => id}, "http://localhost/?bubble_thing=" <> id, "/"},
-          # No such route here: the path stays as it is.
-          {%{"bubble_thing" => id}, "http://localhost/index/" <> id, "/index/" <> id},
+          # Every page takes a segment (WTF-466), the index page's under /index.
+          {%{"bubble_thing" => id}, "http://localhost/index/" <> id, "/"},
+          {%{"bubble_thing" => "x"}, "http://localhost/other/x", "/other"},
+          # No such route: the path stays as it is.
+          {%{"bubble_thing" => id}, "http://localhost/nowhere/a/" <> id, "/nowhere/a/" <> id},
           {%{}, "http://localhost/other", "/other"}
         ] do
       socket = BubbleWorkflows.handle_params(socket, params, uri)

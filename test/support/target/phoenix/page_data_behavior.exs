@@ -439,16 +439,11 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_patch(view, "/task")
     assert Process.alive?(view.pid)
 
-    # The index page takes no thing: the reusable's step fails, logged,
-    # and the page stays.
+    # The index page takes no thing: as in Bubble, the data is appended
+    # all the same (WTF-466), under /index, and the page ignores it.
     {:ok, view, _html} = live(conn, "/")
-
-    log =
-      ExUnit.CaptureLog.capture_log(fn ->
-        render_click(view, "bubble:click", %{"scope" => "bCard1", "element" => "bCardSelf"})
-      end)
-
-    assert log =~ "data sent to the current page, which takes none"
+    render_click(view, "bubble:click", %{"scope" => "bCard1", "element" => "bCardSelf"})
+    assert assert_patch(view) =~ ~r{\A/index/[0-9]+x[0-9]+\z}
     assert render(view) =~ "Card: Answer"
   end
 

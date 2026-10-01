@@ -726,6 +726,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
        page: args.page,
        params: params,
        thing: thing,
+       untyped?: Map.get(args, :untyped?, false),
        keep_params?: args.keep_params?,
        replace?: args.replace?,
        new_tab?: args.new_tab?
@@ -835,13 +836,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
-  # The data sent to a page (WTF-378): the page reads its thing from the
-  # path segment after its own only when its page thing is loaded (its
-  # `/<page>/:bubble_thing` route exists, `/index/:bubble_thing` for the
-  # index page); otherwise the step is residue. The current page (WTF-454)
-  # is a page workflow's own page; a reusable element's is known at run
-  # time only, where the runtime checks that it takes a thing.
+  # The data sent to a page (WTF-378): the path segment after the page's
+  # own (every page's route takes one, `/index/:bubble_thing` for the
+  # index page). To a page with a type of content it is bound only when
+  # the page loads its thing; otherwise the step is residue. To a page
+  # with none (`untyped?`, WTF-466) Bubble appends it all the same, and the
+  # page ignores it. The current page (WTF-454) is a page workflow's own
+  # page; a reusable element's is known at run time only, where the
+  # runtime decides.
   defp navigate_thing(%{thing: nil}, _id, _ctx), do: {nil, []}
+  defp navigate_thing(%{thing: thing, untyped?: true}, id, ctx), do: compile(thing, id, ctx)
 
   defp navigate_thing(%{thing: thing, page: :current}, id, ctx) do
     case ctx.raw_elements[ctx.surface] do

@@ -208,7 +208,7 @@ are `:unresolved_reference`.
 | `lib/<app>_web/components/reusables/<name>/workflows.ex` | owned | the same for a reusable element with data sources |
 | `lib/<app>_web/bubble_data.ex` | generated | the loader: runs the sources, keeps them in `@bubble_data`, subscribes to changes |
 | `lib/<app>/bubble/changes.ex` | generated | the change broadcaster the resources publish through |
-| `lib/<app>_web/bubble_routes.ex` | generated | a second route per page with a type of content (`/<page>/:bubble_thing`) |
+| `lib/<app>_web/bubble_routes.ex` | generated | a second route per page (`/<page>/:bubble_thing`, `/index/:bubble_thing` for the index page): a page with a type of content reads its thing there, any other ignores it (WTF-466) |
 | the resources the pages read | generated | `Ash.Notifier.PubSub` publishing to `<App>.Bubble.Changes` |
 
 Page bindings read the data through `<Web>.Bubble.data/3` (a group's,

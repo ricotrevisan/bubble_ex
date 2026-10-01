@@ -29,6 +29,29 @@ All notable changes to this project are documented here.
   where Bubble (empty is no) does not; the matrix reports it as an
   unintended difference.
 
+- **"Go to page" sends data to a page with no type of content** (WTF-466).
+  A replay showed that Bubble appends the data as a path segment and the
+  page loads: text `x` goes to `/page/x` (URL parameters kept), a thing to
+  `/page/<unique id>`, no data to `/page`. Such steps are now lowered
+  (`Step.args.untyped?`) and run: the generated `navigate/7` takes
+  `{:segment, value}` and appends a record's unique ID or the value (text,
+  a number, a boolean, a date) as text, percent-encoded as one segment
+  (never a `/`, `?`, `#`, backslash or `%` of its own; `.` and `..`, any
+  other kind of value, a list included, and a segment over 2000 encoded
+  bytes, logged, send nothing). Every page's route now takes that segment
+  (`/<page>/:bubble_thing`, `/index/:bubble_thing` for the index page); a
+  page that does not read its thing ignores it, and no other page is
+  routed at `/index` (a page named so goes to `/index-page`). A
+  reusable element sending data to a current page that takes no thing
+  appends it the same way instead of failing. `:data_to_send_untyped_page`
+  is no longer produced (still decoded).
+- **Scan artifacts are compact JSON** (WTF-469). `PayloadFile.with_file/3`
+  (and so `Trufflehog.scan/2`) writes maps without pretty-printing. For a
+  3 MiB app the pretty iodata was ~290 MiB and OOM-killed a 1.5 GiB scan
+  worker; it now peaks at ~141 MiB above baseline. TruffleHog finds the same
+  keys or more (newlines no longer split a key from its context), but a
+  finding's `SourceMetadata` line is now always 1, and `max_input_bytes`
+  counts the smaller compact size.
 - **Images on other hosts stay linked, as in Bubble** (WTF-465). An image
   a Bubble app hotlinks from a host other than Bubble's storage is never
   fetched, proxied or dropped: the page links its original URL (an

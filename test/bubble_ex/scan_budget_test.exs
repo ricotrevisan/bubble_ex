@@ -61,6 +61,22 @@ defmodule BubbleEx.ScanBudgetTest do
     assert {:ok, ^results} = PayloadFile.with_file(payload, &Trufflehog.scan_file/1)
   end
 
+  test "a map is written as compact JSON and counted in bytes" do
+    payload = %{"_id" => "synthetic", "nested" => %{"list" => [1, "two", %{"three" => nil}]}}
+    expected = Jason.encode!(payload)
+
+    assert {:ok, {contents, bytes}} =
+             PayloadFile.with_file(payload, fn file ->
+               {:ok, {File.read!(file.path), file.bytes}}
+             end)
+
+    # Not pretty-printed: that OOM-killed scan workers (WTF-469).
+    assert contents == expected
+    assert bytes == byte_size(expected)
+    refute contents =~ "\n"
+    assert Jason.decode!(contents) == payload
+  end
+
   test "private artifact is removed on callback failure and supports boundary matches" do
     parent = self()
 
