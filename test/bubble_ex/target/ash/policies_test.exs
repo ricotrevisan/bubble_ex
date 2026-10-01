@@ -786,10 +786,9 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
            } = Project.privacy_summary(project)
   end
 
-  # WTF-467 review, WTF-471: `x is no` on an empty yes/no is stricter than
-  # Bubble (empty is no) by design; `x is not no` is less strict, so it is
-  # warned about instead of listed as stricter.
-  test "a yes/no `is no` is stricter by design, `is not no` is warned as wider" do
+  # `x is no` on an empty yes/no is stricter than Bubble (empty is no) by
+  # design (WTF-467); `x is not no` reads empty as no, as Bubble (WTF-471).
+  test "a yes/no `is no` is stricter by design, `is not no` matches Bubble" do
     is_no = %{"type" => "Message", "name" => "is_false"}
 
     rule = fn next ->
@@ -831,23 +830,13 @@ defmodule BubbleEx.Target.Ash.PoliciesTest do
     assert stricter.stricter_flags == %{"r_" => [:empty_yes_no_is_no]}
     assert :ash_policy_stricter_than_bubble in codes(project, %{type: "is_no", rule: "r_"})
 
-    refute :ash_policy_empty_yes_no_wider_than_bubble in codes(project, %{
-             type: "is_no",
-             rule: "r_"
-           })
-
-    wider = resource(project, "is_not_no").privacy
-    assert wider.stricter_rules == []
-    assert wider.stricter_flags == %{}
-    wider_codes = codes(project, %{type: "is_not_no", rule: "r_"})
-    refute :ash_policy_stricter_than_bubble in wider_codes
-    assert :ash_policy_empty_yes_no_wider_than_bubble in wider_codes
-
-    assert %{severity: :warning, details: %{ticket: "WTF-471"}} =
-             Enum.find(
-               project.diagnostics,
-               &(&1.code == :ash_policy_empty_yes_no_wider_than_bubble)
-             )
+    # WTF-471: `x is not no` reads an empty value as no, as Bubble does:
+    # it compiles to `flag == true` and is neither stricter nor warned
+    same = resource(project, "is_not_no")
+    assert same.privacy.stricter_rules == []
+    assert same.privacy.stricter_flags == %{}
+    refute :ash_policy_stricter_than_bubble in codes(project, %{type: "is_not_no", rule: "r_"})
+    assert Source.expr(calc(same, "privacy_rule_r").expr) == "expr(flag == true)"
   end
 
   defp heads({:ref, [], attribute}), do: [attribute]

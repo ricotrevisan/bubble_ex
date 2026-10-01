@@ -24,7 +24,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | option value | its stored key (the enum value), checked against the generated enum |
   | literal | the literal |
   | `x is y` | `x == y` when either side cannot be empty (a literal, an option, the record's ID) or is read from the actor; otherwise (two record-side values) `is_not_distinct_from(x, y)` |
-  | `x is not y` | `x != y` when neither side can be empty; otherwise `is_distinct_from(x, y)`, with `not is_nil(a)` for every actor-side operand `a` |
+  | `x is not y` | `x != y` when neither side can be empty; otherwise `is_distinct_from(x, y)`, with `not is_nil(a)` for every actor-side operand `a`. Between yes/no values with a stored side, an empty one reads as no (WTF-471, as Bubble): `x is not no` is `x == true`, `x is not yes` is `is_distinct_from(x, true)`, two stored values differ when exactly one is yes |
   | `x is empty` | a reference with a `belongs_to`: `not exists(rel, true)` (a dangling ID is empty; there are no foreign keys), `is_nil(^actor([..., :rel]))` on the actor side; otherwise `is_nil(x)`, also `x == ""` for text and `x == []` for a list |
   | `>`, `<`, `>=`, `<=` | the operator |
   | `and`, `or`, `not` | the operator |
@@ -471,7 +471,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = values([l, r], st)
     eq = eq_node(a, b, st)
-    neq = neq_node(a, b, st)
+    neq = if yes_no_pair?(l, r), do: yes_no_neq(l, r, a, b), else: neq_node(a, b, st)
     operands = [{a, l.type}, {b, r.type}]
     {all_ok(if(op == :eq, do: {eq, neq, operands}, else: {neq, eq, operands}), [a, b]), st}
   end
@@ -804,6 +804,33 @@ defmodule BubbleEx.Target.Ash.Expressions do
       do: {:op, "!=", a, b},
       else: {:call, "is_distinct_from", [a, b]}
   end
+
+  # `x is not y` between yes/no values, at least one stored (WTF-471): an
+  # empty stored yes/no reads as no, as in Bubble. `x is not no` is `x ==
+  # true`; `x is not yes` is `is_distinct_from(x, true)`; between two
+  # stored values, exactly one of them is yes. `x is y` keeps
+  # `is_not_distinct_from` / `==` (stricter than Bubble on an empty side
+  # against no: `BubbleEx.Verify.Difference`, `empty_yes_no_is_no`).
+  defp yes_no_pair?(l, r),
+    do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)
+
+  defp stored_yes_no?(%IR{op: op, type: "boolean"}), do: op in @boolean_values
+  defp stored_yes_no?(_ir), do: false
+
+  defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
+  defp yes_no_side?(ir), do: stored_yes_no?(ir)
+
+  defp yes_no_neq(%IR{op: :literal, args: [b]}, _r, _a, v), do: yes_no_not(v, b)
+  defp yes_no_neq(_l, %IR{op: :literal, args: [b]}, v, _b), do: yes_no_not(v, b)
+
+  defp yes_no_neq(_l, _r, a, b) do
+    yes = fn v -> {:op, "==", v, {:value, true}} end
+    not_yes = fn v -> {:call, "is_distinct_from", [v, {:value, true}]} end
+    {:or, [{:and, [yes.(a), not_yes.(b)]}, {:and, [not_yes.(a), yes.(b)]}]}
+  end
+
+  defp yes_no_not(v, false), do: {:op, "==", v, {:value, true}}
+  defp yes_no_not(v, true), do: {:call, "is_distinct_from", [v, {:value, true}]}
 
   # `node`, required to have every actor-side operand non-empty in Bubble's
   # sense (as `is empty`): not nil, and not `""` for text or `[]` for a

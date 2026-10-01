@@ -26,7 +26,9 @@ defmodule BubbleEx.Target.Elixir do
   value is empty, in either polarity (negation is pushed down to the
   comparisons); between other values empty equals empty (not verified
   against Bubble); an empty list contains nothing; `not` of an empty yes/no
-  is true. `BubbleEx.Target.ElixirTest` holds both backends to one
+  is true; `x is not y` between yes/no values with a stored side reads an
+  empty one as no, as Bubble does (`x is not no` needs a stored yes,
+  WTF-471), while `x is y` keeps empty equal only to empty. `BubbleEx.Target.ElixirTest` holds both backends to one
   hand-authored expectation table.
   Everything whose Bubble behavior Elixir's operators do not match (ordering
   with empty values, arithmetic, emptiness, text formatting) is a call to a
@@ -406,6 +408,21 @@ defmodule BubbleEx.Target.Elixir do
   defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
   defp condition?(_ir), do: false
 
+  defp yes_no_neq(%IR{op: :literal, args: [false]}, _r, _a, b), do: "(#{b} == true)"
+  defp yes_no_neq(_l, %IR{op: :literal, args: [false]}, a, _b), do: "(#{a} == true)"
+  defp yes_no_neq(%IR{op: :literal}, _r, a, b), do: "(#{a} != #{b})"
+  defp yes_no_neq(_l, %IR{op: :literal}, a, b), do: "(#{a} != #{b})"
+  defp yes_no_neq(_l, _r, a, b), do: "((#{a} == true) != (#{b} == true))"
+
+  defp yes_no_pair?(l, r),
+    do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)
+
+  defp stored_yes_no?(%IR{op: op, type: "boolean"}), do: op in @boolean_values
+  defp stored_yes_no?(_ir), do: false
+
+  defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
+  defp yes_no_side?(ir), do: stored_yes_no?(ir)
+
   # Two yes/no sides, one a condition, reading the actor: expanded so that
   # each side keeps its own guards (a stored yes/no side is `== true` /
   # `== false`: empty is neither).
@@ -444,7 +461,13 @@ defmodule BubbleEx.Target.Elixir do
   # is read from the current user (guarded).
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = Enum.map_reduce([l, r], st, &id_value/2)
-    {eq, neq} = {"(#{a} == #{b})", "(#{a} != #{b})"}
+    eq = "(#{a} == #{b})"
+
+    # WTF-471: between yes/no values with a stored side, `is not` reads an
+    # empty one as no, as Bubble does (`x is not no` needs a stored yes);
+    # `is` keeps empty equal only to empty (stricter against no).
+    neq = if yes_no_pair?(l, r), do: yes_no_neq(l, r, a, b), else: "(#{a} != #{b})"
+
     {pos, neg} = if op == :eq, do: {eq, neq}, else: {neq, eq}
     {all_ok({pos, neg, [{l, a}, {r, b}]}, [a, b]), st}
   end

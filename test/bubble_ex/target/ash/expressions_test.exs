@@ -66,6 +66,10 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
       "expr(if(not exists(parent, true), team_id, parent.team_id) == ^actor([:active_membership, :team_id]))",
     {"task", "zg_access_or_team_members_"} =>
       "expr(^actor(:id) in if(is_nil(access) or access == [], team.members, access))",
+    # WTF-471: `is not` between yes/no values reads an empty one as no
+    {"task", "zh_public_not_no_"} => "expr(public == true)",
+    {"user", "admin_not_coach_"} =>
+      "expr(admin == true and is_distinct_from(coach, true) or is_distinct_from(admin, true) and coach == true)",
     {"user", "me_"} => "expr(id == ^actor(:id))",
     {"membership", "mine_"} => "expr(^actor(:active_membership_id) == id)",
     {"membership", "account_"} => "expr(member_id == ^actor(:id))",

@@ -21,7 +21,8 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
       or an empty record-side item
     * a yes/no value used as a condition holds when it is yes; its
       negation when it is not yes (empty is not yes); `x is no` on an
-      empty yes/no is `empty_yes_no_is_no`
+      empty yes/no is `empty_yes_no_is_no`; `x is not y` between yes/no
+      values reads an empty record-side stored one as no (WTF-471)
     * `is empty` is nil, `""` or an empty list; a dangling reference is
       `dangling_ref_is_empty`
     * `x defaulting to d` is `x` unless it is empty in that sense, else
@@ -218,7 +219,10 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
   end
 
   defp atom_(%IR{op: op, args: [l, r]}, positive, ctx) when op in [:eq, :neq] do
-    {a, b, flags} = operands([l, r], ctx)
+    {a, b, flags} =
+      if op == :eq != positive and yes_no_pair?(l, r),
+        do: no_operands([l, r], ctx),
+        else: operands([l, r], ctx)
 
     guarded(actor_empty?([{l, a}, {r, b}]), ctx, fn ->
       {equal, more} = equal(a, b, ctx)
@@ -329,6 +333,33 @@ defmodule BubbleEx.Verify.Interpreter.Eval do
     {b, f4} = stored_boolean(r, rv, ctx)
     {a, b, f1 ++ f2 ++ f3 ++ f4}
   end
+
+  # `x is not y` between yes/no values with a stored side (WTF-471): an
+  # empty stored yes/no reads as no in either reading, as Bubble does and
+  # as the compiler does (`x is not no` needs a stored yes).
+  defp yes_no_pair?(l, r),
+    do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)
+
+  defp stored_yes_no?(%IR{op: op, type: "boolean"}), do: op in @boolean_values
+  defp stored_yes_no?(_ir), do: false
+
+  defp yes_no_side?(%IR{op: :literal, args: [b]}), do: is_boolean(b)
+  defp yes_no_side?(ir), do: stored_yes_no?(ir)
+
+  # Record-side ones only: an actor-side empty value keeps its guard
+  # (`actor_empty_denies`).
+  defp no_operands([l, r], ctx) do
+    {a, b, flags} = operands([l, r], ctx)
+    {record_no(l, a, ctx), record_no(r, b, ctx), flags}
+  end
+
+  defp record_no(ir, nil, ctx) do
+    if stored_yes_no?(ir) and not actor?(ir) and value(ir, ctx) == nil,
+      do: {:boolean, false},
+      else: nil
+  end
+
+  defp record_no(_ir, v, _ctx), do: v
 
   # A value, with the flags consulted when it is a condition used as a value.
   defp value_flags(%IR{op: op} = ir, ctx) when op in @predicates do

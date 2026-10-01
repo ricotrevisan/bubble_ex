@@ -6,6 +6,20 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **`x is not no` reads an empty yes/no as no, as Bubble does** (WTF-471).
+  Between yes/no values with a stored side, `is not` now treats an empty
+  stored value as no, in the Ash policies and in page and workflow
+  conditions alike (`Target.Elixir`): `x is not no` compiles to `x ==
+  true` (was `is_distinct_from(x, false)`, which granted on an empty x),
+  and `x is not y` between two stored yes/no values holds when exactly one
+  is yes. This only narrows, and matches Bubble (an empty yes/no reads as
+  no, WTF-385). `x is no` and `x is y` are unchanged: they stay stricter
+  than Bubble on an empty value by the owner's decision
+  (`Verify.Difference`, `empty_yes_no_is_no`). The interpreter's target
+  reading follows, so the matrix sees these cases agree; the
+  `:ash_policy_empty_yes_no_wider_than_bubble` warning and
+  `Difference.empty_yes_no_wider?/1` are removed.
+
 - **Privacy interpreter: four calibration flags flipped to Bubble's
   reading** (WTF-467). The 2026-10-01 replay of WTF-385 refuted
   `everyone_guards_record_values` and `logged_out_user_is_empty` (a
@@ -30,12 +44,8 @@ All notable changes to this project are documented here.
   `.wtf/generated.json` records a new `project_sha256` (no generated
   source changes). The matrix seeks the `everyone` rule's witnesses under
   the target's exclusive reach; under Bubble's, rules granting what the
-  `everyone` rule grants anyway are masked. Known gap (WTF-471): `x is
-  not no` on an empty yes/no compiles to `is_distinct_from(x, false)`,
-  which grants where Bubble (empty is no) does not; such rules get the
-  new warning `:ash_policy_empty_yes_no_wider_than_bubble` (not the
-  stricter-than-Bubble list) and the matrix reports their cases as
-  unintended differences.
+  `everyone` rule grants anyway are masked. (`x is not no` on an empty
+  yes/no, less strict than Bubble at first, is closed by WTF-471 below.)
 
 - **"Go to page" sends data to a page with no type of content** (WTF-466).
   A replay showed that Bubble appends the data as a path segment and the

@@ -90,39 +90,28 @@ defmodule BubbleEx.Verify.DifferenceTest do
              [:actor_empty_denies, :logged_out_user_is_empty]
   end
 
-  # WTF-471: `x is not no` on an empty x holds in the policies
-  # (`is_distinct_from(x, false)`) but not in Bubble (empty is no): less
-  # strict, never reported as stricter.
-  test "empty_yes_no_wider?/1: `x is not no` is less strict, not stricter" do
+  # WTF-471: `x is not no` reads an empty x as no in the policies too, as
+  # Bubble does: neither stricter nor less strict, so not listed.
+  test "rule_flags/1: `x is not no` matches Bubble; `x is no` stays stricter" do
     this = IR.node(:this, [:rule_record], "custom.t")
     flag = IR.node(:field, [this, "custom.t", "done_boolean"], "boolean")
     other = IR.node(:field, [this, "custom.t", "other_boolean"], "boolean")
     no = IR.node(:literal, [false], "boolean")
     yes = IR.node(:literal, [true], "boolean")
-    is_not_no = IR.node(:neq, [flag, no], "boolean")
 
-    refute Difference.affected?(is_not_no)
-    assert Difference.rule_flags(is_not_no) == []
-    assert Difference.empty_yes_no_wider?(is_not_no)
+    for ir <- [
+          IR.node(:neq, [flag, no], "boolean"),
+          IR.node(:not, [IR.node(:eq, [flag, no], "boolean")], "boolean"),
+          IR.node(:eq, [IR.node(:eq, [flag, no], "boolean"), no], "boolean"),
+          IR.node(:neq, [flag, other], "boolean"),
+          IR.node(:neq, [flag, yes], "boolean")
+        ] do
+      refute Difference.affected?(ir), inspect(ir)
+      assert Difference.rule_flags(ir) == []
+    end
 
-    # the same through a negation: not (x is no)
-    negated = IR.node(:not, [IR.node(:eq, [flag, no], "boolean")], "boolean")
-    refute Difference.affected?(negated)
-    assert Difference.empty_yes_no_wider?(negated)
-
-    # between two stored yes/no values: `is` stricter, `is not` wider
+    assert Difference.rule_flags(IR.node(:eq, [flag, no], "boolean")) == [:empty_yes_no_is_no]
     assert Difference.affected?(IR.node(:eq, [flag, other], "boolean"))
-    assert Difference.empty_yes_no_wider?(IR.node(:neq, [flag, other], "boolean"))
-
-    # `(x is no) is no` is `x is not no`
-    double = IR.node(:eq, [IR.node(:eq, [flag, no], "boolean"), no], "boolean")
-    assert Difference.empty_yes_no_wider?(double)
-    refute Difference.affected?(double)
-
-    # `is not yes` and `is no` are not wider
-    refute Difference.empty_yes_no_wider?(IR.node(:neq, [flag, yes], "boolean"))
-    refute Difference.empty_yes_no_wider?(IR.node(:eq, [flag, no], "boolean"))
-    refute Difference.empty_yes_no_wider?(nil)
   end
 
   test "everyone_narrowed?/3: the everyone rule grants what some rule lacks" do

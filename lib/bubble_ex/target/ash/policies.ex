@@ -995,7 +995,6 @@ defmodule BubbleEx.Target.Ash.Policies do
         default_diags(ctx) ++
         denied_rules(type, denied, ctx) ++
         stricter_rules(type, stricter, ctx) ++
-        wider_yes_no(type, others, compiled, ctx) ++
         field_list_diags(type, others ++ List.wrap(default), ctx) ++
         search_fields_diag(type, search_fields) ++
         binding_dropped(type, others ++ List.wrap(default), fields) ++
@@ -1621,27 +1620,6 @@ defmodule BubbleEx.Target.Ash.Policies do
         target: :ash,
         subject: %{type: type.id, rule: id},
         details: %{flags: Enum.map(flags, &Atom.to_string/1)}
-      )
-    end
-  end
-
-  # WTF-471: `x is not no` (or `x is not y` between stored yes/no values)
-  # on a record-side x compiles to `is_distinct_from(x, ...)`, which holds
-  # on an empty x where Bubble, reading empty as no, does not: less strict
-  # than Bubble, not by design.
-  defp wider_yes_no(type, others, compiled, ctx) do
-    for r <- others,
-        MapSet.member?(compiled, r.id),
-        Difference.empty_yes_no_wider?(ctx.by_rule[{type.id, r.id}].ir) do
-      Diagnostic.new(
-        :ash_policy_empty_yes_no_wider_than_bubble,
-        r.path,
-        "#{type.id}: privacy rule #{rule_label(r)} tests a stored yes/no with `is not no` (or " <>
-          "`is not` another yes/no); on an empty value the policy grants where Bubble, which " <>
-          "reads empty as no, does not (less strict than Bubble; WTF-471)",
-        target: :ash,
-        subject: %{type: type.id, rule: r.id},
-        details: %{flags: ["empty_yes_no_is_no"], ticket: "WTF-471"}
       )
     end
   end

@@ -35,10 +35,8 @@ defmodule BubbleEx.Verify.Difference do
       logged-out actor is empty and denies every comparison reading it,
       `x is no` needs a stored no, and the `everyone` rule's grants reach
       only users no rule lacking them matches, record values guarded.
-      Where the target would be *less* strict than Bubble (`x is not no`
-      on an empty yes/no: Bubble reads no, the compiled
-      `is_distinct_from(x, false)` holds), the matrix reports an
-      unintended difference.
+      `x is not no` (and `x is not y` between stored yes/no values) reads
+      an empty value as no in the target too (WTF-471), as in Bubble.
     * `hidden_field_constraint_matches` (scope `:search_constraints`,
       `privacy: :enforced` only, WTF-457). In Bubble, viewing a field and
       using it as a search constraint are separate permissions: a page
@@ -268,8 +266,9 @@ defmodule BubbleEx.Verify.Difference do
   `logged_out_user_is_empty` does), or it tests a stored yes/no in a way
   an empty one fails in the target but may pass in Bubble, which reads it
   as no (`empty_yes_no_is_no`: `x is no`, `x is y` between stored yes/no
-  values, `x is not <condition>`). The opposite case, where the target is
-  less strict, is `empty_yes_no_wider?/1`.
+  values, `x is not <condition>`). `x is not no` and `x is not y` between
+  stored yes/no values read an empty one as no in the target too
+  (WTF-471): they are neither stricter nor less strict.
   """
   @spec affected?(IR.t() | nil) :: boolean()
   def affected?(ir), do: rule_flags(ir) != []
@@ -294,24 +293,9 @@ defmodule BubbleEx.Verify.Difference do
     Enum.sort(actor ++ yes_no)
   end
 
-  @doc """
-  Whether a compiled rule condition is **less strict** than Bubble on an
-  empty stored yes/no (WTF-471): after negations are pushed down, it holds
-  `x is not no`, or `x is not y` with another stored yes/no, on a
-  record-side x. The compiled `is_distinct_from(x, false)` holds on an
-  empty x, where Bubble, reading empty as no, does not. Not an intended
-  difference: the generated policies warn
-  (`:ash_policy_empty_yes_no_wider_than_bubble`) and the matrix reports
-  its cases as unintended.
-  """
-  @spec empty_yes_no_wider?(IR.t() | nil) :: boolean()
-  def empty_yes_no_wider?(nil), do: false
-  def empty_yes_no_wider?(%IR{} = ir), do: :wider in yes_no_tests(ir)
-
   # The stored yes/no tests of a condition, classified once negations are
   # pushed down to the atoms as the compiler does: `:stricter` where an
-  # empty yes/no fails in the target but may hold in Bubble (empty is no),
-  # `:wider` where it holds in the target but not in Bubble.
+  # empty yes/no fails in the target but may hold in Bubble (empty is no).
   @stored_ops [:field, :fallback]
 
   defp yes_no_tests(ir), do: ir |> yes_no_tests(true) |> MapSet.new()
@@ -343,8 +327,8 @@ defmodule BubbleEx.Verify.Difference do
     cond do
       not stored?(s) or yes?(o) -> []
       is -> [:stricter]
-      # `x is not no` / `x is not y`: holds on an empty record-side x
-      boolean_literal?(o) or stored?(o) -> if record_side?(s), do: [:wider], else: []
+      # `x is not no` / `x is not y`: empty reads as no, as in Bubble
+      boolean_literal?(o) or stored?(o) -> []
       # `x is not <condition>`: the target needs a stored value either way
       true -> [:stricter]
     end
@@ -362,8 +346,6 @@ defmodule BubbleEx.Verify.Difference do
   defp boolean_literal?(_), do: false
 
   defp literal(%IR{args: [b]}), do: b
-
-  defp record_side?(ir), do: :current_user not in IR.ops(ir)
 
   @doc """
   The structural list, from the Model alone: every rule whose condition

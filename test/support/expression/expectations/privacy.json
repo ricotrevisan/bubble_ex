@@ -741,6 +741,60 @@
       "rule": "me_",
       "type": "user",
       "why": "the actor itself"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "k1",
+          "k4"
+        ],
+        "u1": [
+          "k1",
+          "k4"
+        ],
+        "u2": [
+          "k1",
+          "k4"
+        ],
+        "u3": [
+          "k1",
+          "k4"
+        ],
+        "u4": [
+          "k1",
+          "k4"
+        ]
+      },
+      "rule": "zh_public_not_no_",
+      "type": "task",
+      "why": "public is not no: an empty public reads as no, as in Bubble (WTF-471), so only a stored yes matches"
+    },
+    {
+      "expected": {
+        "logged_out": [
+          "u1",
+          "u2"
+        ],
+        "u1": [
+          "u1",
+          "u2"
+        ],
+        "u2": [
+          "u1",
+          "u2"
+        ],
+        "u3": [
+          "u1",
+          "u2"
+        ],
+        "u4": [
+          "u1",
+          "u2"
+        ]
+      },
+      "rule": "admin_not_coach_",
+      "type": "user",
+      "why": "exactly one of admin and coach is yes, an empty one reading as no (WTF-471): u3's no and empty coach are both no"
     }
   ],
   "records": {

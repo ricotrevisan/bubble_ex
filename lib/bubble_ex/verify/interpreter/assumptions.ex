@@ -39,7 +39,7 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   |------|------------------|--------|--------------------|---------------------|
   | `actor_empty_denies` | `false` | `true` | an atomic comparison reading an empty value from the current user (or a logged-out user) is false in either polarity; `is empty` on the user's side needs a logged-in user | the user's empty values compare like any other empty value (`x is y` holds when both are empty, `x is not y` holds, `doesn't contain` on an empty list holds, a logged-out user's fields are empty) |
   | `empty_equals_empty` | `true` | `true` | between two record-side values, empty `is` empty (and `is not` is false) | an empty value never equals anything, so `is` is false and `is not` holds |
-  | `empty_yes_no_is_no` | `true` | `false` | an empty yes/no field reads as no | an empty yes/no field is neither yes nor no (`x is no` is false) |
+  | `empty_yes_no_is_no` | `true` | `false` | an empty yes/no field reads as no | an empty yes/no field is neither yes nor no (`x is no` is false); `x is not no`, and `is not` between yes/no values with a record-side stored one, reads it as no under either reading (WTF-471, as the compiler) |
   | `empty_list_contains_nothing` | `true` | `true` | a record-side list that is empty `doesn't contain` anything | `doesn't contain` on an empty list is false |
   | `dangling_ref_is_empty` | `true` | `true` | `is empty` on a reference to a record that no longer exists holds | such a reference is not empty (its stored ID counts) |
   | `everyone_exclusive` | `false` | `true` | the `everyone` rule applies only to users no other rule matches | the `everyone` rule's grants apply to every user |

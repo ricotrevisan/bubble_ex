@@ -1841,6 +1841,30 @@
             "view_all": true,
             "view_attachments": true
           }
+        },
+        "zh_public_not_no_": {
+          "condition": {
+            "next": {
+              "name": "public_boolean",
+              "next": {
+                "name": "is_false",
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Public is not no",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
         }
       }
     },
@@ -1964,6 +1988,33 @@
             "type": "InjectedValue"
           },
           "display": "Me",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        },
+        "admin_not_coach_": {
+          "condition": {
+            "next": {
+              "name": "admin_boolean",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "coach_boolean",
+                    "type": "Message"
+                  },
+                  "type": "InjectedValue"
+                },
+                "name": "not_equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Admin is not coach",
           "permissions": {
             "auto_binding": false,
             "search_for": true,
