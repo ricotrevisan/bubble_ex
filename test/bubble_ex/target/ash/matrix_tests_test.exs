@@ -150,7 +150,8 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
 
   describe "oracles" do
     setup %{matrix: matrix} do
-      id = "privacy_read.custom.note.w1_member"
+      # a scenario with no intended difference (WTF-426, WTF-467)
+      id = "privacy_read.custom.doc.w1_member"
       s = scenario(matrix, id)
       model = recording(matrix, id)
 
@@ -242,7 +243,11 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
       # the owner's list
       list = Result.intended_differences(results)
       assert list != []
-      assert Enum.all?(list, &(&1.intended == ["actor_empty_denies"]))
+      policy = Enum.map(Difference.flags(:rule_conditions), &Atom.to_string/1)
+      assert Enum.all?(list, &(&1.intended != [] and &1.intended -- policy == []))
+      assert Enum.any?(list, &(&1.intended == ["actor_empty_denies"]))
+      # the everyone rule reaches every user in Bubble (WTF-467)
+      assert Enum.any?(list, &("everyone_exclusive" in &1.intended and "everyone" in &1.rules))
     end
 
     test "policies granting what Bubble grants where the target is stricter fail",
@@ -329,9 +334,13 @@ defmodule BubbleEx.Target.Ash.MatrixTestsTest do
 
     test "a leaked field fails with a diff; a scenario not run is an error", %{matrix: matrix} do
       id = "privacy_read.custom.note.w1_member"
+      # what the policies show (stricter than Bubble where the policy says)
+      cases = Difference.for_scenario(matrix.differences, id)
 
       leaked =
-        Enum.map(recording(matrix, id).observations, fn
+        recording(matrix, id).observations
+        |> Difference.to_target(cases)
+        |> Enum.map(fn
           %Observation{kind: :visible_fields, value: [_ | _] = v} = o ->
             %{o | value: Enum.sort(["secret" | v])}
 

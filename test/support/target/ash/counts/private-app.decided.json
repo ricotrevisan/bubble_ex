@@ -89,7 +89,7 @@
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "719c6526ae1b8dcb39f52b8dc0eabc02846045072189f55c1e7b0385511058f2",
+  "project_sha256": "bb7fa7f890bfa67a52aedcd325a3273a9ef2df769e5d2bbf18e8b7db3e4b29f8",
   "resolved": {
     "acknowledged": 0,
     "active": 39,

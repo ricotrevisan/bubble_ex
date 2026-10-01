@@ -729,10 +729,14 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     * `compiled_rules` / `denied_rules` - rule IDs whose condition compiled,
       and those that grant nothing because it did not (or is missing)
     * `stricter_rules` - compiled rule IDs whose condition reads the
-      current user, where the policies deny what Bubble grants when the
-      user is logged out or lacks a value the condition reads (stricter
-      than Bubble by the owner's decision, `BubbleEx.Verify.Difference`),
-      plus `"everyone"` when the `everyone` rule's reach negates them
+      current user or compares a stored yes/no with other than `yes`,
+      where the policies deny what Bubble grants when the user is logged
+      out or lacks a value the condition reads, or the yes/no is empty
+      (stricter than Bubble by the owner's decision,
+      `BubbleEx.Verify.Difference`), plus `"everyone"` when the `everyone`
+      rule grants something another rule lacks: Bubble's `everyone` rule
+      reaches every user, the policies' only the users none of those
+      rules matches (WTF-467)
     * `attachments` - `BubbleEx.Target.Ash.PolicyCheck`s for Bubble's "view
       attached files", which Ash cannot enforce (file fields are URLs; the
       file store must): data for the owner and later lowering only

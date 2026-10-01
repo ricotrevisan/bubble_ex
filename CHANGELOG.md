@@ -6,6 +6,29 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Privacy interpreter: four calibration flags flipped to Bubble's
+  reading** (WTF-467). The 2026-10-01 replay of WTF-385 refuted
+  `everyone_exclusive` (Bubble's `everyone` rule reaches every user, on
+  top of the other rules), `everyone_guards_record_values` (moot with
+  it) and `logged_out_user_is_empty` (a logged-out user is Bubble's
+  temporary user), and leaned flipped on `empty_yes_no_is_no` for the
+  second run (an empty yes/no reads as no). Flipping them raises the
+  run's agreement from 94.7% to 97.3% (1,354 of 1,392 ops); none breaks
+  an agreeing op. `Assumptions.evidence/0` records the run per flag.
+  **The generated policies do not change**: each flip would widen them,
+  so they keep the stricter reading and `Verify.Difference` lists the
+  four as intended differences (`policy/0`, per-case `flags` now naming
+  only the flags responsible). `ResourcePrivacy.stricter_rules` and
+  `:ash_policy_stricter_than_bubble` cover rules comparing a stored
+  yes/no, and list `"everyone"` only where its grants are narrowed
+  (some rule lacks what it grants), no longer for every type whose rules
+  read the user. The matrix seeks the `everyone` rule's witnesses under
+  the target's exclusive reach; under Bubble's, rules granting what the
+  `everyone` rule grants anyway are masked. Known gap: `x is not no` on
+  an empty yes/no compiles to `is_distinct_from(x, false)`, which grants
+  where Bubble (empty is no) does not; the matrix reports it as an
+  unintended difference.
+
 - **Images on other hosts stay linked, as in Bubble** (WTF-465). An image
   a Bubble app hotlinks from a host other than Bubble's storage is never
   fetched, proxied or dropped: the page links its original URL (an

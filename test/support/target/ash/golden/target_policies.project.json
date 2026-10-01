@@ -298,7 +298,8 @@
       "code": "ash_policy_stricter_than_bubble",
       "details": {
         "flags": [
-          "actor_empty_denies"
+          "actor_empty_denies",
+          "logged_out_user_is_empty"
         ]
       },
       "message": "board: privacy rule \"Owned by my team's lead\" (lead_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
@@ -327,7 +328,8 @@
       "code": "ash_policy_stricter_than_bubble",
       "details": {
         "flags": [
-          "actor_empty_denies"
+          "actor_empty_denies",
+          "logged_out_user_is_empty"
         ]
       },
       "message": "doc: privacy rule \"Admin\" (admin_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
@@ -344,7 +346,8 @@
       "code": "ash_policy_stricter_than_bubble",
       "details": {
         "flags": [
-          "actor_empty_denies"
+          "actor_empty_denies",
+          "logged_out_user_is_empty"
         ]
       },
       "message": "doc: privacy rule \"Owner\" (owner_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
@@ -392,7 +395,7 @@
           "view_attachments"
         ]
       },
-      "message": "note: the everyone rule grants 9 permission(s) only when some other rules do not hold; that negation denies when the actor lacks a value a condition reads (e.g. logged out) or a record value it reads is empty",
+      "message": "note: the everyone rule grants 9 permission(s) only when some other rules do not hold; that negation denies when the actor lacks a value a condition reads (e.g. logged out) or a record value it reads is empty (stricter than Bubble by design: Bubble's everyone rule reaches every user)",
       "outcome": "degraded",
       "path": "/user_types/note/privacy_role/everyone",
       "severity": "info",
@@ -406,7 +409,8 @@
       "code": "ash_policy_stricter_than_bubble",
       "details": {
         "flags": [
-          "actor_empty_denies"
+          "actor_empty_denies",
+          "logged_out_user_is_empty"
         ]
       },
       "message": "note: privacy rule \"Mine\" (mine_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
@@ -423,7 +427,8 @@
       "code": "ash_policy_stricter_than_bubble",
       "details": {
         "flags": [
-          "actor_empty_denies"
+          "actor_empty_denies",
+          "logged_out_user_is_empty"
         ]
       },
       "message": "user: privacy rule \"Me\" (me_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
@@ -1934,8 +1939,7 @@
         "source": "rules",
         "stricter_rules": [
           "admin_",
-          "owner_",
-          "everyone"
+          "owner_"
         ]
       },
       "privacy_relationships": [
@@ -2337,7 +2341,9 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
-        "stricter_rules": []
+        "stricter_rules": [
+          "everyone"
+        ]
       },
       "privacy_relationships": [
         {
@@ -3802,8 +3808,7 @@
         "search_fields": {},
         "source": "rules",
         "stricter_rules": [
-          "me_",
-          "everyone"
+          "me_"
         ]
       },
       "privacy_relationships": [

@@ -240,6 +240,21 @@ No email reaches a real person.
   team (the calibration refuted the fail-safe reading, 14 ops
   agreeing and 69 not). The interpreter now predicts this; the generated
   policies deliberately keep denying (see step 6).
+- **The `everyone` rule reaches every user** (the 2026-10-01 run,
+  WTF-467). Its grants add to what the other rules grant, also for a
+  user another rule matches; they are not limited to the users no other
+  rule matches (0 of 19 dependent ops agreed with that reading). The
+  compiler's guard on that reach (the record values the other rules read
+  must be non-empty) has nothing to guard either (0 of 18).
+- **A logged-out user is a temporary user**, not an empty one: it equals
+  no record's user, so `This Thing's Creator = Current User` does not
+  grant it a record with no creator (0 of 12 agreed with the empty
+  reading).
+- **An empty yes/no reads as no**: `x is no` holds on a record whose x
+  is empty (0 of 5 agreed otherwise, after 0 of 2 on 2026-09-29).
+- With these four flipped, the interpreter agrees with 1,354 of the
+  run's 1,392 ops (97.3%); the generated policies keep the stricter
+  reading of each, as intended differences (`BubbleEx.Verify.Difference`).
 - The sign-up workflow's "Return data from API" of step 1's unique ID
   returns the new user's ID, and the login workflow above returns a
   working token (observed while seeding six personas).

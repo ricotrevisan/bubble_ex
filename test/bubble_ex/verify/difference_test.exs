@@ -3,6 +3,7 @@ defmodule BubbleEx.Verify.DifferenceTest do
   # (WTF-426): stricter than Bubble by the owner's decision.
   use ExUnit.Case, async: true
 
+  alias BubbleEx.Expression.IR
   alias BubbleEx.Verify.{Difference, Observation}
   alias BubbleEx.Verify.Interpreter.Assumptions
 
@@ -29,13 +30,33 @@ defmodule BubbleEx.Verify.DifferenceTest do
     )
   end
 
-  test "the policy: two flags, Bubble's reading and the target's, by scope" do
-    assert Difference.flags() == [:actor_empty_denies, :hidden_field_constraint_matches]
-    assert Difference.flags(:rule_conditions) == [:actor_empty_denies]
+  test "the policy: six flags, Bubble's reading and the target's, by scope" do
+    rule_conditions = [
+      :actor_empty_denies,
+      :empty_yes_no_is_no,
+      :everyone_exclusive,
+      :everyone_guards_record_values,
+      :logged_out_user_is_empty
+    ]
+
+    assert Difference.flags() == Enum.sort(rule_conditions ++ [:hidden_field_constraint_matches])
+    assert Difference.flags(:rule_conditions) == rule_conditions
     assert Difference.flags(:search_constraints) == [:hidden_field_constraint_matches]
 
     assert %{bubble: false, target: true, direction: :stricter} =
              Difference.policy().actor_empty_denies
+
+    # WTF-467: the 2026-10-01 replay flipped four flags in Bubble's
+    # reading; the generated policies keep the stricter reading.
+    for flag <- rule_conditions -- [:actor_empty_denies] do
+      assert %{direction: :stricter, scope: :rule_conditions, decision: decision} =
+               Difference.policy()[flag]
+
+      assert decision =~ "WTF-467"
+      assert Difference.policy()[flag].bubble == Assumptions.defaults()[flag]
+      assert Difference.policy()[flag].target == Assumptions.target()[flag]
+      assert Difference.policy()[flag].bubble != Difference.policy()[flag].target
+    end
 
     # WTF-457: Bubble matches a constraint on a field the user may not
     # view; the enforced policies find only records where the user may.
@@ -45,6 +66,41 @@ defmodule BubbleEx.Verify.DifferenceTest do
     assert decision =~ "WTF-457"
 
     assert Difference.intended(Assumptions.defaults()) == Assumptions.target()
+  end
+
+  test "affected?/1: a condition reading the current user, or comparing a yes/no with other than yes" do
+    this = IR.node(:this, [:rule_record], "custom.t")
+    flag = IR.node(:field, [this, "custom.t", "done_boolean"], "boolean")
+    no = IR.node(:literal, [false], "boolean")
+    yes = IR.node(:literal, [true], "boolean")
+    user = IR.node(:current_user, [], "user")
+    owner = IR.node(:field, [this, "custom.t", "owner_user"], "user")
+
+    refute Difference.affected?(nil)
+    assert Difference.affected?(IR.node(:eq, [owner, user], "boolean"))
+    # an empty yes/no is no in Bubble: `is no` holds there, not in the policies
+    assert Difference.affected?(IR.node(:eq, [flag, no], "boolean"))
+    assert Difference.affected?(IR.node(:not, [IR.node(:neq, [no, flag], "boolean")], "boolean"))
+    refute Difference.affected?(IR.node(:eq, [flag, yes], "boolean"))
+    refute Difference.affected?(flag)
+  end
+
+  test "everyone_narrowed?/3: the everyone rule grants what some rule lacks" do
+    perms = fn attrs ->
+      Map.merge(%{view_all: false, view_fields: nil, search_for: false}, attrs)
+    end
+
+    fields = ["a", "b"]
+    everyone = perms.(%{view_fields: ["a"]})
+
+    refute Difference.everyone_narrowed?(nil, [nil], fields)
+    refute Difference.everyone_narrowed?(perms.(%{}), [nil], fields)
+    refute Difference.everyone_narrowed?(everyone, [perms.(%{view_all: true})], fields)
+    assert Difference.everyone_narrowed?(everyone, [perms.(%{view_fields: ["b"]})], fields)
+    assert Difference.everyone_narrowed?(everyone, [nil], fields)
+    assert Difference.everyone_narrowed?(perms.(%{search_for: true}), [everyone], fields)
+    # a listed field the type does not have is not granted
+    refute Difference.everyone_narrowed?(perms.(%{view_fields: ["gone"]}), [nil], fields)
   end
 
   test "stricter?/3" do
@@ -82,7 +138,7 @@ defmodule BubbleEx.Verify.DifferenceTest do
     other = put_in(doc, ["policy", "actor_empty_denies", "target"], false)
     assert {:error, _} = Difference.from_map(other)
 
-    unknown = put_in(doc, ["cases", Access.at(0), "flags"], ["everyone_exclusive"])
+    unknown = put_in(doc, ["cases", Access.at(0), "flags"], ["empty_equals_empty"])
     assert {:error, _} = Difference.from_map(unknown)
   end
 

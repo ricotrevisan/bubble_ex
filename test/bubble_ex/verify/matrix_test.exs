@@ -278,7 +278,10 @@ defmodule BubbleEx.Verify.MatrixTest do
     counts = Matrix.counts(matrix.report)
     refute Map.has_key?(counts, "unsolved")
     refute Map.has_key?(counts, "intended_differences")
-    assert counts["differences"]["policy"] == ["actor_empty_denies"]
+
+    assert counts["differences"]["policy"] ==
+             Enum.map(Difference.flags(:rule_conditions), &Atom.to_string/1)
+
     assert counts["rules"]["total"] == 14
     refute counts |> Jason.encode!() |> String.contains?("raw_")
   end
@@ -386,10 +389,13 @@ defmodule BubbleEx.Verify.MatrixTest do
                "#{type}/#{rule}"
       end
 
-      assert matrix.report.rules.observable == 8
+      # note's everyone rule reaches every user in Bubble (WTF-467): what
+      # hidden_ and mine_ grant, it grants anyway
+      assert matrix.report.rules.observable == 6
 
       assert matrix.report.unobservable_by_reason == %{
                "grants_nothing" => 1,
+               "masked" => 2,
                "undecided_type" => 1,
                "unsolved" => 4
              }
@@ -400,11 +406,17 @@ defmodule BubbleEx.Verify.MatrixTest do
              )
     end
 
-    test "the everyone rule's status uses the verdicts' own reach", %{
+    test "the everyone rule's status uses the target's reach", %{
       pmodel: model,
       policies: matrix
     } do
-      {:ok, interpreter} = Interpreter.new(model)
+      # Bubble's everyone rule reaches every user (WTF-467); its branches
+      # are those of the target's reading: exclusive, record values guarded
+      {:ok, interpreter} =
+        Interpreter.new(model,
+          assumptions: [everyone_exclusive: true, everyone_guards_record_values: true]
+        )
+
       {:ok, ds} = Dataset.from_seed(matrix.seed)
 
       for %{status: :solved, default: true, type: type} <- matrix.rules,
@@ -424,7 +436,10 @@ defmodule BubbleEx.Verify.MatrixTest do
       # doc's body is non-filterable for the public rule: its constrained
       # searches depend on the flag
       assert matrix.flags[:non_filterable_constraint_excludes] == :exercised
-      assert matrix.flags[:everyone_guards_record_values] == :exercised
+      # moot in Bubble's reading: the everyone rule is not exclusive (WTF-467)
+      assert {:not_exercised, "moot with everyone_exclusive off" <> _} =
+               matrix.flags[:everyone_guards_record_values]
+
       assert {:not_exercised, "seeds cannot hold" <> _} = matrix.flags[:dangling_ref_is_empty]
 
       for {flag, :exercised} <- matrix.flags do
@@ -442,7 +457,7 @@ defmodule BubbleEx.Verify.MatrixTest do
     test "counts carry no Bubble IDs of unobservable rules", %{policies: matrix} do
       counts = Matrix.counts(matrix.report)
       refute Map.has_key?(counts, "unobservable")
-      assert counts["rules"]["observable"] == 8
+      assert counts["rules"]["observable"] == 6
       assert counts["oracle_scope"] =~ "not the compiler"
     end
   end
@@ -477,7 +492,7 @@ defmodule BubbleEx.Verify.MatrixTest do
       assert matrix.report.differences.observations == length(matrix.differences)
 
       for c <- matrix.differences do
-        assert c.flags == [:actor_empty_denies]
+        assert c.flags != [] and c.flags -- Difference.flags(:rule_conditions) == []
         assert c.bubble != c.target
         assert Difference.stricter?(c.kind, c.bubble, c.target)
         user = matrix.seed.personas[c.persona].user
@@ -513,7 +528,13 @@ defmodule BubbleEx.Verify.MatrixTest do
       end
 
       # the logged-out user sees the empty board through lead_ in Bubble only
-      assert %Difference{kind: :visible, bubble: true, target: false, rules: ["lead_"]} =
+      assert %Difference{
+               kind: :visible,
+               bubble: true,
+               target: false,
+               rules: ["lead_"],
+               flags: [:actor_empty_denies]
+             } =
                Enum.find(
                  matrix.differences,
                  &(&1.scenario == "privacy_read.custom.board.anonymous" and &1.op == "get.e.board" and
@@ -524,11 +545,73 @@ defmodule BubbleEx.Verify.MatrixTest do
                matrix.report.intended_differences
     end
 
+    # WTF-467: Bubble reads an empty yes/no as no. `x is no` on an empty x
+    # grants in Bubble, not in the policies (`x == false`): stricter, an
+    # intended difference. `x is not no` is the other way round: the
+    # policies' `is_distinct_from(x, false)` grants where Bubble does not,
+    # an unintended difference the generated tests fail on.
+    test "an empty yes/no: `is no` is stricter by policy, `is not no` is not" do
+      condition = fn next ->
+        %{
+          "type" => "InjectedValue",
+          "next" => %{"type" => "Message", "name" => "flag_boolean", "next" => next}
+        }
+      end
+
+      type = fn next ->
+        %{
+          "display" => "T",
+          "fields" => %{"flag_boolean" => %{"display" => "Flag", "value" => "boolean"}},
+          "privacy_role" => %{
+            "everyone" => %{
+              "display" => "everyone",
+              "permissions" => %{"view_all" => false, "search_for" => false}
+            },
+            "r_" => %{
+              "display" => "R",
+              "condition" => condition.(next),
+              "permissions" => %{"view_all" => true, "search_for" => true}
+            }
+          }
+        }
+      end
+
+      is_no = %{"type" => "Message", "name" => "is_false"}
+
+      {:ok, model} =
+        Model.build(%{
+          "_id" => "yes_no",
+          "user_types" => %{
+            "is_no" => type.(is_no),
+            "is_not_no" => type.(Map.put(is_no, "next", is_no))
+          }
+        })
+
+      {:ok, matrix} = Matrix.synthesize(model, app: "fixture-app")
+
+      assert matrix.differences != []
+
+      assert Enum.all?(
+               matrix.differences,
+               &(&1.type == "is_no" and &1.flags == [:empty_yes_no_is_no] and &1.rules == ["r_"])
+             )
+
+      assert matrix.unintended != []
+      assert Enum.all?(matrix.unintended, &(&1.scenario =~ ".is_not_no."))
+      assert matrix.report.differences.unintended == length(matrix.unintended)
+    end
+
     test "the structural list names every rule reading the current user", %{pmodel: model} do
       list = Difference.structural(model)
-      assert %{type: "board", rule: "lead_", flags: [:actor_empty_denies]} in list
-      assert %{type: "doc", rule: "owner_", flags: [:actor_empty_denies]} in list
-      assert %{type: "doc", rule: "everyone", flags: [:actor_empty_denies]} in list
+      flags = Difference.flags(:rule_conditions)
+      assert %{type: "board", rule: "lead_", flags: flags} in list
+      assert %{type: "doc", rule: "owner_", flags: flags} in list
+      # doc's everyone rule grants a field every other rule grants too: its
+      # reach is `always` in both readings
+      refute Enum.any?(list, &(&1.type == "doc" and &1.rule == "everyone"))
+      # note's everyone rule grants what hidden_ lacks: Bubble reaches every
+      # user with it, the policies only those hidden_ does not match (WTF-467)
+      assert %{type: "note", rule: "everyone", flags: flags} in list
       refute Enum.any?(list, &(&1.type == "note" and &1.rule == "hidden_"))
     end
 
@@ -693,7 +776,7 @@ defmodule BubbleEx.Verify.MatrixTest do
 
       assert {:error, _} =
                Result.new(
-                 Map.put(base, :diff, [Map.put(entry, :intended, ["everyone_exclusive"])])
+                 Map.put(base, :diff, [Map.put(entry, :intended, ["empty_equals_empty"])])
                )
 
       assert {:error, _} =

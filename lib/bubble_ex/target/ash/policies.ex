@@ -964,7 +964,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       source: :rules,
       compiled_rules: for(r <- others, MapSet.member?(compiled, r.id), do: r.id),
       denied_rules: denied,
-      stricter_rules: stricter ++ stricter_everyone(stricter, default),
+      stricter_rules: stricter ++ stricter_everyone(default, others, fields),
       attachments: attachments,
       file_fields: file_fields(type, fields),
       data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api),
@@ -1413,7 +1413,8 @@ defmodule BubbleEx.Target.Ash.Policies do
             path,
             "#{ctx.type.id}: the everyone rule grants #{length(entries)} permission(s) only " <>
               "when some other rules do not hold; that negation denies when the actor lacks " <>
-              "a value a condition reads (e.g. logged out) or a record value it reads is empty",
+              "a value a condition reads (e.g. logged out) or a record value it reads is empty " <>
+              "(stricter than Bubble by design: Bubble's everyone rule reaches every user)",
             target: :ash,
             subject: subject,
             details: %{
@@ -1585,34 +1586,53 @@ defmodule BubbleEx.Target.Ash.Policies do
     )
   end
 
-  # The everyone rule's reach negates the other rules: when some are
-  # stricter than Bubble and it grants something, so is its reach.
-  defp stricter_everyone([], _default), do: []
+  # The everyone rule's reach is stricter than Bubble's when some rule
+  # lacks a view, search or field it grants: Bubble's everyone rule
+  # reaches every user, the policy only the users none of those rules
+  # matches (`everyone_exclusive`, WTF-467). Otherwise it is `always`.
+  defp stricter_everyone(%{permissions: %{} = p}, others, fields) do
+    grants? = p.view_all == true or (p.view_fields || []) != [] or p.search_for == true
+    perms = Enum.map(others, & &1.permissions)
+    narrowed? = Difference.everyone_narrowed?(p, perms, Enum.map(fields, &elem(&1, 0)))
 
-  defp stricter_everyone(_stricter, %{permissions: %{} = p}) do
-    if p.view_all == true or (p.view_fields || []) != [] or p.search_for == true,
-      do: ["everyone"],
-      else: []
+    if grants? and narrowed?, do: ["everyone"], else: []
   end
 
-  defp stricter_everyone(_stricter, _default), do: []
+  defp stricter_everyone(_default, _others, _fields), do: []
 
   defp stricter_rules(type, stricter, ctx) do
     rules = Map.new(ctx.others, &{&1.id, &1})
 
     for id <- stricter do
       rule = Map.fetch!(rules, id)
+      flags = Difference.rule_flags(ctx.by_rule[{type.id, id}].ir)
 
       Diagnostic.new(
         :ash_policy_stricter_than_bubble,
         rule.path,
-        "#{type.id}: privacy rule #{rule_label(rule)} reads the current user; where the user " <>
-          "is logged out or lacks a value it reads, Bubble may grant and the policy denies " <>
-          "(stricter than Bubble by design)",
+        "#{type.id}: privacy rule #{rule_label(rule)} #{stricter_reason(flags)}, Bubble may " <>
+          "grant and the policy denies (stricter than Bubble by design)",
         target: :ash,
         subject: %{type: type.id, rule: id},
-        details: %{flags: Enum.map(Difference.flags(:rule_conditions), &Atom.to_string/1)}
+        details: %{flags: Enum.map(flags, &Atom.to_string/1)}
       )
+    end
+  end
+
+  defp stricter_reason(flags) do
+    actor = :actor_empty_denies in flags
+    yes_no = :empty_yes_no_is_no in flags
+
+    cond do
+      actor and yes_no ->
+        "reads the current user and compares a yes/no; where the user is logged out or " <>
+          "lacks a value it reads, or the yes/no is empty"
+
+      yes_no ->
+        "compares a yes/no; where it is empty (Bubble reads it as no)"
+
+      true ->
+        "reads the current user; where the user is logged out or lacks a value it reads"
     end
   end
 

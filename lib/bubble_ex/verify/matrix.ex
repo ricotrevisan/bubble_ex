@@ -32,7 +32,10 @@ defmodule BubbleEx.Verify.Matrix do
      false only because the user is logged out says nothing about the
      condition); the `everyone` rule gets a cell where it applies and one
      where it does not, computed as the verdicts compute it
-     (`Interpreter.everyone_applies/5`).
+     (`Interpreter.everyone_applies/5`) under the target's reading of its
+     reach (exclusive, record values guarded): in Bubble's it reaches
+     every user (WTF-467), but the generated policies negate the other
+     rules.
   4. **Observability and assumptions** (`BubbleEx.Verify.Matrix.Coverage`):
      records that make masked rules decide a verdict alone (mutation
      coverage: dropping or negating the rule changes a recorded verdict),
@@ -61,7 +64,8 @@ defmodule BubbleEx.Verify.Matrix do
      every observation where the generated policies' reading
      (`Interpreter.target/1`) is stricter than the recording by the
      owner's decision, with the flags and rules responsible
-     (`differences`). An observation where the two readings differ
+     (`differences`; a flag is responsible when its target reading alone
+     changes Bubble's verdict, or the target's verdict needs it). An observation where the two readings differ
      otherwise (another flag, or less strict) is an *unintended*
      difference (`unintended`, counted in the report): the generated
      tests fail on it.
@@ -351,7 +355,9 @@ defmodule BubbleEx.Verify.Matrix do
 
     # The everyone rule: a cell where it applies (no other rule holds, as
     # the verdicts compute it, record-value guard included) and one where
-    # it does not.
+    # it does not, as the target reads it (`exclusive/1`).
+    interpreter = exclusive(interpreter)
+
     for type_id <- types,
         %{status: :rules, default: %{}, rules: [_ | _] = rules} <- [
           Interpreter.type(interpreter, type_id)
@@ -539,7 +545,10 @@ defmodule BubbleEx.Verify.Matrix do
   end
 
   defp everyone_status(info, interpreter, ds, personas) do
-    # The same computation the verdicts use (negated conditions, guards).
+    # The same computation the verdicts use (negated conditions, guards),
+    # as the target reads it (`exclusive/1`).
+    interpreter = exclusive(interpreter)
+
     applies =
       for {_persona, user} <- Enum.sort(personas),
           key <- Dataset.keys(ds, info.type.id),
@@ -551,6 +560,20 @@ defmodule BubbleEx.Verify.Matrix do
       false not in applies -> {:unsolved, :no_false_witness, "no other rule ever holds"}
       true -> :solved
     end
+  end
+
+  # The everyone rule's branches are the target's: it applies only where
+  # no rule lacking its grant holds, record-value guard included. In
+  # Bubble's reading (WTF-467) it reaches every user and has no branch
+  # left, but the generated policies negate the other rules, and the cells
+  # where that negation fails are where they are stricter than Bubble.
+  defp exclusive(%Interpreter{assumptions: %{everyone_exclusive: true}} = interpreter),
+    do: interpreter
+
+  defp exclusive(%Interpreter{} = interpreter) do
+    target = Assumptions.target()
+    flags = Map.take(target, [:everyone_exclusive, :everyone_guards_record_values])
+    %{interpreter | assumptions: Map.merge(interpreter.assumptions, flags)}
   end
 
   # --- seed ----------------------------------------------------------------------------
@@ -856,7 +879,45 @@ defmodule BubbleEx.Verify.Matrix do
     {:ok, intended} =
       Interpreter.with_assumptions(interpreter, Difference.intended(interpreter.assumptions))
 
-    %{bubble: interpreter, target: Interpreter.target(interpreter), intended: intended}
+    # Per policy flag on which the two differ: Bubble's reading with only
+    # that flag at its target reading, and the intended reading with only
+    # that flag at Bubble's: which flags a case rests on.
+    per_flag =
+      for flag <- Difference.flags(:rule_conditions),
+          interpreter.assumptions[flag] != intended.assumptions[flag] do
+        {flag, with_flag(interpreter, flag, intended.assumptions[flag]),
+         with_flag(intended, flag, interpreter.assumptions[flag])}
+      end
+
+    %{
+      bubble: interpreter,
+      target: Interpreter.target(interpreter),
+      intended: intended,
+      per_flag: per_flag
+    }
+  end
+
+  defp with_flag(interpreter, flag, value) do
+    {:ok, one} =
+      Interpreter.with_assumptions(interpreter, Map.put(interpreter.assumptions, flag, value))
+
+    one
+  end
+
+  # The policy flags a case rests on (`observe` of a reading): those whose
+  # target reading alone changes what Bubble's reading shows, and those
+  # without whose target reading the intended one would not show what it
+  # does; all of them when neither tells.
+  defp responsible(cell, observe) do
+    bubble = observe.(cell.readings.bubble)
+    intended = observe.(cell.readings.intended)
+
+    flags =
+      for {flag, alone, without} <- cell.readings.per_flag,
+          observe.(alone) != bubble or observe.(without) != intended,
+          do: flag
+
+    if flags == [], do: Difference.flags(:rule_conditions), else: Enum.sort(flags)
   end
 
   # Per op of a scenario: where the target's verdict differs from the
@@ -887,7 +948,8 @@ defmodule BubbleEx.Verify.Matrix do
       true ->
         rules = changed_rules(cell, ds, key)
         {tv, tf} = target
-        base = difference(scenario_id, op.id, cell, key, rules)
+        flags = responsible(cell, &get_verdict(&1, ds, cell.user, key))
+        base = %{difference(scenario_id, op.id, cell, key, rules) | flags: flags}
 
         {:intended,
          if(tv != visible, do: [%{base | kind: :visible, bubble: visible, target: tv}], else: []) ++
@@ -916,12 +978,14 @@ defmodule BubbleEx.Verify.Matrix do
 
       true ->
         rules = Enum.flat_map(bubble -- target, &changed_rules(cell, ds, &1)) |> Enum.uniq()
+        flags = responsible(cell, &search_records(&1, ds, cell.user, cell.type, field))
 
         {:intended,
          [
            %{
              difference(scenario_id, op.id, cell, nil, Enum.sort(rules))
              | kind: :record_set,
+               flags: flags,
                bubble: %{ordered: false, records: bubble},
                target: %{ordered: false, records: target}
            }
@@ -977,7 +1041,7 @@ defmodule BubbleEx.Verify.Matrix do
           do: r.rule.id
 
     everyone =
-      if info.default != nil and info.rules != [] and
+      if grants_something?(info.default) and info.rules != [] and
            Enum.all?(info.rules, &(&1.status == :ok)) and
            Interpreter.everyone_applies(bubble, ds, cell.user, cell.type, key) !=
              Interpreter.everyone_applies(intended, ds, cell.user, cell.type, key),
@@ -986,6 +1050,11 @@ defmodule BubbleEx.Verify.Matrix do
 
     Enum.sort(conditional) ++ everyone
   end
+
+  defp grants_something?(%{permissions: %{} = p}),
+    do: p.view_all == true or (p.view_fields || []) != [] or p.search_for == true
+
+  defp grants_something?(_default), do: false
 
   defp outcome({b, _flags}) when is_boolean(b), do: b
   defp outcome(_), do: :unknown
