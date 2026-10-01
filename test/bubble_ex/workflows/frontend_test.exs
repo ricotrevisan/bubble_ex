@@ -30,7 +30,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
   test "every page and reusable-element workflow is lowered, in a stable order", %{
     lowered: lowered
   } do
-    assert length(lowered.workflows) == 27
+    assert length(lowered.workflows) == 28
 
     assert Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}) ==
              Enum.sort(Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}))
@@ -99,22 +99,12 @@ defmodule BubbleEx.Workflows.FrontendTest do
 
     typed = put_in(app(), ["pages", "other", "properties", "page_item_type"], "user")
     [nav] = typed |> send_user.() |> lower() |> workflow("wNav") |> Map.fetch!(:steps)
-    assert %{residue: [], args: %{thing: %{ir: %{op: :current_user}}}} = nav
+    assert %{residue: [], args: %{thing: %{ir: %{op: :current_user}}, untyped?: false}} = nav
 
-    # No type of content: what Bubble does with it is unverified, so it is
-    # residue of its own kind for replay to find, never dropped silently.
+    # No type of content: Bubble appends the data as a path segment all the
+    # same (replay, WTF-466), so it is lowered, marked `untyped?`.
     [nav] = app() |> send_user.() |> lower() |> workflow("wNav") |> Map.fetch!(:steps)
-
-    assert %{
-             args: %{thing: nil},
-             residue: [
-               %{
-                 subject: "action:aNav1",
-                 reason: :data_to_send_untyped_page,
-                 detail: %{page: "bOther"}
-               }
-             ]
-           } = nav
+    assert %{residue: [], args: %{thing: %{ir: %{op: :current_user}}, untyped?: true}} = nav
 
     # The index page takes it too, under /index (WTF-454).
     index =
@@ -140,7 +130,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
     # A page's own workflow: that page's rules.
     [nav] = app() |> send_user.() |> lower() |> workflow("wUrl") |> Map.fetch!(:steps)
 
-    assert [%{reason: :data_to_send_untyped_page, detail: %{page: "bHome"}}] = nav.residue
+    assert %{residue: [], args: %{page: :current, untyped?: true}} = nav
 
     [nav] =
       app()
@@ -251,8 +241,8 @@ defmodule BubbleEx.Workflows.FrontendTest do
     coverage = Frontend.coverage(lowered)
 
     assert coverage["workflows"] == %{
-             "total" => 27,
-             "native" => 25,
+             "total" => 28,
+             "native" => 26,
              "residue" => 2,
              "disabled" => 1
            }

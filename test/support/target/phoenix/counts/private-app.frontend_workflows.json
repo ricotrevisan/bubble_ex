@@ -3,15 +3,15 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 389,
+          "native": 410,
           "total": 1375
         },
         "condition_true": {
-          "native": 7,
+          "native": 8,
           "total": 102
         },
         "custom_event": {
-          "native": 174,
+          "native": 185,
           "total": 496
         },
         "do_every": {
@@ -31,7 +31,7 @@
           "total": 6
         },
         "page_load": {
-          "native": 10,
+          "native": 16,
           "total": 32
         },
         "popup_closed": {
@@ -49,24 +49,23 @@
       },
       "by_surface": {
         "page": {
-          "native": 196,
+          "native": 223,
           "total": 658
         },
         "reusable": {
-          "native": 386,
+          "native": 398,
           "total": 1647
         }
       },
-      "data": 45,
+      "data": 52,
       "residue_reasons": {
         "api_connector_action": 32,
         "auth_action": 14,
-        "data_to_send_untyped_page": 35,
         "plugin_action": 622,
         "plugin_event": 259,
         "target_not_rendered": 1,
         "trigger_in_runtime_template": 195,
-        "unavailable_input": 903,
+        "unavailable_input": 906,
         "uncompiled_expression": 792,
         "unresolved_reference": 45,
         "unsupported_action": 175,
@@ -81,7 +80,7 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 179,
+        "navigate": 210,
         "open_url": 17,
         "pause": 47,
         "refresh": 5,
@@ -98,31 +97,31 @@
         "update_current_user": 14
       },
       "steps": {
-        "native": 1964,
-        "residue": 2090,
+        "native": 1995,
+        "residue": 2059,
         "total": 4054
       },
       "workflows": {
         "client": 101,
-        "native": 582,
-        "native_own_body": 724,
-        "residue": 1723,
+        "native": 621,
+        "native_own_body": 750,
+        "residue": 1684,
         "total": 2305,
-        "wired": 403
+        "wired": 429
       }
     },
     "ir": {
       "by_kind": {
         "click": {
-          "native": 862,
+          "native": 877,
           "total": 1375
         },
         "condition_true": {
-          "native": 41,
+          "native": 42,
           "total": 102
         },
         "custom_event": {
-          "native": 255,
+          "native": 266,
           "total": 496
         },
         "do_every": {
@@ -142,7 +141,7 @@
           "total": 6
         },
         "page_load": {
-          "native": 21,
+          "native": 23,
           "total": 32
         },
         "popup_closed": {
@@ -160,18 +159,17 @@
       },
       "by_surface": {
         "page": {
-          "native": 395,
+          "native": 412,
           "total": 658
         },
         "reusable": {
-          "native": 812,
+          "native": 824,
           "total": 1647
         }
       },
       "residue_reasons": {
         "api_connector_action": 32,
         "auth_action": 14,
-        "data_to_send_untyped_page": 35,
         "plugin_action": 622,
         "plugin_event": 259,
         "uncompiled_expression": 621,
@@ -188,7 +186,7 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 261,
+        "navigate": 295,
         "open_url": 25,
         "pause": 47,
         "refresh": 7,
@@ -207,14 +205,14 @@
         "update_list": 2
       },
       "steps": {
-        "native": 2678,
-        "residue": 1376,
+        "native": 2712,
+        "residue": 1342,
         "total": 4054
       },
       "workflows": {
         "disabled": 54,
-        "native": 1207,
-        "residue": 1098,
+        "native": 1236,
+        "residue": 1069,
         "total": 2305
       }
     },

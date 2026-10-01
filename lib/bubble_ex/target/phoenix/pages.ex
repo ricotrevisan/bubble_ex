@@ -65,9 +65,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   @names_version 1
 
-  # First path segments the scaffold routes (sign-in, the API, assets…).
+  # First path segments the scaffold routes (sign-in, the API, assets…),
+  # and `index`: the index page's `/index/:bubble_thing` (WTF-454, WTF-466).
   @reserved_paths ~w(auth sign-in sign-out register reset password-reset magic_link api dev live
-                     assets fonts images favicon.ico robots.txt phoenix)
+                     assets fonts images favicon.ico robots.txt phoenix index)
 
   @phrasing ~w(p h1 h2 h3 h4 button a label textarea select)
 
@@ -156,8 +157,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           path: p.path,
           module: "#{ctx.web}.#{p.module}",
           page: p.label,
-          id: p.id,
-          thing?: page_thing?(flows, p.id)
+          id: p.id
         }
       end)
 
@@ -286,23 +286,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> format()
   end
 
-  # A page with a type of content (WTF-420) also takes its thing's unique
-  # ID as the path segment after its own. The index page's is under
-  # `/index` (WTF-454): a dynamic root route would swallow /auth, /uploads
-  # and other owned paths.
-  defp live_routes(%{path: "/", thing?: true} = r),
+  # Every page also takes a path segment after its own, as in Bubble: a
+  # page with a type of content reads its thing's unique ID there
+  # (WTF-420); one with none, or that does not load its thing, ignores it
+  # (Bubble appends the data sent to it, WTF-466). The index page's is
+  # under `/index` (WTF-454): a dynamic root route would swallow /auth,
+  # /uploads and other owned paths.
+  defp live_routes(%{path: "/"} = r),
     do:
       "          live #{source(r.path)}, #{r.module}\n" <>
         "          live #{source(thing_path("/index"))}, #{r.module}"
 
-  defp live_routes(%{path: "/"} = r), do: "          live #{source(r.path)}, #{r.module}"
-
-  defp live_routes(%{thing?: true} = r),
+  defp live_routes(r),
     do:
       "          live #{source(r.path)}, #{r.module}\n" <>
         "          live #{source(thing_path(r.path))}, #{r.module}"
-
-  defp live_routes(r), do: "          live #{source(r.path)}, #{r.module}"
 
   defp thing_path(path), do: path <> "/:bubble_thing"
 
@@ -1688,11 +1686,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         into: %{},
         do: {d.element, d.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq()}
   end
-
-  defp page_thing?(nil, _id), do: false
-
-  defp page_thing?(%FlowSpec{} = flows, id),
-    do: Enum.any?(FlowSpec.data(flows, id), &(&1.kind == :page_thing and &1.residue == []))
 
   # An element whose data source is not loaded is marked, loudly (WTF-420).
   defp mark_data(acc, node, ctx) do
