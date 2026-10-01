@@ -24,7 +24,7 @@ defmodule BubbleEx.Frontend.StaticAssets do
       a store directory with an `index.json`.
     * **Render** (`BubbleEx.Target.Phoenix.render/2` with `asset_store:`,
       the store as `load_store/1` reads it): offline and deterministic. A
-      stored image is served by the app from `priv/static/images/bubble/`
+      stored image is served by the app from `priv/bubble_images/`
       and referenced as `/images/bubble/<sha256>.<ext>`; a Bubble-hosted
       image not in the store renders **without a source** (never its
       Bubble URL) and is `pending`; an image on any other host is
@@ -307,7 +307,7 @@ defmodule BubbleEx.Frontend.StaticAssets do
 
   @doc "The project path a stored image is written to."
   @spec path(map()) :: String.t()
-  def path(%{file: file}), do: "priv/static/images/bubble/" <> file
+  def path(%{file: file}), do: "priv/bubble_images/" <> file
 
   @doc """
   `.wtf/assets.json`: every static asset of the frontend with its status
@@ -342,7 +342,7 @@ defmodule BubbleEx.Frontend.StaticAssets do
       "version" => @version,
       "about" =>
         "Static images and icons of the Bubble pages (WTF-447). local: served by the app " <>
-          "from priv/static/images/bubble (icons inlined); pending: on Bubble's storage, not " <>
+          "from priv/bubble_images (icons inlined); pending: on Bubble's storage, not " <>
           "downloaded, rendered without a source (run mix bubble.fetch_assets, then render " <>
           "with its store); external: on another host, linked to its original URL as " <>
           "Bubble does (informational: never fetched, nothing to fix); data: inline; " <>

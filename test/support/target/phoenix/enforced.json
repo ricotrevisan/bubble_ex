@@ -1,5 +1,5 @@
 {
-  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything. The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it).",
+  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything (its Score makes the owner's field policy head 100 columns, where Elixir 1.17/1.18 and 1.19+ format it differently unless the generator breaks it, WTF-459). The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it).",
   "_id": "enforced-probe",
   "api": {
     "wBlocked": {
@@ -1176,6 +1176,10 @@
         "owner_user": {
           "display": "Owner",
           "value": "user"
+        },
+        "score_number": {
+          "display": "Score",
+          "value": "number"
         }
       },
       "privacy_role": {

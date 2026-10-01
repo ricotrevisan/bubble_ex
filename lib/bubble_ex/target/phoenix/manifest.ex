@@ -23,7 +23,10 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
         "routes": {"router": "lib/acme_import_web/router.ex",
                    "call": "bubble_routes", "pages": ["bTGYf", …]},
         "extensions": {"repo": "lib/acme_import/repo.ex",
-                       "call": "RepoExtensions", "needed": ["pg_trgm"]}
+                       "call": "RepoExtensions", "needed": ["pg_trgm"]},
+        "images": {"endpoint": "lib/acme_import_web/endpoint.ex",
+                   "from": "priv/bubble_images",
+                   "files": ["priv/bubble_images/<sha256>.png", …]}
       }
 
     * `inputs` - what the generated files are a function of:
@@ -54,6 +57,14 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
       the generated routes it must make, and the pages (Bubble IDs) that
       call routes. `check/3` lists the pages as `unrouted` when the router
       lacks the call (scaffolded before WTF-370, or edited away)
+    * `images` - with stored Bubble images (WTF-447): the owned endpoint,
+      the directory its `/images/bubble` plug must serve them `from`, and
+      the image files. `check/3` lists them as `images_unserved` when the
+      endpoint does not name the directory (scaffolded before WTF-455,
+      when the images lived under `priv/static/images/bubble`, or edited
+      away): they are not served. It also lists, with or without images,
+      any file left under `priv/static/images/bubble/`: the main static
+      plug serves it there without the images' sandbox policy
 
   The JSON is canonical (sorted keys) and pretty-printed, so the same
   project gives the same bytes. It holds no secret: the plan content key
@@ -76,8 +87,15 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           unchanged: [String.t()],
           stale: [String.t()],
           unrouted: [String.t()],
-          extensions_unlisted: [String.t()]
+          extensions_unlisted: [String.t()],
+          images_unserved: [String.t()]
         }
+
+  # Where the Bubble page images are generated (and the owned endpoint's
+  # `/images/bubble` plug serves them from), and where they were before
+  # WTF-455: a file left there is served without their sandbox policy.
+  @images_dir "priv/bubble_images"
+  @legacy_images_dir "priv/static/images/bubble"
 
   @doc "The manifest's path in the project."
   @spec path() :: String.t()
@@ -112,6 +130,21 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
     }
     |> put_routes(ctx)
     |> put_extensions(project, ctx)
+    |> put_images(ctx, generated)
+  end
+
+  defp put_images(manifest, ctx, generated) do
+    case generated |> Map.keys() |> Enum.filter(&String.starts_with?(&1, @images_dir <> "/")) do
+      [] ->
+        manifest
+
+      files ->
+        Map.put(manifest, "images", %{
+          "endpoint" => "lib/#{ctx.app}_web/endpoint.ex",
+          "from" => @images_dir,
+          "files" => Enum.sort(files)
+        })
+    end
   end
 
   defp put_live_view(inputs, nil), do: inputs
@@ -186,6 +219,14 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   `RepoExtensions` nor names (see `extensions` above): its migrations fail
   until it does.
 
+  `images_unserved` lists the stored Bubble images the owned endpoint
+  does not serve (its uncommented source does not name
+  `priv/bubble_images`) and any file under `priv/static/images/bubble/`,
+  which the main static plug would serve without the images' sandbox
+  policy (see `images` above): point the endpoint's `/images/bubble`
+  `Plug.Static` at `from: {:app, "priv/bubble_images"}` and remove those
+  files.
+
   `unrouted` lists the Bubble pages (by Bubble ID) that have no route:
   the owned router exists but never calls the generated routes (see
   `routes` above). Such pages need their route before they are verified
@@ -196,6 +237,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   def check(manifest, files, opts \\ []) do
     with {:ok, manifest} <- decode(manifest),
          {:ok, read} <- reader(files),
+         {:ok, list} <- lister(files),
          {:ok, previous} <- previous(Keyword.get(opts, :previous)) do
       stale =
         for {path, _hash} <- Enum.sort(previous),
@@ -217,7 +259,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
          unchanged: Map.get(by, :unchanged, []),
          stale: stale,
          unrouted: unrouted(manifest, read),
-         extensions_unlisted: extensions_unlisted(manifest, read)
+         extensions_unlisted: extensions_unlisted(manifest, read),
+         images_unserved: images_unserved(manifest, read) ++ list.(@legacy_images_dir)
        }}
     end
   end
@@ -254,6 +297,22 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   end
 
   defp extensions_unlisted(_manifest, _read), do: []
+
+  defp images_unserved(
+         %{"images" => %{"endpoint" => endpoint, "from" => from, "files" => files}},
+         read
+       )
+       when is_binary(endpoint) and is_binary(from) and is_list(files) do
+    case relative?(endpoint) && read.(endpoint) do
+      content when is_binary(content) ->
+        if String.contains?(uncommented(content), from), do: [], else: Enum.sort(files)
+
+      _ ->
+        []
+    end
+  end
+
+  defp images_unserved(_manifest, _read), do: []
 
   # Elixir source without its `#` comments (a commented-out call is no
   # call). Approximate: a `#` inside a string also starts one here.
@@ -293,6 +352,37 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   end
 
   defp reader(other), do: invalid("expected a file map or a directory, got #{inspect(other)}")
+
+  # The files under a project directory, as project paths (sorted).
+  defp lister(files) when is_map(files) do
+    {:ok,
+     fn dir ->
+       files |> Map.keys() |> Enum.filter(&String.starts_with?(&1, dir <> "/")) |> Enum.sort()
+     end}
+  end
+
+  defp lister(root) when is_binary(root),
+    do: {:ok, fn dir -> root |> walk(dir) |> Enum.sort() end}
+
+  # Not Path.wildcard: the root may hold glob characters. A symlink is
+  # listed, never followed (no loop).
+  defp walk(root, path) do
+    full = Path.join(root, path)
+
+    case File.lstat(full) do
+      {:ok, %File.Stat{type: :directory}} ->
+        case File.ls(full) do
+          {:ok, names} -> Enum.flat_map(names, &walk(root, Path.join(path, &1)))
+          {:error, _} -> []
+        end
+
+      {:ok, _} ->
+        [path]
+
+      {:error, _} ->
+        []
+    end
+  end
 
   # A project-relative path that stays inside the project.
   defp relative?(path) do

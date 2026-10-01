@@ -10,7 +10,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   | criterion | Phoenix binding |
   |-----------|-----------------|
-  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file (the manifest itself is unsigned) |
+  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file, and nothing the owned files leave undone: no `unrouted` page, no `extensions_unlisted`, no `images_unserved` (the manifest itself is unsigned) |
   | `compiles` | `mix compile --warnings-as-errors`: undefined and deprecated calls are compiler warnings, so they fail it |
   | `lint` | `mix format --check-formatted`, and `mix credo --strict` when the project has Credo (`deps/credo`) |
   | `traceability` | every listed element is a `data-bubble-id="<id>"` attribute in `lib/` outside comments (Elixir, `<%!-- --%>`, `<%# %>` and HTML comments are removed first), and every listed page or reusable is rendered by its tagged tests (see Tagged tests; the generated LiveView tests assert each `data-bubble-id` with `has_element?`). With no page or reusable listed, only the source is checked (`source_only: true`: a weaker binding) |
@@ -670,14 +670,21 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   defp steps_text([]), do: "none"
   defp steps_text(steps), do: Enum.map_join(steps, ", ", fn {n, type} -> "#{n} #{type}" end)
 
-  defp manifest_outcome(binding, %{clean?: true} = report),
-    do: pass(binding, "#{length(report.unchanged)} generated files unchanged")
-
+  # Hand edits and missing files, and what the owned files leave undone
+  # (Manifest.check/3): pages without a route, PostgreSQL extensions the
+  # Repo does not install, Bubble images the endpoint does not serve or
+  # left where the main static plug serves them without their policy.
   defp manifest_outcome(binding, report) do
     changes =
-      Enum.map(report.modified, &"modified #{&1}") ++ Enum.map(report.missing, &"missing #{&1}")
+      Enum.map(report.modified, &"modified #{&1}") ++
+        Enum.map(report.missing, &"missing #{&1}") ++
+        Enum.map(report.unrouted, &"unrouted page #{&1}") ++
+        Enum.map(report.extensions_unlisted, &"extension not installed #{&1}") ++
+        Enum.map(report.images_unserved, &"image not served safely #{&1}")
 
-    fail(binding, summary(changes))
+    if changes == [],
+      do: pass(binding, "#{length(report.unchanged)} generated files unchanged"),
+      else: fail(binding, summary(changes))
   end
 
   # --- helpers -----------------------------------------------------------------------

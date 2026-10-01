@@ -99,6 +99,61 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
                run(:generated_unchanged, %{}, ctx(root))
     end
 
+    # What the owned files leave undone fails it too, though no generated
+    # file changed (WTF-455): pages without a route, extensions the Repo
+    # does not install, images the endpoint does not serve or left under
+    # priv/static.
+    test "generated_unchanged reports unrouted, extensions_unlisted and images_unserved", %{
+      tmp_dir: root
+    } do
+      image = "priv/bubble_images/#{String.duplicate("a", 64)}.png"
+      write(root, image, "png")
+      write(root, "lib/app_web/router.ex", "# AppWeb.BubbleRoutes.bubble_routes()")
+      write(root, "lib/app/repo.ex", ~s(def installed_extensions, do: ["citext"]))
+      write(root, "lib/app_web/endpoint.ex", ~s(from: {:app, "priv/static/images/bubble"}))
+
+      write(
+        root,
+        Manifest.path(),
+        Manifest.encode(%{
+          "version" => 1,
+          "generated" => %{image => Manifest.sha256("png")},
+          "routes" => %{
+            "router" => "lib/app_web/router.ex",
+            "call" => "bubble_routes",
+            "pages" => ["bPage"]
+          },
+          "extensions" => %{
+            "repo" => "lib/app/repo.ex",
+            "call" => "RepoExtensions",
+            "needed" => ["pg_trgm"]
+          },
+          "images" => %{
+            "endpoint" => "lib/app_web/endpoint.ex",
+            "from" => "priv/bubble_images",
+            "files" => [image]
+          }
+        })
+      )
+
+      write(root, "priv/static/images/bubble/old.svg", "<svg/>")
+
+      assert %{status: :fail, detail: detail} = run(:generated_unchanged, %{}, ctx(root))
+
+      assert detail ==
+               "unrouted page bPage, extension not installed pg_trgm, " <>
+                 "image not served safely #{image}, " <>
+                 "image not served safely priv/static/images/bubble/old.svg"
+
+      write(root, "lib/app_web/router.ex", "AppWeb.BubbleRoutes.bubble_routes()")
+      write(root, "lib/app/repo.ex", "AppWeb.RepoExtensions.all()")
+      write(root, "lib/app_web/endpoint.ex", ~s(from: {:app, "priv/bubble_images"}))
+      File.rm!(Path.join(root, "priv/static/images/bubble/old.svg"))
+
+      assert %{status: :pass, detail: "1 generated files unchanged"} =
+               run(:generated_unchanged, %{}, ctx(root))
+    end
+
     test "compiles and lint run mix; credo only when the project has it", %{tmp_dir: root} do
       assert %{status: :pass, binding: "mix compile --warnings-as-errors"} =
                run(:compiles, %{}, ctx(root))

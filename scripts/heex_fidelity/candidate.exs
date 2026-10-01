@@ -43,9 +43,9 @@ html =
 
 File.write!(Path.join(out, "page.html"), html)
 
-if File.dir?("priv/static/images/bubble") do
+if File.dir?("priv/bubble_images") do
   File.mkdir_p!(Path.join(out, "images"))
-  File.cp_r!("priv/static/images/bubble", Path.join(out, "images/bubble"))
+  File.cp_r!("priv/bubble_images", Path.join(out, "images/bubble"))
 end
 
 # The project's stylesheet, as `mix tailwind` builds it.

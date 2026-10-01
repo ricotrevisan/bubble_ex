@@ -21,10 +21,12 @@ defmodule <%= @web %>.Endpoint do
   # generator writes only PNG, JPEG, GIF and WebP checked by their bytes
   # and sanitized SVG here, named by their SHA-256 and verified type;
   # served with nosniff and a sandbox policy, so an image opened on its
-  # own runs nothing.
+  # own runs nothing. They live outside priv/static, so this plug is the
+  # only one that can serve them: the static plug below never reaches
+  # them, whatever the path's encoding or case (WTF-455).
   plug Plug.Static,
     at: "/images/bubble",
-    from: {:<%= @app %>, "priv/static/images/bubble"},
+    from: {:<%= @app %>, "priv/bubble_images"},
     gzip: false,
     headers: %{
       "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox",

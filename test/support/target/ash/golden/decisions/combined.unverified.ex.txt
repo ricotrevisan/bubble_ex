@@ -781,7 +781,15 @@ defmodule MyApp.Workspace do
   field_policies do
     private_fields :hide
 
-    field_policy [:created_date, :modified_date, :creator_id, :slug, :members, :name, :projects] do
+    field_policy [
+      :created_date,
+      :modified_date,
+      :creator_id,
+      :slug,
+      :members,
+      :name,
+      :projects
+    ] do
       authorize_if expr(privacy_rule_member)
     end
   end

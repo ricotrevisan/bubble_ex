@@ -578,24 +578,47 @@ defmodule BubbleEx.Target.Ash.Source do
   end
 
   defp policy(%Policy{} = policy, ctx) do
-    condition =
+    action = "action(#{atom(policy.action)})"
+
+    head =
       case {policy.changing, policy.accessing_from} do
         {nil, nil} ->
-          "action(#{atom(policy.action)})"
+          "policy #{action} do"
 
         {nil, {module, rel}} ->
-          "[action(#{atom(policy.action)}), accessing_from(#{module(module, ctx)}, #{atom(rel)})]"
+          list_head("policy", [action, "accessing_from(#{module(module, ctx)}, #{atom(rel)})"])
 
         {names, _} ->
-          "[action(#{atom(policy.action)}), changing_attributes([#{Enum.map_join(names, ", ", &atom/1)}])]"
+          list_head("policy", [
+            action,
+            "changing_attributes([#{Enum.map_join(names, ", ", &atom/1)}])"
+          ])
       end
 
     """
-    policy #{condition} do
+    #{head}
       #{description(policy.description)}
     #{checks(policy.checks, ctx)}
     end
     """
+  end
+
+  # `name [items] do` for a policy or field policy, at its indentation in
+  # the resource (`policies do` / `field_policies do`, 4). Elixir 1.17 and
+  # 1.18 keep the head on one line when only its ` do` passes the line
+  # length; 1.19 and later break the list. A list written broken (a newline
+  # after `[` and before `]`) stays broken in every version, so a head that
+  # does not fit is written that way and the output formats the same
+  # everywhere (WTF-459).
+  @head_indent 4
+  @line_length 98
+
+  defp list_head(name, items) do
+    head = "#{name} [#{Enum.join(items, ", ")}] do"
+
+    if @head_indent + String.length(head) > @line_length,
+      do: "#{name} [\n#{Enum.join(items, ",\n")}\n] do",
+      else: head
   end
 
   defp field_policies([], _module, _ctx), do: ""
@@ -604,7 +627,7 @@ defmodule BubbleEx.Target.Ash.Source do
     body =
       Enum.map_join(policies, "\n", fn %FieldPolicy{} = policy ->
         """
-        field_policy [#{Enum.map_join(policy.fields, ", ", &atom/1)}] do
+        #{list_head("field_policy", Enum.map(policy.fields, &atom/1))}
         #{checks(policy.checks, ctx)}
         end
         """

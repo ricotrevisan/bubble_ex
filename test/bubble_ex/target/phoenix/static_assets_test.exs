@@ -130,13 +130,13 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     # The images the app serves, generated and hash-checked.
     served =
       for {path, bytes} <- files,
-          String.starts_with?(path, "priv/static/images/bubble/"),
+          String.starts_with?(path, "priv/bubble_images/"),
           do: {path, bytes}
 
     assert Enum.map(served, &elem(&1, 0)) |> Enum.sort() ==
              Enum.sort([
-               "priv/static/images/bubble/#{@png_sha}.png",
-               "priv/static/images/bubble/#{@gif_sha}.gif",
+               "priv/bubble_images/#{@png_sha}.png",
+               "priv/bubble_images/#{@gif_sha}.gif",
                hd(for {p, _} <- served, String.ends_with?(p, ".svg"), do: p)
              ])
 
@@ -159,7 +159,7 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
              "content_type" => "image/png",
              "size" => 70,
              "src" => ^png,
-             "path" => "priv/static/images/bubble/" <> _,
+             "path" => "priv/bubble_images/" <> _,
              "elements" => ["bCdn", "bHttp", "bPhoto", "bResp"]
            } = assets[{"image", "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"}]
 
@@ -299,7 +299,7 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
 
     for id <- ~w(bCdn bHttp bS3 bSvg bMiss bResp), do: refute(img(markup, id) =~ "src=", id)
     assert img(markup, "bExt") =~ ~s(src="https://images.example.org/hero.jpg")
-    refute Enum.any?(Map.keys(files), &String.starts_with?(&1, "priv/static/images/bubble/"))
+    refute Enum.any?(Map.keys(files), &String.starts_with?(&1, "priv/bubble_images/"))
     # The instance passing a Bubble image passes nothing.
     refute markup =~ ~r/data-bubble-id="bOne"[^>]*src_bphoto/s
 
@@ -313,11 +313,83 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     {files, _report} = render()
     endpoint = files["lib/shop_web/endpoint.ex"]
     assert endpoint =~ ~s(at: "/images/bubble")
-    assert endpoint =~ ~s(from: {:shop, "priv/static/images/bubble"})
+    assert endpoint =~ ~s(from: {:shop, "priv/bubble_images"})
     assert endpoint =~ ~s("x-content-type-options" => "nosniff")
 
     assert endpoint =~
              ~s("content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+
+    # Outside priv/static, which the main static plug serves (`images`
+    # included, gzip in production): no other spelling of the path, and
+    # no .gz without its raw file, reaches an image without the policy
+    # (WTF-455). Behavior: the generated BubbleImagesTest
+    # (scripts/phoenix_compile_check.sh).
+    refute endpoint =~ "priv/static/images"
+    assert files["test/shop_web/bubble_images_test.exs"] =~ "/images/bubbl%65"
+  end
+
+  # Existing projects (WTF-455): the owned endpoint may still serve the
+  # images from priv/static/images/bubble, and copies left there are
+  # served without the policy. check_manifest/3 says so.
+  @tag :tmp_dir
+  test "check_manifest lists images the endpoint does not serve, and leftovers", %{
+    tmp_dir: root
+  } do
+    {files, _report} = render(asset_store: store())
+    json = files[".wtf/generated.json"]
+    endpoint = "lib/shop_web/endpoint.ex"
+    images = Enum.sort(for {p, _} <- files, String.starts_with?(p, "priv/bubble_images/"), do: p)
+
+    assert Jason.decode!(json)["images"] == %{
+             "endpoint" => endpoint,
+             "from" => "priv/bubble_images",
+             "files" => images
+           }
+
+    assert length(images) == 3
+    assert {:ok, %{clean?: true, images_unserved: []}} = Phoenix.check_manifest(json, files)
+
+    # An endpoint scaffolded before WTF-455, or with the plug commented out.
+    old = String.replace(files[endpoint], "priv/bubble_images", "priv/static/images/bubble")
+
+    commented =
+      String.replace(
+        files[endpoint],
+        ~s(from: {:shop, "priv/bubble_images"},),
+        ~s(# from: {:shop, "priv/bubble_images"},)
+      )
+
+    assert commented =~ ~s(# from: {:shop, "priv/bubble_images"},)
+
+    for edited <- [old, commented] do
+      assert {:ok, %{clean?: true, images_unserved: ^images}} =
+               Phoenix.check_manifest(json, Map.put(files, endpoint, edited))
+    end
+
+    # A copy left under priv/static/images/bubble, served by the main plug.
+    left = "priv/static/images/bubble/#{@png_sha}.png"
+
+    assert {:ok, %{images_unserved: [^left]}} =
+             Phoenix.check_manifest(json, Map.put(files, left, "png"))
+
+    # The same from the project's directory, nested and dot files included.
+    for {path, content} <- files, do: write(root, path, content)
+    nested = "priv/static/images/bubble/sub/.hidden.svg"
+    for path <- [left, nested], do: write(root, path, "x")
+    assert {:ok, %{images_unserved: [^left, ^nested]}} = Phoenix.check_manifest(json, root)
+
+    # Leftovers are listed even when the render has no images.
+    {plain, _report} = render()
+    refute Map.has_key?(Jason.decode!(plain[".wtf/generated.json"]), "images")
+
+    assert {:ok, %{images_unserved: [^left]}} =
+             Phoenix.check_manifest(plain[".wtf/generated.json"], Map.put(plain, left, "png"))
+  end
+
+  defp write(root, path, content) do
+    file = Path.join(root, path)
+    File.mkdir_p!(Path.dirname(file))
+    File.write!(file, content)
   end
 
   # The exporter's `assets:` (the fidelity cases' path) are served only as
@@ -340,9 +412,9 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
 
     {files, _report} = render(assets: assets)
     markup = pages(files)
-    served = for {p, b} <- files, String.starts_with?(p, "priv/static/images/bubble/"), do: {p, b}
+    served = for {p, b} <- files, String.starts_with?(p, "priv/bubble_images/"), do: {p, b}
 
-    assert {"priv/static/images/bubble/#{@png_sha}.png", png} in served
+    assert {"priv/bubble_images/#{@png_sha}.png", png} in served
     assert img(markup, "bExt") =~ ~s(src="/images/bubble/#{@png_sha}.png")
 
     [{svg_path, svg}] = for {p, b} <- served, String.ends_with?(p, ".svg"), do: {p, b}

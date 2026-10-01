@@ -494,7 +494,7 @@ BubbleEx.Target.Phoenix.render(project, frontend: frontend, asset_store: store)
 Only Bubble's storage hosts are requested (redirects included), with a size
 cap and a redirect limit; images are kept only if their bytes are PNG,
 JPEG, GIF or WebP, or a sanitized SVG, and are served from
-`priv/static/images/bubble/<sha256>.<ext>`. A Bubble image not downloaded
+`priv/bubble_images/<sha256>.<ext>`. A Bubble image not downloaded
 renders without a source and is marked in the template. Images on other
 hosts are never fetched or proxied: they stay linked to their original
 URLs, as in Bubble (over HTTPS, `loading="lazy"`,

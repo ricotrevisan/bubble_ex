@@ -1,0 +1,99 @@
+defmodule <%= @web %>.BubbleImagesTest do
+  # Scaffolded by bubble_ex: the Bubble page images (priv/bubble_images,
+  # WTF-447) are served at /images/bubble only, with nosniff and a sandbox
+  # policy, and no other path reaches them (WTF-455). Not async: it writes
+  # test files into priv/bubble_images, where the endpoint reads them, and
+  # removes them (and the directory, when it made it) afterwards.
+  use <%= @web %>.ConnCase, async: false
+
+  @svg ~s(<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>)
+  @fix ~s(point the /images/bubble Plug.Static in <%= @web %>.Endpoint at ) <>
+         ~s(from: {:<%= @app %>, "priv/bubble_images"}; do not copy images under priv/static)
+
+  setup do
+    dir = Application.app_dir(:<%= @app %>, "priv/bubble_images")
+    made? = not File.dir?(dir)
+    File.mkdir_p!(dir)
+    name = "test-#{System.unique_integer([:positive])}"
+    svg = Path.join(dir, name <> ".svg")
+    gz = Path.join(dir, name <> ".html.gz")
+
+    on_exit(fn ->
+      File.rm(svg)
+      File.rm(gz)
+      if made?, do: File.rmdir(dir)
+    end)
+
+    File.write!(svg, @svg)
+    File.write!(gz, :zlib.gzip("<script>alert(1)</script>"))
+
+    %{name: name}
+  end
+
+  test "an image is served with nosniff and the sandbox policy", %{name: name} do
+    for method <- [:get, :head] do
+      conn = dispatch(build_conn(), @endpoint, method, "/images/bubble/#{name}.svg", nil)
+      assert conn.status == 200, "#{method} /images/bubble: not served; #{@fix}"
+      assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+      assert [policy] = get_resp_header(conn, "content-security-policy")
+      assert policy =~ "sandbox"
+    end
+  end
+
+  test "no other spelling of the path serves an image", %{name: name} do
+    paths =
+      for prefix <- [
+            "/images/bubbl%65",
+            "/images/%62ubble",
+            "/images/Bubble",
+            "/images/BUBBLE",
+            "/images/bubble%2F",
+            "/bubble_images",
+            "/images"
+          ],
+          do: "#{prefix}/#{name}.svg"
+
+    # Not found, or a bad request (Plug.Static refuses an encoded `/`).
+    for method <- [:get, :head], path <- paths,
+        do: assert(status(build_conn(), method, path) in [400, 404], "#{method} #{path}")
+  end
+
+  # Under priv/static, the main static plug would serve them (any spelling
+  # of the path, gzip in production) without the sandbox policy; the
+  # images moved to priv/bubble_images (WTF-455).
+  test "no file is left under priv/static/images/bubble" do
+    left = files(Application.app_dir(:<%= @app %>, "priv/static/images/bubble"))
+    assert left == [], "#{inspect(left)} would be served without the sandbox policy: #{@fix}"
+  end
+
+  test "a compressed file without its raw file is never served", %{name: name} do
+    for method <- [:get, :head],
+        prefix <- ["/images/bubble", "/images/bubbl%65", "/images/%62ubble", "/images/Bubble"] do
+      conn = put_req_header(build_conn(), "accept-encoding", "gzip")
+      path = "#{prefix}/#{name}.html"
+      assert status(conn, method, path) == 404, "#{method} #{path}"
+    end
+  end
+
+  defp files(path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :directory}} ->
+        path |> File.ls!() |> Enum.flat_map(&files(Path.join(path, &1)))
+
+      {:ok, _} ->
+        [path]
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  # The status sent: a response's, or the one an exception (no route)
+  # renders.
+  defp status(conn, method, path) do
+    dispatch(conn, @endpoint, method, path, nil).status
+  rescue
+    error in Plug.Conn.WrapperError -> Plug.Exception.status(error.reason)
+    error -> Plug.Exception.status(error)
+  end
+end
