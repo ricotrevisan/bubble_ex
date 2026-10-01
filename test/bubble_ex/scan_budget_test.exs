@@ -70,7 +70,7 @@ defmodule BubbleEx.ScanBudgetTest do
                {:ok, {File.read!(file.path), file.bytes}}
              end)
 
-    # Pretty JSON costs ~100x its compact size in iodata terms (WTF-469).
+    # Not pretty-printed: that OOM-killed scan workers (WTF-469).
     assert contents == expected
     assert bytes == byte_size(expected)
     refute contents =~ "\n"
