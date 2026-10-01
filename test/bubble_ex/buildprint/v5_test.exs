@@ -254,6 +254,16 @@ defmodule BubbleEx.Buildprint.V5Test do
 
   defp sha256(data), do: :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
 
+  # Every file in `dir` (SQLite side files included): name, size, mtime and
+  # the SHA-256 of its contents.
+  defp snapshot(dir) do
+    for name <- dir |> File.ls!() |> Enum.sort() do
+      path = Path.join(dir, name)
+      %File.Stat{size: size, mtime: mtime} = File.stat!(path, time: :posix)
+      {name, size, mtime, sha256(File.read!(path))}
+    end
+  end
+
   defp codes(%V5{diagnostics: diagnostics}), do: Enum.map(diagnostics, & &1.code)
 
   describe "load/2" do
@@ -405,16 +415,20 @@ defmodule BubbleEx.Buildprint.V5Test do
       ws = write_workspace(dir)
       bp = Path.join(ws, ".buildprint")
       index = Path.join(bp, "index.sqlite")
-      before = {File.read!(index), File.stat!(index).mtime, File.ls!(bp) |> Enum.sort()}
 
+      # Read-only first, so a write fails loudly, and only then the snapshot:
+      # `File.chmod!/2` (`:file.change_mode/2`) also sets the file's mtime to
+      # the current whole second, so a chmod after the snapshot moved the
+      # mtime whenever it ran in a later second than the fixture (WTF-470).
       File.chmod!(index, 0o444)
       File.chmod!(bp, 0o555)
       on_exit(fn -> File.chmod(bp, 0o755) end)
+      before = snapshot(bp)
 
       assert {:ok, _} = V5.load(ws)
       assert {:ok, _} = V5.load(bp)
 
-      assert {File.read!(index), File.stat!(index).mtime, File.ls!(bp) |> Enum.sort()} == before
+      assert snapshot(bp) == before
     end
 
     test "reads paths holding URI syntax", %{tmp_dir: dir} do
