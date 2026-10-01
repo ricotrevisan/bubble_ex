@@ -183,24 +183,26 @@ defmodule BubbleEx.Frontend.EditorGeometry do
       update_props(raw, &compact(&1, ["left", "top"]))
     else
       raw = update_props(raw, &(&1 |> compact() |> put_width_flags()))
-      props = Payload.properties(raw)
+      flow_height(raw, type, Payload.properties(raw), styles)
+    end
+  end
 
-      cond do
-        type == "Image" and props["use_aspect_ratio"] == true ->
-          update_props(raw, &put_aspect_fit_height/1)
+  defp flow_height(raw, "Image", %{"use_aspect_ratio" => true}, _styles),
+    do: update_props(raw, &put_aspect_fit_height/1)
 
-        not guessed_height?(props) ->
-          raw
+  defp flow_height(raw, type, props, styles) do
+    cond do
+      not guessed_height?(props) ->
+        raw
 
-        type == "Shape" and not flagged_height?(props) and not aspect_ratio?(props) ->
-          update_props(raw, &Map.put(&1, "single_height", true))
+      type == "Shape" and not flagged_height?(props) and not aspect_ratio?(props) ->
+        update_props(raw, &Map.put(&1, "single_height", true))
 
-        type in ["Group", "FloatingGroup"] and no_children?(raw) and painted?(raw, styles) ->
-          update_props(raw, &Map.put(&1, "min_height_css", px(props["%h"])))
+      type in ["Group", "FloatingGroup"] and no_children?(raw) and painted?(raw, styles) ->
+        update_props(raw, &Map.put(&1, "min_height_css", px(props["%h"])))
 
-        true ->
-          Map.put(raw, @canvas_height, props["%h"])
-      end
+      true ->
+        Map.put(raw, @canvas_height, props["%h"])
     end
   end
 
