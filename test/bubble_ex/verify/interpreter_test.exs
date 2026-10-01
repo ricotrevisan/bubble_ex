@@ -209,7 +209,8 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
       refute Assumptions.defaults().actor_empty_denies
       assert Assumptions.target().actor_empty_denies
-      refute Assumptions.defaults().empty_yes_no_is_no
+      assert Assumptions.defaults().empty_yes_no_is_no
+      refute Assumptions.target().empty_yes_no_is_no
       assert {:ok, a} = Assumptions.new(empty_equals_empty: false)
       assert Assumptions.changed(a) == [:empty_equals_empty]
       assert {:error, %{kind: :invalid_input}} = Assumptions.new(nope: true)
@@ -413,16 +414,31 @@ defmodule BubbleEx.Verify.InterpreterTest do
     %{ds: ds, user: user, logged_in: user != nil, this: this, flags: assumptions, model: model}
   end
 
+  # Bubble's reading with the everyone rule's reach as the target reads it
+  # (exclusive, record values guarded): in Bubble's own (WTF-467) the
+  # everyone rule reaches every user.
+  defp exclusive_bubble,
+    do:
+      Map.merge(Assumptions.defaults(), %{
+        everyone_exclusive: true,
+        everyone_guards_record_values: true
+      })
+
   defp task_field(field, type),
     do: IR.node(:field, [IR.node(:this, [:rule_record], "custom.task"), "task", field], type)
 
   describe "Bubble's reading (the defaults, calibrated by V5: WTF-426)" do
-    test "only the refuted flag and the documented one differ from the target's; the evidence is recorded" do
+    test "only the flipped flags and the documented one differ from the target's; the evidence is recorded" do
       assert {:ok, target} = Assumptions.new(Assumptions.target())
       # WTF-457: the documented Bubble reading of a search constraint on a
-      # field the user may not view, which the enforced target refuses
+      # field the user may not view, which the enforced target refuses;
+      # WTF-467: the four flags the 2026-10-01 replay flipped
       assert Assumptions.changed(target) == [
                :actor_empty_denies,
+               :empty_yes_no_is_no,
+               :everyone_exclusive,
+               :everyone_guards_record_values,
+               :logged_out_user_is_empty,
                :hidden_field_constraint_matches
              ]
 
@@ -437,36 +453,69 @@ defmodule BubbleEx.Verify.InterpreterTest do
       assert %{status: :refuted, agree: 14, disagree: 69, flip_fixes: 64} =
                evidence.actor_empty_denies
 
-      for flag <- [:logged_out_user_is_empty, :everyone_exclusive, :empty_yes_no_is_no],
-          do: assert(evidence[flag].status == :leaning_flipped, "#{flag}")
+      assert evidence.actor_empty_denies.run =~ "2026-09-29"
+
+      # WTF-467: refuted by the 2026-10-01 run, flipping breaks nothing
+      for {flag, fixes} <- [
+            everyone_guards_record_values: 17,
+            logged_out_user_is_empty: 12
+          ] do
+        assert %{status: :refuted, agree: 0, flip_fixes: ^fixes, flip_breaks: 0, run: run} =
+                 evidence[flag]
+
+        assert run =~ "2026-10-01"
+      end
+
+      # leaning in both runs (0 of 2, 0 of 5): flipped, still unsettled
+      assert %{status: :leaning_flipped, agree: 0, disagree: 5} = evidence.empty_yes_no_is_no
+      assert :empty_yes_no_is_no in Assumptions.unsettled()
+
+      # only 2 of the 19 dependent ops tell an additive everyone rule from
+      # an exclusive one without the guard: flipped, still unsettled
+      assert %{status: :leaning_flipped, agree: 0, disagree: 2, flip_fixes: 2} =
+               evidence.everyone_exclusive
+
+      assert :everyone_exclusive in Assumptions.unsettled()
 
       for flag <- [
+            :empty_equals_empty,
             :builtin_fields_hidden_unless_listed,
             :no_visible_field_unreadable,
             :search_independent_of_view
           ],
           do: assert(evidence[flag].status == :supported, "#{flag}")
 
-      assert evidence.everyone_guards_record_values.status == :unclear
+      assert evidence.empty_list_contains_nothing.status == :unclear
 
       not_exercised = for {flag, %{status: :not_exercised}} <- evidence, do: flag
-      assert length(not_exercised) == 9
+      assert length(not_exercised) == 7
       assert :defaults_applied_at_creation in not_exercised
 
-      # the leaning flags are not flipped: too few samples
-      for flag <- Assumptions.unsettled(),
+      # every flipped flag differs from the target's reading by the
+      # policy of BubbleEx.Verify.Difference; the other unsettled flags
+      # are not flipped
+      for flag <- Assumptions.unsettled() -- [:empty_yes_no_is_no, :everyone_exclusive],
           do: assert(Assumptions.defaults()[flag] == Assumptions.target()[flag], "#{flag}")
 
-      assert length(Assumptions.unsettled()) == 13
+      assert length(Assumptions.unsettled()) == 10
     end
 
     test "an empty user-side value compares like any empty value", %{model: model, ds: ds} do
       {:ok, bubble} = Interpreter.new(model)
 
       # o_no_access_: not(This's access contains Current User); logged out,
-      # the user is empty, and k2's empty access list doesn't contain it
+      # the user is Bubble's temporary user (WTF-467), which k2's empty
+      # access list doesn't contain
       assert {:ok, true, flags} =
                Interpreter.condition(bubble, ds, nil, "task", "o_no_access_", "k2")
+
+      assert :logged_out_user_is_empty in flags
+
+      # read as empty instead, the user compares like any empty value
+      {:ok, empty} = Interpreter.new(model, assumptions: [logged_out_user_is_empty: true])
+
+      assert {:ok, true, flags} =
+               Interpreter.condition(empty, ds, nil, "task", "o_no_access_", "k2")
 
       assert :actor_empty_denies in flags
 
@@ -495,7 +544,13 @@ defmodule BubbleEx.Verify.InterpreterTest do
 
       # users lacking a value a condition reads (logged out, or without a
       # team whose lead the board rule compares) see more in Bubble
-      assert {"board", "logged_out"} in more and {"doc", "logged_out"} in more
+      assert {"board", "logged_out"} in more
+      # a logged-out user is Bubble's temporary user (WTF-467): it owns no
+      # doc, not even one whose owner is empty
+      refute {"doc", "logged_out"} in more
+      # the everyone rule reaches every user in Bubble (WTF-467), also
+      # those another rule matches
+      assert {"note", "u1"} in more and {"memo", "u1"} in more
     end
   end
 
@@ -643,6 +698,11 @@ defmodule BubbleEx.Verify.InterpreterTest do
         )
 
       assert Interpreter.everyone_applies(unguarded, ds, nil, "note", "n1")
+
+      # Bubble's reading (WTF-467): the everyone rule reaches every user
+      {:ok, bubble} = Interpreter.new(model)
+      assert Interpreter.everyone_applies(bubble, ds, "u1", "note", "n2")
+      assert Interpreter.everyone_applies(bubble, ds, nil, "note", "n1")
     end
   end
 
@@ -692,7 +752,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
         {"full", "note", %{"text_text" => {:text, "x"}}}
       ])
 
-    for reading <- [Assumptions.defaults(), Assumptions.target()] do
+    for reading <- [exclusive_bubble(), Assumptions.target()] do
       {:ok, model} = Model.build(app.("is_not_empty"))
       {:ok, i} = Interpreter.new(model, assumptions: reading)
       assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == true
@@ -750,7 +810,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
         {"mine", "note", %{"owner_user" => {:ref, "u"}}}
       ])
 
-    for reading <- [Assumptions.defaults(), Assumptions.target()],
+    for reading <- [exclusive_bubble(), Assumptions.target()],
         dangling <- [true, false] do
       {:ok, model} = Model.build(owner)
 
@@ -793,7 +853,7 @@ defmodule BubbleEx.Verify.InterpreterTest do
         {"alt", "note", %{"text_text" => nil, "alt_text" => {:text, "x"}}}
       ])
 
-    for reading <- [Assumptions.defaults(), Assumptions.target()] do
+    for reading <- [exclusive_bubble(), Assumptions.target()] do
       {:ok, model} = Model.build(fallback)
       {:ok, i} = Interpreter.new(model, assumptions: reading)
       assert Interpreter.everyone_applies(i, ds, "u", "note", "blank") == true

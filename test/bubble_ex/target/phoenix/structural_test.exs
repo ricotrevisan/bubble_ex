@@ -416,15 +416,17 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                "everyone" => 3,
                "privacy" => "unverified",
                "rules" => 10,
-               "stricter_than_bubble" => %{"rules" => 7, "types" => 3},
+               "stricter_than_bubble" => %{"rules" => 5, "types" => 3},
                "types" => %{"none" => 1, "present" => 3},
                "uncovered" => 0
              }
 
       # stricter than Bubble by design: listed for the owner, not a failure
       list = report.intended_differences
-      assert length(list) == 7
-      assert Enum.all?(list, &(&1.flags == [:actor_empty_denies] and &1.decision =~ "stricter"))
+      assert length(list) == 5
+      # each rule with its own flags (here: rules reading the user)
+      actor = [:actor_empty_denies, :logged_out_user_is_empty]
+      assert Enum.all?(list, &(&1.flags == actor and &1.decision =~ "stricter"))
 
       # the Model's list, less the rule the policies deny outright
       # (task/admins_ does not compile to Ash: it grants nothing at all)

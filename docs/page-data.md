@@ -78,7 +78,12 @@ the workflow API and private files:
 * **Stricter than Bubble on empty values**, by decision: where a rule
   compares a value of the user's (logged out, or a user without it) with
   a record's, Bubble may grant when both are empty; the policies deny
-  (`actor_empty_denies`, reported as intended differences).
+  (`actor_empty_denies`, reported as intended differences). Likewise
+  (WTF-467) a logged-out user is denied every comparison reading it
+  (Bubble's temporary user is unequal to any record's user), `x is no`
+  needs a stored no (Bubble reads an empty yes/no as no), and the
+  `everyone` rule's grants reach only users no rule lacking them matches
+  (Bubble's reach every user).
 * **Searches on fields some users may not view are decided per user**
   (WTF-457). In Bubble, viewing a field and constraining a search on it
   are separate permissions: a page search constrained (or sorted) on a

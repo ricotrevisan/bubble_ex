@@ -140,7 +140,7 @@
         "privacy": "unverified",
         "rules": 142,
         "stricter_than_bubble": {
-          "rules": 100,
+          "rules": 90,
           "types": 49
         },
         "types": {
@@ -307,7 +307,7 @@
         "privacy": "unverified",
         "rules": 142,
         "stricter_than_bubble": {
-          "rules": 100,
+          "rules": 90,
           "types": 49
         },
         "types": {

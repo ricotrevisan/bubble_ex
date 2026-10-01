@@ -80,7 +80,8 @@
       "code": "ash_policy_stricter_than_bubble",
       "details": {
         "flags": [
-          "actor_empty_denies"
+          "actor_empty_denies",
+          "logged_out_user_is_empty"
         ]
       },
       "message": "memo: privacy rule \"Active users\" (active_) reads the current user; where the user is logged out or lacks a value it reads, Bubble may grant and the policy denies (stricter than Bubble by design)",
@@ -641,6 +642,12 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {
+          "active_": [
+            "actor_empty_denies",
+            "logged_out_user_is_empty"
+          ]
+        },
         "stricter_rules": [
           "active_"
         ]
@@ -1094,6 +1101,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [
@@ -1511,6 +1519,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "rules",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [],

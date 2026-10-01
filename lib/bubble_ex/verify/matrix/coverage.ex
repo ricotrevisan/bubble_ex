@@ -56,17 +56,24 @@ defmodule BubbleEx.Verify.Matrix.Coverage do
   # seed writes defaults out, as Bubble stores records after creation)
   # whether defaults are applied at creation.
   defp unexercisable(interpreter) do
-    if interpreter.assumptions.defaults_applied_at_creation,
-      do:
-        Map.put(
-          @unexercisable,
-          :defaults_applied_at_creation,
-          "the seed writes every modeled default out (as Bubble stores records after " <>
-            "creation), so no recording can tell the readings apart; a Data API create " <>
-            "was seen storing defaults (WTF-385)"
-        ),
-      else: @unexercisable
+    @unexercisable
+    |> put_if(
+      interpreter.assumptions.defaults_applied_at_creation,
+      :defaults_applied_at_creation,
+      "the seed writes every modeled default out (as Bubble stores records after " <>
+        "creation), so no recording can tell the readings apart; a Data API create " <>
+        "was seen storing defaults (WTF-385)"
+    )
+    |> put_if(
+      not interpreter.assumptions.everyone_exclusive,
+      :everyone_guards_record_values,
+      "moot with everyone_exclusive off: the everyone rule reaches every user, so its " <>
+        "reach has no record-value guard to apply"
+    )
   end
+
+  defp put_if(map, true, key, value), do: Map.put(map, key, value)
+  defp put_if(map, false, _key, _value), do: map
 
   # --- observability ------------------------------------------------------------------
 

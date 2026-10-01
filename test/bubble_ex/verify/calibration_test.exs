@@ -77,7 +77,11 @@ defmodule BubbleEx.Verify.CalibrationTest do
     # under the target's reading the same recordings agree
     {:ok, target} =
       Calibration.compare(ctx.model, ctx.matrix, recordings,
-        assumptions: [actor_empty_denies: true]
+        assumptions:
+          for(
+            flag <- Difference.flags(:rule_conditions),
+            do: {flag, Difference.policy()[flag].target}
+          )
       )
 
     assert target.disagree == 0

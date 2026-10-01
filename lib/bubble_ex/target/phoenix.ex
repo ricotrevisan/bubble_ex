@@ -336,7 +336,12 @@ defmodule BubbleEx.Target.Phoenix do
                       "LiveView or controller."
 
   @enforced_note "privacy: :enforced - reads follow Bubble's privacy rules (compiled to Ash policies;\n" <>
-                   "stricter than Bubble where a condition reads an empty value on the user's side).\n" <>
+                   "stricter than Bubble by design where a condition reads an empty value on the\n" <>
+                   "user's side or a logged-out user, where `x is no` meets an empty yes/no, where the\n" <>
+                   "everyone rule's grants would reach users another rule matches, and where a search\n" <>
+                   "filters or sorts on a field the user may not view; see .wtf/verification and\n" <>
+                   "BubbleEx.Verify.Difference. Less strict on `x is not no` with an empty yes/no:\n" <>
+                   "WTF-471).\n" <>
                    "WRITES ARE NOT CHECKED AGAINST THE PRIVACY RULES: the generated workflow runtime's\n" <>
                    "writes are allowed (the workflow's conditions guard them, as in Bubble); any\n" <>
                    "other write is forbidden."

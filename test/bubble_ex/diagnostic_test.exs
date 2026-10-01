@@ -297,7 +297,29 @@ defmodule BubbleEx.DiagnosticTest do
               "y_" => "oops"
             }
           },
-          "list" => %{"display" => "L", "fields" => %{}, "privacy_role" => []}
+          "list" => %{"display" => "L", "fields" => %{}, "privacy_role" => []},
+          # `x is not no` on a yes/no: less strict than Bubble (WTF-471)
+          "flagged" => %{
+            "display" => "F",
+            "fields" => %{"flag_boolean" => %{"display" => "Flag", "value" => "boolean"}},
+            "privacy_role" => %{
+              "not_no_" => %{
+                "condition" => %{
+                  "type" => "InjectedValue",
+                  "next" => %{
+                    "type" => "Message",
+                    "name" => "flag_boolean",
+                    "next" => %{
+                      "type" => "Message",
+                      "name" => "is_false",
+                      "next" => %{"type" => "Message", "name" => "is_false"}
+                    }
+                  }
+                },
+                "permissions" => %{"view_all" => true}
+              }
+            }
+          }
         },
         "pages" => %{
           "home" => %{

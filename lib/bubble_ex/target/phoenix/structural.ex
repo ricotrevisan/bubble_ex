@@ -427,18 +427,18 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   defp intended_differences(%Project{privacy: :omit}), do: []
 
   defp intended_differences(%Project{} = project) do
-    flags = BubbleEx.Verify.Difference.flags(:rule_conditions)
-    policy = Map.take(BubbleEx.Verify.Difference.policy(), flags)
+    policy = BubbleEx.Verify.Difference.policy()
 
     for r <- Enum.sort_by(project.resources, & &1.source[:type]),
-        %{stricter_rules: rules} <- [r.privacy],
+        %{stricter_rules: rules} = privacy <- [r.privacy],
         rule <- rules do
+      flags = Map.get(privacy.stricter_flags, rule, [])
+
       %{
         type: r.source[:type],
         rule: rule,
         flags: flags,
-        decision:
-          policy |> Map.values() |> Enum.map(& &1.decision) |> Enum.uniq() |> Enum.join("; ")
+        decision: flags |> Enum.map(&policy[&1].decision) |> Enum.uniq() |> Enum.join("; ")
       }
     end
   end

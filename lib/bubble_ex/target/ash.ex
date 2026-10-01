@@ -151,7 +151,9 @@ defmodule BubbleEx.Target.Ash do
 
   **Union.** A user holds a permission when any rule whose condition they
   match grants it (checks are `authorize_if`, in rule order). The
-  `everyone` rule applies to users no other rule matches; when it grants a
+  `everyone` rule applies to users no other rule matches (stricter than
+  Bubble, whose `everyone` rule reaches every user: the 2026-10-01 replay,
+  WTF-467; `BubbleEx.Verify.Difference`); when it grants a
   permission, that grant becomes "no rule lacking the permission holds",
   one negated condition compiled by the same compiler (so its actor guards
   are kept; `:ash_policy_default_rule_negated`), or `always()` when no rule

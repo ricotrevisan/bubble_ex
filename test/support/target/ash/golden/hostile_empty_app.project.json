@@ -376,6 +376,7 @@
         "relationship_checks": {},
         "search_fields": {},
         "source": "unavailable",
+        "stricter_flags": {},
         "stricter_rules": []
       },
       "privacy_relationships": [
