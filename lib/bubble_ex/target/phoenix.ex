@@ -156,7 +156,7 @@ defmodule BubbleEx.Target.Phoenix do
   `BubbleEx.Frontend.StaticAssets.fetch/3`: Bubble's storage hosts only,
   bytes checked, SVG sanitized, content-addressed); rendering stays
   offline and deterministic and takes the result as `asset_store:`. A
-  stored image is served from `priv/static/images/bubble/<sha256>.<ext>`
+  stored image is served from `priv/bubble_images/<sha256>.<ext>`
   (generated), a stored icon library's symbol is inlined; an image on
   Bubble's storage that was not downloaded renders without a source and is
   marked in the template. An image on another host stays linked to its
@@ -164,8 +164,11 @@ defmodule BubbleEx.Target.Phoenix do
   over HTTPS with `loading="lazy"` and `referrerpolicy="no-referrer"`, and
   not marked. `.wtf/assets.json` (generated) lists every asset with its
   status, SHA-256, content type and size. New endpoints serve
-  `/images/bubble` with `X-Content-Type-Options: nosniff` and a sandbox
-  `Content-Security-Policy`; older ones can add the same `Plug.Static`.
+  `/images/bubble` from `priv/bubble_images` with
+  `X-Content-Type-Options: nosniff` and a sandbox
+  `Content-Security-Policy`, outside `priv/static` so no other plug can
+  serve them (WTF-455); older ones can add the same `Plug.Static`, or
+  point theirs at `priv/bubble_images`.
   New routers' browser pipeline adds `img-src 'self' data: blob: https:`
   to Phoenix's default policy; an older router without an `img-src`
   already allows them.
@@ -228,7 +231,7 @@ defmodule BubbleEx.Target.Phoenix do
       page modules and paths and component names are kept (WTF-352 D5)
     * `:assets` - downloaded images and icons by exporter ID (as
       `BubbleEx.Frontend` collects them), served from
-      `priv/static/images/bubble`
+      `priv/bubble_images`
     * `:asset_store` - the static assets downloaded by
       `mix bubble.fetch_assets` (`BubbleEx.Frontend.StaticAssets.load_store/1`;
       see "Static assets" above)
@@ -438,15 +441,7 @@ defmodule BubbleEx.Target.Phoenix do
            }),
          {:ok, source} <- ash_source(project, user, ctx) do
       pages = pages(frontend, ctx, opts)
-      bubble_data = "lib/#{ctx.app}_web/bubble_data.ex"
-
-      ctx =
-        Map.merge(ctx, %{
-          routes: pages.routes,
-          frontend: frontend_inputs(frontend),
-          # The page data module (WTF-420), whose test seed config/test.exs sets.
-          bubble_data?: Enum.any?(pages.generated, &match?({^bubble_data, _}, &1))
-        })
+      ctx = Map.merge(ctx, %{routes: pages.routes, frontend: frontend_inputs(frontend)})
 
       generated =
         project
@@ -1070,7 +1065,8 @@ defmodule BubbleEx.Target.Phoenix do
       "test/test_helper.exs" => "test/test_helper.exs",
       "test/support/data_case.ex" => "test/support/data_case.ex",
       "test/support/conn_case.ex" => "test/support/conn_case.ex",
-      "test/#{ctx.app}_web/smoke_test.exs" => "test/smoke_test.exs"
+      "test/#{ctx.app}_web/smoke_test.exs" => "test/smoke_test.exs",
+      "test/#{ctx.app}_web/bubble_images_test.exs" => "test/bubble_images_test.exs"
     }
 
     templates =
@@ -1091,9 +1087,6 @@ defmodule BubbleEx.Target.Phoenix do
     Map.merge(ctx, %{
       workflows?: Map.get(ctx, :workflows) != nil,
       deps: deps_source(ctx.privacy),
-      # `mix wtf.task` is bubble_ex's: the docs mention it only when the
-      # project depends on bubble_ex.
-      bubble_ex?: Enum.any?(deps(ctx.privacy), &(elem(&1, 0) == :bubble_ex)),
       tailwind: @tailwind,
       esbuild: @esbuild,
       oban_migration: @oban_migration,

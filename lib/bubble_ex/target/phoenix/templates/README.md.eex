@@ -14,10 +14,11 @@ app's data model.
 It creates and migrates its own database: `TEST_DATABASE_URL` when set
 (and not empty), otherwise `<%= @app %>_test` on `localhost` (`config/test.exs`); never
 `DATABASE_URL`, which may point at a database you care about.
-<%= if @bubble_ex? do %>`mix wtf.task complete` and `audit` run tests only on a database you name
-(`WTF_TASK_TEST_DB` or `--test-db URL`: a throwaway PostgreSQL; see `mix
-help wtf.task`).
-<% end %>
+bubble_ex's `mix wtf.task complete` and `audit` (run from a bubble_ex
+checkout: `mix wtf.task audit --root /path/to/this/project`) run tests
+only on a database you name (`WTF_TASK_TEST_DB` or `--test-db URL`: a
+throwaway PostgreSQL; see `mix help wtf.task` there).
+
 ## Generated and owned files
 
 `.wtf/generated.json` lists the **generated** files with their SHA-256.

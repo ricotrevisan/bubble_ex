@@ -71,7 +71,7 @@ end
 
 # A frozen fidelity case's images and icons, from its committed files (the
 # URL -> file map of its case.json; never downloaded): served by the app
-# from priv/static/images/bubble.
+# from priv/bubble_images.
 with_case_assets = fn {:ok, project, opts}, case_dir ->
   files =
     for asset <-

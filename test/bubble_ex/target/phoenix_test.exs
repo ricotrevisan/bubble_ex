@@ -69,6 +69,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     "priv/repo/migrations/20260101000000_add_oban_jobs_table.exs",
     "priv/repo/seeds.exs",
     "priv/static/robots.txt",
+    "test/acme_import_web/bubble_images_test.exs",
     "test/acme_import_web/smoke_test.exs",
     "test/support/conn_case.ex",
     "test/support/data_case.ex",
@@ -382,12 +383,12 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert test =~ "pool: Ecto.Adapters.SQL.Sandbox"
       refute render!(representative_project(), name: "Other")["config/dev.exs"] =~ dev_secret
 
-      # No pages, no BubbleData to seed; the project does not depend on
-      # bubble_ex, so its docs do not send the owner to mix wtf.task
+      # config/test.exs is owned: the page data seed is there even before
+      # any page is generated, for pages added later. mix wtf.task is not a
+      # dependency: the README says to run it from bubble_ex with --root
       # (WTF-455).
-      refute test =~ "BubbleData"
-      refute test =~ "wtf.task"
-      refute files["README.md"] =~ "wtf.task"
+      assert test =~ "BubbleData, random_seed: "
+      assert files["README.md"] =~ "mix wtf.task audit --root /path/to/this/project"
     end
 
     test "uses Tailwind v4 theme tokens and no daisyUI" do

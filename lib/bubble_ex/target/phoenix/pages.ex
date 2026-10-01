@@ -89,10 +89,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       (`BubbleEx.Target.Elixir.Frontend.compile/5`)
     * `:assets` - downloaded assets by exporter ID (`%{path, bytes}` as
       the HTML exporter collects them): images and icons are served from
-      `priv/static/images/bubble/`
+      `priv/bubble_images/`
     * `:asset_store` - the downloaded static assets
       (`BubbleEx.Frontend.StaticAssets.load_store/1`, WTF-447): a stored
-      image is served from `priv/static/images/bubble/`, a stored icon
+      image is served from `priv/bubble_images/`, a stored icon
       library's symbol is inlined. Without it (or for what it lacks) an
       image on Bubble's storage renders without a source, never its
       Bubble URL, and is marked in the template; an image on another
@@ -177,12 +177,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     generated = Map.merge(generated, flow_files.generated)
 
     # Downloaded images, verified above, served from
-    # priv/static/images/bubble (asset_url/1).
+    # priv/bubble_images (asset_url/1).
     generated =
       for {_id, %{path: path, bytes: bytes}} <- base.assets,
           is_binary(path) and is_binary(bytes),
           into: generated,
-          do: {"priv/static/images/bubble/" <> Path.basename(path), bytes}
+          do: {"priv/bubble_images/" <> Path.basename(path), bytes}
 
     # Stored static images (WTF-447), content-addressed like the above.
     generated =

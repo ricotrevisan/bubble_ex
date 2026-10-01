@@ -6,6 +6,28 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Bubble page images move out of `priv/static`** (WTF-455). Stored
+  images (`asset_store:`, the exporter's `assets:`) are generated as
+  `priv/bubble_images/<sha256>.<ext>` (was
+  `priv/static/images/bubble/`), and `.wtf/assets.json` says so; their
+  URLs stay `/images/bubble/<sha256>.<ext>`. New endpoints serve that
+  route from `priv/bubble_images` with `nosniff` and the sandbox CSP.
+  Under `priv/static`, the main `Plug.Static` (`only: ~w(... images
+  ...)`, gzip in production) could also reach them through another
+  spelling of the path (`/images/bubbl%65/...`, `/images/%62ubble/...`,
+  case variants on case-insensitive filesystems) or a `.gz` without its
+  raw file, and serve them without the policy; nothing outside the
+  sandboxed plug can now. **Existing projects:** the endpoint is owned,
+  so change its `/images/bubble` plug to `from: {:my_app,
+  "priv/bubble_images"}`. Regenerating with the asset store (from `mix
+  bubble.fetch_assets`) writes the images to the new place, and the
+  manifest check lists the old `priv/static/images/bubble/*` files as
+  `stale`: remove them.
+- **Scaffold docs: `mix wtf.task` runs from bubble_ex** (WTF-455). The
+  generated project does not depend on bubble_ex; its README now shows
+  `mix wtf.task audit --root /path/to/this/project` from a bubble_ex
+  checkout.
+
 - **`x is not no` reads an empty yes/no as no, as Bubble does** (WTF-471).
   Between yes/no values (not conditions: fields, parameters, option
   attributes, ...; "stored" below), at least one stored, `is not` now
@@ -1462,6 +1484,13 @@ All notable changes to this project are documented here.
   are unchanged on the private fixture export.
 
 ### Fixed
+
+- **Policy heads format the same on every Elixir version** (WTF-459).
+  A `field_policy [...] do` or `policy [...] do` head that passed 98
+  columns only by its ` do` stayed on one line on Elixir 1.17/1.18 and
+  was broken by 1.19+, so a project rendered on one failed `mix format
+  --check-formatted` on the other. `Target.Ash.Source` now writes such a
+  head with its list already broken, which every version keeps.
 
 - **Editor JSON: guessed heights are content-sized** (WTF-468, WTF-458).
   The 2026-10-01 replay showed that elements without a height flag or a

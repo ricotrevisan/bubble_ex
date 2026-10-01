@@ -130,13 +130,13 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     # The images the app serves, generated and hash-checked.
     served =
       for {path, bytes} <- files,
-          String.starts_with?(path, "priv/static/images/bubble/"),
+          String.starts_with?(path, "priv/bubble_images/"),
           do: {path, bytes}
 
     assert Enum.map(served, &elem(&1, 0)) |> Enum.sort() ==
              Enum.sort([
-               "priv/static/images/bubble/#{@png_sha}.png",
-               "priv/static/images/bubble/#{@gif_sha}.gif",
+               "priv/bubble_images/#{@png_sha}.png",
+               "priv/bubble_images/#{@gif_sha}.gif",
                hd(for {p, _} <- served, String.ends_with?(p, ".svg"), do: p)
              ])
 
@@ -159,7 +159,7 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
              "content_type" => "image/png",
              "size" => 70,
              "src" => ^png,
-             "path" => "priv/static/images/bubble/" <> _,
+             "path" => "priv/bubble_images/" <> _,
              "elements" => ["bCdn", "bHttp", "bPhoto", "bResp"]
            } = assets[{"image", "https://a1b2c3d4e5f6.cdn.bubble.io/f1700000000000x100/logo.png"}]
 
@@ -299,7 +299,7 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
 
     for id <- ~w(bCdn bHttp bS3 bSvg bMiss bResp), do: refute(img(markup, id) =~ "src=", id)
     assert img(markup, "bExt") =~ ~s(src="https://images.example.org/hero.jpg")
-    refute Enum.any?(Map.keys(files), &String.starts_with?(&1, "priv/static/images/bubble/"))
+    refute Enum.any?(Map.keys(files), &String.starts_with?(&1, "priv/bubble_images/"))
     # The instance passing a Bubble image passes nothing.
     refute markup =~ ~r/data-bubble-id="bOne"[^>]*src_bphoto/s
 
@@ -313,22 +313,19 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
     {files, _report} = render()
     endpoint = files["lib/shop_web/endpoint.ex"]
     assert endpoint =~ ~s(at: "/images/bubble")
-    assert endpoint =~ ~s(from: {:shop, "priv/static/images/bubble"})
+    assert endpoint =~ ~s(from: {:shop, "priv/bubble_images"})
     assert endpoint =~ ~s("x-content-type-options" => "nosniff")
 
     assert endpoint =~
              ~s("content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 
-    # ... and only that plug: what it does not serve under /images/bubble
-    # (a .gz without its raw file) never reaches the gzip-serving static
-    # plug, which would send it without the policy (WTF-455). Behavior:
-    # the generated smoke test (scripts/phoenix_compile_check.sh).
-    [images, main] = String.split(endpoint, "plug Plug.Static,", trim: true) |> Enum.drop(1)
-    assert images =~ ~r/\n  plug :bubble_images_only\n/
-    assert main =~ "gzip: not code_reloading?"
-
-    assert endpoint =~
-             ~s|defp bubble_images_only(%Plug.Conn{path_info: ["images", "bubble" \| _]} = conn, _opts)|
+    # Outside priv/static, which the main static plug serves (`images`
+    # included, gzip in production): no other spelling of the path, and
+    # no .gz without its raw file, reaches an image without the policy
+    # (WTF-455). Behavior: the generated BubbleImagesTest
+    # (scripts/phoenix_compile_check.sh).
+    refute endpoint =~ "priv/static/images"
+    assert files["test/shop_web/bubble_images_test.exs"] =~ "/images/bubbl%65"
   end
 
   # The exporter's `assets:` (the fidelity cases' path) are served only as
@@ -351,9 +348,9 @@ defmodule BubbleEx.Target.Phoenix.StaticAssetsTest do
 
     {files, _report} = render(assets: assets)
     markup = pages(files)
-    served = for {p, b} <- files, String.starts_with?(p, "priv/static/images/bubble/"), do: {p, b}
+    served = for {p, b} <- files, String.starts_with?(p, "priv/bubble_images/"), do: {p, b}
 
-    assert {"priv/static/images/bubble/#{@png_sha}.png", png} in served
+    assert {"priv/bubble_images/#{@png_sha}.png", png} in served
     assert img(markup, "bExt") =~ ~s(src="/images/bubble/#{@png_sha}.png")
 
     [{svg_path, svg}] = for {p, b} <- served, String.ends_with?(p, ".svg"), do: {p, b}
