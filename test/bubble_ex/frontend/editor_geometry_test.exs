@@ -419,10 +419,22 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     refute Payload.plugin_type?(nil)
   end
 
-  # Assumption until a Bubble capture calibrates it (WTF-358 replay list):
-  # an element neither fixed nor fit on its height, without a min height,
-  # keeps its canvas height as a min height (never as a height).
-  test "neither fixed nor fit: the canvas height is a min height" do
+  defp row_page(elements, props \\ %{}) do
+    column_page(%{
+      "r" => el("r", "Group", 1, Map.merge(%{"container_layout" => "row"}, props), elements)
+    })
+  end
+
+  defp height_classes(classes) do
+    Enum.filter(classes, &String.match?(&1, ~r/^(h-|min-h-|max-h-|self-)/))
+  end
+
+  # WTF-468: the 2026-10-01 replay measured elements without a height flag
+  # or a min height: nearly all rendered sized to their content (computed
+  # min height `0px`/`auto`), never held at their canvas height. The sample
+  # was nearly all Row children; the Column cases follow the same rules,
+  # untested.
+  test "no height flag: sized to its content, without the canvas height" do
     group = fn props ->
       el(
         "g",
@@ -435,35 +447,40 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
       )
     end
 
-    layout = fn props -> layout(editor_app(column_page(%{"g" => group.(props)}))) end
-
-    assert "min-h-[280px]" in classes(layout.(%{}), "g")
-    refute Enum.any?(classes(layout.(%{}), "g"), &String.starts_with?(&1, "h-"))
-    assert "min-h-[40px]" in classes(layout.(%{"min_height_css" => "40px"}), "g")
-
-    refute Enum.any?(
-             classes(layout.(%{"fit_height" => true}), "g"),
-             &String.starts_with?(&1, "min-h-")
-           )
-
-    assert "h-[280px]" in classes(
-             layout.(%{"single_height" => true, "min_height_css" => "280px"}),
-             "g"
-           )
-
-    refute Enum.any?(classes(layout.(%{"height" => 0}), "g"), &String.starts_with?(&1, "min-h-"))
-
-    # Never taller than its max height.
-    for max <- [%{"max_height_css" => "200px"}, %{"max_height_px" => 200}] do
-      classes = classes(layout.(max), "g")
-      refute Enum.any?(classes, &String.starts_with?(&1, "min-h-")), inspect(max)
-      assert "max-h-[200px]" in classes
+    in_column = fn props ->
+      editor_app(column_page(%{"g" => group.(props)})) |> layout() |> classes("g")
     end
 
-    assert "min-h-[280px]" in classes(layout.(%{"max_height_css" => "300px"}), "g")
+    in_row = fn props ->
+      editor_app(row_page(%{"g" => group.(props)})) |> layout() |> classes("g")
+    end
+
+    for classes <- [in_column.(%{}), in_row.(%{}), in_column.(%{"fit_height" => true})] do
+      assert height_classes(classes) == []
+    end
+
+    # A Column's free space is not shared out to it.
+    refute "grow-[1]" in in_column.(%{})
+
+    # The app's own min and max heights stand.
+    assert height_classes(in_column.(%{"min_height_css" => "40px"})) == ["min-h-[40px]"]
+    assert height_classes(in_row.(%{"max_height_css" => "200px"})) == ["max-h-[200px]"]
+
+    # Fixed height: the editor's min height is the height.
+    assert "h-[280px]" in in_column.(%{"single_height" => true, "min_height_css" => "280px"})
+    assert "h-[280px]" in in_row.(%{"single_height" => true, "min_height_css" => "280px"})
+
+    # Fill: written `single_height: false` (fit off, fixed off), or a Row
+    # child aligned to stretch.
+    explicit = %{"single_height" => false, "fit_height" => false}
+    assert "grow-[1]" in in_column.(explicit)
+    assert "self-stretch" in in_row.(explicit)
+    assert "self-stretch" in in_row.(%{"vert_alignment" => "stretch"})
+    assert "self-center" in in_row.(%{"vert_alignment" => "center"})
+    refute "self-stretch" in in_row.(%{"vert_alignment" => "center"})
   end
 
-  test "children of a fixed-height flow container get no canvas min height" do
+  test "children of a fixed-height flow container are sized to their content" do
     child =
       el("c", "Group", 1, %{
         "container_layout" => "column",
@@ -472,24 +489,134 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
         "height" => 280
       })
 
-    parent = fn props ->
+    parent =
       el(
         "p",
         "Group",
         1,
-        Map.merge(
-          %{"container_layout" => "column", "left" => 0, "top" => 0, "height" => 300},
-          props
-        ),
+        %{
+          "container_layout" => "column",
+          "left" => 0,
+          "top" => 0,
+          "height" => 300,
+          "single_height" => true,
+          "min_height_css" => "300px"
+        },
         %{"c" => child}
+      )
+
+    layout = layout(editor_app(column_page(%{"p" => parent})))
+    assert "h-[300px]" in classes(layout, "p")
+    assert height_classes(classes(layout, "c")) == []
+  end
+
+  test "a Group without a height flag fills an Align-to-parent container" do
+    group = el("g", "Group", 1, %{"container_layout" => "column", "height" => 280})
+
+    overlay =
+      el(
+        "o",
+        "Group",
+        1,
+        %{
+          "container_layout" => "relative",
+          "height" => 400,
+          "single_height" => true,
+          "min_height_css" => "400px"
+        },
+        %{"g" => group}
+      )
+
+    classes = classes(layout(editor_app(column_page(%{"o" => overlay}))), "g")
+    assert "h-[100%]" in classes
+    refute Enum.any?(classes, &String.starts_with?(&1, "min-h-"))
+  end
+
+  # WTF-458: a 160 px wide logo with a 2122/329 ratio is about 25 px tall
+  # in Bubble; its canvas height (240 px) must not hold it, or stretch its
+  # row's siblings.
+  test "an image that keeps its aspect ratio takes its height from its width" do
+    logo = fn props ->
+      el(
+        "logo",
+        "Image",
+        1,
+        Map.merge(
+          %{
+            "left" => 0,
+            "top" => 0,
+            "width" => 160,
+            "height" => 240,
+            "single_width" => true,
+            "min_width_css" => "160px",
+            "use_aspect_ratio" => true,
+            "aspect_ratio_width" => 2122,
+            "aspect_ratio_height" => 329,
+            "source" => "https://example.com/logo.png"
+          },
+          props
+        )
       )
     end
 
-    layout = fn props -> layout(editor_app(column_page(%{"p" => parent.(props)}))) end
+    button =
+      el("cta", "Button", 2, %{
+        "text" => "Subscribe",
+        "height" => 40,
+        "vert_alignment" => "stretch"
+      })
 
-    fixed = layout.(%{"single_height" => true, "min_height_css" => "300px"})
-    refute Enum.any?(classes(fixed, "c"), &String.starts_with?(&1, "min-h-"))
-    assert "min-h-[280px]" in classes(layout.(%{}), "c")
+    for props <- [
+          %{},
+          %{"fit_height" => false, "single_height" => false},
+          %{"min_height_css" => "240px", "max_height_css" => "240px"},
+          %{"vert_alignment" => "center"}
+        ] do
+      layout = layout(editor_app(row_page(%{"logo" => logo.(props), "cta" => button})))
+      %{css: css, classes: classes} = layout["logo"]
+
+      assert "[aspect-ratio:2122_/_329]" in classes, inspect(props)
+      assert Enum.any?(css, &match?({"width", "calc(160px" <> _}, &1)), inspect(props)
+
+      refute Enum.any?(css, fn {k, _v} -> k in ~w(height min-height max-height flex-grow) end),
+             inspect({props, css})
+
+      refute {"align-self", "stretch"} in css, inspect(props)
+    end
+
+    # In an Align-to-parent container it does not fill the height either.
+    overlay =
+      el(
+        "o",
+        "Group",
+        1,
+        %{"container_layout" => "relative", "height" => 300, "single_height" => true},
+        %{"logo" => logo.(%{})}
+      )
+
+    %{css: css} = layout(editor_app(column_page(%{"o" => overlay})))["logo"]
+    refute Enum.any?(css, fn {k, _v} -> k in ~w(height min-height max-height) end)
+
+    # Fixed height stays fixed.
+    fixed = logo.(%{"single_height" => true, "min_height_css" => "25px"})
+    %{css: css} = layout(editor_app(row_page(%{"logo" => fixed})))["logo"]
+    assert Enum.any?(css, fn {k, _v} -> k in ~w(height min-height) end)
+  end
+
+  test "an empty placeholder without a height flag keeps its canvas height as a min height" do
+    for type <- ["VideoPlayer", "Map"] do
+      element = fn props ->
+        el("v", type, 1, Map.merge(%{"left" => 0, "top" => 0, "height" => 120}, props))
+      end
+
+      classes = fn props ->
+        editor_app(row_page(%{"v" => element.(props)})) |> layout() |> classes("v")
+      end
+
+      assert height_classes(classes.(%{})) == ["min-h-[120px]"], inspect({type, classes.(%{})})
+      assert height_classes(classes.(%{"fit_height" => true})) == [], type
+      assert height_classes(classes.(%{"min_height_css" => "30px"})) == ["min-h-[30px]"], type
+    end
   end
 
   @tag :tmp_dir

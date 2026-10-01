@@ -846,9 +846,25 @@ defmodule BubbleEx.Frontend.Normalize do
         put_plugin_dimension(acc, raw, axis, compact)
       end)
     else
-      box
+      put_placeholder_min_height(box, raw)
     end
   end
+
+  # A native element lowered to an empty placeholder has no content to size
+  # it (WTF-468): one that would be sized to its content keeps its canvas
+  # height as a min height instead of collapsing.
+  defp put_placeholder_min_height(box, raw) do
+    value = Payload.properties(raw)["%h"]
+
+    if is_number(value) and value > 0 and empty?(raw["elements"] || raw["%el"]) and
+         is_nil(fill_axis?(raw, :height)) and
+         Enum.all?([:height, :min_height], &is_nil(box[&1])),
+       do: Map.put(box, :min_height, value),
+       else: box
+  end
+
+  defp empty?(elements) when is_map(elements) or is_list(elements), do: Enum.empty?(elements)
+  defp empty?(_elements), do: true
 
   defp put_plugin_dimension(box, raw, axis, compact) do
     value = Payload.properties(raw)[compact]

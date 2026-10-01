@@ -1311,6 +1311,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Editor JSON: guessed heights are content-sized** (WTF-468, WTF-458).
+  The 2026-10-01 replay showed that elements without a height flag or a
+  min height render sized to their content in Bubble, not at their canvas
+  height. `BubbleEx.Frontend.EditorGeometry` no longer turns the canvas
+  height into a min height, and leaves the height flags as written (as
+  Bubble's runtime payload does), so such an element neither keeps its
+  canvas height nor fills its Row or Column. It still stretches when its
+  Row aligns it to stretch, a Group still fills an Align-to-parent
+  container, a fixed height stays fixed, and `single_height: false` still
+  fills. An image that keeps its aspect ratio takes its height from its
+  width (no height, min or max height, no fill). A native element lowered
+  to an empty placeholder keeps its canvas height as a min height instead
+  of collapsing. Column children follow the same rules but were not in
+  the replay sample. Runtime payloads lay out as before.
+
 - **Editor JSON layout follow-ups** (WTF-446). The canvas min height of
   an element neither fixed nor fit is not applied when its max height is
   below its canvas height, nor inside a flow container of fixed height
