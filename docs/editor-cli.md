@@ -17,8 +17,20 @@ export BUBBLE_EX_EDITOR_COOKIE='(read from your secret manager)'
 mix bubble.editor versions my-app child-version-id
 ```
 
-The CLI refuses `test` and `live`. Before every read or write it resolves the
-exact version and requires an active child whose `parent_version` is `test`.
+Read-only commands (`read`, `versions`, `schema`, `savepoint-list`) accept
+`test`, `live`, or an active child. Page reads resolve the exact accessible,
+non-deleted version before loading paths. Mutations (`apply`, rollback,
+`savepoint-create`) and mutation-plan `check` still refuse `test` and `live` and
+require an active child whose `parent_version` is `test`. Low-level mutations
+independently recheck that identity immediately before submission; constructing
+a readable target never grants write permission.
+
+Authenticated editor traffic is pinned to **exactly `https://bubble.io`**. An
+alternate origin (including a different port, query, or userinfo) is rejected,
+also on manually constructed target structs. Editor requests never follow
+redirects or automatically retry. Failure messages/contexts retain only safe
+error kinds and numeric HTTP status, never upstream bodies, parser exceptions,
+cookies or arbitrary transport reasons.
 
 ## Commands
 
@@ -44,6 +56,64 @@ new guarded plan, so it can itself be rejected as stale.
 plans generate `_index.id_to_path`, `issues_list`, and `issues_sub` operations.
 The pre-write read requires every new ID path to be `null`, making a collision a
 stale-plan failure rather than an overwrite.
+
+## Native page discovery API
+
+Reuse `BubbleEx.Editor` directly from an application; no Buildprint, separate
+client implementation, or editor export is needed:
+
+```elixir
+alias BubbleEx.Editor
+alias BubbleEx.Editor.{Snapshot, Target}
+
+with {:ok, target} <- Target.readable("my-app", "test", cookie),
+     {:ok, pages} <- Editor.discover_pages(target),
+     reference when not is_nil(reference) <- Enum.find(pages, &(&1.name == "index")),
+     {:ok, snapshot} <- Editor.read_page(target, reference) do
+  Snapshot.fetch(snapshot, reference.path)
+end
+```
+
+`Target.new/4` remains child-only for existing editing callers;
+`Target.readable/4` explicitly enables read identities including `test`/`live`.
+Both keep the cookie redacted in `Inspect`. Supply `cookie` from environment or
+a secret store, never from request params. Do not serialize target structs.
+
+`discover_pages/2` verifies authenticated editor access/version first, then
+fetches the anonymous app runtime HTML and dynamic bundle with **no editor
+cookie or authorization header**. It reuses `Apps.Parser` (including native
+`Object.assign` page patches) and the canonical `Index.Structure` page
+interpretation. All requests are bounded, GET-only on the runtime, and refuse
+redirects. Editor/runtime denial or malformed input stops the operation: no
+fallback to another endpoint, version, cookie-bearing runtime request, or guessed
+page path. The default initial runtime route is `index`; an explicitly selected
+route can be supplied as `runtime_page: "login"`.
+
+The result is a sorted list of `%BubbleEx.Editor.PageRef{}` values:
+
+- `appname`, `version`: exact editor target identity
+- `key`, `id`, `name`: distinct native page map key, Bubble ID, display name
+- `path`: `["%p3", key]`, never a path guessed from the display name
+- `source`: `kind: :runtime`, runtime URL, source JSON pointer (native or readable
+  key form preserved)
+
+Discovery covers the runtime's **exposed inventory**, not a complete editor
+export; mobile views and reusables are excluded. Missing/ambiguous IDs, duplicate
+keys/IDs or an empty inventory fail closed. A runtime requiring authentication,
+an app with only a custom-domain runtime, or an inaccessible initial route is
+not silently bypassed. Custom-host/runtime-cookie support should be designed
+explicitly rather than forwarding the editor session.
+
+`read_page/3` verifies reference app/version/path/key before any request, reads
+only that editor path, then requires the returned page's type (`Page`), ID and
+name to match. Missing, renamed, substituted, malformed or conflicting-identity
+pages fail without emitting their contents. Rediscover after such a failure.
+References are identity checks, not authorization tokens: Bubble's authenticated
+editor still decides access. Successful snapshots intentionally contain raw
+page design/workflow data; keep them in memory and do not log, export or expose
+them as HTTP error contexts. Callers presenting metadata can convert references
+with `Map.from_struct/1`; only explicit page-selection reads should expose
+content to an authorized operator.
 
 ## Plan format
 
