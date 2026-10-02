@@ -277,6 +277,18 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert_patch(view, "/?keep=1&tab=two")
   end
 
+  test "go to a page that is gone refuses the workflow, never goes elsewhere (WTF-429)", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, "/?keep=1")
+    click(view, "bBtnNavGone")
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+    # Step 1 (a state) did not run either, and the page stayed put.
+    assert label(view) =~ "Label: start"
+    refute_patched(view)
+    refute_redirected(view)
+  end
+
   test "go to page sends only a thing's unique ID as the path segment (WTF-378)" do
     alias PhxCheckWeb.BubbleWorkflows
 
