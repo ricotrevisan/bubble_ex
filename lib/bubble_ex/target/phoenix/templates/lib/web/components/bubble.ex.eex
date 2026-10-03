@@ -254,11 +254,13 @@ defmodule <%= @web %>.Bubble do
         // The notice region lives in the top layer (WTF-474), above every
         // z-index a page has: an open manual popover, kept open (empty, it
         // shows nothing) so its live region stays in the accessibility tree.
+        // Reopening it puts it last in the top layer, above whatever
+        // entered it since (a dialog, another popover).
         raiseNotice() {
           const region = document.getElementById("bubble-notice")
           if (!region || typeof region.showPopover !== "function") return
-          if (region.matches(":popover-open")) return
           try {
+            if (region.matches(":popover-open")) region.hidePopover()
             region.showPopover()
           } catch (_e) {}
         },
@@ -273,8 +275,10 @@ defmodule <%= @web %>.Bubble do
           message.className = "rounded bg-rose-50 px-4 py-2 text-sm text-rose-900 shadow"
           message.textContent = text
           this.raiseNotice()
-          region.replaceChildren(message)
           clearTimeout(this.noticeTimer)
+          // The text arrives once the region is back in the tree, so the
+          // live region announces it.
+          requestAnimationFrame(() => region.replaceChildren(message))
           this.noticeTimer = setTimeout(() => region.replaceChildren(), 6000)
         },
         exec(op) {

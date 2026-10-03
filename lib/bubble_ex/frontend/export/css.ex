@@ -5,7 +5,9 @@ defmodule BubbleEx.Frontend.Export.Css do
   alias BubbleEx.Frontend.Export.{Bbcode, Safety}
   alias BubbleEx.Frontend.Normalized.Node
 
-  # The highest z-index an element gets: one below CSS's maximum (see z/1).
+  # The highest z-index an element gets: one below CSS's maximum, which the
+  # generated pages' workflow notice keeps for itself where the top layer
+  # is unsupported (WTF-474). See z_index/1.
   @max_z 2_147_483_646
 
   @base """
@@ -194,9 +196,30 @@ defmodule BubbleEx.Frontend.Export.Css do
     map
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
     |> Enum.map(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
+    |> Enum.map(fn
+      {"z-index", v} -> {"z-index", z_index(v)}
+      decl -> decl
+    end)
     |> Enum.filter(fn {_k, value} -> Safety.safe_css_value?(value) end)
     |> Enum.sort_by(&elem(&1, 0))
   end
+
+  @doc """
+  A z-index as emitted: at most 2147483646, one below CSS's maximum, which
+  the generated pages' workflow notice keeps for itself (WTF-474). A
+  number, or text that is one; anything else is returned as it is.
+  """
+  @spec z_index(term()) :: term()
+  def z_index(n) when is_number(n), do: min(n, @max_z)
+
+  def z_index(text) when is_binary(text) do
+    case Integer.parse(String.trim(text)) do
+      {n, ""} when n > @max_z -> Integer.to_string(@max_z)
+      _ -> text
+    end
+  end
+
+  def z_index(value), do: value
 
   @doc """
   The named styles as `shared/2` lowers them: per style, its declarations
@@ -1480,11 +1503,8 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp rotation(n) when is_number(n) and n != 0, do: "rotate(#{n}deg)"
   defp rotation(_), do: nil
 
-  # A page's z-index stays below the maximum, which the generated pages'
-  # workflow notice keeps for itself where the top layer is unsupported
-  # (WTF-474).
   defp z(nil), do: nil
-  defp z(n) when is_number(n), do: min(n, @max_z)
+  defp z(n) when is_number(n), do: n
   defp z(_), do: nil
 
   defp css_prop_name("bgcolor"), do: "background"

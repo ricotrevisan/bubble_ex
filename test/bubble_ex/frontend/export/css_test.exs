@@ -367,6 +367,63 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     refute css =~ "9999999999"
   end
 
+  test "a paint z-index, plain or responsive, is clamped too (WTF-474)" do
+    painted =
+      node("painted",
+        kind: :shape,
+        style: %{resolved: %{"z-index" => "2147483647"}},
+        responsive: [
+          %{
+            "media" => %{"operator" => "<", "width" => 768},
+            "paint" => %{"z-index" => 99_999_999_999}
+          }
+        ]
+      )
+
+    css = Css.page(painted)
+    [base, mobile] = String.split(css, "@media")
+    assert base =~ "z-index: 2147483646;"
+    assert mobile =~ "z-index: 2147483646;"
+    refute css =~ "2147483647"
+    refute css =~ "99999999999"
+
+    # What the HEEx emitter lowers (declarations, then Tailwind) too.
+    [lowered] = Css.lower(painted)
+    assert {"z-index", "2147483646"} in lowered.declarations
+
+    # Ordinary values pass as they are.
+    assert Css.z_index(183) == 183
+    assert Css.z_index("183") == "183"
+    assert Css.z_index("auto") == "auto"
+    assert Css.z_index(-1) == -1
+  end
+
+  test "a shared style's z-index, plain or responsive, is clamped (WTF-474)" do
+    style = %Style{
+      exporter_id: "footer",
+      map_key: "footer",
+      slug: "footer",
+      class_name: "s-footer",
+      properties: %{"z-index" => 9_999_999_999},
+      responsive: [
+        %{
+          "media" => %{"operator" => ">", "width" => 900},
+          "paint" => %{"z-index" => "9999999999"}
+        }
+      ]
+    }
+
+    css = Css.shared(%Normalized{styles: [style]})
+    [base, wide] = String.split(css, "@media")
+    assert base =~ "z-index: 2147483646;"
+    assert wide =~ "z-index: 2147483646;"
+    refute css =~ "9999999999"
+
+    [{_style, decls, [{">", 900, wide_decls}]}] = Css.style_rules(%Normalized{styles: [style]})
+    assert {"z-index", 2_147_483_646} in decls
+    assert {"z-index", "2147483646"} in wide_decls
+  end
+
   test "positions fixed children with absolute offsets and z-index" do
     child =
       node("fixed-child",

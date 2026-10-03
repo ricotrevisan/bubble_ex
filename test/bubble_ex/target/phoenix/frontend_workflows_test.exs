@@ -338,6 +338,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # The top layer: an open manual popover is above every z-index.
     assert notice =~ ~s(popover="manual")
     assert hook =~ "region.showPopover()"
+    # Reopened for every notice: above whatever entered the top layer since.
+    assert hook =~ ~s|if (region.matches(":popover-open")) region.hidePopover()|
     assert hook =~ "this.raiseNotice()"
     # Still a polite live region, in the tree before any notice arrives.
     assert notice =~ ~s(role="status")
@@ -349,13 +351,28 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert hook =~ "inset: auto 1rem 1rem auto"
   end
 
-  test "typing is debounced; checkboxes are not (WTF-475)", %{files: files} do
+  test "typing is debounced and commits on blur or Enter; checkboxes are not (WTF-475)", %{
+    files: files
+  } do
     page = files["lib/shop_web/live/index_live.html.heex"]
     [input] = Regex.run(~r/<input[^>]*data-bubble-id="bIn"[^>]*>/s, page)
     assert input =~ ~s(phx-debounce="300")
+    assert input =~ ~s(phx-blur="bubble:commit")
+    assert input =~ ~s(phx-value-element="bIn")
+
+    [form] = Regex.run(~r/<form\s+id="bubble-input-bIn".*?<\/form>/s, page)
+    assert form =~ ~s(phx-submit="bubble:commit")
+    assert form =~ ~s(<input type="hidden" name="bubble[on]" value="blur" />)
 
     [checkbox] = Regex.run(~r/<input[^>]*type="checkbox"[^>]*>/s, page)
     refute checkbox =~ "phx-debounce"
+    refute checkbox =~ "phx-blur"
+    [form] = Regex.run(~r/<form\s+id="bubble-input-bCheck".*?<\/form>/s, page)
+    assert form =~ ~s(phx-submit="bubble:change")
+    refute form =~ "bubble[on]"
+
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ ~s|def handle_event(socket, page, "bubble:commit", %{} = params) do|
   end
 
   test "BBCode around dynamic text renders its own tags, values escaped (WTF-450)", %{
@@ -407,7 +424,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert page =~ ~s|phx-click={Bubble.push("click", "", "bBtnState")}|
 
     assert page =~
-             ~r/<form\s+id="bubble-input-bIn"\s+phx-change="bubble:change"\s+phx-submit="bubble:change"/
+             ~r/<form\s+id="bubble-input-bIn"\s+phx-change="bubble:change"\s+phx-submit="bubble:commit"/
 
     assert page =~
              ~r/<input\s+type="hidden"\s+name="bubble\[value\]"\s+value="false"\s*\/><label\s+data-bubble-id="bCheck"/

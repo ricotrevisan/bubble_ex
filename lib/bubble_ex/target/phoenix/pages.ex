@@ -2584,8 +2584,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     do: not acc.template and Map.has_key?(Map.get(ctx, :tracked, %{}), bid(node))
 
   # A tracked input is named for its form (a checkbox sends "true"). Typing
-  # is debounced (WTF-475): Bubble re-evaluates on input change, so a
-  # change reaches the page 300 ms after the last keystroke (or on blur).
+  # (WTF-475) reaches the page 300 ms after the last keystroke, a value
+  # for the page's data and conditions only; leaving the field (or Enter)
+  # commits it (`bubble:commit`), which runs its "An input's value is
+  # changed" workflows. See BubbleWorkflows' "Unverified Bubble behavior".
   defp tracked_attrs(attrs, node, ctx, acc) do
     cond do
       not tracked?(node, ctx, acc) ->
@@ -2594,16 +2596,26 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       node.kind == :checkbox ->
         attrs |> put_attr("name", "bubble[value]") |> put_attr("value", "true")
 
-      node.kind in [:input, :multiline_input] ->
-        attrs |> put_attr("name", "bubble[value]") |> put_attr("phx-debounce", "300")
+      commits_on_blur?(node) ->
+        scope = if ctx.surface == :page, do: "", else: {:expr, "@scope"}
+
+        attrs
+        |> put_attr("name", "bubble[value]")
+        |> put_attr("phx-debounce", "300")
+        |> put_attr("phx-blur", "bubble:commit")
+        |> put_attr("phx-value-element", bid(node))
+        |> put_attr("phx-value-scope", scope)
 
       true ->
         put_attr(attrs, "name", "bubble[value]")
     end
   end
 
+  defp commits_on_blur?(node), do: node.kind in [:input, :multiline_input]
+
   # A tracked input sits in its own form: every change reaches the page
-  # (`bubble:change`) with the element and its instance scope.
+  # (`bubble:change`) with the element and its instance scope. A text
+  # input's says it commits on blur (`bubble[on]`), and Enter commits it.
   defp wrap_input({markup, acc}, node, ctx) do
     if tracked?(node, ctx, acc) do
       id = bid(node)
@@ -2613,22 +2625,31 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           do: {~s( id="#{escape_attr("bubble-input-" <> id)}"), ~s( value="")},
           else: {~s| id={"bubble-input-\#{@scope}-" <> #{literal(id)}}|, " value={@scope}"}
 
-      unchecked =
-        if ctx.tracked[id] == :boolean,
-          do: ~s(<input type="hidden" name="bubble[value]" value="false">),
-          else: ""
+      hidden =
+        cond do
+          ctx.tracked[id] == :boolean ->
+            ~s(<input type="hidden" name="bubble[value]" value="false">)
+
+          commits_on_blur?(node) ->
+            ~s(<input type="hidden" name="bubble[on]" value="blur">)
+
+          true ->
+            ""
+        end
+
+      submit = if commits_on_blur?(node), do: "bubble:commit", else: "bubble:change"
 
       {[
          "<form",
          form_id,
-         ~s( phx-change="bubble:change" phx-submit="bubble:change" style="display: contents">),
+         ~s( phx-change="bubble:change" phx-submit="#{submit}" style="display: contents">),
          ~s(<input type="hidden" name="bubble[element]" value="),
          escape_attr(id),
          ~s(">),
          ~s(<input type="hidden" name="bubble[scope]"),
          scope,
          ">",
-         unchecked,
+         hidden,
          markup,
          "</form>"
        ], acc}

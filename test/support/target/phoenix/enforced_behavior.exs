@@ -168,6 +168,37 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
   # Review M1: Ash's count aggregate under-counts with policies that read
   # the actor (a watcher found 2 tasks and counted 0): a page count reads
   # the keys through :search instead.
+  defp memos(html),
+    do: ~r/Memo: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
+  # WTF-475: typing reads again only the sources reading the input, and
+  # keeps the rest as read. Not past an actor change: a user demoted while
+  # the page is open (no notification reaches it: it reads no user) stops
+  # finding the admins' memos at the next read, even an input's.
+  test "a demoted user's next read, even an input's, drops what they may no longer find", %{
+    conn: conn,
+    u1: u1
+  } do
+    data_access_on()
+    u1 = Ash.Seed.update!(u1, %{admin: true})
+    Ash.Seed.seed!(PhxCheck.Memo, %{id: "1700000000000x400000000000000001", title: "Roadmap"})
+
+    {:ok, view, html} = live(sign_in(conn, u1), "/")
+    assert memos(html) == ["Roadmap"]
+
+    Ash.Seed.update!(u1, %{admin: false})
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "a", "on" => "blur"}
+    })
+
+    Process.sleep(200)
+    html = render(view)
+    assert memos(html) == []
+    # The input's own source read as usual.
+    assert cells(html) == ["Bake", "Clean"]
+  end
+
   test "a page count counts what the user finds", %{u1: u1} do
     query = Ash.Query.new(PhxCheck.Task)
     assert PhxCheckWeb.BubbleData.read(query, %{actor: actor(u1)}, :count, nil) == 2

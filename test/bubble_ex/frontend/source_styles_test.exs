@@ -30,6 +30,22 @@ defmodule BubbleEx.Frontend.SourceStylesTest do
     refute css =~ "color"
   end
 
+  test "a retained style block's z-index stays below the workflow notice (WTF-474)" do
+    alias BubbleEx.Frontend.Export.SourceStyles
+
+    styles =
+      SourceStyles.discover("""
+      <html><head><style>
+      #footer { z-index: 2147483647; } #header { z-index: 183; }
+      </style></head></html>
+      """)
+
+    assert {css, 0} = SourceStyles.compile(styles)
+    assert css =~ "z-index: 2147483646;"
+    assert css =~ "z-index: 183;"
+    refute css =~ "2147483647"
+  end
+
   test "an unterminated comment cannot promote its contents into active rules" do
     alias BubbleEx.Frontend.Export.SourceStyles
 

@@ -66,6 +66,41 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert label(view) =~ "Label: big"
   end
 
+  # WTF-475: typing in a text input (its debounced change) is its value
+  # only; "An input's value is changed" runs when it is committed (blur,
+  # Enter), once per value, as Bubble's fires on blur.
+  test "a text input's workflow runs on blur or Enter, not while typing", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bNum", "value" => "10", "on" => "blur"}
+    })
+
+    assert label(view) =~ "Label: start"
+
+    view |> element(~s(input[data-bubble-id="bNum"])) |> render_blur(%{"value" => "10"})
+    assert label(view) =~ "Label: big"
+
+    # The same value committed again (Enter) runs nothing.
+    change(view, "bIn", "Ann")
+    assert click(view, "bBtnState") =~ "Label: Ann"
+
+    render_submit(view, "bubble:commit", %{
+      "bubble" => %{"scope" => "", "element" => "bNum", "value" => "10", "on" => "blur"}
+    })
+
+    assert label(view) =~ "Label: Ann"
+
+    # New ones do: the count drops under the condition's 5, then passes it.
+    for value <- ["2", "10"] do
+      render_submit(view, "bubble:commit", %{
+        "bubble" => %{"scope" => "", "element" => "bNum", "value" => value, "on" => "blur"}
+      })
+    end
+
+    assert label(view) =~ "Label: big"
+  end
+
   test "a custom event runs with its parameters", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     assert click(view, "bBtnCall") =~ "Label: called"
