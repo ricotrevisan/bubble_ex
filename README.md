@@ -49,8 +49,11 @@ If using with Phoenix, you will likely have an error with `floki`. You will have
 `mix bubble.editor` can freshly read, validate, apply, verify, and roll back a
 bounded set of page, reusable, element, responsive-layout, installed-plugin,
 custom-state, and frontend-workflow definitions on an isolated child branch.
-It refuses test/live writes and never retries an ambiguous write. See the
-[supported-operation matrix and recovery model](docs/editor-cli.md).
+It refuses test/live writes and never retries an ambiguous write. The same
+`BubbleEx.Editor` API supports explicit test/live reads, anonymous runtime page
+discovery with stable page references, and identity-checked page-scoped reads.
+Editor cookies stay on `https://bubble.io`; redirects and raw failure bodies
+are refused. See the [API, support matrix and recovery model](docs/editor-cli.md).
 
 ## Configuration
 
