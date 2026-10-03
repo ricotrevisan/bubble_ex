@@ -208,6 +208,41 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     assert [%{name: "element_state_bi1_get_data", type: "number"}] = expr.arguments
   end
 
+  # WTF-478: a backend workflow's search matches nothing on an empty
+  # constraint value, whatever it states; a page's drops it only when it
+  # states `ignore_empty_constraints: true`.
+  test "an empty constraint value matches nothing, or is dropped", %{project: project} do
+    compile = fn searches, options ->
+      env = env(searches: searches)
+
+      raw =
+        search(
+          "custom.task",
+          [con("estimate_number", "equals", chain(el("bI1"), [msg("get_data")]))],
+          options
+        )
+
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(ir, project)
+      Source.expr(expr)
+    end
+
+    arg = "^arg(:element_state_bi1_get_data)"
+    nothing = "expr(not is_nil(#{arg}) and is_not_distinct_from(estimate, #{arg}))"
+    dropped = "expr(is_nil(#{arg}) or is_not_distinct_from(estimate, #{arg}))"
+
+    for options <- [
+          %{},
+          %{"ignore_empty_constraints" => false},
+          %{"ignore_empty_constraints" => true}
+        ] do
+      assert compile.(:backend, options) == nothing
+    end
+
+    assert compile.(:page, %{}) == nothing
+    assert compile.(:page, %{"ignore_empty_constraints" => true}) == dropped
+  end
+
   test "Bubble's random sort compiles to :random; an unknown sort field does not (WTF-452)", %{
     project: project
   } do

@@ -16,7 +16,7 @@
         "runtime_container": 329,
         "style_condition": 14,
         "trigger_in_runtime_template": 207,
-        "uncompiled_expression": 2622,
+        "uncompiled_expression": 2233,
         "unresolved_reference": 88,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -53,9 +53,9 @@
           "total": 1
         },
         "backend": {
-          "auto": 8,
+          "auto": 10,
           "closed": 0,
-          "open": 48,
+          "open": 46,
           "total": 56
         },
         "cutover": {
@@ -125,29 +125,29 @@
           "total": 1
         },
         "surface": {
-          "auto": 12,
+          "auto": 15,
           "closed": 0,
-          "open": 147,
+          "open": 144,
           "total": 159
         },
         "workflow": {
-          "auto": 1448,
+          "auto": 1567,
           "closed": 0,
-          "open": 1516,
+          "open": 1397,
           "total": 2964
         }
       },
       "top_level": {
-        "auto": 48,
+        "auto": 53,
         "closed": 0,
-        "open": 440,
+        "open": 435,
         "total": 488
       },
       "units": {
         "actions": {
-          "generated": 4109,
+          "generated": 4343,
           "removed": 0,
-          "residue": 2090,
+          "residue": 1856,
           "total": 6199
         },
         "api_calls": {
@@ -162,12 +162,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5388,
-          "generated_in_runtime_template": 946,
+          "generated": 5471,
+          "generated_in_runtime_template": 958,
           "in_runtime_template": 1361,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1882,
+          "residue": 1799,
           "total": 8632
         },
         "plugins": {
@@ -180,15 +180,15 @@
           "total": 146
         },
         "workflows_backend": {
-          "auto": 253,
+          "auto": 352,
           "closed": 0,
-          "open": 406,
+          "open": 307,
           "total": 659
         },
         "workflows_frontend": {
-          "auto": 1195,
+          "auto": 1215,
           "closed": 0,
-          "open": 1110,
+          "open": 1090,
           "total": 2305
         },
         "workflows_removed": 0,
@@ -410,7 +410,7 @@
         "runtime_container": 329,
         "style_condition": 14,
         "trigger_in_runtime_template": 207,
-        "uncompiled_expression": 2622,
+        "uncompiled_expression": 2233,
         "unresolved_reference": 88,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -447,9 +447,9 @@
           "total": 1
         },
         "backend": {
-          "auto": 8,
+          "auto": 10,
           "closed": 0,
-          "open": 48,
+          "open": 46,
           "total": 56
         },
         "cutover": {
@@ -519,29 +519,29 @@
           "total": 1
         },
         "surface": {
-          "auto": 12,
+          "auto": 15,
           "closed": 0,
-          "open": 147,
+          "open": 144,
           "total": 159
         },
         "workflow": {
-          "auto": 1448,
+          "auto": 1567,
           "closed": 0,
-          "open": 1516,
+          "open": 1397,
           "total": 2964
         }
       },
       "top_level": {
-        "auto": 48,
+        "auto": 53,
         "closed": 0,
-        "open": 440,
+        "open": 435,
         "total": 488
       },
       "units": {
         "actions": {
-          "generated": 4109,
+          "generated": 4343,
           "removed": 0,
-          "residue": 2090,
+          "residue": 1856,
           "total": 6199
         },
         "api_calls": {
@@ -556,12 +556,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5388,
-          "generated_in_runtime_template": 946,
+          "generated": 5471,
+          "generated_in_runtime_template": 958,
           "in_runtime_template": 1361,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1882,
+          "residue": 1799,
           "total": 8632
         },
         "plugins": {
@@ -574,15 +574,15 @@
           "total": 146
         },
         "workflows_backend": {
-          "auto": 253,
+          "auto": 352,
           "closed": 0,
-          "open": 406,
+          "open": 307,
           "total": 659
         },
         "workflows_frontend": {
-          "auto": 1195,
+          "auto": 1215,
           "closed": 0,
-          "open": 1110,
+          "open": 1090,
           "total": 2305
         },
         "workflows_removed": 0,

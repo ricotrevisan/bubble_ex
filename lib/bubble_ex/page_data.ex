@@ -33,11 +33,13 @@ defmodule BubbleEx.PageData do
   dropdown's choices, a table, a plugin's) are not group data and not
   listed.
 
-  Searches say whether they ignore empty constraints
-  (`ignore_empty_constraints`). Most do not, and Bubble's default is not
-  verified: such a search whose constraint value may be empty is residue
-  (`:uncompiled_expression`, construct `ignore_empty_constraints`) unless
-  the caller supplies the default (`:ignore_empty_constraints`).
+  A search's constraint whose value is empty matches nothing unless the
+  search states `ignore_empty_constraints: true`, which drops it (Bubble's
+  page searches, replayed 2026-10-01; `BubbleEx.Expression.Compiler`). A
+  `:filtered` list that does not state it, with a constraint value that
+  may be empty, is residue (`:uncompiled_expression`, construct
+  `ignore_empty_constraints`) unless the caller supplies a default
+  (`:ignore_empty_constraints`).
 
   ## Residue
 
@@ -84,10 +86,11 @@ defmodule BubbleEx.PageData do
 
   ## Options
 
-    * `:ignore_empty_constraints` - what a search that does not state
-      Bubble's `ignore_empty_constraints` does with an empty constraint
-      value (`BubbleEx.Expression.Env`): nil (unknown, the default: such a
-      search is residue), `true` or `false`
+    * `:ignore_empty_constraints` - what a `:filtered` list that does not
+      state Bubble's `ignore_empty_constraints` does with an empty
+      constraint value (`BubbleEx.Expression.Env`): nil (unknown, the
+      default: such a list is residue), `true` or `false`. Searches do not
+      read it.
   """
   @spec build(map(), Model.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def build(app, model, opts \\ [])
@@ -99,6 +102,7 @@ defmodule BubbleEx.PageData do
     env =
       Env.new(model,
         tree: tree,
+        searches: :page,
         ignore_empty_constraints: Keyword.get(opts, :ignore_empty_constraints)
       )
 

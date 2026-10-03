@@ -269,4 +269,62 @@ defmodule BubbleEx.Workflows.FrontendTest do
   test "invalid input" do
     assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Frontend.build(:app, nil, nil)
   end
+
+  # WTF-478, replayed on Bubble (2026-10-01): a page's search (a page
+  # workflow's included) drops a constraint whose value is empty only when
+  # it states `ignore_empty_constraints: true`; else the constraint
+  # matches nothing.
+  test "a page workflow's search: an empty constraint value is dropped or matches nothing" do
+    step = fn options ->
+      search = %{
+        "type" => "Search",
+        "properties" =>
+          Map.merge(options, %{
+            "type_to_find" => "custom.note",
+            "constraints" => %{
+              "0" => %{
+                "key" => "title_text",
+                "constraint_type" => "equals",
+                "value" => %{
+                  "type" => "GetElement",
+                  "properties" => %{"element_id" => "bIn"},
+                  "next" => %{"type" => "Message", "name" => "get_data"}
+                }
+              }
+            }
+          }),
+        "next" => %{"type" => "Message", "name" => "first_element"}
+      }
+
+      action = %{
+        "id" => "aLoad1",
+        "type" => "DeleteThing",
+        "properties" => %{"to_delete" => search}
+      }
+
+      app()
+      |> edit("wLoad", &Map.put(&1, "actions", %{"0" => action}))
+      |> lower()
+      |> workflow("wLoad")
+      |> Map.fetch!(:steps)
+      |> hd()
+    end
+
+    for {options, op} <- [
+          {%{}, :and},
+          {%{"ignore_empty_constraints" => false}, :and},
+          {%{"ignore_empty_constraints" => true}, :or}
+        ] do
+      step = step.(options)
+      assert step.residue == []
+      assert %{target: %{ir: %{op: :first, args: [%{op: :search, args: [_, pred]}]}}} = step.args
+
+      assert %{op: ^op, args: [guard, %{op: :eq, args: [%{op: :field}, value]}]} = pred
+
+      case op do
+        :and -> assert %{op: :not, args: [%{op: :is_empty, args: [^value]}]} = guard
+        :or -> assert %{op: :is_empty, args: [^value]} = guard
+      end
+    end
+  end
 end

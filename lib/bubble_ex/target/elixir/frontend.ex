@@ -56,7 +56,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   def compile(app, %Model{} = model, %Project{} = project, %Normalized{} = frontend, opts)
       when is_map(app) and not is_struct(app) and is_list(opts) do
-    env = Env.new(model, tree: Tree.build(app))
+    env = Env.new(model, tree: Tree.build(app), searches: :page)
 
     compiled =
       for node <- Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1),

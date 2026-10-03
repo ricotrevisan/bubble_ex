@@ -15,10 +15,28 @@ defmodule BubbleEx.Expression.Compiler do
   What has no IR yet: raw nodes (the parser's unmodeled operators and
   sources), searches and filters with unmodeled constraints or options
   (`dynamic_sort_field`, `additional_sort_fields`), elements used as values
-  without a state, and constraints whose value may be empty while the
-  search does not say whether empty constraints are ignored (Bubble's
-  `ignore_empty_constraints`; absent in most searches, and its default is
-  not verified: `Env.ignore_empty_constraints` supplies one).
+  without a state, and constraints whose value may be empty where what
+  Bubble does with them is not known.
+
+  ## Empty constraint values
+
+  What a constraint whose value is empty does depends on where its search
+  runs (`Env.searches`), as replayed against Bubble (2026-10-01):
+
+  | where | `ignore_empty_constraints` unstated or false | `true` |
+  |-------|----------------------------------------------|--------|
+  | `:page` (a page's data, elements and workflows) | matches nothing, even a record whose field is empty | dropped |
+  | `:backend` (a backend workflow) | matches nothing | matches nothing (no effect) |
+
+  "Matches nothing" is `not is_empty(value) and constraint`; "dropped" is
+  `is_empty(value) or constraint`. Either is a filter of the same search,
+  read for the actor like any other, so privacy rules still apply. The
+  Current User itself is never empty: Bubble's logged-out visitor is a
+  temporary user (`logged_out_user_is_empty` is refuted), so `X = Current
+  User` is not dropped for them. Where `Env.searches` is nil (a privacy
+  condition), and for `:filtered`, the search's own option or
+  `Env.ignore_empty_constraints` decides: `true` drops, `false` compares,
+  and nil leaves the constraint uncompiled.
   """
 
   alias BubbleEx.{Diagnostic, Error, Expression, Model}
@@ -634,13 +652,13 @@ defmodule BubbleEx.Expression.Compiler do
   # (nil when there are none).
   defp constraints(n, item_type, base, ctx) do
     keys = keys(n.meta, :constraint_keys, length(n.constraints))
-    ignore = Map.get(n.options, "ignore_empty_constraints", ctx.env.ignore_empty_constraints)
+    mode = empty_mode(n, ctx.env)
 
     {preds, diags} =
       n.constraints
       |> Enum.with_index()
       |> Enum.map_reduce([], fn {constraint, i}, acc ->
-        {pred, d} = constraint(constraint, item_type, ignore, base ++ [Enum.at(keys, i)], ctx)
+        {pred, d} = constraint(constraint, item_type, mode, base ++ [Enum.at(keys, i)], ctx)
         {pred, acc ++ d}
       end)
 
@@ -652,7 +670,7 @@ defmodule BubbleEx.Expression.Compiler do
     end
   end
 
-  defp constraint(%Constraint{} = con, item_type, ignore, path, ctx) do
+  defp constraint(%Constraint{} = con, item_type, mode, path, ctx) do
     vpath = path ++ [get_in(con.meta, [:keys, :value]) || "value"]
 
     {value, diags} =
@@ -674,8 +692,11 @@ defmodule BubbleEx.Expression.Compiler do
       {_, :error} ->
         {:error, diags ++ [uncompiled(path, "the constraint #{inspect(con.op)}", :constraint)]}
 
+      {_, {:ok, pred}} when con.op in [:is_empty, :is_not_empty] ->
+        {pred, diags}
+
       {_, {:ok, pred}} ->
-        empty_guard(pred, value, ignore, path, diags)
+        empty_guard(pred, value, mode, path, diags)
     end
   end
 
@@ -723,25 +744,46 @@ defmodule BubbleEx.Expression.Compiler do
 
   defp constraint_op(_op, _lhs, _v), do: :error
 
-  # Bubble can ignore a constraint whose value is empty. That only matters
-  # when the value can be empty; then the search must say which it does.
-  defp empty_guard(pred, value, ignore, path, diags) do
+  # What a constraint whose value is empty does (see the moduledoc):
+  # `:drop`, `:nothing` (matches no record), `:compare` or `:unknown`.
+  defp empty_mode(%Search{options: options}, %Env{searches: :page}),
+    do: if(options["ignore_empty_constraints"] == true, do: :drop, else: :nothing)
+
+  defp empty_mode(%Search{}, %Env{searches: :backend}), do: :nothing
+
+  defp empty_mode(n, env) do
+    case Map.get(n.options, "ignore_empty_constraints", env.ignore_empty_constraints) do
+      true -> :drop
+      false -> :compare
+      _ -> :unknown
+    end
+  end
+
+  # An empty constraint value only matters when the value can be empty.
+  defp empty_guard(pred, value, mode, path, diags) do
     cond do
-      value == nil or not nullable?(value) or ignore == false ->
+      value == nil or not nullable?(value) or mode == :compare ->
         {pred, diags}
 
-      ignore == true ->
+      mode == :drop ->
         {IR.node(:or, [IR.node(:is_empty, [value], "boolean"), pred], "boolean"), diags}
+
+      mode == :nothing ->
+        {IR.node(:and, [negate(IR.node(:is_empty, [value], "boolean")), pred], "boolean"), diags}
 
       true ->
         reason =
-          "a constraint whose value may be empty, in a search that does not state ignore_empty_constraints"
+          "a constraint whose value may be empty, where what Bubble does with an empty value is not known"
 
         {:error, diags ++ [uncompiled(path, reason, :ignore_empty_constraints)]}
     end
   end
 
-  defp nullable?(%IR{op: op}) when op in [:literal, :option, :all_options, :this], do: false
+  # The Current User is never empty: a logged-out visitor is Bubble's
+  # temporary user. Its fields can be.
+  defp nullable?(%IR{op: op})
+       when op in [:literal, :option, :all_options, :this, :current_user],
+       do: false
 
   defp nullable?(%IR{type: "boolean", op: op}) when op not in [:field, :input, :fallback],
     do: false

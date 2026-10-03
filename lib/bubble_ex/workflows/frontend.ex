@@ -197,7 +197,7 @@ defmodule BubbleEx.Workflows.Frontend do
   def build(app, %Model{} = model, %Index{} = index, _opts)
       when is_map(app) and not is_struct(app) do
     tree = Tree.build(app)
-    env = Env.new(model, tree: tree)
+    env = Env.new(model, tree: tree, searches: :page)
 
     surfaces =
       for %{kind: kind} = s <- index.symbols,

@@ -23,6 +23,8 @@ defmodule BubbleEx.Expression.Sites do
       database trigger's workflow knows the triggering type
       (`trigger_type`), and every step knows the result types of the
       workflow's data steps (`steps`)
+    * searches run on a page (`Env.searches: :page`) except in a backend
+      workflow (`:backend`)
 
   `kind` is `:element` or `:workflow`; `subject` has the workflow's Bubble
   ID for workflow sites. Order is by source path.
@@ -63,13 +65,13 @@ defmodule BubbleEx.Expression.Sites do
           is_map(owners),
           {key, owner} <- Enum.sort(owners),
           is_map(owner),
-          site <- owner(owner, [section, key], env),
+          site <- owner(owner, [section, key], %{env | searches: :page}),
           do: site
 
     api =
       case Map.get(app, "api") do
         workflows when is_map(workflows) or is_list(workflows) ->
-          workflows(workflows, ["api"], nil, env)
+          workflows(workflows, ["api"], nil, %{env | searches: :backend})
 
         _ ->
           []

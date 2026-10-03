@@ -360,6 +360,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
   defp cells(html),
     do: ~r/Task: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
 
+  defp strict(html),
+    do: ~r/Strict: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
   test "data access is off by default: the pages load nothing", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/")
     assert cells(html) == []
@@ -541,6 +544,36 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
 
     Process.sleep(200)
     assert cells(render(view)) == ["Answer", "Bake", "Clean"]
+  end
+
+  # WTF-478, replayed on Bubble (2026-10-01): bList states
+  # ignore_empty_constraints true (an empty query drops the constraint),
+  # bStrict states false (an empty query matches nothing, though every
+  # title contains "").
+  test "an empty constraint value: ignored when the search says so, else nothing", %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/")
+    # No value yet (nil).
+    assert cells(html) == ["Answer", "Bake", "Clean"]
+    assert strict(html) == []
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "ea"}
+    })
+
+    Process.sleep(200)
+    html = render(view)
+    assert cells(html) == ["Clean"]
+    assert strict(html) == ["Clean"]
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => ""}
+    })
+
+    Process.sleep(200)
+    html = render(view)
+    assert cells(html) == ["Answer", "Bake", "Clean"]
+    assert strict(html) == []
   end
 
   test "conditions see freshly loaded data on page load and on notification" do

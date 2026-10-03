@@ -38,11 +38,14 @@ defmodule <%= @web %>.BubbleData do
 
   **A search that ignores empty constraints can return every record.** A
   search stating `ignore_empty_constraints: true` drops each constraint
-  whose value is empty, as Bubble does: for a logged-out visitor
-  `Current User` is empty, so `X = Current User` is dropped and the
-  search returns every record of the type (up to its page size or
-  `:max_items`). With no policies nothing stops this; require a signed-in
-  user on such pages or add policies before enabling data access.<% end %>
+  whose value is empty, as Bubble does on a page (any other empty
+  constraint value matches nothing). For a logged-out visitor the
+  current user's fields are empty, so `X = Current User's Workspace` is
+  dropped and the search returns every record of the type (up to its
+  page size or `:max_items`); `X = Current User` itself is never empty
+  and matches nothing. With no policies nothing stops this; require a
+  signed-in user on such pages or add policies before enabling data
+  access.<% end %>
 
   ## What a browser can choose
 
