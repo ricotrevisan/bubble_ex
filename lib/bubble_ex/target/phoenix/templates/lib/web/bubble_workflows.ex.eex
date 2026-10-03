@@ -221,6 +221,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_stale, false)
+    |> assign(:bubble_data_inputs, MapSet.new())
     |> assign(:bubble_thing, nil)
   end
 
@@ -322,6 +323,7 @@ defmodule <%= @web %>.BubbleWorkflows do
         socket
         |> assign(:bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
         |> assign(:bubble_refused, false)
+        |> BubbleData.mark_inputs([element])
 
       {:noreply, socket |> event(page, [{module, scope, ids, %{}}], nil, :deferred) |> notice()}
     else
@@ -552,7 +554,6 @@ defmodule <%= @web %>.BubbleWorkflows do
           socket
           |> assign(:bubble_pending_run, run)
           |> assign(:bubble_pending_events, pending)
-          |> BubbleData.mark_stale()
           |> BubbleData.defer()
         else
           # No page data to re-read: keep input-only workflows and their
@@ -733,17 +734,26 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp apply_ctx(socket, %Ctx{} = ctx) do
     # A data step may have written what the page shows; a custom state or
-    # an input may be a search constraint.
-    stale? =
-      ctx.data_stale or ctx.states != socket.assigns.bubble_states or
-        ctx.inputs != socket.assigns.bubble_inputs
+    # an input may be a search constraint (an input only for the sources
+    # reading it, WTF-475).
+    changed = changed_inputs(socket.assigns.bubble_inputs, ctx.inputs)
+
+    socket =
+      cond do
+        ctx.data_stale or ctx.states != socket.assigns.bubble_states ->
+          BubbleData.mark_stale(socket)
+
+        changed != [] ->
+          BubbleData.mark_inputs(socket, changed)
+
+        true ->
+          socket
+      end
 
     socket =
       socket
       |> assign(:bubble_states, ctx.states)
       |> assign(:bubble_inputs, ctx.inputs)
-
-    socket = if stale?, do: BubbleData.mark_stale(socket), else: socket
 
     socket =
       if ctx.js == [],
@@ -757,6 +767,16 @@ defmodule <%= @web %>.BubbleWorkflows do
       {:redirect, to} -> redirect(socket, to: to)
       {:external, url} -> redirect(socket, external: url)
     end
+  end
+
+  # The input elements whose value differs between `before` and `now`.
+  defp changed_inputs(same, same), do: []
+
+  defp changed_inputs(before, now) do
+    (Map.keys(before) ++ Map.keys(now))
+    |> Enum.uniq()
+    |> Enum.filter(&(Map.get(before, &1) != Map.get(now, &1)))
+    |> Enum.map(fn {_scope, element} -> element end)
   end
 
   # Condition-true workflows: each runs when its condition becomes true

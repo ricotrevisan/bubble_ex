@@ -32,7 +32,8 @@ defmodule <%= @web %>.Bubble do
       overlays never react. It also runs the element steps a server-side
       workflow sends (`bubble:exec`) and shows, as text in a polite live
       region (`#bubble-notice`), the notice of a refused click or input
-      change (`bubble:notice`, WTF-453)
+      change (`bubble:notice`, WTF-453), in the top layer (an open manual
+      popover) so no element covers it, whatever its z-index (WTF-474)
   """
 
   use Phoenix.Component
@@ -162,6 +163,21 @@ defmodule <%= @web %>.Bubble do
 
   defp bbcode_node(assigns), do: ~H"{@node}"
 
+  # The maximum CSS z-index: the notice's fallback where the popover
+  # top layer is unsupported. The pages clamp theirs below it.
+  @notice_z 2_147_483_647
+
+  @doc "The z-index the notice keeps above every element (WTF-474)."
+  def notice_z, do: @notice_z
+
+  # A popover is centered by the browser's own styles; the notice sits at
+  # the bottom right, without the popover's border, padding or background.
+  defp notice_style,
+    do:
+      "position: fixed; inset: auto 1rem 1rem auto; margin: 0; padding: 0; border: 0; " <>
+        "background: transparent; overflow: visible; max-width: 24rem; " <>
+        "z-index: #{@notice_z}"
+
   @doc "The page's hook: element steps, overlays and Escape. Render it once per page."
   def runtime(assigns) do
     ~H"""
@@ -172,7 +188,8 @@ defmodule <%= @web %>.Bubble do
       aria-live="polite"
       aria-atomic="true"
       phx-update="ignore"
-      class="fixed bottom-4 right-4 z-50 max-w-sm"
+      popover="manual"
+      style={notice_style()}
     >
     </div>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".BubbleRuntime">
@@ -232,6 +249,18 @@ defmodule <%= @web %>.Bubble do
           this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
           // A refused click or input change (WTF-453): a short notice, as text.
           this.handleEvent("bubble:notice", ({ text }) => this.notice(text))
+          this.raiseNotice()
+        },
+        // The notice region lives in the top layer (WTF-474), above every
+        // z-index a page has: an open manual popover, kept open (empty, it
+        // shows nothing) so its live region stays in the accessibility tree.
+        raiseNotice() {
+          const region = document.getElementById("bubble-notice")
+          if (!region || typeof region.showPopover !== "function") return
+          if (region.matches(":popover-open")) return
+          try {
+            region.showPopover()
+          } catch (_e) {}
         },
         destroyed() {
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
@@ -243,6 +272,7 @@ defmodule <%= @web %>.Bubble do
           const message = document.createElement("p")
           message.className = "rounded bg-rose-50 px-4 py-2 text-sm text-rose-900 shadow"
           message.textContent = text
+          this.raiseNotice()
           region.replaceChildren(message)
           clearTimeout(this.noticeTimer)
           this.noticeTimer = setTimeout(() => region.replaceChildren(), 6000)

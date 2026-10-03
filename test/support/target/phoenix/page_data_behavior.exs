@@ -524,6 +524,50 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert queries < 24
   end
 
+  test "an input change reads again only the sources reading the input (WTF-475)", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, _html} = live(conn, "/")
+    handler = "page-data-narrow-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, _, _ -> send(parent, {:page_data_query, self()}) end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    # A whole read: a change notification of the type every source searches.
+    send(view.pid, {:bubble, :data_changed, PhxCheck.Bubble.Changes.topic("Task")})
+    Process.sleep(150)
+    html = render(view)
+    whole = flush_queries(view.pid)
+
+    # Only bList reads bQuery (and its cells' group reads bList): the two
+    # instances' searches, bFirstOpen and bRandom are not read again.
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "ea"}
+    })
+
+    Process.sleep(200)
+    narrowed = render(view)
+    queries = flush_queries(view.pid)
+    IO.puts("page data: a whole read took #{whole} queries, an input change #{queries}")
+
+    assert cells(narrowed) == ["Clean"]
+    assert queries > 0
+    assert queries <= whole - 4
+
+    # What does not read the input shows what it showed.
+    assert Regex.run(~r/First open: \w+/, narrowed) == Regex.run(~r/First open: \w+/, html)
+    assert picks(narrowed) == picks(html)
+  end
+
   test "an input is a search constraint; an empty one is ignored", %{conn: conn} do
     on()
     {:ok, view, _html} = live(conn, "/")

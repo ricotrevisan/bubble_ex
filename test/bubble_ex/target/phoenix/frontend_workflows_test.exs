@@ -329,6 +329,35 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     refute hook =~ "innerHTML"
   end
 
+  test "the refusal notice sits above every element, whatever its z-index (WTF-474)", %{
+    files: files
+  } do
+    hook = files["lib/shop_web/components/bubble.ex"]
+    [notice] = Regex.run(~r/<div\s+id="bubble-notice".*?>/s, hook)
+
+    # The top layer: an open manual popover is above every z-index.
+    assert notice =~ ~s(popover="manual")
+    assert hook =~ "region.showPopover()"
+    assert hook =~ "this.raiseNotice()"
+    # Still a polite live region, in the tree before any notice arrives.
+    assert notice =~ ~s(role="status")
+    assert notice =~ ~s(aria-live="polite")
+    refute notice =~ "z-50"
+
+    # Without popover support, the maximum z-index; pages stay below it.
+    assert hook =~ "@notice_z 2_147_483_647"
+    assert hook =~ "inset: auto 1rem 1rem auto"
+  end
+
+  test "typing is debounced; checkboxes are not (WTF-475)", %{files: files} do
+    page = files["lib/shop_web/live/index_live.html.heex"]
+    [input] = Regex.run(~r/<input[^>]*data-bubble-id="bIn"[^>]*>/s, page)
+    assert input =~ ~s(phx-debounce="300")
+
+    [checkbox] = Regex.run(~r/<input[^>]*type="checkbox"[^>]*>/s, page)
+    refute checkbox =~ "phx-debounce"
+  end
+
   test "BBCode around dynamic text renders its own tags, values escaped (WTF-450)", %{
     files: files
   } do

@@ -354,6 +354,19 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     end
   end
 
+  test "a z-index stays below the generated pages' workflow notice (WTF-474)" do
+    top =
+      node("top",
+        kind: :shape,
+        box: %{x: "0px", y: "0px", width: "10px", height: "10px", z_index: 9_999_999_999}
+      )
+
+    css = Css.page(node("fixed", layout: %{mode: :fixed}, children: [top]))
+    # The notice keeps 2147483647, CSS's maximum, for itself.
+    assert rule(css, "top") =~ "z-index: 2147483646;"
+    refute css =~ "9999999999"
+  end
+
   test "positions fixed children with absolute offsets and z-index" do
     child =
       node("fixed-child",

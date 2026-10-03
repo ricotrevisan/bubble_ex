@@ -584,7 +584,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # A source's entry in `__bubble__(:data)`: its element, function (nil
   # when not loaded: `blocked` says why), how it reads, where a cell's
   # value goes, the relationships the page's bindings read through it
-  # (`loads`, from the pages) and its change topic (its resource's name).
+  # (`loads`, from the pages), its change topic (its resource's name), the
+  # inputs it reads (`inputs`) and the page data it reads (`reads`, element
+  # IDs): an input change reads again only the sources that read the input,
+  # and those reading them, transitively (WTF-475).
   defp data_meta(d, s) do
     fun = if d.residue == [], do: ":" <> data_fun(d), else: "nil"
 
@@ -595,7 +598,41 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "instance: #{data_instance(d)}, " <>
       "cell: #{if d.cell, do: literal(d.cell), else: "nil"}, " <>
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
+      "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}}"
+  end
+
+  # The input elements a source's value or search constraints read.
+  defp data_inputs(read) do
+    read
+    |> read_bindings()
+    |> Enum.flat_map(fn
+      %{bind: {:input, %{element: e}}} -> [e]
+      _ -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp read_bindings({:value, %{bindings: bindings}}), do: bindings
+
+  defp read_bindings({:query, %{pins: pins}}),
+    do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
+
+  defp read_bindings(_), do: []
+
+  # The page data a source reads, as the elements it is kept under (an
+  # instance's thing under its instance and its reusable element).
+  defp data_reads(d) do
+    d
+    |> Map.get(:reads, [])
+    |> Enum.flat_map(fn
+      {:data, %{path: path, element: e}} -> [e | path]
+      {_kind, e} when is_binary(e) -> [e]
+      _ -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp data_read_kind(:url_thing), do: ":url_thing"

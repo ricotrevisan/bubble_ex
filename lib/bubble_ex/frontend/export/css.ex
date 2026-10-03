@@ -5,6 +5,9 @@ defmodule BubbleEx.Frontend.Export.Css do
   alias BubbleEx.Frontend.Export.{Bbcode, Safety}
   alias BubbleEx.Frontend.Normalized.Node
 
+  # The highest z-index an element gets: one below CSS's maximum (see z/1).
+  @max_z 2_147_483_646
+
   @base """
   * { box-sizing: border-box; }
   html { -webkit-font-smoothing: antialiased; }
@@ -1477,8 +1480,11 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp rotation(n) when is_number(n) and n != 0, do: "rotate(#{n}deg)"
   defp rotation(_), do: nil
 
+  # A page's z-index stays below the maximum, which the generated pages'
+  # workflow notice keeps for itself where the top layer is unsupported
+  # (WTF-474).
   defp z(nil), do: nil
-  defp z(n) when is_number(n), do: n
+  defp z(n) when is_number(n), do: min(n, @max_z)
   defp z(_), do: nil
 
   defp css_prop_name("bgcolor"), do: "background"

@@ -2583,7 +2583,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp tracked?(node, ctx, acc),
     do: not acc.template and Map.has_key?(Map.get(ctx, :tracked, %{}), bid(node))
 
-  # A tracked input is named for its form (a checkbox sends "true").
+  # A tracked input is named for its form (a checkbox sends "true"). Typing
+  # is debounced (WTF-475): Bubble re-evaluates on input change, so a
+  # change reaches the page 300 ms after the last keystroke (or on blur).
   defp tracked_attrs(attrs, node, ctx, acc) do
     cond do
       not tracked?(node, ctx, acc) ->
@@ -2591,6 +2593,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       node.kind == :checkbox ->
         attrs |> put_attr("name", "bubble[value]") |> put_attr("value", "true")
+
+      node.kind in [:input, :multiline_input] ->
+        attrs |> put_attr("name", "bubble[value]") |> put_attr("phx-debounce", "300")
 
       true ->
         put_attr(attrs, "name", "bubble[value]")

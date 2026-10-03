@@ -1496,6 +1496,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **The workflow refusal notice is never covered** (WTF-474). The
+  generated pages' `#bubble-notice` (role `status`, a polite live region)
+  had `z-index: 50`, so an element with a higher one (a footer at 183)
+  hid it. It is now an open manual popover, in the browser's top layer
+  above every z-index, kept open while empty so its live region stays in
+  the tree; without popover support it has CSS's maximum z-index, and the
+  pages' own z-indexes are clamped below it.
+- **Typing in an input no longer re-reads the whole page** (WTF-475).
+  Each input change re-ran every data source of the page. Now each source
+  in `__bubble__(:data)` lists the inputs it reads (`inputs`) and the
+  page data it reads (`reads`); an input change reads again only the
+  sources that read that input, and those reading them, transitively,
+  keeping the rest. Tracked text inputs and multiline inputs debounce
+  typing (`phx-debounce="300"`). Sources scaffolded before this (no
+  `inputs`) still read the whole page on an input change.
 - **Policy heads format the same on every Elixir version** (WTF-459).
   A `field_policy [...] do` or `policy [...] do` head that passed 98
   columns only by its ` do` stayed on one line on Elixir 1.17/1.18 and

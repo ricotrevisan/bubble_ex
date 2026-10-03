@@ -99,6 +99,15 @@ defmodule <%= @web %>.BubbleData do
   delivered to the page (sent after their writes committed, so the read
   sees them): a workflow's own write and its notification are one read.
 
+  An input change (typing, WTF-475) is narrower: it reads again only the
+  sources whose value or search constraints read that input (a source's
+  `inputs` in `__bubble__(:data)`) and the sources reading those
+  (`reads`, `cell`), transitively; the rest of the page's data stays as
+  it is. The browser debounces typing (`phx-debounce`, 300 ms) and the
+  page coalesces what still arrives into one read (`defer/2`). A source
+  listed without `inputs` (scaffolded before WTF-475) is read again on
+  any input change, with the rest of the page.
+
   ## Unverified Bubble behavior
 
   To confirm by replay (WTF-358): a page's thing is read from the URL path
@@ -193,7 +202,10 @@ defmodule <%= @web %>.BubbleData do
   The data is then current (`@bubble_data_stale` false).
   """
   def load(socket, page) do
-    socket = assign(socket, :bubble_data_stale, false)<%= if @enforced? do %>
+    socket =
+      socket
+      |> assign(:bubble_data_stale, false)
+      |> assign(:bubble_data_inputs, MapSet.new())<%= if @enforced? do %>
     socket = if data_access?(), do: BubbleWorkflows.refresh_actor(socket), else: socket<% end %>
 
     if data_access?() and connected?(socket) do
@@ -243,18 +255,111 @@ defmodule <%= @web %>.BubbleData do
   def mark_stale(socket), do: assign(socket, :bubble_data_stale, true)
 
   @doc """
+  Marks the inputs `elements` (Bubble IDs) changed: the next `reload/2`
+  reads again only the sources that read them, transitively (WTF-475).
+  """
+  def mark_inputs(socket, elements) do
+    changed = Map.get(socket.assigns, :bubble_data_inputs) || MapSet.new()
+    assign(socket, :bubble_data_inputs, Enum.into(elements, changed))
+  end
+
+  @doc """
   Reads the page's data again only when it is stale, or when a change
   notification of a subscribed topic is already waiting (e.g. the echo of
-  a write the event just made outside the workflow runtime).
+  a write the event just made outside the workflow runtime). After input
+  changes alone (`mark_inputs/2`) it reads only the sources that read
+  them.
   """
   def reload(socket, page) do
     topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
     waiting? = take_changes(topics, false)
+    inputs = Map.get(socket.assigns, :bubble_data_inputs) || MapSet.new()
 
-    if waiting? or Map.get(socket.assigns, :bubble_data_stale, false),
-      do: load(socket, page),
-      else: socket
+    cond do
+      waiting? or Map.get(socket.assigns, :bubble_data_stale, false) -> load(socket, page)
+      MapSet.size(inputs) > 0 -> load_inputs(socket, page, inputs)
+      true -> socket
+    end
   end
+
+  # Reads again the sources that read the changed inputs, and those that
+  # read them; keeps the rest. Their subscriptions stay as they were, plus
+  # the topics of what was read (a stale one costs a read, never a miss).
+  defp load_inputs(socket, page, changed) do
+    socket = assign(socket, :bubble_data_inputs, MapSet.new())
+
+    case affected(page, changed) do
+      :all ->
+        load(socket, page)
+
+      affected ->
+        cond do
+          MapSet.size(affected) == 0 ->
+            socket
+
+          data_access?() and connected?(socket) -><%= if @enforced? do %>
+            socket = BubbleWorkflows.refresh_actor(socket)<% end %>
+            old_topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
+
+            data =
+              Map.reject(socket.assigns.bubble_data, fn {key, _} ->
+                MapSet.member?(affected, elem(key, 1))
+              end)
+
+            {data, topics} =
+              Enum.reduce(BubbleWorkflows.surfaces(page), {data, old_topics}, fn {scope, module},
+                                                                               acc ->
+                load_surface(socket, module, scope, acc, affected)
+              end)
+
+            socket
+            |> assign(:bubble_data, data)
+            |> subscribe(topics)
+
+          true ->
+            load(socket, page)
+        end
+    end
+  end
+
+  # The elements of the sources an input change makes read again: those
+  # reading a changed input, then those reading them (their data, or the
+  # list of the repeating group whose cells they fill), to a fixpoint.
+  # `:all` when a source does not say what it reads.
+  defp affected(page, changed) do
+    sources = for {_scope, m} <- BubbleWorkflows.surfaces(page), s <- sources(m), do: s
+
+    if Enum.all?(sources, &is_list(Map.get(&1, :inputs))) do
+      direct =
+        for s <- sources,
+            Enum.any?(s.inputs, &MapSet.member?(changed, &1)),
+            into: MapSet.new(),
+            do: s.element
+
+      spread(sources, direct)
+    else
+      :all
+    end
+  end
+
+  defp spread(sources, affected) do
+    marked = Enum.reduce(sources, affected, &mark_instance(&1, &2))
+
+    next =
+      for s <- sources,
+          not MapSet.member?(affected, s.element),
+          Enum.any?([s.cell | Map.get(s, :reads, [])], &MapSet.member?(marked, &1)),
+          into: affected,
+          do: s.element
+
+    if MapSet.size(next) == MapSet.size(affected), do: affected, else: spread(sources, next)
+  end
+
+  # What reads an instance's thing names the instance as well as its holder.
+  defp mark_instance(%{instance: instance, element: e}, set) when is_binary(instance),
+    do: if(MapSet.member?(set, e), do: MapSet.put(set, instance), else: set)
+
+  defp mark_instance(_source, set), do: set
 
   # Takes the change notifications waiting in the page's mailbox; whether
   # one was of a subscribed topic.
@@ -303,8 +408,13 @@ defmodule <%= @web %>.BubbleData do
     FunctionClauseError -> []
   end
 
-  defp load_surface(socket, module, scope, acc) do
-    {cells, own} = Enum.split_with(sources(module), & &1.cell)
+  # Every source of the surface, or only those whose element is in `only`.
+  defp load_surface(socket, module, scope, acc, only \\ nil) do
+    {cells, own} =
+      module
+      |> sources()
+      |> Enum.filter(&(is_nil(only) or MapSet.member?(only, &1.element)))
+      |> Enum.split_with(& &1.cell)
 
     acc =
       Enum.reduce(own, acc, fn source, {data, topics} ->
