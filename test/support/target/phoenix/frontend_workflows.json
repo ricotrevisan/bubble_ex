@@ -397,6 +397,22 @@
           },
           "type": "Button"
         },
+        "bBtnNavGone": {
+          "id": "bBtnNavGone",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 27,
+            "text": {
+              "entries": {
+                "0": "Go to a page that is gone"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
         "bBtnOpen": {
           "id": "bBtnOpen",
           "properties": {
@@ -1210,6 +1226,36 @@
           "id": "wNav",
           "properties": {
             "element_id": "bBtnNav"
+          },
+          "type": "ButtonClicked"
+        },
+        "wNavGone": {
+          "actions": {
+            "0": {
+              "id": "aNavGone1",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "should not run"
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aNavGone2",
+              "properties": {
+                "element_id": "bGone page"
+              },
+              "type": "ChangePage"
+            }
+          },
+          "id": "wNavGone",
+          "properties": {
+            "element_id": "bBtnNavGone"
           },
           "type": "ButtonClicked"
         },

@@ -30,7 +30,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
   test "every page and reusable-element workflow is lowered, in a stable order", %{
     lowered: lowered
   } do
-    assert length(lowered.workflows) == 28
+    assert length(lowered.workflows) == 29
 
     assert Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}) ==
              Enum.sort(Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}))
@@ -159,6 +159,95 @@ defmodule BubbleEx.Workflows.FrontendTest do
              workflow(card, "wCardOpen").steps
   end
 
+  describe "Go to page's target (WTF-429)" do
+    # wNav going to `target` instead of page bOther.
+    defp nav_to(app, target) do
+      app
+      |> edit("wNav", &put_in(&1, ["actions", "0", "properties", "element_id"], target))
+      |> lower()
+      |> workflow("wNav")
+    end
+
+    defp unresolved?(lowered, w) do
+      [step] = w.steps
+
+      step.residue == [
+        %{subject: step.id, reason: :unresolved_reference, detail: %{reference: "page"}}
+      ] and step.args.page == nil and not Workflow.native?(w) and
+        Enum.any?(
+          lowered.diagnostics,
+          &(&1.code == :frontend_workflow_residue and
+              &1.details.reason == "unresolved_reference" and &1.details.subject == step.id)
+        )
+    end
+
+    test "an unknown, empty, path-like or unicode ID is residue, never the current page" do
+      hostile = [
+        "bMissing",
+        "",
+        "   ",
+        nil,
+        42,
+        %{"type" => "CurrentPage"},
+        "/other",
+        "../other",
+        "other",
+        "https://example.com/other",
+        "bOther/../bHome",
+        "ページ",
+        "bOther​",
+        "bÖther",
+        "bGone page",
+        "bOther\n",
+        " bOther",
+        "current page",
+        "Current page ",
+        "Current Page",
+        "Current page"
+      ]
+
+      for target <- hostile do
+        app =
+          edit(app(), "wNav", &put_in(&1, ["actions", "0", "properties", "element_id"], target))
+
+        lowered = lower(app)
+        assert unresolved?(lowered, workflow(lowered, "wNav")), inspect(target)
+      end
+    end
+
+    test "a deleted page's ID is residue" do
+      app = update_in(app(), ["pages"], &Map.delete(&1, "other"))
+      lowered = lower(app)
+      assert unresolved?(lowered, workflow(lowered, "wNav"))
+    end
+
+    test "a page whose ID has a space is that page, not the current one" do
+      id = "bOther page\n"
+
+      w =
+        app()
+        |> put_in(["pages", "other", "id"], id)
+        |> nav_to(id)
+
+      assert [%{residue: [], args: %{page: ^id}}] = w.steps
+    end
+
+    test "Current page is the current page, unless a page has that ID" do
+      assert [%{residue: [], args: %{page: :current}}] =
+               app() |> nav_to("Current page") |> Map.fetch!(:steps)
+
+      app = put_in(app(), ["pages", "other", "id"], "Current page")
+      lowered = lower(app)
+      assert unresolved?(lowered, workflow(lowered, "wUrl"))
+    end
+
+    test "the fixture's workflow to a page that is gone refuses to run", %{lowered: lowered} do
+      w = workflow(lowered, "wNavGone")
+      assert [%{residue: []}, %{op: :navigate, residue: [_]}] = w.steps
+      refute Workflow.native?(w)
+    end
+  end
+
   test "Add a pause before next action lowers to a pause (WTF-451)", %{lowered: lowered} do
     [_, pause, _] = workflow(lowered, "wPause").steps
 
@@ -241,16 +330,21 @@ defmodule BubbleEx.Workflows.FrontendTest do
     coverage = Frontend.coverage(lowered)
 
     assert coverage["workflows"] == %{
-             "total" => 28,
+             "total" => 29,
              "native" => 26,
-             "residue" => 2,
+             "residue" => 3,
              "disabled" => 1
            }
 
-    assert coverage["steps"]["residue"] == 2
+    assert coverage["steps"]["residue"] == 3
     assert coverage["by_surface"]["reusable"] == %{"total" => 3, "native" => 3}
-    assert coverage["residue_reasons"] == %{"unsupported_action" => 2}
-    assert coverage["step_ops"]["set_state"] == 20
+
+    assert coverage["residue_reasons"] == %{
+             "unsupported_action" => 2,
+             "unresolved_reference" => 1
+           }
+
+    assert coverage["step_ops"]["set_state"] == 21
     assert coverage["step_ops"]["pause"] == 2
   end
 
